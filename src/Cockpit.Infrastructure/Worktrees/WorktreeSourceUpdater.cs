@@ -2,20 +2,17 @@ using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-/// <summary>
-/// Brings the branch a worktree is about to fork from up to date first (AC-349). Without this the fork base is
-/// whatever <c>git rev-parse HEAD</c> happens to say in the operator's checkout, which is only as recent as the last
-/// time they pulled — a session then starts tens of commits behind and every measurement made against the
-/// remote-tracking refs (how much work a worktree still holds) is as stale as the refs themselves.
-/// <para>
-/// The operator's own working tree is touched as little as possible: only a fast-forward, only when the branch has
-/// nothing of its own, nothing uncommitted, and nothing on disk the update would write over. Every case this declines
-/// to handle — and every error along the way — forks from the local HEAD instead and says so, because a session
-/// starting on an older base is a nuisance and losing someone's work is not. The one state that is not simply
-/// "untouched" is a fast-forward cut short by its own guard, which git may have half applied; that is detected
-/// afterwards and named, rather than reported as if nothing had happened.
-/// </para>
-/// </summary>
+// Brings the branch a worktree is about to fork from up to date first (AC-349). Without this the fork base is
+// whatever `git rev-parse HEAD` happens to say in the operator's checkout, which is only as recent as the last
+// time they pulled — a session then starts tens of commits behind and every measurement made against the
+// remote-tracking refs (how much work a worktree still holds) is as stale as the refs themselves.
+//
+// The operator's own working tree is touched as little as possible: only a fast-forward, only when the branch has
+// nothing of its own, nothing uncommitted, and nothing on disk the update would write over. Every case this declines
+// to handle — and every error along the way — forks from the local HEAD instead and says so, because a session
+// starting on an older base is a nuisance and losing someone's work is not. The one state that is not simply
+// "untouched" is a fast-forward cut short by its own guard, which git may have half applied; that is detected
+// afterwards and named, rather than reported as if nothing had happened.
 internal static class WorktreeSourceUpdater
 {
     // Well short of GitCli's default hang guard, and only on the step that leaves the machine: a network that is
@@ -28,10 +25,10 @@ internal static class WorktreeSourceUpdater
     // as long as it likes. Bounded so a session start cannot hang on someone else's hook.
     private static readonly TimeSpan MergeTimeout = TimeSpan.FromSeconds(60);
 
-    /// <summary>How many colliding paths to name before the message stops listing them.</summary>
+    // How many colliding paths to name before the message stops listing them.
     private const int NamedCollisions = 3;
 
-    /// <param name="mergeTimeout">Test seam: shorten the guard on the fast-forward so a killed merge can be driven deliberately.</param>
+    // `mergeTimeout`: Test seam: shorten the guard on the fast-forward so a killed merge can be driven deliberately.
     public static async Task<WorktreeSourceRefresh> BringUpToDateAsync(
         GitRepositoryInfo repository,
         WorktreeSourceHandling handling,

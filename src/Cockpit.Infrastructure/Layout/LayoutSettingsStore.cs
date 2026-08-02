@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Layout;
 
-/// <summary>
-/// Persists <see cref="LayoutSettings"/> under the <c>layout</c> section of <c>cockpit.json</c> (same
-/// file/pattern as <c>SessionBehaviorSettingsStore</c>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched. When no settings
-/// were ever saved, <see cref="LoadAsync"/> returns the defaults.
-/// </summary>
+// Persists `LayoutSettings` under the `layout` section of `cockpit.json` (same
+// file/pattern as `SessionBehaviorSettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched. When no settings
+// were ever saved, `LoadAsync` returns the defaults.
 internal sealed class LayoutSettingsStore : ILayoutSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class LayoutSettingsStore : ILayoutSettingsStore, ISingletonServ
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal LayoutSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

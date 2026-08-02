@@ -10,31 +10,28 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-/// <summary>
-/// The <c>cockpit-terminal</c> MCP tools (AC-34): let an agent read and drive a terminal pane the operator has open,
-/// live and with the operator watching. Exposed only while the Options master switch is on (the endpoint is not
-/// advertised to a session otherwise), so for an agent the feature simply does not exist until it is deliberately
-/// turned on.
-/// <para>
-/// The gate is the shared AC-47 consent broker, and it asks for the narrower thing: <c>read_terminal</c> asks to watch
-/// a pane, <c>send_terminal</c> asks to type into it. So watching a build finish never quietly comes with the keyboard,
-/// and an agent that only ever reads is never approved for more than reading. Approval couples the session to the pane
-/// (one agent per pane) and starts the output capture — which begins at the coupling, never the earlier scrollback, so
-/// a secret that scrolled by before does not leak. The operator keeps control throughout: they can type alongside and
-/// Disconnect at any time, and the pane shows a bar saying which of the two an agent holds.
-/// </para>
-/// </summary>
+// The `cockpit-terminal` MCP tools (AC-34): let an agent read and drive a terminal pane the operator has open,
+// live and with the operator watching. Exposed only while the Options master switch is on (the endpoint is not
+// advertised to a session otherwise), so for an agent the feature simply does not exist until it is deliberately
+// turned on.
+//
+// The gate is the shared AC-47 consent broker, and it asks for the narrower thing: `read_terminal` asks to watch
+// a pane, `send_terminal` asks to type into it. So watching a build finish never quietly comes with the keyboard,
+// and an agent that only ever reads is never approved for more than reading. Approval couples the session to the pane
+// (one agent per pane) and starts the output capture — which begins at the coupling, never the earlier scrollback, so
+// a secret that scrolled by before does not leak. The operator keeps control throughout: they can type alongside and
+// Disconnect at any time, and the pane shows a bar saying which of the two an agent holds.
 internal sealed class TerminalMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
-    /// <summary>Ceiling on how long <c>run_in_terminal</c> will wait, so an agent cannot park a request on the pane indefinitely.</summary>
+    // Ceiling on how long `run_in_terminal` will wait, so an agent cannot park a request on the pane indefinitely.
     private const int MaxRunTimeoutSeconds = 600;
 
-    /// <summary>How often the wait re-reads the shell state. Short enough to feel immediate, long enough not to spin on the registry lock.</summary>
+    // How often the wait re-reads the shell state. Short enough to feel immediate, long enough not to spin on the registry lock.
     private const int PollIntervalMs = 100;
 
-    /// <summary>Stands in for a read that came back null — the coupling ended between the check and the read. Nothing to report, and nothing was cut off.</summary>
+    // Stands in for a read that came back null — the coupling ended between the check and the read. Nothing to report, and nothing was cut off.
     private static readonly TerminalCapturedOutput NothingCaptured = new(string.Empty, Truncated: false);
 
     private readonly ITerminalAccessRegistry _registry;
@@ -214,12 +211,10 @@ internal sealed class TerminalMcpTools
         });
     }
 
-    /// <summary>
-    /// Ensures this session holds at least <paramref name="needed"/> on <paramref name="pane"/>, asking the operator
-    /// once for exactly that much. Returns an error string to surface, or null when the session now holds it. An
-    /// agent that has been watching and now wants to type gets a second prompt, worded as the widening it is — the
-    /// operator's live view and Disconnect are the counterpart to whatever they granted.
-    /// </summary>
+    // Ensures this session holds at least `needed` on `pane`, asking the operator
+    // once for exactly that much. Returns an error string to surface, or null when the session now holds it. An
+    // agent that has been watching and now wants to type gets a second prompt, worded as the widening it is — the
+    // operator's live view and Disconnect are the counterpart to whatever they granted.
     private async Task<string?> _EnsureCoupledAsync(string caller, TerminalPane pane, TerminalCouplingMode needed)
     {
         // Drive covers reading too; anything else has to be exactly what is needed. Spelled out rather than leaning on

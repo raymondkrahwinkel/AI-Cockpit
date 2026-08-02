@@ -3,11 +3,9 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-/// <summary>
-/// Windows <see cref="IPtyHostFactory"/>: spawns the existing hand-rolled <see cref="ConPtyProcess"/>.
-/// Registered only on Windows (<c>DependencyInjection.AddInfrastructure</c>) — behaviour unchanged
-/// from before the Linux/macOS pty host (#9 cross-platform increment) existed.
-/// </summary>
+// Windows `IPtyHostFactory`: spawns the existing hand-rolled `ConPtyProcess`.
+// Registered only on Windows (`DependencyInjection.AddInfrastructure`) — behaviour unchanged
+// from before the Linux/macOS pty host (#9 cross-platform increment) existed.
 internal sealed class ConPtyHostFactory : IPtyHostFactory
 {
     public IConPtyProcess Start(
@@ -19,13 +17,11 @@ internal sealed class ConPtyHostFactory : IPtyHostFactory
         short rows) =>
         ConPtyProcess.Start(BuildCommandLine(executablePath, arguments), workingDirectory, environment, columns, rows);
 
-    /// <summary>
-    /// Builds the single command-line string <c>CreateProcessW</c> expects: the executable followed by
-    /// each argument, quoted where needed. <c>CreateProcessW</c> parses argv out of one string — unlike
-    /// Unix's <c>execvp</c>, which takes the path and argv array separately (see
-    /// <see cref="PortaPtyProcess"/>'s <c>PtyOptions.CommandLine</c> usage) — so this is a Windows-only
-    /// concern.
-    /// </summary>
+    // Builds the single command-line string `CreateProcessW` expects: the executable followed by
+    // each argument, quoted where needed. `CreateProcessW` parses argv out of one string — unlike
+    // Unix's `execvp`, which takes the path and argv array separately (see
+    // `PortaPtyProcess`'s `PtyOptions.CommandLine` usage) — so this is a Windows-only
+    // concern.
     internal static string BuildCommandLine(string executablePath, IReadOnlyList<string> arguments)
     {
         var commandLine = new StringBuilder(QuoteArgument(executablePath));
@@ -37,16 +33,14 @@ internal sealed class ConPtyHostFactory : IPtyHostFactory
         return commandLine.ToString();
     }
 
-    /// <summary>
-    /// Escapes a single token the way <c>CommandLineToArgvW</c> (which is how the child parses argv back
-    /// out of the one string <c>CreateProcessW</c> receives) expects — Microsoft's canonical algorithm.
-    /// A token is left bare when it needs no quoting; otherwise it is wrapped in quotes, embedded
-    /// <c>"</c> are escaped as <c>\"</c>, and any run of backslashes that precedes a quote (or the
-    /// closing quote) is doubled. This is not optional prettiness: TTY arguments now include
-    /// <c>--settings &lt;json&gt;</c> (the statusline relay) and <c>--append-system-prompt</c>, whose
-    /// values carry spaces <em>and</em> double quotes. The old "quote only when it has a space" check
-    /// split that JSON at its first space and handed the child broken argv, which exited on the spot.
-    /// </summary>
+    // Escapes a single token the way `CommandLineToArgvW` (which is how the child parses argv back
+    // out of the one string `CreateProcessW` receives) expects — Microsoft's canonical algorithm.
+    // A token is left bare when it needs no quoting; otherwise it is wrapped in quotes, embedded
+    // `"` are escaped as `\"`, and any run of backslashes that precedes a quote (or the
+    // closing quote) is doubled. This is not optional prettiness: TTY arguments now include
+    // `--settings &lt;json&gt;` (the statusline relay) and `--append-system-prompt`, whose
+    // values carry spaces *and* double quotes. The old "quote only when it has a space" check
+    // split that JSON at its first space and handed the child broken argv, which exited on the spot.
     internal static string QuoteArgument(string value)
     {
         // A non-empty token with nothing the parser treats specially needs no quoting at all.

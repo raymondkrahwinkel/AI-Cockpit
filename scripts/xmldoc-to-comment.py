@@ -41,6 +41,7 @@ SELF = [
     (re.compile(r'<typeparamref\s+name="([^"]*)"\s*/>'), r"`\1`"),
 ]
 PARAM_OPEN = re.compile(r'<param\s+name="([^"]*)"\s*>')
+TYPEPARAM_OPEN = re.compile(r'<typeparam\s+name="([^"]*)"\s*>')
 DROP_TAGS = re.compile(r"</?(summary|remarks|list|param|typeparam|returns|value)\b[^>]*>")
 PARA = re.compile(r"<para\s*>")
 PARA_CLOSE = re.compile(r"</para\s*>")
@@ -64,6 +65,7 @@ def convert_block(bodies):
     for rx, rep in SELF:
         text = rx.sub(rep, text)
     text = PARAM_OPEN.sub(lambda m: "%s`%s`: " % (PARAM_MARK, m.group(1)), text)
+    text = TYPEPARAM_OPEN.sub(lambda m: "%s`%s`: " % (PARAM_MARK, m.group(1)), text)
     text = ITEM_OPEN.sub("- ", text)
     text = ITEM_CLOSE.sub("", text)
     text = PARA.sub(PARA_MARK, text)
@@ -184,6 +186,8 @@ def main():
 
     targets, skipped = [], []
     for p in sorted(root.rglob("*.cs")):
+        if set(p.parts) & {"bin", "obj"}:
+            continue
         (skipped if DECLARES_INTERFACE.search(p.read_text(encoding="utf-8")) else targets).append(p)
     for p in skipped:
         print("skipped (declares an interface, decide by hand): %s" % p)

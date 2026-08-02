@@ -5,21 +5,16 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-/// <summary>
-/// Hosts a child process inside a Windows ConPTY (pseudo console) via <c>CreatePseudoConsole</c>,
-/// so the child sees a real interactive terminal. Exposes the pty's input pipe (write keystrokes)
-/// and output pipe (read rendered ANSI/VT output), and forwards resizes to <c>ResizePseudoConsole</c>.
-/// </summary>
-/// <remarks>
-/// The child receives exactly the environment we build (ConPTY has no implicit inheritance), passed
-/// as a UTF-16 double-null-terminated block with <c>CREATE_UNICODE_ENVIRONMENT</c>. This is the whole
-/// reason the cockpit hosts the pty itself rather than using a turnkey terminal control: it is the
-/// only way to inject <c>CLAUDE_CONFIG_DIR</c> and <c>TERM</c> alongside the inherited parent env.
-///
-/// Windows-only by construction (P/Invokes kernel32 ConPTY, available Windows 10 1809+). The
-/// Linux/macOS counterpart is <see cref="PortaPtyProcess"/> (Porta.Pty); <see cref="ConPtyHostFactory"/>
-/// and <see cref="PortaPtyHostFactory"/> are selected per platform behind <c>IPtyHostFactory</c>.
-/// </remarks>
+// Hosts a child process inside a Windows ConPTY (pseudo console) via `CreatePseudoConsole`,
+// so the child sees a real interactive terminal. Exposes the pty's input pipe (write keystrokes)
+// and output pipe (read rendered ANSI/VT output), and forwards resizes to `ResizePseudoConsole`.
+// The child receives exactly the environment we build (ConPTY has no implicit inheritance), passed
+// as a UTF-16 double-null-terminated block with `CREATE_UNICODE_ENVIRONMENT`. This is the whole
+// reason the cockpit hosts the pty itself rather than using a turnkey terminal control: it is the
+// only way to inject `CLAUDE_CONFIG_DIR` and `TERM` alongside the inherited parent env.
+// Windows-only by construction (P/Invokes kernel32 ConPTY, available Windows 10 1809+). The
+// Linux/macOS counterpart is `PortaPtyProcess` (Porta.Pty); `ConPtyHostFactory`
+// and `PortaPtyHostFactory` are selected per platform behind `IPtyHostFactory`.
 internal sealed class ConPtyProcess : IConPtyProcess
 {
     private const int ProcThreadAttributePseudoConsole = 0x00020016;
@@ -74,12 +69,10 @@ internal sealed class ConPtyProcess : IConPtyProcess
             _processWaitHandle, OnChildExited, null, Timeout.Infinite, executeOnlyOnce: true);
     }
 
-    /// <summary>
-    /// Fired by the thread pool once the child process terminates. Closes the pseudo console so the
-    /// output pipe reaches EOF and the output pump stops (which is how the panel learns to close). On
-    /// Windows this is the only signal of the exit — the reader never sees EOF on its own while ConPTY
-    /// holds the pipe's write end open.
-    /// </summary>
+    // Fired by the thread pool once the child process terminates. Closes the pseudo console so the
+    // output pipe reaches EOF and the output pump stops (which is how the panel learns to close). On
+    // Windows this is the only signal of the exit — the reader never sees EOF on its own while ConPTY
+    // holds the pipe's write end open.
     private void OnChildExited(object? state, bool timedOut) => ClosePseudoConsole();
 
     private void ClosePseudoConsole()
@@ -95,11 +88,9 @@ internal sealed class ConPtyProcess : IConPtyProcess
         }
     }
 
-    /// <summary>
-    /// Spawns <paramref name="commandLine"/> inside a fresh pseudo console of the given size, in
-    /// <paramref name="workingDirectory"/>, with exactly <paramref name="environment"/> as its
-    /// environment block.
-    /// </summary>
+    // Spawns `commandLine` inside a fresh pseudo console of the given size, in
+    // `workingDirectory`, with exactly `environment` as its
+    // environment block.
     public static ConPtyProcess Start(
         string commandLine,
         string workingDirectory,
@@ -262,10 +253,8 @@ internal sealed class ConPtyProcess : IConPtyProcess
         return attributeList;
     }
 
-    /// <summary>
-    /// Builds a Windows Unicode environment block: <c>KEY=VALUE\0KEY=VALUE\0...\0</c> as UTF-16 bytes.
-    /// Keys are sorted case-insensitively as the OS expects for an environment block.
-    /// </summary>
+    // Builds a Windows Unicode environment block: `KEY=VALUE\0KEY=VALUE\0...\0` as UTF-16 bytes.
+    // Keys are sorted case-insensitively as the OS expects for an environment block.
     private static byte[] BuildEnvironmentBlock(IReadOnlyDictionary<string, string> environment)
     {
         var builder = new StringBuilder();
@@ -278,12 +267,10 @@ internal sealed class ConPtyProcess : IConPtyProcess
         return Encoding.Unicode.GetBytes(builder.ToString());
     }
 
-    /// <summary>
-    /// A <see cref="WaitHandle"/> over a raw Windows process handle, which the OS signals when the process
-    /// terminates. Wraps the handle with <c>ownsHandle: false</c> so disposing this (on Dispose) never
-    /// closes the process handle — <see cref="ConPtyProcess"/> owns it in <c>_processInfo.Process</c> and
-    /// closes it separately after the wait is unregistered.
-    /// </summary>
+    // A `WaitHandle` over a raw Windows process handle, which the OS signals when the process
+    // terminates. Wraps the handle with `ownsHandle: false` so disposing this (on Dispose) never
+    // closes the process handle — `ConPtyProcess` owns it in `_processInfo.Process` and
+    // closes it separately after the wait is unregistered.
     private sealed class ProcessWaitHandle : WaitHandle
     {
         public ProcessWaitHandle(IntPtr processHandle)

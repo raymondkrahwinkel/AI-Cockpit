@@ -9,18 +9,15 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// Appends <see cref="SessionStateRecord"/>s to <c>session-state.jsonl</c> next to <c>cockpit.json</c> (AC-409).
-/// <para>
-/// Shares the append/read idiom of <c>JsonlAuditLog{T}</c> — <see cref="FileMode.Append"/> with
-/// <see cref="FileShare.Read"/>, owner-only creation, a write lock, and a never-throws-to-the-caller append — but
-/// does not derive from it: that base's whole point is that a trail, once written, cannot be erased, and
-/// <see cref="CompactAsync"/> rewrites this file on purpose. Session state is derived, not a trail; it is expected
-/// to shrink. The tail-reading block reader that base class uses to answer "the last N" is not reused either —
-/// this store needs "the last record per pane across the whole file" instead, and the file stays small through
-/// compaction, so a plain forward read is both correct and simpler.
-/// </para>
-/// </summary>
+// Appends `SessionStateRecord`s to `session-state.jsonl` next to `cockpit.json` (AC-409).
+//
+// Shares the append/read idiom of `JsonlAuditLog{T}` — `FileMode.Append` with
+// `FileShare.Read`, owner-only creation, a write lock, and a never-throws-to-the-caller append — but
+// does not derive from it: that base's whole point is that a trail, once written, cannot be erased, and
+// `CompactAsync` rewrites this file on purpose. Session state is derived, not a trail; it is expected
+// to shrink. The tail-reading block reader that base class uses to answer "the last N" is not reused either —
+// this store needs "the last record per pane across the whole file" instead, and the file stays small through
+// compaction, so a plain forward read is both correct and simpler.
 internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -37,7 +34,7 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary file.</summary>
+    // Test seam: point the store at an arbitrary file.
     internal SessionStateStore(string filePath, ILogger<SessionStateStore> logger)
     {
         _filePath = filePath;
@@ -130,7 +127,7 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         }
     }
 
-    /// <inheritdoc cref="ISessionStateStore.TryLoadAsync"/>
+    // <inheritdoc cref="ISessionStateStore.TryLoadAsync"/>
     public async Task<IReadOnlyList<SessionStateRecord>?> TryLoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_filePath))
@@ -142,13 +139,11 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         return latest is null ? null : [.. latest.Values];
     }
 
-    /// <summary>
-    /// The read <see cref="CompactAsync"/> and <see cref="TryLoadAsync"/> share: a read failure and "the file has
-    /// bytes but no line in it parsed" both come back as <see langword="null"/> rather than an empty dictionary —
-    /// neither caller may treat "could not tell" as "there is nothing here" (see each method's own doc for why).
-    /// <see cref="LoadAsync"/> does not use this: its contract is the opposite on purpose, collapsing both into
-    /// empty for a restore that has no write to protect and nothing better to fall back on.
-    /// </summary>
+    // The read `CompactAsync` and `TryLoadAsync` share: a read failure and "the file has
+    // bytes but no line in it parsed" both come back as `null` rather than an empty dictionary —
+    // neither caller may treat "could not tell" as "there is nothing here" (see each method's own doc for why).
+    // `LoadAsync` does not use this: its contract is the opposite on purpose, collapsing both into
+    // empty for a restore that has no write to protect and nothing better to fall back on.
     private async Task<IReadOnlyDictionary<string, SessionStateRecord>?> _TryReadLatestPerPaneAsync(CancellationToken cancellationToken)
     {
         try
@@ -179,7 +174,7 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         }
     }
 
-    /// <summary>See <see cref="Auditing.JsonlAuditLog{T}._AppendPrivateAsync"/> — the same append-only-file idiom, kept here rather than shared because that base's other half (the tail reader) does not fit this store.</summary>
+    // See `Auditing.JsonlAuditLog{T}._AppendPrivateAsync` — the same append-only-file idiom, kept here rather than shared because that base's other half (the tail reader) does not fit this store.
     private async Task _AppendPrivateAsync(string line, CancellationToken cancellationToken)
     {
         var options = new FileStreamOptions
@@ -198,12 +193,10 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         await stream.WriteAsync(Encoding.UTF8.GetBytes(line), cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Reads every parseable record forward, keeping only the last one seen per pane — a later line for the same
-    /// pane overwrites an earlier one in the dictionary, which is exactly "last record per pane wins". A blank or
-    /// half-written line (a crash mid-append, or a hand edit) fails to parse and is skipped rather than losing
-    /// every record before it.
-    /// </summary>
+    // Reads every parseable record forward, keeping only the last one seen per pane — a later line for the same
+    // pane overwrites an earlier one in the dictionary, which is exactly "last record per pane wins". A blank or
+    // half-written line (a crash mid-append, or a hand edit) fails to parse and is skipped rather than losing
+    // every record before it.
     private async Task<Dictionary<string, SessionStateRecord>> _ReadLatestPerPaneAsync(CancellationToken cancellationToken)
     {
         var latest = new Dictionary<string, SessionStateRecord>(StringComparer.Ordinal);
@@ -222,14 +215,12 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         return latest;
     }
 
-    /// <summary>
-    /// A line that does not parse into a record with a pane to key it on is skipped. The pane check is not
-    /// belt-and-braces: <see cref="SessionStateRecord.PaneId"/> is a positional parameter, and the serializer
-    /// passes null for one a line omits rather than refusing the line — so a hand-edited or truncated-but-still-valid
-    /// object would reach the caller with no key, and the dictionary it is being put into would throw on that null.
-    /// That throw escapes the whole read, which would turn one bad line into "there is no session state at all" —
-    /// the opposite of what skipping a bad line is for.
-    /// </summary>
+    // A line that does not parse into a record with a pane to key it on is skipped. The pane check is not
+    // belt-and-braces: `SessionStateRecord.PaneId` is a positional parameter, and the serializer
+    // passes null for one a line omits rather than refusing the line — so a hand-edited or truncated-but-still-valid
+    // object would reach the caller with no key, and the dictionary it is being put into would throw on that null.
+    // That throw escapes the whole read, which would turn one bad line into "there is no session state at all" —
+    // the opposite of what skipping a bad line is for.
     private static SessionStateRecord? _TryParse(string line)
     {
         try

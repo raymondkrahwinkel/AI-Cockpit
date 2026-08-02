@@ -2,11 +2,9 @@ using Cockpit.Core.Verify;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a <see cref="VerifyRunner"/> under the <c>verifyRunners</c> section of <c>cockpit.json</c>. A
-/// plain DTO kept apart from the domain record so the persisted shape can evolve on its own, mirroring how
-/// <see cref="WorktreeRegistryEntry"/> shadows the worktree record.
-/// </summary>
+// On-disk shape of a `VerifyRunner` under the `verifyRunners` section of `cockpit.json`. A
+// plain DTO kept apart from the domain record so the persisted shape can evolve on its own, mirroring how
+// `WorktreeRegistryEntry` shadows the worktree record.
 internal sealed class VerifyRunnerEntry
 {
     public string Label { get; set; } = string.Empty;

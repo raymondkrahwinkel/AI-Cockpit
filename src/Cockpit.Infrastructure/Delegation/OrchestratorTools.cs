@@ -7,17 +7,13 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-/// <summary>
-/// The MCP tools a session uses to hand work to another profile (#67), exposed as
-/// <c>mcp__cockpit-orchestrator__*</c>. Deliberately thin: every rule about what may be delegated to whom lives
-/// in <see cref="IDelegationService"/>, so this class only translates calls and reports refusals honestly — a
-/// tool that swallowed a rejection would leave the calling agent guessing why nothing happened.
-/// </summary>
-/// <remarks>
-/// Asynchronous by design: <c>delegate_task</c> returns a task id straight away rather than blocking until the
-/// sub-agent is done. A delegated task can run for minutes, which no MCP call should sit through, and the caller
-/// keeps the choice between polling progress and just asking for the result.
-/// </remarks>
+// The MCP tools a session uses to hand work to another profile (#67), exposed as
+// `mcp__cockpit-orchestrator__*`. Deliberately thin: every rule about what may be delegated to whom lives
+// in `IDelegationService`, so this class only translates calls and reports refusals honestly — a
+// tool that swallowed a rejection would leave the calling agent guessing why nothing happened.
+// Asynchronous by design: `delegate_task` returns a task id straight away rather than blocking until the
+// sub-agent is done. A delegated task can run for minutes, which no MCP call should sit through, and the caller
+// keeps the choice between polling progress and just asking for the result.
 internal sealed class OrchestratorTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };

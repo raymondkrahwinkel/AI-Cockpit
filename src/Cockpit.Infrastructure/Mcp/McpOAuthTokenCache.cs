@@ -5,22 +5,20 @@ using ModelContextProtocol.Authentication;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-/// <summary>
-/// Bridges the MCP client's token cache to the cockpit's own storage for one server (AC-353).
-/// <para>
-/// This is the whole reason the cockpit ever sees a token. Left unset, <c>ClientOAuthOptions.TokenCache</c> defaults
-/// to an in-memory cache owned by the transport: the sign-in works, and the result dies with the connection — so
-/// every session pays for its own browser login and nothing can be handed to an agent. Pointed here instead, the
-/// SDK reads the stored token on each request and writes back every renewal, which is what makes one sign-in serve
-/// every route and survive a restart.
-/// </para>
-/// </summary>
-/// <param name="serverId">The server's stable <see cref="McpServerConfig.IdentityKey"/> (AC-403) — the key the store files under.</param>
-/// <param name="serverName">The server's current name, written alongside the token purely as a label.</param>
-/// <param name="resourceUrl">The address the token is being obtained for, so a record cannot be used at another one.</param>
-/// <param name="store">Where the token lands.</param>
-/// <param name="logger">Where a renewal leaves its trace (AC-524) — this class used to write nothing at all, which
-/// made an expiry an anecdote instead of an event anyone could go and look up.</param>
+// Bridges the MCP client's token cache to the cockpit's own storage for one server (AC-353).
+//
+// This is the whole reason the cockpit ever sees a token. Left unset, `ClientOAuthOptions.TokenCache` defaults
+// to an in-memory cache owned by the transport: the sign-in works, and the result dies with the connection — so
+// every session pays for its own browser login and nothing can be handed to an agent. Pointed here instead, the
+// SDK reads the stored token on each request and writes back every renewal, which is what makes one sign-in serve
+// every route and survive a restart.
+//
+// `serverId`: The server's stable `McpServerConfig.IdentityKey` (AC-403) — the key the store files under.
+// `serverName`: The server's current name, written alongside the token purely as a label.
+// `resourceUrl`: The address the token is being obtained for, so a record cannot be used at another one.
+// `store`: Where the token lands.
+// `logger`: Where a renewal leaves its trace (AC-524) — this class used to write nothing at all, which
+// made an expiry an anecdote instead of an event anyone could go and look up.
 internal sealed class McpOAuthTokenCache(string serverId, string serverName, string? resourceUrl, IMcpOAuthTokenStore store, ILogger logger) : ITokenCache
 {
     public async ValueTask StoreTokensAsync(TokenContainer token, CancellationToken cancellationToken = default)

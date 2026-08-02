@@ -4,11 +4,9 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a <see cref="Project"/> in the <c>projects</c> section of <c>cockpit.json</c>. Carries the
-/// profile as the label the project points at, never the profile itself: the two are separate sections, and a
-/// project that embedded a copy would drift the moment that profile is edited.
-/// </summary>
+// On-disk shape of a `Project` in the `projects` section of `cockpit.json`. Carries the
+// profile as the label the project points at, never the profile itself: the two are separate sections, and a
+// project that embedded a copy would drift the moment that profile is edited.
 internal sealed class ProjectEntry
 {
     public string Id { get; set; } = string.Empty;
@@ -27,52 +25,47 @@ internal sealed class ProjectEntry
 
     public bool IsolateInWorktreeByDefault { get; set; }
 
-    /// <summary>Absent for a project that changes nothing about the MCP registry, which is most of them.</summary>
+    // Absent for a project that changes nothing about the MCP registry, which is most of them.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectMcpOverlayEntry? McpOverlay { get; set; }
 
-    /// <summary>
-    /// Legacy on-disk shape (pre-AC-483): the project's one and only memory location, before a project could keep
-    /// more than one resource. Still read: <see cref="ToDomain"/> falls back to it when <see cref="Resources"/> is
-    /// absent, which is exactly the shape of an old <c>cockpit.json</c> nobody has re-saved since this field
-    /// existed. That is the whole migration: load the old field into one <see cref="ProjectResourceRole.Memory"/>
-    /// row, and <see cref="Resources"/> takes over from the very next save.
-    /// <para>
-    /// Also still written by <see cref="FromDomain"/> — deliberately, and only for now (AC-485 is where this field
-    /// and this mirroring both go). A build from before <see cref="Resources"/> existed does not know that property
-    /// at all: it would read no memory back from a project this build saved, and — because
-    /// <see cref="System.Text.Json"/> drops properties it does not recognise — its very first save would erase the
-    /// <c>Resources</c> key outright, along with every row an operator added on this build. <c>PluginFields</c> and
-    /// <c>AdditionalInfo</c> do not need this same insurance: no build in the field ever knew those keys under a
-    /// different name the way this one is the direct predecessor of <see cref="Resources"/>, so there is nothing
-    /// asymmetric for them to lose on a rollback.
-    /// </para>
-    /// </summary>
+    // Legacy on-disk shape (pre-AC-483): the project's one and only memory location, before a project could keep
+    // more than one resource. Still read: `ToDomain` falls back to it when `Resources` is
+    // absent, which is exactly the shape of an old `cockpit.json` nobody has re-saved since this field
+    // existed. That is the whole migration: load the old field into one `ProjectResourceRole.Memory`
+    // row, and `Resources` takes over from the very next save.
+    //
+    // Also still written by `FromDomain` — deliberately, and only for now (AC-485 is where this field
+    // and this mirroring both go). A build from before `Resources` existed does not know that property
+    // at all: it would read no memory back from a project this build saved, and — because
+    // `System.Text.Json` drops properties it does not recognise — its very first save would erase the
+    // `Resources` key outright, along with every row an operator added on this build. `PluginFields` and
+    // `AdditionalInfo` do not need this same insurance: no build in the field ever knew those keys under a
+    // different name the way this one is the direct predecessor of `Resources`, so there is nothing
+    // asymmetric for them to lose on a rollback.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MemoryRef { get; set; }
 
-    /// <summary>Absent for a project that keeps no resource of its own, which is most of them (see <see cref="AdditionalInfo"/> for the same idiom).</summary>
+    // Absent for a project that keeps no resource of its own, which is most of them (see `AdditionalInfo` for the same idiom).
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ProjectResourceEntry>? Resources { get; set; }
 
-    /// <summary>Absent for a project with no logo.</summary>
+    // Absent for a project with no logo.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? LogoPath { get; set; }
 
-    /// <summary>Absent for a project no session has ever started on.</summary>
+    // Absent for a project no session has ever started on.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTimeOffset? LastOpenedAt { get; set; }
 
-    /// <summary>Absent for a project that keeps no information of its own, which is most of them.</summary>
+    // Absent for a project that keeps no information of its own, which is most of them.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ProjectInfoFieldEntry>? AdditionalInfo { get; set; }
 
-    /// <summary>
-    /// What plugins have this project linked to (AC-317), by their own key. A plain map rather than a typed section:
-    /// the host does not know what a key means and must not need to, and a key belonging to a plugin that is not
-    /// installed reads and writes back unchanged instead of being dropped on the next save. Absent for an unlinked
-    /// project.
-    /// </summary>
+    // What plugins have this project linked to (AC-317), by their own key. A plain map rather than a typed section:
+    // the host does not know what a key means and must not need to, and a key belonging to a plugin that is not
+    // installed reads and writes back unchanged instead of being dropped on the next save. Absent for an unlinked
+    // project.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? PluginFields { get; set; }
 

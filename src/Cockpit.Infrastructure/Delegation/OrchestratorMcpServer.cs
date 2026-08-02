@@ -14,20 +14,16 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-/// <summary>
-/// Hosts the <c>cockpit-orchestrator</c> MCP server (#67): one Kestrel endpoint on loopback exposing the
-/// delegation tools, running for the app's lifetime. Same shape as the permission server, which is the
-/// in-process MCP hosting this app already proves works against the real CLI.
-/// </summary>
-/// <remarks>
-/// The server is hosted whether or not anything uses it; a session only gets these tools if it was started with
-/// delegation enabled, which is what keeps a delegated sub-agent from being handed the very tools it would need
-/// to delegate on.
-/// </remarks>
+// Hosts the `cockpit-orchestrator` MCP server (#67): one Kestrel endpoint on loopback exposing the
+// delegation tools, running for the app's lifetime. Same shape as the permission server, which is the
+// in-process MCP hosting this app already proves works against the real CLI.
+// The server is hosted whether or not anything uses it; a session only gets these tools if it was started with
+// delegation enabled, which is what keeps a delegated sub-agent from being handed the very tools it would need
+// to delegate on.
 internal sealed class OrchestratorMcpServer
     : IHostedService, IOrchestratorServerState, ICockpitInternalMcpProvider, IDelegationMcpToggle, ISingletonService, IAsyncDisposable
 {
-    /// <summary>The MCP server name, shared with the spawn paths that decide whether a session gets these tools.</summary>
+    // The MCP server name, shared with the spawn paths that decide whether a session gets these tools.
     public const string ServerName = DelegationMcp.ServerName;
 
     private readonly IDelegationService _delegation;
@@ -56,7 +52,7 @@ internal sealed class OrchestratorMcpServer
 
     public string? OrchestratorMcpUrl { get; private set; }
 
-    /// <summary>Whether the orchestrator MCP is offered to sessions (AC-40) — the Options toggle, loaded on start.</summary>
+    // Whether the orchestrator MCP is offered to sessions (AC-40) — the Options toggle, loaded on start.
     public bool McpEnabled => _mcpEnabled;
 
     public async Task SetMcpEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
@@ -111,11 +107,9 @@ internal sealed class OrchestratorMcpServer
         _logger.LogInformation("Orchestrator MCP server listening at {McpUrl}", OrchestratorMcpUrl);
     }
 
-    /// <summary>
-    /// The orchestrator as the session fan-out sees it (AC-40): its live loopback URL, this run's auth flag, and the
-    /// operator's on/off from the Options toggle — answered live rather than published into the registry, so the
-    /// MCP-servers manager never lists it. Empty until the server has bound its port.
-    /// </summary>
+    // The orchestrator as the session fan-out sees it (AC-40): its live loopback URL, this run's auth flag, and the
+    // operator's on/off from the Options toggle — answered live rather than published into the registry, so the
+    // MCP-servers manager never lists it. Empty until the server has bound its port.
     public IReadOnlyList<McpServerConfig> GetServers() =>
         OrchestratorMcpUrl is { } url
             ?

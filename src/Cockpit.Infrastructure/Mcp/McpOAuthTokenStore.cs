@@ -6,10 +6,8 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-/// <summary>
-/// Persists MCP OAuth tokens under the <c>mcpOAuthTokens</c> section of <c>cockpit.json</c> (same
-/// read-modify-write-the-whole-file pattern as the other section stores, so siblings stay intact).
-/// </summary>
+// Persists MCP OAuth tokens under the `mcpOAuthTokens` section of `cockpit.json` (same
+// read-modify-write-the-whole-file pattern as the other section stores, so siblings stay intact).
 internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path, and at a key holder that is not the process-wide one.</summary>
+    // Test seam: point the store at an arbitrary config file path, and at a key holder that is not the process-wide one.
     internal McpOAuthTokenStore(string configFilePath, ISecretKeyHolder? keyHolder = null)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath, keyHolder);
@@ -76,13 +74,11 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
             cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// The id <paramref name="entry"/> should be re-keyed onto, or <see langword="null"/> when it must be left
-    /// exactly as it is. Four ways to be left alone: it already carries an id — a real sign-in, which a guess made
-    /// from a name may never overwrite; no server currently answers to its name; the id offered is the one its own
-    /// name already derives to, so it is reachable without writing anything; or another entry already holds that id,
-    /// which is what stops two of these collapsing onto a single credential.
-    /// </summary>
+    // The id `entry` should be re-keyed onto, or `null` when it must be left
+    // exactly as it is. Four ways to be left alone: it already carries an id — a real sign-in, which a guess made
+    // from a name may never overwrite; no server currently answers to its name; the id offered is the one its own
+    // name already derives to, so it is reachable without writing anything; or another entry already holds that id,
+    // which is what stops two of these collapsing onto a single credential.
     private static string? _AdoptableId(
         List<McpOAuthTokenEntry> entries,
         McpOAuthTokenEntry entry,
@@ -94,23 +90,19 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
             ? serverId
             : null;
 
-    /// <summary>
-    /// Whether <paramref name="entry"/> is the token held for <paramref name="serverId"/> (AC-403).
-    /// <para>
-    /// Two ways in, and the second one is the whole migration. An entry written since this id exists carries it,
-    /// and is matched on that alone. An entry an older build wrote has no id and was filed under the server's
-    /// name — so it answers to the id that name derives to, which is precisely the id
-    /// <see cref="McpServerConfig.IdentityKey"/> hands back for a server that has not been given one of its own.
-    /// Nothing has to be rewritten for that to hold.
-    /// </para>
-    /// <para>
-    /// ⚠️ What is deliberately <em>not</em> here is a fallback onto the server's <em>current</em> name. That is the
-    /// defect this ticket is about: two servers on one host that swap names would each adopt the other's token and
-    /// present a bearer to an endpoint it was never issued for. A derived legacy id is fixed at the name the row
-    /// carried when its id was first needed, and travels with the row from then on; the current name never enters
-    /// the comparison.
-    /// </para>
-    /// </summary>
+    // Whether `entry` is the token held for `serverId` (AC-403).
+    //
+    // Two ways in, and the second one is the whole migration. An entry written since this id exists carries it,
+    // and is matched on that alone. An entry an older build wrote has no id and was filed under the server's
+    // name — so it answers to the id that name derives to, which is precisely the id
+    // `McpServerConfig.IdentityKey` hands back for a server that has not been given one of its own.
+    // Nothing has to be rewritten for that to hold.
+    //
+    // ⚠️ What is deliberately *not* here is a fallback onto the server's *current* name. That is the
+    // defect this ticket is about: two servers on one host that swap names would each adopt the other's token and
+    // present a bearer to an endpoint it was never issued for. A derived legacy id is fixed at the name the row
+    // carried when its id was first needed, and travels with the row from then on; the current name never enters
+    // the comparison.
     internal static bool Matches(McpOAuthTokenEntry entry, string serverId) =>
         !string.IsNullOrEmpty(entry.ServerId)
             ? string.Equals(entry.ServerId, serverId, StringComparison.Ordinal)

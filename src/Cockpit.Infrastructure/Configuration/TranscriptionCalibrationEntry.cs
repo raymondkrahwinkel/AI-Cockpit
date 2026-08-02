@@ -3,9 +3,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of a <see cref="TranscriptionCalibration"/> (AC-68), stored per machine name under the
-/// <c>transcriptionCalibrations</c> section of <c>cockpit.json</c>. Holds the per-backend measurements and the
-/// backend the verdict chose from them.</summary>
+// On-disk shape of a `TranscriptionCalibration` (AC-68), stored per machine name under the
+// `transcriptionCalibrations` section of `cockpit.json`. Holds the per-backend measurements and the
+// backend the verdict chose from them.
 internal sealed class TranscriptionCalibrationEntry
 {
     public List<BackendMeasurementEntry> Measurements { get; set; } = [];
@@ -35,7 +35,7 @@ internal sealed class TranscriptionCalibrationEntry
         Model);
 }
 
-/// <summary>On-disk shape of one <see cref="ModelMeasurement"/> (AC-68).</summary>
+// On-disk shape of one `ModelMeasurement` (AC-68).
 internal sealed class ModelMeasurementEntry
 {
     public string Model { get; set; } = "large-v3-turbo";
@@ -51,7 +51,7 @@ internal sealed class ModelMeasurementEntry
     public ModelMeasurement ToDomain() => new(Model, LatencyMs);
 }
 
-/// <summary>On-disk shape of one <see cref="BackendMeasurement"/> (AC-68).</summary>
+// On-disk shape of one `BackendMeasurement` (AC-68).
 internal sealed class BackendMeasurementEntry
 {
     public VoiceBackendPreference Backend { get; set; }

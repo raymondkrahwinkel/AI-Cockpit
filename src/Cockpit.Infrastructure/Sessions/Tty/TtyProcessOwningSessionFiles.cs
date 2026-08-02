@@ -3,21 +3,17 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-/// <summary>
-/// A TTY session that owns what was minted or written for it: the provider's session-scoped files (an MCP config
-/// handed to the CLI), its status snapshot, and — when this session had a pane id — its per-session MCP keyring
-/// token (AC-89, AC-143). All are dropped when the session is disposed.
-/// <para>
-/// An MCP config carries the registry's bearer headers and the CLI only reads it while starting up. Tying a
-/// file's lifetime to the session's is what keeps a credential from outliving the thing that needed it — the
-/// version before this wrote one per session and deleted none.
-/// </para>
-/// <para>
-/// The keyring token is revoked here — <see cref="TtyLauncher"/>'s own mint site — rather than through any shared
-/// cross-component teardown path: the pty's end is otherwise only visible to the app layer, which cannot reach
-/// <c>SessionMcpKeyring</c>, so this wrapper is where the TTY route's own teardown lives.
-/// </para>
-/// </summary>
+// A TTY session that owns what was minted or written for it: the provider's session-scoped files (an MCP config
+// handed to the CLI), its status snapshot, and — when this session had a pane id — its per-session MCP keyring
+// token (AC-89, AC-143). All are dropped when the session is disposed.
+//
+// An MCP config carries the registry's bearer headers and the CLI only reads it while starting up. Tying a
+// file's lifetime to the session's is what keeps a credential from outliving the thing that needed it — the
+// version before this wrote one per session and deleted none.
+//
+// The keyring token is revoked here — `TtyLauncher`'s own mint site — rather than through any shared
+// cross-component teardown path: the pty's end is otherwise only visible to the app layer, which cannot reach
+// `SessionMcpKeyring`, so this wrapper is where the TTY route's own teardown lives.
 internal sealed class TtyProcessOwningSessionFiles(
     IConPtyProcess inner,
     IReadOnlyList<string> sessionScopedFiles,
@@ -59,8 +55,8 @@ internal sealed class TtyProcessOwningSessionFiles(
         }
     }
 
-    /// <summary>Best-effort: a session that has already exited must not fail on its own cleanup. Whatever
-    /// survives is swept on the next start (<c>TtyMcpConfigFile.SweepStale</c>, and the provider plugin sweeps its own statusline files).</summary>
+    // Best-effort: a session that has already exited must not fail on its own cleanup. Whatever
+    // survives is swept on the next start (`TtyMcpConfigFile.SweepStale`, and the provider plugin sweeps its own statusline files).
     private static void _Delete(string path)
     {
         try

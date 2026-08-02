@@ -4,18 +4,15 @@ using Whisper.net.LibraryLoader;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Applies a resolved Whisper backend try-order to Whisper.net's global <see cref="RuntimeOptions"/>, fetching a
-/// GPU runtime onto disk first if the order calls for one. The one place that touches <c>RuntimeLibraryOrder</c>
-/// and <c>LibraryPath</c> together, so the two callers that must agree — the runtime provisioner on a normal hold,
-/// and the calibration child process measuring a forced backend — cannot drift.
-/// <para>
-/// The subtlety it centralises: <c>LibraryPath</c> may point at the fetch cache <em>only</em> when a GPU runtime
-/// actually lives there. Whisper.net searches only that path once it is set, so pointing it at a cache that holds
-/// no runtime for this order would hide the bundled CPU natives beside the exe and hard-fail dictation with
-/// "native library not found" instead of falling back to the CPU floor.
-/// </para>
-/// </summary>
+// Applies a resolved Whisper backend try-order to Whisper.net's global `RuntimeOptions`, fetching a
+// GPU runtime onto disk first if the order calls for one. The one place that touches `RuntimeLibraryOrder`
+// and `LibraryPath` together, so the two callers that must agree — the runtime provisioner on a normal hold,
+// and the calibration child process measuring a forced backend — cannot drift.
+//
+// The subtlety it centralises: `LibraryPath` may point at the fetch cache *only* when a GPU runtime
+// actually lives there. Whisper.net searches only that path once it is set, so pointing it at a cache that holds
+// no runtime for this order would hide the bundled CPU natives beside the exe and hard-fail dictation with
+// "native library not found" instead of falling back to the CPU floor.
 internal static class WhisperRuntimeActivation
 {
     public static async Task ApplyAsync(

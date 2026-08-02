@@ -5,13 +5,11 @@ using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// The generic host-side login gate (Fase 4): dispatches a profile's login check to its provider plugin —
-/// whichever registered a <see cref="Cockpit.Plugins.Abstractions.Sessions.TtyProviderRegistration.IsLoggedIn"/>
-/// delegate — so the core carries no knowledge of any provider's credential file. A profile whose provider
-/// declares no login gate (a local model, or a plugin that self-manages auth) is treated as always ready, so it
-/// is never falsely reported logged out.
-/// </summary>
+// The generic host-side login gate (Fase 4): dispatches a profile's login check to its provider plugin —
+// whichever registered a `Cockpit.Plugins.Abstractions.Sessions.TtyProviderRegistration.IsLoggedIn`
+// delegate — so the core carries no knowledge of any provider's credential file. A profile whose provider
+// declares no login gate (a local model, or a plugin that self-manages auth) is treated as always ready, so it
+// is never falsely reported logged out.
 internal sealed class ProfileLoginChecker(IPluginTtyProviderRegistry ttyProviderRegistry)
     : IProfileLoginChecker, ISingletonService
 {

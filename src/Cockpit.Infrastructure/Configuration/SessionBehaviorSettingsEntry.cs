@@ -2,10 +2,8 @@ using Cockpit.Core.SessionBehavior;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of <see cref="SessionBehaviorSettings"/> in the <c>sessionBehavior</c> section of
-/// <c>cockpit.json</c>.
-/// </summary>
+// On-disk shape of `SessionBehaviorSettings` in the `sessionBehavior` section of
+// `cockpit.json`.
 internal sealed class SessionBehaviorSettingsEntry
 {
     public bool AutoCloseOnExit { get; set; }

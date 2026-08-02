@@ -6,19 +6,16 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-/// <summary>
-/// Persists the <see cref="AssistantProfileSlot"/> under the <c>assistantProfile</c> section of
-/// <c>cockpit.json</c>, read-modify-write through <see cref="CockpitConfigFileAccess"/> like every other
-/// section-owning store (same pattern as <see cref="Sessions.SessionProfileStore"/>).
-/// <para>
-/// <b>Its own section, not an entry in <c>profiles</c>.</b> That placement is what makes three acceptance
-/// criteria hold without a single guard: the slot cannot be deleted through the profile list, it does not appear
-/// in <em>+ New session</em>, and <c>list_profiles</c> never offers it as a delegation target — all three read
-/// <see cref="Cockpit.Core.Abstractions.Profiles.ISessionProfileStore.LoadAsync"/>, and this is not in what that
-/// returns. It is also why a rename cannot lose the slot: nothing matches it by label, so AC-410's
-/// rename-reads-as-gone bug has no surface here.
-/// </para>
-/// </summary>
+// Persists the `AssistantProfileSlot` under the `assistantProfile` section of
+// `cockpit.json`, read-modify-write through `CockpitConfigFileAccess` like every other
+// section-owning store (same pattern as `Sessions.SessionProfileStore`).
+//
+// *Its own section, not an entry in `profiles`.* That placement is what makes three acceptance
+// criteria hold without a single guard: the slot cannot be deleted through the profile list, it does not appear
+// in *+ New session*, and `list_profiles` never offers it as a delegation target — all three read
+// `Cockpit.Core.Abstractions.Profiles.ISessionProfileStore.LoadAsync`, and this is not in what that
+// returns. It is also why a rename cannot lose the slot: nothing matches it by label, so AC-410's
+// rename-reads-as-gone bug has no surface here.
 internal sealed class AssistantProfileStore : IAssistantProfileStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -28,7 +25,7 @@ internal sealed class AssistantProfileStore : IAssistantProfileStore, ISingleton
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal AssistantProfileStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);
@@ -65,7 +62,7 @@ internal sealed class AssistantProfileStore : IAssistantProfileStore, ISingleton
         return _WriteAsync(new AssistantProfileSlot(null, reason), cancellationToken);
     }
 
-    /// <summary>Writes the section and hands back what was written, so a caller need not re-read to see where the slot landed.</summary>
+    // Writes the section and hands back what was written, so a caller need not re-read to see where the slot landed.
     private async Task<AssistantProfileSlot> _WriteAsync(AssistantProfileSlot slot, CancellationToken cancellationToken)
     {
         await _configFile.UpdateAsync(

@@ -2,19 +2,16 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-/// <summary>
-/// Turns the raw terminal bytes a coupled pane captured (ANSI/VT escape sequences and all) into plain text for
-/// <c>read_terminal</c> (AC-34): the agent gets what a person would read on the screen, not a stream of colour codes
-/// and cursor moves. Applied to the whole captured buffer at read time — never per output chunk — so an escape
-/// sequence split across two pty writes is already rejoined before it is stripped.
-/// <para>
-/// A pragmatic strip rather than a full terminal emulation: it removes CSI (colours, cursor moves), OSC (title/
-/// clipboard), and the other escape forms, folds CRLF to LF, applies a lone CR as a column-0 overwrite (so a shell's
-/// line redraw reads as the final text, not both drafts concatenated — AC-34), and drops the remaining control bytes
-/// (a backspace, a bell) — enough to read a shell's output cleanly. It does not reconstruct a redrawn TUI
-/// (htop, vim); a cell-accurate view of those is a later refinement.
-/// </para>
-/// </summary>
+// Turns the raw terminal bytes a coupled pane captured (ANSI/VT escape sequences and all) into plain text for
+// `read_terminal` (AC-34): the agent gets what a person would read on the screen, not a stream of colour codes
+// and cursor moves. Applied to the whole captured buffer at read time — never per output chunk — so an escape
+// sequence split across two pty writes is already rejoined before it is stripped.
+//
+// A pragmatic strip rather than a full terminal emulation: it removes CSI (colours, cursor moves), OSC (title/
+// clipboard), and the other escape forms, folds CRLF to LF, applies a lone CR as a column-0 overwrite (so a shell's
+// line redraw reads as the final text, not both drafts concatenated — AC-34), and drops the remaining control bytes
+// (a backspace, a bell) — enough to read a shell's output cleanly. It does not reconstruct a redrawn TUI
+// (htop, vim); a cell-accurate view of those is a later refinement.
 internal static class TerminalOutputSanitizer
 {
     // ESC [ <params 0x30-0x3f> <intermediates 0x20-0x2f> <final 0x40-0x7e> — colours, cursor moves, erases.

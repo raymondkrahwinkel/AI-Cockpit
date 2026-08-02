@@ -7,11 +7,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-/// <summary>
-/// <see cref="IMcpToolProbe"/> — one tool call against an already-configured MCP server, outside any running
-/// session (AC-503). A caller (a plugin, through <c>ICockpitHost.ProbeMcpToolAsync</c>) uses this to confirm a value
-/// the operator typed actually resolves to something, without a session to ask through.
-/// </summary>
+// `IMcpToolProbe` — one tool call against an already-configured MCP server, outside any running
+// session (AC-503). A caller (a plugin, through `ICockpitHost.ProbeMcpToolAsync`) uses this to confirm a value
+// the operator typed actually resolves to something, without a session to ask through.
 internal sealed class McpToolProbe(
     IMcpServerStore store,
     IMcpOAuthCoordinator oauthCoordinator,
@@ -20,14 +18,12 @@ internal sealed class McpToolProbe(
     ILogger<McpToolProbe> logger)
     : IMcpToolProbe, ISingletonService
 {
-    /// <summary>
-    /// How long the connect-and-call together may take. Deliberately a few seconds, nowhere near the multi-minute
-    /// allowance <see cref="McpInteractiveOAuthClientOptions"/> gives an interactive sign-in (AC-505 follow-up) —
-    /// this call must never open a browser at all (see <see cref="ProbeAsync"/>'s own remarks), so there is nothing
-    /// here for a long timeout to wait out. Long enough for an ordinary connect-plus-one-tool-call over a live
-    /// network, short enough that a project editor waiting on this does not sit for anywhere near as long as the
-    /// old per-row filesystem probe's own 200 ms budget would suggest is "a while" for a check like this.
-    /// </summary>
+    // How long the connect-and-call together may take. Deliberately a few seconds, nowhere near the multi-minute
+    // allowance `McpInteractiveOAuthClientOptions` gives an interactive sign-in (AC-505 follow-up) —
+    // this call must never open a browser at all (see `ProbeAsync`'s own remarks), so there is nothing
+    // here for a long timeout to wait out. Long enough for an ordinary connect-plus-one-tool-call over a live
+    // network, short enough that a project editor waiting on this does not sit for anywhere near as long as the
+    // old per-row filesystem probe's own 200 ms budget would suggest is "a while" for a check like this.
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(8);
 
     public async Task<McpToolProbeResult> ProbeAsync(
@@ -109,13 +105,11 @@ internal sealed class McpToolProbe(
         }
     }
 
-    /// <summary>
-    /// Reads a recognisable "not found" out of an error result — deliberately narrow. The MCP spec lets a tool
-    /// report its own failures inside <see cref="CallToolResult.IsError"/> rather than as a protocol-level
-    /// exception, but nothing here can verify what any given server's error text actually means. Only a plainly
-    /// legible phrase (case-insensitive) is read as NotFound; anything else that came back as an error is Failed —
-    /// an honest "could not confirm" rather than a guess dressed up as a specific answer.
-    /// </summary>
+    // Reads a recognisable "not found" out of an error result — deliberately narrow. The MCP spec lets a tool
+    // report its own failures inside `CallToolResult.IsError` rather than as a protocol-level
+    // exception, but nothing here can verify what any given server's error text actually means. Only a plainly
+    // legible phrase (case-insensitive) is read as NotFound; anything else that came back as an error is Failed —
+    // an honest "could not confirm" rather than a guess dressed up as a specific answer.
     private static McpToolProbeResult _ToResult(CallToolResult result)
     {
         var text = string.Join(

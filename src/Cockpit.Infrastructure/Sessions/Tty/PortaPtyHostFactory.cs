@@ -2,10 +2,8 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-/// <summary>
-/// Linux/macOS <see cref="IPtyHostFactory"/>: spawns <see cref="PortaPtyProcess"/> (Porta.Pty).
-/// Registered only off Windows (<c>DependencyInjection.AddInfrastructure</c>).
-/// </summary>
+// Linux/macOS `IPtyHostFactory`: spawns `PortaPtyProcess` (Porta.Pty).
+// Registered only off Windows (`DependencyInjection.AddInfrastructure`).
 internal sealed class PortaPtyHostFactory : IPtyHostFactory
 {
     public IConPtyProcess Start(

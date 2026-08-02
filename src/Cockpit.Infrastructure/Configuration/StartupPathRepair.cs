@@ -3,21 +3,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// Repairs this process's PATH when a GUI or AppImage launch stripped it to the system defaults (AC-19). A login
-/// shell puts the user's bin directories (<c>~/.local/bin</c> and friends) on PATH; a desktop-file or AppImage
-/// launch does not, and every child this process spawns — a provider CLI, git, gh, node — inherits that truncated
-/// PATH, so tools read "not found" even though they are installed. The per-locator fallbacks (Claude/Codex) cover
-/// only their own executables; this is the root fix, run once at startup before anything resolves a tool or
-/// spawns a session.
-/// <para>
-/// Three steps: detect the truncated case (a user bin directory exists on disk but is missing from PATH — a
-/// terminal launch never looks like that, so the normal path costs nothing), ask the login shell for its PATH
-/// under a hard timeout, and fall back to prepending the well-known user bin directories when the shell cannot
-/// answer. Whichever source wins, the user bin directories that exist end up on PATH. Windows is exempt: it
-/// inherits the user+system PATH from the registry whatever launches the app.
-/// </para>
-/// </summary>
+// Repairs this process's PATH when a GUI or AppImage launch stripped it to the system defaults (AC-19). A login
+// shell puts the user's bin directories (`~/.local/bin` and friends) on PATH; a desktop-file or AppImage
+// launch does not, and every child this process spawns — a provider CLI, git, gh, node — inherits that truncated
+// PATH, so tools read "not found" even though they are installed. The per-locator fallbacks (Claude/Codex) cover
+// only their own executables; this is the root fix, run once at startup before anything resolves a tool or
+// spawns a session.
+//
+// Three steps: detect the truncated case (a user bin directory exists on disk but is missing from PATH — a
+// terminal launch never looks like that, so the normal path costs nothing), ask the login shell for its PATH
+// under a hard timeout, and fall back to prepending the well-known user bin directories when the shell cannot
+// answer. Whichever source wins, the user bin directories that exist end up on PATH. Windows is exempt: it
+// inherits the user+system PATH from the registry whatever launches the app.
 public static class StartupPathRepair
 {
     private const string PathVariable = "PATH";

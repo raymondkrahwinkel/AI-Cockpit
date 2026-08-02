@@ -6,21 +6,18 @@ using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// <see cref="IVoiceActivityDetector"/> backed by Whisper.net's built-in Silero-VAD support
-/// (<see cref="WhisperVadFactory"/>), sharing the one native runtime rather than bringing a separate ONNX
-/// Runtime dependency. Thresholds mirror WisperFlow's own <c>VadOptions</c> (research:
-/// Cockpit-DotNet-Voice-Stack-2026-07-07.md §2): 250 ms min speech, 100 ms min silence, 30 ms padding.
-/// Lazily initializes on first use, same reasoning as the transcription service. (Note: unlike transcription — which
-/// runs in an isolated child process (AC-174) so a native abort cannot take the app down — this VAD still loads its
-/// native model in the desktop process, so it remains an in-process native-crash vector until it too is isolated.)
-/// <para>
-/// It does not merely share that runtime — it is what <em>loads</em> it. A hold gates its audio here before it
-/// transcribes, so this factory comes first and its load is the one that decides the backend for the whole
-/// process. Hence <see cref="WhisperRuntimeProvisioner"/> before it: without that, the STT service sets its
-/// options after the choice is already made and the GPU it fetched is never used.
-/// </para>
-/// </summary>
+// `IVoiceActivityDetector` backed by Whisper.net's built-in Silero-VAD support
+// (`WhisperVadFactory`), sharing the one native runtime rather than bringing a separate ONNX
+// Runtime dependency. Thresholds mirror WisperFlow's own `VadOptions` (research:
+// Cockpit-DotNet-Voice-Stack-2026-07-07.md §2): 250 ms min speech, 100 ms min silence, 30 ms padding.
+// Lazily initializes on first use, same reasoning as the transcription service. (Note: unlike transcription — which
+// runs in an isolated child process (AC-174) so a native abort cannot take the app down — this VAD still loads its
+// native model in the desktop process, so it remains an in-process native-crash vector until it too is isolated.)
+//
+// It does not merely share that runtime — it is what *loads* it. A hold gates its audio here before it
+// transcribes, so this factory comes first and its load is the one that decides the backend for the whole
+// process. Hence `WhisperRuntimeProvisioner` before it: without that, the STT service sets its
+// options after the choice is already made and the GPU it fetched is never used.
 internal sealed class WhisperVoiceActivityDetector(
     WhisperRuntimeProvisioner runtimeProvisioner, ILogger<WhisperVoiceActivityDetector> logger)
     : IVoiceActivityDetector, ISingletonService, IAsyncDisposable

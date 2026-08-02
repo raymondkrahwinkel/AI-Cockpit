@@ -18,35 +18,29 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-/// <summary>
-/// Runs delegated tasks (#67) as headless sessions on the shared <see cref="ISessionManager"/>, and enforces the
-/// target profile's <see cref="DelegationPolicy"/> before anything is spawned. Every rule that matters is checked
-/// here rather than in the MCP tool layer: the tool surface is a shell, and a guard that lives in the shell is a
-/// guard an agent can talk its way around by reaching the engine another way.
-/// </summary>
+// Runs delegated tasks (#67) as headless sessions on the shared `ISessionManager`, and enforces the
+// target profile's `DelegationPolicy` before anything is spawned. Every rule that matters is checked
+// here rather than in the MCP tool layer: the tool surface is a shell, and a guard that lives in the shell is a
+// guard an agent can talk its way around by reaching the engine another way.
 internal sealed class DelegationService : IDelegationService, ILiveSessionSource, ISingletonService
 {
-    /// <summary>
-    /// The ceiling across all profiles together. A per-profile cap protects one provider's usage pot; this one
-    /// stops a fan-out of tasks across several profiles from turning a single agent's decision into a dozen
-    /// concurrent processes.
-    /// </summary>
+    // The ceiling across all profiles together. A per-profile cap protects one provider's usage pot; this one
+    // stops a fan-out of tasks across several profiles from turning a single agent's decision into a dozen
+    // concurrent processes.
     private const int GlobalMaxConcurrent = 4;
 
-    /// <summary>How deep delegation may nest. A delegated task does not get the orchestrator tools at all, so this is the backstop, not the primary guard.</summary>
+    // How deep delegation may nest. A delegated task does not get the orchestrator tools at all, so this is the backstop, not the primary guard.
     private const int MaxDepth = 1;
 
-    /// <summary>How many tasks may wait for a slot before the cockpit says no rather than growing a queue nobody watches.</summary>
+    // How many tasks may wait for a slot before the cockpit says no rather than growing a queue nobody watches.
     private const int MaxQueued = 8;
 
-    /// <summary>
-    /// How long a finished task's session is kept alive for a follow-up before the cockpit closes it. The session is
-    /// deliberately not torn down the moment a turn ends — the caller may want to ask one more thing, and a
-    /// conversation that has to be started again is not a conversation. But an orchestrator that simply never calls
-    /// stop_task (the common case: it has its answer and moves on) would leave a sub-agent sitting there until the
-    /// app closes — a CLI process, or an Ollama model held in memory, doing nothing at all. So it reaps itself, and
-    /// a follow-up within the window puts it back to work and starts the clock again.
-    /// </summary>
+    // How long a finished task's session is kept alive for a follow-up before the cockpit closes it. The session is
+    // deliberately not torn down the moment a turn ends — the caller may want to ask one more thing, and a
+    // conversation that has to be started again is not a conversation. But an orchestrator that simply never calls
+    // stop_task (the common case: it has its answer and moves on) would leave a sub-agent sitting there until the
+    // app closes — a CLI process, or an Ollama model held in memory, doing nothing at all. So it reaps itself, and
+    // a follow-up within the window puts it back to work and starts the clock again.
     private static readonly TimeSpan IdleSessionWindow = TimeSpan.FromMinutes(5);
 
     private readonly ISessionProfileStore _profileStore;
@@ -56,17 +50,15 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     private readonly ISessionWorkspaces _workspaces;
     private readonly IPluginProviderRegistry? _providerRegistry;
 
-    /// <summary>How a task finds the project of the session that delegated it (AC-320). Absent in a test graph; the task then runs without a project, as delegation always did.</summary>
+    // How a task finds the project of the session that delegated it (AC-320). Absent in a test graph; the task then runs without a project, as delegation always did.
     private readonly ISessionProjectResolver? _projects;
 
-    /// <summary>Tears down the worktrees a finished task made for itself (AC-106). Absent in a test graph that does not exercise worktrees; the startup reconcile is the net then, as it was before.</summary>
+    // Tears down the worktrees a finished task made for itself (AC-106). Absent in a test graph that does not exercise worktrees; the startup reconcile is the net then, as it was before.
     private readonly IWorktreeManager? _worktrees;
 
-    /// <summary>
-    /// The operator's Approve/Deny gate (#AC-47), asked when a per-task <see cref="DelegationRequest.RequestedPermission"/>
-    /// exceeds the profile's ceiling (AC-117). Absent in a test graph or an off-path caller with no UI listening — that
-    /// degrades to the old behaviour, a silent clamp to the ceiling, never a widen nobody was there to approve.
-    /// </summary>
+    // The operator's Approve/Deny gate (#AC-47), asked when a per-task `DelegationRequest.RequestedPermission`
+    // exceeds the profile's ceiling (AC-117). Absent in a test graph or an off-path caller with no UI listening — that
+    // degrades to the old behaviour, a silent clamp to the ceiling, never a widen nobody was there to approve.
     private readonly IConsentBroker? _consent;
 
     private readonly Func<int, TimeSpan> _timeout;
@@ -88,8 +80,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     {
     }
 
-    /// <summary>Test seam: lets a test express the profile's timeout in milliseconds, and the idle window in
-    /// milliseconds, rather than waiting minutes for either.</summary>
+    // Test seam: lets a test express the profile's timeout in milliseconds, and the idle window in
+    // milliseconds, rather than waiting minutes for either.
     internal DelegationService(
         ISessionProfileStore profileStore,
         ISessionManager sessionManager,
@@ -116,30 +108,25 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         _consent = consent;
     }
 
-    /// <summary>
-    /// The delegated tasks that still hold a session, as pane ids — a task's verified pane id is its task id
-    /// (see <see cref="_StartAsync"/>). A delegated session has no pane, so without this the cockpit's live-session
-    /// registry never knew it was running and the worktree guards treated its checkout as abandoned: the operator's
-    /// panel offered to sweep it and an agent's <c>worktree_remove</c> let it go (AC-106).
-    /// <para>
-    /// "Holds a session" and not "is running", deliberately: a task that has answered keeps its session for a
-    /// follow-up turn (<see cref="IdleSessionWindow"/>), and a follow-up puts it straight back to work in that same
-    /// directory.
-    /// </para>
-    /// <para>
-    /// The guard is let go one step before the checkout is gone, not at the same moment: a closing path drops the
-    /// session and then hands the worktree back, so while that release runs the task is already absent from here. The
-    /// actors that could use that gap are the worktree panel's Remove and Clean-up-finished and an agent's
-    /// <c>worktree_remove</c>; the session is stopped by then, and the agent route is refused a step earlier by the
-    /// ownership check. Left as it is rather than carried across the release on a second piece of state.
-    /// </para>
-    /// <para>
-    /// One ending is not covered: a task the driver reported an error on keeps its worktree but stops being listed
-    /// here, because <c>Finish</c> drops the session even though that error may not have ended it (see the
-    /// <c>SessionError</c> case). Until the next startup reconcile that checkout is unguarded — no worse than before
-    /// any of this, since a delegated task was never listed at all, but not fixed by it either.
-    /// </para>
-    /// </summary>
+    // The delegated tasks that still hold a session, as pane ids — a task's verified pane id is its task id
+    // (see `_StartAsync`). A delegated session has no pane, so without this the cockpit's live-session
+    // registry never knew it was running and the worktree guards treated its checkout as abandoned: the operator's
+    // panel offered to sweep it and an agent's `worktree_remove` let it go (AC-106).
+    //
+    // "Holds a session" and not "is running", deliberately: a task that has answered keeps its session for a
+    // follow-up turn (`IdleSessionWindow`), and a follow-up puts it straight back to work in that same
+    // directory.
+    //
+    // The guard is let go one step before the checkout is gone, not at the same moment: a closing path drops the
+    // session and then hands the worktree back, so while that release runs the task is already absent from here. The
+    // actors that could use that gap are the worktree panel's Remove and Clean-up-finished and an agent's
+    // `worktree_remove`; the session is stopped by then, and the agent route is refused a step earlier by the
+    // ownership check. Left as it is rather than carried across the release on a second piece of state.
+    //
+    // One ending is not covered: a task the driver reported an error on keeps its worktree but stops being listed
+    // here, because `Finish` drops the session even though that error may not have ended it (see the
+    // `SessionError` case). Until the next startup reconcile that checkout is unguarded — no worse than before
+    // any of this, since a delegated task was never listed at all, but not fixed by it either.
     public IReadOnlySet<string> LiveSessionIds
     {
         get
@@ -154,7 +141,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
     }
 
-    /// <summary>Raised whenever a task is added or changes state, so a UI view can follow along without polling.</summary>
+    // Raised whenever a task is added or changes state, so a UI view can follow along without polling.
     public event Action? TasksChanged;
 
     public async Task<IReadOnlyList<DelegationTargetView>> ListTargetsAsync(CancellationToken cancellationToken = default)
@@ -176,17 +163,15 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             .ToList();
     }
 
-    /// <summary>The MCP servers a task delegated to <paramref name="profile"/> would receive, sorted, as the
-    /// listing surfaces them so a caller can pass a valid <c>mcp_servers</c> narrowing on delegate_task (AC-136).</summary>
+    // The MCP servers a task delegated to `profile` would receive, sorted, as the
+    // listing surfaces them so a caller can pass a valid `mcp_servers` narrowing on delegate_task (AC-136).
     private static IReadOnlyList<string> _AvailableServers(IReadOnlyList<McpServerConfig> registry, SessionProfile profile) =>
         [.. _NarrowServersFor(registry, profile, null).OrderBy(name => name, StringComparer.OrdinalIgnoreCase)];
 
-    /// <summary>
-    /// Writes back what a profile turned out to be good for — and nothing else. Only the three descriptive fields are
-    /// touched; the rest of the policy is rebuilt from what the operator set, so a caller cannot make itself a target,
-    /// raise a ceiling, or open a directory by calling this. A profile that is not already a target is refused, for
-    /// the same reason: it is not a caller's to enrol.
-    /// </summary>
+    // Writes back what a profile turned out to be good for — and nothing else. Only the three descriptive fields are
+    // touched; the rest of the policy is rebuilt from what the operator set, so a caller cannot make itself a target,
+    // raise a ceiling, or open a directory by calling this. A profile that is not already a target is refused, for
+    // the same reason: it is not a caller's to enrol.
     public async Task<DelegationTargetView> DescribeTargetAsync(
         string profileLabel,
         string? purpose,
@@ -234,17 +219,15 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             _AvailableServers(registry, savedProfile));
     }
 
-    /// <summary>The base URL a local provider defaults to when the caller does not give one.</summary>
+    // The base URL a local provider defaults to when the caller does not give one.
     private const string OllamaDefaultBaseUrl = "http://localhost:11434";
     private const string LmStudioDefaultBaseUrl = "http://localhost:1234";
 
-    /// <summary>
-    /// Adds a local-model profile and saves it — but never as a delegation target. The soft purpose/tags a caller
-    /// suggests are carried, so the operator's later opt-in starts from them; the hard policy stays default and off
-    /// (<see cref="DelegationPolicy.AllowedAsTarget"/> false), because enrolling a target and setting its ceiling is
-    /// the operator's call. Local only: an Ollama or LM Studio model runs here and carries no login, so scaffolding
-    /// one cannot leak a credential or spend a subscription — a Claude profile is the operator's to make.
-    /// </summary>
+    // Adds a local-model profile and saves it — but never as a delegation target. The soft purpose/tags a caller
+    // suggests are carried, so the operator's later opt-in starts from them; the hard policy stays default and off
+    // (`DelegationPolicy.AllowedAsTarget` false), because enrolling a target and setting its ceiling is
+    // the operator's call. Local only: an Ollama or LM Studio model runs here and carries no login, so scaffolding
+    // one cannot leak a credential or spend a subscription — a Claude profile is the operator's to make.
     public async Task<ScaffoldedProfileView> AddLocalModelProfileAsync(
         string label,
         string provider,
@@ -290,12 +273,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             policy.Tags ?? []);
     }
 
-    /// <summary>
-    /// Every provider a session can run under: the two local ones a caller may scaffold with
-    /// <see cref="AddLocalModelProfileAsync"/>, then each provider a plugin registered — the operator's to set up,
-    /// since such a provider may carry a login. So a caller can discover what exists — and which of it is theirs to
-    /// add — instead of guessing provider names or finding out only when add_profile refuses.
-    /// </summary>
+    // Every provider a session can run under: the two local ones a caller may scaffold with
+    // `AddLocalModelProfileAsync`, then each provider a plugin registered — the operator's to set up,
+    // since such a provider may carry a login. So a caller can discover what exists — and which of it is theirs to
+    // add — instead of guessing provider names or finding out only when add_profile refuses.
     public IReadOnlyList<AvailableProviderView> ListProviders()
     {
         var providers = new List<AvailableProviderView>
@@ -460,13 +441,11 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         return (events, nextCursor, entry.IsFinished);
     }
 
-    /// <summary>
-    /// Continues a task with another turn. A task that has answered is <em>Completed</em>, not gone: its session
-    /// is deliberately kept alive so the caller can follow up — so "finished" must not be read as "cannot take
-    /// another turn". A task whose session really is gone (stopped, or never started) is refused loudly rather
-    /// than accepted into the void, since a follow-up that silently does nothing is worse than an error: the
-    /// caller waits for a turn that will never come.
-    /// </summary>
+    // Continues a task with another turn. A task that has answered is *Completed*, not gone: its session
+    // is deliberately kept alive so the caller can follow up — so "finished" must not be read as "cannot take
+    // another turn". A task whose session really is gone (stopped, or never started) is refused loudly rather
+    // than accepted into the void, since a follow-up that silently does nothing is worse than an error: the
+    // caller waits for a turn that will never come.
     public async Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, string? callerPaneId = null, CancellationToken cancellationToken = default)
     {
         var entry = _Find(taskId, callerPaneId)
@@ -565,7 +544,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
     }
 
-    /// <summary>The directories a delegated task may run in: the profile's own allow-list plus the dir the calling session is itself working in (AC-128 — scoped to the caller, not every open session). Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.</summary>
+    // The directories a delegated task may run in: the profile's own allow-list plus the dir the calling session is itself working in (AC-128 — scoped to the caller, not every open session). Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.
     private IReadOnlyList<string> _AllowedWorkingDirectories(DelegationPolicy policy, string? callerPaneId) =>
         [.. (policy.AllowedWorkingDirs ?? []).Concat(_CallerWorkspace(callerPaneId))];
 
@@ -592,12 +571,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         return _Find(callerPaneId)?.WorkingDirectory is { Length: > 0 } taskDirectory ? [taskDirectory] : [];
     }
 
-    /// <summary>
-    /// Where a delegated task may run: the directories the target profile allows, and the ones the cockpit's own
-    /// sessions are already working in. The second is what makes delegation usable at all — you delegate <em>from</em>
-    /// a session in a repository, and that session can already read and write there, so the sub-agent it starts
-    /// reaches nothing its caller did not have. Everywhere else still needs the profile's own say-so.
-    /// </summary>
+    // Where a delegated task may run: the directories the target profile allows, and the ones the cockpit's own
+    // sessions are already working in. The second is what makes delegation usable at all — you delegate *from*
+    // a session in a repository, and that session can already read and write there, so the sub-agent it starts
+    // reaches nothing its caller did not have. Everywhere else still needs the profile's own say-so.
     private bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy, string? callerPaneId)
     {
         var allowed = _AllowedWorkingDirectories(policy, callerPaneId);
@@ -732,23 +709,20 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
     }
 
-    /// <summary>
-    /// The permission ceiling this task's session actually runs under (AC-117). A per-task
-    /// <see cref="DelegatedTaskEntry.RequestedPermission"/> that asks for no more than the profile's own
-    /// <see cref="DelegationPolicy.PermissionCeiling"/> is honoured outright — narrowing what the operator already
-    /// allowed needs nobody's further say-so.
-    /// <para>
-    /// A request ABOVE the ceiling used to be clamped away with nobody the wiser. Now, with the operator's
-    /// Approve/Deny gate attached (#AC-47), it is put to them instead: a one-time consent to run this profile above
-    /// its configured ceiling for this one task. Classed <see cref="ConsentRisk.Dangerous"/> and never remembered —
-    /// this is exactly the "starting or steering a session with the operator's rights" case that risk class exists
-    /// for, and a delegated agent can be prompt-injected into asking for it, so one approval must never become a
-    /// standing permission it (or a later task on the same profile) can ride again. Denied, or with no gate to ask
-    /// (a headless delegation chain, or no UI open), it falls back to the clamp: the profile's ceiling wins
-    /// whenever nobody was there to say otherwise. Bounded by the profile's own <see cref="DelegationPolicy.TimeoutMinutes"/>
-    /// so an unanswered prompt cannot hold this task's slot, and this pane's whole consent channel, open forever.
-    /// </para>
-    /// </summary>
+    // The permission ceiling this task's session actually runs under (AC-117). A per-task
+    // `DelegatedTaskEntry.RequestedPermission` that asks for no more than the profile's own
+    // `DelegationPolicy.PermissionCeiling` is honoured outright — narrowing what the operator already
+    // allowed needs nobody's further say-so.
+    //
+    // A request ABOVE the ceiling used to be clamped away with nobody the wiser. Now, with the operator's
+    // Approve/Deny gate attached (#AC-47), it is put to them instead: a one-time consent to run this profile above
+    // its configured ceiling for this one task. Classed `ConsentRisk.Dangerous` and never remembered —
+    // this is exactly the "starting or steering a session with the operator's rights" case that risk class exists
+    // for, and a delegated agent can be prompt-injected into asking for it, so one approval must never become a
+    // standing permission it (or a later task on the same profile) can ride again. Denied, or with no gate to ask
+    // (a headless delegation chain, or no UI open), it falls back to the clamp: the profile's ceiling wins
+    // whenever nobody was there to say otherwise. Bounded by the profile's own `DelegationPolicy.TimeoutMinutes`
+    // so an unanswered prompt cannot hold this task's slot, and this pane's whole consent channel, open forever.
     private async Task<string> _EffectiveCeilingAsync(DelegatedTaskEntry entry)
     {
         var requested = entry.RequestedPermission;
@@ -797,12 +771,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             ConsentRisk.Dangerous,
             AllowRemember: false);
 
-    /// <summary>
-    /// Closes a finished task's session once nobody has followed up on it for <see cref="IdleSessionWindow"/>. Without
-    /// this a delegated session lived until the app did: an orchestrator that has its answer has no reason to call
-    /// stop_task, and every task it ever ran would still be holding a process — or a model in a local server's
-    /// memory. The result is kept; only the session and the worktree it worked in go.
-    /// </summary>
+    // Closes a finished task's session once nobody has followed up on it for `IdleSessionWindow`. Without
+    // this a delegated session lived until the app did: an orchestrator that has its answer has no reason to call
+    // stop_task, and every task it ever ran would still be holding a process — or a model in a local server's
+    // memory. The result is kept; only the session and the worktree it worked in go.
     private void _ArmIdleReap(DelegatedTaskEntry entry)
     {
         var idle = new CancellationTokenSource();
@@ -831,27 +803,23 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         });
     }
 
-    /// <summary>
-    /// Hands back the worktrees a delegated task made for itself, now that its session is gone (AC-106) — the same
-    /// call and so the same cleanup policy the cockpit applies when the operator closes a pane
-    /// (<c>CloseSessionAsync</c>): a clean checkout is removed, taking its branch with it when that work is already
-    /// in the base branch, and one that still holds work is kept and marked retained for review. A delegated task's
-    /// verified pane id is its task id, which is what its <c>worktree_create</c> calls were keyed on, so that id is
-    /// all the manager needs.
-    /// <para>
-    /// Called from every path that ends a delegated session for good: stop, idle reap, the profile's timeout, and a
-    /// task that never got as far as running. The first three have torn the session down before they get here; the
-    /// fourth never started one, so it can have no worktree — the call is a no-op there, made anyway so the rule has
-    /// no exception to remember. A driver error is the one ending that is <em>not</em> in this list, and the reason
-    /// is at that call site: it does not mean the session is over.
-    /// </para>
-    /// <para>
-    /// Claimed rather than merely called, because two closing paths can land together (see
-    /// <see cref="DelegatedTaskEntry.TryClaimWorktreeRelease"/>). Best-effort as the pane teardown is: a worktree git
-    /// will not let go of must not turn into a failed stop_task or a timeout that never reports, and whatever is left
-    /// behind is what the reconcile is for.
-    /// </para>
-    /// </summary>
+    // Hands back the worktrees a delegated task made for itself, now that its session is gone (AC-106) — the same
+    // call and so the same cleanup policy the cockpit applies when the operator closes a pane
+    // (`CloseSessionAsync`): a clean checkout is removed, taking its branch with it when that work is already
+    // in the base branch, and one that still holds work is kept and marked retained for review. A delegated task's
+    // verified pane id is its task id, which is what its `worktree_create` calls were keyed on, so that id is
+    // all the manager needs.
+    //
+    // Called from every path that ends a delegated session for good: stop, idle reap, the profile's timeout, and a
+    // task that never got as far as running. The first three have torn the session down before they get here; the
+    // fourth never started one, so it can have no worktree — the call is a no-op there, made anyway so the rule has
+    // no exception to remember. A driver error is the one ending that is *not* in this list, and the reason
+    // is at that call site: it does not mean the session is over.
+    //
+    // Claimed rather than merely called, because two closing paths can land together (see
+    // `DelegatedTaskEntry.TryClaimWorktreeRelease`). Best-effort as the pane teardown is: a worktree git
+    // will not let go of must not turn into a failed stop_task or a timeout that never reports, and whatever is left
+    // behind is what the reconcile is for.
     private async Task _ReleaseWorktreesAsync(DelegatedTaskEntry entry)
     {
         // Absent manager first, on purpose: a graph without one must not spend the task's single claim on a release
@@ -872,12 +840,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
     }
 
-    /// <summary>
-    /// Stops a task that outlives what its profile allows. Nobody is watching a delegated session, so a model that
-    /// loops or waits on something that never comes would otherwise hold the profile's slot — and keep drawing on
-    /// its provider — until the app closes. The timer is cancelled the moment the task ends, so a finished task is
-    /// never stopped after the fact.
-    /// </summary>
+    // Stops a task that outlives what its profile allows. Nobody is watching a delegated session, so a model that
+    // loops or waits on something that never comes would otherwise hold the profile's slot — and keep drawing on
+    // its provider — until the app closes. The timer is cancelled the moment the task ends, so a finished task is
+    // never stopped after the fact.
     private void _ArmTimeout(DelegatedTaskEntry entry)
     {
         var minutes = entry.Profile.DelegationPolicy.TimeoutMinutes;
@@ -937,27 +903,23 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             request?.Prompt ?? entry?.Prompt,
             reason));
 
-    /// <summary>
-    /// The MCP servers a delegated session gets, loading the live registry and applying <see cref="_NarrowServersFor"/>.
-    /// A sub-agent still needs its files, its shell, its git, so the default is everything the operator enabled —
-    /// narrowed by the profile's own pre-selection and the caller's per-task selection, and minus the orchestrator
-    /// unless the profile may delegate further. Withholding the orchestrator is the second lock on the recursion
-    /// guard: even if the depth check in <see cref="_Guard"/> were wrong, a sub-agent with no delegate_task tool
-    /// cannot start a chain.
-    /// </summary>
+    // The MCP servers a delegated session gets, loading the live registry and applying `_NarrowServersFor`.
+    // A sub-agent still needs its files, its shell, its git, so the default is everything the operator enabled —
+    // narrowed by the profile's own pre-selection and the caller's per-task selection, and minus the orchestrator
+    // unless the profile may delegate further. Withholding the orchestrator is the second lock on the recursion
+    // guard: even if the depth check in `_Guard` were wrong, a sub-agent with no delegate_task tool
+    // cannot start a chain.
     internal async Task<IReadOnlySet<string>> _ToolsForAsync(SessionProfile profile, IReadOnlyList<string>? perTaskSelection = null)
     {
         var registry = await _mcpServerStore.LoadAsync();
         return _NarrowServersFor(registry, profile, perTaskSelection);
     }
 
-    /// <summary>
-    /// The pure narrowing behind <see cref="_ToolsForAsync"/>: the enabled registry servers, intersected with the
-    /// profile's saved pre-selection (AC-133/AC-130) and then the caller's per-task selection (AC-136) when each is
-    /// set, minus the orchestrator unless the profile may delegate further. Both intersections only ever remove — a
-    /// name in neither the selection nor the enabled registry cannot appear — so a delegated session can be narrowed
-    /// but never widened past what the operator enabled. A null selection means "no restriction at that layer".
-    /// </summary>
+    // The pure narrowing behind `_ToolsForAsync`: the enabled registry servers, intersected with the
+    // profile's saved pre-selection (AC-133/AC-130) and then the caller's per-task selection (AC-136) when each is
+    // set, minus the orchestrator unless the profile may delegate further. Both intersections only ever remove — a
+    // name in neither the selection nor the enabled registry cannot appear — so a delegated session can be narrowed
+    // but never widened past what the operator enabled. A null selection means "no restriction at that layer".
     internal static IReadOnlySet<string> _NarrowServersFor(
         IReadOnlyList<McpServerConfig> registry, SessionProfile profile, IReadOnlyList<string>? perTaskSelection)
     {

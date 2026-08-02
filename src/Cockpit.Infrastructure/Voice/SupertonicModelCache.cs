@@ -4,19 +4,17 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Resolves the on-disk cache for the SupertonicTTS model and downloads+extracts it on first use — mirrors
-/// <see cref="WhisperModelCache"/> (never bundled/committed; the archive is tens of MB). Unlike the old
-/// per-Piper-voice archives, Supertonic is one multilingual, multi-speaker model shared by every read-aloud
-/// language: a single <c>.tar.bz2</c> that extracts to a folder of the same name holding the four int8 ONNX
-/// graphs plus <c>tts.json</c>, <c>unicode_indexer.bin</c> and <c>voice.bin</c> (verified against the real
-/// sherpa-onnx release asset). The weights are OpenRAIL-M licensed (commercial use allowed with attribution).
-/// </summary>
+// Resolves the on-disk cache for the SupertonicTTS model and downloads+extracts it on first use — mirrors
+// `WhisperModelCache` (never bundled/committed; the archive is tens of MB). Unlike the old
+// per-Piper-voice archives, Supertonic is one multilingual, multi-speaker model shared by every read-aloud
+// language: a single `.tar.bz2` that extracts to a folder of the same name holding the four int8 ONNX
+// graphs plus `tts.json`, `unicode_indexer.bin` and `voice.bin` (verified against the real
+// sherpa-onnx release asset). The weights are OpenRAIL-M licensed (commercial use allowed with attribution).
 internal static class SupertonicModelCache
 {
     private const string ReleaseBaseUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models";
 
-    /// <summary>Release archive name (without the <c>.tar.bz2</c> suffix); it also names the folder it extracts into.</summary>
+    // Release archive name (without the `.tar.bz2` suffix); it also names the folder it extracts into.
     private const string ModelArchiveName = "sherpa-onnx-supertonic-3-tts-int8-2026-05-11";
 
     // One shared instance for the process lifetime, same rationale as the DI-registered HttpClient

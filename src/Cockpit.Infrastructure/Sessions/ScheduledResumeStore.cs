@@ -5,10 +5,8 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// Persists pending resumes under the <c>scheduledResumes</c> section of <c>cockpit.json</c> (AC-234), the same
-/// read-modify-write pattern every other section uses so it leaves the rest of the file untouched.
-/// </summary>
+// Persists pending resumes under the `scheduledResumes` section of `cockpit.json` (AC-234), the same
+// read-modify-write pattern every other section uses so it leaves the rest of the file untouched.
 internal sealed class ScheduledResumeStore : IScheduledResumeStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -18,7 +16,7 @@ internal sealed class ScheduledResumeStore : IScheduledResumeStore, ISingletonSe
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal ScheduledResumeStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

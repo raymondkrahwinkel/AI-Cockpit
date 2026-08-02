@@ -12,15 +12,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Backup;
 
-/// <summary>
-/// Makes and restores a backup of the whole cockpit (#70): the settings, the profiles, the plugins and everything they
-/// stored — one zip, one manifest.
-/// <para>
-/// A restore is destructive and therefore all-or-nothing: the archive is unpacked to a temporary directory and read
-/// there, and only when the whole of it is sound does anything on disk move. The cockpit directory is kept aside until
-/// the swap has finished, so a restore that dies halfway leaves you with what you had rather than with half of each.
-/// </para>
-/// </summary>
+// Makes and restores a backup of the whole cockpit (#70): the settings, the profiles, the plugins and everything they
+// stored — one zip, one manifest.
+//
+// A restore is destructive and therefore all-or-nothing: the archive is unpacked to a temporary directory and read
+// there, and only when the whole of it is sound does anything on disk move. The cockpit directory is kept aside until
+// the swap has finished, so a restore that dies halfway leaves you with what you had rather than with half of each.
 internal sealed class BackupService(
     ISessionProfileStore profiles,
     ILogger<BackupService> logger) : IBackupService, ISingletonService
@@ -124,37 +121,31 @@ internal sealed class BackupService(
         }
     }
 
-    /// <summary>How long the move waits out whatever is holding one of the two files. Past this it is not contention.</summary>
+    // How long the move waits out whatever is holding one of the two files. Past this it is not contention.
     private static readonly TimeSpan MoveContentionWindow = TimeSpan.FromSeconds(5);
 
     private static readonly TimeSpan MoveContentionInterval = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>
-    /// Puts the finished archive where the operator asked for it, waiting out a file that is briefly busy — the
-    /// same shape as <c>CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync</c>, for the same reason.
-    /// </summary>
-    /// <remarks>
-    /// Windows hands a freshly closed file straight to whatever is watching it, and a new .zip is exactly what a
-    /// virus scanner opens and unpacks before anything else may touch it. This move lands microseconds after the
-    /// archive's own handle closes, so it loses that race — the bigger the backup, the longer the scan, and the
-    /// more reliably it loses. The operator saw "the process cannot access the file … because it is being used by
-    /// another process", naming a staging path they have never heard of, and got no backup. Nothing here can stop
-    /// the scan; it only has to outlast it.
-    /// <para>
-    /// The two files fail differently, which is the only reason the refusal can say which one is stuck: a held
-    /// <em>source</em> is an <see cref="IOException"/> naming the staging file, a held <em>destination</em> an
-    /// <see cref="UnauthorizedAccessException"/> naming nothing at all. Both are waited out — the destination is a
-    /// path the operator chose, so it can just as well be an earlier backup open in an archive tool.
-    /// </para>
-    /// <para>
-    /// A destination that is genuinely not writable looks identical to one that is merely held, so that case now
-    /// spends the window before failing. It is worth it: the message at the end says both possibilities rather
-    /// than picking one, and a folder the operator cannot write to is not what the file picker usually hands back.
-    /// </para>
-    /// </remarks>
-    /// <param name="contentionWindow">
-    /// Overridable so the test that proves the refusal does not have to sit out the real five seconds to see it.
-    /// </param>
+    // Puts the finished archive where the operator asked for it, waiting out a file that is briefly busy — the
+    // same shape as `CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync`, for the same reason.
+    // Windows hands a freshly closed file straight to whatever is watching it, and a new .zip is exactly what a
+    // virus scanner opens and unpacks before anything else may touch it. This move lands microseconds after the
+    // archive's own handle closes, so it loses that race — the bigger the backup, the longer the scan, and the
+    // more reliably it loses. The operator saw "the process cannot access the file … because it is being used by
+    // another process", naming a staging path they have never heard of, and got no backup. Nothing here can stop
+    // the scan; it only has to outlast it.
+    //
+    // The two files fail differently, which is the only reason the refusal can say which one is stuck: a held
+    // *source* is an `IOException` naming the staging file, a held *destination* an
+    // `UnauthorizedAccessException` naming nothing at all. Both are waited out — the destination is a
+    // path the operator chose, so it can just as well be an earlier backup open in an archive tool.
+    //
+    // A destination that is genuinely not writable looks identical to one that is merely held, so that case now
+    // spends the window before failing. It is worth it: the message at the end says both possibilities rather
+    // than picking one, and a folder the operator cannot write to is not what the file picker usually hands back.
+    //
+    // `contentionWindow`:
+    // Overridable so the test that proves the refusal does not have to sit out the real five seconds to see it.
     internal static async Task MoveIntoPlaceAsync(
         string staging,
         string archivePath,

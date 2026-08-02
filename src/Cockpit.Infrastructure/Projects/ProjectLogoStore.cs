@@ -9,20 +9,18 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Projects;
 
-/// <summary>
-/// Stores project logos as files under <c>project-logos/</c> next to <c>cockpit.json</c>, one per project, named
-/// after the project id so a project can only ever have one and removing it needs no bookkeeping.
-/// </summary>
+// Stores project logos as files under `project-logos/` next to `cockpit.json`, one per project, named
+// after the project id so a project can only ever have one and removing it needs no bookkeeping.
 internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLogoStore>? logger = null, string? root = null)
     : IProjectLogoStore, ISingletonService
 {
-    /// <summary>Where the copies live. Overridable so a test writes to its own folder rather than the operator's config directory.</summary>
+    // Where the copies live. Overridable so a test writes to its own folder rather than the operator's config directory.
     private string _Root => root ?? CockpitConfigPath.ProjectLogosRoot;
 
-    /// <summary>A logo is a small image; anything past this is not one, and downloading it would be someone else's file transfer.</summary>
+    // A logo is a small image; anything past this is not one, and downloading it would be someone else's file transfer.
     private const int MaxBytes = 8 * 1024 * 1024;
 
-    /// <summary>How large a rasterised SVG is stored, on its longest side: comfortably past the 34px card well and the dialog's preview on a high-DPI screen, and still a small file.</summary>
+    // How large a rasterised SVG is stored, on its longest side: comfortably past the 34px card well and the dialog's preview on a high-DPI screen, and still a small file.
     private const float RasterSize = 256f;
 
     public async Task<string?> SaveAsync(string projectId, string source, CancellationToken cancellationToken = default)
@@ -137,7 +135,7 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         return await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Whether these bytes are an SVG: by extension, or by what the document actually starts with — a URL that serves one need not end in <c>.svg</c>.</summary>
+    // Whether these bytes are an SVG: by extension, or by what the document actually starts with — a URL that serves one need not end in `.svg`.
     private static bool _IsSvg(byte[] bytes, string extension)
     {
         if (string.Equals(extension, ".svg", StringComparison.Ordinal))
@@ -149,11 +147,9 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         return start.Contains("<svg", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// The SVG drawn onto a PNG at <see cref="RasterSize"/> on its longest side, transparent behind it. Null when
-    /// the document does not parse or draws nothing, which leaves the card on the project's initial rather than on
-    /// an empty square.
-    /// </summary>
+    // The SVG drawn onto a PNG at `RasterSize` on its longest side, transparent behind it. Null when
+    // the document does not parse or draws nothing, which leaves the card on the project's initial rather than on
+    // an empty square.
     private static byte[]? _RasterisedSvg(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes);
@@ -183,13 +179,11 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         return encoded?.ToArray();
     }
 
-    /// <summary>
-    /// The file name this project's logo is stored under: its id when that is already nothing but letters, digits,
-    /// dashes and underscores — which is what <see cref="Cockpit.Core.Projects.Project.Create"/> mints — and
-    /// otherwise a hash of it. An id is data off disk, and a hand-written or shared <c>cockpit.json</c> can put
-    /// anything in it, including a path that climbs out of this folder. Hashing keeps such an id usable (the
-    /// project still gets its logo) without ever letting it decide where the file lands.
-    /// </summary>
+    // The file name this project's logo is stored under: its id when that is already nothing but letters, digits,
+    // dashes and underscores — which is what `Cockpit.Core.Projects.Project.Create` mints — and
+    // otherwise a hash of it. An id is data off disk, and a hand-written or shared `cockpit.json` can put
+    // anything in it, including a path that climbs out of this folder. Hashing keeps such an id usable (the
+    // project still gets its logo) without ever letting it decide where the file lands.
     private static string _FileKey(string projectId)
     {
         var safe = projectId.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
@@ -201,7 +195,7 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(projectId)))[..32];
     }
 
-    /// <summary>The source's extension when it looks like an image, else <c>.png</c> — the stored name only has to be stable and unique, and every renderer here sniffs the bytes rather than trusting the name.</summary>
+    // The source's extension when it looks like an image, else `.png` — the stored name only has to be stable and unique, and every renderer here sniffs the bytes rather than trusting the name.
     private static string _ExtensionOf(string source)
     {
         var extension = Path.GetExtension(source).ToLowerInvariant();

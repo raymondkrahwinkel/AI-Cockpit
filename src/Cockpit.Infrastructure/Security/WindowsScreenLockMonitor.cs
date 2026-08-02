@@ -4,19 +4,16 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Security;
 
-/// <summary>
-/// Watches Windows session lock/unlock via <see cref="SystemEvents.SessionSwitch"/>
-/// (<c>SessionLock</c>/<c>SessionUnlock</c>) for AC-5.
-/// <para>
-/// The research weighed this against a bespoke message-only window plus <c>WTSRegisterSessionNotification</c>. The
-/// deciding factor for this codebase is that <see cref="WindowsPresenceDetector"/> already reads the exact same
-/// <c>SessionSwitch</c> source in shipping code and it works: Avalonia's Win32 backend runs a real message pump for
-/// its own windows, which is what <c>SystemEvents</c> needs to deliver. Adding a second, hand-rolled native window
-/// to detect the same event would be untested surface duplicating a proven one. The tradeoff the research flagged —
-/// that the pump is Avalonia's internal detail rather than a guaranteed contract — is accepted, and is the same bet
-/// the presence detector already makes. Windows is not a platform we can live-verify here, so this stays thin.
-/// </para>
-/// </summary>
+// Watches Windows session lock/unlock via `SystemEvents.SessionSwitch`
+// (`SessionLock`/`SessionUnlock`) for AC-5.
+//
+// The research weighed this against a bespoke message-only window plus `WTSRegisterSessionNotification`. The
+// deciding factor for this codebase is that `WindowsPresenceDetector` already reads the exact same
+// `SessionSwitch` source in shipping code and it works: Avalonia's Win32 backend runs a real message pump for
+// its own windows, which is what `SystemEvents` needs to deliver. Adding a second, hand-rolled native window
+// to detect the same event would be untested surface duplicating a proven one. The tradeoff the research flagged —
+// that the pump is Avalonia's internal detail rather than a guaranteed contract — is accepted, and is the same bet
+// the presence detector already makes. Windows is not a platform we can live-verify here, so this stays thin.
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsScreenLockMonitor : IScreenLockMonitor
 {

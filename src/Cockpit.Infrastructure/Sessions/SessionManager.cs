@@ -4,11 +4,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// Owns every live driver-backed session. Both an interactive panel and a delegated task (#67) create their
-/// session here and stop it here, so "stop" is one path with one resulting state — rather than a UI close flow
-/// and an MCP stop_task each tearing a session down their own way.
-/// </summary>
+// Owns every live driver-backed session. Both an interactive panel and a delegated task (#67) create their
+// session here and stop it here, so "stop" is one path with one resulting state — rather than a UI close flow
+// and an MCP stop_task each tearing a session down their own way.
 internal sealed class SessionManager : ISessionManager, ISingletonService
 {
     private readonly ISessionDriverFactory _driverFactory;

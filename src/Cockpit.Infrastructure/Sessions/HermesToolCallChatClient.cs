@@ -5,22 +5,19 @@ using Microsoft.Extensions.AI;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// A <see cref="DelegatingChatClient"/> that rescues the Hermes/XML text tool-calls some local models emit as plain
-/// assistant text instead of the OpenAI structured <c>tool_calls</c> field (AC-192). qwen-coder via Ollama, for one,
-/// writes <c>&lt;function=read_file&gt;&lt;parameter=path&gt;/x&lt;/parameter&gt;&lt;/function&gt;&lt;/tool_call&gt;</c>
-/// straight into its content, where <c>UseFunctionInvocation</c> never sees it — so the call is never run, the run
-/// hangs, and the turn "succeeds" with the nonsense text as its answer.
-/// <para>
-/// This client sits between <c>UseFunctionInvocation</c> (the outer layer) and the model client (the inner). It buffers
-/// the streamed text and, whenever a complete <c>&lt;function=NAME&gt;…&lt;/function&gt;</c> block (optionally trailed by
-/// the <c>&lt;/tool_call&gt;</c> wrapper) has arrived, replaces it with a synthesised <see cref="FunctionCallContent"/>
-/// carrying a unique call id and the <c>&lt;parameter=key&gt;value&lt;/parameter&gt;</c> pairs as its arguments — the
-/// exact shape <c>UseFunctionInvocation</c> recognises and executes through the gated tools. Plain text flows through
-/// untouched, and a model that already emits a real <see cref="FunctionCallContent"/> is left completely alone: this
-/// client only ever rewrites Hermes text in the content field.
-/// </para>
-/// </summary>
+// A `DelegatingChatClient` that rescues the Hermes/XML text tool-calls some local models emit as plain
+// assistant text instead of the OpenAI structured `tool_calls` field (AC-192). qwen-coder via Ollama, for one,
+// writes `&lt;function=read_file&gt;&lt;parameter=path&gt;/x&lt;/parameter&gt;&lt;/function&gt;&lt;/tool_call&gt;`
+// straight into its content, where `UseFunctionInvocation` never sees it — so the call is never run, the run
+// hangs, and the turn "succeeds" with the nonsense text as its answer.
+//
+// This client sits between `UseFunctionInvocation` (the outer layer) and the model client (the inner). It buffers
+// the streamed text and, whenever a complete `&lt;function=NAME&gt;…&lt;/function&gt;` block (optionally trailed by
+// the `&lt;/tool_call&gt;` wrapper) has arrived, replaces it with a synthesised `FunctionCallContent`
+// carrying a unique call id and the `&lt;parameter=key&gt;value&lt;/parameter&gt;` pairs as its arguments — the
+// exact shape `UseFunctionInvocation` recognises and executes through the gated tools. Plain text flows through
+// untouched, and a model that already emits a real `FunctionCallContent` is left completely alone: this
+// client only ever rewrites Hermes text in the content field.
 internal sealed class HermesToolCallChatClient(IChatClient innerClient) : DelegatingChatClient(innerClient)
 {
     private const string FunctionOpen = "<function=";

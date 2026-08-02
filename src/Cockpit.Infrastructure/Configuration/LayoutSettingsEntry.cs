@@ -2,7 +2,7 @@ using Cockpit.Core.Layout;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="LayoutSettings"/> in the <c>layout</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of `LayoutSettings` in the `layout` section of `cockpit.json`.
 internal sealed class LayoutSettingsEntry
 {
     public bool SingleSessionLayout { get; set; }

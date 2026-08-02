@@ -3,27 +3,23 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Copies a download to disk while saying how far along it is. Both first-use fetches — the ~1.6 GB model and
-/// a few hundred MB of GPU runtime — happen inside the first dictation, so the only alternative to narrating
-/// them is a spinner that claims to be transcribing for several minutes.
-/// </summary>
+// Copies a download to disk while saying how far along it is. Both first-use fetches — the ~1.6 GB model and
+// a few hundred MB of GPU runtime — happen inside the first dictation, so the only alternative to narrating
+// them is a spinner that claims to be transcribing for several minutes.
 internal static class VoiceDownloadReporter
 {
-    /// <summary>Big enough that a fast link does not spend its time raising events, short enough to look live.</summary>
+    // Big enough that a fast link does not spend its time raising events, short enough to look live.
     private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(250);
 
     private const int BufferSize = 81920;
 
-    /// <summary>
-    /// Streams <paramref name="source"/> into <paramref name="target"/>, reporting progress as it goes.
-    /// </summary>
-    /// <param name="what">What is being fetched, e.g. "Downloading speech model" — used verbatim in the text.</param>
-    /// <param name="totalBytes">
-    /// The expected size when it is known (a Content-Length), so progress can be a fraction. Null reports
-    /// megabytes instead: the ggml downloader hands out a stream with no length, and a bar that guesses its
-    /// own position tells the operator something we do not know.
-    /// </param>
+    // Streams `source` into `target`, reporting progress as it goes.
+    //
+    // `what`: What is being fetched, e.g. "Downloading speech model" — used verbatim in the text.
+    // `totalBytes`:
+    // The expected size when it is known (a Content-Length), so progress can be a fraction. Null reports
+    // megabytes instead: the ggml downloader hands out a stream with no length, and a bar that guesses its
+    // own position tells the operator something we do not know.
     public static async Task CopyAsync(
         Stream source,
         Stream target,

@@ -3,12 +3,10 @@ using Cockpit.Core.Abstractions.Hotkeys;
 
 namespace Cockpit.Infrastructure.Hotkeys;
 
-/// <summary>
-/// Fallback for platforms with neither the XDG GlobalShortcuts portal (Linux) nor a low-level keyboard hook
-/// (Windows, X11) wired up — macOS, where neither is available to us. Logs and never fires, so a cockpit build
-/// there still starts; the operator just has no desktop-wide keys (push-to-talk keeps its in-window key, and
-/// the screenshot its button).
-/// </summary>
+// Fallback for platforms with neither the XDG GlobalShortcuts portal (Linux) nor a low-level keyboard hook
+// (Windows, X11) wired up — macOS, where neither is available to us. Logs and never fires, so a cockpit build
+// there still starts; the operator just has no desktop-wide keys (push-to-talk keeps its in-window key, and
+// the screenshot its button).
 internal sealed class NoOpGlobalHotkeyService(ILogger<NoOpGlobalHotkeyService> logger) : IGlobalHotkeyService
 {
     // Explicit no-op accessors rather than field-like events: a field-like event that is never raised
@@ -19,7 +17,7 @@ internal sealed class NoOpGlobalHotkeyService(ILogger<NoOpGlobalHotkeyService> l
 
     public event EventHandler? TriggerDescriptionsChanged { add { } remove { } }
 
-    /// <summary>Always null — nothing is armed. The settings screen says so, instead of showing a key that does nothing here.</summary>
+    // Always null — nothing is armed. The settings screen says so, instead of showing a key that does nothing here.
     public string? TriggerDescriptionFor(string hotkeyId) => null;
 
     public Task StartAsync(IReadOnlyList<GlobalHotkeyBinding> bindings, CancellationToken cancellationToken = default)

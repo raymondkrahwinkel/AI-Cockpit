@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Rendering;
 
-/// <summary>
-/// Persists <see cref="RenderingSettings"/> under the <c>rendering</c> section of <c>cockpit.json</c> (AC-67),
-/// the same read-modify-write-the-whole-file pattern as the other section stores so it never clobbers a sibling.
-/// When nothing was ever saved, <see cref="LoadAsync"/> returns the defaults (Auto).
-/// </summary>
+// Persists `RenderingSettings` under the `rendering` section of `cockpit.json` (AC-67),
+// the same read-modify-write-the-whole-file pattern as the other section stores so it never clobbers a sibling.
+// When nothing was ever saved, `LoadAsync` returns the defaults (Auto).
 internal sealed class RenderingSettingsStore : IRenderingSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class RenderingSettingsStore : IRenderingSettingsStore, ISinglet
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal RenderingSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

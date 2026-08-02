@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Debugging;
 
-/// <summary>
-/// Persists <see cref="DebugSettings"/> under the <c>debug</c> section of <c>cockpit.json</c> (same
-/// file/pattern as <see cref="Layout.LayoutSettingsStore"/>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched.
-/// </summary>
+// Persists `DebugSettings` under the `debug` section of `cockpit.json` (same
+// file/pattern as `Layout.LayoutSettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched.
 internal sealed class DebugSettingsStore : IDebugSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class DebugSettingsStore : IDebugSettingsStore, ISingletonServic
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal DebugSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

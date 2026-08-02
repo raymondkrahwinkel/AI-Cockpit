@@ -4,7 +4,7 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Updates;
 
-/// <summary>Persists <see cref="UpdateSettings"/> under the <c>updates</c> section of <c>cockpit.json</c> (#71) — same pattern as every other section: read-modify-write the whole file, leave the rest alone.</summary>
+// Persists `UpdateSettings` under the `updates` section of `cockpit.json` (#71) — same pattern as every other section: read-modify-write the whole file, leave the rest alone.
 internal sealed class UpdateSettingsStore : IUpdateSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -14,7 +14,7 @@ internal sealed class UpdateSettingsStore : IUpdateSettingsStore, ISingletonServ
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal UpdateSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

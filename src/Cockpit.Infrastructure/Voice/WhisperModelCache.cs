@@ -5,12 +5,10 @@ using Whisper.net.Ggml;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Resolves the on-disk cache path for a ggml model and downloads it on first use via
-/// <see cref="WhisperGgmlDownloader"/> — never bundled/committed to the repo (a ~1.6 GB
-/// <c>large-v3-turbo</c> download would otherwise hit every clone). Lives next to <c>cockpit.json</c>
-/// under the user's app-data directory, one file per model so switching models does not re-download.
-/// </summary>
+// Resolves the on-disk cache path for a ggml model and downloads it on first use via
+// `WhisperGgmlDownloader` — never bundled/committed to the repo (a ~1.6 GB
+// `large-v3-turbo` download would otherwise hit every clone). Lives next to `cockpit.json`
+// under the user's app-data directory, one file per model so switching models does not re-download.
 internal static class WhisperModelCache
 {
     private static string ModelsDirectory => Path.Combine(
@@ -54,7 +52,7 @@ internal static class WhisperModelCache
         return path;
     }
 
-    /// <summary>Same lazy-download-and-cache behaviour as <see cref="EnsureDownloadedAsync"/>, for the ggml Silero VAD model.</summary>
+    // Same lazy-download-and-cache behaviour as `EnsureDownloadedAsync`, for the ggml Silero VAD model.
     public static async Task<string> EnsureVadDownloadedAsync(SileroVadType type, CancellationToken cancellationToken, ILogger? logger = null)
     {
         Directory.CreateDirectory(ModelsDirectory);

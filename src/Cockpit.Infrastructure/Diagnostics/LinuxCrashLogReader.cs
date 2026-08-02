@@ -6,12 +6,10 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.Infrastructure.Diagnostics;
 
-/// <summary>
-/// Linux crash and out-of-memory artifacts (AC-58). Linux keeps them in two places, neither a folder: core dumps
-/// live behind <c>coredumpctl</c>, and the OOM killer writes to the kernel log read with <c>journalctl -k</c>. Both
-/// are best-effort — the tools may be absent, and reading the kernel log can need a group the user is not in — so a
-/// missing tool or a permission wall yields "nothing found", never an error.
-/// </summary>
+// Linux crash and out-of-memory artifacts (AC-58). Linux keeps them in two places, neither a folder: core dumps
+// live behind `coredumpctl`, and the OOM killer writes to the kernel log read with `journalctl -k`. Both
+// are best-effort — the tools may be absent, and reading the kernel log can need a group the user is not in — so a
+// missing tool or a permission wall yields "nothing found", never an error.
 [SupportedOSPlatform("linux")]
 internal sealed class LinuxCrashLogReader : ICrashLogReader
 {

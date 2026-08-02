@@ -3,34 +3,28 @@ using Cockpit.Core.Abstractions.Agents;
 
 namespace Cockpit.Infrastructure.Agents;
 
-/// <summary>
-/// The concrete inbox store behind <see cref="IAgentMessageInbox"/> (AC-392): one list of waiting messages per
-/// recipient pane. Everything is behind one lock rather than a concurrent dictionary — unlike the roster, a
-/// delivery is a check-then-act (is an identical message already waiting? is the inbox full?) that has to be
-/// atomic, or two notifies landing on different MCP request threads at the same moment both see "no duplicate"
-/// and both add one. The state is small and every call is short, so a single lock is the simpler correct answer.
-/// </summary>
+// The concrete inbox store behind `IAgentMessageInbox` (AC-392): one list of waiting messages per
+// recipient pane. Everything is behind one lock rather than a concurrent dictionary — unlike the roster, a
+// delivery is a check-then-act (is an identical message already waiting? is the inbox full?) that has to be
+// atomic, or two notifies landing on different MCP request threads at the same moment both see "no duplicate"
+// and both add one. The state is small and every call is short, so a single lock is the simpler correct answer.
 internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
 {
-    /// <summary>
-    /// Cap on one pane's waiting messages. A recipient that never calls <c>read_inbox</c> — an agent that has this
-    /// server mounted but never looks — would otherwise let a neighbour on the same desk grow host memory without
-    /// bound, one distinct body at a time, and make the duplicate scan below linear in that. Past the cap the
-    /// sender is told outright rather than the oldest message being dropped: silently discarding mail the sender
-    /// was told had arrived is the failure this line exists to avoid.
-    /// </summary>
+    // Cap on one pane's waiting messages. A recipient that never calls `read_inbox` — an agent that has this
+    // server mounted but never looks — would otherwise let a neighbour on the same desk grow host memory without
+    // bound, one distinct body at a time, and make the duplicate scan below linear in that. Past the cap the
+    // sender is told outright rather than the oldest message being dropped: silently discarding mail the sender
+    // was told had arrived is the failure this line exists to avoid.
     internal const int MaxWaitingPerPane = 500;
 
     private readonly object _lock = new();
     private readonly Dictionary<string, List<AgentMessage>> _inboxes = new(StringComparer.Ordinal);
 
-    /// <summary>
-    /// Per pane, the messages taken for a turn that has not reported back yet (AC-394). Held separately from
-    /// <see cref="_inboxes"/> rather than as a flag on the message, because the two states differ in what may
-    /// happen next: a waiting message can be drained, retracted or deduplicated onto, and an in-flight one can
-    /// only be confirmed or returned. A flag would leave every reader of the waiting list responsible for
-    /// remembering to skip it, which is the shape of guard that holds until someone adds the next reader.
-    /// </summary>
+    // Per pane, the messages taken for a turn that has not reported back yet (AC-394). Held separately from
+    // `_inboxes` rather than as a flag on the message, because the two states differ in what may
+    // happen next: a waiting message can be drained, retracted or deduplicated onto, and an in-flight one can
+    // only be confirmed or returned. A flag would leave every reader of the waiting list responsible for
+    // remembering to skip it, which is the shape of guard that holds until someone adds the next reader.
     private readonly Dictionary<string, List<AgentMessage>> _inFlight = new(StringComparer.Ordinal);
 
     public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body)
@@ -182,12 +176,10 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
-    /// <summary>
-    /// Pulls the named messages out of <paramref name="paneId"/>'s in-flight list and returns the ones that were
-    /// actually there, in the order they were held. Ids that are not in flight are skipped rather than reported:
-    /// both callers are saying what became of a batch they were handed, and a batch that a <see cref="Forget"/>
-    /// has since dropped has no outcome left to record. Call under <see cref="_lock"/>.
-    /// </summary>
+    // Pulls the named messages out of `paneId`'s in-flight list and returns the ones that were
+    // actually there, in the order they were held. Ids that are not in flight are skipped rather than reported:
+    // both callers are saying what became of a batch they were handed, and a batch that a `Forget`
+    // has since dropped has no outcome left to record. Call under `_lock`.
     private List<AgentMessage> _TakeInFlight(string paneId, IReadOnlyList<string> messageIds)
     {
         if (messageIds.Count == 0 || !_inFlight.TryGetValue(paneId, out var held))

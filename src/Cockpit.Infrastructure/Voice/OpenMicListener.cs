@@ -7,13 +7,11 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// <see cref="IOpenMicListener"/>: captures the microphone continuously, slices it into fixed analysis
-/// windows, asks the VAD whether each window is speech, and feeds those observations to a
-/// <see cref="VadEndpointDetector"/> to find utterance boundaries. On each detected utterance it runs STT
-/// and raises <see cref="UtteranceTranscribed"/>. Registered as a singleton — one shared mic pipeline for
-/// the whole (single-user) cockpit, mirroring <see cref="VoicePushToTalkService"/>.
-/// </summary>
+// `IOpenMicListener`: captures the microphone continuously, slices it into fixed analysis
+// windows, asks the VAD whether each window is speech, and feeds those observations to a
+// `VadEndpointDetector` to find utterance boundaries. On each detected utterance it runs STT
+// and raises `UtteranceTranscribed`. Registered as a singleton — one shared mic pipeline for
+// the whole (single-user) cockpit, mirroring `VoicePushToTalkService`.
 internal sealed class OpenMicListener(
     IAudioCaptureService captureService,
     IVoiceActivityDetector vad,

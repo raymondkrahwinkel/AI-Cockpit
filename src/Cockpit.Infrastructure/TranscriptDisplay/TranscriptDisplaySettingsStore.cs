@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.TranscriptDisplay;
 
-/// <summary>
-/// Persists <see cref="TranscriptDisplaySettings"/> under the <c>transcriptDisplay</c> section of
-/// <c>cockpit.json</c> (same file/pattern as <c>SessionSwitchSettingsStore</c>). Reads-modifies-writes
-/// the whole file via <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched.
-/// When no settings were ever saved, <see cref="LoadAsync"/> returns the defaults.
-/// </summary>
+// Persists `TranscriptDisplaySettings` under the `transcriptDisplay` section of
+// `cockpit.json` (same file/pattern as `SessionSwitchSettingsStore`). Reads-modifies-writes
+// the whole file via `CockpitConfigFileAccess` so it leaves the other sections untouched.
+// When no settings were ever saved, `LoadAsync` returns the defaults.
 internal sealed class TranscriptDisplaySettingsStore : ITranscriptDisplaySettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class TranscriptDisplaySettingsStore : ITranscriptDisplaySetting
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal TranscriptDisplaySettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);
