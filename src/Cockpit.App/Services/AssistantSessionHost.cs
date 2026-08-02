@@ -351,6 +351,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _ApplySpeech(session, settings);
         Session = session;
 
+        // AC-602: the start is itself an interaction, and it is what arms the idle clock. Without this line the
+        // clock only ever started off a property change, so an assistant brought up by a click on the chip and then
+        // left alone — exactly the one worth reclaiming — would have sat there for the rest of the day.
+        _NoteInteraction();
+
         // The wire that makes Thinking end. Everything else here sets Activity at a moment the host knows about —
         // a hold, a send, a start, a failure — and none of those is the moment a turn finishes, because only the
         // session knows that. Without this the chip is written to on the way in and never on the way out: the
