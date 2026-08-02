@@ -65,6 +65,36 @@ public interface IWorkspaceAgentCoordinator
     DateTimeOffset? LastContactUtc(string paneId);
 
     /// <summary>
+    /// Records that <paramref name="paneId"/> has just collected its mail — by calling <c>read_inbox</c>, or by
+    /// having a batch confirmed as carried out with one of its turns (AC-394). Counts as contact too.
+    /// </summary>
+    void RecordInboxRead(string paneId);
+
+    /// <summary>
+    /// When <paramref name="paneId"/> last collected mail, or null when it never has (AC-614). Reported to
+    /// neighbours because it is what tells a sender whether to wait: "delivered" to a pane that has never emptied
+    /// its inbox and cannot be woken looks exactly like "delivered" to one that will read it on its next turn, and
+    /// in the first case the sender waits for an answer that was never coming.
+    /// <para>
+    /// Distinct from <see cref="LastContactUtc"/>: a pane can call <c>list_agents</c> or <c>claim</c> all day
+    /// without ever collecting a message.
+    /// </para>
+    /// </summary>
+    DateTimeOffset? LastInboxReadUtc(string paneId);
+
+    /// <summary>
+    /// When a pane the roster knew about was forgotten, or null for a pane id it has never held (AC-614). This is
+    /// what lets a refusal tell "this pane never existed" apart from "this pane was here and has gone" — which for
+    /// a sender are different situations: the first is a wrong address, the second is a recipient that left, and
+    /// only the second means the message was worth sending.
+    /// <para>
+    /// Deliberately short-lived and bounded: it is a courtesy for a sender holding a pane id from a listing it took
+    /// a few minutes ago, not a history of the desk. Old departures fall out.
+    /// </para>
+    /// </summary>
+    DateTimeOffset? DepartedAtUtc(string paneId);
+
+    /// <summary>
     /// Records whether <paramref name="paneId"/> agrees to be woken — to have a turn started for it, by the host,
     /// on a peer's urgent message (AC-395). Enrolls the pane as any other <c>cockpit-agents</c> call does, and
     /// leaves its contact time alone.
