@@ -768,11 +768,20 @@ public class ProjectDialogResourceRowTests
         // cancelled — its own CancellationToken tripped — not merely have its eventual answer thrown away, which is
         // what _RunReachabilityCheckAsync's own version-guard would do for free even without real cancellation.
         var log = new List<(string Value, CancellationToken Token)>();
+
+        // Signalled the moment check("first") is entered. The test waits on this rather than on a stretch of wall
+        // clock: what it needs is that the first check has actually started, and a timer only ever approximates
+        // that. A 600 ms sleep meant to cover a 400 ms quiet period was enough on a developer's machine and not on
+        // a loaded CI runner, where the debounce continuation had not been scheduled yet — the assertion below then
+        // failed looking for a log entry that was still on its way.
+        var firstCheckStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var depotSource = _DepotSourceWithCheck(async (value, token) =>
         {
             log.Add((value, token));
             if (value == "first")
             {
+                firstCheckStarted.TrySetResult();
+
                 // Long enough that, absent real cancellation, this would still be running when the test's own
                 // await below returns — proving the token itself was tripped, not just outrun.
                 await Task.Delay(TimeSpan.FromSeconds(3), token).ConfigureAwait(false);
@@ -787,9 +796,11 @@ public class ProjectDialogResourceRowTests
         row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
 
         row.Reference = "first";
-        // Past the 400 ms quiet period, so check("first") has actually started (is in flight) by the time the next
-        // edit lands — the scenario this AC means, not merely two edits that both land inside one quiet period.
-        await Task.Delay(TimeSpan.FromMilliseconds(600));
+        // Wait for check("first") to be in flight before the next edit lands — the scenario this AC means, not
+        // merely two edits that both fall inside one quiet period. The timeout is a failure mode, not a wait: if
+        // the check never starts the test says so instead of hanging, and it is far longer than the quiet period
+        // so a slow machine cannot reach it.
+        await firstCheckStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
         row.Reference = "second";
 
         // Cancelling the previous run's token happens synchronously at the top of the new _RunResourceDiagnosticsAsync
