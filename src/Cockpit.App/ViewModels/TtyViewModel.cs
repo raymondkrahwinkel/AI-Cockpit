@@ -95,6 +95,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
+    // Where this session's provider drops its statusline snapshots, set by the view once the pty is up (see
+    // `TrackLimits`); null for a plain terminal, for a provider that installs no such relay, and before the launch.
+    // It is the session's own name for itself — the CLI states its transcript in there — so it is what both the
+    // status tail and `ReadTranscriptEntries` identify this session's record by, rather than guessing at which file
+    // on disk is the new one (AC-609).
+    public string? StatusFile { get; private set; }
+
     // One-line render diagnostics (OS, terminal grid, display scale, locale) shown in the TTY header — surfaced so a remote/misrendering machine can be inspected without shell access. Set by the view, which owns the terminal/pty.
     [ObservableProperty]
     private string _diagnostics = string.Empty;
@@ -671,7 +678,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
 
         _statusTailCancellation = new CancellationTokenSource();
-        _ = _TailTranscriptForStatusAsync(_configuredProfile, _transcriptBaseline, _statusTailCancellation.Token);
+        // StatusFile is already set: the view wires it the moment the pty is up, which is before it tells us the
+        // launch succeeded — the one call that gets us here.
+        _ = _TailTranscriptForStatusAsync(_configuredProfile, _transcriptBaseline, StatusFile, _statusTailCancellation.Token);
 
         _statusPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _statusPollTimer.Tick += _OnStatusPollTick;
@@ -679,7 +688,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Classifies each appended transcript line (busy / done / metadata) and feeds it to the tracker; the tailer runs on a background task, so the status update is marshaled onto the UI thread.
-    private async Task _TailTranscriptForStatusAsync(SessionProfile? profile, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
+    private async Task _TailTranscriptForStatusAsync(SessionProfile? profile, IReadOnlySet<string> transcriptBaseline, string? statusFile, CancellationToken cancellationToken)
     {
         if (_transcriptReader is null)
         {
@@ -688,7 +697,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
         try
         {
-            await foreach (var reading in _transcriptReader.ReadActivityAsync(profile, transcriptBaseline, cancellationToken))
+            await foreach (var reading in _transcriptReader.ReadActivityAsync(profile, transcriptBaseline, statusFile, cancellationToken))
             {
                 Dispatcher.UIThread.Post(() =>
                 {
@@ -747,6 +756,16 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             Dispatcher.UIThread.Post(_StopStatusTracking);
         }
     }
+
+    // The last `count` rows this session has written, oldest first, with the total the record holds (AC-609) — what
+    // an SDK session answers from `SessionViewModel.Transcript`, which a TTY session has no equivalent of: the TUI
+    // owns the screen and the CLI owns the file, so the file is the transcript. Read through the provider, which is
+    // the half that knows the format; empty when this session has no statusline snapshot to name its record by,
+    // which is also the honest answer for a plain terminal.
+    //
+    // Touches the disk, so it is not for the UI thread — the read surface that calls it hands the work off first.
+    public SessionTranscriptSlice ReadTranscriptEntries(int count) =>
+        _transcriptReader?.ReadEntries(_configuredProfile, StatusFile, count) ?? SessionTranscriptSlice.Empty;
 
     private void _OnStatusPollTick(object? sender, EventArgs e)
     {
@@ -1000,6 +1019,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IReadOnlyList<PluginUsageSignal> signals,
         Func<string, IReadOnlyList<PluginUsageReading>>? readUsage)
     {
+        // Kept whatever else this call decides (AC-609). The file is this session's own name for itself — it is
+        // what the transcript reader identifies its record by, and that matters just as much for a provider that
+        // declares no usage signals as for one that does.
+        StatusFile = statusFile;
+
         if (string.IsNullOrWhiteSpace(statusFile) || readUsage is null || signals.Count == 0)
         {
             return;

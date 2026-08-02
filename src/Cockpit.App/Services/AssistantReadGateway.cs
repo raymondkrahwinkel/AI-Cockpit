@@ -34,40 +34,83 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
             ? Task.FromResult(_ListProjects())
             : Dispatcher.UIThread.InvokeAsync(_ListProjects).GetTask();
 
-    public Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count) =>
-        Dispatcher.UIThread.CheckAccess()
-            ? Task.FromResult(_ReadTranscript(paneId, count))
-            : Dispatcher.UIThread.InvokeAsync(() => _ReadTranscript(paneId, count)).GetTask();
+    // An SDK session's transcript is in memory and is read on the UI thread; a TTY session's is a file its CLI
+    // wrote, and reading it is not something to do on the thread that draws (AC-609). So the pane is resolved on
+    // the UI thread — that is where the roster lives — and only the file read is handed off.
+    public async Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count)
+    {
+        var found = Dispatcher.UIThread.CheckAccess()
+            ? _ReadTranscript(paneId, count)
+            : await Dispatcher.UIThread.InvokeAsync(() => _ReadTranscript(paneId, count)).GetTask()
+                .ConfigureAwait(false);
 
-    // The last `count` rows of a session's transcript, or null when that pane is not an AI session.
-    // *The type test is the lookup.* `CockpitViewModel.FindSession` answers in
-    // `SessionPanelViewModel`, which is the shared base of an SDK session and a plain terminal — and only
-    // the former, `SessionViewModel`, has a transcript at all. So a pane id naming a terminal falls out
-    // here as "no AI session", which is true of it rather than a convenient approximation. Embedded panes are
-    // reachable for the same reason `FindSession` exists: an Autopilot step is a full session with a real
-    // transcript, and a reader that only walked the grid would answer confidently and wrongly about it.
+        return found switch
+        {
+            { Transcript: { } transcript } => transcript,
+            { Tty: { } tty } => await Task.Run(() => _ReadTtyTranscript(tty, count)).ConfigureAwait(false),
+            _ => null,
+        };
+    }
+
+    // What the UI-thread half found: an SDK session's transcript, already read; a TTY session, whose transcript is
+    // a file to be read off this thread; or neither, for a plain terminal or a pane id that names nothing.
+    private readonly record struct FoundTranscript(AssistantTranscript? Transcript, TtyViewModel? Tty);
+
+    // The last `count` rows of a session's transcript, or nothing when that pane is not an AI session.
+    // *The type test is the lookup.* `CockpitViewModel.FindSession` answers in `SessionPanelViewModel`, the shared
+    // base of an SDK session, a TTY session and a plain terminal. Both session kinds are real AI sessions with a
+    // real transcript and both are answered here; only a terminal falls out as "no AI session", which is true of it
+    // rather than a convenient approximation. It used to be the TTY panes that fell out too — and since TTY is how
+    // most of this cockpit's sessions run, the answer contradicted `list_sessions`, which had just reported the same
+    // pane as a live session with a current statusline (AC-609). Embedded panes are reachable for the same reason
+    // `FindSession` exists: an Autopilot step is a full session with a real transcript, and a reader that only
+    // walked the grid would answer confidently and wrongly about it.
     //
-    // The slice is taken here, on the UI thread, so a session with ten thousand rows costs a `Skip` rather than
+    // The SDK slice is taken here, on the UI thread, so a session with ten thousand rows costs a `Skip` rather than
     // a copy. Nothing is filtered on the way out — a thinking row and a folded tool call are in the transcript and
     // are therefore in the answer, whether or not the operator's current reading level draws them. What the
     // assistant is being asked is what the session *did*, not what a particular panel is showing.
-    private AssistantTranscript? _ReadTranscript(string paneId, int count)
+    private FoundTranscript _ReadTranscript(string paneId, int count)
     {
-        if (cockpit.FindSession(paneId) is not SessionViewModel session)
+        switch (cockpit.FindSession(paneId))
         {
-            return null;
-        }
+            case SessionViewModel session:
+                var transcript = session.Transcript;
+                var skip = Math.Max(0, transcript.Count - count);
+                return new FoundTranscript(
+                    new AssistantTranscript(
+                        session.PaneId,
+                        session.Title,
+                        transcript.Count,
+                        [
+                            .. transcript.Skip(skip).Select(entry =>
+                                new AssistantTranscriptEntry(entry.Kind.ToString(), entry.Text, entry.ResultText)),
+                        ]),
+                    null);
 
-        var transcript = session.Transcript;
-        var skip = Math.Max(0, transcript.Count - count);
+            // A plain terminal is a TtyViewModel too, and has no agent behind it to have written anything. It is
+            // left to fall through the same way it always did: `ReadTranscriptEntries` has no record to name for
+            // it and answers empty, which the caller reports as a pane with nothing to read.
+            case TtyViewModel tty when !tty.IsTerminal:
+                return new FoundTranscript(null, tty);
+
+            default:
+                return default;
+        }
+    }
+
+    // A TTY session's transcript, read from the file its own CLI wrote. Off the UI thread — see
+    // `ReadTranscriptAsync`. An empty read is still an answer about a live session, not a missing pane: it means
+    // the session has written nothing yet, or its provider cannot name its record (no statusline snapshot). The
+    // caller can tell the two apart from `totalEntries`, and either way it must not report the session as gone.
+    private static AssistantTranscript _ReadTtyTranscript(TtyViewModel tty, int count)
+    {
+        var slice = tty.ReadTranscriptEntries(count);
         return new AssistantTranscript(
-            session.PaneId,
-            session.Title,
-            transcript.Count,
-            [
-                .. transcript.Skip(skip).Select(entry =>
-                    new AssistantTranscriptEntry(entry.Kind.ToString(), entry.Text, entry.ResultText)),
-            ]);
+            tty.PaneId,
+            tty.Title,
+            slice.TotalEntries,
+            [.. slice.Entries.Select(entry => new AssistantTranscriptEntry(entry.Kind, entry.Text, entry.ToolResult))]);
     }
 
     // The operator's own project list, in the order the manager holds it. All of them, including the ones with no

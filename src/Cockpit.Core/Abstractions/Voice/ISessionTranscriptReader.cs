@@ -30,5 +30,49 @@ public interface ISessionTranscriptReader
     /// call are seen — never the session's prior history. Runs until <paramref name="cancellationToken"/> is
     /// cancelled; ends immediately when the provider records nothing.
     /// </summary>
-    IAsyncEnumerable<SessionTranscriptActivity> ReadActivityAsync(SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken);
+    /// <param name="statusFile">
+    /// The snapshot file this session's own statusline writes, when its provider installs one (AC-609). It is what
+    /// lets the provider name the session's transcript instead of inferring it from
+    /// <paramref name="knownTranscriptsAtLaunch"/> — an inference every other invocation of the same CLI on the
+    /// machine can win, silently and for the whole life of the session. Null before the pty is up, and for a
+    /// provider that writes no such file; the provider then falls back to the inference.
+    /// </param>
+    IAsyncEnumerable<SessionTranscriptActivity> ReadActivityAsync(SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, string? statusFile, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads back the rows a TTY session has already written (AC-609) — the last <paramref name="count"/> of them,
+    /// oldest first, with the total the transcript holds. Unlike an SDK session, whose transcript the host builds
+    /// and keeps as it streams, a TTY session's only record is the one its CLI writes to disk, so this is how the
+    /// read surfaces (the assistant's <c>read_transcript</c>) answer for one at all.
+    /// <para>
+    /// Empty when the profile's provider records nothing, when it cannot name this session's transcript — the same
+    /// <paramref name="statusFile"/> the tail is keyed on — or when the session has yet to write anything. Empty is
+    /// the honest answer to all three: the alternative is handing back somebody else's conversation.
+    /// </para>
+    /// </summary>
+    SessionTranscriptSlice ReadEntries(SessionProfile? profile, string? statusFile, int count);
 }
+
+/// <summary>
+/// A TTY session's transcript as read back on demand (AC-609): the last rows asked for, oldest first, and how many
+/// the whole record holds — the core's mirror of the plugin-facing slice, so nothing above this line handles a
+/// plugin type.
+/// </summary>
+/// <param name="Entries">The rows, oldest first.</param>
+/// <param name="TotalEntries">How many rows the transcript holds in all.</param>
+public sealed record SessionTranscriptSlice(IReadOnlyList<SessionTranscriptEntry> Entries, int TotalEntries)
+{
+    /// <summary>Nothing read — a session whose transcript cannot be named, or which has written nothing yet.</summary>
+    public static SessionTranscriptSlice Empty { get; } = new([], 0);
+}
+
+/// <summary>
+/// One already-written row of a TTY session's transcript (AC-609), in the coarse vocabulary shared by every
+/// provider. <paramref name="Kind"/> is a name from the host's own transcript vocabulary
+/// (<c>UserText</c>, <c>AssistantText</c>, <c>ToolUse</c>, <c>ToolResult</c>, <c>Thinking</c>, <c>Error</c>), so a
+/// reader of this does not have to know which provider produced it.
+/// </summary>
+/// <param name="Kind">What the row is.</param>
+/// <param name="Text">Its text: the message, the thinking, or a tool call's name and arguments.</param>
+/// <param name="ToolResult">What a tool call returned, on the row that made it. Null on every other kind.</param>
+public sealed record SessionTranscriptEntry(string Kind, string Text, string? ToolResult);

@@ -24,10 +24,41 @@ internal sealed class SessionTranscriptReader(
             : new HashSet<string>();
 
     public IAsyncEnumerable<SessionTranscriptActivity> ReadActivityAsync(
-        SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken) =>
+        SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, string? statusFile, CancellationToken cancellationToken) =>
         _ResolveReader(profile) is var (reader, configJson) && reader is not null
-            ? _MapActivity(reader.ReadActivityAsync(configJson, knownTranscriptsAtLaunch, cancellationToken))
+            ? _MapActivity(reader.ReadActivityAsync(configJson, knownTranscriptsAtLaunch, statusFile, cancellationToken))
             : _EmptyActivity();
+
+    // The session's own already-written rows (AC-609), mapped onto the core's vocabulary. Keyed on the same
+    // `statusFile` as the tail: a provider that cannot name this session's transcript reports nothing rather than
+    // picking one, and the caller gets an empty slice instead of a stranger's conversation.
+    public SessionTranscriptSlice ReadEntries(SessionProfile? profile, string? statusFile, int count)
+    {
+        var (reader, _) = _ResolveReader(profile);
+        if (reader is null)
+        {
+            return SessionTranscriptSlice.Empty;
+        }
+
+        var slice = reader.ReadEntries(statusFile, count);
+        return new SessionTranscriptSlice(
+            [.. slice.Entries.Select(entry => new SessionTranscriptEntry(
+                _MapEntryKind(entry.Kind), entry.Text, entry.ToolResult))],
+            slice.TotalEntries);
+    }
+
+    // The plugin's coarse row kind under the host's own transcript name, so a TTY row and an SDK row of the same
+    // sort read identically to whoever is looking at them. Spelled out rather than `ToString()`-ed: the two
+    // vocabularies agreeing today is a coincidence worth being able to break.
+    private static string _MapEntryKind(PluginTranscriptEntryKind kind) => kind switch
+    {
+        PluginTranscriptEntryKind.UserText => "UserText",
+        PluginTranscriptEntryKind.AssistantText => "AssistantText",
+        PluginTranscriptEntryKind.ToolUse => "ToolUse",
+        PluginTranscriptEntryKind.ToolResult => "ToolResult",
+        PluginTranscriptEntryKind.Thinking => "Thinking",
+        _ => "Error",
+    };
 
     // Maps the provider plugin's own activity signal to the core mirror the host consumes.
     private static async IAsyncEnumerable<SessionTranscriptActivity> _MapActivity(IAsyncEnumerable<PluginTranscriptActivity> source)
