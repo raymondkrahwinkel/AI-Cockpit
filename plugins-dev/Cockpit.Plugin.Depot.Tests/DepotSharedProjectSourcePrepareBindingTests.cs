@@ -40,12 +40,12 @@ public class DepotSharedProjectSourcePrepareBindingTests
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
-        _StubRead(host, "payroll", _DefinitionEnvelope("""
+        _StubRead(host, "handbook", _DefinitionEnvelope("""
             {
               "schemaVersion": 1,
-              "name": "PayrollProcessor",
+              "name": "Handbook",
               "description": "Loonverwerking",
-              "gitUrl": "git@github.com:synvolution/payroll-processor.git",
+              "gitUrl": "git@github.com:example/handbook.git",
               "behaviorPrompt": "Always ask before touching prod.",
               "isolateInWorktreeByDefault": true,
               "mcpOverlay": { "enabled": ["github", "youtrack"] },
@@ -53,13 +53,13 @@ public class DepotSharedProjectSourcePrepareBindingTests
             }
             """));
 
-        var result = await SourceFor(host).PrepareBindingAsync($"{scheme}:payroll", CancellationToken.None);
+        var result = await SourceFor(host).PrepareBindingAsync($"{scheme}:handbook", CancellationToken.None);
 
         Assert.True(result.Succeeded);
         var binding = result.Binding!;
-        Assert.Equal("PayrollProcessor", binding.Name);
+        Assert.Equal("Handbook", binding.Name);
         Assert.Equal("Loonverwerking", binding.Description);
-        Assert.Equal("git@github.com:synvolution/payroll-processor.git", binding.GitUrl);
+        Assert.Equal("git@github.com:example/handbook.git", binding.GitUrl);
         Assert.Equal("Always ask before touching prod.", binding.BehaviorPrompt);
         Assert.True(binding.IsolateInWorktreeByDefault);
         Assert.Equal(["github", "youtrack"], binding.EnabledMcpServerNames);

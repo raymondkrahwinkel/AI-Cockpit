@@ -29,7 +29,7 @@ public partial class SharedProjectBindingDialog : Window
         }
 
         Title = viewModel.DialogTitle;
-        CockpitWindowChrome.Apply(this, viewModel.DialogTitle, "One koppel-stap: pick a profile, point at a folder if there is one.");
+        CockpitWindowChrome.Apply(this, viewModel.DialogTitle, "One step: pick a profile, point at a folder if there is one.");
 
         viewModel.CloseRequested += project => Close(project);
         viewModel.BrowseRequested += () => _ = _BrowseForFolderAsync(viewModel);

@@ -15,7 +15,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class SharedProjectBindingDialogViewModelTests
 {
-    private static readonly SharedProject _SharedProject = new("depot:payroll", "PayrollProcessor");
+    private static readonly SharedProject _SharedProject = new("depot:handbook", "Handbook");
 
     private static ISessionProfileStore _ProfileStoreWith(params string[] labels)
     {
@@ -76,7 +76,7 @@ public class SharedProjectBindingDialogViewModelTests
         Assert.Null(project.GitUrl);
         Assert.Equal("Zyra", project.DefaultProfileLabel);
         // Started with the right profile and the shared memory reference — nothing more required.
-        Assert.Equal("depot:payroll", project.MemoryRef);
+        Assert.Equal("depot:handbook", project.MemoryRef);
     }
 
     [Fact]
@@ -270,10 +270,10 @@ public class SharedProjectBindingDialogViewModelTests
     [Fact]
     public async Task ApplyPickedDirectory_FromAPlainChoose_LeavesGitUrlAloneUnlessCloneWasUsed()
     {
-        var binding = new SharedProjectBinding("Payroll") { GitUrl = "git@github.com:synvolution/payroll.git" };
+        var binding = new SharedProjectBinding("Handbook") { GitUrl = "git@github.com:example/handbook.git" };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:payroll2", "Payroll"), "Work", source, _ProfileStoreWith("Zyra"));
+            new SharedProject("depot:handbook2", "Handbook"), "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
         Assert.True(viewModel.HasGitUrl);
 

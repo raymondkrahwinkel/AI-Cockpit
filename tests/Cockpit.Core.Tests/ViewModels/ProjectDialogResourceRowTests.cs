@@ -778,7 +778,7 @@ public class ProjectDialogResourceRowTests
         var choices = new ObservableCollection<MemorySourceChoice>
         {
             new("Folder", Scheme: null),
-            new("Depot project — Synvolution", "depot"),
+            new("Depot project — Acme", "depot"),
             new("Depot project — Wispslate", "depot.wispslate"),
         };
         var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, "cockpit")
@@ -789,7 +789,7 @@ public class ProjectDialogResourceRowTests
         };
 
         // The typed value is deliberately left exactly as it was — a Reachability answer for "cockpit" against
-        // Synvolution says nothing about whether "cockpit" also resolves on Wispslate, so switching the source
+        // Acme says nothing about whether "cockpit" also resolves on Wispslate, so switching the source
         // alone (Reference untouched) must invalidate it just as much as an edited Reference would.
         row.SelectedMemorySourceChoice = choices[2];
 
@@ -907,7 +907,7 @@ public class ProjectDialogResourceRowTests
     public void SwitchingSelectedFamilyInstance_ResetsReachability()
     {
         var depotInstanceA = new MemorySourceChoice("Depot (krahwinkel-it)", "depot");
-        var depotInstanceB = new MemorySourceChoice("Depot (synvolution)", "depot.synvolution");
+        var depotInstanceB = new MemorySourceChoice("Depot (acme)", "depot.acme");
         var choices = new ObservableCollection<MemorySourceChoice>
         {
             new("Folder", Scheme: null),

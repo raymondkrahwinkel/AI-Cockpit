@@ -27,7 +27,7 @@ public class DepotMemorySourceTests
     {
         // The existing-projects compatibility guarantee (AC-501 acceptance criterion 3): a project stored as
         // "depot:cockpit" before this ticket must keep resolving, whichever connection is now first.
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], Host());
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], Host());
 
         Assert.Equal("depot", Assert.Single(pairs).Registration.Scheme);
     }
@@ -36,7 +36,7 @@ public class DepotMemorySourceTests
     public void SecondConnection_GetsASchemeNamespacedFromItsOwnName()
     {
         var pairs = DepotMemorySource.BuildRegistrationPairs([
-            Connection("c1", "Synvolution"),
+            Connection("c1", "Acme"),
             Connection("c2", "Wispslate"),
         ], Host());
 
@@ -48,11 +48,11 @@ public class DepotMemorySourceTests
     public void EachRegistration_HasATitleDerivedFromTheConnectionName()
     {
         var pairs = DepotMemorySource.BuildRegistrationPairs([
-            Connection("c1", "Synvolution"),
+            Connection("c1", "Acme"),
             Connection("c2", "Wispslate"),
         ], Host());
 
-        Assert.Equal("Depot project — Synvolution", pairs[0].Registration.Title);
+        Assert.Equal("Depot project — Acme", pairs[0].Registration.Title);
         Assert.Equal("Depot project — Wispslate", pairs[1].Registration.Title);
     }
 
@@ -69,7 +69,7 @@ public class DepotMemorySourceTests
     [Fact]
     public void Instruction_StillCarriesTheHonestyClause_WhenTheMcpIsUnavailable()
     {
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], Host());
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], Host());
 
         Assert.Contains(
             "If the Depot MCP is not available in this session, say so rather than working from memory you cannot see.",
@@ -108,7 +108,7 @@ public class DepotMemorySourceTests
         // collision already falls back to the shared id, so only a third one proves the id-fallback itself is
         // re-checked against what is already taken rather than assumed to always be free.
         var pairs = DepotMemorySource.BuildRegistrationPairs([
-            Connection("primary", "Synvolution"),
+            Connection("primary", "Acme"),
             Connection("dup", "Work"),
             Connection("dup", "Work"),
             Connection("dup", "Work"),
@@ -124,7 +124,7 @@ public class DepotMemorySourceTests
         // The slug alone would collide on "depot.work" for both non-primary connections; the second one to claim it
         // falls back to its own id instead of silently losing to the registry's first-one-wins Register refusal.
         var pairs = DepotMemorySource.BuildRegistrationPairs([
-            Connection("primary", "Synvolution"),
+            Connection("primary", "Acme"),
             Connection("c1", "Work"),
             Connection("c2", "Work"),
         ], Host());
@@ -136,7 +136,7 @@ public class DepotMemorySourceTests
     [Fact]
     public void BuildRegistrations_ReturnsTheSameRegistrationsAsThePairs()
     {
-        var connections = new[] { Connection("c1", "Synvolution"), Connection("c2", "Wispslate") };
+        var connections = new[] { Connection("c1", "Acme"), Connection("c2", "Wispslate") };
         var host = Host();
 
         var registrations = DepotMemorySource.BuildRegistrations(connections, host);
@@ -159,7 +159,7 @@ public class DepotMemorySourceTests
     {
         // The default for every existing caller of this method (and every test above it) — a row from a
         // registration built without a host must behave exactly as it always has: nothing shown under it.
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")]);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")]);
 
         Assert.Null(pairs.Single().Registration.CheckReachability);
     }
@@ -168,7 +168,7 @@ public class DepotMemorySourceTests
     public void AHostPassed_WiresUpCheckReachability()
     {
         var host = Substitute.For<ICockpitHost>();
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         Assert.NotNull(pairs.Single().Registration.CheckReachability);
     }
@@ -191,12 +191,12 @@ public class DepotMemorySourceTests
     public async Task CheckReachability_CallsListProjects_AgainstThisConnectionsOwnMcpServerName()
     {
         var host = _HostReturning(_TwoProjectsJson);
-        var connection = Connection("c1", "Synvolution");
+        var connection = Connection("c1", "Acme");
         var pairs = DepotMemorySource.BuildRegistrationPairs([connection], host);
 
         await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
-        // "Depot: Synvolution" — DepotConnectionRegistration.McpServerName's own fixed prefix, so a hand-typed
+        // "Depot: Acme" — DepotConnectionRegistration.McpServerName's own fixed prefix, so a hand-typed
         // server name here can never silently drift from the name AddMcpServer actually registered under.
         await host.Received(1).CallMcpToolAsync(connection.McpServerName, "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
@@ -208,7 +208,7 @@ public class DepotMemorySourceTests
         // server-side — for an Admin caller that is every project on the server". The picker (ListLocationsAsync)
         // is opened once and can afford that; this check reruns on every debounced edit and must not.
         var host = _HostReturning(_TwoProjectsJson);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -224,7 +224,7 @@ public class DepotMemorySourceTests
     public async Task CheckReachability_SlugInTheList_ReturnsConfirmed()
     {
         var host = _HostReturning(_TwoProjectsJson);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -235,7 +235,7 @@ public class DepotMemorySourceTests
     public async Task CheckReachability_SlugMatchIsCaseInsensitive()
     {
         var host = _HostReturning(_TwoProjectsJson);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("COCKPIT", CancellationToken.None);
 
@@ -247,7 +247,7 @@ public class DepotMemorySourceTests
     {
         // AC-499: the confirmation may say what it found, since that data comes free with the same call.
         var host = _HostReturning(_TwoProjectsJson);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("olaf", CancellationToken.None);
 
@@ -258,7 +258,7 @@ public class DepotMemorySourceTests
     public async Task CheckReachability_SlugNotInTheList_ReturnsNotFound()
     {
         var host = _HostReturning(_TwoProjectsJson);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("no-such-project", CancellationToken.None);
 
@@ -269,7 +269,7 @@ public class DepotMemorySourceTests
     public async Task CheckReachability_EmptyList_ReturnsNotFound()
     {
         var host = _HostReturning("""{"projects":[]}""");
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -282,7 +282,7 @@ public class DepotMemorySourceTests
         // The one case that actually means "go sign in" — the case Raymond's own live test found conflated with an
         // ordinary failed call before this ticket.
         var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -296,7 +296,7 @@ public class DepotMemorySourceTests
         // never as "not signed in" — Raymond was signed in the whole time; this is the defect the picker's own
         // working list_projects call proved by contrast.
         var host = _HostReturning(PluginMcpToolCallResult.Failed("connection reset"));
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -308,7 +308,7 @@ public class DepotMemorySourceTests
     public async Task CheckReachability_UnparsableResponse_ReturnsCheckFailed_NeverThrows()
     {
         var host = _HostReturning("not json");
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -322,7 +322,7 @@ public class DepotMemorySourceTests
         // Iron Law #8, belt-and-braces: NotSignedIn always shows its own fixed sentence — nothing plugin-supplied
         // is ever attached here, unlike CheckFailed which deliberately does carry one.
         var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -344,7 +344,7 @@ public class DepotMemorySourceTests
         host.Services.Returns(services);
         host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("connection reset")));
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -364,7 +364,7 @@ public class DepotMemorySourceTests
         // Substitute.For<ICockpitHost>() answers null for it, so the logging seam must tolerate that rather than
         // NullReferenceException-ing out of a check that otherwise has a perfectly good answer to give.
         var host = _HostReturning(PluginMcpToolCallResult.Failed("connection reset"));
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -376,11 +376,11 @@ public class DepotMemorySourceTests
     [Fact]
     public void FirstConnection_CarriesTheDepotFamilyKeyAndItsOwnInstanceTitle()
     {
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], Host());
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], Host());
 
         var registration = pairs.Single().Registration;
         Assert.Equal("depot", registration.FamilyKey);
-        Assert.Equal("Synvolution", registration.InstanceTitle);
+        Assert.Equal("Acme", registration.InstanceTitle);
     }
 
     [Fact]
@@ -389,7 +389,7 @@ public class DepotMemorySourceTests
         // The scheme is per-connection (namespaced from the second connection on), but the family every connection
         // opts into is the one "Depot" entry — FamilyKey must not drift with the scheme.
         var pairs = DepotMemorySource.BuildRegistrationPairs([
-            Connection("c1", "Synvolution"),
+            Connection("c1", "Acme"),
             Connection("c2", "Wispslate"),
         ], Host());
 
@@ -400,7 +400,7 @@ public class DepotMemorySourceTests
     public void SecondConnection_InstanceTitleIsItsOwnName_NotTheNamespacedScheme()
     {
         var pairs = DepotMemorySource.BuildRegistrationPairs([
-            Connection("c1", "Synvolution"),
+            Connection("c1", "Acme"),
             Connection("c2", "Wispslate"),
         ], Host());
 
@@ -413,10 +413,10 @@ public class DepotMemorySourceTests
         // FamilyKey/InstanceTitle are plain data on the registration, unlike ListLocationsAsync/SignInAsync/
         // CheckReachability which need a host to close over — a registration built without one must not silently
         // drop them.
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")]);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")]);
 
         var registration = pairs.Single().Registration;
         Assert.Equal("depot", registration.FamilyKey);
-        Assert.Equal("Synvolution", registration.InstanceTitle);
+        Assert.Equal("Acme", registration.InstanceTitle);
     }
 }

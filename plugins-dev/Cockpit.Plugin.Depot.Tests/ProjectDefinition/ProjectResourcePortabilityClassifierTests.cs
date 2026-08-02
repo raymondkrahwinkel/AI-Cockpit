@@ -36,7 +36,7 @@ public class ProjectResourcePortabilityClassifierTests
     }
 
     [Theory]
-    [InlineData("depot:payroll-processor")]
+    [InlineData("depot:handbook-processor")]
     [InlineData("depot:slug/path/to/file.md")]
     [InlineData("github:owner/repo")]
     public void Classify_SchemeReference_IsPluginSource(string reference)

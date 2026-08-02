@@ -27,7 +27,7 @@ public class CockpitProjectResourceEntryTests
     [Fact]
     public void Create_PluginSourceReference_ReturnsARowWithThatPortability()
     {
-        var entry = CockpitProjectResourceEntry.Create("Memory", "depot:payroll-processor");
+        var entry = CockpitProjectResourceEntry.Create("Memory", "depot:handbook-processor");
 
         Assert.NotNull(entry);
         Assert.Equal("plugin-source", entry.Portability);

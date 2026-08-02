@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.Depot;
 /// <summary>
 /// Builds the memory-source registration(s) this plugin hands the host (AC-165/166, AC-501): one per configured
 /// Depot connection, so the project editor's picker can tell "Depot project — Wispslate" from "Depot project —
-/// Synvolution" apart instead of the single fixed "Depot project" a pre-AC-501 install offered regardless of how
+/// Acme" apart instead of the single fixed "Depot project" a pre-AC-501 install offered regardless of how
 /// many instances were connected.
 /// <para>
 /// A separate type from <see cref="DepotPlugin"/> and <see cref="Ui.DepotSettingsControl"/> — like

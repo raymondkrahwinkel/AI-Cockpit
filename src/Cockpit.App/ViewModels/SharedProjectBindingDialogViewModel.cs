@@ -8,7 +8,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// The "Finish setting up…" bind step (AC-246): the one-time koppel-stap that turns a <see cref="SharedProject"/>
+/// The "Finish setting up…" bind step (AC-246): the one-time bind step that turns a <see cref="SharedProject"/>
 /// this machine has not bound yet into an ordinary local <c>Project</c>. Deliberately its own, much smaller dialog
 /// rather than <see cref="ProjectDialogViewModel"/> with everything locked (AC-242 mockup, section 4) — the two
 /// answer different questions: this one asks only what is machine-local and has never been set before (a project
@@ -52,10 +52,10 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     /// <summary>Design-time constructor for the Avalonia previewer.</summary>
     public SharedProjectBindingDialogViewModel()
     {
-        _sharedProjectId = "depot:payroll-processor";
+        _sharedProjectId = "depot:handbook";
         SourceName = "Work";
-        ProjectName = "PayrollProcessor";
-        GitUrl = "git@github.com:synvolution/payroll-processor.git";
+        ProjectName = "Handbook";
+        GitUrl = "git@github.com:example/handbook.git";
         Profiles.Add("Zyra — Sonnet");
     }
 
@@ -74,11 +74,11 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         var viewModel = new SharedProjectBindingDialogViewModel();
 
         viewModel.ResourceRows.Add(new SharedProjectBindingResourceRowViewModel(
-            ProjectResourceRole.Instructions, "Payroll runbook", originalReference: null));
+            ProjectResourceRole.Instructions, "Onboarding runbook", originalReference: null));
         viewModel.ResourceRows.Add(new SharedProjectBindingResourceRowViewModel(
-            ProjectResourceRole.Reference, "Test payroll data", originalReference: null));
+            ProjectResourceRole.Reference, "Test dataset", originalReference: null));
         viewModel.ResourceRows.Add(new SharedProjectBindingResourceRowViewModel(
-            ProjectResourceRole.Reference, null, "/home/erik/work/payroll/scratch"));
+            ProjectResourceRole.Reference, null, "/home/erik/work/handbook/scratch"));
 
         return viewModel;
     }

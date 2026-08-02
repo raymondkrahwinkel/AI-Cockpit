@@ -121,12 +121,12 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Synvolution", url: "https://depot.example.com");
+        _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
 
         view.Save();
 
         host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
-            registration.Scheme == "depot" && registration.Title.Contains("Synvolution")));
+            registration.Scheme == "depot" && registration.Title.Contains("Acme")));
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
         _AddRow(view);
@@ -152,7 +152,7 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
         _RemoveRow(view, index: 0);
@@ -171,16 +171,16 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Synvolution (renamed)", url: "https://depot.example.com");
+        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
 
         view.Save();
 
         host.Received(1).RemoveProjectMemorySource("depot");
         host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
-            registration.Scheme == "depot" && registration.Title.Contains("Synvolution (renamed)")));
+            registration.Scheme == "depot" && registration.Title.Contains("Acme (renamed)")));
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
 
@@ -209,12 +209,12 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Synvolution", url: "https://depot.example.com");
+        _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
 
         view.Save();
 
         host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source =>
-            source.Key == "depot" && source.SourceName.Contains("Synvolution")));
+            source.Key == "depot" && source.SourceName.Contains("Acme")));
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
         _AddRow(view);
@@ -240,7 +240,7 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
         _RemoveRow(view, index: 0);
@@ -260,16 +260,16 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Synvolution (renamed)", url: "https://depot.example.com");
+        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
 
         view.Save();
 
         host.Received(1).RemoveSharedProjectSource("depot");
         host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source =>
-            source.Key == "depot" && source.SourceName.Contains("Synvolution (renamed)")));
+            source.Key == "depot" && source.SourceName.Contains("Acme (renamed)")));
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         var view = new DepotSettingsControl(host, settings);
 
@@ -306,7 +306,7 @@ public class DepotSettingsControlTests
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
 
         var first = DepotMemorySource.BuildRegistrationPairs(settings.Connections, host).Single().Registration;
@@ -334,7 +334,7 @@ public class DepotSettingsControlTests
         {
             Connections =
             [
-                new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com"),
+                new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com"),
                 new DepotConnectionRegistration("conn-2", "Wispslate", "https://wispslate.example.com"),
             ],
         };
@@ -413,13 +413,13 @@ public class DepotSettingsControlTests
         var registry = _WireRegistry(host);
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Synvolution", url: "https://depot.example.com");
+        _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
 
         view.Save();
 
         Assert.True(registry.Sources.TryGetValue("depot", out var registration));
         Assert.Equal("depot", registration!.FamilyKey);
-        Assert.Equal("Synvolution", registration.InstanceTitle);
+        Assert.Equal("Acme", registration.InstanceTitle);
     }
 
     [Fact]
@@ -429,20 +429,20 @@ public class DepotSettingsControlTests
         var registry = _WireRegistry(host);
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
         {
             registry.Add(pair.Registration);
         }
         var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Synvolution (renamed)", url: "https://depot.example.com");
+        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
 
         view.Save();
 
         Assert.True(registry.Sources.TryGetValue("depot", out var registration));
         Assert.Equal("depot", registration!.FamilyKey);
-        Assert.Equal("Synvolution (renamed)", registration.InstanceTitle);
+        Assert.Equal("Acme (renamed)", registration.InstanceTitle);
     }
 
     [Fact]
@@ -491,7 +491,7 @@ public class DepotSettingsControlTests
         {
             Connections =
             [
-                new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com"),
+                new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com"),
                 new DepotConnectionRegistration("conn-2", "Wispslate", "https://wispslate.example.com"),
             ],
         };
@@ -519,7 +519,7 @@ public class DepotSettingsControlTests
         var registry = _WireRegistry(host);
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
         {
@@ -684,20 +684,20 @@ public class DepotSettingsControlTests
         var registry = _WireRegistry(host);
         var settings = new DepotSettings(new FakePluginStorage())
         {
-            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
         };
         foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
         {
             registry.Add(pair.Registration);
         }
         var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Synvolution (renamed)", url: "https://depot.example.com");
+        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
         var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().Single();
 
         await row.SignInAsync();
 
         Assert.True(registry.Sources.TryGetValue("depot", out var registration));
-        Assert.Equal("Synvolution (renamed)", registration!.InstanceTitle);
+        Assert.Equal("Acme (renamed)", registration!.InstanceTitle);
     }
 
     // GetVisualDescendants only sees anything once the control is attached under a shown TopLevel — an unattached

@@ -769,7 +769,7 @@ internal static class Screenshotter
         var depotInstances = new List<ViewModels.MemorySourceChoice>
         {
             new("Depot (krahwinkel-it)", "depot"),
-            new("Depot (synvolution)", "depot.synvolution"),
+            new("Depot (acme)", "depot.acme"),
         };
         var familyInstances = new Dictionary<string, IReadOnlyList<ViewModels.MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
         {
@@ -807,7 +807,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPicker()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
@@ -824,7 +824,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerSignIn()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.AuthorizationRequired),
             signInAsync: _ => Task.FromResult(true));
         viewModel.LoadAsync().GetAwaiter().GetResult();
@@ -835,7 +835,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerError()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed(
                 "Couldn't reach the Depot server — check the connection's URL in Depot's settings.")));
         viewModel.LoadAsync().GetAwaiter().GetResult();
@@ -853,7 +853,7 @@ internal static class Screenshotter
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("synvolution", "Synvolution", "Project · 8 documents · updated 20 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("acme", "Acme", "Project · 8 documents · updated 20 Jul 2026"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ai-hub", "AI-Hub", "Project · 5 documents · updated 18 Jul 2026"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("zyra", "Zyra", "Brain"),
@@ -862,7 +862,7 @@ internal static class Screenshotter
                 // No Detail — right after the pre-selected row, so both land in the same scrolled-into-view
                 // viewport and a height difference between them (point 3) is actually on screen, not assumed away.
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ddd-template", "DDD-Template"),
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("payroll-processor", "PayrollProcessor", "Project · 14 documents · updated 22 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("handbook-processor", "Handbook", "Project · 14 documents · updated 22 Jul 2026"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("vacancy-manager", "VacancyManager", "Project · 6 documents · updated 15 Jul 2026"),
             ])),
             currentValue: "eve-workbench");
@@ -876,7 +876,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerCurrentMissing()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),

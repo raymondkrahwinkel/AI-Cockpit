@@ -42,7 +42,7 @@ public class DepotPluginTests
     [Fact]
     public void Initialize_OneConnectionConfigured_RegistersItUnderThePlainDepotScheme()
     {
-        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"));
+        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"));
         var registered = new List<ProjectMemorySourceRegistration>();
         host.When(cockpit => cockpit.AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>()))
             .Do(call => registered.Add(call.Arg<ProjectMemorySourceRegistration>()));
@@ -52,7 +52,7 @@ public class DepotPluginTests
 
         var registration = Assert.Single(registered);
         Assert.Equal("depot", registration.Scheme);
-        Assert.Contains("Synvolution", registration.Title);
+        Assert.Contains("Acme", registration.Title);
         Assert.Contains("Depot MCP", registration.Instruction);
         Assert.Contains("say so rather than working from memory you cannot see", registration.Instruction);
     }
@@ -61,7 +61,7 @@ public class DepotPluginTests
     public void Initialize_TwoConnectionsConfigured_RegistersBothUnderDistinctSchemes()
     {
         var host = _HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
         var registered = new List<ProjectMemorySourceRegistration>();
         host.When(cockpit => cockpit.AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>()))
@@ -91,7 +91,7 @@ public class DepotPluginTests
     [Fact]
     public void Initialize_OneConnectionConfigured_RegistersOneSharedProjectSourceUnderThePlainDepotScheme()
     {
-        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"));
+        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"));
         var registered = new List<ISharedProjectSource>();
         host.When(cockpit => cockpit.AddSharedProjectSource(Arg.Any<ISharedProjectSource>()))
             .Do(call => registered.Add(call.Arg<ISharedProjectSource>()));
@@ -101,14 +101,14 @@ public class DepotPluginTests
 
         var source = Assert.Single(registered);
         Assert.Equal("depot", source.Key); // same scheme AddProjectMemorySource registered above — Id/MemoryRef line up
-        Assert.Contains("Synvolution", source.SourceName);
+        Assert.Contains("Acme", source.SourceName);
     }
 
     [Fact]
     public void Initialize_TwoConnectionsConfigured_RegistersTwoSharedProjectSourcesUnderDistinctKeys()
     {
         var host = _HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
         var registered = new List<ISharedProjectSource>();
         host.When(cockpit => cockpit.AddSharedProjectSource(Arg.Any<ISharedProjectSource>()))
@@ -135,13 +135,13 @@ public class DepotPluginTests
     public void Initialize_ConnectionsConfigured_ReclaimsEachConnectionsOldMcpRegistryEntry()
     {
         var host = _HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
 
         using var plugin = new DepotPlugin();
         plugin.Initialize(host);
 
-        _ = host.Received(1).RemoveMcpServer("Depot: Synvolution");
+        _ = host.Received(1).RemoveMcpServer("Depot: Acme");
         _ = host.Received(1).RemoveMcpServer("Depot: Wispslate");
     }
 
@@ -164,13 +164,13 @@ public class DepotPluginTests
     {
         using var plugin = new DepotPlugin();
         plugin.Initialize(_HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
 
         var servers = plugin.GetMcpServers();
 
         Assert.Equal(2, servers.Count);
-        Assert.Contains(servers, server => server.Name == "Depot: Synvolution");
+        Assert.Contains(servers, server => server.Name == "Depot: Acme");
         Assert.Contains(servers, server => server.Name == "Depot: Wispslate");
     }
 
@@ -182,12 +182,12 @@ public class DepotPluginTests
         // operator edits, so renaming a connection would strand its sign-in under the old name.
         using var plugin = new DepotPlugin();
         plugin.Initialize(_HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
 
         var servers = plugin.GetMcpServers();
 
-        Assert.Equal("c1", Assert.Single(servers, server => server.Name == "Depot: Synvolution").Id);
+        Assert.Equal("c1", Assert.Single(servers, server => server.Name == "Depot: Acme").Id);
         Assert.Equal("c2", Assert.Single(servers, server => server.Name == "Depot: Wispslate").Id);
     }
 
@@ -241,7 +241,7 @@ public class DepotPluginTests
     {
         // AC-504 criterion 2: a project without a Depot memory row gets no Depot server at all.
         using var plugin = new DepotPlugin();
-        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com")));
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com")));
 
         Assert.Empty(plugin.GetMcpServers("project-a", []));
     }
@@ -252,7 +252,7 @@ public class DepotPluginTests
         // AC-504 criterion 1: the connection the project's own memory row points at, not another configured one.
         using var plugin = new DepotPlugin();
         plugin.Initialize(_HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
 
         var servers = plugin.GetMcpServers("project-a", ["depot.wispslate"]);
@@ -272,7 +272,7 @@ public class DepotPluginTests
     public void GetMcpServers_ConnectionStoredWithATrailingMcp_DoesNotDoubleItInTheContributedUrl()
     {
         using var plugin = new DepotPlugin();
-        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com/mcp")));
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com/mcp")));
 
         var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
 
@@ -286,7 +286,7 @@ public class DepotPluginTests
     public void GetMcpServers_ConnectionUrlHasASubpath_OAuthAuthorityIsTheOriginNotTheSubpath()
     {
         using var plugin = new DepotPlugin();
-        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://host.example.com/depot")));
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://host.example.com/depot")));
 
         var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
 
@@ -300,13 +300,13 @@ public class DepotPluginTests
         // AC-504 criterion 2: a project with two Memory rows pointing at two Depot connections gets both.
         using var plugin = new DepotPlugin();
         plugin.Initialize(_HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
 
         var servers = plugin.GetMcpServers("project-a", ["depot", "depot.wispslate"]);
 
         Assert.Equal(2, servers.Count);
-        Assert.Contains(servers, server => server.Name == "Depot: Synvolution");
+        Assert.Contains(servers, server => server.Name == "Depot: Acme");
         Assert.Contains(servers, server => server.Name == "Depot: Wispslate");
     }
 
@@ -316,7 +316,7 @@ public class DepotPluginTests
     public void GetMcpServers_SchemeBelongsToADifferentSource_ReturnsNothing()
     {
         using var plugin = new DepotPlugin();
-        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com")));
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com")));
 
         Assert.Empty(plugin.GetMcpServers("project-a", ["folder"]));
     }
@@ -345,15 +345,15 @@ public class DepotPluginTests
     public async Task Initialize_TwoConnectionsConfigured_ReclaimsThemSequentially_NotConcurrently()
     {
         var host = _HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
         var firstRemoval = new TaskCompletionSource();
-        host.RemoveMcpServer("Depot: Synvolution").Returns(_ => firstRemoval.Task);
+        host.RemoveMcpServer("Depot: Acme").Returns(_ => firstRemoval.Task);
 
         using var plugin = new DepotPlugin();
         plugin.Initialize(host);
 
-        _ = host.Received(1).RemoveMcpServer("Depot: Synvolution");
+        _ = host.Received(1).RemoveMcpServer("Depot: Acme");
         _ = host.DidNotReceive().RemoveMcpServer("Depot: Wispslate");
 
         firstRemoval.SetResult();
@@ -392,7 +392,7 @@ public class DepotPluginTests
     [Fact]
     public void Initialize_OneConnectionConfigured_DeclaresTheDepotFamilyExactlyOnce()
     {
-        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"));
+        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"));
 
         using var plugin = new DepotPlugin();
         plugin.Initialize(host);
@@ -404,7 +404,7 @@ public class DepotPluginTests
     public void Initialize_SeveralConnectionsConfigured_DeclaresTheDepotFamilyExactlyOnce()
     {
         var host = _HostWithConnections(
-            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com"),
             new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
 
         using var plugin = new DepotPlugin();

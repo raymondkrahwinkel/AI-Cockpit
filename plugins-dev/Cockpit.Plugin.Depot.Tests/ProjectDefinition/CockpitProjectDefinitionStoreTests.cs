@@ -11,17 +11,17 @@ public class CockpitProjectDefinitionStoreTests
     public async Task ReadAsync_Success_CallsReadWithTheReservedPathAndParsesTheDefinition()
     {
         var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync("Depot: Synvolution", "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        host.CallMcpToolAsync("Depot: Acme", "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success(
                 """{"path":".cockpit/project.json","content":"{\"schemaVersion\":1,\"name\":\"probe\"}","checksum":"abc123","size":30}""")));
 
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Synvolution", "cockpit");
+        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
 
         Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
         Assert.Equal("probe", result.Definition!.Name);
         Assert.Equal("abc123", result.Checksum);
         await host.Received(1).CallMcpToolAsync(
-            "Depot: Synvolution", "read",
+            "Depot: Acme", "read",
             Arg.Is<IReadOnlyDictionary<string, object?>?>(args => (string)args!["project"]! == "cockpit" && (string)args["path"]! == ".cockpit/project.json"),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
@@ -33,7 +33,7 @@ public class CockpitProjectDefinitionStoreTests
         host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
 
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Synvolution", "cockpit");
+        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
 
         Assert.Equal(PluginMcpToolCallOutcome.AuthorizationRequired, result.Outcome);
         Assert.Null(result.Definition);
@@ -46,7 +46,7 @@ public class CockpitProjectDefinitionStoreTests
         host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("not found")));
 
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Synvolution", "cockpit");
+        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.Equal("not found", result.Error);
@@ -59,7 +59,7 @@ public class CockpitProjectDefinitionStoreTests
         host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":"x","content":"not json","checksum":"abc"}""")));
 
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Synvolution", "cockpit");
+        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.NotNull(result.Error);
@@ -72,7 +72,7 @@ public class CockpitProjectDefinitionStoreTests
         host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":"x","content":"{}"}""")));
 
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Synvolution", "cockpit");
+        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
     }
@@ -85,12 +85,12 @@ public class CockpitProjectDefinitionStoreTests
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":".cockpit/project.json","checksum":"new123","bytesWritten":10}""")));
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: "old123");
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: "old123");
 
         Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
         Assert.Equal("new123", result.Checksum);
         await host.Received(1).CallMcpToolAsync(
-            "Depot: Synvolution", "write",
+            "Depot: Acme", "write",
             Arg.Is<IReadOnlyDictionary<string, object?>?>(args => (string)args!["baseChecksum"]! == "old123"),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
@@ -103,10 +103,10 @@ public class CockpitProjectDefinitionStoreTests
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":"x","checksum":"first","bytesWritten":1}""")));
 
         await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
 
         await host.Received(1).CallMcpToolAsync(
-            "Depot: Synvolution", "write",
+            "Depot: Acme", "write",
             Arg.Is<IReadOnlyDictionary<string, object?>?>(args => !args!.ContainsKey("baseChecksum")),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
@@ -124,7 +124,7 @@ public class CockpitProjectDefinitionStoreTests
                 "'.cockpit/project.json' changed since it was read; current checksum is abc999. Re-read and retry.")));
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: "stale");
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: "stale");
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.ChecksumConflict, result.FailureKind);
@@ -142,7 +142,7 @@ public class CockpitProjectDefinitionStoreTests
             .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("This action requires the Editor role on project 'cockpit'.")));
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
 
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.PermissionDenied, result.FailureKind);
     }
@@ -156,7 +156,7 @@ public class CockpitProjectDefinitionStoreTests
             .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("You are not a member of project 'cockpit'.")));
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
 
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.PermissionDenied, result.FailureKind);
     }
@@ -167,10 +167,10 @@ public class CockpitProjectDefinitionStoreTests
         // A failure whose text matches neither known Depot shape must not be guessed into either bucket.
         var host = Substitute.For<ICockpitHost>();
         host.CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("Could not connect to \"Depot: Synvolution\".")));
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("Could not connect to \"Depot: Acme\".")));
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
 
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.Unclassified, result.FailureKind);
     }
@@ -181,7 +181,7 @@ public class CockpitProjectDefinitionStoreTests
         var host = Substitute.For<ICockpitHost>();
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" },
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" },
             baseChecksum: "abc", callerRole: CockpitProjectRole.Viewer);
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
@@ -201,7 +201,7 @@ public class CockpitProjectDefinitionStoreTests
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":"x","checksum":"c1","bytesWritten":1}""")));
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" },
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" },
             baseChecksum: "abc", callerRole: role);
 
         Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
@@ -217,7 +217,7 @@ public class CockpitProjectDefinitionStoreTests
             .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
 
         var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Synvolution", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
+            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
 
         Assert.Equal(PluginMcpToolCallOutcome.AuthorizationRequired, result.Outcome);
     }
