@@ -13,9 +13,22 @@ public sealed record ProjectSettings
     /// <summary>The projects, in the order the manager and launcher show them.</summary>
     public IReadOnlyList<Project> Projects { get; init; } = [];
 
+    /// <summary>
+    /// Ids of shared projects (<c>SharedProject.Id</c>, AC-245) hidden from the Projects workspace on this machine
+    /// — a per-machine visibility flag on a project that lives in a shared definition elsewhere, never written into
+    /// that definition itself, so hiding one here never hides it for a colleague. Nothing in this build ever adds to
+    /// this list yet (that UI is a deliberate later step); it exists so the read path already honours it once
+    /// something does.
+    /// </summary>
+    public IReadOnlyList<string> HiddenSharedProjectIds { get; init; } = [];
+
     /// <summary>The project <paramref name="projectId"/> names, or null — including for a session that belongs to a project the operator has since deleted.</summary>
     public Project? Find(string? projectId) =>
         string.IsNullOrEmpty(projectId) ? null : Projects.FirstOrDefault(project => project.Id == projectId);
+
+    /// <summary>Whether <paramref name="sharedProjectId"/> is hidden on this machine (<see cref="HiddenSharedProjectIds"/>).</summary>
+    public bool IsSharedProjectHidden(string sharedProjectId) =>
+        HiddenSharedProjectIds.Contains(sharedProjectId, StringComparer.Ordinal);
 
     /// <summary>
     /// These settings made safe to bind to: nothing without an id or a name, no id twice, and no blank information
@@ -32,7 +45,23 @@ public sealed record ProjectSettings
             .Select(_WithTidyInfo)
             .ToList();
 
-        return usable.SequenceEqual(Projects) ? this : this with { Projects = usable };
+        var result = usable.SequenceEqual(Projects) ? this : this with { Projects = usable };
+
+        var hiddenSeen = new HashSet<string>(StringComparer.Ordinal);
+        var hidden = new List<string>(result.HiddenSharedProjectIds.Count);
+        foreach (var id in result.HiddenSharedProjectIds)
+        {
+            // A hand-edited cockpit.json can hold a JSON null here (System.Text.Json deserializes a `List<string>`
+            // element of `null` as a null reference, not an empty string) — treated the same as a blank one, so
+            // that one bad entry costs itself and not the whole list.
+            var trimmed = id?.Trim() ?? string.Empty;
+            if (trimmed.Length > 0 && hiddenSeen.Add(trimmed))
+            {
+                hidden.Add(trimmed);
+            }
+        }
+
+        return hidden.SequenceEqual(result.HiddenSharedProjectIds) ? result : result with { HiddenSharedProjectIds = hidden };
     }
 
     /// <summary>

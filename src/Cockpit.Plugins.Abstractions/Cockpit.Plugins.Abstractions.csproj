@@ -315,7 +315,13 @@
          instead of treating every project the same. A project nothing ever claims resolves null and the editor is
          unchanged (acceptance criterion 4). Additions only — a minor; major and abstractionsVersion stay 1. No
          in-repo plugin calls this yet, so no minHostVersion bump accompanies it. -->
-    <Version>1.46.0</Version>
+    <!-- 1.47.0 (AC-245): added the shared-project catalog seam — ICockpitHost.AddSharedProjectSource/
+         RemoveSharedProjectSource/SharedProjectSources (all default-implemented: no-op / no-op / empty) plus
+         ISharedProjectSource, SharedProject and SharedProjectListResult (new types) — a plugin that shares project
+         definitions elsewhere (AC-242's Depot sync) can list the ones this machine has not bound to a local Project
+         yet, so the Projects workspace can offer them beside the local ones. Additions only — a minor; major and
+         abstractionsVersion stay 1. Consumed in-repo by Cockpit.Plugin.Depot, whose minHostVersion moves with it. -->
+    <Version>1.47.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

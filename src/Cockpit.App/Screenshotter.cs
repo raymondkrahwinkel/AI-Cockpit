@@ -146,6 +146,9 @@ internal static class Screenshotter
         // a hint it had already proved visible.
         ["project-editor-instructions-send-along"] = (_, _) => _ProjectEditorWithInstructionsSendAlong(),
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
+        // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
+        // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
+        ["projects-shared"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithSharedProjects() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
         ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),

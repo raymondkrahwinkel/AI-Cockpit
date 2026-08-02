@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
@@ -12,6 +14,10 @@ namespace Cockpit.App.ViewModels;
 /// The projects manager behind Options → Projects (AC-161): the saved projects, and add/edit/remove over them.
 /// Owns the persisting that <see cref="ProjectDialogViewModel"/> deliberately does not, so the editor stays a
 /// value editor and this is the only thing that writes the list.
+/// <para>
+/// Since AC-245, also the Projects workspace's read side for what a plugin shares elsewhere but this machine has
+/// not bound yet — see <see cref="SharedProjectGroups"/> and <see cref="LoadSharedProjectsAsync"/>.
+/// </para>
 /// </summary>
 public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 {
@@ -23,7 +29,26 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     /// <summary>Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.</summary>
     private readonly ISessionDialogService? _dialogs;
 
+    /// <summary>
+    /// Where a shared project's origin is claimed for a local project already bound to it (AC-604/AC-245's own
+    /// consumption of it — see <see cref="LoadSharedProjectsAsync"/>). Null under the previewer.
+    /// </summary>
+    private readonly IProjectOwnershipRegistry? _ownership;
+
+    /// <summary>What every registered plugin shares elsewhere (AC-245). Null under the previewer, where <see cref="SharedProjectGroups"/> simply stays empty.</summary>
+    private readonly ISharedProjectSourceRegistry? _sharedSources;
+
     private ProjectSettings _settings = ProjectSettings.Empty;
+
+    /// <summary>Cancels a still-running <see cref="LoadSharedProjectsAsync"/> when a newer one starts (the workspace reopened, say), so a slow connection cannot overwrite a fresher answer with a stale one.</summary>
+    private CancellationTokenSource? _sharedProjectsLoadCts;
+
+    /// <summary>
+    /// The background <see cref="LoadSharedProjectsAsync"/> call <see cref="LoadAsync"/> most recently started
+    /// (never awaited by it — see that method's own remarks). Internal test seam only: it lets a test await the
+    /// same run <see cref="LoadAsync"/> kicked off instead of racing it with a second, independent call.
+    /// </summary>
+    internal Task SharedProjectsLoadTask { get; private set; } = Task.CompletedTask;
 
     /// <summary>
     /// Design-time constructor for the Avalonia previewer: an empty store and no dialog service, so a rendered
@@ -35,11 +60,18 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
     }
 
-    public ProjectsViewModel(IProjectStore store, ISessionDialogService? dialogs, IProjectLogoStore? logos = null)
+    public ProjectsViewModel(
+        IProjectStore store,
+        ISessionDialogService? dialogs,
+        IProjectLogoStore? logos = null,
+        IProjectOwnershipRegistry? ownership = null,
+        ISharedProjectSourceRegistry? sharedSources = null)
     {
         _store = store;
         _dialogs = dialogs;
         _logos = logos;
+        _ownership = ownership;
+        _sharedSources = sharedSources;
     }
 
     /// <summary>The saved projects in the order they are stored — what the manager lists and edits.</summary>
@@ -61,6 +93,33 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     /// <summary>How many of them the sidebar shows.</summary>
     private const int SidebarLimit = 5;
+
+    /// <summary>
+    /// How long <see cref="LoadSharedProjectsAsync"/> waits on one source before treating it as failed — one slow
+    /// or hung connection must not hold up every other source's rows, let alone the whole workspace. Internal and
+    /// mutable (rather than a private constant) purely as a test seam: a real 10s wait has no place in a unit test
+    /// that wants to prove the timeout path itself.
+    /// </summary>
+    internal static TimeSpan SharedProjectSourceTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Shared projects (AC-245), one group per registered <see cref="ISharedProjectSource"/> — "Shared via Depot —
+    /// Work" — already bound projects and this machine's own hidden ones filtered out. Empty until
+    /// <see cref="LoadSharedProjectsAsync"/> has run at least once; <see cref="LoadAsync"/> starts it in the
+    /// background rather than waiting on it, so opening the workspace never blocks on a slow or unreachable
+    /// connection — see that method's own remarks.
+    /// </summary>
+    public ObservableCollection<SharedProjectGroupViewModel> SharedProjectGroups { get; } = [];
+
+    /// <summary>Whether there is anything to show under a "Shared" heading right now — lets the workspace leave the whole section out rather than draw an empty one.</summary>
+    public bool HasSharedProjects => SharedProjectGroups.Count > 0;
+
+    /// <summary>
+    /// Whether the workspace has nothing at all to show — what the "No projects yet" empty state is gated on
+    /// instead of <c>!HasProjects</c> alone, so that text does not sit above a populated "Shared via …" section
+    /// once one arrives a moment after the window opens (<see cref="LoadSharedProjectsAsync"/> runs in the background).
+    /// </summary>
+    public bool HasNothingToShow => !HasProjects && !HasSharedProjects;
 
     /// <summary>True when there are more projects than the sidebar shows, so it can say where the others are.</summary>
     public bool HasMoreThanSidebarShows => Projects.Count > SidebarLimit;
@@ -122,11 +181,183 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         return viewModel;
     }
 
-    /// <summary>Reads the saved projects. Called when Options opens, so an edit made elsewhere is reflected rather than overwritten.</summary>
+    /// <summary>
+    /// <see cref="DesignSample"/> plus shared-project groups (AC-245), staged directly rather than through
+    /// <see cref="LoadSharedProjectsAsync"/> — there is no <see cref="ISharedProjectSource"/> or host in a headless
+    /// render, the same reason <c>_ProjectEditorWithMemorySourceReachability</c> (Screenshotter) stages its own
+    /// state directly instead of going through a real check delegate. One group with two rows (a name/description/
+    /// role each), one group carrying an error instead — the two states the workspace actually draws differently.
+    /// </summary>
+    internal static ProjectsViewModel DesignSampleWithSharedProjects()
+    {
+        var viewModel = DesignSample();
+        viewModel.SharedProjectGroups.Add(new SharedProjectGroupViewModel(
+            "Depot — Work",
+            [
+                new SharedProject("depot:onboarding", "Onboarding flow")
+                {
+                    Description = "New-hire checklist and the tooling walkthrough.",
+                    Role = "Editor",
+                },
+                new SharedProject("depot:roadmap", "Product roadmap") { Role = "Viewer" },
+            ],
+            Error: null));
+        viewModel.SharedProjectGroups.Add(new SharedProjectGroupViewModel(
+            "Depot — Personal", [], "Sign in to this Depot connection to see its shared projects."));
+
+        return viewModel;
+    }
+
+    /// <summary>
+    /// Reads the saved projects. Called when Options opens, so an edit made elsewhere is reflected rather than
+    /// overwritten. Deliberately does not wait on <see cref="LoadSharedProjectsAsync"/> — it only starts it: the
+    /// caller (<c>SessionDialogService.ShowProjectsDialogAsync</c>) awaits this before the workspace window is
+    /// even constructed, and a Depot connection that is slow or unreachable must not hold that window closed while
+    /// the local projects it already has sit ready.
+    /// </summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
         _Republish();
+
+        _sharedProjectsLoadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _sharedProjectsLoadCts = cts;
+        SharedProjectsLoadTask = LoadSharedProjectsAsync(cts.Token);
+    }
+
+    /// <summary>
+    /// Fills <see cref="SharedProjectGroups"/> from every registered <see cref="ISharedProjectSource"/> (AC-245).
+    /// Public (rather than folded into <see cref="LoadAsync"/>) so a test can await it directly instead of racing
+    /// the fire-and-forget call <see cref="LoadAsync"/> makes.
+    /// <para>
+    /// A shared project already bound to a local one (its <see cref="SharedProject.Id"/> matches a
+    /// <see cref="ProjectResourceRole.Memory"/> row somewhere in <see cref="ProjectSettings.Projects"/>) is left out
+    /// — it already shows under "On this machine" — and, for that local project, has its origin claimed through
+    /// <see cref="IProjectOwnershipRegistry"/> (AC-604's own seam) so the editor can draw the ◆ Shared badge on it.
+    /// This runs from here rather than from the plugin that contributed the source: a plugin never sees the local
+    /// project list (it would have to reference <c>Cockpit.Core</c>, which no plugin project does), while this view
+    /// model already loaded both lists a moment ago.
+    /// </para>
+    /// A shared project hidden on this machine (<see cref="ProjectSettings.HiddenSharedProjectIds"/>) is left out
+    /// the same way. One source failing (not signed in, unreachable, timed out) only empties its own group — every
+    /// other source's rows are unaffected — and an empty, error-free group is left out entirely rather than shown
+    /// as a heading over nothing.
+    /// </summary>
+    public async Task LoadSharedProjectsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_sharedSources is null)
+        {
+            return;
+        }
+
+        var sources = _sharedSources.Sources;
+        if (sources.Count == 0)
+        {
+            SharedProjectGroups.Clear();
+            return;
+        }
+
+        var boundIds = new HashSet<string>(
+            _settings.Projects
+                .SelectMany(project => project.Resources)
+                .Where(resource => resource.Role == ProjectResourceRole.Memory)
+                .Select(resource => resource.Reference),
+            StringComparer.Ordinal);
+        var hiddenIds = new HashSet<string>(_settings.HiddenSharedProjectIds, StringComparer.Ordinal);
+
+        var results = await Task.WhenAll(sources.Select(source => _ListWithTimeoutAsync(source, cancellationToken)))
+            .ConfigureAwait(true);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            // A newer LoadSharedProjectsAsync call superseded this one (LoadAsync cancels the previous token) —
+            // its own results, not this stale run's, belong in SharedProjectGroups.
+            return;
+        }
+
+        var groups = new List<SharedProjectGroupViewModel>();
+        foreach (var (source, result) in sources.Zip(results))
+        {
+            // Claiming runs over every project this source reported, bound or not — a project already bound is
+            // exactly the one this claim is for (it is what makes the editor draw the ◆ Shared badge on it), even
+            // though it never appears in this source's own group below (it already shows under "On this machine").
+            if (result.Succeeded && _ownership is not null)
+            {
+                _ClaimBoundProjects(result.Projects, source.SourceName);
+            }
+
+            var visible = result.Succeeded
+                ? result.Projects.Where(project => !boundIds.Contains(project.Id) && !hiddenIds.Contains(project.Id)).ToList()
+                : [];
+
+            if (visible.Count == 0 && result.Succeeded)
+            {
+                continue;
+            }
+
+            groups.Add(new SharedProjectGroupViewModel(source.SourceName, visible, result.Succeeded ? null : result.Error));
+        }
+
+        SharedProjectGroups.Clear();
+        foreach (var group in groups)
+        {
+            SharedProjectGroups.Add(group);
+        }
+
+        OnPropertyChanged(nameof(HasSharedProjects));
+        OnPropertyChanged(nameof(HasNothingToShow));
+    }
+
+    /// <summary>Claims every local project bound to one of <paramref name="sharedProjects"/> as owned by <paramref name="sourceName"/> — see <see cref="LoadSharedProjectsAsync"/>'s own remarks.</summary>
+    private void _ClaimBoundProjects(IReadOnlyList<SharedProject> sharedProjects, string sourceName)
+    {
+        if (sharedProjects.Count == 0)
+        {
+            return;
+        }
+
+        var sharedIds = sharedProjects.Select(project => project.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var project in _settings.Projects)
+        {
+            var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
+            if (boundTo is { Length: > 0 } && sharedIds.Contains(boundTo))
+            {
+                // A geclaimed field is locked host-side regardless of IsEditable today — there is nowhere yet for
+                // an edit to be written back to (AC-247). See ProjectFieldOwnership's own remarks; not setting this
+                // true here is deliberate, not an oversight.
+                _ownership!.Register(new ProjectOwnershipRegistration(project.Id, new ProjectFieldOwnership(sourceName)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// One source's projects, or a timeout failure if it does not answer within <see cref="_SharedProjectSourceTimeout"/>
+    /// — and, defensively, a failure if the source throws instead of reporting one through
+    /// <see cref="SharedProjectListResult.Failed"/> as its own contract asks. Never throws: a call superseded by a
+    /// newer <see cref="LoadSharedProjectsAsync"/> (its <paramref name="cancellationToken"/> cancelled) also lands
+    /// here as an (ignored — see that method's own stale-result check) failure rather than an unobserved exception
+    /// on this fire-and-forget call.
+    /// </summary>
+    private static async Task<SharedProjectListResult> _ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        try
+        {
+            var listTask = source.ListAsync(timeoutCts.Token);
+            var completed = await Task.WhenAny(listTask, Task.Delay(SharedProjectSourceTimeout, cancellationToken)).ConfigureAwait(true);
+            if (completed != listTask)
+            {
+                timeoutCts.Cancel();
+                return SharedProjectListResult.Failed("Timed out waiting for a response.");
+            }
+
+            return await listTask.ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            return SharedProjectListResult.Failed(exception.Message);
+        }
     }
 
     [RelayCommand]
@@ -253,6 +484,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         SelectedProject = Projects.FirstOrDefault(project => project.Id == selectedId);
         OnPropertyChanged(nameof(HasProjects));
+        OnPropertyChanged(nameof(HasNothingToShow));
         OnPropertyChanged(nameof(ProjectCount));
         OnPropertyChanged(nameof(OpenedProjectCount));
         OnPropertyChanged(nameof(MostRecentProject));
