@@ -84,12 +84,22 @@ public interface IAssistantReadGateway
 /// "for that project" ought to run in.
 /// </param>
 /// <param name="DefaultProfileLabel">The profile its sessions default to, by label, or null when it names none.</param>
+/// <param name="Links">
+/// What this project is called elsewhere, keyed by the plugin field that named it —
+/// <see cref="Cockpit.Core.Projects.Project.PluginFields"/> verbatim, e.g. <c>{"youtrack.project": "AC"}</c>.
+/// Empty for a project no plugin has linked. This is what turns
+/// "pick up AC-555" into a lookup rather than a guess: match the ticket's prefix against a project's
+/// <c>youtrack.project</c> value here before ever calling into YouTrack for the issue itself.
+/// </param>
+/// <param name="GitUrl">The repository <see cref="SourceDirectory"/> was cloned from, or null when the folder was picked rather than cloned.</param>
 public sealed record AssistantProjectRow(
     string Id,
     string Name,
     string? Description,
     string? SourceDirectory,
-    string? DefaultProfileLabel);
+    string? DefaultProfileLabel,
+    IReadOnlyDictionary<string, string> Links,
+    string? GitUrl);
 
 /// <summary>
 /// The tail of one session's transcript, plus what it takes to know that it <em>is</em> a tail.
@@ -151,6 +161,13 @@ public sealed record AssistantTranscriptEntry(string Kind, string Text, string? 
 /// <param name="NeedsYou">
 /// Whether this session is stopped on a permission nobody has answered.
 /// </param>
+/// <param name="Ready">
+/// Whether a prompt handed to this session right now would actually reach the agent — the same
+/// <c>SessionPanelViewModel.CanTakeAPrompt</c> every other waker in the cockpit already reads (AC-395's wake,
+/// AC-234's scheduled resume, <c>WorkspaceAgentGateway</c>), not a second opinion computed here. Worth its own
+/// field because <paramref name="Status"/> cannot carry it: a pane that never came up and a pane that finished a
+/// turn are both <c>Idle</c>, and that is exactly the pair this field is for telling apart.
+/// </param>
 /// <remarks>
 /// <b>Why <paramref name="NeedsYou"/> is worth its own field.</b> "Who is waiting for me" is the most ordinary
 /// question to ask a cockpit out loud, and until this existed the assistant could only answer it by reading
@@ -165,4 +182,5 @@ public sealed record AssistantSessionRow(
     string? WorkspaceId,
     string? WorkspaceName,
     string Status = "",
-    bool NeedsYou = false);
+    bool NeedsYou = false,
+    bool Ready = false);

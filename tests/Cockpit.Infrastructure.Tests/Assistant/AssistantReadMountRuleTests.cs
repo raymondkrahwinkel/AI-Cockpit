@@ -88,6 +88,35 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         Assert.True((bool)session["hasStatusline"]!);
     }
 
+    /// <summary>
+    /// The gap this ticket exists to close: <see cref="ListSessions_FromTheAssistantsOwnPane_Answers"/> above checks
+    /// three fields by name and would not notice a fourth silently missing — which is exactly how <c>status</c> and
+    /// <c>needsYou</c> went missing from the wire the first time even though <see cref="AssistantSessionRow"/> and
+    /// the description both already promised them. This test pins the whole shape instead, and derives what "whole"
+    /// means from <see cref="AssistantSessionRow"/>'s own properties via reflection rather than a second, hand-typed
+    /// list of field names — so a field added to the row later and never wired into the projection fails this test
+    /// immediately instead of shipping unnoticed a second time.
+    /// </summary>
+    [Fact]
+    public async Task ListSessions_JsonShape_CoversEveryFieldOnAssistantSessionRow()
+    {
+        _gateway.ListSessionsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSessionRow>>(
+            [new AssistantSessionRow("pane-1", "AC-223", "Opus", "AC-223 — writing tests", "ws-2", "Cockpit", "Busy", true, true)]));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ListSessionsAsync());
+        var actualKeys = ((JsonObject)result["sessions"]!.AsArray()[0]!).Select(field => field.Key).ToHashSet();
+
+        // Every record property, camelCased the way System.Text.Json's default naming would — plus hasStatusline,
+        // the one field that is derived (an empty-string check) rather than a property of the row itself.
+        var expectedKeys = typeof(AssistantSessionRow).GetProperties()
+            .Select(property => char.ToLowerInvariant(property.Name[0]) + property.Name[1..])
+            .Append("hasStatusline")
+            .ToHashSet();
+
+        Assert.Equal(expectedKeys, actualKeys);
+    }
+
     [Fact]
     public void TheBroadReadServer_IsNeverInTheNoSelectionFanOut()
     {
