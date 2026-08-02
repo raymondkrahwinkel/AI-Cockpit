@@ -2,29 +2,27 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>Which of the shapes <see cref="AutopilotEpicRunner.ResolveAsync"/> can end in.</summary>
+// Which of the shapes `AutopilotEpicRunner.ResolveAsync` can end in.
 internal enum AutopilotEpicOutcomeKind
 {
-    /// <summary>The clicked item has no children — an ordinary issue. The caller runs its existing, unchanged path.</summary>
+    // The clicked item has no children — an ordinary issue. The caller runs its existing, unchanged path.
     NotEpic,
 
-    /// <summary>The next executable sub was found and Ready; <see cref="AutopilotEpicOutcome.Run"/> is what to plan.</summary>
+    // The next executable sub was found and Ready; `AutopilotEpicOutcome.Run` is what to plan.
     Ready,
 
-    /// <summary>
-    /// The chain cannot proceed right now and pauses — <see cref="AutopilotEpicOutcome.PausedSubId"/> (when a specific
-    /// sub is the reason) and <see cref="AutopilotEpicOutcome.Reason"/> say why. Covers every "do not silently guess"
-    /// case alike: the next sub is not Ready, it is itself a nested epic, its merge status could not be determined, or
-    /// the epic's own link structure could not be read — all of these get a comment on the epic and no run, rather than
-    /// either skipping ahead or (worse) re-running something that may already be done.
-    /// </summary>
+    // The chain cannot proceed right now and pauses — `AutopilotEpicOutcome.PausedSubId` (when a specific
+    // sub is the reason) and `AutopilotEpicOutcome.Reason` say why. Covers every "do not silently guess"
+    // case alike: the next sub is not Ready, it is itself a nested epic, its merge status could not be determined, or
+    // the epic's own link structure could not be read — all of these get a comment on the epic and no run, rather than
+    // either skipping ahead or (worse) re-running something that may already be done.
     Paused,
 
-    /// <summary>Every sub is already merged into <c>origin/main</c> — the epic is done, nothing to plan.</summary>
+    // Every sub is already merged into `origin/main` — the epic is done, nothing to plan.
     Complete,
 }
 
-/// <summary>The result of resolving an epic click to its next sub (AC-346), or the reason it is not one.</summary>
+// The result of resolving an epic click to its next sub (AC-346), or the reason it is not one.
 internal sealed record AutopilotEpicOutcome(AutopilotEpicOutcomeKind Kind, AutopilotRun? Run, string? PausedSubId, string? Reason)
 {
     public static AutopilotEpicOutcome NotEpic { get; } = new(AutopilotEpicOutcomeKind.NotEpic, null, null, null);
@@ -33,35 +31,30 @@ internal sealed record AutopilotEpicOutcome(AutopilotEpicOutcomeKind Kind, Autop
     public static AutopilotEpicOutcome Paused(string? subId, string reason) => new(AutopilotEpicOutcomeKind.Paused, null, subId, reason);
 }
 
-/// <summary>
-/// The AC-346 orchestration layer: starting Autopilot on an epic (an issue with subs) instead of a single item. Sits
-/// entirely ahead of the existing single-issue pipeline — <see cref="ResolveAsync"/> either says "not an epic" (the
-/// caller's existing path is untouched) or hands back the one <see cref="AutopilotRun"/> to plan next, built exactly
-/// the way <see cref="AutopilotRun.FromIntent"/> would have built it for that sub if it had been clicked directly.
-/// Nothing here changes how a run itself executes — this only decides <em>which</em> run to start, once, per call.
-/// <para>
-/// Reads the epic's children via <c>"parent for"</c> links (YouTrack: <c>has: {parent for}</c>), the order among them
-/// via <c>"depends on"</c> links (<see cref="EpicSubTopologicalOrder"/>), skips a sub already in <c>origin/main</c>
-/// (<see cref="IEpicSubMergeChecker"/> — merge-ready is not the same as merged), and gates the first sub left standing
-/// through the same <see cref="AutopilotReadyGate"/> a single-issue run already passes through — an epic's own
-/// stage/text says nothing about which sub is executable, only the sub's own does.
-/// </para>
-/// <para>
-/// The <c>ResolveAsync → one Run → the caller plans it → the pipeline stops at merge-ready</c> shape <em>is</em> the
-/// "stop bij merge-klaar" gate the ticket's DoD calls out: this method returns after the first Ready sub it finds and
-/// never looks past it, so one call can never produce more than one run. Nothing outside a fresh call to this method
-/// (i.e. a fresh trigger, after the human merged) ever asks it for a second sub.
-/// </para>
-/// <para>
-/// Nested epics (AC-346 review finding): a sub that itself has "parent for" children would, if handed unchanged into
-/// the single-issue pipeline, be planned by the CEO under the existing AC-217 behaviour that pulls <em>all</em> of an
-/// epic's children into one plan — silently absorbing a whole subtree into one run and bypassing this class's
-/// one-sub-at-a-time, stop-at-merge-ready gate one level down. Rather than unroll nested epics too (out of this
-/// ticket's scope) or risk that silent bypass, a sub found to have its own children is treated as not executable —
-/// the chain pauses on it, explicitly, the same as a sub that failed the Ready gate. The safer of the two failure
-/// modes the independent review asked to choose between.
-/// </para>
-/// </summary>
+// The AC-346 orchestration layer: starting Autopilot on an epic (an issue with subs) instead of a single item. Sits
+// entirely ahead of the existing single-issue pipeline — `ResolveAsync` either says "not an epic" (the
+// caller's existing path is untouched) or hands back the one `AutopilotRun` to plan next, built exactly
+// the way `AutopilotRun.FromIntent` would have built it for that sub if it had been clicked directly.
+// Nothing here changes how a run itself executes — this only decides *which* run to start, once, per call.
+//
+// Reads the epic's children via `"parent for"` links (YouTrack: `has: {parent for}`), the order among them
+// via `"depends on"` links (`EpicSubTopologicalOrder`), skips a sub already in `origin/main`
+// (`IEpicSubMergeChecker` — merge-ready is not the same as merged), and gates the first sub left standing
+// through the same `AutopilotReadyGate` a single-issue run already passes through — an epic's own
+// stage/text says nothing about which sub is executable, only the sub's own does.
+//
+// The `ResolveAsync → one Run → the caller plans it → the pipeline stops at merge-ready` shape *is* the
+// "stop bij merge-klaar" gate the ticket's DoD calls out: this method returns after the first Ready sub it finds and
+// never looks past it, so one call can never produce more than one run. Nothing outside a fresh call to this method
+// (i.e. a fresh trigger, after the human merged) ever asks it for a second sub.
+//
+// Nested epics (AC-346 review finding): a sub that itself has "parent for" children would, if handed unchanged into
+// the single-issue pipeline, be planned by the CEO under the existing AC-217 behaviour that pulls *all* of an
+// epic's children into one plan — silently absorbing a whole subtree into one run and bypassing this class's
+// one-sub-at-a-time, stop-at-merge-ready gate one level down. Rather than unroll nested epics too (out of this
+// ticket's scope) or risk that silent bypass, a sub found to have its own children is treated as not executable —
+// the chain pauses on it, explicitly, the same as a sub that failed the Ready gate. The safer of the two failure
+// modes the independent review asked to choose between.
 internal static class AutopilotEpicRunner
 {
     // Exactly the link-type strings YouTrack (and any future tracker) reports for these two relationships, resolved
@@ -70,14 +63,12 @@ internal static class AutopilotEpicRunner
     private const string ChildLinkType = "parent for";
     private const string DependsOnLinkType = "depends on";
 
-    /// <summary>
-    /// Resolves what a "plan" intent on <paramref name="clicked"/> should actually run. Reads <paramref name="clicked"/>'s
-    /// links once; when it has no <c>"parent for"</c> children this is <see cref="AutopilotEpicOutcome.NotEpic"/> and
-    /// costs the caller nothing beyond that one read. An epic reads each child's own links in turn (bounded by the
-    /// epic's own sub count — never large) to build the depends-on order and to check for a nested epic, refreshes
-    /// <paramref name="mergeChecker"/> once, then walks the order asking it whether each sub is already delivered
-    /// before gating the first one that is not.
-    /// </summary>
+    // Resolves what a "plan" intent on `clicked` should actually run. Reads `clicked`'s
+    // links once; when it has no `"parent for"` children this is `AutopilotEpicOutcome.NotEpic` and
+    // costs the caller nothing beyond that one read. An epic reads each child's own links in turn (bounded by the
+    // epic's own sub count — never large) to build the depends-on order and to check for a nested epic, refreshes
+    // `mergeChecker` once, then walks the order asking it whether each sub is already delivered
+    // before gating the first one that is not.
     public static async Task<AutopilotEpicOutcome> ResolveAsync(
         ITrackerProvider provider,
         AutopilotRun clicked,

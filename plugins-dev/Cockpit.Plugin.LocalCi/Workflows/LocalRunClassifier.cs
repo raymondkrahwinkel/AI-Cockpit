@@ -1,51 +1,41 @@
 namespace Cockpit.Plugin.LocalCi.Workflows;
 
-/// <summary>
-/// Decides, per job, whether it is worth running on this machine — and when it is not, says which construct decided
-/// that. Deciding what we are willing to run is policy and stays ours; act would happily attempt whatever it is
-/// handed, and a job that runs half of itself and goes green is worse than a job that never ran.
-/// </summary>
-/// <remarks>
-/// The rule that shapes everything here: <b>anything not understood is refused</b>. Each construct must be on a list
-/// to pass, so a workflow key added by GitHub next year makes a job unrunnable rather than quietly ignored. The
-/// checks run in a fixed order so a job with two problems always reports the same one, which is what lets a test
-/// assert a reason rather than a set of them.
-/// </remarks>
+// Decides, per job, whether it is worth running on this machine — and when it is not, says which construct decided
+// that. Deciding what we are willing to run is policy and stays ours; act would happily attempt whatever it is
+// handed, and a job that runs half of itself and goes green is worse than a job that never ran.
+// The rule that shapes everything here: *anything not understood is refused*. Each construct must be on a list
+// to pass, so a workflow key added by GitHub next year makes a job unrunnable rather than quietly ignored. The
+// checks run in a fixed order so a job with two problems always reports the same one, which is what lets a test
+// assert a reason rather than a set of them.
 internal static class LocalRunClassifier
 {
-    /// <summary>
-    /// The two actions that cost nothing locally: the worktree already is the checkout, and the SDK is in the image.
-    /// Every other <c>uses:</c> blocks the job unless someone adds it here with the reason it is free.
-    /// </summary>
+    // The two actions that cost nothing locally: the worktree already is the checkout, and the SDK is in the image.
+    // Every other `uses:` blocks the job unless someone adds it here with the reason it is free.
     private static readonly HashSet<string> LocallyFreeActions = new(StringComparer.OrdinalIgnoreCase)
     {
         "actions/checkout",
         "actions/setup-dotnet",
     };
 
-    /// <summary>Named apart from the rest only so the reason names the thing the operator recognises.</summary>
+    // Named apart from the rest only so the reason names the thing the operator recognises.
     private static readonly HashSet<string> ArtifactActions = new(StringComparer.OrdinalIgnoreCase)
     {
         "actions/upload-artifact",
         "actions/download-artifact",
     };
 
-    /// <summary>
-    /// Job keys we have read and that do not change whether the job can run here. <c>permissions</c>, <c>concurrency</c>
-    /// and <c>timeout-minutes</c> are on the list because they only govern GitHub's own scheduling; <c>needs</c> is on
-    /// it because ordering is not the same as exchanging artifacts, which is caught on its own below.
-    /// </summary>
+    // Job keys we have read and that do not change whether the job can run here. `permissions`, `concurrency`
+    // and `timeout-minutes` are on the list because they only govern GitHub's own scheduling; `needs` is on
+    // it because ordering is not the same as exchanging artifacts, which is caught on its own below.
     private static readonly HashSet<string> UnderstoodJobKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "name", "runs-on", "steps", "needs", "if", "env", "defaults", "outputs", "permissions", "concurrency",
         "timeout-minutes", "strategy",
     };
 
-    /// <summary>
-    /// What may sit under <c>strategy</c>. <c>matrix</c> is caught first and on its own; the other two only govern
-    /// how GitHub schedules a set of runs, which is nothing to a single local one — so a strategy without a matrix
-    /// must not be refused merely for existing.
-    /// </summary>
+    // What may sit under `strategy`. `matrix` is caught first and on its own; the other two only govern
+    // how GitHub schedules a set of runs, which is nothing to a single local one — so a strategy without a matrix
+    // must not be refused merely for existing.
     private static readonly HashSet<string> UnderstoodStrategyKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "matrix", "fail-fast", "max-parallel",
@@ -56,7 +46,7 @@ internal static class LocalRunClassifier
         "name", "id", "if", "run", "uses", "with", "env", "shell", "working-directory", "timeout-minutes",
     };
 
-    /// <summary>Keys we do understand and refuse anyway — worth their own sentence instead of "not understood".</summary>
+    // Keys we do understand and refuse anyway — worth their own sentence instead of "not understood".
     private static readonly Dictionary<string, string> RefusedJobKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         ["container"] = "it runs the whole job inside a container of its own, which this plugin does not set up",
@@ -77,11 +67,9 @@ internal static class LocalRunClassifier
             + "it, so a local result would not mean the same thing",
     };
 
-    /// <summary>
-    /// Top-level keys that hold for the whole file and change nothing about running one job here. <c>defaults</c> is
-    /// deliberately absent: it sets the shell and working directory of every run step in the file, which is exactly
-    /// the kind of thing that decides whether a job does what it looks like it does.
-    /// </summary>
+    // Top-level keys that hold for the whole file and change nothing about running one job here. `defaults` is
+    // deliberately absent: it sets the shell and working directory of every run step in the file, which is exactly
+    // the kind of thing that decides whether a job does what it looks like it does.
     private static readonly HashSet<string> UnderstoodWorkflowKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "name", "run-name", "on", "jobs", "permissions", "concurrency", "env",
@@ -208,11 +196,9 @@ internal static class LocalRunClassifier
     private static string? _FirstRefused(IReadOnlyList<string> keys, Dictionary<string, string> refused) =>
         keys.Select(key => refused.GetValueOrDefault(key)).FirstOrDefault(reason => reason is not null);
 
-    /// <summary>
-    /// The GitHub-hosted Linux runners, by name rather than by an <c>ubuntu-</c> prefix. A prefix would also match a
-    /// larger runner (<c>ubuntu-latest-4-cores</c>), an arm image, and any self-hosted label someone chose to start
-    /// with the word — none of which is the standard runner this check means when it says a job can run here.
-    /// </summary>
+    // The GitHub-hosted Linux runners, by name rather than by an `ubuntu-` prefix. A prefix would also match a
+    // larger runner (`ubuntu-latest-4-cores`), an arm image, and any self-hosted label someone chose to start
+    // with the word — none of which is the standard runner this check means when it says a job can run here.
     private static readonly HashSet<string> LinuxRunnerLabels = new(StringComparer.OrdinalIgnoreCase)
     {
         "ubuntu-latest", "ubuntu-24.04", "ubuntu-22.04", "ubuntu-20.04",

@@ -4,13 +4,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubModelsProvider;
 
-/// <summary>
-/// <see cref="IPluginSessionDriver"/> for this plugin's GitHub Models provider, over an OpenAI-compatible
-/// <see cref="IChatClient"/> (#45/#63) — mirrors the shape of the host's own
-/// <c>Cockpit.Infrastructure.Sessions.OpenAiCompatSessionDriver</c> (history/streaming/error handling), minus
-/// its MCP tool-loop: a plugin has no tool source of its own, so this driver is chat/streaming only
-/// (<see cref="Capabilities"/> reports no tool support).
-/// </summary>
+// `IPluginSessionDriver` for this plugin's GitHub Models provider, over an OpenAI-compatible
+// `IChatClient` (#45/#63) — mirrors the shape of the host's own
+// `Cockpit.Infrastructure.Sessions.OpenAiCompatSessionDriver` (history/streaming/error handling), minus
+// its MCP tool-loop: a plugin has no tool source of its own, so this driver is chat/streaming only
+// (`Capabilities` reports no tool support).
 internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel) : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();

@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>
-/// Classifies a resource reference into one of the four <see cref="ProjectResourcePortability"/> shapes. Only
-/// <see cref="ProjectResourcePortability.RepoRelative"/> and <see cref="ProjectResourcePortability.PluginSource"/> travel with a shared <c>.cockpit/project.json</c> (AC-244 decision, 2026-08-02).
-/// </summary>
+// Classifies a resource reference into one of the four `ProjectResourcePortability` shapes. Only
+// `ProjectResourcePortability.RepoRelative` and `ProjectResourcePortability.PluginSource` travel with a shared `.cockpit/project.json` (AC-244 decision, 2026-08-02).
 // AC-244 finding (2026-08-02, measured against Cockpit.Core.Projects.ProjectResourcePathPortability.IsMachineBound):
 // it disagrees with this classifier, silently, on "~/x" and on an absolute-but-inside-SourceDirectory reference
 // that bypassed ToStoredReference — the editor shows no warning for either, this classifier drops both. Not fixed

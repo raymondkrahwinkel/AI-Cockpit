@@ -11,14 +11,12 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// The Depot settings view, drawn (AC-243, IL#9) — this is the screen the ticket exists to add (the plugin "has no
-/// settings, no side-menu entry and no dialog" before this), so it has to be visually verifiable without Raymond
-/// opening it by hand. The rest of the suite asks whether <see cref="DepotSettingsControl.Save"/> behaves; this asks
-/// what the view looks like in the cockpit's own theme — the same distinction
-/// <c>Cockpit.Plugin.Workflows.Tests.CanvasThemeRenderTests</c> draws, and the same failure mode it exists to catch:
-/// a control styled outside a shown window renders foreground-on-background as though the theme never loaded.
-/// </summary>
+// The Depot settings view, drawn (AC-243, IL#9) — this is the screen the ticket exists to add (the plugin "has no
+// settings, no side-menu entry and no dialog" before this), so it has to be visually verifiable without Raymond
+// opening it by hand. The rest of the suite asks whether `DepotSettingsControl.Save` behaves; this asks
+// what the view looks like in the cockpit's own theme — the same distinction
+// `Cockpit.Plugin.Workflows.Tests.CanvasThemeRenderTests` draws, and the same failure mode it exists to catch:
+// a control styled outside a shown window renders foreground-on-background as though the theme never loaded.
 [Collection("avalonia")]
 public class DepotSettingsRenderTests
 {

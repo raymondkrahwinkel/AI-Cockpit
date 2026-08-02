@@ -3,15 +3,13 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// AC-347 backward compatibility: the new fields on <see cref="AutopilotRunRecord"/>/<see cref="AutopilotRunStepRecord"/>
-/// round-trip through storage, and — the case that actually matters — JSON persisted before this change (no
-/// Attempts/Reworks/Correction/RunId/Ticket/BlockadeAnswers/PullRequestMissing at all) still deserializes, reading back
-/// the new fields' defaults.
-/// </summary>
+// AC-347 backward compatibility: the new fields on `AutopilotRunRecord`/`AutopilotRunStepRecord`
+// round-trip through storage, and — the case that actually matters — JSON persisted before this change (no
+// Attempts/Reworks/Correction/RunId/Ticket/BlockadeAnswers/PullRequestMissing at all) still deserializes, reading back
+// the new fields' defaults.
 public class AutopilotRunHistoryCompatibilityTests
 {
-    /// <summary>An in-memory <see cref="IPluginStorage"/> that round-trips through JSON, the way the host's real storage does.</summary>
+    // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does.
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);

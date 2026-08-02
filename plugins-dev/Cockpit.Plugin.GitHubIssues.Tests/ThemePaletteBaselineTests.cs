@@ -7,16 +7,12 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// This plugin's half of the AC-338 theme-palette baseline: what its own dialog actually paints, held against a
-/// committed file the same way <c>Cockpit.App.ViewTests.ThemePaletteBaselineTests</c> holds the host's. One
-/// surface stands in for the plugin — the issue dialog, with a couple of issues loaded and one selected so the
-/// list and the detail panel both render.
-/// </summary>
-/// <remarks>
-/// To re-record after an intended change: run with <c>COCKPIT_UPDATE_THEME_BASELINES=1</c>, review the diff, then
-/// run again without it. The rewriting run still fails on purpose.
-/// </remarks>
+// This plugin's half of the AC-338 theme-palette baseline: what its own dialog actually paints, held against a
+// committed file the same way `Cockpit.App.ViewTests.ThemePaletteBaselineTests` holds the host's. One
+// surface stands in for the plugin — the issue dialog, with a couple of issues loaded and one selected so the
+// list and the detail panel both render.
+// To re-record after an intended change: run with `COCKPIT_UPDATE_THEME_BASELINES=1`, review the diff, then
+// run again without it. The rewriting run still fails on purpose.
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
@@ -36,20 +32,16 @@ public class ThemePaletteBaselineTests
         ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, Scene), painted);
     });
 
-    /// <summary>
-    /// The other direction (AC-414): the check above names the one scene this plugin has, so a baseline left over
-    /// from a renamed or removed one stays behind green, because nothing reads it any more.
-    /// </summary>
+    // The other direction (AC-414): the check above names the one scene this plugin has, so a baseline left over
+    // from a renamed or removed one stays behind green, because nothing reads it any more.
     [Fact]
     public void EveryBaseline_BelongsToASceneThatStillExists() =>
         ThemePaletteBaseline.VerifyNoOrphans(BaselineDirectory, [Scene]);
 
-    /// <summary>
-    /// Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour
-    /// arrives through a selector, which only runs once a control reaches a shown window's styling root. A tree
-    /// that is only measured, never shown, would still resolve its resource lookups and pass a plausible-looking
-    /// but wrong report.
-    /// </summary>
+    // Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour
+    // arrives through a selector, which only runs once a control reaches a shown window's styling root. A tree
+    // that is only measured, never shown, would still resolve its resource lookups and pass a plausible-looking
+    // but wrong report.
     [Fact]
     public void TheHarness_ShowsItsWindow_SoTheThemesSelectorsHaveRun() => HeadlessAvalonia.Run(() =>
     {

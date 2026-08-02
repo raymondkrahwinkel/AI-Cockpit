@@ -4,18 +4,16 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GeminiProvider;
 
-/// <summary>
-/// Fase A worked example provider-plugin (#45): registers two session providers, Gemini and OpenAI, both
-/// backed by the same <see cref="OpenAiCompatPluginSessionDriverFactory"/> — they differ only in which
-/// OpenAI-compatible base URL a profile targets. Chat-only capabilities (no tools/permissions/live model
-/// switch/plan mode/thinking) — see <see cref="OpenAiCompatPluginSessionDriver.Capabilities"/>.
-/// </summary>
+// Fase A worked example provider-plugin (#45): registers two session providers, Gemini and OpenAI, both
+// backed by the same `OpenAiCompatPluginSessionDriverFactory` — they differ only in which
+// OpenAI-compatible base URL a profile targets. Chat-only capabilities (no tools/permissions/live model
+// switch/plan mode/thinking) — see `OpenAiCompatPluginSessionDriver.Capabilities`.
 public sealed class GeminiProviderPlugin : ICockpitPlugin
 {
-    /// <summary>Gemini's OpenAI-compatible endpoint (ai.google.dev/gemini-api/docs/openai).</summary>
+    // Gemini's OpenAI-compatible endpoint (ai.google.dev/gemini-api/docs/openai).
     internal const string GeminiDefaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/";
 
-    /// <summary>OpenAI's own Chat Completions endpoint.</summary>
+    // OpenAI's own Chat Completions endpoint.
     internal const string OpenAiDefaultBaseUrl = "https://api.openai.com/v1";
 
     public PluginMetadata Metadata { get; } = new(

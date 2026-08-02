@@ -5,12 +5,10 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.FanOut;
 
-/// <summary>
-/// Fan-out: one task started on several agents at once, tiled side by side. Its only contribution is a
-/// workspace type — the surface owns the whole body and embeds N host sessions in it, each isolated in its own
-/// worktree, so the arms can be read against each other afterwards instead of having fought over one checkout.
-/// The operator starts a run; nothing here spawns sessions on an agent's behalf.
-/// </summary>
+// Fan-out: one task started on several agents at once, tiled side by side. Its only contribution is a
+// workspace type — the surface owns the whole body and embeds N host sessions in it, each isolated in its own
+// worktree, so the arms can be read against each other afterwards instead of having fought over one checkout.
+// The operator starts a run; nothing here spawns sessions on an agent's behalf.
 public sealed class FanOutPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

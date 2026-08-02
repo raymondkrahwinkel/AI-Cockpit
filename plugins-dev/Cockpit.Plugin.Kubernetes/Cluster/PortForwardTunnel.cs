@@ -3,11 +3,9 @@ using k8s;
 
 namespace Cockpit.Plugin.Kubernetes.Cluster;
 
-/// <summary>
-/// One active port-forward tunnel (AC-80): a local loopback listener bridged to a pod port through a dedicated
-/// client the tunnel owns. Held by <see cref="PortForwardManager"/> so it shows in the status bar with the operator's
-/// Kill; stopping it cancels the accept loop and any live connections, closes the listener, and disposes the client.
-/// </summary>
+// One active port-forward tunnel (AC-80): a local loopback listener bridged to a pod port through a dedicated
+// client the tunnel owns. Held by `PortForwardManager` so it shows in the status bar with the operator's
+// Kill; stopping it cancels the accept loop and any live connections, closes the listener, and disposes the client.
 internal sealed class PortForwardTunnel
 {
     private readonly CancellationTokenSource _cancellation;

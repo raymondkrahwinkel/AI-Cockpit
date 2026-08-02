@@ -2,57 +2,47 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// The <c>claude</c> stream-json <em>control protocol</em> (Fase 4, SDK route) — the in-band, stdio-only permission
-/// channel that lets the cockpit answer tool-approval prompts over the same pipes the transcript streams on, with no
-/// external <c>--permission-prompt-tool</c> MCP server. This is Claude's equivalent of Codex's in-band
-/// <c>item/*/requestApproval</c> round-trip (see <c>CodexAppServerSessionDriver</c>): the CLI, running in bidirectional
-/// stream-json mode without a permission-prompt tool, sends a <c>can_use_tool</c> control_request whenever a tool needs
-/// approval, and the client answers with a control_response over stdin.
-/// </summary>
-/// <remarks>
-/// Every wire shape here is taken verbatim from the official Agent SDK's own transport
-/// (<c>claude-agent-sdk-python/src/claude_agent_sdk/_internal/query.py</c>, <c>Query._handle_control_request</c>),
-/// which implements exactly this round-trip — not reconstructed from memory:
-/// <list type="bullet">
-/// <item>Inbound (CLI → cockpit, one stdout line):
-///   <c>{"type":"control_request","request_id":"…","request":{"subtype":"can_use_tool","tool_name":"…","input":{…},"tool_use_id":"…"}}</c>.
-///   <c>tool_use_id</c> is optional (<c>permission_request.get("tool_use_id")</c>); it correlates the prompt to the
-///   <c>tool_use</c> block already seen in the transcript, the way Codex correlates on <c>itemId</c>.</item>
-/// <item>Outbound allow (cockpit → CLI, one stdin line):
-///   <c>{"type":"control_response","response":{"subtype":"success","request_id":"…","response":{"behavior":"allow","updatedInput":{…}}}}</c>.
-///   <c>updatedInput</c> defaults to the request's original <c>input</c> when unchanged.</item>
-/// <item>Outbound deny: the same envelope with <c>response:{"behavior":"deny","message":"…"}</c> — a <em>deny</em> is
-///   still a <em>success</em> callback (subtype "success"); "error" is reserved for a callback that threw.</item>
-/// <item>Startup: an <c>initialize</c> control_request (<c>{"subtype":"initialize","hooks":null}</c>) puts an SDK client
-///   on the control channel so the CLI routes permission prompts here rather than to its interactive/MCP path.</item>
-/// </list>
-/// F-C1 caveat mirrors the rest of this plugin: no logged-in <c>claude</c> CLI exists in this sandbox, so the live end
-/// of this round-trip (the CLI actually emitting <c>can_use_tool</c> for this spawn shape) needs a manual eyeball check.
-/// The parse/build round-trip below is fully unit-tested; if a field name ever drifts, it changes in this one file.
-/// </remarks>
+// The `claude` stream-json *control protocol* (Fase 4, SDK route) — the in-band, stdio-only permission
+// channel that lets the cockpit answer tool-approval prompts over the same pipes the transcript streams on, with no
+// external `--permission-prompt-tool` MCP server. This is Claude's equivalent of Codex's in-band
+// `item/*/requestApproval` round-trip (see `CodexAppServerSessionDriver`): the CLI, running in bidirectional
+// stream-json mode without a permission-prompt tool, sends a `can_use_tool` control_request whenever a tool needs
+// approval, and the client answers with a control_response over stdin.
+// Every wire shape here is taken verbatim from the official Agent SDK's own transport
+// (`claude-agent-sdk-python/src/claude_agent_sdk/_internal/query.py`, `Query._handle_control_request`),
+// which implements exactly this round-trip — not reconstructed from memory:
+// - Inbound (CLI → cockpit, one stdout line):
+//   `{"type":"control_request","request_id":"…","request":{"subtype":"can_use_tool","tool_name":"…","input":{…},"tool_use_id":"…"}}`.
+//   `tool_use_id` is optional (`permission_request.get("tool_use_id")`); it correlates the prompt to the
+//   `tool_use` block already seen in the transcript, the way Codex correlates on `itemId`.
+// - Outbound allow (cockpit → CLI, one stdin line):
+//   `{"type":"control_response","response":{"subtype":"success","request_id":"…","response":{"behavior":"allow","updatedInput":{…}}}}`.
+//   `updatedInput` defaults to the request's original `input` when unchanged.
+// - Outbound deny: the same envelope with `response:{"behavior":"deny","message":"…"}` — a *deny* is
+//   still a *success* callback (subtype "success"); "error" is reserved for a callback that threw.
+// - Startup: an `initialize` control_request (`{"subtype":"initialize","hooks":null}`) puts an SDK client
+//   on the control channel so the CLI routes permission prompts here rather than to its interactive/MCP path.
+// F-C1 caveat mirrors the rest of this plugin: no logged-in `claude` CLI exists in this sandbox, so the live end
+// of this round-trip (the CLI actually emitting `can_use_tool` for this spawn shape) needs a manual eyeball check.
+// The parse/build round-trip below is fully unit-tested; if a field name ever drifts, it changes in this one file.
 internal static class ClaudeControlProtocol
 {
-    /// <summary>Envelope discriminator values the CLI can put on a control line.</summary>
+    // Envelope discriminator values the CLI can put on a control line.
     public const string ControlRequestType = "control_request";
     public const string ControlResponseType = "control_response";
     public const string ControlCancelType = "control_cancel_request";
 
     private const string _CanUseToolSubtype = "can_use_tool";
 
-    /// <summary>
-    /// True when <paramref name="type"/> names a control-protocol line (a reply to one of our own requests, or an
-    /// inbound request from the CLI) rather than a transcript event — so the driver routes it here instead of to
-    /// <see cref="ClaudeStreamJson"/>.
-    /// </summary>
+    // True when `type` names a control-protocol line (a reply to one of our own requests, or an
+    // inbound request from the CLI) rather than a transcript event — so the driver routes it here instead of to
+    // `ClaudeStreamJson`.
     public static bool IsControlLine(string? type) =>
         type is ControlRequestType or ControlResponseType or ControlCancelType;
 
-    /// <summary>
-    /// The <c>initialize</c> control_request line sent once at startup. Carries a fresh <paramref name="requestId"/> so
-    /// a correlated reply could be matched (the driver only logs it, per F-C1 scope). <c>hooks:null</c> mirrors the SDK
-    /// when no hooks are registered.
-    /// </summary>
+    // The `initialize` control_request line sent once at startup. Carries a fresh `requestId` so
+    // a correlated reply could be matched (the driver only logs it, per F-C1 scope). `hooks:null` mirrors the SDK
+    // when no hooks are registered.
     public static string BuildInitializeRequest(string requestId) =>
         JsonSerializer.Serialize(new
         {
@@ -61,13 +51,11 @@ internal static class ClaudeControlProtocol
             request = new { subtype = "initialize", hooks = (object?)null },
         });
 
-    /// <summary>
-    /// Recognises an inbound <c>can_use_tool</c> control_request and extracts the fields the cockpit needs to surface a
-    /// prompt. Returns false for any other control line (initialize replies, cancels, hook callbacks we do not model),
-    /// leaving the driver to log-and-ignore it. <paramref name="toolUseId"/> falls back to <paramref name="requestId"/>
-    /// when the request omits its own — the response echoes <paramref name="requestId"/> either way, so the fallback only
-    /// affects which transcript card the prompt attaches to, never the CLI round-trip.
-    /// </summary>
+    // Recognises an inbound `can_use_tool` control_request and extracts the fields the cockpit needs to surface a
+    // prompt. Returns false for any other control line (initialize replies, cancels, hook callbacks we do not model),
+    // leaving the driver to log-and-ignore it. `toolUseId` falls back to `requestId`
+    // when the request omits its own — the response echoes `requestId` either way, so the fallback only
+    // affects which transcript card the prompt attaches to, never the CLI round-trip.
     public static bool TryParsePermissionRequest(
         JsonElement root,
         out string requestId,
@@ -97,12 +85,10 @@ internal static class ClaudeControlProtocol
         return true;
     }
 
-    /// <summary>
-    /// The <c>control_response</c> line answering the permission request keyed by <paramref name="requestId"/>. An allow
-    /// carries the original <paramref name="originalInputJson"/> back as <c>updatedInput</c> (the cockpit never rewrites
-    /// tool input); a deny carries the operator's <paramref name="message"/>. Both are <c>subtype:"success"</c> — the
-    /// callback succeeded and returned a decision; only a thrown callback would be "error".
-    /// </summary>
+    // The `control_response` line answering the permission request keyed by `requestId`. An allow
+    // carries the original `originalInputJson` back as `updatedInput` (the cockpit never rewrites
+    // tool input); a deny carries the operator's `message`. Both are `subtype:"success"` — the
+    // callback succeeded and returned a decision; only a thrown callback would be "error".
     public static string BuildDecisionResponse(string requestId, bool allow, string originalInputJson, string denyMessage)
     {
         object decision = allow

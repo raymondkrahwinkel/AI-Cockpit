@@ -4,25 +4,20 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Sends a message to Slack or Discord (#69), through an incoming webhook the step carries itself. The cockpit's own
-/// Notify step tells <em>you</em>, on your screen; this tells everyone else, which is a different act.
-/// <para>
-/// The two services differ in one thing and nothing else: Slack's webhook takes <c>{"text": …}</c> and Discord's takes
-/// <c>{"content": …}</c>. Keeping that in one place rather than in two runners is why this is one class.
-/// </para>
-/// <para>
-/// Discord refuses a message over two thousand characters outright, so a long one is cut and visibly ends in an
-/// ellipsis — a step that failed because the command it was reporting on had a lot to say would fail at the worst
-/// possible moment. Slack takes them, and is left alone.
-/// </para>
-/// <para>
-/// A message the service refused fails the step. A notification nobody received is worse than an error nobody missed.
-/// </para>
-/// </summary>
+// Sends a message to Slack or Discord (#69), through an incoming webhook the step carries itself. The cockpit's own
+// Notify step tells *you*, on your screen; this tells everyone else, which is a different act.
+//
+// The two services differ in one thing and nothing else: Slack's webhook takes `{"text": …}` and Discord's takes
+// `{"content": …}`. Keeping that in one place rather than in two runners is why this is one class.
+//
+// Discord refuses a message over two thousand characters outright, so a long one is cut and visibly ends in an
+// ellipsis — a step that failed because the command it was reporting on had a lot to say would fail at the worst
+// possible moment. Slack takes them, and is left alone.
+//
+// A message the service refused fails the step. A notification nobody received is worse than an error nobody missed.
 internal sealed class ChatRunner(string typeId, bool discord) : IStepRunner
 {
-    /// <summary>Discord's own limit. Past it, the whole message is rejected rather than truncated for you.</summary>
+    // Discord's own limit. Past it, the whole message is rejected rather than truncated for you.
     public const int DiscordLimit = 2000;
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -76,7 +71,7 @@ internal sealed class ChatRunner(string typeId, bool discord) : IStepRunner
             $"Sent to {(discord ? "Discord" : "Slack")}: {message}");
     }
 
-    /// <summary>The body each service expects — and, for Discord, a message cut to a length it will accept.</summary>
+    // The body each service expects — and, for Discord, a message cut to a length it will accept.
     public static string Body(string message, bool discord)
     {
         var text = discord && message.Length > DiscordLimit

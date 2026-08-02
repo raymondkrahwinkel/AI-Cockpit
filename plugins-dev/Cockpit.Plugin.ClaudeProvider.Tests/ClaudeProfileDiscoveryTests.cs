@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// The provider-specific behaviours the host used to hold in-tree, now owned by the plugin (weg A / Fase 4):
-/// self-detection of well-known config directories and the existence-only login gate. Detection is exercised
-/// against a fake directory-existence predicate; the login gate against a real temp directory.
-/// </summary>
+// The provider-specific behaviours the host used to hold in-tree, now owned by the plugin (weg A / Fase 4):
+// self-detection of well-known config directories and the existence-only login gate. Detection is exercised
+// against a fake directory-existence predicate; the login gate against a real temp directory.
 public class ClaudeProfileDiscoveryTests
 {
     private static readonly string RealHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

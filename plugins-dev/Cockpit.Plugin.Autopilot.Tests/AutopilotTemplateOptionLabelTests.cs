@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The run-picker origin suffix (AC-189, slice 3): two trackers both register "Bug fix" and "Feature", so the picker
-/// appends where each came from — a plugin's readable name for a Plugin template, "Yours" for the operator's own,
-/// "Built-in" for the shipped ones — so duplicate names are told apart. Pure helper, tested without a host or UI.
-/// </summary>
+// The run-picker origin suffix (AC-189, slice 3): two trackers both register "Bug fix" and "Feature", so the picker
+// appends where each came from — a plugin's readable name for a Plugin template, "Yours" for the operator's own,
+// "Built-in" for the shipped ones — so duplicate names are told apart. Pure helper, tested without a host or UI.
 public class AutopilotTemplateOptionLabelTests
 {
     // A stand-in plugin-name lookup: maps two owner ids to readable names, everything else unknown (null).

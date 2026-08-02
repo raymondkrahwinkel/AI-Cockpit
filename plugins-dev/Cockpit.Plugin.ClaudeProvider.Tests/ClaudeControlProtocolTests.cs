@@ -2,12 +2,10 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeControlProtocol"/> (Fase 4) — the in-band stdio permission channel's wire format, anchored to the
-/// exact shapes the official Agent SDK transport uses (<c>claude-agent-sdk-python query.py</c>): an inbound
-/// <c>can_use_tool</c> control_request, and the <c>control_response</c> allow/deny answer echoing its <c>request_id</c>.
-/// These tests are the single place the wire assumptions live, so a live field-name drift is a one-line fix.
-/// </summary>
+// `ClaudeControlProtocol` (Fase 4) — the in-band stdio permission channel's wire format, anchored to the
+// exact shapes the official Agent SDK transport uses (`claude-agent-sdk-python query.py`): an inbound
+// `can_use_tool` control_request, and the `control_response` allow/deny answer echoing its `request_id`.
+// These tests are the single place the wire assumptions live, so a live field-name drift is a one-line fix.
 public class ClaudeControlProtocolTests
 {
     [Fact]

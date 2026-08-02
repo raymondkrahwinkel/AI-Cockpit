@@ -4,11 +4,9 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The computed half of a parameter, and the decision that rests on it (#69). The rule that matters is not what an
-/// expression can do — it is what happens when it cannot: a condition nobody can read must stop the step, never
-/// quietly count as false and send the flow down the other branch, where nothing in the run says anything went wrong.
-/// </summary>
+// The computed half of a parameter, and the decision that rests on it (#69). The rule that matters is not what an
+// expression can do — it is what happens when it cannot: a condition nobody can read must stop the step, never
+// quietly count as false and send the flow down the other branch, where nothing in the run says anything went wrong.
 public class ExpressionTests
 {
     [Fact]

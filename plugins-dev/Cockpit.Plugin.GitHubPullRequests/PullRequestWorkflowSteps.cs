@@ -6,34 +6,27 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// Opening a pull request from a flow (#69). The end of the working day the other steps describe: a branch was cut, a
-/// ticket moved, work was committed and pushed — and this is what turns that into something a person can review.
-/// <para>
-/// It goes through <c>gh</c>, like the rest of this plugin, so it reuses the login the operator already has. The
-/// repository is the one the working directory belongs to: a pull request opened against a repo nobody named is a
-/// pull request in the wrong place, and gh already knows which one it is standing in.
-/// </para>
-/// </summary>
+// Opening a pull request from a flow (#69). The end of the working day the other steps describe: a branch was cut, a
+// ticket moved, work was committed and pushed — and this is what turns that into something a person can review.
+//
+// It goes through `gh`, like the rest of this plugin, so it reuses the login the operator already has. The
+// repository is the one the working directory belongs to: a pull request opened against a repo nobody named is a
+// pull request in the wrong place, and gh already knows which one it is standing in.
 internal static class PullRequestWorkflowSteps
 {
-    /// <summary>Fired when one of your pull requests goes from not-merged to merged — see <see cref="MergedPullRequestWatcher"/>.</summary>
+    // Fired when one of your pull requests goes from not-merged to merged — see `MergedPullRequestWatcher`.
     public const string MergedTrigger = "github.pr.merged";
 
-    /// <summary>
-    /// The steps this plugin contributes. The host comes in because opening a pull request now asks the Local CI
-    /// plugin first, when that plugin is installed — see <see cref="LocalCiGate"/>.
-    /// </summary>
+    // The steps this plugin contributes. The host comes in because opening a pull request now asks the Local CI
+    // plugin first, when that plugin is installed — see `LocalCiGate`.
     public static IEnumerable<IWorkflowStep> All(ICockpitHost host) =>
     [
         new PullRequestMergedTrigger(),
         new OpenPullRequestStep(host),
     ];
 
-    /// <summary>
-    /// A pull request of yours was merged. The end of the ticket: the branch is in, and what usually wants to happen
-    /// next — move the ticket to Done, tell somebody, delete the branch — is a flow.
-    /// </summary>
+    // A pull request of yours was merged. The end of the ticket: the branch is in, and what usually wants to happen
+    // next — move the ticket to Done, tell somebody, delete the branch — is a flow.
     private sealed class PullRequestMergedTrigger : IWorkflowStep
     {
         public string TypeId => MergedTrigger;

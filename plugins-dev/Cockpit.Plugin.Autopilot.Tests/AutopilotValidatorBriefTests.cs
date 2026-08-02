@@ -1,12 +1,10 @@
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The hidden brief a run's CEO validator session is started with (AC-174): a pure builder, so its wording — and the
-/// tool names it hands the CEO — is tested without a live session. The tracker and validate tools live on the CEO
-/// endpoint (<see cref="AutopilotCeoTools"/>), not the step-agent run endpoint (AC-198), so the brief must name them
-/// there or the stage/note/validate call the CEO makes hits a tool that does not exist.
-/// </summary>
+// The hidden brief a run's CEO validator session is started with (AC-174): a pure builder, so its wording — and the
+// tool names it hands the CEO — is tested without a live session. The tracker and validate tools live on the CEO
+// endpoint (`AutopilotCeoTools`), not the step-agent run endpoint (AC-198), so the brief must name them
+// there or the stage/note/validate call the CEO makes hits a tool that does not exist.
 public class AutopilotValidatorBriefTests
 {
     private static AutopilotPlan _SourcePlan() =>

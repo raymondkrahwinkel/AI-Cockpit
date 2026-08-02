@@ -1,7 +1,7 @@
 
 namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
-/// <summary>Windowing the snippet around the match (#9): whitespace collapse, ellipses when trimmed, and no ellipsis at the ends.</summary>
+// Windowing the snippet around the match (#9): whitespace collapse, ellipses when trimmed, and no ellipsis at the ends.
 public class TranscriptSnippetTests
 {
     [Fact]

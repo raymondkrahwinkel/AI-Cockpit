@@ -2,8 +2,9 @@ using Cockpit.Plugin.LocalCi.Workflows;
 
 namespace Cockpit.Plugin.LocalCi.Execution;
 
-/// <summary>Whether a job may be attempted here, and — when it may — the runner label its image is chosen for.</summary>
-/// <param name="Reason">Completes "this job was not run because …". Empty when it was approved.</param>
+// Whether a job may be attempted here, and — when it may — the runner label its image is chosen for.
+//
+// `Reason`: Completes "this job was not run because …". Empty when it was approved.
 internal sealed record JobApproval(bool IsApproved, string? RunnerLabel, string Reason)
 {
     public static JobApproval No(string reason) => new(IsApproved: false, null, reason);
@@ -11,14 +12,11 @@ internal sealed record JobApproval(bool IsApproved, string? RunnerLabel, string 
     public static JobApproval Yes(string runnerLabel) => new(IsApproved: true, runnerLabel, string.Empty);
 }
 
-/// <summary>
-/// Asks the classification whether a job may run, and nothing more.
-/// <para>
-/// This is the rule the epic calls non-negotiable: a job runs whole or not at all. The executing side gets no
-/// opinion of its own — it re-reads the project's workflows and takes the verdict the classifier gives, reason
-/// included. A second, more permissive judgement here is exactly how a run that skipped steps ends up green.
-/// </para>
-/// </summary>
+// Asks the classification whether a job may run, and nothing more.
+//
+// This is the rule the epic calls non-negotiable: a job runs whole or not at all. The executing side gets no
+// opinion of its own — it re-reads the project's workflows and takes the verdict the classifier gives, reason
+// included. A second, more permissive judgement here is exactly how a run that skipped steps ends up green.
 internal static class LocalRunApproval
 {
     public static JobApproval For(LocalRunRequest request)

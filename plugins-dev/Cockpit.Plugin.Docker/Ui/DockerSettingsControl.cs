@@ -4,10 +4,8 @@ using Cockpit.Plugin.Docker.Settings;
 
 namespace Cockpit.Plugin.Docker.Ui;
 
-/// <summary>
-/// The plugin's settings view (all code-behind Avalonia, like the other plugins). The host renders the Save/Close
-/// footer and wraps this in its own ScrollViewer, so we do not nest one.
-/// </summary>
+// The plugin's settings view (all code-behind Avalonia, like the other plugins). The host renders the Save/Close
+// footer and wraps this in its own ScrollViewer, so we do not nest one.
 internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly DockerSettings _settings;

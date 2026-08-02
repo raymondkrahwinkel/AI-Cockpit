@@ -3,26 +3,22 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Writes the shared MCP registry (#26) the host resolved for this session into a Claude <c>--mcp-config</c> file
-/// and returns its path — the TTY mirror of what the host's <c>ClaudeTtySessionProvider._WriteRegistryMcpConfig</c>
-/// did, now that the servers cross the plugin boundary on <see cref="PluginTtyLaunchContext.McpServers"/> (weg A).
-/// No cockpit permission server here — the interactive TUI prompts for permission itself. Returns
-/// <see langword="null"/> when there is nothing to add, unless <paramref name="writeEmptyExplicit"/> says otherwise.
-/// </summary>
+// Writes the shared MCP registry (#26) the host resolved for this session into a Claude `--mcp-config` file
+// and returns its path — the TTY mirror of what the host's `ClaudeTtySessionProvider._WriteRegistryMcpConfig`
+// did, now that the servers cross the plugin boundary on `PluginTtyLaunchContext.McpServers` (weg A).
+// No cockpit permission server here — the interactive TUI prompts for permission itself. Returns
+// `null` when there is nothing to add, unless `writeEmptyExplicit` says otherwise.
 internal static class ClaudeMcpConfig
 {
     public static string? Write(IReadOnlyList<PluginMcpServer> servers) => Write(servers, writeEmptyExplicit: false);
 
-    /// <summary>
-    /// <paramref name="writeEmptyExplicit"/> (AC-378) exists for the headless/strict route: there, "nothing
-    /// resolved" must produce an actual empty <c>{"mcpServers":{}}</c> file rather than <see langword="null"/>, so
-    /// the caller can still pass <c>--mcp-config &lt;file&gt; --strict-mcp-config</c> and get a session with truly
-    /// zero servers. Returning <see langword="null"/> here — the TTY route's behaviour, and this method's default —
-    /// would drop <c>--mcp-config</c> from the command line entirely, and on the headless route that means the CLI
-    /// falls back to its own user/project config instead of the empty set the resolution actually produced: the
-    /// "narrowing to nothing looks like no narrowing at all" trap this ticket exists to close.
-    /// </summary>
+    // `writeEmptyExplicit` (AC-378) exists for the headless/strict route: there, "nothing
+    // resolved" must produce an actual empty `{"mcpServers":{}}` file rather than `null`, so
+    // the caller can still pass `--mcp-config &lt;file&gt; --strict-mcp-config` and get a session with truly
+    // zero servers. Returning `null` here — the TTY route's behaviour, and this method's default —
+    // would drop `--mcp-config` from the command line entirely, and on the headless route that means the CLI
+    // falls back to its own user/project config instead of the empty set the resolution actually produced: the
+    // "narrowing to nothing looks like no narrowing at all" trap this ticket exists to close.
     public static string? Write(IReadOnlyList<PluginMcpServer> servers, bool writeEmptyExplicit)
     {
         var mcpServers = new JsonObject();
@@ -43,14 +39,12 @@ internal static class ClaudeMcpConfig
         return _WritePrivate(root.ToJsonString());
     }
 
-    /// <summary>
-    /// Writes the mcp-config owner-only (AC-63). The user-API-key branch in <see cref="_ToEntry"/> puts a literal
-    /// <c>Authorization: Bearer &lt;token&gt;</c> in this file; it used to land in a world-readable temp file at the
-    /// umask's permissions, so any local account could read a third-party token for the file's lifetime. The file
-    /// (and its directory) are now 0600/0700 on Unix, set at create time so there is no window at the umask; on
-    /// Windows the per-user temp profile is the protection, exactly as the host's <c>TtyMcpConfigFile</c> /
-    /// <c>CockpitConfigPath</c> treat it (this plugin cannot reference Infrastructure, so it mirrors the pattern).
-    /// </summary>
+    // Writes the mcp-config owner-only (AC-63). The user-API-key branch in `_ToEntry` puts a literal
+    // `Authorization: Bearer &lt;token&gt;` in this file; it used to land in a world-readable temp file at the
+    // umask's permissions, so any local account could read a third-party token for the file's lifetime. The file
+    // (and its directory) are now 0600/0700 on Unix, set at create time so there is no window at the umask; on
+    // Windows the per-user temp profile is the protection, exactly as the host's `TtyMcpConfigFile` /
+    // `CockpitConfigPath` treat it (this plugin cannot reference Infrastructure, so it mirrors the pattern).
     private static string _WritePrivate(string json)
     {
         var directory = Path.Combine(Path.GetTempPath(), "cockpit-claude-mcp");

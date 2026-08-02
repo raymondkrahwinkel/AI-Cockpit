@@ -8,13 +8,11 @@ using Cockpit.Plugin.Kubernetes.Settings;
 
 namespace Cockpit.Plugin.Kubernetes.Ui;
 
-/// <summary>
-/// The plugin's settings view (opened from the gear in the plugin manager): a manageable list of cluster rows
-/// (add/remove, each with its own kubeconfig, allowed namespaces and capability toggles) plus the MCP on/off
-/// toggle. Implements <see cref="IPluginSettingsView"/>, so the host renders the Save/Close footer and
-/// <see cref="Save"/> persists on Save — the metadata to storage, each kubeconfig through the secret layer, and
-/// clears the credential of any cluster that was removed.
-/// </summary>
+// The plugin's settings view (opened from the gear in the plugin manager): a manageable list of cluster rows
+// (add/remove, each with its own kubeconfig, allowed namespaces and capability toggles) plus the MCP on/off
+// toggle. Implements `IPluginSettingsView`, so the host renders the Save/Close footer and
+// `Save` persists on Save — the metadata to storage, each kubeconfig through the secret layer, and
+// clears the credential of any cluster that was removed.
 internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly KubernetesSettings _settings;

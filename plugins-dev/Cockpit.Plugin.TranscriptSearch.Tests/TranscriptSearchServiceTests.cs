@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
-/// <summary>
-/// Searching the on-disk transcripts (#9): matches across files, newest-session-first ordering, the blank-query
-/// short-circuit, and skipping unreadable/irrelevant content — exercised against temp JSONL files via the
-/// project-roots test seam.
-/// </summary>
+// Searching the on-disk transcripts (#9): matches across files, newest-session-first ordering, the blank-query
+// short-circuit, and skipping unreadable/irrelevant content — exercised against temp JSONL files via the
+// project-roots test seam.
 public class TranscriptSearchServiceTests : IDisposable
 {
     private readonly string _root;

@@ -10,14 +10,12 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
-/// <summary>
-/// The "Prompt Library" dialog (#2): a searchable list of saved templates on the left, an editor on the right
-/// (name + body + a field per <c>{{variable}}</c> found in the body), and Insert/Copy actions. Selecting a
-/// template loads it into the editor; Save persists edits, New adds a blank one, Delete removes the selected
-/// one — all via <see cref="PromptLibrarySettings"/>. Insert substitutes the variable fields into the body and
-/// hands the result to <see cref="ICockpitActions.InjectIntoActiveSessionAsync"/>, falling back to the
-/// clipboard when no session is active. Built in code, matching the other plugin dialogs.
-/// </summary>
+// The "Prompt Library" dialog (#2): a searchable list of saved templates on the left, an editor on the right
+// (name + body + a field per `{{variable}}` found in the body), and Insert/Copy actions. Selecting a
+// template loads it into the editor; Save persists edits, New adds a blank one, Delete removes the selected
+// one — all via `PromptLibrarySettings`. Insert substitutes the variable fields into the body and
+// hands the result to `ICockpitActions.InjectIntoActiveSessionAsync`, falling back to the
+// clipboard when no session is active. Built in code, matching the other plugin dialogs.
 internal sealed class PromptLibraryDialogControl : UserControl
 {
     private readonly PromptLibrarySettings _settings;

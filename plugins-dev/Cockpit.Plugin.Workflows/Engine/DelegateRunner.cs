@@ -3,15 +3,12 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Hands the work to another profile and waits for what it produces (#67, #69) — the orchestration node from the
-/// braindump. Where "Start session" opens a pane for you to watch, this one is a step in a flow: the flow waits, takes
-/// the answer, and carries it to the next step as data.
-/// <para>
-/// It goes through the cockpit's own delegation, so the task is refused by the same rules an agent's delegation is,
-/// and it appears in the delegated-tasks view. A flow does not get a quieter way to run an agent than an agent has.
-/// </para>
-/// </summary>
+// Hands the work to another profile and waits for what it produces (#67, #69) — the orchestration node from the
+// braindump. Where "Start session" opens a pane for you to watch, this one is a step in a flow: the flow waits, takes
+// the answer, and carries it to the next step as data.
+//
+// It goes through the cockpit's own delegation, so the task is refused by the same rules an agent's delegation is,
+// and it appears in the delegated-tasks view. A flow does not get a quieter way to run an agent than an agent has.
 internal sealed class DelegateRunner(ICockpitHost host) : IStepRunner
 {
     public string TypeId => "cockpit.delegate";

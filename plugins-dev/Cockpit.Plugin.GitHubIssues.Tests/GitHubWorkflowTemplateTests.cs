@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The flow this plugin ships (#69) is written as text, not built with the workflows plugin's model — the two plugins
-/// cannot see each other. Nothing compiles the ids inside it, so a typo travels through the build, through CI and into
-/// the store, and surfaces as a canvas of steps wired to nothing the first time an operator opens the template.
-/// </summary>
+// The flow this plugin ships (#69) is written as text, not built with the workflows plugin's model — the two plugins
+// cannot see each other. Nothing compiles the ids inside it, so a typo travels through the build, through CI and into
+// the store, and surfaces as a canvas of steps wired to nothing the first time an operator opens the template.
 public class GitHubWorkflowTemplateTests
 {
     [Fact]

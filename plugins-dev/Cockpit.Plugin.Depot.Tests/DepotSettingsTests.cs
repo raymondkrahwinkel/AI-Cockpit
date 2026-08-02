@@ -3,12 +3,10 @@ using Cockpit.Plugin.Depot.Settings;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotSettings"/> (AC-499): the one-time migration of a connection <see cref="DepotConnectionRegistration.Url"/>
-/// saved before <see cref="DepotUrlNormalizer"/> existed. Must run exactly once and persist — <c>Normalize</c> is no
-/// longer safe to re-run on output it already produced (see its own doc comment), so a second run over the same
-/// migrated data would wrongly strip a base that legitimately ends in <c>/mcp</c>.
-/// </summary>
+// `DepotSettings` (AC-499): the one-time migration of a connection `DepotConnectionRegistration.Url`
+// saved before `DepotUrlNormalizer` existed. Must run exactly once and persist — `Normalize` is no
+// longer safe to re-run on output it already produced (see its own doc comment), so a second run over the same
+// migrated data would wrongly strip a base that legitimately ends in `/mcp`.
 public class DepotSettingsTests
 {
     [Fact]

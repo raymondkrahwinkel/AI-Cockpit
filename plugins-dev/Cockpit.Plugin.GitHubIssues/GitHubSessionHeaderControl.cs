@@ -9,16 +9,13 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// The issue this session is working on, in its own header (#77) — and, before you have picked one, the way to pick
-/// it. The same shape as the YouTrack badge, because it answers the same question and there is no reason for it to
-/// look like a different app.
-/// <para>
-/// The actions on it are the ones GitHub actually has. There is no status to set — an issue is open or closed — so
-/// the menu offers what people do instead: assign it to yourself, put on the label your repo uses for work in flight,
-/// comment, close.
-/// </para>
-/// </summary>
+// The issue this session is working on, in its own header (#77) — and, before you have picked one, the way to pick
+// it. The same shape as the YouTrack badge, because it answers the same question and there is no reason for it to
+// look like a different app.
+//
+// The actions on it are the ones GitHub actually has. There is no status to set — an issue is open or closed — so
+// the menu offers what people do instead: assign it to yourself, put on the label your repo uses for work in flight,
+// comment, close.
 internal sealed class GitHubSessionHeaderControl : UserControl
 {
     private readonly ICockpitHost _host;
@@ -101,7 +98,7 @@ internal sealed class GitHubSessionHeaderControl : UserControl
         ToolTip.SetTip(_row, $"{issue.Title}\n{issue.Repository}#{issue.Number}\n\nClick for actions.");
     }
 
-    /// <summary>Opens the picker for one pane — what the header menu's "Track a GitHub issue" runs.</summary>
+    // Opens the picker for one pane — what the header menu's "Track a GitHub issue" runs.
     public static void Pick(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, GitHubIssuesSettings settings) =>
         // One picker per session pane: a second pick for the same pane should refocus it, not open another.
         _ = host.ShowDialogAsync(

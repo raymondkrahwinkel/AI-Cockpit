@@ -2,11 +2,9 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The template placeholder resolver (AC-189): it fills the <c>{{issue.*}}</c> tokens from a tracker intent's data and
-/// the <c>{{input.*}}</c> tokens from operator input, in one pass, and never throws — a missing or unknown token
-/// becomes the empty string and is reported so the surface can warn.
-/// </summary>
+// The template placeholder resolver (AC-189): it fills the `{{issue.*}}` tokens from a tracker intent's data and
+// the `{{input.*}}` tokens from operator input, in one pass, and never throws — a missing or unknown token
+// becomes the empty string and is reported so the surface can warn.
 public class AutopilotTemplateResolverTests
 {
     private static Dictionary<string, string> _IntentData() => new()

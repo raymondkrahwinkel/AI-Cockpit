@@ -2,25 +2,21 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
-/// <summary>
-/// Searches the on-disk <c>claude</c> transcripts. It gathers the <c>projects</c> directories to scan — the CLI
-/// default <c>~/.claude/projects</c> plus the <c>&lt;ConfigDir&gt;/projects</c> of every Claude-CLI profile the
-/// cockpit has — then walks their <c>*.jsonl</c> files newest-first, pulling the searchable prose from each line
-/// via <see cref="TranscriptTextExtractor"/> and collecting the case-insensitive matches. Per-file and total caps
-/// keep a large history from hanging the UI; an unreadable file or directory is skipped, not fatal.
-/// </summary>
+// Searches the on-disk `claude` transcripts. It gathers the `projects` directories to scan — the CLI
+// default `~/.claude/projects` plus the `&lt;ConfigDir&gt;/projects` of every Claude-CLI profile the
+// cockpit has — then walks their `*.jsonl` files newest-first, pulling the searchable prose from each line
+// via `TranscriptTextExtractor` and collecting the case-insensitive matches. Per-file and total caps
+// keep a large history from hanging the UI; an unreadable file or directory is skipped, not fatal.
 internal sealed class TranscriptSearchService
 {
     private const int MaxHitsPerFile = 20;
 
-    /// <summary>The <see cref="PluginProfileInfo.Provider"/> of the profiles that keep transcripts.</summary>
+    // The `PluginProfileInfo.Provider` of the profiles that keep transcripts.
     private const string ClaudeCliProvider = "ClaudeCli";
 
-    /// <summary>
-    /// Skips directories the operator cannot read instead of failing the walk: one unreadable folder anywhere
-    /// under a profile's history would otherwise throw and take the whole search down with it. The
-    /// <c>SearchOption</c> overloads do not do this — their compatibility options rethrow.
-    /// </summary>
+    // Skips directories the operator cannot read instead of failing the walk: one unreadable folder anywhere
+    // under a profile's history would otherwise throw and take the whole search down with it. The
+    // `SearchOption` overloads do not do this — their compatibility options rethrow.
     private static readonly EnumerationOptions TranscriptFiles = new()
     {
         RecurseSubdirectories = true,
@@ -35,18 +31,16 @@ internal sealed class TranscriptSearchService
         _host = host;
     }
 
-    /// <summary>Test seam: search exactly these <c>projects</c> directories instead of resolving them from the host's profiles.</summary>
+    // Test seam: search exactly these `projects` directories instead of resolving them from the host's profiles.
     internal TranscriptSearchService(IReadOnlyList<string> projectRoots)
     {
         _projectRootsOverride = projectRoots;
     }
 
-    /// <summary>
-    /// The conversations you worked on most recently, newest first — what the dialog shows before you have typed
-    /// anything, since "pick up where I left off" is usually a matter of the last few sessions rather than of
-    /// searching for a word. Each is summarised by its opening prompt: what you asked is what makes a session
-    /// recognisable, far more than its id or its folder.
-    /// </summary>
+    // The conversations you worked on most recently, newest first — what the dialog shows before you have typed
+    // anything, since "pick up where I left off" is usually a matter of the last few sessions rather than of
+    // searching for a word. Each is summarised by its opening prompt: what you asked is what makes a session
+    // recognisable, far more than its id or its folder.
     public async Task<IReadOnlyList<TranscriptSearchHit>> RecentAsync(int limit = 10, CancellationToken cancellationToken = default)
     {
         var roots = await _ResolveProjectRootsAsync();

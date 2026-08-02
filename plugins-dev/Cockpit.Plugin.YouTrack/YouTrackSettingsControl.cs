@@ -5,12 +5,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The plugin's settings view (opened from the gear in the plugin manager), built in code: a manageable list
-/// of <see cref="YouTrackInstance"/> rows (add/remove, each with its own base URL/token/default project — #48)
-/// and the shared, editable prompt template. Implements <see cref="IPluginSettingsView"/>, so the host renders
-/// the Save/Close footer and <see cref="Save"/> persists on Save (the host then closes the dialog).
-/// </summary>
+// The plugin's settings view (opened from the gear in the plugin manager), built in code: a manageable list
+// of `YouTrackInstance` rows (add/remove, each with its own base URL/token/default project — #48)
+// and the shared, editable prompt template. Implements `IPluginSettingsView`, so the host renders
+// the Save/Close footer and `Save` persists on Save (the host then closes the dialog).
 internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly YouTrackSettings _settings;
@@ -113,7 +111,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
         _instancesPanel.Children.Add(row);
     }
 
-    /// <summary>Persists every non-blank instance row plus the template to the plugin's storage; always succeeds, so the host closes the dialog.</summary>
+    // Persists every non-blank instance row plus the template to the plugin's storage; always succeeds, so the host closes the dialog.
     public bool Save()
     {
         _settings.Instances = _rows.Where(row => !row.IsBlank).Select(row => row.ToInstance()).ToList();

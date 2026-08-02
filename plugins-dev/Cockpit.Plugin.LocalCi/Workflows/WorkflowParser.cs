@@ -3,16 +3,12 @@ using YamlDotNet.RepresentationModel;
 
 namespace Cockpit.Plugin.LocalCi.Workflows;
 
-/// <summary>
-/// Turns workflow YAML into a <see cref="WorkflowDocument"/>. Reads the document tree rather than deserialising
-/// into a fixed shape, because the whole point of the classification downstream is to notice the keys we have no
-/// shape for — a deserialiser would drop them and the job would look simpler than it is.
-/// </summary>
-/// <remarks>
-/// Anything shaped in a way this reader has no reading for makes the whole file a reported failure rather than a
-/// quietly shorter job list. A job or a step that vanishes during parsing is worse than one that is refused: the
-/// refusal is on screen with a reason, while the disappearance leaves a list that looks complete and is not.
-/// </remarks>
+// Turns workflow YAML into a `WorkflowDocument`. Reads the document tree rather than deserialising
+// into a fixed shape, because the whole point of the classification downstream is to notice the keys we have no
+// shape for — a deserialiser would drop them and the job would look simpler than it is.
+// Anything shaped in a way this reader has no reading for makes the whole file a reported failure rather than a
+// quietly shorter job list. A job or a step that vanishes during parsing is worse than one that is refused: the
+// refusal is on screen with a reason, while the disappearance leaves a list that looks complete and is not.
 internal static class WorkflowParser
 {
     public static WorkflowParseResult Parse(string path, string yaml)
@@ -63,7 +59,7 @@ internal static class WorkflowParser
         return WorkflowParseResult.Parsed(new WorkflowDocument(path, name, keys, parsed));
     }
 
-    /// <summary>The shapes the reader below assumes, checked once so that reading itself has no unreadable cases.</summary>
+    // The shapes the reader below assumes, checked once so that reading itself has no unreadable cases.
     private static string? _ShapeProblem(YamlMappingNode jobs)
     {
         if (jobs.Children.Keys.Any(key => key is not YamlScalarNode { Value: not null }))

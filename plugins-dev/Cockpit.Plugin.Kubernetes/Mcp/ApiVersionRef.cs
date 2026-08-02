@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-/// <summary>
-/// A Kubernetes <c>apiVersion</c> split into its group and version, the way the generic client wants them: core
-/// resources are group <c>""</c> (e.g. <c>v1</c> → group <c>""</c>, version <c>v1</c>), grouped ones carry the
-/// group (e.g. <c>apps/v1</c> → group <c>apps</c>, version <c>v1</c>).
-/// </summary>
+// A Kubernetes `apiVersion` split into its group and version, the way the generic client wants them: core
+// resources are group `""` (e.g. `v1` → group `""`, version `v1`), grouped ones carry the
+// group (e.g. `apps/v1` → group `apps`, version `v1`).
 internal readonly record struct ApiVersionRef(string Group, string Version)
 {
     public static ApiVersionRef Parse(string apiVersion)

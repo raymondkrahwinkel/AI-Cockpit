@@ -1,12 +1,10 @@
 
 namespace Cockpit.Plugin.GeminiProvider.Tests;
 
-/// <summary>
-/// <see cref="OpenAiCompatConfig"/>'s <c>ToString()</c> override (#45 review finding 4): a plain
-/// <c>record</c>'s auto-generated <c>ToString()</c> would print <see cref="OpenAiCompatConfig.ApiKey"/> in
-/// the clear — a leak surface anywhere this config lands in a log line or exception message (e.g. the
-/// <see cref="OpenAiCompatPluginSessionDriverFactory"/> deserialize-failure path).
-/// </summary>
+// `OpenAiCompatConfig`'s `ToString()` override (#45 review finding 4): a plain
+// `record`'s auto-generated `ToString()` would print `OpenAiCompatConfig.ApiKey` in
+// the clear — a leak surface anywhere this config lands in a log line or exception message (e.g. the
+// `OpenAiCompatPluginSessionDriverFactory` deserialize-failure path).
 public class OpenAiCompatConfigTests
 {
     [Fact]

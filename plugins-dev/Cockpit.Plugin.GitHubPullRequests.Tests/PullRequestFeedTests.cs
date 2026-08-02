@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// The shared fetch behind the side-menu badge (AC-517) and the dashboard widget (#AC-18). The one branch that reaches
-/// a verdict without shelling out to gh or hitting the network is the misconfigured HTTP mode — and it is the
-/// one that matters most to get right, because an empty list there would read as "no open pull requests" rather
-/// than "nothing is set up", which is a lie the operator acts on.
-/// </summary>
+// The shared fetch behind the side-menu badge (AC-517) and the dashboard widget (#AC-18). The one branch that reaches
+// a verdict without shelling out to gh or hitting the network is the misconfigured HTTP mode — and it is the
+// one that matters most to get right, because an empty list there would read as "no open pull requests" rather
+// than "nothing is set up", which is a lie the operator acts on.
 public class PullRequestFeedTests
 {
     [Fact]

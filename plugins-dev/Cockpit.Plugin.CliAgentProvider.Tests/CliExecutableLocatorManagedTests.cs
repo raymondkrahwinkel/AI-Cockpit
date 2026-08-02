@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// The managed-CLI resolution seam (AC-20) on <see cref="CliExecutableLocator"/>: a cockpit-managed install sits
-/// between a pinned absolute path and PATH — a pin wins, a managed copy beats PATH, and no managed copy falls
-/// through to PATH untouched.
-/// </summary>
+// The managed-CLI resolution seam (AC-20) on `CliExecutableLocator`: a cockpit-managed install sits
+// between a pinned absolute path and PATH — a pin wins, a managed copy beats PATH, and no managed copy falls
+// through to PATH untouched.
 public class CliExecutableLocatorManagedTests
 {
     private static readonly string ManagedPath = Path.Combine(Path.GetTempPath(), "managed", "codex");

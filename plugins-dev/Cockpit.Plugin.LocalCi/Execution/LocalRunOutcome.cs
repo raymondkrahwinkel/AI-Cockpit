@@ -1,31 +1,29 @@
 namespace Cockpit.Plugin.LocalCi.Execution;
 
-/// <summary>
-/// How a local run ended. Only two of these are a verdict; the rest are silence. A job this plugin refuses, a
-/// machine that cannot run one, an operator who said no, a run that was stopped, and a request that arrived while
-/// another run held the machine all mean "nothing was learned". Folding any of them into <see cref="Passed"/> is
-/// exactly the failure this feature exists to prevent.
-/// </summary>
+// How a local run ended. Only two of these are a verdict; the rest are silence. A job this plugin refuses, a
+// machine that cannot run one, an operator who said no, a run that was stopped, and a request that arrived while
+// another run held the machine all mean "nothing was learned". Folding any of them into `Passed` is
+// exactly the failure this feature exists to prevent.
 internal enum LocalRunOutcome
 {
-    /// <summary>act ran the job and it succeeded.</summary>
+    // act ran the job and it succeeded.
     Passed,
 
-    /// <summary>act ran the job and it failed.</summary>
+    // act ran the job and it failed.
     Failed,
 
-    /// <summary>The job was not attempted: the classification says it cannot run on this machine.</summary>
+    // The job was not attempted: the classification says it cannot run on this machine.
     Refused,
 
-    /// <summary>The job was not attempted: Docker or act is missing or not answering.</summary>
+    // The job was not attempted: Docker or act is missing or not answering.
     CouldNotRun,
 
-    /// <summary>The job was not attempted: the operator did not approve running it.</summary>
+    // The job was not attempted: the operator did not approve running it.
     NotApproved,
 
-    /// <summary>The run was stopped before it reached a verdict.</summary>
+    // The run was stopped before it reached a verdict.
     Cancelled,
 
-    /// <summary>The job was not attempted: another local run already holds the machine.</summary>
+    // The job was not attempted: another local run already holds the machine.
     AlreadyRunning,
 }

@@ -1,13 +1,11 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The AC-347 classification table: what a settled step's status, attempt count and rework count amount to. A failed
-/// step is always a run restart, whatever its rework count; a step reworked at least once — a validation actually sent
-/// it back — is a review finding; a step restarted without ever being reworked (attempts &gt; 1 with zero reworks: a
-/// crashed session, a stall timeout, a refused isolation, a profile/model mismatch) is a run restart, not a review
-/// finding; everything else — including a deliberately skipped step and a blockade the operator answered — is no
-/// correction at all.
-/// </summary>
+// The AC-347 classification table: what a settled step's status, attempt count and rework count amount to. A failed
+// step is always a run restart, whatever its rework count; a step reworked at least once — a validation actually sent
+// it back — is a review finding; a step restarted without ever being reworked (attempts &gt; 1 with zero reworks: a
+// crashed session, a stall timeout, a refused isolation, a profile/model mismatch) is a run restart, not a review
+// finding; everything else — including a deliberately skipped step and a blockade the operator answered — is no
+// correction at all.
 public class AutopilotCorrectionTests
 {
     [Fact]

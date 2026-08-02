@@ -2,11 +2,9 @@ using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.Workspaces;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The CEO-only "working" cue state (AC-195): <see cref="CeoBusyIndicatorModel"/> mirrors the embedded session's
-/// busy signal so the "Plan with the CEO" pop-out can show the CEO is still planning during a long silent turn. Only
-/// the state rule is tested here — the actual pill rendering is a view concern and is not unit-testable.
-/// </summary>
+// The CEO-only "working" cue state (AC-195): `CeoBusyIndicatorModel` mirrors the embedded session's
+// busy signal so the "Plan with the CEO" pop-out can show the CEO is still planning during a long silent turn. Only
+// the state rule is tested here — the actual pill rendering is a view concern and is not unit-testable.
 public class CeoBusyIndicatorModelTests
 {
     [Fact]

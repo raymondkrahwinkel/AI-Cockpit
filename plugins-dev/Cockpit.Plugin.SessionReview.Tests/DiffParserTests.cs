@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.SessionReview.Tests;
 
-/// <summary>
-/// The structure the review panel is built from (AC-578): one <see cref="FileDiff"/> per file, with the old and new
-/// line number of every row, and the word-level span that points at what actually changed inside a replaced line.
-/// </summary>
+// The structure the review panel is built from (AC-578): one `FileDiff` per file, with the old and new
+// line number of every row, and the word-level span that points at what actually changed inside a replaced line.
 public class DiffParserTests
 {
     private const string TwoFiles = """

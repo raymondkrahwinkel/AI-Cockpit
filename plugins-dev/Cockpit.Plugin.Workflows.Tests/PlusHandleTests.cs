@@ -5,12 +5,10 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The <c>+</c> on a way out has to be draggable, and this test exists because the first version was not: it was a
-/// <see cref="Button"/>, and a Button marks the pointer press as handled in its own class handler — before any
-/// handler you add to it. So the drag never started, and when the click handler moved out of the way, the + did
-/// nothing at all. The bug was invisible in the code and obvious in the hand.
-/// </summary>
+// The `+` on a way out has to be draggable, and this test exists because the first version was not: it was a
+// `Button`, and a Button marks the pointer press as handled in its own class handler — before any
+// handler you add to it. So the drag never started, and when the click handler moved out of the way, the + did
+// nothing at all. The bug was invisible in the code and obvious in the hand.
 [Collection("avalonia")]
 public class PlusHandleTests
 {

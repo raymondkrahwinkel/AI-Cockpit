@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// Guards the model vocabulary the operator picks from. The values are the CLI's own aliases, which it re-points at
-/// each new release — so a label may never name a release (it would keep claiming one the dropdown no longer
-/// launches), and every offered alias must carry a label or the dropdown shows a raw value (AC-418).
-/// </summary>
+// Guards the model vocabulary the operator picks from. The values are the CLI's own aliases, which it re-points at
+// each new release — so a label may never name a release (it would keep claiming one the dropdown no longer
+// launches), and every offered alias must carry a label or the dropdown shows a raw value (AC-418).
 public class ClaudeOptionChoicesTests
 {
     [Fact]

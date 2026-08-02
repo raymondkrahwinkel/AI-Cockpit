@@ -6,13 +6,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubModelsProvider;
 
-/// <summary>
-/// The "add/edit profile" config panel for this plugin's GitHub Models provider (#63): an API-key field (a
-/// GitHub personal access token, with a "?" tooltip pointing at where to create one and which scope it
-/// needs), a model id (namespaced, e.g. <c>openai/gpt-4.1</c>), and the base URL (pre-filled with GitHub
-/// Models' own endpoint, editable for e.g. an org-scoped inference URL). Built in code, mirroring the
-/// Gemini/OpenAI provider plugin's <c>OpenAiCompatProviderConfigView</c> (#45).
-/// </summary>
+// The "add/edit profile" config panel for this plugin's GitHub Models provider (#63): an API-key field (a
+// GitHub personal access token, with a "?" tooltip pointing at where to create one and which scope it
+// needs), a model id (namespaced, e.g. `openai/gpt-4.1`), and the base URL (pre-filled with GitHub
+// Models' own endpoint, editable for e.g. an org-scoped inference URL). Built in code, mirroring the
+// Gemini/OpenAI provider plugin's `OpenAiCompatProviderConfigView` (#45).
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
     private const string DefaultModel = "openai/gpt-4.1";

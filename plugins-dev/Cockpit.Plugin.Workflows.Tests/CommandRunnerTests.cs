@@ -4,11 +4,9 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The command step, against a real shell (#69). This is the step that makes a flow more than a chain of
-/// announcements: what a command prints becomes the data the next step gets. And a command that fails is a step
-/// that fails — an exit code nobody looks at is how a flow ends up reporting green while nothing happened.
-/// </summary>
+// The command step, against a real shell (#69). This is the step that makes a flow more than a chain of
+// announcements: what a command prints becomes the data the next step gets. And a command that fails is a step
+// that fails — an exit code nobody looks at is how a flow ends up reporting green while nothing happened.
 public class CommandRunnerTests
 {
     // CommandRunner hands the line to cmd.exe on Windows and /bin/sh elsewhere, so a test that writes one shell's

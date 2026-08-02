@@ -3,12 +3,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
-/// <summary>
-/// Prompt Library (#2): a left-menu button opening a dialog of reusable prompt templates. Selecting one fills
-/// in its <c>{{variable}}</c> fields and inserts the result into the active session (or copies it to the
-/// clipboard when no session is active). Templates are created/edited/removed in the same dialog and persisted
-/// in the host's per-plugin storage, so <see cref="ConfigureServices"/> is empty.
-/// </summary>
+// Prompt Library (#2): a left-menu button opening a dialog of reusable prompt templates. Selecting one fills
+// in its `{{variable}}` fields and inserts the result into the active session (or copies it to the
+// clipboard when no session is active). Templates are created/edited/removed in the same dialog and persisted
+// in the host's per-plugin storage, so `ConfigureServices` is empty.
 public sealed class PromptLibraryPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

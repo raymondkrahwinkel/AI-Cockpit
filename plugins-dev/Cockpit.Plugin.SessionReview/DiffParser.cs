@@ -2,19 +2,15 @@ using System.Globalization;
 
 namespace Cockpit.Plugin.SessionReview;
 
-/// <summary>
-/// Turns unified <c>git diff</c> text into one <see cref="FileDiff"/> per file (AC-578), carrying the old and new line
-/// number of every row. The panel used to render the diff as one flat list of coloured strings, which is why it could
-/// offer neither a file tree nor a line-number gutter — all the structure git had already written into the text was
-/// thrown away at the first <c>Split('\n')</c>. Everything the UI needs is derived here, where it can be tested
-/// without a window.
-/// </summary>
+// Turns unified `git diff` text into one `FileDiff` per file (AC-578), carrying the old and new line
+// number of every row. The panel used to render the diff as one flat list of coloured strings, which is why it could
+// offer neither a file tree nor a line-number gutter — all the structure git had already written into the text was
+// thrown away at the first `Split('\n')`. Everything the UI needs is derived here, where it can be tested
+// without a window.
 internal static class DiffParser
 {
-    /// <summary>
-    /// Parses a whole diff. Anything before the first <c>diff --git</c> line is ignored, so a synthesised block for an
-    /// untracked file can simply be appended to git's own output and arrive here as just another file.
-    /// </summary>
+    // Parses a whole diff. Anything before the first `diff --git` line is ignored, so a synthesised block for an
+    // untracked file can simply be appended to git's own output and arrive here as just another file.
     public static IReadOnlyList<FileDiff> Parse(string diff)
     {
         var files = new List<FileDiff>();
@@ -95,10 +91,8 @@ internal static class DiffParser
         return files;
     }
 
-    /// <summary>
-    /// Splits a hunk header into the range and the context git appends after the closing <c>@@</c> (usually the
-    /// enclosing function). The panel draws the range at the left of its separator rule and the context beside it.
-    /// </summary>
+    // Splits a hunk header into the range and the context git appends after the closing `@@` (usually the
+    // enclosing function). The panel draws the range at the left of its separator rule and the context beside it.
     public static (string Range, string Context) SplitHunkHeader(string header)
     {
         var close = header.IndexOf("@@", 2, StringComparison.Ordinal);
@@ -107,17 +101,15 @@ internal static class DiffParser
             : (header[..(close + 2)].Trim(), header[(close + 2)..].Trim());
     }
 
-    /// <summary>The first old and new line number a hunk covers, from its <c>@@ -a,b +c,d @@</c> header.</summary>
+    // The first old and new line number a hunk covers, from its `@@ -a,b +c,d @@` header.
     public static (int Old, int New) ParseHunkStart(string header) =>
         (_NumberAfter(header, '-'), _NumberAfter(header, '+'));
 
-    /// <summary>
-    /// The stretch that actually differs between a removed line and the added line that replaced it: the shared
-    /// prefix and suffix are peeled off and what remains is highlighted. This is what makes a one-character edit
-    /// readable — a version bump or a renamed identifier otherwise arrives as two whole red-and-green lines with
-    /// nothing pointing at the change.
-    /// </summary>
-    /// <returns>Start index (shared by both), and the exclusive end index in the old and in the new text.</returns>
+    // The stretch that actually differs between a removed line and the added line that replaced it: the shared
+    // prefix and suffix are peeled off and what remains is highlighted. This is what makes a one-character edit
+    // readable — a version bump or a renamed identifier otherwise arrives as two whole red-and-green lines with
+    // nothing pointing at the change.
+    // Start index (shared by both), and the exclusive end index in the old and in the new text.
     public static (int Start, int OldEnd, int NewEnd) WordSpan(string removed, string added)
     {
         var start = 0;
@@ -142,11 +134,9 @@ internal static class DiffParser
         return (start, Math.Max(start, oldEnd), Math.Max(start, newEnd));
     }
 
-    /// <summary>
-    /// Whether a removed row and the row after it are an isolated replacement — the only case where a word-level
-    /// comparison says anything. Across a block of removals followed by a block of additions the lines do not
-    /// correspond one to one, and highlighting them pairwise invents a relationship that is not there.
-    /// </summary>
+    // Whether a removed row and the row after it are an isolated replacement — the only case where a word-level
+    // comparison says anything. Across a block of removals followed by a block of additions the lines do not
+    // correspond one to one, and highlighting them pairwise invents a relationship that is not there.
     public static bool IsIsolatedReplacement(IReadOnlyList<DiffRow> rows, int index) =>
         index >= 0
         && index + 1 < rows.Count
@@ -155,11 +145,9 @@ internal static class DiffParser
         && (index == 0 || rows[index - 1].Kind != DiffLineKind.Removed)
         && (index + 2 >= rows.Count || rows[index + 2].Kind != DiffLineKind.Added);
 
-    /// <summary>
-    /// Reads the file-level header lines that sit between <c>diff --git</c> and the first hunk. Returns whether the
-    /// line was one of them. The <c>+++</c>/<c>---</c> pair is preferred over the <c>diff --git</c> line for the path:
-    /// that line carries both paths separated by a space and cannot be split reliably when a name contains one.
-    /// </summary>
+    // Reads the file-level header lines that sit between `diff --git` and the first hunk. Returns whether the
+    // line was one of them. The `+++`/`---` pair is preferred over the `diff --git` line for the path:
+    // that line carries both paths separated by a space and cannot be split reliably when a name contains one.
     private static bool _ApplyHeader(string line, ref FileChangeKind kind, ref string? path, ref string? oldPath)
     {
         if (line.StartsWith("new file mode", StringComparison.Ordinal))
@@ -215,11 +203,9 @@ internal static class DiffParser
             || line.StartsWith("dissimilarity ", StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The path from a <c>diff --git a/x b/x</c> line — a fallback only, used until the <c>+++</c> line arrives and
-    /// for the rare diff that has none. Splits on the midpoint of the two halves, which is right whenever the two
-    /// names are equal and is corrected by <c>+++</c> whenever they are not.
-    /// </summary>
+    // The path from a `diff --git a/x b/x` line — a fallback only, used until the `+++` line arrives and
+    // for the rare diff that has none. Splits on the midpoint of the two halves, which is right whenever the two
+    // names are equal and is corrected by `+++` whenever they are not.
     private static string _PathFromGitHeader(string line)
     {
         var rest = line["diff --git ".Length..].Trim();
@@ -227,7 +213,7 @@ internal static class DiffParser
         return _StripPrefix(rest[..half].Trim()) ?? rest;
     }
 
-    /// <summary>Drops git's <c>a/</c> or <c>b/</c> prefix; null for <c>/dev/null</c>, which names no file.</summary>
+    // Drops git's `a/` or `b/` prefix; null for `/dev/null`, which names no file.
     private static string? _StripPrefix(string value)
     {
         var trimmed = value.Trim();
@@ -241,7 +227,7 @@ internal static class DiffParser
             : trimmed;
     }
 
-    /// <summary>The number following the given sign in a hunk header, e.g. 16 from <c>@@ -16,31 +18,46 @@</c>.</summary>
+    // The number following the given sign in a hunk header, e.g. 16 from `@@ -16,31 +18,46 @@`.
     private static int _NumberAfter(string header, char sign)
     {
         var at = header.IndexOf(sign, 2);

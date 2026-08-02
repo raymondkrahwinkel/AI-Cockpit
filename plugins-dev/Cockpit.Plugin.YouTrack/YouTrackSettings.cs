@@ -2,13 +2,11 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The plugin's settings, persisted through the host's per-plugin <see cref="IPluginStorage"/>. YouTrack has
-/// no local CLI equivalent to <c>gh</c>, so this plugin is HTTP-only per instance: a list of
-/// <see cref="YouTrackInstance"/> (each its own base URL + permanent token + optional default project), so one
-/// cockpit can pull issues from several YouTracks (#48). The prompt template dropped on click is shared across
-/// every instance.
-/// </summary>
+// The plugin's settings, persisted through the host's per-plugin `IPluginStorage`. YouTrack has
+// no local CLI equivalent to `gh`, so this plugin is HTTP-only per instance: a list of
+// `YouTrackInstance` (each its own base URL + permanent token + optional default project), so one
+// cockpit can pull issues from several YouTracks (#48). The prompt template dropped on click is shared across
+// every instance.
 internal sealed class YouTrackSettings(IPluginStorage storage)
 {
     public List<YouTrackInstance> Instances
@@ -17,22 +15,18 @@ internal sealed class YouTrackSettings(IPluginStorage storage)
         set => storage.Set("instances", value);
     }
 
-    /// <summary>
-    /// Which issues the session picker offers, as a YouTrack query. Default <c>#Unresolved</c> — showing issues that
-    /// are done is offering work that is over. Anything YouTrack's own search understands works here, so a board that
-    /// calls its states something unusual is not a special case: <c>State: {In Progress}</c>, <c>#Unresolved -State: Review</c>.
-    /// </summary>
+    // Which issues the session picker offers, as a YouTrack query. Default `#Unresolved` — showing issues that
+    // are done is offering work that is over. Anything YouTrack's own search understands works here, so a board that
+    // calls its states something unusual is not a special case: `State: {In Progress}`, `#Unresolved -State: Review`.
     public string PickerQuery
     {
         get => storage.Get<string>("pickerQuery") is { Length: > 0 } query ? query : "#Unresolved";
         set => storage.Set("pickerQuery", value);
     }
 
-    /// <summary>
-    /// How a branch is named for an issue — <c>{id}</c> and <c>{summary}</c>, e.g. <c>{id}-{summary}</c> (the default)
-    /// or <c>feature/{id}</c>. A naming convention is a team's business, not this plugin's; what stays this plugin's
-    /// business is that the result is a ref git will accept.
-    /// </summary>
+    // How a branch is named for an issue — `{id}` and `{summary}`, e.g. `{id}-{summary}` (the default)
+    // or `feature/{id}`. A naming convention is a team's business, not this plugin's; what stays this plugin's
+    // business is that the result is a ref git will accept.
     public string BranchPattern
     {
         get => storage.Get<string>("branchPattern") is { Length: > 0 } pattern ? pattern : BranchName.DefaultPattern;
@@ -45,13 +39,11 @@ internal sealed class YouTrackSettings(IPluginStorage storage)
         set => storage.Set("template", value);
     }
 
-    /// <summary>
-    /// Whether the cockpit automatically attaches a message's images to the issue the agent creates or updates
-    /// in that same turn (AC-116). Plugin-wide (not per session), default on — the whole point is that a
-    /// screenshot sent with "put this in YouTrack" ends up on the issue with no extra step. Turned off, the
-    /// automatic path does nothing; the explicit <c>attach_message_images_to_issue</c> tool still works, since
-    /// calling it is a deliberate act. Default true is also what a store predating this key deserializes to.
-    /// </summary>
+    // Whether the cockpit automatically attaches a message's images to the issue the agent creates or updates
+    // in that same turn (AC-116). Plugin-wide (not per session), default on — the whole point is that a
+    // screenshot sent with "put this in YouTrack" ends up on the issue with no extra step. Turned off, the
+    // automatic path does nothing; the explicit `attach_message_images_to_issue` tool still works, since
+    // calling it is a deliberate act. Default true is also what a store predating this key deserializes to.
     public bool AutoAttachImages
     {
         get => storage.Get<bool?>("autoAttachImages") ?? true;

@@ -5,20 +5,17 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// Plugin #41, mirroring the GitHub Issues plugin (#14) for pull requests: it registers a settings view
-/// (opened from the plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template)
-/// and a left-menu launcher button carrying a live "N / M" badge (AC-517 — your own open PR count next to
-/// how many are waiting on your review), opening a dialog with every open PR. Clicking a pull request in
-/// the dialog injects the rendered template into the active session so the agent opens and reviews it,
-/// falling back to the clipboard when there is no active session. Its settings live in the host's
-/// per-plugin storage, so <see cref="ConfigureServices"/> is empty.
-/// <para>
-/// AC-517 replaced this plugin's other half — an inline side-menu section always visible under the session
-/// list, showing up to a configurable number of pull requests inline. The dialog and its actions are
-/// unchanged; the always-visible list is now the Dashboard widget below, for a workspace given over to it.
-/// </para>
-/// </summary>
+// Plugin #41, mirroring the GitHub Issues plugin (#14) for pull requests: it registers a settings view
+// (opened from the plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template)
+// and a left-menu launcher button carrying a live "N / M" badge (AC-517 — your own open PR count next to
+// how many are waiting on your review), opening a dialog with every open PR. Clicking a pull request in
+// the dialog injects the rendered template into the active session so the agent opens and reviews it,
+// falling back to the clipboard when there is no active session. Its settings live in the host's
+// per-plugin storage, so `ConfigureServices` is empty.
+//
+// AC-517 replaced this plugin's other half — an inline side-menu section always visible under the session
+// list, showing up to a configurable number of pull requests inline. The dialog and its actions are
+// unchanged; the always-visible list is now the Dashboard widget below, for a workspace given over to it.
 public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 {
     private MergedPullRequestWatcher? _merged;

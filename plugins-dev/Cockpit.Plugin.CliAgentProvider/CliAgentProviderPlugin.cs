@@ -5,12 +5,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// Fase B1 provider-plugin (#45): registers "Codex (CLI)" as a session provider backed by
-/// <see cref="CliSubprocessPluginSessionDriverFactory"/> — a proces-per-turn subprocess driver, unlike the
-/// Gemini/OpenAI provider plugin's persistent <c>IChatClient</c>. Experimental: see this project's own
-/// header comment and the design doc for what fase B2 (live Codex verification) still owes.
-/// </summary>
+// Fase B1 provider-plugin (#45): registers "Codex (CLI)" as a session provider backed by
+// `CliSubprocessPluginSessionDriverFactory` — a proces-per-turn subprocess driver, unlike the
+// Gemini/OpenAI provider plugin's persistent `IChatClient`. Experimental: see this project's own
+// header comment and the design doc for what fase B2 (live Codex verification) still owes.
 public sealed class CliAgentProviderPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
@@ -89,7 +87,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         });
     }
 
-    /// <summary>Reads the models this profile's codex offers (increment 2 step C) — shared by the SDK and TTY option resolvers.</summary>
+    // Reads the models this profile's codex offers (increment 2 step C) — shared by the SDK and TTY option resolvers.
     private static async Task<CodexModelListing> _ListModelsAsync(string configJson, Func<string, string?>? managedResolver, CancellationToken cancellationToken)
     {
         var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();

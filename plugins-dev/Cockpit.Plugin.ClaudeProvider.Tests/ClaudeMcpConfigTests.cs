@@ -3,12 +3,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeMcpConfig"/> (#26): the shared MCP registry written into Claude's <c>--mcp-config</c>. The
-/// load-bearing property (AC-40) is that a cockpit-hosted endpoint's auth is written as an <em>env-var reference</em>
-/// (<c>${COCKPIT_MCP_KEY}</c>), never a literal key, so nothing sensitive lands in the file — while a user API-key
-/// server still gets its own literal bearer.
-/// </summary>
+// `ClaudeMcpConfig` (#26): the shared MCP registry written into Claude's `--mcp-config`. The
+// load-bearing property (AC-40) is that a cockpit-hosted endpoint's auth is written as an *env-var reference*
+// (`${COCKPIT_MCP_KEY}`), never a literal key, so nothing sensitive lands in the file — while a user API-key
+// server still gets its own literal bearer.
 public class ClaudeMcpConfigTests
 {
     [Fact]

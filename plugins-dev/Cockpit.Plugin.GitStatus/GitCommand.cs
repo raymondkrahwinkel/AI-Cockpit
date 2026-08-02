@@ -2,11 +2,9 @@ using System.Diagnostics;
 
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// Runs git, and tells you what it said (#69 workflow steps). The status reader runs git too, but only ever to
-/// <em>read</em>; this is the half that changes things, and it is separate for that reason: a failure here is a
-/// branch not cut, a commit not made — never something to swallow.
-/// </summary>
+// Runs git, and tells you what it said (#69 workflow steps). The status reader runs git too, but only ever to
+// *read*; this is the half that changes things, and it is separate for that reason: a failure here is a
+// branch not cut, a commit not made — never something to swallow.
 internal static class GitCommand
 {
     public static async Task<string> RunAsync(string workingDirectory, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
@@ -61,7 +59,7 @@ internal static class GitCommand
         return (stdout.Trim() is { Length: > 0 } output ? output : stderr.Trim()).Trim();
     }
 
-    /// <summary>The branch a repository is on, or empty in a detached head — which is a state a flow should not silently commit into.</summary>
+    // The branch a repository is on, or empty in a detached head — which is a state a flow should not silently commit into.
     public static async Task<string> CurrentBranchAsync(string workingDirectory, CancellationToken cancellationToken)
     {
         var branch = await RunAsync(workingDirectory, ["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken);
@@ -69,7 +67,7 @@ internal static class GitCommand
         return branch.Equals("HEAD", StringComparison.Ordinal) ? string.Empty : branch;
     }
 
-    /// <summary>Whether anything is changed, staged or untracked — the question every step that touches a branch has to ask first.</summary>
+    // Whether anything is changed, staged or untracked — the question every step that touches a branch has to ask first.
     public static async Task<bool> HasChangesAsync(string workingDirectory, CancellationToken cancellationToken) =>
         (await RunAsync(workingDirectory, ["status", "--porcelain"], cancellationToken)).Length > 0;
 }

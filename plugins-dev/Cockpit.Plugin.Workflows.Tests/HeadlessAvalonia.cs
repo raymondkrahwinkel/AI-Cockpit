@@ -7,21 +7,17 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// An Avalonia runtime without a screen (#69). Controls ask the platform for things as ordinary as a mouse cursor,
-/// so they cannot even be constructed without one — this gives the tests a platform, once, so control-level bugs
-/// (a Button swallowing a pointer press, say) can be caught by a test rather than by the operator.
-/// <para>
-/// It runs <b>with the host's theme loaded</b> (AC-337). A plugin draws inside the cockpit, so a canvas card built
-/// against a bare application is not the card anybody sees: every brush it asks for by name resolves to nothing and
-/// it falls back to Fluent. Cockpit.App cannot be referenced from here — a plugin that links the host is not a
-/// plugin — so <c>Styles/Theme.axaml</c> is read off disk and parsed, which is as close to the real thing as this
-/// side of the boundary can get.
-/// </para>
-/// <para>
-/// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
-/// </para>
-/// </summary>
+// An Avalonia runtime without a screen (#69). Controls ask the platform for things as ordinary as a mouse cursor,
+// so they cannot even be constructed without one — this gives the tests a platform, once, so control-level bugs
+// (a Button swallowing a pointer press, say) can be caught by a test rather than by the operator.
+//
+// It runs *with the host's theme loaded* (AC-337). A plugin draws inside the cockpit, so a canvas card built
+// against a bare application is not the card anybody sees: every brush it asks for by name resolves to nothing and
+// it falls back to Fluent. Cockpit.App cannot be referenced from here — a plugin that links the host is not a
+// plugin — so `Styles/Theme.axaml` is read off disk and parsed, which is as close to the real thing as this
+// side of the boundary can get.
+//
+// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
 public sealed class HeadlessAvalonia
 {
     private static readonly Lock Gate = new();
@@ -71,11 +67,9 @@ public sealed class HeadlessAvalonia
         }
     }
 
-    /// <summary>
-    /// The host's <c>Theme.axaml</c>, parsed from the repository. Loudly, not best-effort: a theme that silently
-    /// failed to load would leave the render tests asserting Fluent's colours while reading as if they had checked
-    /// the cockpit's.
-    /// </summary>
+    // The host's `Theme.axaml`, parsed from the repository. Loudly, not best-effort: a theme that silently
+    // failed to load would leave the render tests asserting Fluent's colours while reading as if they had checked
+    // the cockpit's.
     private static IStyle CockpitTheme()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -96,6 +90,6 @@ public sealed class HeadlessAvalonia
     }
 }
 
-/// <summary>Marks the tests that need a platform; xunit builds the fixture once for the whole collection.</summary>
+// Marks the tests that need a platform; xunit builds the fixture once for the whole collection.
 [CollectionDefinition("avalonia")]
 public sealed class AvaloniaCollection : ICollectionFixture<HeadlessAvalonia>;

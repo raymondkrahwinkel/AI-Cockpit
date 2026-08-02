@@ -3,24 +3,21 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// Turns the MCP servers the host resolved for a session (#26/#44) into what <c>codex app-server</c> reads:
-/// one <c>-c 'mcp_servers.&lt;name&gt;={…}'</c> config override per server, plus the environment the process
-/// needs.
-/// <para>
-/// A server's bearer token is never written into the <c>-c</c> value — a process argument is visible in
-/// <c>/proc/&lt;pid&gt;/cmdline</c> to every local account. The value instead carries only Codex's
-/// <c>bearer_token_env_var</c> pointing at an environment variable this builder also emits, so the token reaches
-/// the child through its environment (the same route <see cref="CliAgentConfig.BuildEnvironmentVariables"/> uses
-/// for the API key) and never the command line.
-/// </para>
-/// </summary>
+// Turns the MCP servers the host resolved for a session (#26/#44) into what `codex app-server` reads:
+// one `-c 'mcp_servers.&lt;name&gt;={…}'` config override per server, plus the environment the process
+// needs.
+//
+// A server's bearer token is never written into the `-c` value — a process argument is visible in
+// `/proc/&lt;pid&gt;/cmdline` to every local account. The value instead carries only Codex's
+// `bearer_token_env_var` pointing at an environment variable this builder also emits, so the token reaches
+// the child through its environment (the same route `CliAgentConfig.BuildEnvironmentVariables` uses
+// for the API key) and never the command line.
 internal static class CodexMcpConfig
 {
-    /// <summary>Prefix for the per-server env var a bearer token is passed through, indexed so two servers never collide.</summary>
+    // Prefix for the per-server env var a bearer token is passed through, indexed so two servers never collide.
     private const string TokenEnvVarPrefix = "COCKPIT_MCP_TOKEN_";
 
-    /// <summary>Prefix for the env var one custom header's value is passed through, indexed per server and per header.</summary>
+    // Prefix for the env var one custom header's value is passed through, indexed per server and per header.
     private const string HeaderEnvVarPrefix = "COCKPIT_MCP_HEADER_";
 
     public static CodexMcpLaunch Build(IReadOnlyList<PluginMcpServer>? servers)
@@ -106,18 +103,16 @@ internal static class CodexMcpConfig
         return null;
     }
 
-    /// <summary>
-    /// A server name Codex will accept. Codex validates every MCP server name against <c>^[a-zA-Z0-9_-]+$</c> and
-    /// refuses to start a server whose name carries anything else (AC-77 test finding: <c>"YouTrack: Personal"</c>,
-    /// <c>"SQL Explorer"</c> were rejected with "Invalid MCP server name"). A quoted TOML key parses fine but does
-    /// not change the name Codex then validates, so the display name is folded to the charset here: every
-    /// out-of-set character becomes <c>_</c>. The result is also a valid TOML bare key, so no quoting is needed.
-    /// Claude's <c>--mcp-config</c> route keeps the verbatim name (its JSON keys tolerate spaces), so the two
-    /// providers can differ on this without the Cockpit-side name changing. Names are made unique per launch (a
-    /// <c>_2</c>, <c>_3</c>, … suffix) so two display names that fold to the same identifier — <c>"a b"</c> and
-    /// <c>"a:b"</c> — do not collapse into one server. A name with no letter or digit at all (empty, or only
-    /// symbols that would fold to a bare run of <c>_</c>) falls back to <c>server_{index}</c>.
-    /// </summary>
+    // A server name Codex will accept. Codex validates every MCP server name against `^[a-zA-Z0-9_-]+$` and
+    // refuses to start a server whose name carries anything else (AC-77 test finding: `"YouTrack: Personal"`,
+    // `"SQL Explorer"` were rejected with "Invalid MCP server name"). A quoted TOML key parses fine but does
+    // not change the name Codex then validates, so the display name is folded to the charset here: every
+    // out-of-set character becomes `_`. The result is also a valid TOML bare key, so no quoting is needed.
+    // Claude's `--mcp-config` route keeps the verbatim name (its JSON keys tolerate spaces), so the two
+    // providers can differ on this without the Cockpit-side name changing. Names are made unique per launch (a
+    // `_2`, `_3`, … suffix) so two display names that fold to the same identifier — `"a b"` and
+    // `"a:b"` — do not collapse into one server. A name with no letter or digit at all (empty, or only
+    // symbols that would fold to a bare run of `_`) falls back to `server_{index}`.
     private static string _CodexServerName(string name, int index, HashSet<string> usedNames)
     {
         var builder = new StringBuilder(name.Length);
@@ -146,7 +141,7 @@ internal static class CodexMcpConfig
         return unique;
     }
 
-    /// <summary>A TOML basic string with the escapes the spec requires, so a url/name with a quote or backslash cannot break the value.</summary>
+    // A TOML basic string with the escapes the spec requires, so a url/name with a quote or backslash cannot break the value.
     private static string _TomlString(string value)
     {
         var builder = new StringBuilder(value.Length + 2);
@@ -181,7 +176,7 @@ internal static class CodexMcpConfig
     }
 }
 
-/// <summary>The <c>codex app-server</c> spawn's MCP-derived config args and the environment the tokens ride in.</summary>
+// The `codex app-server` spawn's MCP-derived config args and the environment the tokens ride in.
 internal sealed record CodexMcpLaunch(IReadOnlyList<string> ConfigArgs, IReadOnlyDictionary<string, string?> EnvironmentVariables)
 {
     public static CodexMcpLaunch Empty { get; } = new([], new Dictionary<string, string?>());

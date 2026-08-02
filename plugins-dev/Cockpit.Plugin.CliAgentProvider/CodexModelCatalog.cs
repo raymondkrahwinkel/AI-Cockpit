@@ -2,13 +2,11 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// Reads the models a logged-in Codex offers, by spawning a one-shot <c>codex app-server</c>, doing the
-/// initialize handshake and calling the <c>model/list</c> JSON-RPC method (increment 2 step C). It fills the
-/// New-session dialog's Model choices with the real, current models instead of free text. No <c>thread/start</c>
-/// is issued, so listing costs no credits. Best-effort by contract: the caller treats any failure (codex
-/// missing, not logged in, slow) as "no dynamic models — keep the free-text field".
-/// </summary>
+// Reads the models a logged-in Codex offers, by spawning a one-shot `codex app-server`, doing the
+// initialize handshake and calling the `model/list` JSON-RPC method (increment 2 step C). It fills the
+// New-session dialog's Model choices with the real, current models instead of free text. No `thread/start`
+// is issued, so listing costs no credits. Best-effort by contract: the caller treats any failure (codex
+// missing, not logged in, slow) as "no dynamic models — keep the free-text field".
 internal static class CodexModelCatalog
 {
     private const string _ClientName = "cockpit";
@@ -33,7 +31,7 @@ internal static class CodexModelCatalog
     private static string _WorkingDirectory(CliAgentConfig config) =>
         string.IsNullOrWhiteSpace(config.WorkingDirectory) ? Environment.CurrentDirectory : config.WorkingDirectory;
 
-    /// <summary>Parses a <c>model/list</c> reply into the ids it offers and the default, so the live-control path (#45 D4) can reuse it against its own already-running app-server connection instead of spawning a second one.</summary>
+    // Parses a `model/list` reply into the ids it offers and the default, so the live-control path (#45 D4) can reuse it against its own already-running app-server connection instead of spawning a second one.
     internal static CodexModelListing ParseListing(JsonElement result)
     {
         if (result.ValueKind != JsonValueKind.Object
@@ -73,7 +71,7 @@ internal static class CodexModelCatalog
         parent.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.String ? element.GetString() : null;
 }
 
-/// <summary>The models Codex reported, and which one it marks default — empty when the listing could not be read.</summary>
+// The models Codex reported, and which one it marks default — empty when the listing could not be read.
 internal sealed record CodexModelListing(IReadOnlyList<string> Ids, string? DefaultId)
 {
     public static CodexModelListing Empty { get; } = new([], null);

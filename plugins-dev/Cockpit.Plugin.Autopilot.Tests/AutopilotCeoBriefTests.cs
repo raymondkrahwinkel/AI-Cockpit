@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Profiles;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The CEO planning brief (AC-174): it states the goal, points the CEO at the plan-emit tool, and adapts to whether the
-/// run was triggered from a source item or started CEO-first. Kept a pure builder off the workspace body so its wording
-/// is tested without a live session.
-/// </summary>
+// The CEO planning brief (AC-174): it states the goal, points the CEO at the plan-emit tool, and adapts to whether the
+// run was triggered from a source item or started CEO-first. Kept a pure builder off the workspace body so its wording
+// is tested without a live session.
 public class AutopilotCeoBriefTests
 {
     [Fact]

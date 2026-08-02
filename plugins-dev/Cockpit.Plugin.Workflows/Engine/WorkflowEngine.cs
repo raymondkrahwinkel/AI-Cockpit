@@ -3,20 +3,17 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Runs a flow (#69): starts at a trigger, walks the wires, and hands each step what the one before it produced.
-/// The engine knows the <em>shape</em> of a flow — order, branches, what is switched off — and nothing about what a
-/// step means; that belongs to the runners.
-/// <para>
-/// Two rules that are not obvious and are not negotiable. A step type this build cannot execute is
-/// <see cref="RunStatus.Skipped"/> with a reason, never a success — a flow that reports green while doing nothing is
-/// the worst thing this could be. And loops are allowed by the model, so the engine has a ceiling on how many steps
-/// one run may take: a flow that never ends must fail loudly rather than hang the cockpit.
-/// </para>
-/// </summary>
+// Runs a flow (#69): starts at a trigger, walks the wires, and hands each step what the one before it produced.
+// The engine knows the *shape* of a flow — order, branches, what is switched off — and nothing about what a
+// step means; that belongs to the runners.
+//
+// Two rules that are not obvious and are not negotiable. A step type this build cannot execute is
+// `RunStatus.Skipped` with a reason, never a success — a flow that reports green while doing nothing is
+// the worst thing this could be. And loops are allowed by the model, so the engine has a ceiling on how many steps
+// one run may take: a flow that never ends must fail loudly rather than hang the cockpit.
 public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitHost host)
 {
-    /// <summary>How many steps one run may take. A loop with a decision as its stop condition is normal; a loop without one is a bug, and this is where it surfaces.</summary>
+    // How many steps one run may take. A loop with a decision as its stop condition is normal; a loop without one is a bug, and this is where it surfaces.
     public const int MaxSteps = 200;
 
     private readonly Dictionary<string, IStepRunner> _runners =
@@ -28,15 +25,15 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
     private HashSet<string>? _consentRequired;
     private HashSet<string>? _agentForbidden;
 
-    /// <summary>The step types the runtime gate asks consent for — anything with a risk (LowRisk or Dangerous), #AC-38.</summary>
+    // The step types the runtime gate asks consent for — anything with a risk (LowRisk or Dangerous), #AC-38.
     public IReadOnlySet<string> ConsentRequiredTypeIds =>
         _consentRequired ??= _runners.Values.Where(runner => runner.RequiredConsent is not null).Select(runner => runner.TypeId).ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>The step types an MCP caller may not create or arm (#AC-38): only the Dangerous ones. A LowRisk step stays agent-buildable and is gated at runtime instead.</summary>
+    // The step types an MCP caller may not create or arm (#AC-38): only the Dangerous ones. A LowRisk step stays agent-buildable and is gated at runtime instead.
     public IReadOnlySet<string> AgentForbiddenTypeIds =>
         _agentForbidden ??= _runners.Values.Where(runner => runner.RequiredConsent is ConsentRisk.Dangerous).Select(runner => runner.TypeId).ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>Runs the flow from <paramref name="startNodeId"/> — a trigger. Never throws: what went wrong is written into the run, which is the point of keeping one.</summary>
+    // Runs the flow from `startNodeId` — a trigger. Never throws: what went wrong is written into the run, which is the point of keeping one.
     public async Task<WorkflowRun> RunAsync(
         Workflow workflow,
         string startNodeId,
@@ -214,22 +211,17 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
         _ => true,
     };
 
-    /// <summary>
-    /// What happens when a step fails. Three answers, in the order the operator meant them.
-    /// <para>
-    /// A wire from the step's <em>error</em> way out means the failure has somewhere to go — tell Slack, move the
-    /// ticket back, try something else. The failure flows down it, carrying what went wrong as data, and the run is not
-    /// a failed run: it is a run that handled one. That distinction is the whole point of an error path.
-    /// </para>
-    /// <para>
-    /// Failing that, "keep going if this fails" carries on down the ordinary wire — for the steps whose failure is not
-    /// the point, like a notification nobody received in the middle of a deploy that worked.
-    /// </para>
-    /// <para>
-    /// And failing that, the branch stops and the run says so. Which is what a failure should do when nobody said
-    /// otherwise: a flow that quietly walked past a step that did not work would be worse than one that stopped.
-    /// </para>
-    /// </summary>
+    // What happens when a step fails. Three answers, in the order the operator meant them.
+    //
+    // A wire from the step's *error* way out means the failure has somewhere to go — tell Slack, move the
+    // ticket back, try something else. The failure flows down it, carrying what went wrong as data, and the run is not
+    // a failed run: it is a run that handled one. That distinction is the whole point of an error path.
+    //
+    // Failing that, "keep going if this fails" carries on down the ordinary wire — for the steps whose failure is not
+    // the point, like a notification nobody received in the middle of a deploy that worked.
+    //
+    // And failing that, the branch stops and the run says so. Which is what a failure should do when nobody said
+    // otherwise: a flow that quietly walked past a step that did not work would be worse than one that stopped.
     private static void _AfterFailure(
         Workflow workflow,
         WorkflowNode node,

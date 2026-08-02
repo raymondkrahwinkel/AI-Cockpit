@@ -3,11 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Plugin.Workflows.Model;
 
-/// <summary>
-/// A workflow as text. Kept as its own thing (rather than serialising the view models) because a flow has to
-/// survive being written to disk, read back, exported to a file and put in git — and because the day a node type
-/// gains a setting, an old flow must still open.
-/// </summary>
+// A workflow as text. Kept as its own thing (rather than serialising the view models) because a flow has to
+// survive being written to disk, read back, exported to a file and put in git — and because the day a node type
+// gains a setting, an old flow must still open.
 public static class WorkflowJson
 {
     private static readonly JsonSerializerOptions Options = new()
@@ -21,7 +19,7 @@ public static class WorkflowJson
 
     public static string WriteAll(IReadOnlyList<Workflow> workflows) => JsonSerializer.Serialize(workflows, Options);
 
-    /// <summary>Reads a workflow back. Returns null on anything that is not one, rather than throwing: a hand-edited or half-written file should cost you that flow, not the plugin.</summary>
+    // Reads a workflow back. Returns null on anything that is not one, rather than throwing: a hand-edited or half-written file should cost you that flow, not the plugin.
     public static Workflow? Read(string json)
     {
         try

@@ -6,12 +6,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The consent gate (#AC-38): a step that acts with the operator's rights is put to them for Approve/Deny before it
-/// runs — unless they started the run themselves. What these hold is that a shell/egress/session step cannot run on an
-/// agent's say-so without the operator seeing the literal action and allowing it, and that the operator running a flow
-/// by hand is not made to approve their own action.
-/// </summary>
+// The consent gate (#AC-38): a step that acts with the operator's rights is put to them for Approve/Deny before it
+// runs — unless they started the run themselves. What these hold is that a shell/egress/session step cannot run on an
+// agent's say-so without the operator seeing the literal action and allowing it, and that the operator running a flow
+// by hand is not made to approve their own action.
 public class ConsentGateTests
 {
     private static ICockpitHost _Host(ConsentOutcome outcome, out List<ConsentRequest> asked)
@@ -98,7 +96,7 @@ public class ConsentGateTests
     }
 }
 
-/// <summary>A runner that declares it needs consent and records whether it actually ran — enough to prove the gate.</summary>
+// A runner that declares it needs consent and records whether it actually ran — enough to prove the gate.
 internal sealed class ConsentingRunner(string typeId, ConsentRisk risk) : IStepRunner
 {
     public string TypeId => typeId;

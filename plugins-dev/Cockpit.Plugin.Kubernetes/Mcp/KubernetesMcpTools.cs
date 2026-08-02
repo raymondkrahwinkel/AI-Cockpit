@@ -12,15 +12,13 @@ using Cockpit.Plugin.Kubernetes.Settings;
 
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-/// <summary>
-/// The MCP tools an agent uses to work with a registered cluster (AC-80), exposed as <c>mcp__cockpit-k8s__*</c>. Every tool
-/// that touches a cluster routes through <see cref="ClusterAccessGate"/> first — opening the cluster, the namespace
-/// jail, and (for a change) an always-fresh consent — and only then reaches the kube-apiserver through the
-/// plugin-held client. The agent never sees a kubeconfig; it names a cluster by its label and a resource by its
-/// apiVersion/plural, and passes its own <c>COCKPIT_PANE_ID</c> as <c>session</c> so a remembered approval is scoped
-/// to the session that asked. Whether a resource is namespaced or cluster-scoped is decided by its real REST scope
-/// (<see cref="ResourceScope"/>), never by whether the agent left the namespace blank.
-/// </summary>
+// The MCP tools an agent uses to work with a registered cluster (AC-80), exposed as `mcp__cockpit-k8s__*`. Every tool
+// that touches a cluster routes through `ClusterAccessGate` first — opening the cluster, the namespace
+// jail, and (for a change) an always-fresh consent — and only then reaches the kube-apiserver through the
+// plugin-held client. The agent never sees a kubeconfig; it names a cluster by its label and a resource by its
+// apiVersion/plural, and passes its own `COCKPIT_PANE_ID` as `session` so a remembered approval is scoped
+// to the session that asked. Whether a resource is namespaced or cluster-scoped is decided by its real REST scope
+// (`ResourceScope`), never by whether the agent left the namespace blank.
 internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAccessGate gate, ClusterConnectionFactory connections, PortForwardManager portForwards)
 {
     private static readonly TimeSpan PortForwardMaxLifetime = TimeSpan.FromMinutes(30);

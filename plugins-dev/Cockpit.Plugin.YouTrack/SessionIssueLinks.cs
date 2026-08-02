@@ -2,34 +2,28 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Which issue each session pane is working on (#75). One instance is shared by the plugin's contributions, so
-/// starting an issue from the dialog reaches the header of the session it was started for: the dialog knows the
-/// active pane (<c>ICockpitSessionObserver.ActivePaneId</c>), the header knows its own
-/// (<c>IPluginSessionContext.PaneId</c>), and this is the only thing that connects them.
-/// <para>
-/// It is also where the session gets labelled after the ticket (#AC-310). Linking used to be invisible outside this
-/// plugin's own header — a session could carry a ticket while its sidebar row still read "default - 3", which is
-/// exactly the session you want to pick out of four. Doing it here rather than at each call site is what makes it
-/// hold for every route in: the dialog's Link to session, the session header's own picker, and the new session
-/// started from an issue.
-/// </para>
-/// <para>
-/// Deliberately not persisted: a pane's id lives as long as the pane, and the cockpit does not restore sessions
-/// on restart — persisting a link to a session that will never come back is worse than asking for it again.
-/// </para>
-/// </summary>
+// Which issue each session pane is working on (#75). One instance is shared by the plugin's contributions, so
+// starting an issue from the dialog reaches the header of the session it was started for: the dialog knows the
+// active pane (`ICockpitSessionObserver.ActivePaneId`), the header knows its own
+// (`IPluginSessionContext.PaneId`), and this is the only thing that connects them.
+//
+// It is also where the session gets labelled after the ticket (#AC-310). Linking used to be invisible outside this
+// plugin's own header — a session could carry a ticket while its sidebar row still read "default - 3", which is
+// exactly the session you want to pick out of four. Doing it here rather than at each call site is what makes it
+// hold for every route in: the dialog's Link to session, the session header's own picker, and the new session
+// started from an issue.
+//
+// Deliberately not persisted: a pane's id lives as long as the pane, and the cockpit does not restore sessions
+// on restart — persisting a link to a session that will never come back is worse than asking for it again.
 internal sealed class SessionIssueLinks(ICockpitHost host)
 {
     private readonly Dictionary<string, LinkedIssue> _byPaneId = new(StringComparer.Ordinal);
 
-    /// <summary>Raised (on the caller's thread — every mutation here happens on the UI thread) when a pane's link changes, so the header showing it can re-render.</summary>
+    // Raised (on the caller's thread — every mutation here happens on the UI thread) when a pane's link changes, so the header showing it can re-render.
     public event EventHandler<string>? Changed;
 
-    /// <summary>
-    /// Raised when a ticket is picked for a session — the act a workflow can start on (#69). Unlinking does not raise
-    /// it: a flow that ran when you *stopped* tracking a ticket would be doing work about work you just put down.
-    /// </summary>
+    // Raised when a ticket is picked for a session — the act a workflow can start on (#69). Unlinking does not raise
+    // it: a flow that ran when you *stopped* tracking a ticket would be doing work about work you just put down.
     public event EventHandler<IssueLinked>? Linked;
 
     public LinkedIssue? For(string paneId) =>
@@ -69,5 +63,5 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
     }
 }
 
-/// <summary>A ticket was picked for a session: which ticket, and where that session is working.</summary>
+// A ticket was picked for a session: which ticket, and where that session is working.
 internal sealed record IssueLinked(LinkedIssue Link, string? WorkingDirectory);

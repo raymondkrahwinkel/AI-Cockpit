@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CliSubprocessPluginSessionDriver"/> against a <see cref="FakeCliSubprocess"/> (#45 fase B1) —
-/// proves the proces-per-turn lifecycle (spawn per turn, resume via the captured thread id, interrupt = kill,
-/// stderr drained concurrently so it can never deadlock a turn) without needing a real, logged-in <c>codex</c>
-/// CLI (B2).
-/// </summary>
+// `CliSubprocessPluginSessionDriver` against a `FakeCliSubprocess` (#45 fase B1) —
+// proves the proces-per-turn lifecycle (spawn per turn, resume via the captured thread id, interrupt = kill,
+// stderr drained concurrently so it can never deadlock a turn) without needing a real, logged-in `codex`
+// CLI (B2).
 public class CliSubprocessPluginSessionDriverTests
 {
     private static CliAgentConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());

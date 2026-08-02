@@ -4,15 +4,11 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.SystemMonitor;
 
-/// <summary>
-/// One System Monitor instance's settings: which of the three readings it shows. Implements
-/// <see cref="IPluginSettingsView"/>, so the host wraps it in its standard Save/Close footer — the widget
-/// supplies the content, never the window.
-/// </summary>
-/// <remarks>
-/// Reads and writes through the instance's own <see cref="IWidgetContext.Storage"/>, which is what keeps two
-/// monitors on one dashboard from sharing a selection.
-/// </remarks>
+// One System Monitor instance's settings: which of the three readings it shows. Implements
+// `IPluginSettingsView`, so the host wraps it in its standard Save/Close footer — the widget
+// supplies the content, never the window.
+// Reads and writes through the instance's own `IWidgetContext.Storage`, which is what keeps two
+// monitors on one dashboard from sharing a selection.
 internal sealed class SystemMonitorSettingsView : UserControl, IPluginSettingsView
 {
     private readonly IWidgetContext _context;

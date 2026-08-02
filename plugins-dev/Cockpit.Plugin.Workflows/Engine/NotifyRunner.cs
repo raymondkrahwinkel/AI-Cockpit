@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>Notify: the cockpit's own toast, or Discord when you are away — the same path every other notification takes.</summary>
+// Notify: the cockpit's own toast, or Discord when you are away — the same path every other notification takes.
 internal sealed class NotifyRunner(ICockpitHost host) : IStepRunner
 {
     public string TypeId => "cockpit.notify";

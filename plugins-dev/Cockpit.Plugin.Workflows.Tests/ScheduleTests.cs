@@ -2,11 +2,9 @@ using Cockpit.Plugin.Workflows.Engine;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// When a scheduled flow is due (#69). The rule that matters most is the last one: a schedule nobody can read must
-/// never fire. The alternative — treating an unparseable "When" as "always" — is a flow that runs every half minute
-/// forever, and the operator's only clue is that their machine got hot.
-/// </summary>
+// When a scheduled flow is due (#69). The rule that matters most is the last one: a schedule nobody can read must
+// never fire. The alternative — treating an unparseable "When" as "always" — is a flow that runs every half minute
+// forever, and the operator's only clue is that their machine got hot.
 public class ScheduleTests
 {
     [Theory]

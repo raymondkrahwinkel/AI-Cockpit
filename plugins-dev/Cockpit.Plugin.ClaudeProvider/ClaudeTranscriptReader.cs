@@ -4,22 +4,19 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// The Claude plugin's own transcript reader (weg A) for the host's status (#39): a TTY session runs the real
-/// interactive TUI, so there is no parsed event stream — but <c>claude</c> writes every session live to
-/// <c>&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;session-id&gt;.jsonl</c>, so tailing that file gets the
-/// turn's activity cleanly without touching the ANSI/TUI stream. Ported from the host's former in-tree reader
-/// so the core carries no Claude-format knowledge; the config directory is resolved from this plugin's own
-/// opaque <c>ConfigJson</c> rather than a host-supplied path.
-/// <para>
-/// The session id is <em>not</em> forced on the launch (undocumented for interactive sessions and does not
-/// persist a transcript), so the file is identified as the new transcript that appears after launch — see
-/// <see cref="SnapshotTranscripts"/>. It is tailed from its current end via manual byte-level buffering rather
-/// than <see cref="StreamReader.ReadLine"/>, which cannot tell a real end-of-file apart from "more is coming"
-/// and would emit a partial line the writer has not finished; a stateful <see cref="Decoder"/> carries any
-/// UTF-8 multi-byte sequence split across a poll boundary.
-/// </para>
-/// </summary>
+// The Claude plugin's own transcript reader (weg A) for the host's status (#39): a TTY session runs the real
+// interactive TUI, so there is no parsed event stream — but `claude` writes every session live to
+// `&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;session-id&gt;.jsonl`, so tailing that file gets the
+// turn's activity cleanly without touching the ANSI/TUI stream. Ported from the host's former in-tree reader
+// so the core carries no Claude-format knowledge; the config directory is resolved from this plugin's own
+// opaque `ConfigJson` rather than a host-supplied path.
+//
+// The session id is *not* forced on the launch (undocumented for interactive sessions and does not
+// persist a transcript), so the file is identified as the new transcript that appears after launch — see
+// `SnapshotTranscripts`. It is tailed from its current end via manual byte-level buffering rather
+// than `StreamReader.ReadLine`, which cannot tell a real end-of-file apart from "more is coming"
+// and would emit a partial line the writer has not finished; a stateful `Decoder` carries any
+// UTF-8 multi-byte sequence split across a poll boundary.
 internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -183,13 +180,11 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    /// <summary>
-    /// Classifies one main-transcript JSONL line into a coarse turn-activity (ported from the host's former
-    /// <c>TtyTranscriptStatus</c> so the Claude-format knowledge lives with the provider): a user message or a
-    /// tool-result means the model owes a response (Busy); an assistant message is Busy while it streams or loops
-    /// into a tool call and <see cref="PluginSessionActivity.TurnComplete"/> on a terminal stop_reason; anything
-    /// else carries no signal.
-    /// </summary>
+    // Classifies one main-transcript JSONL line into a coarse turn-activity (ported from the host's former
+    // `TtyTranscriptStatus` so the Claude-format knowledge lives with the provider): a user message or a
+    // tool-result means the model owes a response (Busy); an assistant message is Busy while it streams or loops
+    // into a tool call and `PluginSessionActivity.TurnComplete` on a terminal stop_reason; anything
+    // else carries no signal.
     internal static PluginSessionActivity ClassifyLine(string? jsonLine)
     {
         if (string.IsNullOrWhiteSpace(jsonLine))
@@ -234,19 +229,17 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    /// <summary>The config directory this profile's transcripts live under, from the plugin's own config JSON — a pinned dir, else CLAUDE_CONFIG_DIR, else ~/.claude.</summary>
+    // The config directory this profile's transcripts live under, from the plugin's own config JSON — a pinned dir, else CLAUDE_CONFIG_DIR, else ~/.claude.
     private static string _ResolveStateDirectory(string configJson) =>
         ClaudeConfigPaths.ResolveStateDirectory(
             ClaudeProviderConfig.Parse(configJson).ConfigDir,
             Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
-    /// <summary>
-    /// Polls for a transcript file that was not present at launch — the one <c>claude</c> creates for this
-    /// session under its own auto-assigned id. The newest such file wins if more than one appears (a rare
-    /// race in the single-user cockpit). Polls rather than failing on a first miss: the CLI writes the file
-    /// a moment after the pty is up.
-    /// </summary>
+    // Polls for a transcript file that was not present at launch — the one `claude` creates for this
+    // session under its own auto-assigned id. The newest such file wins if more than one appears (a rare
+    // race in the single-user cockpit). Polls rather than failing on a first miss: the CLI writes the file
+    // a moment after the pty is up.
     private static async Task<string?> _WaitForNewTranscriptAsync(
         string configDir, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken)
     {
@@ -267,12 +260,10 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         return null;
     }
 
-    /// <summary>
-    /// Every <c>&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;id&gt;.jsonl</c> transcript currently on disk (session-id subfolders
-    /// holding tool-results/subagents are skipped — only the flat transcript files count). Internal so
-    /// <see cref="ClaudeTtyProvider"/> shares the one definition of what counts as a transcript; the policy for
-    /// picking one out of several is deliberately not shared, because the two callers need opposite answers.
-    /// </summary>
+    // Every `&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;id&gt;.jsonl` transcript currently on disk (session-id subfolders
+    // holding tool-results/subagents are skipped — only the flat transcript files count). Internal so
+    // `ClaudeTtyProvider` shares the one definition of what counts as a transcript; the policy for
+    // picking one out of several is deliberately not shared, because the two callers need opposite answers.
     internal static IEnumerable<string> EnumerateTranscripts(string configDir)
     {
         var projectsDir = Path.Combine(configDir, "projects");

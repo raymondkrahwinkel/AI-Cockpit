@@ -2,12 +2,10 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Reads an issue's <c>customFields</c> response into the two fields the workflow actions care about. Pure, so
-/// the awkward part — which of a project's fields <em>is</em> the status, given that it is called "State" here,
-/// "Stage" there and "Kanban State" on a third board — is decided by a rule that can be tested without a
-/// YouTrack to talk to.
-/// </summary>
+// Reads an issue's `customFields` response into the two fields the workflow actions care about. Pure, so
+// the awkward part — which of a project's fields *is* the status, given that it is called "State" here,
+// "Stage" there and "Kanban State" on a third board — is decided by a rule that can be tested without a
+// YouTrack to talk to.
 internal static class YouTrackFieldParser
 {
     // The names a status field goes by, most specific first: a board that has both "State" and "Kanban State"
@@ -40,12 +38,10 @@ internal static class YouTrackFieldParser
         return new YouTrackIssueFields(null, _NullIfAbsent(assignee, AssigneeFieldName));
     }
 
-    /// <summary>
-    /// The name of the state an issue stands on, from its <c>customFields</c> array — the same "which field is the
-    /// status" rule <see cref="Parse"/> applies, over an already-parsed element. Null when the array holds no status
-    /// field, or one with no value set. Autopilot's start gate reads this, so answering it by a different rule than
-    /// the workflow actions use would let the two disagree about what stage an issue is on.
-    /// </summary>
+    // The name of the state an issue stands on, from its `customFields` array — the same "which field is the
+    // status" rule `Parse` applies, over an already-parsed element. Null when the array holds no status
+    // field, or one with no value set. Autopilot's start gate reads this, so answering it by a different rule than
+    // the workflow actions use would let the two disagree about what stage an issue is on.
     public static string? ParseStateName(JsonElement customFields)
     {
         if (customFields.ValueKind != JsonValueKind.Array)
@@ -68,7 +64,7 @@ internal static class YouTrackFieldParser
         return null;
     }
 
-    /// <summary>The transitions a workflow allows from where the issue stands now, from a state-machine field's own response.</summary>
+    // The transitions a workflow allows from where the issue stands now, from a state-machine field's own response.
     public static IReadOnlyList<YouTrackStateEvent> ParsePossibleEvents(string fieldJson)
     {
         using var document = JsonDocument.Parse(fieldJson);
@@ -86,7 +82,7 @@ internal static class YouTrackFieldParser
             .ToList();
     }
 
-    /// <summary>The values a project allows for one field, from the admin projects/customFields response — the route the plain issue read does not always carry.</summary>
+    // The values a project allows for one field, from the admin projects/customFields response — the route the plain issue read does not always carry.
     public static IReadOnlyList<string> ParseProjectFieldValues(string projectCustomFieldsJson, string fieldName)
     {
         using var document = JsonDocument.Parse(projectCustomFieldsJson);
@@ -109,15 +105,13 @@ internal static class YouTrackFieldParser
         return [];
     }
 
-    /// <summary>
-    /// Whichever of a project's fields is its status — same State/Stage/Kanban State preference <see cref="Parse"/>
-    /// and <see cref="ParseStateName"/> apply — from the admin projects/customFields response. Unlike
-    /// <see cref="ParseProjectFieldValues"/>, which reads one already-known field by name and keeps every value
-    /// (including a resolved one — the per-issue Set-state menu has to be able to move an issue <em>to</em> Done),
-    /// this excludes resolved values: the dialog's state filter always queries with <c>#Unresolved</c> (AC-518
-    /// follow-up), so offering "Done" would be a choice that reads as present but always returns nothing. The
-    /// field's own name travels back with its values so a caller can query by it later.
-    /// </summary>
+    // Whichever of a project's fields is its status — same State/Stage/Kanban State preference `Parse`
+    // and `ParseStateName` apply — from the admin projects/customFields response. Unlike
+    // `ParseProjectFieldValues`, which reads one already-known field by name and keeps every value
+    // (including a resolved one — the per-issue Set-state menu has to be able to move an issue *to* Done),
+    // this excludes resolved values: the dialog's state filter always queries with `#Unresolved` (AC-518
+    // follow-up), so offering "Done" would be a choice that reads as present but always returns nothing. The
+    // field's own name travels back with its values so a caller can query by it later.
     public static (string? FieldName, IReadOnlyList<string> Values) ParseProjectStateField(string projectCustomFieldsJson)
     {
         using var document = JsonDocument.Parse(projectCustomFieldsJson);

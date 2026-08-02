@@ -3,25 +3,21 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// What YouTrack lends the workflow editor (#69, #75): two steps, and no more.
-/// <para>
-/// A <b>trigger</b> — you picked a ticket for a session — and an <b>action</b> that sets a ticket's status. The old
-/// "Start a ticket" was the second one with a state guessed for you, which is a node that exists because a flow could
-/// not say "In Progress" out loud. It can. Fewer nodes that each do one thing beat more nodes that overlap.
-/// </para>
-/// <para>
-/// The trigger is what makes the rest of the flow possible: it hands over the ticket, its summary, the branch name and
-/// the directory the session works in, which is everything the next steps (cut a branch, move it to In Progress, put
-/// an agent on it) need.
-/// </para>
-/// </summary>
+// What YouTrack lends the workflow editor (#69, #75): two steps, and no more.
+//
+// A *trigger* — you picked a ticket for a session — and an *action* that sets a ticket's status. The old
+// "Start a ticket" was the second one with a state guessed for you, which is a node that exists because a flow could
+// not say "In Progress" out loud. It can. Fewer nodes that each do one thing beat more nodes that overlap.
+//
+// The trigger is what makes the rest of the flow possible: it hands over the ticket, its summary, the branch name and
+// the directory the session works in, which is everything the next steps (cut a branch, move it to In Progress, put
+// an agent on it) need.
 internal static class YouTrackWorkflowSteps
 {
-    /// <summary>The trigger's type id, fired when an issue is linked to a session — see <see cref="SessionIssueLinks"/>.</summary>
+    // The trigger's type id, fired when an issue is linked to a session — see `SessionIssueLinks`.
     public const string PickedTrigger = "youtrack.picked";
 
-    /// <summary>The type id of the trigger fired when a ticket's status is moved from the cockpit — see <see cref="IssueStateChanges"/>.</summary>
+    // The type id of the trigger fired when a ticket's status is moved from the cockpit — see `IssueStateChanges`.
     public const string StatusChangedTrigger = "youtrack.status-changed";
 
     public static IEnumerable<IWorkflowStep> All(YouTrackSettings settings) =>
@@ -31,7 +27,7 @@ internal static class YouTrackWorkflowSteps
         new SetStatusStep(settings),
     ];
 
-    /// <summary>Fires when you pick a ticket for a session. The cockpit's own act — nothing is polled, nothing is guessed.</summary>
+    // Fires when you pick a ticket for a session. The cockpit's own act — nothing is polled, nothing is guessed.
     private sealed class TicketPickedTrigger : IWorkflowStep
     {
         public string TypeId => PickedTrigger;
@@ -60,11 +56,9 @@ internal static class YouTrackWorkflowSteps
         };
     }
 
-    /// <summary>
-    /// Fires when you move a ticket's status from the cockpit — the issues dialog, or a session's header. It hands over
-    /// where the ticket came from as well as where it went, because a flow that runs "when a ticket reaches Review"
-    /// needs to know it is Review; a flow that runs on any move at all is a flow that runs all day.
-    /// </summary>
+    // Fires when you move a ticket's status from the cockpit — the issues dialog, or a session's header. It hands over
+    // where the ticket came from as well as where it went, because a flow that runs "when a ticket reaches Review"
+    // needs to know it is Review; a flow that runs on any move at all is a flow that runs all day.
     private sealed class TicketStatusChangedTrigger : IWorkflowStep
     {
         public string TypeId => StatusChangedTrigger;
@@ -94,7 +88,7 @@ internal static class YouTrackWorkflowSteps
         };
     }
 
-    /// <summary>Sets a ticket's status to one its board allows — In Progress, Review, Done. The one node that moves a ticket.</summary>
+    // Sets a ticket's status to one its board allows — In Progress, Review, Done. The one node that moves a ticket.
     private sealed class SetStatusStep(YouTrackSettings settings) : IWorkflowStep
     {
         public string TypeId => "youtrack.status";
@@ -114,16 +108,13 @@ internal static class YouTrackWorkflowSteps
 
         public IReadOnlyList<string> Parameters => ["Ticket", "Status", "Assign to me", "Instance"];
 
-        /// <summary>
-        /// The statuses a board actually has, read from YouTrack rather than typed from memory: "In Progres" is a flow
-        /// that fails at run time over a letter, and nothing on the canvas would say why. Read from the open issues of
-        /// the configured instance — the states they are in are the states this board uses — plus the two words this
-        /// step understands that are not statuses at all.
-        /// <para>
-        /// Suggestions, not a closed list: the value is as often <c>{state}</c> from the step before as it is one of
-        /// these. And a failure is silence — an unconfigured instance leaves a field you can still type in.
-        /// </para>
-        /// </summary>
+        // The statuses a board actually has, read from YouTrack rather than typed from memory: "In Progres" is a flow
+        // that fails at run time over a letter, and nothing on the canvas would say why. Read from the open issues of
+        // the configured instance — the states they are in are the states this board uses — plus the two words this
+        // step understands that are not statuses at all.
+        //
+        // Suggestions, not a closed list: the value is as often `{state}` from the step before as it is one of
+        // these. And a failure is silence — an unconfigured instance leaves a field you can still type in.
         public async Task<IReadOnlyList<string>> SuggestAsync(string parameter, CancellationToken cancellationToken = default)
         {
             if (!string.Equals(parameter, "Status", StringComparison.Ordinal))

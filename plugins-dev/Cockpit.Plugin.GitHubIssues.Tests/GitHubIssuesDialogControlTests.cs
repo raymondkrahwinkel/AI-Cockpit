@@ -11,22 +11,18 @@ using Xunit.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The issue dialog's wiring, measured in a real (if screenless) Avalonia — the same suite the YouTrack plugin's
-/// dialog carries, against this plugin's own copy of it. The two dialogs are deliberately separate code (plugins
-/// are built, versioned and installed on their own), so a fix landing in one proves nothing about the other: this
-/// is where the GitHub copy proves it for itself.
-/// <para>
-/// The dialog fetches its own issues and there is no seam to hand it a list, so the loaded set is planted in
-/// <c>_all</c> and every rebuild is driven the way the operator drives it — by typing in the search box, which is
-/// the same <c>_ApplyFilter</c> path a refresh takes.
-/// </para>
-/// <para>
-/// Every assertion here reads a value out first and asserts on that value: an assertion written as
-/// <c>maybeNull?.Field.Should()...</c> is skipped in full when the value is null, which is precisely the state the
-/// defect produces — the test then passes on the broken build it was written to catch.
-/// </para>
-/// </summary>
+// The issue dialog's wiring, measured in a real (if screenless) Avalonia — the same suite the YouTrack plugin's
+// dialog carries, against this plugin's own copy of it. The two dialogs are deliberately separate code (plugins
+// are built, versioned and installed on their own), so a fix landing in one proves nothing about the other: this
+// is where the GitHub copy proves it for itself.
+//
+// The dialog fetches its own issues and there is no seam to hand it a list, so the loaded set is planted in
+// `_all` and every rebuild is driven the way the operator drives it — by typing in the search box, which is
+// the same `_ApplyFilter` path a refresh takes.
+//
+// Every assertion here reads a value out first and asserts on that value: an assertion written as
+// `maybeNull?.Field.Should()...` is skipped in full when the value is null, which is precisely the state the
+// defect produces — the test then passes on the broken build it was written to catch.
 [Collection("avalonia")]
 public class GitHubIssuesDialogControlTests
 {
@@ -648,10 +644,8 @@ public class GitHubIssuesDialogControlTests
         Assert.DoesNotContain("may be incomplete", status);
     });
 
-    /// <summary>
-    /// One dialog under test, in a window its real size, with the loaded issue set planted and the fakes it talks to
-    /// kept to hand.
-    /// </summary>
+    // One dialog under test, in a window its real size, with the loaded issue set planted and the fakes it talks to
+    // kept to hand.
     private sealed class DialogHarness
     {
         private DialogHarness(Window window, GitHubIssuesDialogControl dialog, GitHubIssuesSettings settings, FakeCockpitHost host, SessionIssueLinks links)
@@ -676,21 +670,19 @@ public class GitHubIssuesDialogControlTests
 
         public DataGrid Grid => _window.GetVisualDescendants().OfType<DataGrid>().First();
 
-        /// <summary>The AC-519 label filter — named so it is found reliably alongside the repository filter, the other <see cref="ComboBox"/> in the same bar.</summary>
+        // The AC-519 label filter — named so it is found reliably alongside the repository filter, the other `ComboBox` in the same bar.
         public ComboBox LabelFilter => _window.GetVisualDescendants().OfType<ComboBox>().First(combo => combo.Name == "labelFilter");
 
-        /// <summary>The AC-317 repository filter.</summary>
+        // The AC-317 repository filter.
         public ComboBox RepoFilter => _window.GetVisualDescendants().OfType<ComboBox>().First(combo => combo.Name == "repoFilter");
 
-        /// <summary>The window-level status line — what a load's outcome (including the AC-519 truncation notice) is reported through.</summary>
+        // The window-level status line — what a load's outcome (including the AC-519 truncation notice) is reported through.
         public string? StatusText => _window.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(text => text.Name == "status")?.Text;
 
         public static DialogHarness Open(params GitHubIssue[] issues) => Open("octocat", issues);
 
-        /// <summary>
-        /// Opens with a filter term of the caller's choosing. The grid is filled by typing, and the filter matches
-        /// title, repository or number — so an issue whose repository is empty needs a term that is not the owner.
-        /// </summary>
+        // Opens with a filter term of the caller's choosing. The grid is filled by typing, and the filter matches
+        // title, repository or number — so an issue whose repository is empty needs a term that is not the owner.
         public static DialogHarness Open(string filter, params GitHubIssue[] issues)
         {
             // Settings on their defaults: the CLI is off and no repository is set, so the dialog's own load
@@ -700,7 +692,7 @@ public class GitHubIssuesDialogControlTests
             return Open(settings, filter, issues);
         }
 
-        /// <summary>Opens with settings the caller configured first — e.g. an <see cref="GitHubIssuesSettings.InProgressLabel"/> to prove the label filter's preselection (AC-519).</summary>
+        // Opens with settings the caller configured first — e.g. an `GitHubIssuesSettings.InProgressLabel` to prove the label filter's preselection (AC-519).
         public static DialogHarness Open(GitHubIssuesSettings settings, string filter, params GitHubIssue[] issues)
         {
             var host = new FakeCockpitHost();
@@ -717,11 +709,9 @@ public class GitHubIssuesDialogControlTests
             return harness;
         }
 
-        /// <summary>
-        /// Drives the private label-filter population directly (AC-519) — the real fetch behind it goes through
-        /// <c>gh</c>/HTTP with no seam for a test to hand it a fake, so this proves the rendering/preselection half
-        /// of the feature the way <see cref="_PlantLoadedIssues"/> already proves the issue-list half.
-        /// </summary>
+        // Drives the private label-filter population directly (AC-519) — the real fetch behind it goes through
+        // `gh`/HTTP with no seam for a test to hand it a fake, so this proves the rendering/preselection half
+        // of the feature the way `_PlantLoadedIssues` already proves the issue-list half.
         public void PopulateLabelFilter(params string[] labels)
         {
             var method = typeof(GitHubIssuesDialogControl).GetMethod("_PopulateLabelFilter", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -730,7 +720,7 @@ public class GitHubIssuesDialogControlTests
             Layout();
         }
 
-        /// <summary>Drives the private post-load status composition directly (AC-519) — proves the exact-limit truncation notice without a live fetch.</summary>
+        // Drives the private post-load status composition directly (AC-519) — proves the exact-limit truncation notice without a live fetch.
         public void ReportLoaded()
         {
             var method = typeof(GitHubIssuesDialogControl).GetMethod("_ReportLoaded", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -738,11 +728,9 @@ public class GitHubIssuesDialogControlTests
             method.Invoke(_dialog, []);
         }
 
-        /// <summary>
-        /// Plants the AC-519 truncation signal a real fetch would have handed back — measured by the client against
-        /// the raw page it received, before any local filtering. There is no live fetch here (see the class doc), so
-        /// this is planted alongside <see cref="_PlantLoadedIssues"/> the same way that field is: directly, by name.
-        /// </summary>
+        // Plants the AC-519 truncation signal a real fetch would have handed back — measured by the client against
+        // the raw page it received, before any local filtering. There is no live fetch here (see the class doc), so
+        // this is planted alongside `_PlantLoadedIssues` the same way that field is: directly, by name.
         public void SetPossiblyTruncated(bool value)
         {
             var field = typeof(GitHubIssuesDialogControl).GetField("_possiblyTruncated", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -750,7 +738,7 @@ public class GitHubIssuesDialogControlTests
             field.SetValue(_dialog, value);
         }
 
-        /// <summary>Plants what AC-317 would have resolved from the linked project's own repository field, bypassing <c>_host.GetProjectFieldValueAsync</c> (there is no live session/project here).</summary>
+        // Plants what AC-317 would have resolved from the linked project's own repository field, bypassing `_host.GetProjectFieldValueAsync` (there is no live session/project here).
         public void SetLinkedRepository(string repository)
         {
             var field = typeof(GitHubIssuesDialogControl).GetField("_linkedRepository", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -758,15 +746,13 @@ public class GitHubIssuesDialogControlTests
             field.SetValue(_dialog, repository);
         }
 
-        /// <summary>
-        /// Drives the private repo-filter population directly (AC-317) — same reasoning as
-        /// <see cref="PopulateLabelFilter"/>: the real fetch behind the repository list (gh's own repository list,
-        /// or the one repository HTTP mode's settings name) goes through <c>gh</c>/HTTP with no seam for a test to
-        /// hand it a fake, so the repositories are handed in directly here instead, the same way the real
-        /// <c>_LoadAsync</c> hands in a list from its own independent fetch rather than deriving it from <c>_all</c>
-        /// (the adversarial-review fix: deriving it from <c>_all</c> made a repository with no currently-matching
-        /// issue vanish from the dropdown along with its issues).
-        /// </summary>
+        // Drives the private repo-filter population directly (AC-317) — same reasoning as
+        // `PopulateLabelFilter`: the real fetch behind the repository list (gh's own repository list,
+        // or the one repository HTTP mode's settings name) goes through `gh`/HTTP with no seam for a test to
+        // hand it a fake, so the repositories are handed in directly here instead, the same way the real
+        // `_LoadAsync` hands in a list from its own independent fetch rather than deriving it from `_all`
+        // (the adversarial-review fix: deriving it from `_all` made a repository with no currently-matching
+        // issue vanish from the dropdown along with its issues).
         public void PopulateRepoFilter(params string[] repositories)
         {
             var method = typeof(GitHubIssuesDialogControl).GetMethod("_PopulateRepoFilter", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -781,11 +767,9 @@ public class GitHubIssuesDialogControlTests
             Layout();
         }
 
-        /// <summary>
-        /// Types into the filter box the way the operator does. Assigning <c>TextBox.Text</c> would not do: Avalonia
-        /// raises <c>TextChanged</c> from its input handling, so a programmatic assignment never reaches the handler
-        /// that rebuilds the list — the very path under test.
-        /// </summary>
+        // Types into the filter box the way the operator does. Assigning `TextBox.Text` would not do: Avalonia
+        // raises `TextChanged` from its input handling, so a programmatic assignment never reaches the handler
+        // that rebuilds the list — the very path under test.
         public void Type(string text)
         {
             _window.GetVisualDescendants().OfType<TextBox>()
@@ -799,7 +783,7 @@ public class GitHubIssuesDialogControlTests
             .First(button => button.Content as string == label
                              || button.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == label));
 
-        /// <summary>The icon-only link button beside the title, which carries no text to find it by.</summary>
+        // The icon-only link button beside the title, which carries no text to find it by.
         public Button OpenLink() => _window.GetVisualDescendants().OfType<Button>()
             .First(button => ToolTip.GetTip(button) as string == "Open in browser");
 
@@ -818,19 +802,17 @@ public class GitHubIssuesDialogControlTests
 
         public void Layout() => _window.UpdateLayout();
 
-        /// <summary>The detail panel's own result line.</summary>
+        // The detail panel's own result line.
         public string? DetailMessage() => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "detailStatus")?.Text;
 
-        /// <summary>The heading of whichever issue the detail panel is currently about.</summary>
+        // The heading of whichever issue the detail panel is currently about.
         public string? DetailTitle() => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "detailTitle")?.Text;
 
-        /// <summary>
-        /// Whether the panel is showing an issue at all, as opposed to its "select an issue" placeholder. Asks the
-        /// heading whether it is effectively visible: hiding the panel leaves its children's own IsVisible untouched,
-        /// so only the answer that walks the parent chain distinguishes the two states.
-        /// </summary>
+        // Whether the panel is showing an issue at all, as opposed to its "select an issue" placeholder. Asks the
+        // heading whether it is effectively visible: hiding the panel leaves its children's own IsVisible untouched,
+        // so only the answer that walks the parent chain distinguishes the two states.
         public bool DetailIsVisible() => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "detailTitle")?.IsEffectivelyVisible == true;
 
@@ -838,7 +820,7 @@ public class GitHubIssuesDialogControlTests
 
         public ScrollViewer? PromptScroll() => _Scroller("promptScroll");
 
-        /// <summary>Whatever the description panel is currently showing, however the host chose to render it.</summary>
+        // Whatever the description panel is currently showing, however the host chose to render it.
         public string? DescriptionText() => _TextIn(DescriptionScroll());
 
         public string? PromptPreviewText() => _TextIn(PromptScroll());

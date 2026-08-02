@@ -5,13 +5,11 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// One running Autopilot run and its surface state (AC-174): its own plan controller and coordinator, the CEO validator
-/// session it embeds, and the live step view to show. Created per dequeued plan by the workspace body; it runs the plan
-/// to a settled end — embedding a fresh CEO validator (the planning round is long closed) and, through the coordinator,
-/// each step's agent — and raises <see cref="Changed"/> as its pipeline or step view moves so the surface re-renders it.
-/// Several can run at once: each is independent, and its coordinator self-gates every tool call on its own panes.
-/// </summary>
+// One running Autopilot run and its surface state (AC-174): its own plan controller and coordinator, the CEO validator
+// session it embeds, and the live step view to show. Created per dequeued plan by the workspace body; it runs the plan
+// to a settled end — embedding a fresh CEO validator (the planning round is long closed) and, through the coordinator,
+// each step's agent — and raises `Changed` as its pipeline or step view moves so the surface re-renders it.
+// Several can run at once: each is independent, and its coordinator self-gates every tool call on its own panes.
 internal sealed class AutopilotRunContext
 {
     private readonly ICockpitHost _host;
@@ -30,11 +28,9 @@ internal sealed class AutopilotRunContext
     // the validate and tracker tools are present — the exact endpoint the validator/tracker brief tells it to call.
     internal static readonly IReadOnlyList<string> ValidatorCeoMcpServers = [AutopilotCeoTools.EndpointName];
 
-    /// <summary>
-    /// The embed request for a run's validating CEO — a pure static so the shape it asks the host for can be exercised
-    /// without a host or a UI thread. Pointed at <paramref name="workingDirectory"/>: the run's worktree when it has
-    /// one, else the folder it runs in.
-    /// </summary>
+    // The embed request for a run's validating CEO — a pure static so the shape it asks the host for can be exercised
+    // without a host or a UI thread. Pointed at `workingDirectory`: the run's worktree when it has
+    // one, else the folder it runs in.
     internal static EmbeddedSessionRequest ValidatorCeoRequest(AutopilotSettings settings, string workingDirectory, AutopilotPlan plan, string runId) =>
         new()
         {
@@ -86,41 +82,39 @@ internal sealed class AutopilotRunContext
         Completed = _RunAsync(plan);
     }
 
-    /// <summary>The plan this run drives — its goal is the run's label on the surface.</summary>
+    // The plan this run drives — its goal is the run's label on the surface.
     public AutopilotPlan Plan { get; }
 
-    /// <summary>
-    /// What ties this one run's sessions together in the host's usage trail (AC-251). A run spends across a session
-    /// per step plus its validating CEO, and nothing the host can see says those belong to each other — so the run
-    /// says it, and afterwards "what did this run cost" is a sum rather than an estimate. Minted per run and never
-    /// reused; the planning round that produced the plan is not part of it, having happened before there was a run.
-    /// </summary>
+    // What ties this one run's sessions together in the host's usage trail (AC-251). A run spends across a session
+    // per step plus its validating CEO, and nothing the host can see says those belong to each other — so the run
+    // says it, and afterwards "what did this run cost" is a sum rather than an estimate. Minted per run and never
+    // reused; the planning round that produced the plan is not part of it, having happened before there was a run.
     public string RunId { get; } = Guid.NewGuid().ToString("n");
 
-    /// <summary>The run's plan controller and where each step sits — what the surface renders as this run's pipeline.</summary>
+    // The run's plan controller and where each step sits — what the surface renders as this run's pipeline.
     public AutopilotPlanController Controller { get; }
 
-    /// <summary>The run's coordinator — how a tool call routes to it, and how the operator answers its blockade or hands it the keyboard.</summary>
+    // The run's coordinator — how a tool call routes to it, and how the operator answers its blockade or hands it the keyboard.
     public AutopilotRunCoordinator Coordinator { get; }
 
-    /// <summary>Completes when the run settles or is cancelled — what the manager awaits to free the slot.</summary>
+    // Completes when the run settles or is cancelled — what the manager awaits to free the slot.
     public Task Completed { get; }
 
-    /// <summary>The running step's live view, or null between steps.</summary>
+    // The running step's live view, or null between steps.
     public Control? StepView { get; private set; }
 
-    /// <summary>The CEO validator's live session view — shown in place of the step while the CEO validates a finished step.</summary>
+    // The CEO validator's live session view — shown in place of the step while the CEO validates a finished step.
     public Control? CeoView => _ceo?.View;
 
-    /// <summary>Whether the CEO is validating a just-finished step right now: the surface swaps the
-    /// right pane to the CEO session and a clear banner while this is true, so the validation is not a small side note.</summary>
+    // Whether the CEO is validating a just-finished step right now: the surface swaps the
+    // right pane to the CEO session and a clear banner while this is true, so the validation is not a small side note.
     public bool IsValidating { get; private set; }
 
-    /// <summary>Raised on this run's pipeline change or step-view change, so the surface re-renders it.</summary>
+    // Raised on this run's pipeline change or step-view change, so the surface re-renders it.
     public event Action? Changed;
 
-    /// <summary>Stops the run — its workspace closed, or the operator dropped it. Guards against a run that already
-    /// settled and disposed its token source in the window before the surface dropped it from its active list.</summary>
+    // Stops the run — its workspace closed, or the operator dropped it. Guards against a run that already
+    // settled and disposed its token source in the window before the surface dropped it from its active list.
     public void Cancel()
     {
         try

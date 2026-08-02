@@ -4,12 +4,10 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The switch (#69): one value, a way out per case. Its pins are written into it rather than fixed by its type, and
-/// that is where the danger is — a wire remembers its way out by position, so a case inserted in front of the others
-/// would hand every wire below it to a different branch, and the error wire (which sits one past the last pin) would
-/// quietly become an ordinary one. A flow that silently changed what it does is worse than one that visibly broke.
-/// </summary>
+// The switch (#69): one value, a way out per case. Its pins are written into it rather than fixed by its type, and
+// that is where the danger is — a wire remembers its way out by position, so a case inserted in front of the others
+// would hand every wire below it to a different branch, and the error wire (which sits one past the last pin) would
+// quietly become an ordinary one. A flow that silently changed what it does is worse than one that visibly broke.
 public class SwitchTests
 {
     [Fact]

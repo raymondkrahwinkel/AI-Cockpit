@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>A plugin storage fake shared by this project's tests, lifted out of <c>WorkflowMcpToolsTests</c>.</summary>
+// A plugin storage fake shared by this project's tests, lifted out of `WorkflowMcpToolsTests`.
 internal sealed class InMemoryPluginStorage : IPluginStorage
 {
     private readonly Dictionary<string, string> _values = [];

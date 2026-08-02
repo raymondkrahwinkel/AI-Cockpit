@@ -3,35 +3,29 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// Fetches a single repository's open issues, and its labels, from the GitHub REST API over a plain
-/// <see cref="HttpClient"/> (the HTTP mode, used when the GitHub CLI is off). The issues endpoint also returns
-/// pull requests, which are filtered out. A token is optional — it lifts the rate limit and allows private
-/// repositories.
-/// </summary>
+// Fetches a single repository's open issues, and its labels, from the GitHub REST API over a plain
+// `HttpClient` (the HTTP mode, used when the GitHub CLI is off). The issues endpoint also returns
+// pull requests, which are filtered out. A token is optional — it lifts the rate limit and allows private
+// repositories.
 internal sealed class GitHubIssuesClient
 {
-    /// <summary>
-    /// The REST page size for an issues fetch. <see cref="GetOpenIssuesAsync"/> compares the raw response array
-    /// length against this — before pull requests are filtered out of it — so the dialog's "may be capped" warning
-    /// (AC-519) is driven by a count taken where truncation actually happens, not by what is left after filtering.
-    /// </summary>
+    // The REST page size for an issues fetch. `GetOpenIssuesAsync` compares the raw response array
+    // length against this — before pull requests are filtered out of it — so the dialog's "may be capped" warning
+    // (AC-519) is driven by a count taken where truncation actually happens, not by what is left after filtering.
     public const int IssuePageLimit = 100;
 
-    /// <summary>Page size for a repo's label list — see <see cref="GitHubGhClient.LabelListLimit"/>, the gh-path equivalent.</summary>
+    // Page size for a repo's label list — see `GitHubGhClient.LabelListLimit`, the gh-path equivalent.
     internal const int LabelListLimit = 100;
 
-    /// <summary>The base address requests are sent to. Swappable so a test can point this at a local stub instead of the real GitHub API (AC-519). No production code path sets it; only the field's default is used outside tests.</summary>
+    // The base address requests are sent to. Swappable so a test can point this at a local stub instead of the real GitHub API (AC-519). No production code path sets it; only the field's default is used outside tests.
     internal static string BaseUrl = "https://api.github.com";
 
     private static readonly HttpClient Http = new();
 
-    /// <summary>
-    /// Fetches the repository's open issues. The returned <c>WasTruncated</c> is measured against the raw response
-    /// — the number of entries GitHub actually sent back, pull requests and all — before any of those are filtered
-    /// out below (AC-519 fix: a page filled with pull requests must still warn, even though the issue list handed
-    /// back is a great deal shorter than <see cref="IssuePageLimit"/>).
-    /// </summary>
+    // Fetches the repository's open issues. The returned `WasTruncated` is measured against the raw response
+    // — the number of entries GitHub actually sent back, pull requests and all — before any of those are filtered
+    // out below (AC-519 fix: a page filled with pull requests must still warn, even though the issue list handed
+    // back is a great deal shorter than `IssuePageLimit`).
     public async Task<(IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> GetOpenIssuesAsync(string owner, string repo, string? token, bool assignedToMe, CancellationToken cancellationToken, string? label = null)
     {
         var repository = $"{owner}/{repo}";
@@ -111,10 +105,8 @@ internal sealed class GitHubIssuesClient
         return (filtered, wasTruncated);
     }
 
-    /// <summary>
-    /// This one repository's labels (AC-519) — the REST equivalent of <see cref="GitHubGhClient.ListRepositoryLabelsAsync"/>,
-    /// which HTTP mode has only the one repository to ask about.
-    /// </summary>
+    // This one repository's labels (AC-519) — the REST equivalent of `GitHubGhClient.ListRepositoryLabelsAsync`,
+    // which HTTP mode has only the one repository to ask about.
     public async Task<IReadOnlyList<string>> GetRepositoryLabelsAsync(string owner, string repo, string? token, CancellationToken cancellationToken)
     {
         var url = $"{BaseUrl}/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}/labels?per_page={LabelListLimit}";

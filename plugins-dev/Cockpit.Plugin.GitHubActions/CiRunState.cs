@@ -1,17 +1,17 @@
 namespace Cockpit.Plugin.GitHubActions;
 
-/// <summary>The at-a-glance state of a workflow run, derived from GitHub's status/conclusion pair (AC-52).</summary>
+// The at-a-glance state of a workflow run, derived from GitHub's status/conclusion pair (AC-52).
 internal enum CiRunState
 {
-    /// <summary>Queued or in progress — not finished yet (amber).</summary>
+    // Queued or in progress — not finished yet (amber).
     Running,
 
-    /// <summary>Completed successfully (green).</summary>
+    // Completed successfully (green).
     Passed,
 
-    /// <summary>Completed with a failure / timed out / startup failure (red).</summary>
+    // Completed with a failure / timed out / startup failure (red).
     Failed,
 
-    /// <summary>Completed but neither pass nor fail — cancelled, skipped, neutral (grey).</summary>
+    // Completed but neither pass nor fail — cancelled, skipped, neutral (grey).
     Other,
 }

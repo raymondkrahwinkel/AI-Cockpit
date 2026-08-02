@@ -1,12 +1,10 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The evidence source against a real git repository (AC-255). These run git for real on a throwaway repo, because the
-/// question they answer cannot be faked: whether "what this step changed" is measured from the right moment. An
-/// adversarial review found that a mark of <c>HEAD</c> alone credited a step with work an earlier step had left
-/// uncommitted, and no test could have seen it — every other test in this suite hands the source's output in
-/// ready-made.
-/// </summary>
+// The evidence source against a real git repository (AC-255). These run git for real on a throwaway repo, because the
+// question they answer cannot be faked: whether "what this step changed" is measured from the right moment. An
+// adversarial review found that a mark of `HEAD` alone credited a step with work an earlier step had left
+// uncommitted, and no test could have seen it — every other test in this suite hands the source's output in
+// ready-made.
 public sealed class GitCliEvidenceSourceTests : IDisposable
 {
     private readonly string _repository = Path.Combine(Path.GetTempPath(), $"ac255-{Guid.NewGuid():N}");

@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The turn a run's CEO is handed when a step worker consults it mid-step (AC-201, spoor 2): the worker's question, the
-/// step it is on, and the two ways out — answer the worker or escalate to the operator. Kept a pure builder off the
-/// coordinator (mirroring <see cref="AutopilotStepBrief.ValidationTurn"/>) so the wording — the tools to call, what to
-/// include — is tested without a live session. Relayed into the CEO's own session through <c>host.SendToSessionAsync</c>.
-/// </summary>
+// The turn a run's CEO is handed when a step worker consults it mid-step (AC-201, spoor 2): the worker's question, the
+// step it is on, and the two ways out — answer the worker or escalate to the operator. Kept a pure builder off the
+// coordinator (mirroring `AutopilotStepBrief.ValidationTurn`) so the wording — the tools to call, what to
+// include — is tested without a live session. Relayed into the CEO's own session through `host.SendToSessionAsync`.
 internal static class AutopilotConsultBrief
 {
     public static string ConsultTurn(AutopilotStep? step, string question)

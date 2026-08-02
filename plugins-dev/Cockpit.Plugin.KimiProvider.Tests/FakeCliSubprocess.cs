@@ -3,23 +3,20 @@ using System.Threading.Channels;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>
-/// A hand-written <see cref="ICliSubprocess"/> test double (AC-268) — a copy of
-/// <c>Cockpit.Plugin.CliAgentProvider.Tests.FakeCliSubprocess</c>: records every <see cref="Start"/>/
-/// <see cref="WriteLineAsync"/> call it receives and lets a test push stdout/stderr lines on demand, standing
-/// in for a real spawned <c>kimi acp</c> process in <see cref="KimiAcpConnectionTests"/>.
-/// </summary>
+// A hand-written `ICliSubprocess` test double (AC-268) — a copy of
+// `Cockpit.Plugin.CliAgentProvider.Tests.FakeCliSubprocess`: records every `Start`/
+// `WriteLineAsync` call it receives and lets a test push stdout/stderr lines on demand, standing
+// in for a real spawned `kimi acp` process in `KimiAcpConnectionTests`.
 internal sealed class FakeCliSubprocess : ICliSubprocess
 {
     private readonly Channel<string> _stdout = Channel.CreateUnbounded<string>();
     private readonly Channel<string> _stderr;
 
-    /// <param name="stderrCapacity">
-    /// Zero (default) is an unbounded stderr channel. A positive capacity makes stderr a *bounded* channel —
-    /// used by the stderr-deadlock test: without a concurrent drain task actually reading it, a write past
-    /// capacity blocks forever, proving the connection really does drain stderr alongside stdout rather than
-    /// only after stdout completes.
-    /// </param>
+    // `stderrCapacity`:
+    // Zero (default) is an unbounded stderr channel. A positive capacity makes stderr a *bounded* channel —
+    // used by the stderr-deadlock test: without a concurrent drain task actually reading it, a write past
+    // capacity blocks forever, proving the connection really does drain stderr alongside stdout rather than
+    // only after stdout completes.
     public FakeCliSubprocess(int stderrCapacity = 0)
     {
         _stderr = stderrCapacity > 0 ? Channel.CreateBounded<string>(stderrCapacity) : Channel.CreateUnbounded<string>();
@@ -72,7 +69,7 @@ internal sealed class FakeCliSubprocess : ICliSubprocess
 
     public Task PushStderrAsync(string line) => _stderr.Writer.WriteAsync(line).AsTask();
 
-    /// <summary>Simulates the child process exiting cleanly — both pipes close together, as they would for a real process.</summary>
+    // Simulates the child process exiting cleanly — both pipes close together, as they would for a real process.
     public void CompleteStdout(int exitCode = 0)
     {
         ExitCode = exitCode;

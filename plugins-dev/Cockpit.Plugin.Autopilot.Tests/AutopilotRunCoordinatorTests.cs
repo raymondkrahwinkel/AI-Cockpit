@@ -7,12 +7,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The executeStep adapter behind the run-driver (AC-174): per step it embeds an agent session, awaits its
-/// done-report, has the still-live CEO validate the result, and returns pass/fail. The MCP tools report through it, so
-/// the coordinator also guards which pane may report done, validate, or raise a blockade. The driver's own loop is
-/// tested separately; here it is the coordination and the pane gates.
-/// </summary>
+// The executeStep adapter behind the run-driver (AC-174): per step it embeds an agent session, awaits its
+// done-report, has the still-live CEO validate the result, and returns pass/fail. The MCP tools report through it, so
+// the coordinator also guards which pane may report done, validate, or raise a blockade. The driver's own loop is
+// tested separately; here it is the coordination and the pane gates.
 [Collection("avalonia")]
 public class AutopilotRunCoordinatorTests
 {

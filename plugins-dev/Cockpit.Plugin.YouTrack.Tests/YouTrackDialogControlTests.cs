@@ -8,21 +8,17 @@ using Xunit.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The issue dialog's wiring, measured in a real (if screenless) Avalonia: the selection the operator is reading,
-/// the result line an action leaves behind, the state of the toolbar, and how the description and the prompt preview
-/// divide the panel between them. All of it was written untested, and all of it was broken.
-/// <para>
-/// The dialog fetches its own issues over HTTP and there is no seam to hand it a list, so the loaded set is planted
-/// in <c>_all</c> and every rebuild is driven the way the operator drives it — by typing in the search box, which is
-/// the same <c>_ApplyFilter</c> path a refresh takes.
-/// </para>
-/// <para>
-/// Every assertion here reads a value out first and asserts on that value: an assertion written as
-/// <c>maybeNull?.Field.Should()...</c> is skipped in full when the value is null, which is precisely the state the
-/// defect produces — the test then passes on the broken build it was written to catch.
-/// </para>
-/// </summary>
+// The issue dialog's wiring, measured in a real (if screenless) Avalonia: the selection the operator is reading,
+// the result line an action leaves behind, the state of the toolbar, and how the description and the prompt preview
+// divide the panel between them. All of it was written untested, and all of it was broken.
+//
+// The dialog fetches its own issues over HTTP and there is no seam to hand it a list, so the loaded set is planted
+// in `_all` and every rebuild is driven the way the operator drives it — by typing in the search box, which is
+// the same `_ApplyFilter` path a refresh takes.
+//
+// Every assertion here reads a value out first and asserts on that value: an assertion written as
+// `maybeNull?.Field.Should()...` is skipped in full when the value is null, which is precisely the state the
+// defect produces — the test then passes on the broken build it was written to catch.
 [Collection("avalonia")]
 public class YouTrackDialogControlTests
 {
@@ -353,10 +349,8 @@ public class YouTrackDialogControlTests
         Assert.DoesNotContain("may be incomplete", status);
     });
 
-    /// <summary>
-    /// One dialog under test, in a window its real size, with the loaded issue set planted and the fakes it talks to
-    /// kept to hand.
-    /// </summary>
+    // One dialog under test, in a window its real size, with the loaded issue set planted and the fakes it talks to
+    // kept to hand.
     private sealed class DialogHarness
     {
         private static readonly YouTrackInstance LocalInstance = new("Local", "http://127.0.0.1:9/", string.Empty, string.Empty);
@@ -408,11 +402,9 @@ public class YouTrackDialogControlTests
             Layout();
         }
 
-        /// <summary>
-        /// Types into the filter box the way the operator does. Assigning <c>TextBox.Text</c> would not do: Avalonia
-        /// raises <c>TextChanged</c> from its input handling, so a programmatic assignment never reaches the handler
-        /// that rebuilds the list — the very path under test.
-        /// </summary>
+        // Types into the filter box the way the operator does. Assigning `TextBox.Text` would not do: Avalonia
+        // raises `TextChanged` from its input handling, so a programmatic assignment never reaches the handler
+        // that rebuilds the list — the very path under test.
         public void Type(string text)
         {
             _window.GetVisualDescendants().OfType<TextBox>()
@@ -426,7 +418,7 @@ public class YouTrackDialogControlTests
             .First(button => button.Content as string == label
                              || button.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == label));
 
-        /// <summary>The icon-only link button beside the title, which carries no text to find it by.</summary>
+        // The icon-only link button beside the title, which carries no text to find it by.
         public Button OpenLink() => _window.GetVisualDescendants().OfType<Button>()
             .First(button => ToolTip.GetTip(button) as string == "Open in browser");
 
@@ -445,19 +437,17 @@ public class YouTrackDialogControlTests
 
         public void Layout() => _window.UpdateLayout();
 
-        /// <summary>The detail panel's own result line.</summary>
+        // The detail panel's own result line.
         public string? DetailMessage() => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "detailStatus")?.Text;
 
-        /// <summary>The heading of whichever issue the detail panel is currently about.</summary>
+        // The heading of whichever issue the detail panel is currently about.
         public string? DetailTitle() => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "detailTitle")?.Text;
 
-        /// <summary>
-        /// Whether the panel is showing an issue at all, as opposed to its "select an issue" placeholder. Asks the
-        /// heading whether it is effectively visible: hiding the panel leaves its children's own IsVisible untouched,
-        /// so only the answer that walks the parent chain distinguishes the two states.
-        /// </summary>
+        // Whether the panel is showing an issue at all, as opposed to its "select an issue" placeholder. Asks the
+        // heading whether it is effectively visible: hiding the panel leaves its children's own IsVisible untouched,
+        // so only the answer that walks the parent chain distinguishes the two states.
         public bool DetailIsVisible() => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "detailTitle")?.IsEffectivelyVisible == true;
 
@@ -465,16 +455,16 @@ public class YouTrackDialogControlTests
 
         public ScrollViewer? PromptScroll() => _Scroller("promptScroll");
 
-        /// <summary>Whatever the description panel is currently showing, however the host chose to render it.</summary>
+        // Whatever the description panel is currently showing, however the host chose to render it.
         public string? DescriptionText() => _TextIn(DescriptionScroll());
 
         public string? PromptPreviewText() => _TextIn(PromptScroll());
 
-        /// <summary>The bottom-docked status line (AC-518 follow-up) — render-proof that it actually shows the text, not just that the field holds it.</summary>
+        // The bottom-docked status line (AC-518 follow-up) — render-proof that it actually shows the text, not just that the field holds it.
         public string? StatusText => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "status")?.Text;
 
-        /// <summary>Drives the private post-load status composition directly — proves the exact-MaxResults truncation notice without a live fetch.</summary>
+        // Drives the private post-load status composition directly — proves the exact-MaxResults truncation notice without a live fetch.
         public void ReportLoaded()
         {
             var method = typeof(YouTrackDialogControl).GetMethod("_ReportLoaded", BindingFlags.Instance | BindingFlags.NonPublic)

@@ -5,18 +5,15 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.Clock;
 
-/// <summary>
-/// The clock. A plugin whose only contribution is <see cref="ICockpitHost.AddWidget"/> — which is exactly what
-/// a "standalone" widget is: there is no separate widget package and no second installer, so a clock ships,
-/// installs and is trusted the same way a provider or an issue tracker does.
-/// <para>
-/// It ships with the app because a Dashboard workspace with nothing to put on it is a worse first impression
-/// than one that already has a clock. Its former other half, the system monitor, is now its own plugin from the
-/// store (wanting the clock but not the system monitor means being able to download and install just the clock)
-/// — one plugin per widget is what makes that possible. Between them they still
-/// prove the ⚙ is really gated: this one has no settings, that one has.
-/// </para>
-/// </summary>
+// The clock. A plugin whose only contribution is `ICockpitHost.AddWidget` — which is exactly what
+// a "standalone" widget is: there is no separate widget package and no second installer, so a clock ships,
+// installs and is trusted the same way a provider or an issue tracker does.
+//
+// It ships with the app because a Dashboard workspace with nothing to put on it is a worse first impression
+// than one that already has a clock. Its former other half, the system monitor, is now its own plugin from the
+// store (wanting the clock but not the system monitor means being able to download and install just the clock)
+// — one plugin per widget is what makes that possible. Between them they still
+// prove the ⚙ is really gated: this one has no settings, that one has.
 public sealed class ClockPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

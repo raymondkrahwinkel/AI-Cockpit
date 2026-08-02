@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// The pull requests set aside: the long-lived ones that live in a todo somewhere and do not need to be in front of you
-/// every day. Kept across restarts — a PR you ignored today is one you do not want to be looking at tomorrow either —
-/// and kept as a <em>list</em>, so ignoring is something you can undo.
-/// </summary>
+// The pull requests set aside: the long-lived ones that live in a todo somewhere and do not need to be in front of you
+// every day. Kept across restarts — a PR you ignored today is one you do not want to be looking at tomorrow either —
+// and kept as a *list*, so ignoring is something you can undo.
 public class IgnoredPullRequestsTests
 {
     [Fact]

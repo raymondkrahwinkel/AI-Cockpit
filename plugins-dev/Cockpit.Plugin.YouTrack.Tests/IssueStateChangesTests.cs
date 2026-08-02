@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The "Ticket status changed" trigger (#69). A flow that runs when a ticket reaches Review has to be told which
-/// status it reached, and which one it left — "the ticket moved" is not something a flow can decide on.
-/// </summary>
+// The "Ticket status changed" trigger (#69). A flow that runs when a ticket reaches Review has to be told which
+// status it reached, and which one it left — "the ticket moved" is not something a flow can decide on.
 public class IssueStateChangesTests
 {
     [Fact]

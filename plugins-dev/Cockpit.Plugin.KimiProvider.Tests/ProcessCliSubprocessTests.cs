@@ -2,13 +2,11 @@ using System.Text;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>
-/// <see cref="ProcessCliSubprocess"/>'s capped line reader (P1-9a) — kimi acp's stdout/stderr is untrusted, and
-/// the previous implementation (<c>StreamReader.ReadLineAsync</c>) had no length limit of its own: a child that
-/// never emits a newline would grow the accumulating buffer until the host process itself ran out of memory.
-/// Proves an oversized line is dropped rather than buffered without bound, and that the reader re-synchronises
-/// on the very next NDJSON line afterwards instead of desyncing or dying.
-/// </summary>
+// `ProcessCliSubprocess`'s capped line reader (P1-9a) — kimi acp's stdout/stderr is untrusted, and
+// the previous implementation (`StreamReader.ReadLineAsync`) had no length limit of its own: a child that
+// never emits a newline would grow the accumulating buffer until the host process itself ran out of memory.
+// Proves an oversized line is dropped rather than buffered without bound, and that the reader re-synchronises
+// on the very next NDJSON line afterwards instead of desyncing or dying.
 public class ProcessCliSubprocessTests
 {
     [Fact]

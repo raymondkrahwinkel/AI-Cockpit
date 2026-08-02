@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// The one place a <see cref="WorkflowEngine"/> is built (#69). The editor runs a flow because you pressed Execute;
-/// the watcher runs one because a trigger fired — and if those two built their own engines, a flow would be able to
-/// do different things depending on who started it, which is the sort of difference nobody would think to test for.
-/// </summary>
+// The one place a `WorkflowEngine` is built (#69). The editor runs a flow because you pressed Execute;
+// the watcher runs one because a trigger fired — and if those two built their own engines, a flow would be able to
+// do different things depending on who started it, which is the sort of difference nobody would think to test for.
 internal static class EngineFactory
 {
     public static WorkflowEngine Create(ICockpitHost host, IReadOnlyList<IWorkflowStep> contributed) =>

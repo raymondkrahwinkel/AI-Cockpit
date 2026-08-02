@@ -4,13 +4,11 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// AC-515: refreshing has to run independent of any view, never make a caller wait on a miss, survive a restart
-/// with the previous list marked old, and not cost more `gh` calls per unit time than before. Every test here
-/// drives <see cref="PullRequestRefreshSource"/> directly — no <see cref="GitHubPullRequestsWidget"/> or the
-/// AC-517 side-menu badge involved — via a fake load function (no `gh`, no network), which is exactly what
-/// acceptance criterion 2 asks for ("aantoonbaar met een test op de verversingsbron, niet op een control").
-/// </summary>
+// AC-515: refreshing has to run independent of any view, never make a caller wait on a miss, survive a restart
+// with the previous list marked old, and not cost more `gh` calls per unit time than before. Every test here
+// drives `PullRequestRefreshSource` directly — no `GitHubPullRequestsWidget` or the
+// AC-517 side-menu badge involved — via a fake load function (no `gh`, no network), which is exactly what
+// acceptance criterion 2 asks for ("aantoonbaar met een test op de verversingsbron, niet op een control").
 public class PullRequestRefreshSourceTests
 {
     private static readonly GitHubPullRequest SamplePullRequest = new(1, "Fix the thing", "https://github.com/octocat/hello-world/pull/1", null, "octocat/hello-world", "octocat");
@@ -123,16 +121,14 @@ public class PullRequestRefreshSourceTests
         Assert.Equal(2, ran.Count(x => !x));
     }
 
-    /// <summary>
-    /// AC-515 blocker 2: a snapshot that is not valid JSON at all — a truncated write (see blocker 1) or a leftover
-    /// from an incompatible earlier build — must read as "nothing persisted yet", the same as a fresh install,
-    /// rather than throw out of the constructor. This runs inside <c>GitHubPullRequestsPlugin.Initialize</c>, before
-    /// <c>AddSettings</c>/<c>AddSideMenuSection</c>/<c>AddWidget</c> register anything — an unguarded throw here
-    /// used to make <c>PluginManager.Initialize</c> skip every one of this plugin's contributions over one bad key.
-    /// <see cref="JsonBackedStorage"/> (unlike <see cref="InMemoryStorage"/>) round-trips through
-    /// <see cref="System.Text.Json.JsonSerializer"/> like the host's real <c>PluginStorage</c> does, so this
-    /// actually drives the deserialize path the bug lives in.
-    /// </summary>
+    // AC-515 blocker 2: a snapshot that is not valid JSON at all — a truncated write (see blocker 1) or a leftover
+    // from an incompatible earlier build — must read as "nothing persisted yet", the same as a fresh install,
+    // rather than throw out of the constructor. This runs inside `GitHubPullRequestsPlugin.Initialize`, before
+    // `AddSettings`/`AddSideMenuSection`/`AddWidget` register anything — an unguarded throw here
+    // used to make `PluginManager.Initialize` skip every one of this plugin's contributions over one bad key.
+    // `JsonBackedStorage` (unlike `InMemoryStorage`) round-trips through
+    // `System.Text.Json.JsonSerializer` like the host's real `PluginStorage` does, so this
+    // actually drives the deserialize path the bug lives in.
     [Fact]
     public void ColdStart_WithUnparsableStoredJson_FallsBackToEmpty_InsteadOfThrowing()
     {
@@ -149,15 +145,13 @@ public class PullRequestRefreshSourceTests
         Assert.Null(current.FetchedAt);
     }
 
-    /// <summary>
-    /// AC-515 blocker 2's other failure shape: valid JSON that simply is not this record's shape (e.g. a value
-    /// written under this key by something unrelated). <see cref="System.Text.Json.JsonSerializer"/> does not
-    /// throw for this — <see cref="PullRequestFeedSnapshot.Result"/> is a required, non-nullable reference, but a
-    /// missing JSON property still deserializes to a snapshot whose <c>Result</c> is null, since deserialization
-    /// does not enforce non-null reference members. A bare <c>?? Empty</c> on the constructor's read would miss
-    /// this: the deserialized object is not null, only its <c>Result</c> is — so <see cref="PullRequestRefreshSource"/>
-    /// must reject it explicitly rather than merely catch an exception that never comes.
-    /// </summary>
+    // AC-515 blocker 2's other failure shape: valid JSON that simply is not this record's shape (e.g. a value
+    // written under this key by something unrelated). `System.Text.Json.JsonSerializer` does not
+    // throw for this — `PullRequestFeedSnapshot.Result` is a required, non-nullable reference, but a
+    // missing JSON property still deserializes to a snapshot whose `Result` is null, since deserialization
+    // does not enforce non-null reference members. A bare `?? Empty` on the constructor's read would miss
+    // this: the deserialized object is not null, only its `Result` is — so `PullRequestRefreshSource`
+    // must reject it explicitly rather than merely catch an exception that never comes.
     [Fact]
     public void ColdStart_WithWrongShapedJson_FallsBackToEmpty_InsteadOfCarryingANullResult()
     {
@@ -174,14 +168,12 @@ public class PullRequestRefreshSourceTests
         Assert.Null(current.FetchedAt);
     }
 
-    /// <summary>
-    /// A confirming review's follow-up on the same class of bug, one level deeper: a stored <c>{"Result":{}}</c>
-    /// deserializes to a non-null <see cref="PullRequestFeedResult"/> whose <c>PullRequests</c>/<c>ReviewRequested</c>
-    /// are themselves null — <see cref="System.Text.Json.JsonSerializer"/> enforces non-null reference members on
-    /// neither the record nor its positional parameters. A bare <c>Result: not null</c> check (the fix for the
-    /// blocker above) lets this one through; <c>GitHubPullRequestsWidget._ApplySnapshot</c>'s
-    /// <c>result.ReviewRequested.Select(...)</c> would throw a <see cref="NullReferenceException"/> rendering it.
-    /// </summary>
+    // A confirming review's follow-up on the same class of bug, one level deeper: a stored `{"Result":{}}`
+    // deserializes to a non-null `PullRequestFeedResult` whose `PullRequests`/`ReviewRequested`
+    // are themselves null — `System.Text.Json.JsonSerializer` enforces non-null reference members on
+    // neither the record nor its positional parameters. A bare `Result: not null` check (the fix for the
+    // blocker above) lets this one through; `GitHubPullRequestsWidget._ApplySnapshot`'s
+    // `result.ReviewRequested.Select(...)` would throw a `NullReferenceException` rendering it.
     [Fact]
     public void ColdStart_WithNullCollectionsInsideResult_FallsBackToEmpty_InsteadOfCarryingNullLists()
     {
@@ -207,16 +199,14 @@ public class PullRequestRefreshSourceTests
         Assert.Equal(GitHubPrGhClient.PullRequestTtl * 3, PullRequestRefreshSource.StaleAfter);
     }
 
-    /// <summary>
-    /// Adversarial-review defect: <c>Dispose()</c> tore down the gate a still-running <see cref="PullRequestRefreshSource.RefreshAsync"/>
-    /// call was about to release into. This reproduces the exact shape — a call holding the gate and mid-`_load`
-    /// when <c>Dispose()</c> runs on top of it, then the load completing afterwards — by draining the constructor's
-    /// own due-time-zero tick first (same technique as <see cref="OverlappingRefreshCalls_CollapseIntoOneLoad"/>) so
-    /// the call under test is the only one holding the gate, then issuing it directly to get a real <see cref="Task{TResult}"/>
-    /// handle a fire-and-forget timer callback never gives the production code. Before the fix this call's task
-    /// faulted with <see cref="ObjectDisposedException"/> once <c>release</c> completed — unobserved in production,
-    /// since every real caller is `_ = RefreshAsync(...)`.
-    /// </summary>
+    // Adversarial-review defect: `Dispose()` tore down the gate a still-running `PullRequestRefreshSource.RefreshAsync`
+    // call was about to release into. This reproduces the exact shape — a call holding the gate and mid-`_load`
+    // when `Dispose()` runs on top of it, then the load completing afterwards — by draining the constructor's
+    // own due-time-zero tick first (same technique as `OverlappingRefreshCalls_CollapseIntoOneLoad`) so
+    // the call under test is the only one holding the gate, then issuing it directly to get a real `Task{TResult}`
+    // handle a fire-and-forget timer callback never gives the production code. Before the fix this call's task
+    // faulted with `ObjectDisposedException` once `release` completed — unobserved in production,
+    // since every real caller is `_ = RefreshAsync(...)`.
     [Fact]
     public async Task Dispose_WhileARefreshIsInFlight_DoesNotThrowFromTheGateItDisposes()
     {
@@ -255,12 +245,10 @@ public class PullRequestRefreshSourceTests
         Assert.True(ran, "the in-flight call actually ran the load and should still report that, not fault");
     }
 
-    /// <summary>
-    /// The other half of the same defect: a call that had not even reached the gate yet when <c>Dispose()</c> ran —
-    /// <see cref="SemaphoreSlim.WaitAsync(int)"/> itself throws <see cref="ObjectDisposedException"/> unconditionally
-    /// once the semaphore is disposed, regardless of its count. Before the fix this propagated straight out of
-    /// <see cref="PullRequestRefreshSource.RefreshAsync"/>.
-    /// </summary>
+    // The other half of the same defect: a call that had not even reached the gate yet when `Dispose()` ran —
+    // `SemaphoreSlim.WaitAsync(int)` itself throws `ObjectDisposedException` unconditionally
+    // once the semaphore is disposed, regardless of its count. Before the fix this propagated straight out of
+    // `PullRequestRefreshSource.RefreshAsync`.
     [Fact]
     public async Task RefreshAsync_CalledAfterDispose_IsGatedOutInsteadOfThrowing()
     {
@@ -347,7 +335,7 @@ public class PullRequestRefreshSourceTests
         return condition();
     }
 
-    /// <summary>Concurrent because a background poll writes here while a test's wait loop reads — a plain dictionary throws or returns garbage on that overlap.</summary>
+    // Concurrent because a background poll writes here while a test's wait loop reads — a plain dictionary throws or returns garbage on that overlap.
     private sealed class InMemoryStorage : IPluginStorage
     {
         private readonly ConcurrentDictionary<string, object?> _values = new();
@@ -357,12 +345,10 @@ public class PullRequestRefreshSourceTests
         public void Set<T>(string key, T value) => _values[key] = value;
     }
 
-    /// <summary>
-    /// Unlike <see cref="InMemoryStorage"/>, stores values as the raw JSON strings the host's real
-    /// <c>PluginStorage</c> does — needed for the malformed/wrong-shape tests above, which are only real bugs on
-    /// the JSON round trip; <see cref="InMemoryStorage"/> keeps the live object and would never exercise
-    /// <see cref="JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)"/> at all.
-    /// </summary>
+    // Unlike `InMemoryStorage`, stores values as the raw JSON strings the host's real
+    // `PluginStorage` does — needed for the malformed/wrong-shape tests above, which are only real bugs on
+    // the JSON round trip; `InMemoryStorage` keeps the live object and would never exercise
+    // `JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)` at all.
     private sealed class JsonBackedStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _values = [];

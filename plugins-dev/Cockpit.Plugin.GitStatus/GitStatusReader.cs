@@ -3,13 +3,11 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// Reads one repository's status by running <c>git status --porcelain --branch</c> in it (#1) — a single,
-/// cheap, machine-parseable command that yields the branch, its ahead/behind vs upstream (from the first
-/// <c>## …</c> line) and the working-tree change count (every other line). Requires <c>git</c> on PATH.
-/// Any failure (not a repo, git missing, path gone) is captured on <see cref="GitRepoStatus.Error"/> rather
-/// than thrown, so one bad entry never blocks the others.
-/// </summary>
+// Reads one repository's status by running `git status --porcelain --branch` in it (#1) — a single,
+// cheap, machine-parseable command that yields the branch, its ahead/behind vs upstream (from the first
+// `## …` line) and the working-tree change count (every other line). Requires `git` on PATH.
+// Any failure (not a repo, git missing, path gone) is captured on `GitRepoStatus.Error` rather
+// than thrown, so one bad entry never blocks the others.
 internal sealed partial class GitStatusReader
 {
     [GeneratedRegex(@"ahead (\d+)")]

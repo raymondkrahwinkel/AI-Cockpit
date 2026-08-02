@@ -9,19 +9,15 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// The "add/edit profile" config panel for the Kimi ACP provider (AC-268): the CLI command/path, an optional
-/// API key, and an optional default model — mirroring <c>Cockpit.Plugin.CliAgentProvider.CliAgentProviderConfigView</c>'s
-/// shape, trimmed to what sub [a] owns (no sandbox/managed-CLI/model-listing controls — those land in later subs).
-/// </summary>
-/// <remarks>
-/// P1-10c/IL#9: the login button's <see cref="_StartLogin"/> was never exercised against a rendered window or a
-/// real <c>kimi</c> install in this environment — it is built to the same shape as
-/// <c>CliAgentProviderConfigView</c>'s controls and follows documented Win32 console-allocation behaviour (a GUI
-/// process starting a console executable with no stdio redirected and no console of its own gets a brand-new
-/// visible console window from Windows), but that behaviour itself is not empirically verified here either. Both
-/// the visual result and the actual popped-up terminal are unverified — see the fix report.
-/// </remarks>
+// The "add/edit profile" config panel for the Kimi ACP provider (AC-268): the CLI command/path, an optional
+// API key, and an optional default model — mirroring `Cockpit.Plugin.CliAgentProvider.CliAgentProviderConfigView`'s
+// shape, trimmed to what sub [a] owns (no sandbox/managed-CLI/model-listing controls — those land in later subs).
+// P1-10c/IL#9: the login button's `_StartLogin` was never exercised against a rendered window or a
+// real `kimi` install in this environment — it is built to the same shape as
+// `CliAgentProviderConfigView`'s controls and follows documented Win32 console-allocation behaviour (a GUI
+// process starting a console executable with no stdio redirected and no console of its own gets a brand-new
+// visible console window from Windows), but that behaviour itself is not empirically verified here either. Both
+// the visual result and the actual popped-up terminal are unverified — see the fix report.
 internal sealed class KimiProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _command;
@@ -86,13 +82,11 @@ internal sealed class KimiProviderConfigView : IPluginProviderConfigView
         _UpdateCommandStatus();
     }
 
-    /// <summary>
-    /// Starts <c>kimi acp --login</c> (protocol §1's <c>type:"terminal"</c> auth method) in a new console
-    /// window. No stdio is redirected and <see cref="ProcessStartInfo.CreateNoWindow"/> is left at its default
-    /// <see langword="false"/>: spawned this way from a GUI process with no console of its own, Windows
-    /// allocates the child a brand-new visible console — the same mechanism behind "a console flashes when a
-    /// GUI app launches a console tool", used deliberately here instead of accidentally suppressed.
-    /// </summary>
+    // Starts `kimi acp --login` (protocol §1's `type:"terminal"` auth method) in a new console
+    // window. No stdio is redirected and `ProcessStartInfo.CreateNoWindow` is left at its default
+    // `false`: spawned this way from a GUI process with no console of its own, Windows
+    // allocates the child a brand-new visible console — the same mechanism behind "a console flashes when a
+    // GUI app launches a console tool", used deliberately here instead of accidentally suppressed.
     private void _StartLogin()
     {
         var command = _command.Text?.Trim() ?? string.Empty;
@@ -119,10 +113,8 @@ internal sealed class KimiProviderConfigView : IPluginProviderConfigView
         }
     }
 
-    /// <summary>
-    /// Resolves the command exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one
-    /// line, what will run — the same resolver <see cref="KimiAcpSessionDriverFactory"/> uses.
-    /// </summary>
+    // Resolves the command exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one
+    // line, what will run — the same resolver `KimiAcpSessionDriverFactory` uses.
     private void _UpdateCommandStatus()
     {
         var command = _command.Text?.Trim() ?? string.Empty;

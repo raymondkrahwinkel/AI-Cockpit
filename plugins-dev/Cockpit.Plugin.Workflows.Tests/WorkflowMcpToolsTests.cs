@@ -6,11 +6,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The workflow MCP tools (#AC-12): an agent can create a flow from steps + connections, see it listed, read it
-/// back, arm it and delete it — the data path that does not need a running engine. Every typeId is validated
-/// against the node catalog, and connections reference steps by index.
-/// </summary>
+// The workflow MCP tools (#AC-12): an agent can create a flow from steps + connections, see it listed, read it
+// back, arm it and delete it — the data path that does not need a running engine. Every typeId is validated
+// against the node catalog, and connections reference steps by index.
 public class WorkflowMcpToolsTests
 {
     [Fact]

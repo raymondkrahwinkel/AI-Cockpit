@@ -2,10 +2,8 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Docker.Mcp;
 
-/// <summary>
-/// Uniform <c>{ ok, ... }</c> JSON for the MCP tool return values, so every tool answers the same shape and an error
-/// never throws across the boundary.
-/// </summary>
+// Uniform `{ ok, ... }` JSON for the MCP tool return values, so every tool answers the same shape and an error
+// never throws across the boundary.
 internal static class McpText
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = false };

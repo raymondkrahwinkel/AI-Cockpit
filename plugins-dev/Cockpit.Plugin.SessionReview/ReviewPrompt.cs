@@ -1,6 +1,6 @@
 namespace Cockpit.Plugin.SessionReview;
 
-/// <summary>The prompt injected into a session to ask it to review its own uncommitted changes (AC-50).</summary>
+// The prompt injected into a session to ask it to review its own uncommitted changes (AC-50).
 internal static class ReviewPrompt
 {
     public static string Build(string branch)

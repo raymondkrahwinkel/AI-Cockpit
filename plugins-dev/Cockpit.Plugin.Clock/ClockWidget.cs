@@ -6,10 +6,8 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.Clock;
 
-/// <summary>
-/// The time and date. The simplest widget there is, and deliberately so: it declares no settings form, which
-/// is what proves the pane's ⚙ is really gated on having one rather than always drawn.
-/// </summary>
+// The time and date. The simplest widget there is, and deliberately so: it declares no settings form, which
+// is what proves the pane's ⚙ is really gated on having one rather than always drawn.
 internal sealed class ClockWidget : UserControl
 {
     private readonly TextBlock _time = new()

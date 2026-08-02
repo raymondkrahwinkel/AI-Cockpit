@@ -8,19 +8,15 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The application the headless platform runs the dialog under. The plugin's controls are built in code and carry no
-/// styles of their own — the cockpit supplies the base theme, so a test host that leaves it out gets untemplated
-/// controls that measure to nothing.
-/// </summary>
-/// <remarks>
-/// Loads the same styles, in the same order, as <c>src/Cockpit.App/App.axaml</c> (AC-338): Fluent, then the
-/// material icon set, then the DataGrid's own Fluent theme, then the cockpit's <c>Theme.axaml</c> read off disk
-/// (the plugin cannot reference <c>Cockpit.App</c>). Without the cockpit theme, every <c>_Brush("Cockpit…")</c>
-/// lookup in the dialog resolves to nothing — which is fine for the behavioural tests in this project (they never
-/// looked at colour) but would make a theme-palette baseline (<see cref="ThemePaletteBaselineTests"/>) report
-/// everything as off-palette regardless of whether the dialog is actually themed correctly.
-/// </remarks>
+// The application the headless platform runs the dialog under. The plugin's controls are built in code and carry no
+// styles of their own — the cockpit supplies the base theme, so a test host that leaves it out gets untemplated
+// controls that measure to nothing.
+// Loads the same styles, in the same order, as `src/Cockpit.App/App.axaml` (AC-338): Fluent, then the
+// material icon set, then the DataGrid's own Fluent theme, then the cockpit's `Theme.axaml` read off disk
+// (the plugin cannot reference `Cockpit.App`). Without the cockpit theme, every `_Brush("Cockpit…")`
+// lookup in the dialog resolves to nothing — which is fine for the behavioural tests in this project (they never
+// looked at colour) but would make a theme-palette baseline (`ThemePaletteBaselineTests`) report
+// everything as off-palette regardless of whether the dialog is actually themed correctly.
 public sealed class DialogTestApp : Application
 {
     public override void Initialize()

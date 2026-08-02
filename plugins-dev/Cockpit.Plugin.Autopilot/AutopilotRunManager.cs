@@ -1,28 +1,24 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// Runs approved plans from the queue, up to <see cref="AutopilotSettings.MaxConcurrentRuns"/> at once (AC-174):
-/// an approved plan is submitted here, executes now if there is a free slot, else waits in the <see cref="AutopilotRunQueue"/>
-/// until one frees. Each running run gets its own coordinator; a tool call (a step reporting done, the CEO validating)
-/// is routed to whichever running run owns the caller's pane — every coordinator self-gates on its own panes, so trying
-/// each is safe. Starting a run is the <see cref="Runner"/> the workspace body sets while it is open (a run needs the
-/// workspace's context to embed sessions), so the concurrency logic here is testable without live sessions by setting a
-/// fake runner. A run submitted with no runner set (the workspace closed) simply waits in the queue until one is.
-/// </summary>
+// Runs approved plans from the queue, up to `AutopilotSettings.MaxConcurrentRuns` at once (AC-174):
+// an approved plan is submitted here, executes now if there is a free slot, else waits in the `AutopilotRunQueue`
+// until one frees. Each running run gets its own coordinator; a tool call (a step reporting done, the CEO validating)
+// is routed to whichever running run owns the caller's pane — every coordinator self-gates on its own panes, so trying
+// each is safe. Starting a run is the `Runner` the workspace body sets while it is open (a run needs the
+// workspace's context to embed sessions), so the concurrency logic here is testable without live sessions by setting a
+// fake runner. A run submitted with no runner set (the workspace closed) simply waits in the queue until one is.
 internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSettings settings)
 {
     private readonly Lock _lock = new();
     private readonly List<AutopilotRunCoordinator> _active = [];
     private Func<AutopilotPlan, AutopilotRunHandle>? _runner;
 
-    /// <summary>Raised when a run starts or ends, or the queue changes — the surface re-renders and the pump re-checks capacity.</summary>
+    // Raised when a run starts or ends, or the queue changes — the surface re-renders and the pump re-checks capacity.
     public event Action? Changed;
 
-    /// <summary>
-    /// Starts a run for a dequeued plan and hands back its coordinator and completion task. Set by the workspace body
-    /// while it is open (a run embeds sessions in the workspace's context) and cleared when it closes; setting it starts
-    /// any runs that were waiting for a runner. Null means no run can start yet, so plans wait in the queue.
-    /// </summary>
+    // Starts a run for a dequeued plan and hands back its coordinator and completion task. Set by the workspace body
+    // while it is open (a run embeds sessions in the workspace's context) and cleared when it closes; setting it starts
+    // any runs that were waiting for a runner. Null means no run can start yet, so plans wait in the queue.
     public Func<AutopilotPlan, AutopilotRunHandle>? Runner
     {
         get => _runner;
@@ -36,7 +32,7 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         }
     }
 
-    /// <summary>The coordinators of the runs executing now — how the surface finds each running run to render it.</summary>
+    // The coordinators of the runs executing now — how the surface finds each running run to render it.
     public IReadOnlyList<AutopilotRunCoordinator> Active
     {
         get
@@ -48,7 +44,7 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         }
     }
 
-    /// <summary>Adds an approved plan and starts it if there is a free slot, else it waits in the queue in order.</summary>
+    // Adds an approved plan and starts it if there is a free slot, else it waits in the queue in order.
     public void Submit(AutopilotPlan plan)
     {
         queue.Enqueue(plan);
@@ -56,13 +52,13 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         _Pump();
     }
 
-    /// <summary>A step agent reported done — hand it to the run that owns its pane. False when no running run does.</summary>
+    // A step agent reported done — hand it to the run that owns its pane. False when no running run does.
     public bool ReportStepDone(string paneId, string summary) => _Route(coordinator => coordinator.ReportStepDone(paneId, summary));
 
-    /// <summary>A CEO reported its validation verdict — hand it to the run whose CEO pane it is.</summary>
+    // A CEO reported its validation verdict — hand it to the run whose CEO pane it is.
     public bool ReportValidation(string paneId, bool passed, string? reason) => _Route(coordinator => coordinator.ReportValidation(paneId, passed, reason));
 
-    /// <summary>A step worker consults its manager (AC-201) — routed to the run that owns the worker's pane.</summary>
+    // A step worker consults its manager (AC-201) — routed to the run that owns the worker's pane.
     public async Task<bool> ReportConsultAsync(string paneId, string question)
     {
         foreach (var coordinator in Active)
@@ -76,7 +72,7 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         return false;
     }
 
-    /// <summary>The CEO answers a worker's consult (AC-201) — routed to the run whose CEO pane it is.</summary>
+    // The CEO answers a worker's consult (AC-201) — routed to the run whose CEO pane it is.
     public async Task<bool> AnswerWorkerAsync(string paneId, string answer)
     {
         foreach (var coordinator in Active)
@@ -90,10 +86,10 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         return false;
     }
 
-    /// <summary>The CEO escalates a worker's consult to the operator (AC-201) — routed to the run whose CEO pane it is.</summary>
+    // The CEO escalates a worker's consult to the operator (AC-201) — routed to the run whose CEO pane it is.
     public bool EscalateToOperator(string paneId, string question) => _Route(coordinator => coordinator.EscalateToOperator(paneId, question));
 
-    /// <summary>The CEO moves its source issue's tracker stage — routed to the run whose CEO pane it is.</summary>
+    // The CEO moves its source issue's tracker stage — routed to the run whose CEO pane it is.
     public async Task<bool> ReportTrackerStageAsync(string paneId, string stage)
     {
         foreach (var coordinator in Active)
@@ -107,7 +103,7 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         return false;
     }
 
-    /// <summary>The CEO posts evidence on its source issue — routed to the run whose CEO pane it is.</summary>
+    // The CEO posts evidence on its source issue — routed to the run whose CEO pane it is.
     public async Task<bool> ReportTrackerNoteAsync(string paneId, string note)
     {
         foreach (var coordinator in Active)

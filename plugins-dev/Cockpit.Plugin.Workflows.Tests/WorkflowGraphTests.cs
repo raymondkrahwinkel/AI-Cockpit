@@ -2,11 +2,9 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// Which steps a step can reach (#69). The dialog offers you their fields, so getting this wrong is not cosmetic: a
-/// field from a step on another branch will never arrive, and the placeholder that names it resolves to nothing in a
-/// run where nothing warns you. Offering it is worse than offering nothing.
-/// </summary>
+// Which steps a step can reach (#69). The dialog offers you their fields, so getting this wrong is not cosmetic: a
+// field from a step on another branch will never arrive, and the placeholder that names it resolves to nothing in a
+// run where nothing warns you. Offering it is worse than offering nothing.
 public class WorkflowGraphTests
 {
     [Fact]

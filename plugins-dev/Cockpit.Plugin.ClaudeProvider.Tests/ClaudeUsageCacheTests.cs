@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// AC-549. The shape here is copied from a real <c>.claude.json</c> (CLI 2.1.220) rather than invented, because the
-/// trap this guards is a shape difference: <c>utilization</c> is a whole percentage in this file and a fraction on
-/// <c>rate_limit_event</c>, and <c>resets_at</c> is an ISO string here where the event uses epoch seconds. A fixture
-/// built to the code's expectations would have hidden both.
-/// </summary>
+// AC-549. The shape here is copied from a real `.claude.json` (CLI 2.1.220) rather than invented, because the
+// trap this guards is a shape difference: `utilization` is a whole percentage in this file and a fraction on
+// `rate_limit_event`, and `resets_at` is an ISO string here where the event uses epoch seconds. A fixture
+// built to the code's expectations would have hidden both.
 public class ClaudeUsageCacheTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-01T12:53:00Z");
@@ -37,10 +35,8 @@ public class ClaudeUsageCacheTests
         Assert.Equal(DateTimeOffset.Parse("2026-08-01T17:40:00.572562+00:00"), windows["five_hour"].ResetsAt);
     }
 
-    /// <summary>
-    /// The figure is taken as written. On <c>rate_limit_event</c> the same word is a fraction that gets multiplied
-    /// by 100, and scaling it here too would report an account at 2% as 200% full.
-    /// </summary>
+    // The figure is taken as written. On `rate_limit_event` the same word is a fraction that gets multiplied
+    // by 100, and scaling it here too would report an account at 2% as 200% full.
     [Fact]
     public void TheFigureIsAPercentageAlready_NotAFraction()
     {
@@ -50,11 +46,9 @@ public class ClaudeUsageCacheTests
         Assert.Equal(7d, windows["seven_day"].UsedPercent, precision: 10);
     }
 
-    /// <summary>
-    /// Found in the wild at 68 hours stale, because nothing on the SDK route had ever refreshed it. Showing that as
-    /// the current figure invents a number, and an allowance that reads emptier than it is is the worst direction
-    /// to be wrong in.
-    /// </summary>
+    // Found in the wild at 68 hours stale, because nothing on the SDK route had ever refreshed it. Showing that as
+    // the current figure invents a number, and an allowance that reads emptier than it is is the worst direction
+    // to be wrong in.
     [Fact]
     public void AStaleSnapshot_YieldsNothingRatherThanAnOldNumber()
     {
@@ -70,7 +64,7 @@ public class ClaudeUsageCacheTests
         Assert.Empty(ClaudeUsageCache.Read(_Snapshot(Now.Subtract(ClaudeUsageCache.MaxAge).AddSeconds(-1).ToString("O")), Now));
     }
 
-    /// <summary>A clock that jumped backwards must not make a future snapshot look infinitely fresh.</summary>
+    // A clock that jumped backwards must not make a future snapshot look infinitely fresh.
     [Fact]
     public void ASnapshotStampedInTheFuture_IsNotTrusted()
     {
@@ -87,7 +81,7 @@ public class ClaudeUsageCacheTests
     public void RubbishYieldsNothing_RatherThanThrowingOnTheStdoutPump(string json) =>
         Assert.Empty(ClaudeUsageCache.Read(json, Now));
 
-    /// <summary>A window the file carries as null (seven_day_oauth_apps does) is absent, not zero.</summary>
+    // A window the file carries as null (seven_day_oauth_apps does) is absent, not zero.
     [Fact]
     public void AWindowWithoutAFigure_IsAbsentRatherThanZero()
     {
@@ -111,7 +105,7 @@ public class ClaudeUsageCacheTests
         Assert.True(windows.ContainsKey("seven_day"));
     }
 
-    /// <summary>Past the allowance is real and must survive — the operator most needs to see an overage.</summary>
+    // Past the allowance is real and must survive — the operator most needs to see an overage.
     [Fact]
     public void PastTheAllowance_IsKept()
     {
@@ -120,10 +114,8 @@ public class ClaudeUsageCacheTests
         Assert.Equal(137d, windows["five_hour"].UsedPercent, precision: 10);
     }
 
-    /// <summary>
-    /// The refresh interval has to stay comfortably inside the freshness limit, or every reading expires before the
-    /// next refresh can replace it and the pill flickers empty between turns.
-    /// </summary>
+    // The refresh interval has to stay comfortably inside the freshness limit, or every reading expires before the
+    // next refresh can replace it and the pill flickers empty between turns.
     [Fact]
     public void TheRefreshIntervalStaysWellInsideTheFreshnessLimit() =>
         Assert.True(ClaudeUsageRefresh.Interval * 2 <= ClaudeUsageCache.MaxAge,

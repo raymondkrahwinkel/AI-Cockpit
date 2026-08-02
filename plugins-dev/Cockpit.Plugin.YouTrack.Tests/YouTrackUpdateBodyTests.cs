@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// <see cref="YouTrackUpdateBody"/> (#75): the update body YouTrack accepts. Asserted because the shape is
-/// unforgiving — the field's own <c>$type</c> must come back verbatim (a wrong one answers 500, not a
-/// validation error), and a workflow-governed field is moved by firing an event, never by writing a value.
-/// </summary>
+// `YouTrackUpdateBody` (#75): the update body YouTrack accepts. Asserted because the shape is
+// unforgiving — the field's own `$type` must come back verbatim (a wrong one answers 500, not a
+// validation error), and a workflow-governed field is moved by firing an event, never by writing a value.
 public class YouTrackUpdateBodyTests
 {
     [Fact]

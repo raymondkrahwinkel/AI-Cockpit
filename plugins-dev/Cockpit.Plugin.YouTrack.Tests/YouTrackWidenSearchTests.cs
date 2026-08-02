@@ -9,17 +9,14 @@ using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The free-text search's own widen-past-the-loaded-page behaviour (AC-518 follow-up, Raymond: "als er meer dan
-/// 100 zijn, moet het alsnog doorzoekbaar en vindbaar zijn"). Driven over a real HTTP round trip, same reasoning
-/// as <see cref="YouTrackStateFilterServerSideTests"/>: the trigger this proves lives behind a real async fetch,
-/// which cannot be driven inside a synchronous <see cref="HeadlessAvalonia.Run"/> body.
-/// <para>
-/// The corrected trigger (Raymond's own correction mid-ticket): a truncated load's client-side hits are NOT proof
-/// of completeness, so the widen fires whenever <c>_all.Count == MaxResults</c>, regardless of how many local
-/// hits already show — not "only when local filtering finds nothing", which was this fix's own first, wrong draft.
-/// </para>
-/// </summary>
+// The free-text search's own widen-past-the-loaded-page behaviour (AC-518 follow-up, Raymond: "als er meer dan
+// 100 zijn, moet het alsnog doorzoekbaar en vindbaar zijn"). Driven over a real HTTP round trip, same reasoning
+// as `YouTrackStateFilterServerSideTests`: the trigger this proves lives behind a real async fetch,
+// which cannot be driven inside a synchronous `HeadlessAvalonia.Run` body.
+//
+// The corrected trigger (Raymond's own correction mid-ticket): a truncated load's client-side hits are NOT proof
+// of completeness, so the widen fires whenever `_all.Count == MaxResults`, regardless of how many local
+// hits already show — not "only when local filtering finds nothing", which was this fix's own first, wrong draft.
 [Collection("avalonia")]
 public class YouTrackWidenSearchTests
 {
@@ -191,7 +188,7 @@ public class YouTrackWidenSearchTests
         throw new InvalidOperationException($"Unexpected request: {path}");
     }
 
-    /// <summary>One dialog, wired to a real loopback server, with reflection access to the private members this widen-search behaviour lives behind.</summary>
+    // One dialog, wired to a real loopback server, with reflection access to the private members this widen-search behaviour lives behind.
     private sealed class Harness(YouTrackDialogControl dialog, Window window, LoopbackHttpServer server) : IAsyncDisposable
     {
         // Waits for the constructor's own automatic /api/issues request to have both gone out AND been processed.

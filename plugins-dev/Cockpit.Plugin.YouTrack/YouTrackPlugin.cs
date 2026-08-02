@@ -6,17 +6,15 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Plugin #42, reworked in #48 to mirror the GitHub Issues plugin: a left-menu button (not an always-visible
-/// inline section) opens a dialog listing open issues across one or more configured YouTrack instances, with
-/// instance/project/state filters. Unlike the GitHub plugins, YouTrack has no local CLI equivalent to <c>gh</c>,
-/// so this plugin is HTTP-only: each instance is a base URL + permanent token (see settings) — no
-/// CLI-vs-HTTP toggle. Clicking an issue in the dialog injects the rendered template into the active session
-/// so the agent picks it up, falling back to the clipboard when there is no active session. Its settings live
-/// in the host's per-plugin storage, so <see cref="ConfigureServices"/> is empty. Also registers the
-/// JetBrains remote MCP server (#60) for every fully-configured instance, on <see cref="Initialize"/> and
-/// again whenever settings are saved — see <see cref="YouTrackMcpRegistration"/>.
-/// </summary>
+// Plugin #42, reworked in #48 to mirror the GitHub Issues plugin: a left-menu button (not an always-visible
+// inline section) opens a dialog listing open issues across one or more configured YouTrack instances, with
+// instance/project/state filters. Unlike the GitHub plugins, YouTrack has no local CLI equivalent to `gh`,
+// so this plugin is HTTP-only: each instance is a base URL + permanent token (see settings) — no
+// CLI-vs-HTTP toggle. Clicking an issue in the dialog injects the rendered template into the active session
+// so the agent picks it up, falling back to the clipboard when there is no active session. Its settings live
+// in the host's per-plugin storage, so `ConfigureServices` is empty. Also registers the
+// JetBrains remote MCP server (#60) for every fully-configured instance, on `Initialize` and
+// again whenever settings are saved — see `YouTrackMcpRegistration`.
 public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 {
     // The instances live in the host's per-plugin storage; kept here from Initialize so GetMcpServers can read the
@@ -158,11 +156,9 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         }
     }
 
-    /// <summary>
-    /// The MCP servers this plugin provides (AC-11): one per fully-configured, opted-in instance. Read live from
-    /// storage each time, so a URL, token, or the per-instance toggle the operator changes takes effect on the
-    /// next session without this plugin having to keep any other store in sync.
-    /// </summary>
+    // The MCP servers this plugin provides (AC-11): one per fully-configured, opted-in instance. Read live from
+    // storage each time, so a URL, token, or the per-instance toggle the operator changes takes effect on the
+    // next session without this plugin having to keep any other store in sync.
     public IReadOnlyList<McpServerContribution> GetMcpServers() =>
         _settings is null ? [] : YouTrackMcpRegistration.BuildContributions(_settings.Instances);
 

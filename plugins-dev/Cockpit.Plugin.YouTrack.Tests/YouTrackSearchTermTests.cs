@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// <see cref="YouTrackDialogControl.BuildSearchTerm"/> (AC-518 follow-up): the server-side widen-search's query
-/// text — <c>#Unresolved</c> kept, the active state folded in when known, the free text quoted so a query-syntax
-/// character in it (a colon, a brace, a quote) reads as literal text rather than being parsed as one.
-/// </summary>
+// `YouTrackDialogControl.BuildSearchTerm` (AC-518 follow-up): the server-side widen-search's query
+// text — `#Unresolved` kept, the active state folded in when known, the free text quoted so a query-syntax
+// character in it (a colon, a brace, a quote) reads as literal text rather than being parsed as one.
 public class YouTrackSearchTermTests
 {
     [Fact]

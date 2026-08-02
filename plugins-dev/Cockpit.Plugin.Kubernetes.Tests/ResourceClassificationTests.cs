@@ -2,11 +2,9 @@ using Cockpit.Plugin.Kubernetes.Mcp;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-/// <summary>
-/// The two classification helpers the jail depends on: <see cref="ApiVersionRef"/> splitting apiVersion into
-/// group/version, and <see cref="ResourceScope"/> deciding a resource's real REST scope. Getting these wrong is how
-/// the F1 jail-escape happened, so they are pinned directly.
-/// </summary>
+// The two classification helpers the jail depends on: `ApiVersionRef` splitting apiVersion into
+// group/version, and `ResourceScope` deciding a resource's real REST scope. Getting these wrong is how
+// the F1 jail-escape happened, so they are pinned directly.
 public class ResourceClassificationTests
 {
     [Theory]

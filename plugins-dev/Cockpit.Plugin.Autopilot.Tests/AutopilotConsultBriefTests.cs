@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The turn the CEO is handed when a step worker consults it mid-step (AC-201): a pure builder, so its wording — the
-/// step title, the worker's question, and the two tools it hands the CEO (answer / escalate) — is tested without a live
-/// session. The tools must be named on the CEO endpoint or the call the CEO makes hits a tool that does not exist.
-/// </summary>
+// The turn the CEO is handed when a step worker consults it mid-step (AC-201): a pure builder, so its wording — the
+// step title, the worker's question, and the two tools it hands the CEO (answer / escalate) — is tested without a live
+// session. The tools must be named on the CEO endpoint or the call the CEO makes hits a tool that does not exist.
 public class AutopilotConsultBriefTests
 {
     private static AutopilotStep _Step() => new("1", "Wire the API", "d", "Claude", "opus", "b", "compiles");

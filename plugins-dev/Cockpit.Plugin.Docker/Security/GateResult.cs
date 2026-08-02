@@ -1,6 +1,6 @@
 namespace Cockpit.Plugin.Docker.Security;
 
-/// <summary>The outcome of a consent gate check: allowed, or denied with a reason to hand back to the agent.</summary>
+// The outcome of a consent gate check: allowed, or denied with a reason to hand back to the agent.
 internal sealed record GateResult(bool IsAllowed, string? DeniedReason)
 {
     public static GateResult Allow { get; } = new(true, null);

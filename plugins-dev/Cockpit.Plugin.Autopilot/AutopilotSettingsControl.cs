@@ -9,19 +9,16 @@ using Cockpit.Plugins.Abstractions.Profiles;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The settings view (opened from the plugin's gear): kept to the minimum an operator actually fixes — the
-/// CEO's identity and the safety caps a run must not exceed. Everything a run's shape needs — which
-/// steps, which profile/model per step, which gates are hard, which tracker stage a phase maps to — is context- or
-/// tracker-specific and the CEO decides it dynamically per plan (a global tracker mapping breaks the moment there are
-/// two trackers, or a non-tracker workload), so none of that is fixed here. Implements <see cref="IPluginSettingsView"/>
-/// so the host dialog shows a Save button; <see cref="Save"/> writes the global level.
-/// <para>
-/// The four groups these settings were already written in (AC-316) are also the dialog's pages: implementing
-/// <see cref="IPluginSettingsSections"/> puts them in the host's navigation rail instead of stacking them into one
-/// scroll several screens long. Nothing moved or was renamed — each group is the page it always was.
-/// </para>
-/// </summary>
+// The settings view (opened from the plugin's gear): kept to the minimum an operator actually fixes — the
+// CEO's identity and the safety caps a run must not exceed. Everything a run's shape needs — which
+// steps, which profile/model per step, which gates are hard, which tracker stage a phase maps to — is context- or
+// tracker-specific and the CEO decides it dynamically per plan (a global tracker mapping breaks the moment there are
+// two trackers, or a non-tracker workload), so none of that is fixed here. Implements `IPluginSettingsView`
+// so the host dialog shows a Save button; `Save` writes the global level.
+//
+// The four groups these settings were already written in (AC-316) are also the dialog's pages: implementing
+// `IPluginSettingsSections` puts them in the host's navigation rail instead of stacking them into one
+// scroll several screens long. Nothing moved or was renamed — each group is the page it always was.
 internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsView, IPluginSettingsSections
 {
     // The placeholder tokens a template body may carry (AC-189), offered as quick-insert chips in the editor and

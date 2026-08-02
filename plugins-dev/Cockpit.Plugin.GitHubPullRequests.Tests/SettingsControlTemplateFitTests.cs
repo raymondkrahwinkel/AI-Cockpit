@@ -6,13 +6,11 @@ using Xunit.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// AC-521 Iron Law #9: the placeholder help added above the template field is more explanation text stacked above
-/// an input, and that is a real risk in a settings panel — enough of it pushes the field the operator actually
-/// needs to reach further down or off the visible area. This renders the real control at the settings dialog's own
-/// size (640x560, see <c>CockpitViewModel.OpenPluginSettingsAsync</c>) and measures where the template box actually
-/// lands, rather than eyeballing it.
-/// </summary>
+// AC-521 Iron Law #9: the placeholder help added above the template field is more explanation text stacked above
+// an input, and that is a real risk in a settings panel — enough of it pushes the field the operator actually
+// needs to reach further down or off the visible area. This renders the real control at the settings dialog's own
+// size (640x560, see `CockpitViewModel.OpenPluginSettingsAsync`) and measures where the template box actually
+// lands, rather than eyeballing it.
 [Collection("avalonia")]
 public class SettingsControlTemplateFitTests
 {

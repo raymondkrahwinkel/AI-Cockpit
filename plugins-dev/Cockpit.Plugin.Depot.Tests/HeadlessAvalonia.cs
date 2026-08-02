@@ -7,15 +7,14 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// An Avalonia runtime without a screen (AC-243, IL#9) — the same fixture <c>Cockpit.Plugin.Workflows.Tests</c>
-/// built for #69, copied rather than shared because a plugin test project cannot reference another plugin's test
-/// project any more than a plugin can reference the host. Runs <b>with the host's theme loaded</b>: a settings view
-/// rendered against a bare application asks every named brush for nothing and falls back to Fluent, which is not
-/// what the operator sees. <c>Cockpit.App</c> cannot be referenced from here, so <c>Styles/Theme.axaml</c> is read
-/// off disk and parsed — as close to the real thing as this side of the plugin boundary can get.
-/// <para>Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.</para>
-/// </summary>
+// An Avalonia runtime without a screen (AC-243, IL#9) — the same fixture `Cockpit.Plugin.Workflows.Tests`
+// built for #69, copied rather than shared because a plugin test project cannot reference another plugin's test
+// project any more than a plugin can reference the host. Runs *with the host's theme loaded*: a settings view
+// rendered against a bare application asks every named brush for nothing and falls back to Fluent, which is not
+// what the operator sees. `Cockpit.App` cannot be referenced from here, so `Styles/Theme.axaml` is read
+// off disk and parsed — as close to the real thing as this side of the plugin boundary can get.
+//
+// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
 public sealed class HeadlessAvalonia
 {
     private static readonly Lock Gate = new();
@@ -81,6 +80,6 @@ public sealed class HeadlessAvalonia
     }
 }
 
-/// <summary>Marks the tests that need a platform; xunit builds the fixture once for the whole collection.</summary>
+// Marks the tests that need a platform; xunit builds the fixture once for the whole collection.
 [CollectionDefinition("avalonia")]
 public sealed class AvaloniaCollection : ICollectionFixture<HeadlessAvalonia>;

@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// The flows this plugin knows how to draw (#69). Its steps are the pieces — a trigger that hands over an issue, a
-/// step that starts one, one that comments — and "pick an issue, cut the branch, start it, put the agent on it" is
-/// what they are for. Offered ready-made, because an empty canvas asks the operator to work out something the plugin
-/// already knows.
-/// </summary>
+// The flows this plugin knows how to draw (#69). Its steps are the pieces — a trigger that hands over an issue, a
+// step that starts one, one that comments — and "pick an issue, cut the branch, start it, put the agent on it" is
+// what they are for. Offered ready-made, because an empty canvas asks the operator to work out something the plugin
+// already knows.
 internal static class GitHubWorkflowTemplates
 {
     public static IEnumerable<WorkflowTemplate> All =>

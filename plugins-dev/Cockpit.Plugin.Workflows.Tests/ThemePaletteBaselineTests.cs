@@ -9,15 +9,11 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// This plugin's half of the AC-338 theme-palette baseline: what its own surfaces actually paint, held against a
-/// committed file the same way <c>Cockpit.App.ViewTests.ThemePaletteBaselineTests</c> holds the host's. Two
-/// surfaces stand in for the plugin — the canvas (the one AC-337 was about) and the flow list a session lands on.
-/// </summary>
-/// <remarks>
-/// To re-record after an intended change: run with <c>COCKPIT_UPDATE_THEME_BASELINES=1</c>, review the diff, then
-/// run again without it. The rewriting run still fails on purpose.
-/// </remarks>
+// This plugin's half of the AC-338 theme-palette baseline: what its own surfaces actually paint, held against a
+// committed file the same way `Cockpit.App.ViewTests.ThemePaletteBaselineTests` holds the host's. Two
+// surfaces stand in for the plugin — the canvas (the one AC-337 was about) and the flow list a session lands on.
+// To re-record after an intended change: run with `COCKPIT_UPDATE_THEME_BASELINES=1`, review the diff, then
+// run again without it. The rewriting run still fails on purpose.
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
@@ -37,20 +33,16 @@ public class ThemePaletteBaselineTests
         ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, scene), painted);
     }
 
-    /// <summary>
-    /// The other direction (AC-414): the theory above walks the scenes, so a scene that goes away takes its test
-    /// case with it and leaves its file behind, green forever because nothing reads it any more.
-    /// </summary>
+    // The other direction (AC-414): the theory above walks the scenes, so a scene that goes away takes its test
+    // case with it and leaves its file behind, green forever because nothing reads it any more.
     [Fact]
     public void EveryBaseline_BelongsToASceneThatStillExists() =>
         ThemePaletteBaseline.VerifyNoOrphans(BaselineDirectory, SceneNames);
 
-    /// <summary>
-    /// Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour
-    /// arrives through a selector, which only runs once a control reaches a shown window's styling root. A tree
-    /// that is only measured, never shown, would still resolve its resource lookups and pass a plausible-looking
-    /// but wrong report.
-    /// </summary>
+    // Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour
+    // arrives through a selector, which only runs once a control reaches a shown window's styling root. A tree
+    // that is only measured, never shown, would still resolve its resource lookups and pass a plausible-looking
+    // but wrong report.
     [Fact]
     public void TheHarness_ShowsItsWindow_SoTheThemesSelectorsHaveRun()
     {
@@ -84,7 +76,7 @@ public class ThemePaletteBaselineTests
         }
     }
 
-    /// <summary>Trigger, decision and action side by side — the three kinds a card can be, so the trigger accent and the decision's own gold both show up.</summary>
+    // Trigger, decision and action side by side — the three kinds a card can be, so the trigger accent and the decision's own gold both show up.
     private static WorkflowCanvas _Canvas()
     {
         var flow = new Workflow { Id = "w", Name = "Ticket → branch → agent" };
@@ -97,7 +89,7 @@ public class ThemePaletteBaselineTests
         return new WorkflowCanvas(flow);
     }
 
-    /// <summary>One armed flow and one idle one, so both the "Active" and "Inactive" toggle states are on screen.</summary>
+    // One armed flow and one idle one, so both the "Active" and "Inactive" toggle states are on screen.
     private static WorkflowManagerControl _Manager()
     {
         var workflows = new List<Workflow>

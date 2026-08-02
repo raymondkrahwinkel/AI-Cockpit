@@ -3,16 +3,13 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// Saving a flow (#69). What a step <em>is</em> — its kind, its ways out, the values a field can take — is looked up
-/// from its type id, not stored: storing it would be storing the same thing twice, and the copy would go stale the day
-/// the type changed.
-/// <para>
-/// It also cannot be stored. A type can carry a function (the statuses a board allows, fetched when the field is
-/// opened), and a function does not go into JSON: saving a flow threw <c>NotSupportedException</c> and took the app
-/// with it — from clicking a template, which is the first thing anybody does.
-/// </para>
-/// </summary>
+// Saving a flow (#69). What a step *is* — its kind, its ways out, the values a field can take — is looked up
+// from its type id, not stored: storing it would be storing the same thing twice, and the copy would go stale the day
+// the type changed.
+//
+// It also cannot be stored. A type can carry a function (the statuses a board allows, fetched when the field is
+// opened), and a function does not go into JSON: saving a flow threw `NotSupportedException` and took the app
+// with it — from clicking a template, which is the first thing anybody does.
 public class WorkflowJsonRoundTripTests
 {
     [Fact]

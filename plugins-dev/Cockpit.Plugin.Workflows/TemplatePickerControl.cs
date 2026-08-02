@@ -8,15 +8,12 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows;
 
-/// <summary>
-/// The templates, as a dialog you can search rather than a menu you have to read (#69). A flyout works for three
-/// flows; at thirty it is a wall of headings — and the plugins that ship them are only going to get more numerous, so
-/// the picker is the thing that has to scale, not the operator's patience.
-/// <para>
-/// A row says what the flow does and where it came from, because "Ticket → branch → agent" is a name, not an
-/// explanation, and picking the wrong one costs you a canvas you then have to read and delete.
-/// </para>
-/// </summary>
+// The templates, as a dialog you can search rather than a menu you have to read (#69). A flyout works for three
+// flows; at thirty it is a wall of headings — and the plugins that ship them are only going to get more numerous, so
+// the picker is the thing that has to scale, not the operator's patience.
+//
+// A row says what the flow does and where it came from, because "Ticket → branch → agent" is a name, not an
+// explanation, and picking the wrong one costs you a canvas you then have to read and delete.
 internal sealed class TemplatePickerControl : UserControl
 {
     private readonly IReadOnlyList<WorkflowTemplate> _templates;
@@ -24,10 +21,10 @@ internal sealed class TemplatePickerControl : UserControl
     private readonly TextBox _search;
     private readonly TextBlock _empty;
 
-    /// <summary>Raised with the template the operator chose; the manager turns it into a flow.</summary>
+    // Raised with the template the operator chose; the manager turns it into a flow.
     public event EventHandler<WorkflowTemplate>? Chosen;
 
-    /// <summary>Raised when the operator would rather open a flow somebody sent them.</summary>
+    // Raised when the operator would rather open a flow somebody sent them.
     public event EventHandler? ImportRequested;
 
     public TemplatePickerControl(IReadOnlyList<WorkflowTemplate> templates)
@@ -160,7 +157,7 @@ internal sealed class TemplatePickerControl : UserControl
         return card;
     }
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius
