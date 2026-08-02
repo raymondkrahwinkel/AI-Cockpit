@@ -113,6 +113,50 @@ public class ReadAloudTests
     }
 
     [Fact]
+    public void ToolUseRequested_ReadAloudOn_SpeaksTheLeadInWhenTheWaitStarts_NotOnlyWhenSomethingIsAsked()
+    {
+        // The assistant's lead-in used to be spoken because every tool call raised a permission prompt, and that
+        // prompt is what flushed. Turn on bypassPermissions or the cockpit's consent bypass (AC-575) and nothing
+        // pauses the turn any more — so a spoken assistant fell silent from the question until the whole answer was
+        // ready, which is exactly the wait the lead-in exists to cover. The call itself is the moment the operator
+        // starts waiting, so that is where it is spoken.
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Even kijken welke sessies er draaien." });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "list_sessions", InputJson = "{}" });
+
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Even kijken welke sessies er draaien." })),
+            vm.TtsVoiceSid,
+            "en");
+    }
+
+    [Fact]
+    public void ToolUseRequested_ThenTurnCompleted_SpeaksTheLeadInOnce_NotTwice()
+    {
+        // The flushed-count is what makes an entry spoken exactly once however many times a turn pauses. A flush
+        // added at the tool call must ride that, not repeat the lead-in when the turn ends.
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Even kijken." });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "list_sessions", InputJson = "{}" });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Even kijken." })),
+            vm.TtsVoiceSid,
+            "en");
+    }
+
+    [Fact]
     public async Task BeginVoiceHold_InterruptsWhateverIsQueuedOrPlaying()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();

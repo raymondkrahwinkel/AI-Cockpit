@@ -1979,6 +1979,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // dotnet build") rather than re-deriving a summary from the input JSON a second time.
                 _activeToolCalls.Add(new ActiveToolCall(toolUse.ToolUseId, toolUseRow.ToolHeader, DateTimeOffset.Now));
                 _RaiseActiveToolActivityChanged();
+
+                // The wait starts here, so the lead-in is spoken here. Until now the only mid-turn flushes were a
+                // permission prompt and a question, which was enough while every tool call raised one — and stopped
+                // being enough the moment an operator turned on bypassPermissions or the cockpit's consent bypass
+                // (AC-575). Then nothing paused the turn, nothing flushed, and a spoken assistant went silent from
+                // the question until the whole answer was ready. Flushing on the call itself does not depend on
+                // anyone being asked anything.
+                _FlushPendingProseForReadAloud();
                 break;
 
             case ToolResult toolResult:
