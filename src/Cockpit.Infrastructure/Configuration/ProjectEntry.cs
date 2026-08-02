@@ -17,6 +17,10 @@ internal sealed class ProjectEntry
 
     public string? Description { get; set; }
 
+    /// <summary>Absent for a project that carries no category (AC-618) — most projects, still, on any given machine.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Category { get; set; }
+
     public string? SourceDirectory { get; set; }
 
     public string? GitUrl { get; set; }
@@ -81,6 +85,7 @@ internal sealed class ProjectEntry
         Id = project.Id,
         Name = project.Name,
         Description = project.Description,
+        Category = project.Category,
         SourceDirectory = project.SourceDirectory,
         GitUrl = project.GitUrl,
         DefaultProfileLabel = project.DefaultProfileLabel,
@@ -108,6 +113,7 @@ internal sealed class ProjectEntry
     public Project ToDomain() => new(Id, Name)
     {
         Description = Description,
+        Category = Category,
         SourceDirectory = SourceDirectory,
         GitUrl = GitUrl,
         DefaultProfileLabel = DefaultProfileLabel,

@@ -168,6 +168,10 @@ internal static class Screenshotter
         // the one time an operator meets a shared project with several machine-specific references at once.
         ["shared-project-binding-resource-rows"] = (_, _) =>
             new SharedProjectBindingDialog { DataContext = ViewModels.SharedProjectBindingDialogViewModel.DesignSampleWithResourceRows() },
+        // AC-618: categories as the list's main grouping, in a non-alphabetical order ("Werk" before "Privé"), with
+        // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
+        // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
+        ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
         ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),

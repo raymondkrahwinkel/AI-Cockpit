@@ -153,6 +153,16 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- AC-618: category is what the manager's list groups by ("Privé" before "Werk" — the operator's
+                         own ordering, remembered the first time each name is typed). Free text, no chips yet: the
+                         known-categories list would have to travel through SessionDialogService.ShowProjectDialogAsync,
+                         which is out of scope here — see AC-618's own delivery notes. -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Category"/>
+                        <TextBlock Classes="FieldHint" Text="Where this project shows up in the list. Leave it blank to leave it uncategorized."/>
+                        <TextBox Text="{Binding Category}" PlaceholderText="Work"/>
+                    </StackPanel>
+
                     <StackPanel Spacing="2">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Classes="FieldLabel" Text="Description"/>

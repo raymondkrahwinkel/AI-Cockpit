@@ -154,6 +154,9 @@ internal sealed class CockpitConfigFile
     /// </summary>
     public List<string> HiddenSharedProjectIds { get; set; } = [];
 
+    /// <summary>The project categories' display order and first-typed casing (AC-618); owned by the project store. See <c>ProjectSettings.CategoryOrder</c>.</summary>
+    public List<string> CategoryOrder { get; set; } = [];
+
     /// <summary>Remembered working directories (recent + favorites) offered in the New-session dialog; owned by the working-path history store.</summary>
     public WorkingPathHistoryEntry? WorkingPaths { get; set; }
 

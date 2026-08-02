@@ -22,6 +22,23 @@ public sealed record ProjectSettings
     /// </summary>
     public IReadOnlyList<string> HiddenSharedProjectIds { get; init; } = [];
 
+    /// <summary>
+    /// The categories in use (AC-618), in the order the manager shows their headings — not alphabetical, "Privé"
+    /// before "Werk" is a choice the operator gets to keep even though nothing yet lets them drag a heading. Each
+    /// entry is also the casing that category is shown under: the first project that typed it wins, and a later
+    /// project typing the same name differently (<c>StringComparison.OrdinalIgnoreCase</c>) still joins the same
+    /// group rather than starting a second one under its own casing — see <see cref="Project.Category"/>.
+    /// <para>
+    /// Deliberately its own list rather than derived from <see cref="Projects"/> on the fly: a category is a
+    /// preference about the list, not a property of any one project, and deriving it fresh every time would have
+    /// no way to remember that "Privé" was typed before "Werk" once both have at least one project. Kept in sync
+    /// by <see cref="Normalized"/> — an entry drops out the moment no project carries its category any more (a
+    /// category "disappears when the last project lets go of it"), and a category typed onto a project the first
+    /// time is appended here, in the order its first project appears in <see cref="Projects"/>.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> CategoryOrder { get; init; } = [];
+
     /// <summary>The project <paramref name="projectId"/> names, or null — including for a session that belongs to a project the operator has since deleted.</summary>
     public Project? Find(string? projectId) =>
         string.IsNullOrEmpty(projectId) ? null : Projects.FirstOrDefault(project => project.Id == projectId);
@@ -61,7 +78,53 @@ public sealed record ProjectSettings
             }
         }
 
-        return hidden.SequenceEqual(result.HiddenSharedProjectIds) ? result : result with { HiddenSharedProjectIds = hidden };
+        result = hidden.SequenceEqual(result.HiddenSharedProjectIds) ? result : result with { HiddenSharedProjectIds = hidden };
+
+        var categoryOrder = _NormalizedCategoryOrder(result.CategoryOrder, result.Projects);
+        return categoryOrder.SequenceEqual(result.CategoryOrder) ? result : result with { CategoryOrder = categoryOrder };
+    }
+
+    /// <summary>
+    /// <paramref name="order"/> kept to exactly the categories <paramref name="projects"/> still uses — each kept
+    /// entry keeps the casing already on record (that <em>is</em> the "shown as first typed" promise), and a
+    /// category some project carries that <paramref name="order"/> has never recorded (newly typed, or a project
+    /// saved by a build from before this list existed) is appended in the order its first project appears, using
+    /// that project's own casing. Comparison throughout is <see cref="StringComparison.OrdinalIgnoreCase"/> — see
+    /// <see cref="Project.Category"/>'s own remarks on why the culture-sensitive default is never an option here.
+    /// </summary>
+    private static IReadOnlyList<string> _NormalizedCategoryOrder(IReadOnlyList<string> order, IReadOnlyList<Project> projects)
+    {
+        var used = new List<string>();
+        var usedSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in projects)
+        {
+            var category = project.Category?.Trim();
+            if (!string.IsNullOrEmpty(category) && usedSeen.Add(category))
+            {
+                used.Add(category);
+            }
+        }
+
+        var kept = new List<string>();
+        var keptSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in order)
+        {
+            var trimmed = name?.Trim();
+            if (!string.IsNullOrEmpty(trimmed) && usedSeen.Contains(trimmed) && keptSeen.Add(trimmed))
+            {
+                kept.Add(trimmed);
+            }
+        }
+
+        foreach (var name in used)
+        {
+            if (keptSeen.Add(name))
+            {
+                kept.Add(name);
+            }
+        }
+
+        return kept;
     }
 
     /// <summary>
@@ -92,6 +155,12 @@ public sealed record ProjectSettings
         // that one row rather than silently persisting a reference nothing points at.
         var resources = project.Resources.Where(resource => !string.IsNullOrWhiteSpace(resource.Reference)).ToList();
         tidied = resources.SequenceEqual(project.Resources) ? tidied : tidied with { Resources = resources };
+
+        // A category typed and then deleted down to nothing, or a name that was only ever spaces, reads the same as
+        // never having one — trimmed here so a whitespace-only Category can never itself hold a "used" category open
+        // in _NormalizedCategoryOrder above.
+        var category = string.IsNullOrWhiteSpace(project.Category) ? null : project.Category.Trim();
+        tidied = category == project.Category ? tidied : tidied with { Category = category };
 
         return _TidyLinks(project.PluginFields) is { } links ? tidied with { PluginFields = links } : tidied;
     }
