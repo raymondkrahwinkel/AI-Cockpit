@@ -1517,13 +1517,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <summary>The brief handed to <see cref="SubmitPromptWhenReady"/> before this session could take one, kept until it can. At most one: a session is spawned with a single opening brief, and a second would be a second turn, not a longer one.</summary>
     private string? _promptHeldUntilReady;
 
-    /// <summary>True while a brief is waiting for this session to become able to take it — see <see cref="SubmitPromptWhenReady"/>.</summary>
+    /// <summary>
+    /// True while a brief is waiting for this session to become able to take it — see
+    /// <see cref="SubmitPromptWhenReady"/>, whose two <see langword="false"/> results (held, and refused because one
+    /// is already held) this is what tells apart. Read by <c>AssistantAgentGateway.SendPromptAsync</c> before it
+    /// hands one over, so the assistant is refused out loud instead of being told "held" about a brief it does not
+    /// own.
+    /// </summary>
     public bool HasPromptWaitingToBeDelivered => _promptHeldUntilReady is not null;
 
     /// <summary>
     /// Hands this session an opening brief and submits it, waiting for the session to be able to receive one first.
-    /// Returns <see langword="true"/> when it went out on the spot and <see langword="false"/> when it is being
-    /// held — never that it was delivered when it was not.
+    /// Returns <see langword="true"/> when it went out on the spot and <see langword="false"/> when it is being held
+    /// or was refused — never that it was delivered when it was not.
     /// </summary>
     /// <remarks>
     /// What a freshly spawned session needs and <see cref="InjectAndSubmit"/> alone cannot give it. That one is the
@@ -1543,6 +1549,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// A brief that is held and whose session never comes up is never delivered, and
     /// <see cref="HasPromptWaitingToBeDelivered"/> stays true so a caller can say so rather than claim it landed.
     /// </para>
+    /// <para>
+    /// <b>The first brief wins; a second while one is still waiting is refused.</b> The field holds one by design
+    /// (a session is spawned with a single opening brief, and a second is a second turn rather than a longer one),
+    /// and the three ways to enforce that are refuse, queue, or overwrite. Overwrite is the one this method's own
+    /// contract forbids: the first caller was told <see langword="false"/> — held, not lost — and a silent
+    /// replacement makes that a lie with no refusal, no trace and no signal. A queue was not built because nothing
+    /// asks for one: two briefs are a caller mistake (or a retry invited by reading <see langword="false"/> as "try
+    /// again"), not a workload. Refusing keeps the promise the first caller was given.
+    /// </para>
     /// </remarks>
     public bool SubmitPromptWhenReady(string prompt)
     {
@@ -1555,6 +1570,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             InjectAndSubmit(prompt);
             return true;
+        }
+
+        // Refused rather than overwritten — see the remarks. Both falses mean "not delivered"; which one it is,
+        // HasPromptWaitingToBeDelivered answers, and the caller that cares asks it before calling.
+        if (_promptHeldUntilReady is not null)
+        {
+            return false;
         }
 
         _promptHeldUntilReady = prompt;

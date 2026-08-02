@@ -1152,5 +1152,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // fires. A screenshot that lands after that would otherwise find a live delegate, paste into a terminal
         // that no longer exists, and report success with nothing to show for it (AC-226).
         PasteTextAsync = null;
+
+        // The prompt route goes with it, and for the identical reason. It points at the view's _WriteToPty, which
+        // returns without a word once the pty is gone — so a pane left with a sink still set answers CanTakeAPrompt
+        // true, takes the prompt, drops it, and lets send_prompt report delivered:true into nothing. The screenshot
+        // path settled this for its own delegate above; a prompt is the same delegate-outlives-its-target shape.
+        PromptSink = null;
     }
 }

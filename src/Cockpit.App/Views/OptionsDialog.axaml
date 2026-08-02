@@ -607,8 +607,9 @@
                             </StackPanel>
                         </ScrollViewer>
 
-                        <!-- Assistant (AC-543): the master switch, the Assistant Profile picker, the push-to-talk
-                             hotkey and the independent speak-replies switch. Off is the begin state (decision 7) —
+                        <!-- Assistant (AC-543): the master switch, the Assistant Profile row (a name and an editor,
+                             not a picker — see the comment on that row), the push-to-talk hotkey and the
+                             independent speak-replies switch. Off is the begin state (decision 7) —
                              the rows below the switch stay visible and merely dim, so what is off stays legible
                              instead of disappearing (criterion: "off is not removed"). -->
                         <ScrollViewer>

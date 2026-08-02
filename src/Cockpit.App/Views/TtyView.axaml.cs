@@ -232,6 +232,9 @@ public partial class TtyView : UserControl
             _viewModel.LaunchRequested -= OnLaunchRequested;
             _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
             _viewModel.PasteTextAsync = null;
+            // And the prompt route, which points into this view's pty just as the paste delegate does: a view model
+            // handed to another view must not go on answering "yes, a prompt reaches me" through the one it left.
+            _viewModel.PromptSink = null;
             _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
@@ -1042,6 +1045,14 @@ public partial class TtyView : UserControl
             {
                 terminals.PaneClosed(paneId);
             }
+        }
+
+        // Before the pty goes: the sink handed out at launch writes into it, and _WriteToPty returns silently once
+        // it is null. Dropping the sink here is what turns CanTakeAPrompt false at the moment it stops being true,
+        // rather than leaving a pane that accepts prompts into a closed process for the rest of its life.
+        if (_viewModel is not null)
+        {
+            _viewModel.PromptSink = null;
         }
 
         _pty?.Dispose();

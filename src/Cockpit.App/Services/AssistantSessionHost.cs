@@ -257,11 +257,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
 
-        // Reading level reaches a live session the moment Options is saved, the same way SetSpeakReplies reaches
-        // it for speaking — not only at the assistant's next start.
+        // Everything the start path applies from these settings is re-applied here, so a save reaches the running
+        // assistant instead of only its next start. Written as "the start path's own call, again" rather than a
+        // hand-picked field or two: picking is what left SpeakReplies behind while the header checkbox moved, and
+        // the next field added to _ApplySpeech would have been left behind the same way.
         if (Session is { } live)
         {
             live.ReadingLevel = settings.ReadingLevel;
+            _ApplySpeech(live, settings);
         }
 
         if (settings.IsEnabled)
@@ -357,11 +360,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// was doing.
     /// </summary>
     /// <remarks>
-    /// <b>Why it has to be done here at all.</b> The cockpit pushes the voice settings to its sessions by walking
-    /// <c>Sessions</c>, and the assistant is deliberately not in that collection — it has no pane. So it kept the
-    /// bare defaults: <c>ReadResponsesAloud</c> false, which makes the read-aloud flush return before it speaks a
-    /// word, and <c>ReadAloudLanguage</c> "en", which would have read Dutch replies in an English voice. The
-    /// operator heard nothing at all and there was nothing on screen to say why.
+    /// <b>Why it has to be done here at all.</b> Nothing else seeds a starting session's speech: the cockpit's
+    /// voice fan-out fires on an Options save, and a session started after the last save would keep the bare
+    /// defaults — <c>ReadResponsesAloud</c> false, which makes the read-aloud flush return before it speaks a word,
+    /// and <c>ReadAloudLanguage</c> "en", which would read Dutch replies in an English voice. The operator heard
+    /// nothing at all and there was nothing on screen to say why.
+    /// <para>
+    /// Called from <see cref="ApplySettingsAsync"/> as well as from the start, so an Options save reaches the
+    /// running instance. The voice and language additionally arrive through the cockpit's own fan-out, which now
+    /// includes the assistant; both routes write the same two values, and neither is load-bearing alone — the
+    /// fan-out does not fire at start, and this does not fire when only the voice settings are saved.
+    /// </para>
     /// <para>
     /// <b>Read-aloud speaks the reply verbatim, never a rewrite.</b> AC-542 decision 10 is explicit that the
     /// assistant's words go out one-to-one: what shortens a 300-word answer is

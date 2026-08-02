@@ -239,7 +239,7 @@
                                    Text="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).AlwaysMountedMcpServers, StringFormat='The assistant always mounts its own {0} — that is how it reads and acts across workspaces, and nothing here removes them. Anything below is added on top.'}"/>
                         <CheckBox Content="Choose which other MCP servers the assistant gets"
                                   IsChecked="{Binding RestrictMcpServers}"
-                                  ToolTip.Tip="Off: every enabled server the assistant is given by default. On: only the servers ticked below."/>
+                                  ToolTip.Tip="Off: every enabled server except the few the assistant is not handed unasked. On: only the servers ticked below — a tick is an answer, so one of those few counts if you give it."/>
                         <controls:McpServerChecklist IsVisible="{Binding RestrictMcpServers}"
                                                      Servers="{Binding McpServers}"
                                                      Hint="Exactly these, plus the assistant's own two. Untick to give it fewer tools and a smaller prompt."

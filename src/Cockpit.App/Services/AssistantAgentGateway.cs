@@ -295,6 +295,18 @@ internal sealed class AssistantAgentGateway(
                 return await _RefusePromptAsync(paneId, $"'{session.Title}' is a terminal pane, not an agent session.", cancellationToken).ConfigureAwait(true);
             }
 
+            // Asked before handing anything over, not after: a pane that is still coming up holds exactly one brief,
+            // so a second arriving first would be refused by SubmitPromptWhenReady and reported here as "held" —
+            // about a brief belonging to the earlier call. The model is told plainly instead, which is also what
+            // stops delivered:false from reading as an invitation to try again.
+            if (session.HasPromptWaitingToBeDelivered)
+            {
+                return await _RefusePromptAsync(
+                    paneId,
+                    $"'{session.Title}' is still starting and already has a turn waiting. It gets the one it was given first; this one was not accepted.",
+                    cancellationToken).ConfigureAwait(true);
+            }
+
             // Held rather than dropped when the session is still coming up, and the caller is told which of the two
             // happened — see SessionPanelViewModel.SubmitPromptWhenReady.
             var delivered = session.SubmitPromptWhenReady(prompt);
@@ -368,8 +380,9 @@ internal sealed class AssistantAgentGateway(
     }
 
     /// <summary>
-    /// Closes a desk the same way the tab's ✕ does, and refuses the same three things — with the confirmation
-    /// dialog's job done by refusing rather than by asking.
+    /// Closes an empty sessions desk. Narrower than the tab's ✕, deliberately: it refuses that button's three
+    /// reasons, refuses every desk that is not a sessions desk, and does the confirmation dialog's job by refusing
+    /// rather than by asking.
     /// </summary>
     /// <remarks>
     /// <b>Why the emptiness check is here and not left to <see cref="CockpitViewModel.CloseWorkspaceAsync"/>.</b>
@@ -377,7 +390,16 @@ internal sealed class AssistantAgentGateway(
     /// what is about to be stopped. There is no dialog on this route: what the operator approves is an Allow row
     /// naming a desk, and taking three running sessions with it is work nobody asked for and nothing showed them.
     /// So the sessions go first, through <c>stop_agent</c> and its own approval each, and this refuses until there
-    /// are none — at which point the two paths do exactly the same thing to exactly the same desk.
+    /// are none — at which point, on a sessions desk, the two paths do the same thing to the same desk.
+    /// <para>
+    /// <b>Only a sessions desk, and this is where the two paths part.</b> A dashboard's occupants are widgets and a
+    /// plugin desk's are whatever that plugin holds; neither is counted below, so both read as empty and were
+    /// closed on the spot, taking an arrangement nobody was shown and nothing can rebuild. The ✕ path names what
+    /// goes ("It holds N widgets… this cannot be undone") because it has a dialog to name it in; a consent card
+    /// cannot enumerate what is about to be lost, so the honest answer here is not a better warning but a smaller
+    /// tool. Whole categories are refused rather than emptiness being redefined per type: what "empty" means on a
+    /// desk type this tool has never seen is not something it can be written to know.
+    /// </para>
     /// </remarks>
     public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(async () =>
@@ -395,6 +417,14 @@ internal sealed class AssistantAgentGateway(
                 return WorkspaceRemovalResult.Refused(workspace.Type == WorkspaceType.Projects
                     ? $"'{workspace.Name}' is the projects overview. It is always there, and closing it is not something anyone can do."
                     : $"'{workspace.Name}' is the only desk left, and the cockpit always needs one to show.");
+            }
+
+            // Before the session count, because that count is about sessions and a desk of another type has none —
+            // it would read as empty and the close would go through.
+            if (workspace.Type != WorkspaceType.Sessions)
+            {
+                return WorkspaceRemovalResult.Refused(
+                    $"'{workspace.Name}' is not a sessions desk — it is a {workspace.Type.Id} desk, and this tool only closes the ones that hold sessions. What is on it is not sessions I can count or stop, so closing it is the operator's own to do from its tab. Nothing is lost by asking them.");
             }
 
             var occupants = _CountEverythingOn(workspaceId);

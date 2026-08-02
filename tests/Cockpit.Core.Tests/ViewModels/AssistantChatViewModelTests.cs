@@ -151,8 +151,9 @@ public class AssistantChatViewModelTests
 
         // "Closing" a window is exactly Dispose() (AssistantChatWindow.OnClosed calls nothing else on it), and
         // Dispose only detaches the peephole's own PropertyChanged subscription. The one member on the host that
-        // does end a session — RestartAsync, the header's restart button — is reached from a command and from
-        // nowhere else, which is what the assertion below is really holding: closing is not restarting.
+        // does end a session — RestartAsync — this window never reaches at all (see
+        // TheChatWindow_NeverRestartsTheAssistant_OnAnyPathItHas), which is what the assertion below is really
+        // holding here: closing is not restarting.
         firstWindow.Dispose();
         host.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
         Assert.Same(session, host.Session);

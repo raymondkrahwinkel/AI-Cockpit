@@ -7,7 +7,7 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile picker, the hotkey, and the independent speak-replies switch.</summary>
+/// <summary>The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile row (a name and an editor, not a picker), the hotkey, and the independent speak-replies switch.</summary>
 public class AssistantOptionsViewModelTests
 {
     // Decision 7 / criterion 1: a fresh dialog with nothing saved yet reads as off, before any store is even asked.
@@ -227,15 +227,12 @@ public class AssistantOptionsViewModelTests
 
     private sealed class FakeProfileStore(AssistantProfileSlot initial) : IAssistantProfileStore
     {
-        public SessionProfile? RepointedTo { get; private set; }
-
         public Task<AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(initial);
 
-        public Task<AssistantProfileSlot> RepointAsync(SessionProfile record, CancellationToken cancellationToken = default)
-        {
-            RepointedTo = record;
-            return Task.FromResult(new AssistantProfileSlot(record));
-        }
+        // Records nothing: no test here repoints, because the row this file covers is not a picker. What it recorded
+        // was picker scaffolding that outlived the picker — set, never asserted, and therefore guarding nothing.
+        public Task<AssistantProfileSlot> RepointAsync(SessionProfile record, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AssistantProfileSlot(record));
 
         public Task<AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AssistantProfileSlot(null, reason));

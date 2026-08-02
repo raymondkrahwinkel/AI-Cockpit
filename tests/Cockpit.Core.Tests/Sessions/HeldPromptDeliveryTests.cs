@@ -90,6 +90,30 @@ public class HeldPromptDeliveryTests
     }
 
     /// <summary>
+    /// Two briefs before the pane can hear either: the first is kept, the second refused. The field holds one, and
+    /// the only enforcement this method's contract permits is a refusal.
+    /// </summary>
+    /// <remarks>
+    /// It used to be a bare overwrite, so both calls answered <see langword="false"/> — "being held", per the doc —
+    /// while the first brief had in fact been destroyed: never delivered, never refused, no trace and no signal.
+    /// Reachable in one step, because <c>send_prompt</c> tells the model that <c>delivered:false</c> means the
+    /// session is still coming up, which reads as an invitation to try again.
+    /// </remarks>
+    [Fact]
+    public void ASecondBriefWhileOneIsStillHeld_IsRefused_AndTheFirstIsStillTheOneThatGoes()
+    {
+        var panel = new TestSessionPanel { CanTakeAPromptOverride = false };
+
+        Assert.False(panel.SubmitPromptWhenReady("review the migration"));
+        Assert.False(panel.SubmitPromptWhenReady("deploy to production"));
+
+        panel.BecomeReady();
+
+        Assert.Equal(new[] { "review the migration", "submit" }, panel.Injected);
+        Assert.False(panel.HasPromptWaitingToBeDelivered);
+    }
+
+    /// <summary>
     /// A session whose launch failed never becomes able to take a prompt. The brief is then simply never delivered,
     /// and the flag still says so — nothing anywhere may report it as sent.
     /// </summary>

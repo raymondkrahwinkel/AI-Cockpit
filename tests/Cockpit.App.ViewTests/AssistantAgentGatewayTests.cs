@@ -515,6 +515,57 @@ public class AssistantAgentGatewayTests
             cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Id)));
     }
 
+    /// <summary>
+    /// Only a sessions desk. Every other type is refused outright and stays exactly where it was.
+    /// </summary>
+    /// <remarks>
+    /// The occupancy check counts sessions, and a desk of another type has none — so a dashboard holding a full
+    /// screen of widgets read as empty and was closed on the spot, taking a layout nobody was shown and nothing can
+    /// rebuild. Warning about it was not the fix: a consent card shows one line of text and cannot enumerate what a
+    /// close would destroy, so the tool is narrower than the ✕ instead of pretending to be the same act.
+    /// <para>
+    /// Driven off <see cref="WorkspaceType"/> itself, like the spawn refusal above and for the same reason: the set
+    /// is open, and a hand-written list of "dashboard and projects" would stay green on the day a plugin desk
+    /// arrives. A second desk is present only so the last-desk rule is not what refuses.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(EveryWorkspaceTypeThatCannotHostASession))]
+    public async Task RemovingADeskThatIsNotASessionsDesk_IsRefused_AndTheDeskIsStillThere(string workspaceTypeId)
+    {
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var other = _Desk("Monitoring", WorkspaceType.FromId(workspaceTypeId));
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, other)));
+
+        var result = await gateway.RemoveWorkspaceAsync(other.Id);
+
+        Assert.False(result.Ok);
+        Assert.NotNull(result.Error);
+        Dispatcher.UIThread.Invoke(
+            () => Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == other.Id));
+    }
+
+    /// <summary>
+    /// And the reason says which kind of desk it is, in the type's own id — the same string
+    /// <c>list_workspaces</c> hands back, so what the assistant was told a desk is and why it will not close it
+    /// cannot disagree. Asserted on a dashboard because the projects overview is refused one rule earlier, by its
+    /// own more specific sentence.
+    /// </summary>
+    [Fact]
+    public async Task TheRefusalForANonSessionsDesk_NamesTheTypeTheRosterReportedForIt()
+    {
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var dashboard = _Desk("Monitoring", WorkspaceType.Dashboard);
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, dashboard)));
+
+        var reportedType = (await gateway.ListWorkspacesAsync()).Single(row => row.Id == dashboard.Id).Type;
+        var result = await gateway.RemoveWorkspaceAsync(dashboard.Id);
+
+        Assert.False(result.Ok);
+        Assert.Contains(reportedType, result.Error);
+        Assert.Contains("Monitoring", result.Error);
+    }
+
     [Fact]
     public async Task RemovingTheOnlyDeskLeft_IsRefused_BecauseTheCockpitAlwaysNeedsOneToShow()
     {

@@ -63,6 +63,45 @@ public class AssistantConsentRoutingTests
         broker.DidNotReceive().Respond(prompt.Id, Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
     }
 
+    /// <summary>
+    /// Answering one card lets the next one be shown. The open side learned to find the assistant and the close side
+    /// did not, so the first card's <c>PendingConsent</c> was never cleared — and the one-banner-per-pane rule then
+    /// denied every later request on that pane without putting anything on screen. With <c>send_message</c> and
+    /// <c>send_prompt</c> asking on every call by design, that is the second one, silently, for the life of the
+    /// process; restarting the assistant was the only way out.
+    /// </summary>
+    [Fact]
+    public void AfterTheFirstConsentIsAnswered_TheNextOneIsShown_RatherThanSilentlyDenied()
+    {
+        var broker = Substitute.For<IConsentBroker>();
+        var first = _Prompt(AssistantIdentity.PaneId);
+        var second = _Prompt(AssistantIdentity.PaneId);
+
+        var assistant = Dispatcher.UIThread.Invoke(() =>
+        {
+            var cockpit = _Cockpit(broker);
+            var session = cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
+
+            broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, first);
+            Dispatcher.UIThread.RunJobs();
+
+            // What the operator's click does: ConsentService.Respond takes the banner down by raising this.
+            broker.PromptClosed += Raise.Event<EventHandler<Guid>>(broker, first.Id);
+            Dispatcher.UIThread.RunJobs();
+
+            // Asserted inside the invoke, before the second prompt can hide a card that was never cleared.
+            Assert.Null(session!.PendingConsent);
+
+            broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, second);
+            Dispatcher.UIThread.RunJobs();
+            return session;
+        });
+
+        Assert.NotNull(assistant.PendingConsent);
+        Assert.Equal(second.Id, assistant.PendingConsent!.Id);
+        broker.DidNotReceive().Respond(second.Id, Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
+    }
+
     [Fact]
     public void AConsentNamingAPaneThatDoesNotExist_IsStillDenied_RatherThanLeftHanging()
     {

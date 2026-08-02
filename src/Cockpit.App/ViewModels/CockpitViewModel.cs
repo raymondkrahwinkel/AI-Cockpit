@@ -2625,14 +2625,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // A request that names a pane goes to that pane; a host-internal caller with no pane of its own (a null
             // PaneId) surfaces on the active session. Either way, if there is nowhere to show it, deny — never hang.
             //
-            // The assistant is looked up separately because FindSession cannot find it and must not learn to: it is
-            // in neither Sessions nor the embedded table by construction, and widening that lookup would hand every
-            // caller of it a session the cockpit deliberately keeps out of reach. Without this branch its consents
-            // were denied here, before anything reached the screen — a k8s or terminal tool call came back "the
-            // operator did not approve this action" while the operator had been shown nothing to approve, and the
-            // Allow they had clicked was the SDK's own permission one layer above.
+            // _ConsentPanes(), not FindSession: the assistant is in neither Sessions nor the embedded table by
+            // construction, and FindSession must not learn to see it — widening that lookup would hand every caller
+            // of it a session the cockpit deliberately keeps out of reach. Without the assistant in this lookup its
+            // consents were denied here, before anything reached the screen — a k8s or terminal tool call came back
+            // "the operator did not approve this action" while the operator had been shown nothing to approve, and
+            // the Allow they had clicked was the SDK's own permission one layer above.
             var pane = prompt.Request.Source.PaneId is { } paneId
-                ? FindSession(paneId) ?? _AssistantSessionWithPaneId(paneId)
+                ? _ConsentPanes().FirstOrDefault(session => session.PaneId == paneId)
                 : SelectedSession;
             if (pane is null)
             {
@@ -2667,9 +2667,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _OnConsentPromptClosed(object? sender, Guid promptId) =>
         Dispatcher.UIThread.Post(() =>
         {
-            // Search embedded panes too (AC-152): a consent shown over an embedded Autopilot session is cleared here,
-            // and missing it would leave the overlay stuck and block every later consent on that pane.
-            if (_AllSessions().FirstOrDefault(session => session.PendingConsent?.Id == promptId) is { } pane)
+            // The same seam the open side routes through, embedded panes (AC-152) and the assistant included: a pane
+            // an open can reach and a close cannot keeps PendingConsent forever, and the one-banner-per-pane rule
+            // above then denies every later request on it without ever showing one.
+            if (_ConsentPanes().FirstOrDefault(session => session.PendingConsent?.Id == promptId) is { } pane)
             {
                 pane.PendingConsent = null;
             }
@@ -4183,7 +4184,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Push the read-aloud settings to already-open sessions so toggling naturalization or the voice
         // takes effect immediately, rather than only on the next session (the enabled/PTT flags keep the
         // load-at-start behaviour, which the hold path re-reads).
-        foreach (var session in Sessions)
+        //
+        // _WithAssistant, because the assistant is in neither collection: without it a new voice reached every
+        // ordinary session and not the one surface whose entire output is speech, so "Hear it" played the new voice
+        // while the assistant kept talking in the old one until it was restarted.
+        foreach (var session in _WithAssistant(Sessions))
         {
             session.TtsVoiceSid = SelectedTtsVoice.Sid;
             session.ReadAloudLanguage = SelectedReadAloudLanguage.Code;
@@ -5711,9 +5716,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public IEnumerable<SessionPanelViewModel> AllSessions() => _AllSessions();
 
     // Every session the host holds — the grid's, plus the embedded ones the grid deliberately does not list. The seam
-    // both the pane-id lookup and the consent open/close routing search, so an embedded pane is never half-reached.
+    // the pane-id lookup searches, so an embedded pane is never half-reached. The assistant is *not* in here; consent
+    // routing therefore reads <see cref="_ConsentPanes"/> instead, which adds it.
     private IEnumerable<SessionPanelViewModel> _AllSessions() =>
         Sessions.Concat(_embeddedSessions.Values.SelectMany(owned => owned));
+
+    // Every pane a consent banner can be shown on: <see cref="_AllSessions"/> plus the assistant. One seam for both
+    // the open and the close side — an open that reaches a pane the close cannot reach leaves PendingConsent set for
+    // the life of the process, and the next request on that pane is denied without a card ever being shown.
+    private IEnumerable<SessionPanelViewModel> _ConsentPanes() => _WithAssistant(_AllSessions());
+
+    /// <summary>
+    /// <paramref name="sessions"/> with the live assistant on the end. It is in neither <see cref="Sessions"/> nor
+    /// the embedded table by construction (see <see cref="CreateAssistantSession"/>), so every loop that fans a live
+    /// setting out to "all sessions", and every consent pane lookup, reaches every session except the one the
+    /// operator is actually talking to unless it goes through here.
+    /// </summary>
+    private IEnumerable<SessionPanelViewModel> _WithAssistant(IEnumerable<SessionPanelViewModel> sessions) =>
+        _assistantSession is { } assistant ? sessions.Append(assistant) : sessions;
 
     /// <summary>
     /// The display names of the sessions by pane id, for the managed-worktrees panel (AC-520). The persisted
@@ -6089,16 +6109,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
-    /// The live assistant instance, or null before it has been woken. Held only so a consent naming its pane can be
-    /// routed to it — <see cref="FindSession"/> cannot, and teaching it to would hand every other caller of it a
-    /// session the cockpit keeps out of both collections on purpose.
+    /// The live assistant instance, or null before it has been woken. Held so the things that must reach it despite
+    /// it being in neither collection can — consent routing (<see cref="_ConsentPanes"/>) and the live fan-out of the
+    /// speech settings (<see cref="_WithAssistant"/>). <see cref="FindSession"/> deliberately still cannot see it:
+    /// teaching it to would hand every other caller a session the cockpit keeps out of both collections on purpose.
     /// </summary>
     private SessionViewModel? _assistantSession;
-
-    private SessionViewModel? _AssistantSessionWithPaneId(string paneId) =>
-        string.Equals(paneId, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal)
-            ? _assistantSession
-            : null;
 
     /// <summary>
     /// Mints the voice assistant's session panel and hands it over (AC-543). The <em>only</em> way one is made:

@@ -118,21 +118,57 @@ public class AssistantSessionHostTests
     }
 
     /// <summary>
-    /// AC-138 follow-up: a reading level saved in Options has to reach a session that is already running, the same
-    /// way <see cref="AssistantSessionHost.SetSpeakReplies"/> reaches a live session for speaking — not only the
-    /// next time the assistant starts.
+    /// Everything an Options save decides about a running assistant reaches it now, not at its next start — every
+    /// field, not one of them.
     /// </summary>
-    [Fact]
-    public void ApplySettings_WithALiveSession_PushesTheNewReadingLevelToItImmediately()
+    /// <remarks>
+    /// This test used to assert the reading level alone while its own summary claimed the pair of them moved
+    /// together, and the half it did not assert was broken the whole time: <c>SpeakReplies</c> was pushed only by
+    /// <c>_ApplySpeech</c> at start, so ticking "speak replies" in Options moved the header checkbox — the chat view
+    /// model applies a loaded value under a guard that suppresses its own push to the host — and left the live
+    /// session on the value it had started with. Measured as <c>settingsSpeakReplies=True
+    /// liveSessionReadResponsesAloud=False</c>: the operator was told the assistant would speak, and it did not.
+    /// <para>
+    /// So this asserts the whole set the start path writes. A field added to <c>_ApplySpeech</c> and not to the
+    /// live-apply is the exact shape of that defect, and the assertion below is what notices.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ApplySettings_WithALiveSession_PushesEverySpokenSettingToIt_NotOnlyTheReadingLevel(bool speakReplies)
     {
-        var host = Dispatcher.UIThread.Invoke(() =>
-            _Host(enabled: true, slot: _ConfiguredSlot(), readingLevel: Cockpit.Core.Sessions.ReadingLevel.Simple));
-        var session = Dispatcher.UIThread.Invoke(() => new SessionViewModel());
+        var cockpit = Dispatcher.UIThread.Invoke(() => new CockpitViewModel
+        {
+            SelectedTtsVoice = TtsVoiceCatalog.Voices[^1],
+            SelectedReadAloudLanguage = new SttLanguageOption("Dutch", "nl"),
+        });
+        var host = Dispatcher.UIThread.Invoke(() => _Host(
+            enabled: true,
+            slot: _ConfiguredSlot(),
+            readingLevel: Cockpit.Core.Sessions.ReadingLevel.Simple,
+            speakReplies: speakReplies,
+            cockpit: cockpit));
+
+        // The state a session that started before the save is in — the opposite of every value about to be saved,
+        // so nothing below can pass by having been right already.
+        var session = Dispatcher.UIThread.Invoke(() => new SessionViewModel
+        {
+            ReadingLevel = Cockpit.Core.Sessions.ReadingLevel.Developer,
+            ReadResponsesAloud = !speakReplies,
+            ReadAloudLanguage = "en",
+            TtsVoiceSid = -1,
+            ReadAloudAsOneUtterance = false,
+        });
         Dispatcher.UIThread.Invoke(() => host.Session = session);
 
         Dispatcher.UIThread.Invoke(() => host.ApplySettingsAsync().GetAwaiter().GetResult());
 
         Assert.Equal(Cockpit.Core.Sessions.ReadingLevel.Simple, session.ReadingLevel);
+        Assert.Equal(speakReplies, session.ReadResponsesAloud);
+        Assert.Equal(TtsVoiceCatalog.Voices[^1].Sid, session.TtsVoiceSid);
+        Assert.Equal("nl", session.ReadAloudLanguage);
+        Assert.True(session.ReadAloudAsOneUtterance);
     }
 
     [Fact]
@@ -526,11 +562,13 @@ public class AssistantSessionHostTests
         IMcpServerCatalog? catalog = null,
         Cockpit.Core.Sessions.ReadingLevel readingLevel = Cockpit.Core.Sessions.ReadingLevel.Developer,
         IAssistantProfileStore? profiles = null,
-        ISessionStateStore? sessionState = null)
+        ISessionStateStore? sessionState = null,
+        bool speakReplies = true,
+        CockpitViewModel? cockpit = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(new AssistantSettings { IsEnabled = enabled, ReadingLevel = readingLevel });
+            .Returns(new AssistantSettings { IsEnabled = enabled, ReadingLevel = readingLevel, SpeakReplies = speakReplies });
 
         if (profiles is null)
         {
@@ -545,7 +583,7 @@ public class AssistantSessionHostTests
         }
 
         return new AssistantSessionHost(
-            new CockpitViewModel(), settings, profiles, sessionState,
+            cockpit ?? new CockpitViewModel(), settings, profiles, sessionState,
             catalog ?? _Catalog(), NullLogger<AssistantSessionHost>.Instance);
     }
 

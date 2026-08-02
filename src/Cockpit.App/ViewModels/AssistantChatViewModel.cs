@@ -285,25 +285,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
 
     /// <summary>
-    /// Restarts the assistant on the same conversation (the header's restart button).
-    /// </summary>
-    /// <remarks>
-    /// <b>Why this button belongs in this window and the reading-level picker does not.</b> The rule this header
-    /// is held to is not "assistant-related" but "is it a handling": the speak toggle is here because switching
-    /// speech off is something you <em>do</em> to the running assistant, while a reading level is a choice about
-    /// how a display renders and so lives in Options. A restart is a handling by that same test — the most literal
-    /// one there is — and it is needed exactly where its effect is read: a permission mode chosen in Options says
-    /// "at the next start", and this is the only place that start can be asked for.
-    /// <para>
-    /// Deliberately no confirmation. The conversation survives (the host resumes it), so there is nothing to lose
-    /// to a misclick — and a dialog in front of the one control that unsticks a stuck assistant is a gate on a
-    /// recovery.
-    /// </para>
-    /// </remarks>
-    [RelayCommand]
-    private Task RestartAsync() => _host.RestartAsync();
-
-    /// <summary>
     /// Reads the spawn trail back for the flyout (AC-545 criterion 5), called only when the flyout actually opens
     /// (<c>AssistantChatWindow._OnSpawnLogFlyoutOpened</c>) rather than every time this window does.
     /// </summary>
