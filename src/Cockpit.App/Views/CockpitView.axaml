@@ -496,23 +496,32 @@
                                         Cursor="Hand"
                                         PointerPressed="OnSessionItemPointerPressed">
                                     <Border.ContextMenu>
+                                        <!-- AC-561: CommandParameter="{Binding}" on every item, not the sender's own
+                                             DataContext, is the target each Click handler below reads. A ContextMenu is a
+                                             Popup outside the row's own visual tree, and the row's Border can be torn down
+                                             and rebuilt out from under an already-open menu (a drag-reorder or any other
+                                             VisibleSessions change rebuilds row containers) — a known-good binding fixed at
+                                             template-instantiation time does not depend on that Popup still tracking a live
+                                             row when the operator finally clicks. Same reasoning as AC-545: an inferred
+                                             target is not a target you actually know. -->
                                         <ContextMenu>
-                                            <MenuItem Header="Rename" Click="OnRenameSession"/>
-                                            <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
+                                            <MenuItem Header="Rename" Click="OnRenameSession" CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Duplicate" Click="OnDuplicateSession" CommandParameter="{Binding}"/>
                                             <!-- AC-564: only the SDK route, which has no /clear of its own — a TTY
                                                  session is a real TUI and the operator types it there. -->
                                             <MenuItem Header="Clear context…" Click="OnClearSessionContext"
-                                                      IsVisible="{Binding SupportsClearContext}"/>
+                                                      IsVisible="{Binding SupportsClearContext}" CommandParameter="{Binding}"/>
                                             <Separator/>
-                                            <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
-                                            <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
+                                            <MenuItem Header="Set status…" Click="OnSetSessionStatus" CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Resume later…" Click="OnScheduleSessionResume" CommandParameter="{Binding}"/>
                                             <MenuItem Header="Clear status" Click="OnClearSessionStatus"
-                                                      IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                      IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                      CommandParameter="{Binding}"/>
                                             <Separator/>
-                                            <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
-                                            <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
+                                            <MenuItem Header="Move up" Click="OnMoveSessionUp" CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Move down" Click="OnMoveSessionDown" CommandParameter="{Binding}"/>
                                             <Separator/>
-                                            <MenuItem Header="Close" Click="OnCloseSessionMenu"/>
+                                            <MenuItem Header="Close" Click="OnCloseSessionMenu" CommandParameter="{Binding}"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <StackPanel Spacing="4">

@@ -976,7 +976,14 @@ public partial class CockpitView : UserControl
 
     private void _InvokeSessionCommand(object? sender, Action<CockpitViewModel, SessionPanelViewModel> invoke)
     {
-        if (sender is Control { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
+        // AC-561: CommandParameter is set explicitly on every one of these MenuItems (see the row template) and is
+        // read first — the target is a value the XAML pinned down, not one inferred from wherever a Popup's
+        // DataContext inheritance happens to land. DataContext stays as the fallback for any sender that predates
+        // that wiring, so this helper degrades rather than silently doing nothing.
+        var session = (sender as MenuItem)?.CommandParameter as SessionPanelViewModel
+            ?? (sender as Control)?.DataContext as SessionPanelViewModel;
+
+        if (session is not null && DataContext is CockpitViewModel cockpit)
         {
             invoke(cockpit, session);
         }
