@@ -35,6 +35,7 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
     [NotifyPropertyChangedFor(nameof(IsCheckFailed))]
+    [NotifyPropertyChangedFor(nameof(SecretPathWarning))]
     private ProjectResourceRole _role;
 
     [ObservableProperty]
@@ -42,6 +43,10 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
     [NotifyPropertyChangedFor(nameof(IsCheckFailed))]
+    [NotifyPropertyChangedFor(nameof(IsSecretPath))]
+    [NotifyPropertyChangedFor(nameof(SecretPathWarning))]
+    [NotifyPropertyChangedFor(nameof(ShowsScopeLabel))]
+    [NotifyPropertyChangedFor(nameof(HasRepoRelativeFix))]
     private string _reference;
 
     [ObservableProperty]
@@ -233,7 +238,12 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         _reference = reference;
         _label = label;
         _reachesSessions = reachesSessions;
-        _sendsContent = sendsContent;
+        // AC-612: a row loaded already ticked for a secret-shaped reference (a hand-edited cockpit.json, or one
+        // saved before this ticket existed) must never arrive checked — see OnReferenceChanged's own remarks for
+        // the live-edit half of this, and ProjectResource.SendsContent's own getter for the belt this is the
+        // braces to (the domain model enforces it too, but a checkbox that reads "on" while doing nothing is
+        // exactly the silent-field failure this ticket exists to rule out).
+        _sendsContent = sendsContent && !ProjectResourceSecretPathHeuristic.IsLikelySecretPath(reference);
     }
 
     /// <summary>
@@ -344,8 +354,42 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>AC-503: a Reachability answer belongs to a specific typed value — an edit invalidates it the instant it happens, before any debounced re-check can even start.</summary>
-    partial void OnReferenceChanged(string value) => _ResetReachability();
+    /// <summary>
+    /// AC-503: a Reachability answer belongs to a specific typed value — an edit invalidates it the instant it
+    /// happens, before any debounced re-check can even start.
+    /// <para>
+    /// AC-612: also the live half of the secret-path guard the constructor applies at load — <see cref="IsSecretPath"/>
+    /// is a pure, synchronous computation (no debounce, no async diagnostics pass to wait for; see its own remarks
+    /// on why), so the instant a typed reference starts looking like credential material, "Send along" is switched
+    /// off right here, in front of the operator, rather than silently doing nothing the next time this row is saved.
+    /// </para>
+    /// </summary>
+    partial void OnReferenceChanged(string value)
+    {
+        _ResetReachability();
+
+        if (IsSecretPath)
+        {
+            SendsContent = false;
+        }
+    }
+
+    /// <summary>
+    /// AC-612: the belt to <see cref="OnReferenceChanged"/>'s braces — that method catches the tick the instant the
+    /// reference starts looking secret, but says nothing about the tick being set directly while the reference
+    /// already does (nothing in this class currently does that outside a test, but the disabled checkbox binding
+    /// alone is a UI-only guard: it stops a click, not an assignment). Without this, the checkbox could end up
+    /// showing checked-but-disabled — visibly wrong, exactly the silent-field failure this ticket exists to rule
+    /// out — for however long it took the next reference edit or a save round-trip through
+    /// <see cref="ProjectResource.SendsContent"/>'s own getter to correct it.
+    /// </summary>
+    partial void OnSendsContentChanged(bool value)
+    {
+        if (value && IsSecretPath)
+        {
+            SendsContent = false;
+        }
+    }
 
     /// <summary>
     /// AC-503: a Reachability answer belongs to a specific source — picking a different one (or Folder) invalidates
@@ -581,11 +625,54 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// if the project definition is shared") twice in a row for no benefit. Found rendering the AC-605 scope-scene:
     /// with both shown, a row with a fix available cost two lines' worth of near-identical text where one said
     /// everything the other did and more.
+    /// <para>
+    /// AC-612: hidden the same way once <see cref="IsSecretPath"/> is true — <see cref="SecretPathWarning"/> is the
+    /// more specific, more urgent thing to say about this row, and a plain "travels to everyone" or "stays on this
+    /// machine" sentence sitting next to it would read as a second, competing answer to "does this leave the
+    /// machine" rather than as a detail. One row, one primary explanation (the same reasoning that already governs
+    /// <see cref="HasRepoRelativeFix"/> above).
+    /// </para>
     /// </summary>
-    public bool ShowsScopeLabel => ScopeLabel is not null && !HasRepoRelativeFix;
+    public bool ShowsScopeLabel => ScopeLabel is not null && !HasRepoRelativeFix && !IsSecretPath;
 
-    /// <summary>Whether <see cref="RepoRelativeFix"/> has something to offer (AC-605 criterion 5) — gates the editor's own "make repo-relative" action.</summary>
-    public bool HasRepoRelativeFix => RepoRelativeFix is not null;
+    /// <summary>
+    /// Whether <see cref="RepoRelativeFix"/> has something to offer (AC-605 criterion 5) — gates the editor's own
+    /// "make repo-relative" action.
+    /// <para>
+    /// AC-612: also false whenever <see cref="IsSecretPath"/> is true, even if <see cref="RepoRelativeFix"/> itself
+    /// is not null — Raymond's decision explicitly rules out building any escape from the secret-path gate, and an
+    /// unguarded button here would quietly be one: repo-relative is a shape <see cref="ProjectResourceSecretPathHeuristic"/>
+    /// never evaluates at all (see its own class remarks on scope), so clicking "Make repo-relative" on a row like
+    /// <c>SourceDirectory/.ssh/id_rsa</c> would rewrite it to <c>.ssh/id_rsa</c> and walk it straight out of every
+    /// check this ticket adds — the exact "toch delen"-escape the ticket says not to build, just reached through a
+    /// button that already existed for an unrelated reason.
+    /// </para>
+    /// </summary>
+    public bool HasRepoRelativeFix => RepoRelativeFix is not null && !IsSecretPath;
+
+    /// <summary>
+    /// Whether <see cref="Reference"/> resolves to a location <see cref="ProjectResourceSecretPathHeuristic"/>
+    /// recognises as likely credential material (AC-612). A pure, synchronous computation over <see cref="Reference"/>
+    /// alone — no I/O, no debounce, unlike <see cref="Scope"/>/<see cref="IsBroken"/>/<see cref="RepoRelativeFix"/>,
+    /// which <see cref="ProjectDialogViewModel"/> computes off the UI thread because they cost real disk access.
+    /// This costs nothing to compute, so it is computed right here instead: the alternative (routing it through that
+    /// same async pass) would mean "Send along" stays checked, and no warning shows, for up to that pass's own
+    /// 400 ms quiet period after every keystroke — a window Raymond's "never send it" decision has no room for.
+    /// </summary>
+    public bool IsSecretPath => ProjectResourceSecretPathHeuristic.IsLikelySecretPath(Reference);
+
+    /// <summary>
+    /// The sentence shown for a row <see cref="IsSecretPath"/> recognises (AC-612) — null (hidden) otherwise. Names
+    /// only the path's own shape, never a character of what the file actually holds (Iron Law #8: this heuristic
+    /// never reads the file at all, so it has no content to name even by accident). Sharper when
+    /// <see cref="ShowsSendsContentOption"/> is offered at all (an Instructions row): that is the one role where a
+    /// tick away from this row's content going out, so it is the one role whose sentence says so.
+    /// </summary>
+    public string? SecretPathWarning => !IsSecretPath
+        ? null
+        : Role == ProjectResourceRole.Instructions
+            ? "This path looks like it holds credentials — its content will never be sent to a session, and this row will not be included if the project definition is shared."
+            : "This path looks like it holds credentials — this row will not be included if the project definition is shared.";
 
     /// <summary>
     /// Applies <see cref="RepoRelativeFix"/> in place (AC-605 criterion 5) — the one path that ever rewrites

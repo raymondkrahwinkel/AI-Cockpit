@@ -63,10 +63,20 @@ public sealed record ProjectResource(string Reference, ProjectResourceRole Role)
     /// on. Enforced here rather than at each reader because "the operator ticked this" has to mean the same thing
     /// everywhere it is asked, and there were already three places asking.
     /// </para>
+    /// <para>
+    /// AC-612: also reported as false when <see cref="Reference"/> looks like it names credential material (see
+    /// <see cref="ProjectResourceSecretPathHeuristic.IsLikelySecretPath"/>) — the same "enforced once, here, rather
+    /// than at every reader" reasoning as the role check above, and the one place Raymond's decision ("`SendsContent`
+    /// wordt geweigerd — de inhoud bereikt nooit een sessie-prompt") cannot be bypassed by a reader that skips
+    /// whatever check the editor or a plugin happens to run: a hand-edited <c>cockpit.json</c> naming
+    /// <c>~/.ssh/id_rsa</c> with this flag set gets the same false answer as one the editor built, without
+    /// <see cref="Infrastructure.Projects.ProjectInstructionContentReader"/> — or anything reading this property —
+    /// needing its own copy of the heuristic to stay honest.
+    /// </para>
     /// </summary>
     public bool SendsContent
     {
-        get => _sendsContent && Role == ProjectResourceRole.Instructions;
+        get => _sendsContent && Role == ProjectResourceRole.Instructions && !ProjectResourceSecretPathHeuristic.IsLikelySecretPath(Reference);
         init => _sendsContent = value;
     }
 

@@ -82,4 +82,26 @@ public class CockpitProjectResourceFilterTests
         Assert.Equal(reference, dropped.Reference);
         Assert.Null(dropped.Portability);
     }
+
+    /// <summary>
+    /// AC-612 (criterion 3, "Delen"): a secret-shaped row is dropped through the same mechanism AC-244 already
+    /// built for an unportable row — no new reporting path. The reference is anchor-relative in shape, so
+    /// <see cref="CockpitProjectResourceDropped.Portability"/> still reads <c>AnchorRelative</c> here: what this
+    /// row's own shape classifies as, distinct from why <see cref="CockpitProjectResourceEntry.Create"/> refused it.
+    /// </summary>
+    [Fact]
+    public void Apply_SecretPathReference_IsDroppedAlongsideTheAbsoluteRow()
+    {
+        var result = CockpitProjectResourceFilter.Apply(
+        [
+            ("Instructions", "~/.ssh/id_rsa", "SSH key"),
+            ("Instructions", "docs/CONVENTIONS.md", "Conventies"),
+        ]);
+
+        Assert.Single(result.Portable);
+        var dropped = Assert.Single(result.Dropped);
+        Assert.Equal("~/.ssh/id_rsa", dropped.Reference);
+        Assert.Equal("SSH key", dropped.Label);
+        Assert.Equal(ProjectResourcePortability.AnchorRelative, dropped.Portability);
+    }
 }

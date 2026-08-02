@@ -371,4 +371,34 @@ public class ProjectInstructionContentReaderTests : IDisposable
             clock.Elapsed < TimeSpan.FromSeconds(2),
             $"the caller waited {clock.Elapsed.TotalMilliseconds:F0} ms on a read that never returns — the budget is what stops Start freezing");
     }
+
+    // --- AC-612: a row pointing at a likely secrets location is never opened, however it got its tick -------------
+
+    /// <summary>
+    /// This reader adds nothing of its own for AC-612 — it reads <see cref="ProjectResource.SendsContent"/>, and
+    /// that getter is where the secret-path gate actually lives (the same "one place, not every reader" pattern
+    /// the Role invariant already uses). Proven here anyway, at this reader's own boundary: a row constructed with
+    /// <c>SendsContent = true</c> bypasses the editor entirely (a hand-edited <c>cockpit.json</c>, or a row saved
+    /// before this ticket existed), so this is the one place that proves the domain model — not just the
+    /// ViewModel's own live enforcement — is what actually stops the content reaching a session.
+    /// <para>
+    /// Hooks that succeed rather than throw (the same trap <see cref="AFileLargerThanTheReadLimit_IsNeverOpenedEvenWhenTheReadWouldHaveSucceeded"/>'s
+    /// own remarks describe): a throwing hook would be swallowed by this reader's own unreadable-file <c>catch</c>
+    /// exactly the way a genuinely missing file is, so the result would read empty whether or not the secret gate
+    /// did anything at all — proving nothing. A hook that hands back real content is the only shape that actually
+    /// fails if <see cref="ProjectResource.SendsContent"/> stops gating.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ARowConstructedTickedForASecretPath_IsNeverOpenedEvenThoughTheConstructorAcceptedTheTick()
+    {
+        var resources = new[] { new ProjectResource("~/.ssh/id_rsa", ProjectResourceRole.Instructions) { SendsContent = true } };
+
+        var result = ProjectInstructionContentReader.Read(
+            resources,
+            fileLength: _ => 10,
+            readAllText: _ => "this marker string must never reach the result");
+
+        Assert.Empty(result);
+    }
 }
