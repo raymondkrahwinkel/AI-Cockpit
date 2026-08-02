@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.Theming;
@@ -62,7 +63,7 @@ public sealed class MarkdownView : ContentControl
     // O(reply length) and a long answer is still quadratic overall, only at 30 fps instead of per delta.
     private readonly StackPanel _blocks = new() { Spacing = 2 };
     private IReadOnlyList<MarkdownBlock> _rendered = [];
-    private object? _renderedPalette;
+    private Color? _renderedPalette;
 
     public MarkdownView() => Content = _blocks;
 
@@ -82,8 +83,23 @@ public sealed class MarkdownView : ContentControl
 
         _Render(Markdown ?? string.Empty);
 
-        _rebuildTimer ??= _CreateRebuildTimer();
-        _rebuildTimer.Start();
+        // The rate limit is for a view on screen; a view that is not on screen must not start a timer, because a
+        // running DispatcherTimer is rooted by the dispatcher and its tick closes over this view — so the view and
+        // every control it built stay reachable for as long as it runs. The tick that stops an idle timer is the
+        // only thing that releases them, and it runs on the UI thread: exactly the thread that is not keeping up
+        // during the heavy streaming reply this rate limit exists for. A virtualising panel binds a container
+        // before attaching it and is free to drop it again without ever attaching it, so those views are made in
+        // numbers. Measured before this guard: 40 of 40 dropped views stayed alive until the dispatcher got round
+        // to their ticks, at roughly 5 MB of controls each — and it feeds itself, since the more is pinned, the
+        // further behind the UI thread falls and the longer the next batch stays pinned.
+        //
+        // Rendering still happens: a plugin asking the host for a markdown control gets one that is drawn, not one
+        // waiting for a visual tree it may never be put in.
+        if (this.IsAttachedToVisualTree())
+        {
+            _rebuildTimer ??= _CreateRebuildTimer();
+            _rebuildTimer.Start();
+        }
     }
 
     private void _Render(string markdown)
@@ -92,9 +108,15 @@ public sealed class MarkdownView : ContentControl
 
         // Kept blocks keep the brushes they were built with, so a theme swap has to discard all of them —
         // otherwise the untouched part of a message stays in the previous palette while the rest moves.
-        // Avalonia hands out the same brush instance for a key until the theme changes, so identity is the signal.
+        //
+        // The colour, not the brush instance. Identity looked like the signal — Avalonia does hand out one brush
+        // per key — but a resource lookup is answered against the tree the control is currently in, and a
+        // virtualising panel detaches and re-attaches a row as it recycles it. Every recycle therefore came back
+        // with a different instance for an unchanged palette and threw the whole message away: measured over eight
+        // streaming turns, 0 discards on the first (nothing scrolls yet) and 21, 23, 25, 27 … on the ones after,
+        // one per detach, each rebuilding every block of the reply. That is the SDK pane's memory runaway.
         var palette = _CurrentPalette();
-        if (!ReferenceEquals(palette, _renderedPalette))
+        if (palette != _renderedPalette)
         {
             _renderedPalette = palette;
             _rendered = [];
@@ -107,7 +129,8 @@ public sealed class MarkdownView : ContentControl
             {
                 _blocks.Children.Add(_RenderBlock(parsed[i]));
             }
-            else if (!_rendered[i].Equals(parsed[i]))
+            else if (!_rendered[i].Equals(parsed[i]) &&
+                     !_TryUpdateInPlace((Control)_blocks.Children[i], _rendered[i], parsed[i]))
             {
                 _blocks.Children[i] = _RenderBlock(parsed[i]);
             }
@@ -123,12 +146,14 @@ public sealed class MarkdownView : ContentControl
     }
 
     /// <summary>
-    /// A brush instance standing in for the whole palette, for reference comparison only. Null where there are no
-    /// application resources at all (design-time preview): nothing to compare, so nothing is ever discarded.
+    /// One colour standing in for the whole palette. Null where there are no application resources at all
+    /// (design-time preview): nothing to compare, so nothing is ever discarded.
     /// </summary>
-    private static object? _CurrentPalette() =>
-        Application.Current is { } app && app.TryGetResource("CockpitTextPrimaryBrush", null, out var brush)
-            ? brush
+    private static Color? _CurrentPalette() =>
+        Application.Current is { } app
+        && app.TryGetResource("CockpitTextPrimaryBrush", null, out var value)
+        && value is ISolidColorBrush brush
+            ? brush.Color
             : null;
 
     private DispatcherTimer _CreateRebuildTimer()
@@ -179,6 +204,179 @@ public sealed class MarkdownView : ContentControl
         _ => _Paragraph(block.Inlines, new Thickness(0, 3, 0, 3)),
     };
 
+    /// <summary>
+    /// Updates the control a block already has instead of building a new one, for the change a stream actually
+    /// makes: the block at the end grew. Block-level reuse alone is too coarse for the shapes that arrive as one
+    /// big block — a table or a fence is a single block however long it gets, so every repaint reconstructed its
+    /// whole grid, or its border, scroller and copy button. Measured over a 4 KB reply that is 231 MB for a table
+    /// and 188 MB for a fence against 48 MB for the same length of prose, which splits into small blocks of which
+    /// only the last is rebuilt. Returns false whenever the shape changed rather than grew, and a rebuild is then
+    /// the honest answer.
+    /// </summary>
+    private static bool _TryUpdateInPlace(Control control, MarkdownBlock was, MarkdownBlock now)
+    {
+        if (was.Kind != now.Kind)
+        {
+            return false;
+        }
+
+        switch (now.Kind)
+        {
+            case MarkdownBlockKind.Heading:
+                if (was.HeadingLevel != now.HeadingLevel || control is not InlineTextBlock heading)
+                {
+                    return false;
+                }
+
+                _FillInlines(heading, now.Inlines);
+                return true;
+
+            case MarkdownBlockKind.CodeBlock:
+                // The language rides on the fence's opening line and is rendered as its own label, so a change
+                // there is a different block rather than a longer one.
+                if (!string.Equals(was.Language, now.Language, StringComparison.Ordinal) ||
+                    control is not CodeBlockBorder code)
+                {
+                    return false;
+                }
+
+                code.Code.Text = now.Code;
+                return true;
+
+            case MarkdownBlockKind.List:
+                return was.Ordered == now.Ordered
+                       && control is StackPanel list
+                       && _UpdateListItems(list, was.Items, now.Items, now.Ordered);
+
+            case MarkdownBlockKind.Table:
+                return control is Border { Child: Grid grid } && _UpdateTableRows(grid, was, now);
+
+            default:
+                if (control is not InlineTextBlock paragraph)
+                {
+                    return false;
+                }
+
+                _FillInlines(paragraph, now.Inlines);
+                return true;
+        }
+    }
+
+    private static bool _UpdateListItems(
+        StackPanel panel,
+        IReadOnlyList<IReadOnlyList<MarkdownInline>> was,
+        IReadOnlyList<IReadOnlyList<MarkdownInline>> now,
+        bool ordered)
+    {
+        if (panel.Children.Count != was.Count)
+        {
+            return false;
+        }
+
+        var shared = 0;
+        while (shared < was.Count && shared < now.Count && _SameInlines(was[shared], now[shared]))
+        {
+            shared++;
+        }
+
+        for (var i = shared; i < now.Count; i++)
+        {
+            if (i >= panel.Children.Count)
+            {
+                panel.Children.Add(_ListRow(now[i], i, ordered));
+                continue;
+            }
+
+            if (panel.Children[i] is not DockPanel { Children: [_, InlineTextBlock content] })
+            {
+                return false;
+            }
+
+            _FillInlines(content, now[i]);
+        }
+
+        while (panel.Children.Count > now.Count)
+        {
+            panel.Children.RemoveAt(panel.Children.Count - 1);
+        }
+
+        return true;
+    }
+
+    private static bool _UpdateTableRows(Grid grid, MarkdownBlock was, MarkdownBlock now)
+    {
+        // The header sets the columns, so a change there is a different table rather than a longer one.
+        if (!_SameCells(was.Items, now.Items))
+        {
+            return false;
+        }
+
+        var shared = 0;
+        while (shared < was.Rows.Count && shared < now.Rows.Count && _SameCells(was.Rows[shared], now.Rows[shared]))
+        {
+            shared++;
+        }
+
+        // Dropped by the row each cell is placed in rather than by counting: a row still being typed is ragged,
+        // so cells-per-row is not a number to do arithmetic with. Row 0 is the header and always stays.
+        for (var i = grid.Children.Count - 1; i >= 0; i--)
+        {
+            if (Grid.GetRow(grid.Children[i]) > shared)
+            {
+                grid.Children.RemoveAt(i);
+            }
+        }
+
+        while (grid.RowDefinitions.Count > shared + 1)
+        {
+            grid.RowDefinitions.RemoveAt(grid.RowDefinitions.Count - 1);
+        }
+
+        for (var r = shared; r < now.Rows.Count; r++)
+        {
+            _AddTableRow(grid, now.Rows[r], r + 1, isHeader: false);
+        }
+
+        return true;
+    }
+
+    private static bool _SameCells(
+        IReadOnlyList<IReadOnlyList<MarkdownInline>> a, IReadOnlyList<IReadOnlyList<MarkdownInline>> b)
+    {
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!_SameInlines(a[i], b[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool _SameInlines(IReadOnlyList<MarkdownInline> a, IReadOnlyList<MarkdownInline> b)
+    {
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!a[i].Equals(b[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static Control _Heading(MarkdownBlock block)
     {
         var size = block.HeadingLevel switch { 1 => 16.0, 2 => 15.0, 3 => 13.5, _ => 13.0 };
@@ -194,6 +392,18 @@ public sealed class MarkdownView : ContentControl
         var text = _InlineTextBlock(inlines);
         text.Margin = margin;
         return text;
+    }
+
+    /// <summary>A code block that keeps hold of its text, so a fence still streaming can have its body replaced
+    /// rather than the whole border, scroller and copy button built again for every repaint.</summary>
+    private sealed class CodeBlockBorder : Border
+    {
+        public required SelectableTextBlock Code { get; init; }
+
+        /// <summary>Where the copy button goes once the pointer asks for it — see <see cref="_CodeBlock"/>.</summary>
+        public required Grid Body { get; init; }
+
+        public bool HasCopyButton;
     }
 
     private static Control _CodeBlock(MarkdownBlock block)
@@ -214,11 +424,8 @@ public sealed class MarkdownView : ContentControl
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
         };
 
-        var copy = _CopyButton(block.Code);
-
         var grid = new Grid();
         grid.Children.Add(scroller);
-        grid.Children.Add(copy);
 
         if (!string.IsNullOrEmpty(block.Language))
         {
@@ -235,8 +442,10 @@ public sealed class MarkdownView : ContentControl
             grid.Children.Add(lang);
         }
 
-        return new Border
+        var border = new CodeBlockBorder
         {
+            Code = code,
+            Body = grid,
             Background = CodeBlockBackground,
             BorderBrush = Hairline,
             BorderThickness = new Thickness(1),
@@ -245,9 +454,31 @@ public sealed class MarkdownView : ContentControl
             Margin = new Thickness(0, 6, 0, 6),
             Child = grid,
         };
+
+        // The copy button is built on the first hover, not with the block. A Button is a templated control, and
+        // applying its theme costs more than the border, scroller and text of a fenced block put together —
+        // measured, a fence is 290 KB to build against 5 KB for a paragraph, and a transcript row is rebuilt
+        // every time the virtualising panel realises it again. Nobody can click a button without first moving a
+        // pointer onto the block, so nothing is lost by waiting for that.
+        border.PointerEntered += _AddCopyButton;
+        return border;
     }
 
-    private static Button _CopyButton(string textToCopy)
+    private static void _AddCopyButton(object? sender, PointerEventArgs e)
+    {
+        if (sender is not CodeBlockBorder { HasCopyButton: false } border)
+        {
+            return;
+        }
+
+        border.HasCopyButton = true;
+        border.PointerEntered -= _AddCopyButton;
+        border.Body.Children.Add(_CopyButton(border.Code));
+    }
+
+    // Reads the block it belongs to at click time rather than closing over the text it was built with: a fence
+    // that is still streaming replaces that text, and a captured copy would put a truncated body on the clipboard.
+    private static Button _CopyButton(SelectableTextBlock source)
     {
         var copy = new Button
         {
@@ -262,7 +493,7 @@ public sealed class MarkdownView : ContentControl
             var clipboard = TopLevel.GetTopLevel(copy)?.Clipboard;
             if (clipboard is not null)
             {
-                await clipboard.SetTextAsync(textToCopy);
+                await clipboard.SetTextAsync(source.Text ?? string.Empty);
             }
         };
         return copy;
@@ -273,27 +504,32 @@ public sealed class MarkdownView : ContentControl
         var panel = new StackPanel { Spacing = 2, Margin = new Thickness(0, 4, 0, 4) };
         for (var index = 0; index < block.Items.Count; index++)
         {
-            var marker = new TextBlock
-            {
-                Text = block.Ordered ? $"{index + 1}." : "•",
-                Foreground = TextSecondary,
-                Margin = new Thickness(6, 0, 8, 0),
-                MinWidth = 16,
-                VerticalAlignment = VerticalAlignment.Top,
-            };
-            var content = _InlineTextBlock(block.Items[index]);
-            // A DockPanel, not a horizontal StackPanel: a horizontal StackPanel measures its children with
-            // infinite available width, so TextWrapping=Wrap on the content never triggers and long list items
-            // (e.g. with inline-code tokens) run off and get clipped by the viewport. Docking the marker left
-            // and letting the content fill the remainder gives the text a bounded width, so it wraps (AC-144).
-            var row = new DockPanel { LastChildFill = true };
-            DockPanel.SetDock(marker, Dock.Left);
-            row.Children.Add(marker);
-            row.Children.Add(content);
-            panel.Children.Add(row);
+            panel.Children.Add(_ListRow(block.Items[index], index, block.Ordered));
         }
 
         return panel;
+    }
+
+    private static Control _ListRow(IReadOnlyList<MarkdownInline> item, int index, bool ordered)
+    {
+        var marker = new TextBlock
+        {
+            Text = ordered ? $"{index + 1}." : "•",
+            Foreground = TextSecondary,
+            Margin = new Thickness(6, 0, 8, 0),
+            MinWidth = 16,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        // A DockPanel, not a horizontal StackPanel: a horizontal StackPanel measures its children with
+        // infinite available width, so TextWrapping=Wrap on the content never triggers and long list items
+        // (e.g. with inline-code tokens) run off and get clipped by the viewport. Docking the marker left
+        // and letting the content fill the remainder gives the text a bounded width, so it wraps (AC-144).
+        var row = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(marker, Dock.Left);
+        row.Children.Add(marker);
+        row.Children.Add(_InlineTextBlock(item));
+        return row;
     }
 
     private static Control _Table(MarkdownBlock block)
@@ -346,17 +582,52 @@ public sealed class MarkdownView : ContentControl
         }
     }
 
-    /// <summary>Builds a selectable text block from inline runs, styling code/links and making links clickable.</summary>
-    private static SelectableTextBlock _InlineTextBlock(IReadOnlyList<MarkdownInline> inlines)
+    /// <summary>
+    /// A text block that keeps the link ranges its runs were built from. Refilling one while a reply streams
+    /// would otherwise stack another click handler on it per repaint, and hand out another platform cursor.
+    /// </summary>
+    private sealed class InlineTextBlock : SelectableTextBlock
     {
-        var block = new SelectableTextBlock
+        public readonly List<(int Start, int Length, string Url)> Links = [];
+    }
+
+    // One cursor for every block that holds a link, rather than one per build: a Cursor is a platform handle, and
+    // a streaming reply built a fresh one on each of its repaints. Made on first use rather than in a static
+    // initialiser: constructing one asks the platform for a cursor, and the type is touched by tests that run
+    // without a platform at all — an initialiser would take those down on the mere mention of this class.
+    private static Cursor? _handCursor;
+
+    /// <summary>Builds a selectable text block from inline runs, styling code/links and making links clickable.</summary>
+    private static InlineTextBlock _InlineTextBlock(IReadOnlyList<MarkdownInline> inlines)
+    {
+        var block = new InlineTextBlock
         {
             TextWrapping = TextWrapping.Wrap,
             Foreground = TextPrimary,
             FontSize = 13,
         };
 
-        var links = new List<(int Start, int Length, string Url)>();
+        // Attached once, for the life of the block: the handler reads the link list rather than closing over
+        // the ranges of one particular fill.
+        block.PointerReleased += (_, e) =>
+        {
+            if (block.Links.Count > 0)
+            {
+                _OnLinkClick(block, block.Links, e);
+            }
+        };
+
+        _FillInlines(block, inlines);
+        return block;
+    }
+
+    /// <summary>Replaces a block's runs in place — what a growing paragraph, list item or table cell needs.</summary>
+    private static void _FillInlines(InlineTextBlock block, IReadOnlyList<MarkdownInline> inlines)
+    {
+        block.Links.Clear();
+        block.Inlines?.Clear();
+
+        var links = block.Links;
         var offset = 0;
 
         foreach (var inline in inlines)
@@ -396,13 +667,7 @@ public sealed class MarkdownView : ContentControl
             offset += inline.Text.Length;
         }
 
-        if (links.Count > 0)
-        {
-            block.Cursor = new Cursor(StandardCursorType.Hand);
-            block.PointerReleased += (_, e) => _OnLinkClick(block, links, e);
-        }
-
-        return block;
+        block.Cursor = links.Count > 0 ? _handCursor ??= new Cursor(StandardCursorType.Hand) : null;
     }
 
     private static void _OnLinkClick(

@@ -161,6 +161,30 @@ public partial class SessionView : UserControl
     /// manager gives up on ("Infinite layout loop detected"). Asking for the last row terminates instead: once it
     /// is in view the guard above says so and this does nothing.
     /// </summary>
+    /// <summary>
+    /// The last row that is actually on screen, which is not the last row. A reading level hides rows: at Focus the
+    /// steps of a folded run collapse behind their anchor, and the newest row is then very often one of them.
+    /// <para>
+    /// Following a hidden row cannot terminate. It has no height to bring into view, so the follow is never
+    /// satisfied, asks for it again on the next scroll change, and each ask realises the row and its template
+    /// afresh — read off a hung session's stacks as ScrollIntoView → Measure → ApplyTemplate → styling, over and
+    /// over. That is the Focus pane freezing, and why Developer never froze: there, every row is visible and the
+    /// follow converges on the first try.
+    /// </para>
+    /// </summary>
+    private int _NewestVisibleIndex()
+    {
+        for (var i = TranscriptItems.ItemCount - 1; i >= 0; i--)
+        {
+            if (TranscriptItems.ItemsView[i] is TranscriptEntryViewModel { IsRowVisible: true })
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     private void _FollowNewest()
     {
         // ScrollIntoView drives a layout pass then and there, and the ScrollViewer raises ScrollChanged from that
@@ -170,10 +194,48 @@ public partial class SessionView : UserControl
             return;
         }
 
+        var newestIndex = _NewestVisibleIndex();
+        if (newestIndex < 0)
+        {
+            return;
+        }
+
         _following = true;
         try
         {
-            TranscriptItems.ScrollIntoView(TranscriptItems.ItemCount - 1);
+            // ScrollIntoView forces a synchronous layout pass of its own. While a reply streams, the newest row is
+            // the one on screen, so asking for it costs that pass on every repaint for a row that is already
+            // realised — measured, roughly three layout passes per frame where one would do. Ask only when the
+            // row genuinely is not there, which is the case this call exists for: a jump from far up the history.
+            if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
+            {
+                TranscriptItems.ScrollIntoView(newestIndex);
+            }
+
+            // ScrollIntoView brings the row's rect into view, and a rect taller than the viewport is already
+            // "in view" the moment its top edge is: a streaming reply several viewports tall therefore stops the
+            // viewport moving at all, while the row's bottom — what _NewestRowIsFullyVisible asks about — stays
+            // permanently below it. That leaves the follow unsatisfiable, so every ScrollChanged for the rest of
+            // the session calls back in here and drives another layout pass over a row that is measured whole:
+            // measured, the cost per delta climbs with the reply rather than settling, which is the SDK pane
+            // freezing with memory running away. Close the residue by hand — it is the row's own measured bottom,
+            // not an extent estimate, so it converges instead of chasing a figure the panel keeps correcting.
+            if (_NewestRowIsFullyVisible())
+            {
+                return;
+            }
+
+            if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest ||
+                newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll) is not { } bottom)
+            {
+                return;
+            }
+
+            var shortfall = bottom.Y - TranscriptScroll.Viewport.Height;
+            if (shortfall > 0)
+            {
+                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(TranscriptScroll.Offset.Y + shortfall);
+            }
         }
         finally
         {
@@ -192,14 +254,17 @@ public partial class SessionView : UserControl
     /// </summary>
     private bool _NewestRowIsFullyVisible()
     {
-        if (TranscriptItems.ItemCount == 0)
+        // The newest row the reading level actually shows — following one it hides can never terminate, see
+        // _NewestVisibleIndex. Nothing shown at all is trivially "at the bottom".
+        var newestIndex = _NewestVisibleIndex();
+        if (newestIndex < 0)
         {
             return true;
         }
 
         // Not realised means it is off-screen below, which is the whole point of virtualisation — so not at the
         // bottom. (Above the viewport it cannot be: it is the last row.)
-        if (TranscriptItems.ContainerFromIndex(TranscriptItems.ItemCount - 1) is not { } newest)
+        if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest)
         {
             return false;
         }
