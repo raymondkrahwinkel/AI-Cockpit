@@ -8,11 +8,9 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Managing the operator's projects, in a window of its own rather than a tab in Options (Raymond, 2026-07-24):
-/// a project is not a setting of the cockpit but the work it is pointed at, and where projects come from is about
-/// to widen beyond this machine.
-/// </summary>
+// Managing the operator's projects, in a window of its own rather than a tab in Options (Raymond, 2026-07-24):
+// a project is not a setting of the cockpit but the work it is pointed at, and where projects come from is about
+// to widen beyond this machine.
 public partial class ProjectsDialog : Window
 {
     public ProjectsDialog()

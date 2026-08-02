@@ -8,11 +8,9 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Creating or editing one project (AC-160). Closes with the edited <see cref="Project"/>, or null when the
-/// operator cancelled. The folder picker lives here because it needs the window; cloning is raised as an event
-/// for the host to answer, since the clone flow owns a dialog of its own.
-/// </summary>
+// Creating or editing one project (AC-160). Closes with the edited `Project`, or null when the
+// operator cancelled. The folder picker lives here because it needs the window; cloning is raised as an event
+// for the host to answer, since the clone flow owns a dialog of its own.
 public partial class ProjectDialog : Window
 {
     public ProjectDialog()
@@ -44,12 +42,10 @@ public partial class ProjectDialog : Window
         viewModel.PickResourceRequested += row => _ = _PickResourceAsync(viewModel, row);
     }
 
-    /// <summary>
-    /// "Choose…" on a resource row (AC-485): a folder picker for a Memory row — memory is somewhere else by
-    /// definition, the same reason the single Memory row's own picker never seeded itself at the project's own
-    /// folder — or a file picker for any other role, since standing instructions and reference material are most
-    /// often one document rather than a whole folder.
-    /// </summary>
+    // "Choose…" on a resource row (AC-485): a folder picker for a Memory row — memory is somewhere else by
+    // definition, the same reason the single Memory row's own picker never seeded itself at the project's own
+    // folder — or a file picker for any other role, since standing instructions and reference material are most
+    // often one document rather than a whole folder.
     private async Task _PickResourceAsync(ProjectDialogViewModel viewModel, ProjectResourceRowViewModel row)
     {
         // AC-502: a Memory row with a source other than Folder picked, whose source can enumerate its own

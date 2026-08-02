@@ -4,12 +4,10 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One shown toast (#61): the message/severity plus an optional action button. Values never change after
-/// construction — the only mutable behaviour is dismissal, raised via <see cref="Dismissed"/> so the owning
-/// <see cref="ToastHostViewModel"/> can remove it from its collection, whether triggered by the close
-/// button, the action button, or the host's auto-dismiss timer.
-/// </summary>
+// One shown toast (#61): the message/severity plus an optional action button. Values never change after
+// construction — the only mutable behaviour is dismissal, raised via `Dismissed` so the owning
+// `ToastHostViewModel` can remove it from its collection, whether triggered by the close
+// button, the action button, or the host's auto-dismiss timer.
 public sealed partial class ToastViewModel(string message, ToastSeverity severity, string? actionLabel, Action? onAction)
 {
     private readonly Action? _onAction = onAction;
@@ -20,10 +18,10 @@ public sealed partial class ToastViewModel(string message, ToastSeverity severit
 
     public string? ActionLabel { get; } = actionLabel;
 
-    /// <summary>True only when both an action label and a callback were supplied — a label alone with no callback would be a dead button.</summary>
+    // True only when both an action label and a callback were supplied — a label alone with no callback would be a dead button.
     public bool HasAction { get; } = !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null;
 
-    /// <summary>Theme brush resource key for this severity (resolved by <c>StatusBrushConverter</c>), matching the session-status dot colours.</summary>
+    // Theme brush resource key for this severity (resolved by `StatusBrushConverter`), matching the session-status dot colours.
     public string BrushKey => Severity switch
     {
         ToastSeverity.Success => "CockpitStatusDoneBrush",
@@ -33,7 +31,7 @@ public sealed partial class ToastViewModel(string message, ToastSeverity severit
         _ => "CockpitTextFaintBrush",
     };
 
-    /// <summary>Small icon shown next to the message, mirroring the sidebar's status markers (e.g. the needs-attention warning).</summary>
+    // Small icon shown next to the message, mirroring the sidebar's status markers (e.g. the needs-attention warning).
     public MaterialIconKind Glyph => Severity switch
     {
         ToastSeverity.Success => MaterialIconKind.Check,
@@ -43,14 +41,14 @@ public sealed partial class ToastViewModel(string message, ToastSeverity severit
         _ => MaterialIconKind.Circle,
     };
 
-    /// <summary>Raised once, however dismissal happened (close button, action button, or auto-dismiss elapsing).</summary>
+    // Raised once, however dismissal happened (close button, action button, or auto-dismiss elapsing).
     public event EventHandler? Dismissed;
 
-    /// <summary>Bound to the toast's close (✕) button, and the target the host's auto-dismiss timer invokes.</summary>
+    // Bound to the toast's close (✕) button, and the target the host's auto-dismiss timer invokes.
     [RelayCommand]
     private void Close() => Dismissed?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>Bound to the optional action button: runs the caller's callback, then dismisses like a normal close.</summary>
+    // Bound to the optional action button: runs the caller's callback, then dismisses like a normal close.
     [RelayCommand(CanExecute = nameof(HasAction))]
     private void InvokeAction()
     {

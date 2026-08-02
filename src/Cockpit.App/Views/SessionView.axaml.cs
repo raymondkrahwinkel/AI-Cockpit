@@ -15,30 +15,26 @@ public partial class SessionView : UserControl
     // read history, resume once they scroll back down (#21). Avalonia has no built-in stick-to-bottom.
     private bool _stickToBottom = true;
 
-    /// <summary>True while <see cref="_FollowNewest"/> is moving the viewport itself, so the scroll changes it
-    /// causes are never mistaken for the operator's — and never re-enter it.</summary>
+    // True while `_FollowNewest` is moving the viewport itself, so the scroll changes it
+    // causes are never mistaken for the operator's — and never re-enter it.
     private bool _following;
 
-    /// <summary>
-    /// An operator gesture that can scroll happened, and the scroll change it produces is the next one to arrive.
-    /// The delta fields cannot stand in for this: a virtualising panel corrects its own offset after arrange, and
-    /// such a correction moves the offset with the extent and viewport both standing still — which is precisely
-    /// the fingerprint the old code called "a real user scroll". Three rounds of this ticket died on that
-    /// ambiguity. The wheel is a single event, so this is a one-shot flag; a scrollbar drag lasts as long as the
-    /// button is held, which is what <see cref="_pointerHeld"/> is for.
-    /// </summary>
+    // An operator gesture that can scroll happened, and the scroll change it produces is the next one to arrive.
+    // The delta fields cannot stand in for this: a virtualising panel corrects its own offset after arrange, and
+    // such a correction moves the offset with the extent and viewport both standing still — which is precisely
+    // the fingerprint the old code called "a real user scroll". Three rounds of this ticket died on that
+    // ambiguity. The wheel is a single event, so this is a one-shot flag; a scrollbar drag lasts as long as the
+    // button is held, which is what `_pointerHeld` is for.
     private bool _wheelTurned;
 
     private bool _pointerHeld;
 
-    /// <summary>
-    /// Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
-    /// instead of freezing at whatever it read on first render — and, since AC-531, the background-work
-    /// pop-out's own per-task elapsed times alongside it. Lives here rather than in the view model: the derived
-    /// state (which tool, since when) has to stay dispatcher-free to be unit-testable outside a running Avalonia
-    /// app (<c>Cockpit.Core.Tests</c> calls <c>SessionViewModel.Apply</c> directly, with no platform initialized),
-    /// so only this purely cosmetic re-tick — a no-op when nothing is running — lives in the view.
-    /// </summary>
+    // Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
+    // instead of freezing at whatever it read on first render — and, since AC-531, the background-work
+    // pop-out's own per-task elapsed times alongside it. Lives here rather than in the view model: the derived
+    // state (which tool, since when) has to stay dispatcher-free to be unit-testable outside a running Avalonia
+    // app (`Cockpit.Core.Tests` calls `SessionViewModel.Apply` directly, with no platform initialized),
+    // so only this purely cosmetic re-tick — a no-op when nothing is running — lives in the view.
     private DispatcherTimer? _activityAgeTicker;
 
     public SessionView()
@@ -151,27 +147,22 @@ public partial class SessionView : UserControl
         ScrollToBottomButton.IsVisible = false;
     }
 
-    /// <summary>
-    /// Puts the viewport on the newest row. It asks for the row rather than for an offset, because the offset
-    /// this used to use — <c>ScrollToEnd()</c>, i.e. <c>Extent - Viewport</c> — is computed from an estimate the
-    /// panel then corrects on its next arrange: measured at four window sizes with a folded run streaming in, it
-    /// left the transcript some 300px short of the bottom the panel would accept, which is the row that kept
-    /// half-hiding under the composer hairline (AC-528, criterion 5). Worse, the correction raises another
-    /// ScrollChanged, so following it lands right back on a fresh estimate — measured, that is a layout loop the
-    /// manager gives up on ("Infinite layout loop detected"). Asking for the last row terminates instead: once it
-    /// is in view the guard above says so and this does nothing.
-    /// </summary>
-    /// <summary>
-    /// The last row that is actually on screen, which is not the last row. A reading level hides rows: at Focus the
-    /// steps of a folded run collapse behind their anchor, and the newest row is then very often one of them.
-    /// <para>
-    /// Following a hidden row cannot terminate. It has no height to bring into view, so the follow is never
-    /// satisfied, asks for it again on the next scroll change, and each ask realises the row and its template
-    /// afresh — read off a hung session's stacks as ScrollIntoView → Measure → ApplyTemplate → styling, over and
-    /// over. That is the Focus pane freezing, and why Developer never froze: there, every row is visible and the
-    /// follow converges on the first try.
-    /// </para>
-    /// </summary>
+    // Puts the viewport on the newest row. It asks for the row rather than for an offset, because the offset
+    // this used to use — `ScrollToEnd()`, i.e. `Extent - Viewport` — is computed from an estimate the
+    // panel then corrects on its next arrange: measured at four window sizes with a folded run streaming in, it
+    // left the transcript some 300px short of the bottom the panel would accept, which is the row that kept
+    // half-hiding under the composer hairline (AC-528, criterion 5). Worse, the correction raises another
+    // ScrollChanged, so following it lands right back on a fresh estimate — measured, that is a layout loop the
+    // manager gives up on ("Infinite layout loop detected"). Asking for the last row terminates instead: once it
+    // is in view the guard above says so and this does nothing.
+    // The last row that is actually on screen, which is not the last row. A reading level hides rows: at Focus the
+    // steps of a folded run collapse behind their anchor, and the newest row is then very often one of them.
+    //
+    // Following a hidden row cannot terminate. It has no height to bring into view, so the follow is never
+    // satisfied, asks for it again on the next scroll change, and each ask realises the row and its template
+    // afresh — read off a hung session's stacks as ScrollIntoView → Measure → ApplyTemplate → styling, over and
+    // over. That is the Focus pane freezing, and why Developer never froze: there, every row is visible and the
+    // follow converges on the first try.
     private int _NewestVisibleIndex()
     {
         for (var i = TranscriptItems.ItemCount - 1; i >= 0; i--)
@@ -243,15 +234,13 @@ public partial class SessionView : UserControl
         }
     }
 
-    /// <summary>
-    /// Whether the newest row is on screen in full — the transcript's honest answer to "are we at the bottom",
-    /// and the reason this does not ask <c>Extent</c>. The transcript virtualises, so <c>Extent</c> is an
-    /// estimate assembled from whichever rows happen to be realised; measured across four window sizes with a
-    /// folded run streaming in, <c>Extent - Viewport</c> sat some 300px above any offset the panel would accept,
-    /// which is a bottom the operator can never reach and a follow that can therefore never resume (AC-528).
-    /// The last row's own bottom edge is a measurement rather than an estimate, and it is also exactly what
-    /// criterion 5 is about: the newest row clear of the composer hairline, not half under it.
-    /// </summary>
+    // Whether the newest row is on screen in full — the transcript's honest answer to "are we at the bottom",
+    // and the reason this does not ask `Extent`. The transcript virtualises, so `Extent` is an
+    // estimate assembled from whichever rows happen to be realised; measured across four window sizes with a
+    // folded run streaming in, `Extent - Viewport` sat some 300px above any offset the panel would accept,
+    // which is a bottom the operator can never reach and a follow that can therefore never resume (AC-528).
+    // The last row's own bottom edge is a measurement rather than an estimate, and it is also exactly what
+    // criterion 5 is about: the newest row clear of the composer hairline, not half under it.
     private bool _NewestRowIsFullyVisible()
     {
         // The newest row the reading level actually shows — following one it hides can never terminate, see
@@ -274,9 +263,9 @@ public partial class SessionView : UserControl
         return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
     }
 
-    /// <summary>Whole-row click expands (or, on the selected row, collapses) a background task's detail in the
-    /// pop-out (AC-531) — the clicked row's DataContext is the task itself, same idiom as the delegated-tasks
-    /// dialog's row click.</summary>
+    // Whole-row click expands (or, on the selected row, collapses) a background task's detail in the
+    // pop-out (AC-531) — the clicked row's DataContext is the task itself, same idiom as the delegated-tasks
+    // dialog's row click.
     private void _OnBackgroundTaskPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is Control { DataContext: BackgroundTaskViewModel task } && DataContext is SessionViewModel vm)
@@ -285,14 +274,14 @@ public partial class SessionView : UserControl
         }
     }
 
-    /// <summary>Copies a tool result's formatted text to the clipboard (T6).</summary>
+    // Copies a tool result's formatted text to the clipboard (T6).
     private void _OnCopyResultClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.ResultDisplayText);
 
-    /// <summary>Copies an assistant reply's markdown source to the clipboard — the per-reply hover action.</summary>
+    // Copies an assistant reply's markdown source to the clipboard — the per-reply hover action.
     private void _OnCopyMessageClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.Text);
 
-    /// <summary>Both copy buttons sit on a transcript row, so the sender's DataContext is that row — copy the
-    /// selected text from it to the clipboard.</summary>
+    // Both copy buttons sit on a transcript row, so the sender's DataContext is that row — copy the
+    // selected text from it to the clipboard.
     private void _CopyRowText(object? sender, Func<TranscriptEntryViewModel, string> select)
     {
         if (sender is Control { DataContext: TranscriptEntryViewModel entry }
@@ -358,13 +347,11 @@ public partial class SessionView : UserControl
     private static bool _IsPasteGesture(KeyEventArgs e) =>
         e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control);
 
-    /// <summary>
-    /// Handles CTRL+V ourselves: a bitmap on the clipboard becomes a PNG pending attachment on the
-    /// view model; otherwise any clipboard text is inserted into the input as a normal text paste.
-    /// <see cref="SessionViewModel.AddPastedImage"/> itself gates on <see cref="SessionViewModel.CanPasteImages"/>
-    /// (#64) — a session whose driver cannot actually send images gets a transcript notice instead of a
-    /// silently vanishing attachment, since CTRL+V has no button here to hide.
-    /// </summary>
+    // Handles CTRL+V ourselves: a bitmap on the clipboard becomes a PNG pending attachment on the
+    // view model; otherwise any clipboard text is inserted into the input as a normal text paste.
+    // `SessionViewModel.AddPastedImage` itself gates on `SessionViewModel.CanPasteImages`
+    // (#64) — a session whose driver cannot actually send images gets a transcript notice instead of a
+    // silently vanishing attachment, since CTRL+V has no button here to hide.
     private async System.Threading.Tasks.Task _HandlePasteAsync()
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
@@ -401,7 +388,7 @@ public partial class SessionView : UserControl
         }
     }
 
-    /// <summary>Inserts text at the caret, replacing any current selection — mirrors a normal paste.</summary>
+    // Inserts text at the caret, replacing any current selection — mirrors a normal paste.
     private void _InsertText(string text)
     {
         var start = Math.Min(InputBox.SelectionStart, InputBox.SelectionEnd);
@@ -414,14 +401,12 @@ public partial class SessionView : UserControl
         InputBox.SelectionEnd = InputBox.CaretIndex;
     }
 
-    /// <summary>
-    /// KeyDown for the push-to-talk hotkey. <see cref="SessionViewModel.BeginVoiceHold"/> itself
-    /// guards against OS key-repeat re-triggering a capture restart while the key stays held, so this
-    /// only marks the event handled when a hold actually started — an ignored press (voice off, or
-    /// already holding) leaves the key free for anything else bound to it. No-ops when global
-    /// push-to-talk is active (see <see cref="PushToTalkKeyGate"/>) so the global coordinator's hold
-    /// does not fire twice.
-    /// </summary>
+    // KeyDown for the push-to-talk hotkey. `SessionViewModel.BeginVoiceHold` itself
+    // guards against OS key-repeat re-triggering a capture restart while the key stays held, so this
+    // only marks the event handled when a hold actually started — an ignored press (voice off, or
+    // already holding) leaves the key free for anything else bound to it. No-ops when global
+    // push-to-talk is active (see `PushToTalkKeyGate`) so the global coordinator's hold
+    // does not fire twice.
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
         if (DataContext is SessionViewModel vm
@@ -432,7 +417,7 @@ public partial class SessionView : UserControl
         }
     }
 
-    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold, transcribes, and appends the result to the input box.</summary>
+    // KeyUp for the push-to-talk hotkey: ends the hold, transcribes, and appends the result to the input box.
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (DataContext is SessionViewModel vm

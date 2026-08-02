@@ -3,10 +3,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
-/// <summary>
-/// One entry in the wizard's step bar (AC-509): its label, whether it is the step showing now, and whether it is
-/// skipped — struck through rather than removed, so a skip is something the operator can see happened.
-/// </summary>
+// One entry in the wizard's step bar (AC-509): its label, whether it is the step showing now, and whether it is
+// skipped — struck through rather than removed, so a skip is something the operator can see happened.
 public sealed partial class WizardStepBarItemViewModel(string title, bool isSkipped) : ObservableObject
 {
     public string Title { get; } = title;

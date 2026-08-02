@@ -4,17 +4,15 @@ using Material.Icons;
 
 namespace Cockpit.App.Converters;
 
-/// <summary>
-/// The read-aloud toggle's face and its tooltip (#73): a speaker when it is on, a struck-through speaker when it
-/// is off. The session header is a strip, so the control says what it does with an icon rather than a word — but
-/// an icon alone is a guess, hence the tooltip that spells out both the state and what clicking will do.
-/// </summary>
+// The read-aloud toggle's face and its tooltip (#73): a speaker when it is on, a struck-through speaker when it
+// is off. The session header is a strip, so the control says what it does with an icon rather than a word — but
+// an icon alone is a guess, hence the tooltip that spells out both the state and what clicking will do.
 public sealed class ReadAloudIconConverter : IValueConverter
 {
-    /// <summary>The toggle's face — a <see cref="MaterialIconKind"/>, bound by the view to a nested <c>MaterialIcon</c>.</summary>
+    // The toggle's face — a `MaterialIconKind`, bound by the view to a nested `MaterialIcon`.
     public static readonly ReadAloudIconConverter Icon = new();
 
-    /// <summary>The toggle's tooltip — a different sentence per state, since an icon on its own does not say which way it is.</summary>
+    // The toggle's tooltip — a different sentence per state, since an icon on its own does not say which way it is.
     public static readonly ReadAloudIconConverter Tip = new() { _isTooltip = true };
 
     private bool _isTooltip;

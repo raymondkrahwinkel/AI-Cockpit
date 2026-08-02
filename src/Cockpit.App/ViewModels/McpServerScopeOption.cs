@@ -2,7 +2,7 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>A labelled <see cref="McpServerScope"/> choice for the MCP-servers dialog's "Available to" picker (#26 scoping).</summary>
+// A labelled `McpServerScope` choice for the MCP-servers dialog's "Available to" picker (#26 scoping).
 public sealed record McpServerScopeOption(string Label, string ShortLabel, McpServerScope Scope)
 {
     public static IReadOnlyList<McpServerScopeOption> All { get; } =
@@ -12,7 +12,7 @@ public sealed record McpServerScopeOption(string Label, string ShortLabel, McpSe
         new("Claude Code only", "Claude only", McpServerScope.ClaudeOnly),
     ];
 
-    /// <summary>True for a scope narrower than <see cref="McpServerScope.All"/>, so the list can tag it.</summary>
+    // True for a scope narrower than `McpServerScope.All`, so the list can tag it.
     public bool IsScoped => Scope != McpServerScope.All;
 
     public static McpServerScopeOption For(McpServerScope scope) =>

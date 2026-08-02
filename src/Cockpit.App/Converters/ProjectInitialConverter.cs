@@ -3,10 +3,8 @@ using Avalonia.Data.Converters;
 
 namespace Cockpit.App.Converters;
 
-/// <summary>
-/// The letter a project without a logo shows in its place (AC-162): the first character of its name, upper-cased.
-/// Something in the well beats an empty box — the card keeps its shape whether or not a logo was ever chosen.
-/// </summary>
+// The letter a project without a logo shows in its place (AC-162): the first character of its name, upper-cased.
+// Something in the well beats an empty box — the card keeps its shape whether or not a logo was ever chosen.
 public sealed class ProjectInitialConverter : IValueConverter
 {
     public static readonly ProjectInitialConverter Instance = new();

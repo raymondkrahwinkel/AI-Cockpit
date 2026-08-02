@@ -5,10 +5,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Asks for a password. Returns the view model (with what was typed) from <c>ShowDialog&lt;PasswordDialogViewModel?&gt;</c>
-/// when the operator confirms, and <see langword="null"/> when they cancel.
-/// </summary>
+// Asks for a password. Returns the view model (with what was typed) from `ShowDialog&lt;PasswordDialogViewModel?&gt;`
+// when the operator confirms, and `null` when they cancel.
 public partial class PasswordDialog : Window
 {
     public PasswordDialog()

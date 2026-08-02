@@ -7,14 +7,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// The live <see cref="ICockpitSessionObserver"/> backing <c>ICockpitHost.Sessions</c>: the read/observe half
-/// of the plugin surface. It tracks the cockpit's selected session (reporting its working directory and
-/// raising <see cref="ActiveSessionChanged"/> when the selection or that directory changes) and relays every
-/// session's produced output text to <see cref="OutputProduced"/>. One shared instance serves all plugins,
-/// mirroring the single shared <see cref="ICockpitActions"/>. All events are marshalled to the UI thread so a
-/// plugin's handler can touch its controls directly.
-/// </summary>
+// The live `ICockpitSessionObserver` backing `ICockpitHost.Sessions`: the read/observe half
+// of the plugin surface. It tracks the cockpit's selected session (reporting its working directory and
+// raising `ActiveSessionChanged` when the selection or that directory changes) and relays every
+// session's produced output text to `OutputProduced`. One shared instance serves all plugins,
+// mirroring the single shared `ICockpitActions`. All events are marshalled to the UI thread so a
+// plugin's handler can touch its controls directly.
 internal sealed class PluginSessionObserver : ICockpitSessionObserver
 {
     private readonly CockpitViewModel _cockpit;

@@ -11,12 +11,10 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The pop-out chat window (AC-543 criteria 7–9, 11): a peephole onto the assistant's own standing session,
-/// never its owner. See <see cref="AssistantChatViewModel"/>'s class remarks for how each criterion is met —
-/// this code-behind only wires the interactions XAML bindings cannot: drag-to-move (no OS title bar), Enter-to-
-/// send, opening the peephole once attached, and keeping the transcript scrolled to the newest row.
-/// </summary>
+// The pop-out chat window (AC-543 criteria 7–9, 11): a peephole onto the assistant's own standing session,
+// never its owner. See `AssistantChatViewModel`'s class remarks for how each criterion is met —
+// this code-behind only wires the interactions XAML bindings cannot: drag-to-move (no OS title bar), Enter-to-
+// send, opening the peephole once attached, and keeping the transcript scrolled to the newest row.
 public partial class AssistantChatWindow : Window
 {
     // ponytail: always-follow rather than SessionView's stick-only-while-at-bottom (TranscriptScrollAnchor):
@@ -104,17 +102,13 @@ public partial class AssistantChatWindow : Window
         _attachedSession = session;
     }
 
-    /// <summary>
-    /// Scrolls the Allow/Deny row into view the moment a permission starts waiting (AC-545).
-    /// </summary>
-    /// <remarks>
-    /// The transcript handler above cannot do this. A permission does not arrive as a new row — it turns a tool row
-    /// that is already in the list into a pending one — so nothing is added, <c>CollectionChanged</c> stays quiet,
-    /// and the view stays exactly where it was. With the progress line and the composer below it, the buttons then
-    /// sit just under the fold: found only by someone who thinks to scroll, on the one control the whole consent
-    /// design says must be in front of the operator. Same failure as AC-543's missing Allow row, a scroll offset
-    /// further along.
-    /// </remarks>
+    // Scrolls the Allow/Deny row into view the moment a permission starts waiting (AC-545).
+    // The transcript handler above cannot do this. A permission does not arrive as a new row — it turns a tool row
+    // that is already in the list into a pending one — so nothing is added, `CollectionChanged` stays quiet,
+    // and the view stays exactly where it was. With the progress line and the composer below it, the buttons then
+    // sit just under the fold: found only by someone who thinks to scroll, on the one control the whole consent
+    // design says must be in front of the operator. Same failure as AC-543's missing Allow row, a scroll offset
+    // further along.
     private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission)
@@ -155,13 +149,9 @@ public partial class AssistantChatWindow : Window
 
     private void _OnCloseClick(object? sender, RoutedEventArgs e) => Close();
 
-    /// <summary>
-    /// Saves the conversation as a text file, so it can be handed to somebody who was not in the room.
-    /// </summary>
-    /// <remarks>
-    /// A save dialog rather than a fixed folder: this exists to be shared, and where a file lands decides whether
-    /// it is findable. Silent on cancel — closing a file picker is an answer, not a failure worth reporting.
-    /// </remarks>
+    // Saves the conversation as a text file, so it can be handed to somebody who was not in the room.
+    // A save dialog rather than a fixed folder: this exists to be shared, and where a file lands decides whether
+    // it is findable. Silent on cancel — closing a file picker is an answer, not a failure worth reporting.
     private async void _OnExportClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not AssistantChatViewModel vm)
@@ -186,11 +176,9 @@ public partial class AssistantChatWindow : Window
         await writer.WriteAsync(vm.TranscriptAsText());
     }
 
-    /// <summary>
-    /// Loads the spawn trail the moment the flyout opens, not when the window opens — most window opens never
-    /// touch this affordance, and the trail is a file read (<see cref="AssistantChatViewModel.LoadSpawnLogCommand"/>)
-    /// that owes nothing to a window that only wants to chat.
-    /// </summary>
+    // Loads the spawn trail the moment the flyout opens, not when the window opens — most window opens never
+    // touch this affordance, and the trail is a file read (`AssistantChatViewModel.LoadSpawnLogCommand`)
+    // that owes nothing to a window that only wants to chat.
     private void _OnSpawnLogFlyoutOpened(object? sender, EventArgs e)
     {
         if (DataContext is AssistantChatViewModel vm && vm.LoadSpawnLogCommand.CanExecute(null))
@@ -213,7 +201,7 @@ public partial class AssistantChatWindow : Window
         }
     }
 
-    /// <summary>Copies a tool result's formatted text to the clipboard — same idiom as SessionView._OnCopyResultClick.</summary>
+    // Copies a tool result's formatted text to the clipboard — same idiom as SessionView._OnCopyResultClick.
     private void _OnCopyResultClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: TranscriptEntryViewModel entry }

@@ -4,18 +4,14 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Owns the live toast collection <see cref="CockpitViewModel"/> exposes to <c>CockpitView.axaml</c>'s
-/// overlay (#61). <see cref="Add"/> is the single mutation point: it builds the <see cref="ToastViewModel"/>,
-/// wires its dismissal (close button, action button, or auto-dismiss) back to removal, and schedules the
-/// auto-dismiss itself. Callers must already be on the UI thread — <see cref="Services.ToastService"/> does
-/// that marshaling before calling in.
-/// </summary>
-/// <remarks>
-/// The auto-dismiss scheduler is an injectable delegate (defaulting to a real <see cref="DispatcherTimer"/>)
-/// so tests can simulate "the timeout elapsed" deterministically instead of waiting on real wall-clock time
-/// or pumping an Avalonia dispatcher loop — same seam style as <see cref="Services.AppRestartService"/>.
-/// </remarks>
+// Owns the live toast collection `CockpitViewModel` exposes to `CockpitView.axaml`'s
+// overlay (#61). `Add` is the single mutation point: it builds the `ToastViewModel`,
+// wires its dismissal (close button, action button, or auto-dismiss) back to removal, and schedules the
+// auto-dismiss itself. Callers must already be on the UI thread — `Services.ToastService` does
+// that marshaling before calling in.
+// The auto-dismiss scheduler is an injectable delegate (defaulting to a real `DispatcherTimer`)
+// so tests can simulate "the timeout elapsed" deterministically instead of waiting on real wall-clock time
+// or pumping an Avalonia dispatcher loop — same seam style as `Services.AppRestartService`.
 public sealed class ToastHostViewModel
 {
     private static readonly TimeSpan DefaultAutoDismissDelay = TimeSpan.FromSeconds(5);
@@ -35,7 +31,7 @@ public sealed class ToastHostViewModel
 
     public ObservableCollection<ToastViewModel> Toasts { get; } = [];
 
-    /// <summary>Builds and shows one toast, auto-dismissing after a severity-dependent delay (longer for <see cref="ToastSeverity.Error"/>).</summary>
+    // Builds and shows one toast, auto-dismissing after a severity-dependent delay (longer for `ToastSeverity.Error`).
     public ToastViewModel Add(string message, ToastSeverity severity, string? actionLabel, Action? onAction)
     {
         var toast = new ToastViewModel(message, severity, actionLabel, onAction);

@@ -5,10 +5,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Generic confirmation dialog for destructive actions. Returns <c>true</c> from <c>ShowDialog&lt;bool&gt;</c>
-/// only when the operator clicks confirm; Cancel, the ✕, or Esc all return <c>false</c>.
-/// </summary>
+// Generic confirmation dialog for destructive actions. Returns `true` from `ShowDialog&lt;bool&gt;`
+// only when the operator clicks confirm; Cancel, the ✕, or Esc all return `false`.
 public partial class ConfirmationDialog : Window
 {
     public ConfirmationDialog()

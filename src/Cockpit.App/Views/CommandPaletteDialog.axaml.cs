@@ -6,11 +6,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The command palette dialog (#: command palette). The search box keeps focus so ↑/↓ move the selection and
-/// Enter runs it (VS-Code style); a double-click (or Enter) activates a command, then the dialog closes and the
-/// host runs the chosen command's action.
-/// </summary>
+// The command palette dialog (#: command palette). The search box keeps focus so ↑/↓ move the selection and
+// Enter runs it (VS-Code style); a double-click (or Enter) activates a command, then the dialog closes and the
+// host runs the chosen command's action.
 public partial class CommandPaletteDialog : Window
 {
     public CommandPaletteDialog()

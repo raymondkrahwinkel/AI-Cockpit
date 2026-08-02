@@ -3,12 +3,10 @@ using Avalonia.Data.Converters;
 
 namespace Cockpit.App.Converters;
 
-/// <summary>
-/// Formats when a project was last worked on for its card in the projects overview (AC-162): "Opened just now",
-/// "Opened 3 days ago", or "Not opened yet" for one that has only ever been set up. Deliberately relative and in
-/// plain words — the card is read by someone deciding where to carry on, and a timestamp answers a question they
-/// did not ask.
-/// </summary>
+// Formats when a project was last worked on for its card in the projects overview (AC-162): "Opened just now",
+// "Opened 3 days ago", or "Not opened yet" for one that has only ever been set up. Deliberately relative and in
+// plain words — the card is read by someone deciding where to carry on, and a timestamp answers a question they
+// did not ask.
 public sealed class LastOpenedConverter : IValueConverter
 {
     public static readonly LastOpenedConverter Instance = new();

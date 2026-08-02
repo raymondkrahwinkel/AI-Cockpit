@@ -3,29 +3,27 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One control in the session header's generic live-control panel (#45 D4) — a plugin provider's model or
-/// reasoning effort, rendered from the provider's own <see cref="SessionLiveOption"/> so the header can offer
-/// controls it has no built-in vocabulary for. Picking a value forwards to the running session's driver through
-/// <see cref="_apply"/>, which applies it to the next turn.
-/// </summary>
+// One control in the session header's generic live-control panel (#45 D4) — a plugin provider's model or
+// reasoning effort, rendered from the provider's own `SessionLiveOption` so the header can offer
+// controls it has no built-in vocabulary for. Picking a value forwards to the running session's driver through
+// `_apply`, which applies it to the next turn.
 public partial class LiveControlViewModel : ViewModelBase
 {
     private readonly Func<string, string, Task> _apply;
 
-    /// <summary>The provider's key for this control, sent back to the driver on a switch.</summary>
+    // The provider's key for this control, sent back to the driver on a switch.
     public string Key { get; }
 
-    /// <summary>What the operator reads next to the dropdown (e.g. "Model", "Effort").</summary>
+    // What the operator reads next to the dropdown (e.g. "Model", "Effort").
     public string Label { get; }
 
     private readonly IReadOnlyDictionary<string, string>? _choiceLabels;
 
-    /// <summary>The values on offer.</summary>
+    // The values on offer.
     [ObservableProperty]
     private IReadOnlyList<string> _choices;
 
-    /// <summary>The choices as label/value pairs for the combo, so a provider that supplied friendly labels shows them while <see cref="SelectedValue"/> still round-trips the raw value.</summary>
+    // The choices as label/value pairs for the combo, so a provider that supplied friendly labels shows them while `SelectedValue` still round-trips the raw value.
     [ObservableProperty]
     private IReadOnlyList<SelectableChoice> _choiceItems;
 
@@ -59,18 +57,14 @@ public partial class LiveControlViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Seeds this control with a value the driver reported after launch (AC-141 — the SDK route's <c>init</c>
-    /// event names the model a session actually started under, which is unknown at construction time for a
-    /// session launched with no explicit choice). Only fills in a still-unset value, and — like the constructor —
-    /// never fires a live switch back at the driver for the value it just reported.
-    /// </summary>
-    /// <remarks>
-    /// A resolved model can be a pinned snapshot the suggestion list never offered (the same case
-    /// <c>ClaudeSdkSessionDriver._BuildLiveOptions</c> handles for an explicitly-chosen one) — inserted into
-    /// <see cref="Choices"/>/<see cref="ChoiceItems"/> too, or the combo would have a selected value with no
-    /// matching item to show it against.
-    /// </remarks>
+    // Seeds this control with a value the driver reported after launch (AC-141 — the SDK route's `init`
+    // event names the model a session actually started under, which is unknown at construction time for a
+    // session launched with no explicit choice). Only fills in a still-unset value, and — like the constructor —
+    // never fires a live switch back at the driver for the value it just reported.
+    // A resolved model can be a pinned snapshot the suggestion list never offered (the same case
+    // `ClaudeSdkSessionDriver._BuildLiveOptions` handles for an explicitly-chosen one) — inserted into
+    // `Choices`/`ChoiceItems` too, or the combo would have a selected value with no
+    // matching item to show it against.
     public void SeedIfUnset(string value)
     {
         if (string.IsNullOrEmpty(SelectedValue) && !string.IsNullOrEmpty(value))

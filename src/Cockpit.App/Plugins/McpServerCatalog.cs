@@ -8,14 +8,12 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// The effective MCP-server set a session sees (#26, AC-11): the user-managed registry merged with what each
-/// active plugin provides for itself. The providers are the plugins that registered themselves as
-/// <see cref="IPluginMcpProvider"/> in their <c>ConfigureServices</c>, injected here as a set. This is what the
-/// fan-out and the New-session checklist read, so plugin-owned servers are offered and per-session uncheckable
-/// alongside registry ones — while the MCP-servers manager keeps reading <see cref="IMcpServerStore"/> directly
-/// and so never lists them.
-/// </summary>
+// The effective MCP-server set a session sees (#26, AC-11): the user-managed registry merged with what each
+// active plugin provides for itself. The providers are the plugins that registered themselves as
+// `IPluginMcpProvider` in their `ConfigureServices`, injected here as a set. This is what the
+// fan-out and the New-session checklist read, so plugin-owned servers are offered and per-session uncheckable
+// alongside registry ones — while the MCP-servers manager keeps reading `IMcpServerStore` directly
+// and so never lists them.
 internal sealed class McpServerCatalog(
     IMcpServerStore store,
     IProjectStore projectStore,
@@ -76,15 +74,13 @@ internal sealed class McpServerCatalog(
     public Task<IReadOnlyList<McpServerConfig>> GetServersAsync(CancellationToken cancellationToken = default) =>
         GetServersForProjectAsync(projectId: null, cancellationToken);
 
-    /// <summary>
-    /// The registry with the cockpit-hosted and plugin-owned servers merged in: registry entries first, then the
-    /// provided ones. A provider owns its own names, so its live answer wins over a registry entry of the same name
-    /// — the case that arises for one start after upgrade, before the older push entries are reconciled away. Two
-    /// providers claiming the same name is not expected (the cockpit's own endpoint names are disjoint from the
-    /// plugins'), but if it ever happens the first one caller order gives — a cockpit-hosted endpoint ahead of a
-    /// plugin's — wins, rather than a session seeing the same server twice. Pulled out so the merge is unit-testable
-    /// without standing up a PluginManager.
-    /// </summary>
+    // The registry with the cockpit-hosted and plugin-owned servers merged in: registry entries first, then the
+    // provided ones. A provider owns its own names, so its live answer wins over a registry entry of the same name
+    // — the case that arises for one start after upgrade, before the older push entries are reconciled away. Two
+    // providers claiming the same name is not expected (the cockpit's own endpoint names are disjoint from the
+    // plugins'), but if it ever happens the first one caller order gives — a cockpit-hosted endpoint ahead of a
+    // plugin's — wins, rather than a session seeing the same server twice. Pulled out so the merge is unit-testable
+    // without standing up a PluginManager.
     internal static IReadOnlyList<McpServerConfig> Merge(IReadOnlyList<McpServerConfig> registry, IReadOnlyList<McpServerConfig> providedServers)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

@@ -7,12 +7,10 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Clones a repository from a URL (AC-90). Returns the local clone path from <c>ShowDialog&lt;string?&gt;</c> when the
-/// clone succeeds, and <see langword="null"/> when the operator cancels, so the New-session dialog only adopts a
-/// working directory that is actually there. The clone itself runs in the view model, which raises
-/// <see cref="CloneFromGitUrlDialogViewModel.CloseRequested"/> with the path once it lands.
-/// </summary>
+// Clones a repository from a URL (AC-90). Returns the local clone path from `ShowDialog&lt;string?&gt;` when the
+// clone succeeds, and `null` when the operator cancels, so the New-session dialog only adopts a
+// working directory that is actually there. The clone itself runs in the view model, which raises
+// `CloneFromGitUrlDialogViewModel.CloseRequested` with the path once it lands.
 public partial class CloneFromGitUrlDialog : Window
 {
     public CloneFromGitUrlDialog()

@@ -4,12 +4,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Logging;
 
-/// <summary>
-/// A minimal append-to-file <see cref="ILoggerProvider"/> so the app has a readable log when it runs
-/// detached (double-clicked / Start-Process) — where there is no console to capture. Writes are
-/// serialized behind a lock; the file is truncated at startup so each run starts clean. Deliberately
-/// tiny (no rolling/retention): a single-user desktop tool's diagnostic trail, not a logging framework.
-/// </summary>
+// A minimal append-to-file `ILoggerProvider` so the app has a readable log when it runs
+// detached (double-clicked / Start-Process) — where there is no console to capture. Writes are
+// serialized behind a lock; the file is truncated at startup so each run starts clean. Deliberately
+// tiny (no rolling/retention): a single-user desktop tool's diagnostic trail, not a logging framework.
 public sealed class FileLoggerProvider : ILoggerProvider
 {
     private readonly string _path;

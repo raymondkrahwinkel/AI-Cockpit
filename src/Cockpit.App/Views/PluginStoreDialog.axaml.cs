@@ -6,12 +6,10 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The plugin store dialog (#62): sidebar/search/sort/grid/detail over a
-/// <see cref="PluginStoreDialogViewModel"/>. Disposes the view model on close so it unsubscribes from
-/// the shared (long-lived) <see cref="PluginManagerViewModel"/>'s collection/property-changed events —
-/// otherwise every store-dialog open would leak one more subscription on that shared instance.
-/// </summary>
+// The plugin store dialog (#62): sidebar/search/sort/grid/detail over a
+// `PluginStoreDialogViewModel`. Disposes the view model on close so it unsubscribes from
+// the shared (long-lived) `PluginManagerViewModel`'s collection/property-changed events —
+// otherwise every store-dialog open would leak one more subscription on that shared instance.
 public partial class PluginStoreDialog : Window
 {
     public PluginStoreDialog()

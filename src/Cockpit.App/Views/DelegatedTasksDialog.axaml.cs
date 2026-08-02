@@ -6,11 +6,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The task view on delegated work (#67): the list of tasks other sessions handed to a profile, what each one
-/// produced, and a stop button while it is still running. <see cref="Window.DataContext"/> is the shared
-/// <see cref="DelegatedTasksViewModel"/>, so it shows the same tasks the orchestrator's own tools report on.
-/// </summary>
+// The task view on delegated work (#67): the list of tasks other sessions handed to a profile, what each one
+// produced, and a stop button while it is still running. `Window.DataContext` is the shared
+// `DelegatedTasksViewModel`, so it shows the same tasks the orchestrator's own tools report on.
 public partial class DelegatedTasksDialog : Window
 {
     public DelegatedTasksDialog()

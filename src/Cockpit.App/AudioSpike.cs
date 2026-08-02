@@ -5,10 +5,8 @@ using Cockpit.Core.Abstractions.Audio;
 
 namespace Cockpit.App;
 
-/// <summary>
-/// Headless harness proving the F0 audio pipeline: enumerate devices, capture ~2s of 16 kHz mono
-/// PCM, print an RMS level, then play back a test tone followed by the recorded buffer.
-/// </summary>
+// Headless harness proving the F0 audio pipeline: enumerate devices, capture ~2s of 16 kHz mono
+// PCM, print an RMS level, then play back a test tone followed by the recorded buffer.
 internal static class AudioSpike
 {
     private static readonly Core.Audio.AudioFormat Format = new();

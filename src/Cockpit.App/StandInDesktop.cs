@@ -4,23 +4,18 @@ using Avalonia.Media.Imaging;
 
 namespace Cockpit.App;
 
-/// <summary>
-/// A desktop to stand in for the operator's, drawn into a bitmap for the selection surface's harness scenes to be
-/// rendered over (AC-357).
-/// </summary>
-/// <remarks>
-/// Drawn rather than filled: the surface dims what is outside the selection, strokes a line around what is inside
-/// and paints a block over what is hidden, and all three look right over a flat colour no matter how wrong they
-/// are. What is needed is somewhere genuinely light and somewhere genuinely dark, with detail at text scale in
-/// each — which is also what tells you whether a redaction box covers anything.
-/// <para>
-/// Its own file because none of these colours are the cockpit's, deliberately: this is somebody else's screen, and
-/// pointing it at theme tokens would make the stand-in follow a repaint of the very app it exists to be
-/// independent of. That is what the theme-token guard's whole-file exemption names. Keeping it separate keeps the
-/// exemption to a file that only ever draws a picture — the scene wiring next door stays guarded, and that is the
-/// file every later ticket in AC-356 is going to touch.
-/// </para>
-/// </remarks>
+// A desktop to stand in for the operator's, drawn into a bitmap for the selection surface's harness scenes to be
+// rendered over (AC-357).
+// Drawn rather than filled: the surface dims what is outside the selection, strokes a line around what is inside
+// and paints a block over what is hidden, and all three look right over a flat colour no matter how wrong they
+// are. What is needed is somewhere genuinely light and somewhere genuinely dark, with detail at text scale in
+// each — which is also what tells you whether a redaction box covers anything.
+//
+// Its own file because none of these colours are the cockpit's, deliberately: this is somebody else's screen, and
+// pointing it at theme tokens would make the stand-in follow a repaint of the very app it exists to be
+// independent of. That is what the theme-token guard's whole-file exemption names. Keeping it separate keeps the
+// exemption to a file that only ever draws a picture — the scene wiring next door stays guarded, and that is the
+// file every later ticket in AC-356 is going to touch.
 internal static class StandInDesktop
 {
     public static RenderTargetBitmap Draw(int width, int height)

@@ -6,17 +6,14 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The New-session form, opened beside the cockpit rather than over it (AC-367). Closes with the confirmed
-/// <see cref="NewSessionResult"/> (or null on cancel) when the view model raises
-/// <see cref="NewSessionDialogViewModel.CloseRequested"/>.
-/// <para>
-/// ⚠️ This window is not shown with <c>ShowDialog</c>, so the value handed to <see cref="Window.Close(object)"/>
-/// reaches nobody — <see cref="Services.SessionDialogService"/> subscribes to the same event to record the
-/// answer, and it must do so <em>before</em> setting this window's DataContext, because the handler below is
-/// registered from <c>DataContextChanged</c> and closes the window. Whoever closes first wins.
-/// </para>
-/// </summary>
+// The New-session form, opened beside the cockpit rather than over it (AC-367). Closes with the confirmed
+// `NewSessionResult` (or null on cancel) when the view model raises
+// `NewSessionDialogViewModel.CloseRequested`.
+//
+// ⚠️ This window is not shown with `ShowDialog`, so the value handed to `Window.Close(object)`
+// reaches nobody — `Services.SessionDialogService` subscribes to the same event to record the
+// answer, and it must do so *before* setting this window's DataContext, because the handler below is
+// registered from `DataContextChanged` and closes the window. Whoever closes first wins.
 public partial class NewSessionDialog : Window
 {
     public NewSessionDialog()

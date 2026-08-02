@@ -3,21 +3,18 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// <see cref="IPluginStorage"/> backed by an in-memory copy of the plugin's slice of <c>cockpit.json</c>,
-/// seeded when the plugin loads. Values are JSON-serialized; <see cref="Set{T}"/> writes through the
-/// supplied persist callback so the sync contract never blocks on file IO on the caller's thread.
-/// <para>
-/// Every access to <c>_values</c> goes through <see cref="_lock"/> — not for the dictionary mutation alone (that
-/// much a single writer thread would already give you for free), but because <paramref name="persist"/> is
-/// fire-and-forget: it reads its argument well after <see cref="Set{T}"/> has returned, on whatever thread the
-/// host's file write happens to resume on. A plugin is no longer guaranteed to write from one thread only — a
-/// background poll timer and the UI thread can both call <see cref="Set{T}"/> — so <see cref="Set{T}"/> hands
-/// <paramref name="persist"/> a snapshot taken under the lock, never the live dictionary, or a write racing a
-/// slow persist read would throw <see cref="InvalidOperationException"/> ("Collection was modified") from a task
-/// nobody observes (AC-515).
-/// </para>
-/// </summary>
+// `IPluginStorage` backed by an in-memory copy of the plugin's slice of `cockpit.json`,
+// seeded when the plugin loads. Values are JSON-serialized; `Set{T}` writes through the
+// supplied persist callback so the sync contract never blocks on file IO on the caller's thread.
+//
+// Every access to `_values` goes through `_lock` — not for the dictionary mutation alone (that
+// much a single writer thread would already give you for free), but because `persist` is
+// fire-and-forget: it reads its argument well after `Set{T}` has returned, on whatever thread the
+// host's file write happens to resume on. A plugin is no longer guaranteed to write from one thread only — a
+// background poll timer and the UI thread can both call `Set{T}` — so `Set{T}` hands
+// `persist` a snapshot taken under the lock, never the live dictionary, or a write racing a
+// slow persist read would throw `InvalidOperationException` ("Collection was modified") from a task
+// nobody observes (AC-515).
 public sealed class PluginStorage : IPluginStorage
 {
     private readonly Lock _lock = new();
@@ -35,12 +32,10 @@ public sealed class PluginStorage : IPluginStorage
         _declareSecret = declareSecret;
     }
 
-    /// <summary>
-    /// Every key/value this plugin holds, as the raw JSON it was stored as. Host-side only — deliberately not on
-    /// <see cref="IPluginStorage"/>, since a plugin has no business reading its own storage wholesale and even
-    /// less another's. The host needs it to export a dashboard: it has to carry a widget's settings without
-    /// knowing their shape.
-    /// </summary>
+    // Every key/value this plugin holds, as the raw JSON it was stored as. Host-side only — deliberately not on
+    // `IPluginStorage`, since a plugin has no business reading its own storage wholesale and even
+    // less another's. The host needs it to export a dashboard: it has to carry a widget's settings without
+    // knowing their shape.
     public IReadOnlyDictionary<string, string> Snapshot()
     {
         lock (_lock)
@@ -72,11 +67,9 @@ public sealed class PluginStorage : IPluginStorage
         _persist(snapshot);
     }
 
-    /// <summary>
-    /// Stores a credential. The key is remembered as one — persisted, so the next start knows to decrypt it before
-    /// handing it back rather than giving the plugin ciphertext, and so a backup that claims to carry no
-    /// credentials empties it too. Then it is written like any other value.
-    /// </summary>
+    // Stores a credential. The key is remembered as one — persisted, so the next start knows to decrypt it before
+    // handing it back rather than giving the plugin ciphertext, and so a backup that claims to carry no
+    // credentials empties it too. Then it is written like any other value.
     public void SetSecret(string key, string value)
     {
         _declareSecret?.Invoke(key);
