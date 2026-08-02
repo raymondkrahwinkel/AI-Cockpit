@@ -1,8 +1,10 @@
 using NSubstitute;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -206,5 +208,245 @@ public class ProjectsViewModelTests
         await viewModel.LoadAsync();
 
         Assert.Equal("Depot", viewModel.SelectedProject?.Name);
+    }
+
+    // AC-245: the shared-project catalog — grouping, filtering an already-bound or hidden project out, one
+    // source's failure not costing the others, and the AC-604 ownership claim this consumes it through.
+
+    private static (ProjectsViewModel ViewModel, IProjectOwnershipRegistry Ownership) BuildWithSharedSources(
+        IReadOnlyList<ISharedProjectSource> sources, params Project[] saved)
+    {
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = saved });
+
+        var ownership = new ProjectOwnershipRegistry();
+        var registry = new _FakeSharedProjectSourceRegistry(sources);
+        var viewModel = new ProjectsViewModel(store, dialogs: null, ownership: ownership, sharedSources: registry);
+        return (viewModel, ownership);
+    }
+
+    private static (ProjectsViewModel ViewModel, IProjectOwnershipRegistry Ownership) BuildWithSharedSourcesAndHidden(
+        IReadOnlyList<ISharedProjectSource> sources, IReadOnlyList<string> hiddenIds)
+    {
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { HiddenSharedProjectIds = hiddenIds });
+
+        var ownership = new ProjectOwnershipRegistry();
+        var registry = new _FakeSharedProjectSourceRegistry(sources);
+        var viewModel = new ProjectsViewModel(store, dialogs: null, ownership: ownership, sharedSources: registry);
+        return (viewModel, ownership);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_PublishesOneGroupPerSource()
+    {
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One"),
+            new SharedProject("depot:two", "Two"),
+        ]));
+        var (viewModel, _) = BuildWithSharedSources([source]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.Equal("Depot — Work", group.SourceName);
+        Assert.Equal(["One", "Two"], group.Projects.Select(project => project.Name));
+        Assert.True(viewModel.HasSharedProjects);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ExcludesAProjectAlreadyBoundToALocalProject()
+    {
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One"),
+            new SharedProject("depot:two", "Two"),
+        ]));
+        var (viewModel, _) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.Equal(["Two"], group.Projects.Select(project => project.Name));
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ExcludesAProjectHiddenOnThisMachine()
+    {
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One"),
+            new SharedProject("depot:two", "Two"),
+        ]));
+        var (viewModel, _) = BuildWithSharedSourcesAndHidden([source], ["depot:one"]);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.Equal(["Two"], group.Projects.Select(project => project.Name));
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_EmptySuccessfulGroup_IsLeftOutEntirely()
+    {
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([]));
+        var (viewModel, _) = BuildWithSharedSources([source]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        Assert.Empty(viewModel.SharedProjectGroups);
+        Assert.False(viewModel.HasSharedProjects);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_OneSourceFailing_LeavesTheOthersIntact()
+    {
+        var broken = new _FakeSharedProjectSource("Depot — Broken", SharedProjectListResult.Failed("not signed in"));
+        var healthy = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, _) = BuildWithSharedSources([broken, healthy]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        Assert.Equal(2, viewModel.SharedProjectGroups.Count);
+        var brokenGroup = viewModel.SharedProjectGroups.Single(group => group.SourceName == "Depot — Broken");
+        Assert.True(brokenGroup.HasError);
+        Assert.Equal("not signed in", brokenGroup.Error);
+        Assert.Empty(brokenGroup.Projects);
+
+        var healthyGroup = viewModel.SharedProjectGroups.Single(group => group.SourceName == "Depot — Work");
+        Assert.False(healthyGroup.HasError);
+        Assert.Equal(["One"], healthyGroup.Projects.Select(project => project.Name));
+    }
+
+    /// <summary>
+    /// Adversarial: a source that throws instead of reporting a failure through <see cref="SharedProjectListResult.Failed"/>
+    /// as its own contract asks (a bug in a third-party plugin, say) must still degrade to a named failure rather
+    /// than crashing the whole workspace load.
+    /// </summary>
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ASourceThatThrows_DegradesToAFailedGroup()
+    {
+        var throwing = new _FakeSharedProjectSource("Depot — Buggy", exception: new InvalidOperationException("boom"));
+        var (viewModel, _) = BuildWithSharedSources([throwing]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.True(group.HasError);
+        Assert.Contains("boom", group.Error);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ASourceThatNeverCompletes_TimesOutRatherThanHangingForever()
+    {
+        ProjectsViewModel.SharedProjectSourceTimeout = TimeSpan.FromMilliseconds(20);
+        try
+        {
+            var hanging = new _FakeSharedProjectSource("Depot — Slow", neverCompletes: true);
+            var (viewModel, _) = BuildWithSharedSources([hanging]);
+
+            await viewModel.LoadSharedProjectsAsync();
+
+            var group = Assert.Single(viewModel.SharedProjectGroups);
+            Assert.True(group.HasError);
+        }
+        finally
+        {
+            ProjectsViewModel.SharedProjectSourceTimeout = TimeSpan.FromSeconds(10);
+        }
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ClaimsOwnershipForALocalProjectAlreadyBoundToASharedOne()
+    {
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, ownership) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var resolved = ownership.Resolve(bound.Id);
+        Assert.NotNull(resolved);
+        Assert.Equal("Depot — Work", resolved![HostProjectField.Name]?.SourceName);
+        // A claimed field is locked host-side today regardless of what IsEditable says (no write-back yet, AC-247)
+        // — this reconciliation must not claim editability it cannot honour.
+        Assert.False(resolved[HostProjectField.Name]?.IsEditable);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_NoUnboundProjectOnAnySource_ClaimsNothing()
+    {
+        var unbound = Project.Create("Cockpit");
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, ownership) = BuildWithSharedSources([source], unbound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        Assert.Null(ownership.Resolve(unbound.Id));
+    }
+
+    [Fact]
+    public async Task LoadAsync_DoesNotAwaitTheSharedProjectsLoad()
+    {
+        // LoadAsync is awaited by SessionDialogService.ShowProjectsDialogAsync before the workspace window is even
+        // constructed — a source that never answers must not hold that open forever.
+        var hanging = new _FakeSharedProjectSource("Depot — Slow", neverCompletes: true);
+        var (viewModel, _) = BuildWithSharedSources([hanging]);
+
+        var loadTask = viewModel.LoadAsync();
+        var completed = await Task.WhenAny(loadTask, Task.Delay(TimeSpan.FromSeconds(2)));
+
+        Assert.Same(loadTask, completed);
+    }
+
+    private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> sources) : ISharedProjectSourceRegistry
+    {
+        public IReadOnlyList<ISharedProjectSource> Sources => sources;
+
+        public bool Register(ISharedProjectSource source) => true;
+
+        public void Remove(string key)
+        {
+        }
+    }
+
+    private sealed class _FakeSharedProjectSource : ISharedProjectSource
+    {
+        private readonly SharedProjectListResult? _result;
+        private readonly Exception? _exception;
+        private readonly bool _neverCompletes;
+
+        public _FakeSharedProjectSource(string sourceName, SharedProjectListResult? result = null, Exception? exception = null, bool neverCompletes = false)
+        {
+            SourceName = sourceName;
+            _result = result;
+            _exception = exception;
+            _neverCompletes = neverCompletes;
+        }
+
+        public string Key => SourceName;
+
+        public string SourceName { get; }
+
+        public async Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken)
+        {
+            if (_neverCompletes)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            if (_exception is not null)
+            {
+                throw _exception;
+            }
+
+            return _result!;
+        }
     }
 }

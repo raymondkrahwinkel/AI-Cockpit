@@ -147,6 +147,13 @@ internal sealed class CockpitConfigFile
     /// <summary>The operator's projects (AC-158) — what a session works on, beside <see cref="Profiles"/> which is who it works as; owned by the project store.</summary>
     public List<ProjectEntry> Projects { get; set; } = [];
 
+    /// <summary>
+    /// Ids of shared projects hidden from the Projects workspace on this machine (AC-245) — a per-machine
+    /// visibility flag, deliberately here and never in a shared project's own definition; owned by the project
+    /// store.
+    /// </summary>
+    public List<string> HiddenSharedProjectIds { get; set; } = [];
+
     /// <summary>Remembered working directories (recent + favorites) offered in the New-session dialog; owned by the working-path history store.</summary>
     public WorkingPathHistoryEntry? WorkingPaths { get; set; }
 

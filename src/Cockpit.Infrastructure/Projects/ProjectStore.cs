@@ -29,16 +29,25 @@ internal sealed class ProjectStore : IProjectStore, ISingletonService
     public async Task<ProjectSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
-        if (configFile is null || configFile.Projects.Count == 0)
+        if (configFile is null || (configFile.Projects.Count == 0 && configFile.HiddenSharedProjectIds.Count == 0))
         {
             return ProjectSettings.Empty;
         }
 
-        return new ProjectSettings { Projects = [.. configFile.Projects.Select(entry => entry.ToDomain())] }.Normalized();
+        return new ProjectSettings
+        {
+            Projects = [.. configFile.Projects.Select(entry => entry.ToDomain())],
+            HiddenSharedProjectIds = [.. configFile.HiddenSharedProjectIds],
+        }.Normalized();
     }
 
     public Task SaveAsync(ProjectSettings settings, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(
-            configFile => configFile.Projects = [.. settings.Normalized().Projects.Select(ProjectEntry.FromDomain)],
+            configFile =>
+            {
+                var normalized = settings.Normalized();
+                configFile.Projects = [.. normalized.Projects.Select(ProjectEntry.FromDomain)];
+                configFile.HiddenSharedProjectIds = [.. normalized.HiddenSharedProjectIds];
+            },
             cancellationToken);
 }

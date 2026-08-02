@@ -155,6 +155,44 @@ public class ProjectStoreTests : IDisposable
         Assert.Equal("kept", Assert.Single(loaded.Projects).Id);
     }
 
+    // AC-245: the per-machine "hidden shared project" flag round-trips the same as everything else in this section.
+
+    [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsHiddenSharedProjectIds()
+    {
+        var store = new ProjectStore(_configFilePath);
+
+        await store.SaveAsync(ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit", "depot:other"] });
+        var loaded = await store.LoadAsync();
+
+        Assert.Equal(["depot:cockpit", "depot:other"], loaded.HiddenSharedProjectIds);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HiddenSharedProjectIdsButNoProjects_StillLoads()
+    {
+        // Regression: the store's own fast path used to treat "no Projects" alone as "nothing saved at all" and
+        // return ProjectSettings.Empty outright, silently dropping a hidden-ids list saved with no local projects.
+        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit"] });
+
+        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
+
+        Assert.Equal(["depot:cockpit"], loaded.HiddenSharedProjectIds);
+        Assert.Empty(loaded.Projects);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HandEditedNullInHiddenSharedProjectIds_LoadsWithThatEntryDropped()
+    {
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """{"HiddenSharedProjectIds":[null,"depot:cockpit"]}""");
+
+        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
+
+        Assert.Equal(["depot:cockpit"], loaded.HiddenSharedProjectIds);
+    }
+
     /// <summary>The store owns one section: writing projects must not clobber a sibling the same file carries.</summary>
     [Fact]
     public async Task SaveAsync_LeavesOtherSectionsUntouched()

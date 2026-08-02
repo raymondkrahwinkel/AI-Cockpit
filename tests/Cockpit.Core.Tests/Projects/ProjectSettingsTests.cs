@@ -98,4 +98,43 @@ public class ProjectSettingsTests
 
         Assert.Equal(kept.Id, Assert.Single(settings.WithoutProject(removed.Id).Projects).Id);
     }
+
+    // AC-245: the one per-machine "hidden shared project" flag — never in the shared definition, always local.
+
+    [Fact]
+    public void Normalized_TrimsDedupesAndDropsBlankHiddenSharedProjectIds()
+    {
+        var settings = new ProjectSettings
+        {
+            HiddenSharedProjectIds = ["  depot:cockpit  ", "depot:cockpit", "", "   ", "depot:other"],
+        };
+
+        Assert.Equal(["depot:cockpit", "depot:other"], settings.Normalized().HiddenSharedProjectIds);
+    }
+
+    [Fact]
+    public void Normalized_HandlesANullEntryInHiddenSharedProjectIds()
+    {
+        // A hand-edited cockpit.json can hold a JSON null in this array; it must cost that one entry, not the load.
+        var settings = new ProjectSettings { HiddenSharedProjectIds = [null!, "depot:cockpit"] };
+
+        Assert.Equal(["depot:cockpit"], settings.Normalized().HiddenSharedProjectIds);
+    }
+
+    [Fact]
+    public void Normalized_WithNothingToTidyInHiddenSharedProjectIds_IsTheSameInstance()
+    {
+        var settings = ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit"] };
+
+        Assert.Same(settings, settings.Normalized());
+    }
+
+    [Fact]
+    public void IsSharedProjectHidden_TrueOnlyForAnIdInTheList()
+    {
+        var settings = ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit"] };
+
+        Assert.True(settings.IsSharedProjectHidden("depot:cockpit"));
+        Assert.False(settings.IsSharedProjectHidden("depot:other"));
+    }
 }

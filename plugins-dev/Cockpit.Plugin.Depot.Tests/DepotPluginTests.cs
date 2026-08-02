@@ -75,6 +75,53 @@ public class DepotPluginTests
         Assert.Equal("depot.wispslate", registered[1].Scheme);
     }
 
+    // --- AC-245: shared-project sources -----------------------------------------------------------------------
+
+    [Fact]
+    public void Initialize_NoConnectionsConfigured_RegistersNoSharedProjectSource()
+    {
+        var host = _HostWithConnections();
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        host.DidNotReceive().AddSharedProjectSource(Arg.Any<ISharedProjectSource>());
+    }
+
+    [Fact]
+    public void Initialize_OneConnectionConfigured_RegistersOneSharedProjectSourceUnderThePlainDepotScheme()
+    {
+        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"));
+        var registered = new List<ISharedProjectSource>();
+        host.When(cockpit => cockpit.AddSharedProjectSource(Arg.Any<ISharedProjectSource>()))
+            .Do(call => registered.Add(call.Arg<ISharedProjectSource>()));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        var source = Assert.Single(registered);
+        Assert.Equal("depot", source.Key); // same scheme AddProjectMemorySource registered above — Id/MemoryRef line up
+        Assert.Contains("Synvolution", source.SourceName);
+    }
+
+    [Fact]
+    public void Initialize_TwoConnectionsConfigured_RegistersTwoSharedProjectSourcesUnderDistinctKeys()
+    {
+        var host = _HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
+        var registered = new List<ISharedProjectSource>();
+        host.When(cockpit => cockpit.AddSharedProjectSource(Arg.Any<ISharedProjectSource>()))
+            .Do(call => registered.Add(call.Arg<ISharedProjectSource>()));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        Assert.Equal(2, registered.Count);
+        Assert.Equal("depot", registered[0].Key);
+        Assert.Equal("depot.wispslate", registered[1].Key);
+    }
+
     [Fact]
     public void Metadata_Always_MatchesTheManifestTheHostLoadsBy()
     {

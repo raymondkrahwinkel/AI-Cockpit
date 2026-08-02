@@ -245,6 +245,24 @@ internal sealed class CockpitHost(
         }
     }
 
+    public void AddSharedProjectSource(ISharedProjectSource source)
+    {
+        // Refused means another plugin already contributes this key — agreement, not a clash, the same reason
+        // AddProjectMemorySource logs at debug rather than warning.
+        if (!services.GetRequiredService<ISharedProjectSourceRegistry>().Register(source))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+                "Shared-project source '{SharedProjectSourceKey}' is already contributed; this registration is ignored",
+                source.Key);
+        }
+    }
+
+    public void RemoveSharedProjectSource(string key) =>
+        services.GetRequiredService<ISharedProjectSourceRegistry>().Remove(key);
+
+    public IReadOnlyList<ISharedProjectSource> SharedProjectSources =>
+        services.GetRequiredService<ISharedProjectSourceRegistry>().Sources;
+
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
         // No pane named and none selected means there is no project to read from — not an error, just nothing to say.
