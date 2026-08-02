@@ -496,6 +496,13 @@
                                         Cursor="Hand"
                                         PointerPressed="OnSessionItemPointerPressed">
                                     <Border.ContextMenu>
+                                        <!-- Each item's DataContext is the session the menu was opened on; the command
+                                             lives on the cockpit view model, so the Click handler routes through it with
+                                             the session as parameter (see _InvokeSessionCommand). AC-561: this depends on
+                                             the row's own Border staying alive for as long as the menu is open, which is
+                                             what CockpitViewModel.VisibleSessions now guarantees (see its remarks) — the
+                                             sidebar's ItemsControl only tears down and rebuilds the containers a
+                                             reconcile actually touches, not every row on every change. -->
                                         <ContextMenu>
                                             <MenuItem Header="Rename" Click="OnRenameSession"/>
                                             <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
