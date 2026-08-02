@@ -106,3 +106,17 @@ jobs:
 
       - name: Guard's own tests
         run: bash scripts/check-plugin-versions.test.sh
+
+  # AC-319/AC-593 swept /// down to interface members, in ~15,700 lines across seven rounds. A rule nothing
+  # enforces drifts back to where it started -- this is the enforcement.
+  xmldoc-scope:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: /// stays on interface declarations and their members only
+        run: python3 scripts/check-xmldoc-scope.py
+
+      - name: Guard's own tests
+        run: python3 scripts/check-xmldoc-scope.test.py

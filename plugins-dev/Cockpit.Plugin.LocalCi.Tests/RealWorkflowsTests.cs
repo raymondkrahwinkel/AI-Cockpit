@@ -17,12 +17,12 @@ public class RealWorkflowsTests
     }
 
     [Fact]
-    public void CiHasExactlyThreeLocallyRunnableJobs()
+    public void CiHasExactlyFourLocallyRunnableJobs()
     {
         var verdicts = _VerdictsFor("ci.yml");
 
-        Assert.Equal(3, verdicts.Count(verdict => verdict.CanRunLocally));
-        Assert.Equal(["build", "plugins", "plugin-versions"], verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
+        Assert.Equal(4, verdicts.Count(verdict => verdict.CanRunLocally));
+        Assert.Equal(["build", "plugins", "plugin-versions", "xmldoc-scope"], verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
     }
 
     [Theory]

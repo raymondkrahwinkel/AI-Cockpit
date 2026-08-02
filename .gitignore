@@ -36,3 +36,6 @@ scratchpad/
 
 # Test run artefacts (VSTest writes hang/crash dumps here — a single one is hundreds of MB).
 TestResults/
+
+# Bytecode cache from running the scripts/ Python tools locally.
+__pycache__/
