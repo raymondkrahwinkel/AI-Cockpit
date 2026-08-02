@@ -176,6 +176,11 @@ internal sealed class CockpitHost(
             return;
         }
 
+        // AC-577, no fast path — deliberately. A CheckAccess() shortcut would let this run inline on whatever
+        // thread called, which is the branch that makes a test pass while proving nothing about the marshalling
+        // it exists for. Without it the call hangs in a process with no dispatcher loop, and that is the honest
+        // trade: CockpitHost is only ever constructed behind a running application, and a test that claims to
+        // cover this line belongs in Cockpit.App.ViewTests (Cockpit.Core.Tests cannot even name Dispatcher now).
         await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
     }
 
@@ -829,6 +834,9 @@ internal sealed class CockpitHost(
         string? paneId;
         try
         {
+            // AC-577, no fast path — deliberately, and here it is not even a trade: what this marshals to is a
+            // modal dialog, which has nowhere to appear in a process without a dispatcher loop. An inline branch
+            // would turn "no UI thread" from a hang into a dialog nobody can answer.
             paneId = await Dispatcher.UIThread.InvokeAsync(() =>
                 services.GetService<CockpitViewModel>() is { } cockpit
                     ? cockpit.ShowNewSessionDialogForPluginAsync(prefill)
@@ -932,6 +940,11 @@ internal sealed class CockpitHost(
             }
         }
 
+        // AC-577, fast path — deliberately, and the third of this file's three dispatcher sites to choose
+        // differently from the other two. This one is called on the UI thread most of the time and marshals a
+        // field write rather than a dialog, so the inline branch is what it costs nothing to take. The price is
+        // named where it is paid: a test that takes this branch proves nothing about the marshalling, so a test
+        // covering it belongs in Cockpit.App.ViewTests, where the dispatcher is real and CheckAccess is honest.
         if (Dispatcher.UIThread.CheckAccess())
         {
             Apply();

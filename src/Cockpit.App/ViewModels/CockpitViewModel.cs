@@ -2907,6 +2907,41 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 shortcut.Id,
                 _shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture)));
         }
+
+        // AC-608: one gesture, one owner. Subscribed here rather than in the row, because the rule is about the
+        // rows as a set and a row cannot see its siblings. The rows are thrown away on every rebuild, so the
+        // handler goes with them — nothing to unsubscribe.
+        foreach (var row in ShortcutRows)
+        {
+            row.PropertyChanged += _OnShortcutRowChanged;
+        }
+    }
+
+    /// <summary>
+    /// Takes a gesture away from whoever else held it (AC-608). Without this the operator binds a chord that is
+    /// already in use and nothing happens: the dispatch invokes the first match in catalog order, so one of the two
+    /// silently never fires and neither row shows that anything is wrong.
+    /// </summary>
+    private void _OnShortcutRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ShortcutRowViewModel.Gesture) || sender is not ShortcutRowViewModel claimant)
+        {
+            return;
+        }
+
+        var claimantIndex = ShortcutRows.IndexOf(claimant);
+        if (claimantIndex < 0)
+        {
+            return;
+        }
+
+        // Clearing a displaced row raises this again for that row; a blank gesture displaces nobody, so it stops
+        // there rather than needing a re-entrancy flag.
+        var gestures = ShortcutRows.Select(row => row.Gesture).ToList();
+        foreach (var index in ShortcutGestureOwnership.DisplacedBy(gestures, claimantIndex))
+        {
+            ShortcutRows[index].Gesture = string.Empty;
+        }
     }
 
     // The live dispatch table the view matches against: every bound app action (blank = unbound, skipped) plus

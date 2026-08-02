@@ -21,6 +21,10 @@ internal sealed class SessionVerifyGateway(CockpitViewModel cockpit) : IVerifySe
             return false;
         }
 
+        // AC-577, no fast path — deliberately. Every caller of this gateway arrives off the UI thread (it answers
+        // an MCP tool call), so a CheckAccess() branch would never be taken in production and would exist only to
+        // be taken by a test, which is the false-green this ticket is about. The trade written down: this type
+        // must not be constructed in a process without a dispatcher loop, or the call hangs rather than fails.
         return await Dispatcher.UIThread.InvokeAsync(() => session.FeedVerifyResultAsync(caption, screenshotPng)).ConfigureAwait(false);
     }
 

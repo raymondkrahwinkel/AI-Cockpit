@@ -109,6 +109,12 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         // thread that creates it, and the load above reads a file, so its continuation can land on a thread pool
         // thread — one with no message loop, where Start() throws nothing and Tick never fires. That is how every
         // scheduled resume since the feature shipped was silently never sent.
+        //
+        // AC-577, no fast path — and here it is not a preference but the point. A CheckAccess() branch would run
+        // this inline on whichever thread happened to arrive, which is precisely the AC-368 bug written back in:
+        // the timer would bind to a thread with no message loop and never tick. The consequence: this coordinator
+        // must not be constructed in a process without a dispatcher loop, and a test that drives the timer path
+        // belongs in Cockpit.App.ViewTests — which is where it lives.
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             // Disposed while the load was still running: the timer is built here regardless, so it has to be
