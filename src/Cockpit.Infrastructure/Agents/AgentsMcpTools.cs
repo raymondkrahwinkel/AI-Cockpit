@@ -115,7 +115,7 @@ internal sealed class AgentsMcpTools(
         "These messages were sent by other agent sessions on your desk. " + AgentInboxTurnNotice.TrustStatement;
 
     [McpServerTool(Name = "list_agents")]
-    [Description("Lists the other agent sessions sharing your workspace — the tab/desk the operator put you on — so you can see who else is working alongside you. Each entry has the pane id, its name, the profile it runs under, its statusline (whatever it last set with cockpit-session__set_status), and the resources it has claimed with `claim` — so you can see who is on which worktree or branch before you touch one. Every agent session on your desk is listed whether or not it has ever used these tools — the cockpit puts them on the roster itself, so this is who is there and not who happens to have called in. A pane that has never called a cockpit-agents tool carries `lastContactUtc: null` and a short `gap` note saying so; that is worth reading before you rely on it answering, but it is still a pane you can send to. Use the pane id from here as `toPaneId` when you notify someone. `deliversAtTurnStart` says whether a message you send that pane will surface on its own with its next turn; when it is false the pane only sees mail when it calls read_inbox itself, so do not read silence from it as an answer. `wakeOptIn` says whether that pane has agreed to be woken for an urgent message — send one with urgent=true and a pane showing false will still only read it in its own time, so this is what tells you whether urgent means anything for this addressee. It runs for the session you call it from — you do not name one.")]
+    [Description("Lists the other agent sessions sharing your workspace — the tab/desk the operator put you on — so you can see who else is working alongside you. Each entry has the pane id, its name, the profile it runs under, its statusline (whatever it last set with cockpit-session__set_status), and the resources it has claimed with `claim` — so you can see who is on which worktree or branch before you touch one. Every agent session on your desk is listed whether or not it has ever used these tools — the cockpit puts them on the roster itself, so this is who is there and not who happens to have called in. A pane that has never called a cockpit-agents tool carries `lastContactUtc: null` and a short `gap` note saying so; that is worth reading before you rely on it answering, but it is still a pane you can send to. Use the pane id from here as `toPaneId` when you notify someone. `reachableVia` says how a message to that pane actually gets there: `turnStart` (carried by its own next turn, nothing needed from it), `mcpPiggyback` (attached to the result of its next cockpit tool call — it calls them, so it will get there), `wake` (only if you mark a message urgent) or `operatorOnly` (no route at all; it will only see mail if it thinks to call read_inbox, so do not read silence from it as an answer). `deliversAtTurnStart` is the same question narrowed to the first of those. `wakeOptIn` says whether that pane has agreed to be woken for an urgent message — send one with urgent=true and a pane showing false will still only read it in its own time, so this is what tells you whether urgent means anything for this addressee. It runs for the session you call it from — you do not name one.")]
     public async Task<string> ListAgentsAsync()
     {
         try
@@ -201,6 +201,11 @@ internal sealed class AgentsMcpTools(
                     // is wrong, waits for an answer that was never going to come — and the message looks delivered
                     // from every side.
                     deliversAtTurnStart = pane.DeliversAtTurnStart,
+                    // Which route a message to this pane actually travels (AC-527). deliversAtTurnStart above is one
+                    // bit of the same question and is kept for readers written against it; this is the whole answer,
+                    // including the case that bit could never express — a pane with no passive delivery that is still
+                    // reachable, because it calls cockpit tools and the host can hand it mail on the results.
+                    reachableVia = _ReachableVia(coordinator, snapshot, pane.PaneId),
                     // Whether this pane has agreed to be woken (AC-395). Read from the roster rather than from the
                     // pane, because it is a thing the agent said about itself and not a property of its session —
                     // and reported to neighbours for the same reason deliversAtTurnStart is: urgent on a pane that
@@ -771,16 +776,49 @@ internal sealed class AgentsMcpTools(
     /// </para>
     /// </summary>
     private static string? _UnreachableWarning(
-        IWorkspaceAgentCoordinator coordinator, WorkspaceAgentSnapshot snapshot, string addressee)
+        IWorkspaceAgentCoordinator coordinator, WorkspaceAgentSnapshot snapshot, string addressee) =>
+        _ReachableVia(coordinator, snapshot, addressee) == ReachableOperatorOnly
+            ? $"This message is waiting, but nothing is going to bring it to '{addressee}' on its own: that pane has no turn-start delivery, has never called a cockpit tool the cockpit could attach it to, and has not opted in to being woken. It will only see this if it calls read_inbox itself. Do not read silence from it as an answer — if this matters, ask your operator to pass it on."
+            : null;
+
+    /// <summary>Mail arrives with the pane's own next turn (AC-394) — nothing is needed from the pane at all.</summary>
+    internal const string ReachableTurnStart = "turnStart";
+
+    /// <summary>Mail rides out on the result of the pane's next <c>cockpit-*</c> tool call (AC-527).</summary>
+    internal const string ReachableMcpPiggyback = "mcpPiggyback";
+
+    /// <summary>Nothing arrives on its own, but an urgent message can start a turn on this pane (AC-395).</summary>
+    internal const string ReachableWake = "wake";
+
+    /// <summary>No route the host can take. The message waits until that pane thinks to look, which may be never.</summary>
+    internal const string ReachableOperatorOnly = "operatorOnly";
+
+    /// <summary>
+    /// How a message actually reaches this pane (AC-527, criterion 6) — the strongest route that applies, where
+    /// "strongest" means "asks least of the recipient".
+    /// <para>
+    /// The order is not the epic's layer numbering, and deliberately: <c>turnStart</c> comes first because it needs
+    /// nothing from the pane at all, where the piggyback needs it to call something. Piggyback is reported on
+    /// evidence rather than on capability — a pane that has reached this server has demonstrably got the tools
+    /// mounted, and one that never has may have no MCP surface at all (AC-156), which is exactly the case a claim of
+    /// reachability must not paper over. A pane that says <c>mcpPiggyback</c> and receives nothing would be a worse
+    /// failure than one that honestly says <c>operatorOnly</c>.
+    /// </para>
+    /// </summary>
+    private static string _ReachableVia(
+        IWorkspaceAgentCoordinator coordinator, WorkspaceAgentSnapshot snapshot, string paneId)
     {
-        if (_DeliversAtTurnStart(snapshot, addressee)
-            || coordinator.HasWakeConsent(addressee)
-            || coordinator.LastInboxReadUtc(addressee) is not null)
+        if (_DeliversAtTurnStart(snapshot, paneId))
         {
-            return null;
+            return ReachableTurnStart;
         }
 
-        return $"This message is waiting, but nothing is going to bring it to '{addressee}' on its own: that pane has no turn-start delivery, has not opted in to being woken, and has never collected its mail. It will only see this if it calls read_inbox itself. Do not read silence from it as an answer — if this matters, ask your operator to pass it on.";
+        if (coordinator.LastContactUtc(paneId) is not null)
+        {
+            return ReachableMcpPiggyback;
+        }
+
+        return coordinator.HasWakeConsent(paneId) ? ReachableWake : ReachableOperatorOnly;
     }
 
     /// <summary>

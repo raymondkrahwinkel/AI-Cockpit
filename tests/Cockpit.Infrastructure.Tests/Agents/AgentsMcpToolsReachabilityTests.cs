@@ -61,6 +61,89 @@ public sealed class AgentsMcpToolsReachabilityTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// AC-527 criterion 6, per branch. The claim has to match what actually happens: a pane reported as reachable
+    /// that receives nothing is a worse failure than one that honestly says nobody can reach it.
+    /// </summary>
+    [Fact]
+    public async Task ListAgents_ReachableVia_ReportsTurnStartForAPaneWhoseTurnsCarryMail()
+    {
+        _DeskWith(deliversAtTurnStart: true, "pane-1", "pane-2");
+        McpRequestContext.Set("pane-1");
+
+        var seen = _Json(await _Tools().ListAgentsAsync())["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.Equal("turnStart", seen["reachableVia"]!.GetValue<string>());
+    }
+
+    /// <summary>
+    /// The route this whole sub exists for: no turn-start delivery, but the pane calls cockpit tools, so the host can
+    /// hand it mail on the results. Reported on evidence — that the pane has reached this server — rather than on
+    /// capability, because a pane that never has may have no MCP surface at all (AC-156).
+    /// </summary>
+    [Fact]
+    public async Task ListAgents_ReachableVia_ReportsPiggybackForATtyPaneThatCallsCockpitTools()
+    {
+        _DeskWith(deliversAtTurnStart: false, "pane-1", "pane-2");
+
+        McpRequestContext.Set("pane-2");
+        await _Tools().ListAgentsAsync();
+
+        McpRequestContext.Set("pane-1");
+        var seen = _Json(await _Tools().ListAgentsAsync())["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.Equal("mcpPiggyback", seen["reachableVia"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ListAgents_ReachableVia_ReportsWakeForASilentPaneThatAgreedToBeWoken()
+    {
+        _DeskWith(deliversAtTurnStart: false, "pane-1", "pane-2");
+        _coordinator.SetWakeConsent("pane-2", true);
+        McpRequestContext.Set("pane-1");
+
+        var seen = _Json(await _Tools().ListAgentsAsync())["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.Equal("wake", seen["reachableVia"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ListAgents_ReachableVia_ReportsOperatorOnlyWhenNoRouteExists()
+    {
+        _DeskWith(deliversAtTurnStart: false, "pane-1", "pane-2");
+        McpRequestContext.Set("pane-1");
+
+        var seen = _Json(await _Tools().ListAgentsAsync())["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.Equal("operatorOnly", seen["reachableVia"]!.GetValue<string>());
+    }
+
+    /// <summary>
+    /// The warning and the reachability report are the same judgement, so they cannot disagree — a pane the host says
+    /// it can reach must not also be one the send warns about, and that is only guaranteed by them sharing a source.
+    /// </summary>
+    [Fact]
+    public async Task Notify_ToAPaneReachableByPiggyback_CarriesNoWarning()
+    {
+        _DeskWith(deliversAtTurnStart: false, "sender", "target");
+
+        // The target calls a cockpit tool — that is all the piggyback needs.
+        McpRequestContext.Set("target");
+        await _Tools().ListAgentsAsync();
+
+        var json = await _NotifyAs("sender", "target");
+
+        Assert.Null(json["unreachable"]);
+    }
+
     [Fact]
     public async Task ListAgents_APaneThatHasNeverCollectedMail_ReportsNoInboxRead()
     {
