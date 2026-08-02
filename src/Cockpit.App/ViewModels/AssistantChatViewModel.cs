@@ -79,10 +79,11 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
 /// <see cref="Dispose"/> only detaches this peephole's own event subscription; it never touches the session, so
 /// closing the window can never end it.
 /// <para>
-/// The one exception is the header's restart button, and it is an exception in the same direction: it is the
-/// operator pressing it, and even then this view model does nothing itself — it asks the host, which tears its
-/// own instance down and resumes the same conversation. See <see cref="RestartCommand"/> for why it belongs on
-/// this header while a reading-level picker does not.
+/// <b>And nothing here ends one either.</b> <see cref="IAssistantSessionHost.RestartAsync"/> is the one member that
+/// does, and this window does not call it: a restart is asked for beside the setting that needs it, in
+/// Options → Voice → Assistant Profile, not from the surface the conversation is being read on. The header carries
+/// handlings of the <em>running</em> assistant — speaking on or off — and one standing safety fact it must show
+/// without Options being open (AC-575's bypass mark).
 /// </para>
 /// <para>
 /// <b>Criterion 8 — no microphone required.</b> This view model carries no STT/voice code path at all: sending is

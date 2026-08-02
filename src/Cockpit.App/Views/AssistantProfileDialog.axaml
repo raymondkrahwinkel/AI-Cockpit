@@ -1,0 +1,297 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.AssistantProfileDialog"
+        x:DataType="vm:AssistantProfileDialogViewModel"
+        Title="Assistant Profile"
+        Width="560" Height="720" MinWidth="460" MinHeight="440"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:AssistantProfileDialogViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Footer: Cancel/Save on the right, the status line taking the star column — the one thing in the band
+             whose width comes from data, the shape AC-428 settled for Manage profiles. -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
+                           TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding StatusMessage}"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ScrollViewer>
+            <StackPanel Margin="16" Spacing="11">
+
+                <!-- Says whose profile this is, because that is the whole point of the dialog existing: the
+                     assistant used to be shown as a selection from the profile list, and an operator therefore
+                     edited that list expecting it to reach here. No repeated heading — the window chrome above
+                     already carries the name. -->
+                <TextBlock Text="The assistant's own profile. It is not in the profile list, nothing else uses it, and editing a profile elsewhere never changes it."
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+                <!-- Starting point, not a link. The values are read in once and nothing remembers where they came
+                     from — which is exactly why the previous design needed a paragraph explaining that its copy
+                     was a copy, and this one does not. -->
+                <StackPanel Spacing="4" IsVisible="{Binding HasCopyFromProfiles}">
+                    <TextBlock Text="Start from an existing profile" FontSize="11"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                        <ComboBox Grid.Column="0" ItemsSource="{Binding CopyFromProfiles}"
+                                  SelectedItem="{Binding CopyFromProfile}"
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"
+                                  PlaceholderText="Pick a profile to copy in"/>
+                        <Button Grid.Column="1" Content="Copy in" Command="{Binding CopyFromCommand}"/>
+                    </Grid>
+                    <TextBlock Text="Copies its settings in once. From then on they are the assistant's — later changes to that profile do not follow."
+                               FontSize="11" TextWrapping="Wrap"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+
+                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                <StackPanel Spacing="11" DataContext="{Binding Profile}" x:DataType="vm:EditableProfileViewModel">
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Label" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Label}"/>
+                    </StackPanel>
+
+                    <!-- Reaches the assistant through AssistantSessionHost._LaunchOptions, which sends this on the
+                         append-system-prompt option when it is set and AssistantSystemPrompt.Default when it is
+                         not. Not on the operator's list of blocks, and kept anyway because it is consumed at every
+                         start: leaving it out would make the assistant's own standing instruction the one thing
+                         about it nobody could change. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Standing instruction (empty = the assistant's built-in one)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="56" MaxHeight="120"
+                                 PlaceholderText="Who the assistant is and how it should answer"/>
+                    </StackPanel>
+
+                    <!-- Switchable, unlike the profile list's fixed dropdown: this record is replaced whole on every
+                         save, so moving the assistant to another provider mints a new record rather than mutating
+                         one. See the view model's _Editable for the reasoning. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Provider" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
+                    <!-- Claude-CLI (legacy, non-plugin) provider fields. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
+                        <TextBlock Text="Config directory (CLAUDE_CONFIG_DIR)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
+                                    Click="OnBrowseConfigDir"/>
+                            <TextBox Text="{Binding ConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"/>
+                        </DockPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
+                        <TextBlock Text="Executable (empty = bundled default)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
+                                    Click="OnBrowseExecutable"/>
+                            <TextBox Text="{Binding ExecutablePath}" FontFamily="{StaticResource CockpitMonoFont}"/>
+                        </DockPanel>
+                    </StackPanel>
+
+                    <!-- Local (Ollama / LM Studio) provider fields. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                        <TextBlock Text="Server base URL" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding BaseUrl}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="{Binding BaseUrlPlaceholder}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                        <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <AutoCompleteBox Text="{Binding Model}" ItemsSource="{Binding AvailableModels}"
+                                         FilterMode="ContainsOrdinal" MinimumPrefixLength="0"
+                                         FontFamily="{StaticResource CockpitMonoFont}"
+                                         PlaceholderText="Model id as the server reports it"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLmStudioProvider}">
+                        <TextBlock Text="API key (optional, only behind a proxy)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
+                    </StackPanel>
+
+                    <!-- The plugin's own config panel (#45) — config directory, executable, managed CLI, and the
+                         validation feedback that makes a path field usable. Embedded whole rather than reproduced,
+                         since a plugin's config shape is opaque to the host and a second rendering of it would be a
+                         copy that drifts. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProviderMissing}">
+                        <TextBlock Text="Provider plugin not installed" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                        <TextBlock Text="This profile's provider plugin is missing, disabled, or failed to load. Its settings are kept as-is and cannot be edited here until the plugin is available again."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProvider}" IsEnabled="{Binding !IsPluginProviderMissing}">
+                        <TextBlock Text="Provider settings" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                   IsVisible="{Binding !IsPluginProviderMissing}"/>
+                        <ContentControl Content="{Binding PluginConfigView.View}" IsVisible="{Binding !IsPluginProviderMissing}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                        <TextBlock Text="Base system prompt (optional)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding SystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="70" MaxHeight="146"
+                                 PlaceholderText="Sent as the first system message of every conversation"/>
+                    </StackPanel>
+
+                    <!-- A local provider gates tool calls per call rather than through a permission mode, so this is
+                         its half of the block below — the assistant on Ollama/LM Studio reads it at start
+                         (SessionViewModel.StartWithProfileAsync). Hidden for a provider that has permission modes,
+                         which would make it a dead control. -->
+                    <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
+                              IsVisible="{Binding IsLocalProvider}"
+                              ToolTip.Tip="The assistant starts with 'Allow all tools' already on"/>
+
+                    <!-- Session defaults: the provider's own declared start options, rendered generically from its
+                         declaration. The wording deliberately differs from the profile editor's: there it says each
+                         can still be changed when a session is started, and for the assistant there is no
+                         New-session dialog to change them in. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding HasPluginOptionDefaults}">
+                        <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <TextBlock Text="What the assistant runs on. There is no New-session dialog for it, so these are not pre-selections — they are what it gets."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding PluginOptionDefaults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
+                                    <Grid ColumnDefinitions="120,*" Margin="0,0,0,6">
+                                        <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
+                                                  SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                                  DisplayMemberBinding="{Binding Label}"
+                                                  IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                                  PlaceholderText="(default)"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
+                                                 PlaceholderText="(default)"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- The restart, next to the setting that needs it. A permission mode is read at a launch
+                             and bypassPermissions can only be chosen at one, so this is the sentence and the button
+                             that answers it, in one place. -->
+                        <Border Background="{StaticResource CockpitChromeBgBrush}"
+                                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="10"
+                                IsVisible="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).CanRestartAssistant}">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="A permission mode is read when the assistant starts, and can only be chosen there — a running assistant keeps the one it launched with."
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <Button HorizontalAlignment="Left"
+                                        Command="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).SaveAndRestartCommand}"
+                                        ToolTip.Tip="Saves, then stands the assistant down and brings it back up on the same conversation">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <materialIcons:MaterialIcon Kind="Restart" Width="14" Height="14" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Save and restart the assistant" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- MCP servers. Additive, not a free choice: AssistantSessionHost.McpSelection always unions in
+                         the assistant's own two endpoints, and with nothing ticked the set is the ordinary fan-out
+                         minus what the assistant is not handed by default. Said here so seeing cockpit-assistant
+                         mounted with an empty selection does not read as a bug. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding HasMcpServers}">
+                        <TextBlock Text="MCP SERVERS" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <TextBlock FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   Text="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).AlwaysMountedMcpServers, StringFormat='The assistant always mounts its own {0} — that is how it reads and acts across workspaces, and nothing here removes them. Anything below is added on top.'}"/>
+                        <CheckBox Content="Choose which other MCP servers the assistant gets"
+                                  IsChecked="{Binding RestrictMcpServers}"
+                                  ToolTip.Tip="Off: every enabled server the assistant is given by default. On: only the servers ticked below."/>
+                        <controls:McpServerChecklist IsVisible="{Binding RestrictMcpServers}"
+                                                     Servers="{Binding McpServers}"
+                                                     Hint="Exactly these, plus the assistant's own two. Untick to give it fewer tools and a smaller prompt."
+                                                     TokenSummary="{Binding McpToolTokenSummary}"
+                                                     ShowTokenSummary="{Binding HasMcpTokenSummary}"
+                                                     RefreshCommand="{Binding RefreshMcpTokensCommand}"/>
+                    </StackPanel>
+
+                    <!-- Per-profile environment variables (AC-22), injected at spawn by
+                         PluginSessionDriverAdapter._SpawnEnvironment. Gated on the provider's own capability so a
+                         provider with nothing to inject into never shows a dead editor. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding SupportsEnvVars}">
+                        <TextBlock Text="ENVIRONMENT VARIABLES" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <TextBlock Text="Injected into the assistant's own process. Mark a value as secret to store it encrypted and masked."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding EnvironmentVariables}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProfileEnvironmentVariableViewModel">
+                                    <Grid ColumnDefinitions="4*,5*,Auto,Auto" RowDefinitions="Auto,Auto"
+                                          ColumnSpacing="6" Margin="0,0,0,6">
+                                        <TextBox Grid.Column="0" Text="{Binding Key}" PlaceholderText="NAME"
+                                                 FontFamily="{StaticResource CockpitMonoFont}"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="value"
+                                                 FontFamily="{StaticResource CockpitMonoFont}"
+                                                 IsVisible="{Binding !IsSecret}"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="value"
+                                                 PasswordChar="•" IsVisible="{Binding IsSecret}"/>
+                                        <CheckBox Grid.Column="2" IsChecked="{Binding IsSecret}" Content="Secret"
+                                                  FontSize="11" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="3" Classes="Subtle" VerticalAlignment="Center"
+                                                Command="{Binding $parent[ItemsControl].((vm:EditableProfileViewModel)DataContext).RemoveEnvironmentVariableCommand}"
+                                                CommandParameter="{Binding}">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                        </Button>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,2,0,0"
+                                                   Text="Not a valid variable name — letters, digits and underscores, not starting with a digit."
+                                                   FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                   IsVisible="{Binding !IsKeyValid}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="+ Add variable" Classes="Subtle" HorizontalAlignment="Left"
+                                Foreground="{StaticResource CockpitAccentBrush}"
+                                Command="{Binding AddEnvironmentVariableCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

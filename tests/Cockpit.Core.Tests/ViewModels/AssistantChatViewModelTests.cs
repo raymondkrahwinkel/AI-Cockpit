@@ -33,25 +33,31 @@ public class AssistantChatViewModelTests
     }
 
     /// <summary>
-    /// The restart button goes to the host and does nothing else. It is in this header because a restart is a
-    /// <em>handling</em> — the same test the speak toggle passes and a reading-level picker fails — and because
-    /// this is where its effect is read: a permission mode is chosen at a start, never live, so "applies at the
-    /// next start" needed somewhere to ask for one.
+    /// This window never restarts the assistant — not on any path it has. The restart lives beside the setting
+    /// that needs it (Options → Voice → Assistant Profile), because "this applies at the next start" is only
+    /// useful next to the thing that provides one.
     /// </summary>
+    /// <remarks>
+    /// Written against the host rather than against the absence of a command, so it keeps holding if a future
+    /// header control grows one: whatever this window offers, it must not be the thing that ends the conversation
+    /// it is showing.
+    /// </remarks>
     [Fact]
-    public async Task TheRestartButton_AsksTheHostToRestart_AndDoesNotResetTheWindowsOwnView()
+    public async Task TheChatWindow_NeverRestartsTheAssistant_OnAnyPathItHas()
     {
         var session = new SessionViewModel();
-        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "what did AC-223 do overnight"));
         var host = FakeHost(session);
         var vm = new AssistantChatViewModel(host, FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
 
-        await vm.RestartCommand.ExecuteAsync(null);
+        await vm.EnsureOpenedAsync();
+        vm.InputText = "what did AC-223 do overnight";
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.SpeakReplies = false;
+        await vm.ApplySettingsAsync();
+        vm.Dispose();
 
-        await host.Received(1).RestartAsync(Arg.Any<CancellationToken>());
-        // The window is a peephole: it neither ends nor replaces anything itself, and the conversation it is
-        // looking at is the host's to resume.
-        Assert.Same(session, vm.Session);
+        await host.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
+        Assert.Same(session, host.Session);
     }
 
     private static IAssistantSettingsStore FakeSettingsStore(bool speakReplies = true)

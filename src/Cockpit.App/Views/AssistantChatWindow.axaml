@@ -143,19 +143,12 @@
                         <materialIcons:MaterialIcon Kind="TrayArrowDown" Width="14" Height="14"/>
                     </Button>
 
-                    <!-- Restart. A handling, which is the test this header is held to (the speak toggle passes it,
-                         a reading-level picker does not) — and the only place the start a start-time setting waits
-                         for can actually be asked for: bypassPermissions is choosable at a launch and never live
-                         (SessionOptionCatalog splits LivePermissionModes off AllPermissionModes for exactly that),
-                         and the assistant has no close/open cycle of its own to ride on. The conversation is picked
-                         up again, so this costs nothing but the wait. -->
-                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
-                            Command="{Binding RestartCommand}"
-                            ToolTip.Tip="Restart the assistant (same conversation) — applies settings that only take effect at a start">
-                        <materialIcons:MaterialIcon Kind="Restart" Width="14" Height="14"/>
-                    </Button>
-
-                    <Button Grid.Column="6" Classes="Subtle Compact" VerticalAlignment="Center"
+                    <!-- No restart button here, deliberately. It was here first, on the reasoning that a restart is
+                         a handling and this window carries handlings — which argues that it *may* stand here, not
+                         that it belongs. It belongs beside the setting that needs it: the permission mode in
+                         Options → Voice → Assistant Profile, where the sentence "this applies at the next start"
+                         and the start that answers it are one thing instead of two windows apart. -->
+                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
                     </Button>

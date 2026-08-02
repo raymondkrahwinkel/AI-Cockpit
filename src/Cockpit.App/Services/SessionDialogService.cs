@@ -7,6 +7,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
@@ -59,6 +60,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProjectMemorySourceRegistry _memorySources;
     private readonly SurfaceWindows _surfaces;
 
+    /// <summary>The assistant's own profile slot (AC-543) — its own section of the config, not an entry in <see cref="_profileStore"/>.</summary>
+    private readonly IAssistantProfileStore _assistantProfileStore;
+
     public SessionDialogService(
         ISessionProfileStore profileStore,
         IProfileLoginChecker loginChecker,
@@ -80,8 +84,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IProjectStore projectStore,
         IProjectFieldRegistry projectFields,
         IProjectMemorySourceRegistry memorySources,
-        SurfaceWindows surfaces)
+        SurfaceWindows surfaces,
+        IAssistantProfileStore assistantProfileStore)
     {
+        _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -251,6 +257,26 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             await _ShowSurfaceAsync(typeof(ManageProfilesDialog), owner, _BuildManageProfilesAsync);
         }
+    }
+
+    public async Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        // A surface, like Manage profiles: editing a provider's settings and picking servers is minutes of work,
+        // and every running session — the assistant included — has to stay reachable behind it (AC-367).
+        await _ShowSurfaceAsync(typeof(AssistantProfileDialog), owner, async () =>
+        {
+            var viewModel = new AssistantProfileDialogViewModel(
+                _assistantProfileStore, _profileStore, assistant, _loginChecker,
+                _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver);
+            await viewModel.LoadAsync();
+
+            return new AssistantProfileDialog { DataContext = viewModel };
+        });
     }
 
     public async Task ShowProjectsDialogAsync(ProjectsViewModel projects)

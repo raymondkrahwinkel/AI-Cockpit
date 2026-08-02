@@ -212,7 +212,13 @@ public partial class App : Application
         // default — "switched off" — until something happens to save Options, so on every launch after the one
         // where it was turned on, the first F10 refused with a reason that was simply out of date. Starts
         // nothing: it resolves availability, and the first hold or click is still what builds the instance.
-        _ = Program.Services.GetRequiredService<AssistantSessionHost>().ApplySettingsAsync();
+        var assistantHost = Program.Services.GetRequiredService<AssistantSessionHost>();
+        _ = assistantHost.ApplySettingsAsync();
+
+        // Handed over rather than injected: the host is built *from* the cockpit view model, so the view model
+        // cannot take it as a constructor argument. Options → Voice needs it for the one thing only a living
+        // assistant can do — restart onto a permission mode it was not launched with.
+        cockpitViewModel.AssistantHost = assistantHost;
 
         // The chip, and what feeds it. Started here rather than in its constructor because it subscribes to the
         // open-mic coordinator, which is resolved further down — and because the view model it hands over has to

@@ -72,6 +72,17 @@ internal static class Screenshotter
         ["voice-transcribe"] = (_, _) => _OptionsVoicePage("Transcribe"),
         ["voice-assistant"] = (_, _) => _OptionsVoiceAssistantPage(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+        // The assistant's own profile editor. Its own scene rather than a state of "profiles": it is a different
+        // window with a different, shorter set of blocks, and the one control this ticket moved — the restart, which
+        // only shows with a living assistant behind it — renders nowhere else. Taller than it opens, the way the
+        // Manage-profiles editor scenes are, so the environment-variables block at the bottom is not the part of
+        // the scene nobody can see.
+        ["assistant-profile"] = (_, _) => new AssistantProfileDialog
+        {
+            DataContext = new ViewModels.AssistantProfileDialogViewModel(
+                new _FakeAssistantSessionHost(), new _FakeClaudeProviderRegistry()),
+            Height = 1220,
+        },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with
         // the toggle pre-set to TTY, the same profile with it pre-set to SDK, and a local-provider profile (no TTY
         // route at all) where the toggle disappears in favour of a plain "SDK-only" label. Tall enough that the
@@ -786,6 +797,9 @@ internal static class Screenshotter
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.AssistantOptions.IsEnabled = true;
+        // The design-time graph has no profile store, so the row would otherwise render an "Edit…" button with
+        // nothing beside it — a state no real cockpit has (an unset slot fills in its reason instead).
+        cockpit.AssistantOptions.ProfileLabel = "Claude (assistant) · claude · sonnet";
         cockpit.AssistantOptions.ConsentBypassSources.Add(
             new ViewModels.ConsentBypassSourceViewModel(
                 Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp, Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp)
@@ -1337,6 +1351,68 @@ internal static class Screenshotter
 
         public void ReportHoldListening(bool listening)
         {
+        }
+    }
+
+    /// <summary>
+    /// Stands in for the bundled Claude provider plugin, which a headless render has no way to load.
+    /// </summary>
+    /// <remarks>
+    /// Without it the assistant-profile scene renders a form for a provider that resolved to nothing: the label
+    /// falls back to Ollama, the session-defaults block has no options to show, and the environment-variables block
+    /// is hidden because <c>SupportsEnvVars</c> is a capability read off a registration. Three of the five blocks
+    /// the dialog exists for, absent from the one picture that is supposed to prove them. The config panel itself
+    /// stays a placeholder — that control belongs to the plugin, and its layout is proved by the Manage-profiles
+    /// scenes rather than faked here.
+    /// </remarks>
+    private sealed class _FakeClaudeProviderRegistry : Cockpit.Infrastructure.Sessions.IPluginProviderRegistry
+    {
+        private static readonly Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration Claude = new(
+            ClaudePluginProfile.ProviderId,
+            "Claude",
+            _ => throw new NotSupportedException("A screenshot starts no session."),
+            new Cockpit.Plugins.Abstractions.Sessions.PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
+            _ => new _PlaceholderConfigView())
+        {
+            Options =
+            [
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption(
+                    "permission-mode", "Permission mode", ["default", "acceptEdits", "plan", "bypassPermissions"], "default")
+                {
+                    ChoiceLabels = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["default"] = "Ask permissions",
+                        ["acceptEdits"] = "Accept edits",
+                        ["plan"] = "Plan only",
+                        ["bypassPermissions"] = "Bypass permissions",
+                    },
+                },
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption("model", "Model", ["opus", "sonnet", "haiku"], "sonnet"),
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption("effort", "Effort", ["low", "medium", "high"], "medium"),
+            ],
+        };
+
+        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration) { }
+
+        public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Claude];
+
+        public Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration? Resolve(string providerId) =>
+            providerId == ClaudePluginProfile.ProviderId ? Claude : null;
+    }
+
+    private sealed class _PlaceholderConfigView : Cockpit.Plugins.Abstractions.Sessions.IPluginProviderConfigView
+    {
+        public Control View { get; } = new TextBlock
+        {
+            Text = "The Claude plugin's own settings render here — config directory, executable, managed CLI.",
+            FontSize = 11,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        };
+
+        public bool TryGetConfigJson(out string configJson)
+        {
+            configJson = "{}";
+            return true;
         }
     }
 

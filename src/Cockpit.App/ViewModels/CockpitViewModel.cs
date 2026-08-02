@@ -2445,7 +2445,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
         // where the page renders its defaults rather than the dialog failing to open.
-        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, sessionProfileStore, consentAuditLog);
+        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog);
         _ = AssistantOptions.RefreshAsync();
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
@@ -4913,6 +4913,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _dialogService.ShowManageProfilesDialogAsync();
     }
+
+    /// <summary>
+    /// Opens the assistant's own profile editor from Options → Voice.
+    /// </summary>
+    /// <remarks>
+    /// The command lives here rather than on <see cref="AssistantOptionsViewModel"/> because the dialog it opens
+    /// needs <see cref="IAssistantSessionHost"/> for its restart button, and that host is constructed from
+    /// this view model — so injecting it into the dialog service (which this view model already depends on) would
+    /// be a cycle. It is handed in as a parameter instead, the same escape and the same reason
+    /// <see cref="ISessionDialogService.ShowWorktreesDialogAsync"/> and <c>ShowProjectsDialogAsync</c> already use.
+    /// </remarks>
+    [RelayCommand]
+    private async Task EditAssistantProfileAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowAssistantProfileDialogAsync(AssistantHost);
+
+        // The dialog can rename the record or move it to another provider, and this page shows both. Re-read rather
+        // than have the dialog push a value back: one loader, and it is the one that already runs on open.
+        await AssistantOptions.RefreshAsync();
+    }
+
+    /// <summary>
+    /// The living assistant, handed in by the app at startup for the same reason <see cref="ScheduledResumes"/> is:
+    /// it is built from this view model, so it cannot also be a constructor argument of it. Null in the test and
+    /// design-time graphs, where the profile editor simply offers no restart.
+    /// </summary>
+    public IAssistantSessionHost? AssistantHost { get; set; }
 
     /// <summary>Opens the MCP-servers dialog (#26) from the sidebar to edit the shared MCP-server registry.</summary>
     [RelayCommand]

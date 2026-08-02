@@ -47,172 +47,39 @@ public class AssistantOptionsViewModelTests
         Assert.True(settingsStore.Saved!.IsEnabled);
     }
 
+    /// <summary>
+    /// The page names the assistant's own profile — it does not offer a choice among the profile list.
+    /// </summary>
+    /// <remarks>
+    /// The slot has always held a whole record of its own, and presenting it as a selection from that list is what
+    /// made an operator set <c>bypassPermissions</c> on "default" and expect the assistant to obey it. A label plus
+    /// its provider, next to an editor, is the page saying what the thing actually is.
+    /// </remarks>
     [Fact]
-    public async Task RefreshAsync_ShowsTheSlotsFixedName_NotTheRecordsLabel()
+    public async Task RefreshAsync_NamesTheAssistantsOwnProfile_AndWhatItRunsOn()
     {
-        var profileStore = new FakeProfileStore(new AssistantProfileSlot(new SessionProfile("My Claude login", new ClaudeConfig("/tmp"))));
-        var vm = new AssistantOptionsViewModel(profileStore: profileStore);
+        var vm = new AssistantOptionsViewModel(
+            profileStore: new FakeProfileStore(new AssistantProfileSlot(new SessionProfile("My Claude login", new ClaudeConfig("/tmp")))));
 
         await vm.RefreshAsync();
 
-        Assert.Equal("Assistant Profile", AssistantOptionsViewModel.ProfileSlotDisplayName);
-        Assert.Equal("My Claude login", vm.SelectedProfile!.Label);
+        Assert.NotNull(vm.ProfileLabel);
+        Assert.Contains("My Claude login", vm.ProfileLabel, StringComparison.Ordinal);
+        Assert.Null(vm.ProfileUnsetReason);
     }
 
     [Fact]
     public async Task RefreshAsync_WhenSlotIsUnset_SurfacesTheReason()
     {
-        var profileStore = new FakeProfileStore(new AssistantProfileSlot(null, "The Codex switch failed: no API key."));
-        var vm = new AssistantOptionsViewModel(profileStore: profileStore);
+        var vm = new AssistantOptionsViewModel(
+            profileStore: new FakeProfileStore(new AssistantProfileSlot(null, "The Codex switch failed: no API key.")));
 
         await vm.RefreshAsync();
 
-        Assert.Null(vm.SelectedProfile);
+        // One or the other, never both: a name and an explanation for having none would each be describing a
+        // different state of the same slot.
+        Assert.Null(vm.ProfileLabel);
         Assert.Equal("The Codex switch failed: no API key.", vm.ProfileUnsetReason);
-    }
-
-    [Fact]
-    public async Task SelectingAProfile_RepointsTheSlot()
-    {
-        var profileStore = new FakeProfileStore(new AssistantProfileSlot(null, "not set up yet"));
-        var vm = new AssistantOptionsViewModel(profileStore: profileStore);
-        await vm.RefreshAsync();
-        var chosen = new SessionProfile("Codex", new ClaudeConfig("/tmp"));
-
-        vm.SelectedProfile = chosen;
-        await vm.PendingProfileRepoint!;
-
-        Assert.Equal(chosen, profileStore.RepointedTo);
-        Assert.Null(vm.ProfileUnsetReason);
-    }
-
-    // ── The slot holds a copy, and that copy must not go stale in silence ─────────────────────────────────────
-    //
-    // Measured on a real config: Profiles → 'default' had OptionDefaults { permission-mode: bypassPermissions },
-    // while the Assistant Profile's copy of that same record still said { permission-mode: default }. The slot
-    // carries a whole SessionProfile taken when it was picked and follows no later edit — deliberately, because
-    // being found by nothing is what stops a rename or a delete cutting the assistant loose (AC-410). What was
-    // missing was that the price was written down anywhere, and a way to pay it.
-
-    [Fact]
-    public async Task RefreshAsync_WithAProfileSet_SaysOutLoudThatTheAssistantRunsOnACopyOfIt()
-    {
-        var vm = new AssistantOptionsViewModel(
-            profileStore: new FakeProfileStore(new AssistantProfileSlot(_Profile("default", "default"))),
-            sessionProfileStore: new FakeSessionProfileStore(_Profile("default", "bypassPermissions")));
-
-        await vm.RefreshAsync();
-
-        // The exact wording is not the contract; that it names the record and says a copy is, because a page that
-        // shows only a dropdown reads as "the assistant uses this profile" — which is the belief that cost the
-        // operator an afternoon.
-        Assert.NotNull(vm.ProfileSnapshotNote);
-        Assert.Contains("copy", vm.ProfileSnapshotNote, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("default", vm.ProfileSnapshotNote, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_WithNoProfileSet_SaysNothingAboutACopy()
-    {
-        // There is nothing to have copied, and ProfileUnsetReason is what the page shows instead. A note here
-        // would be a sentence about a record that does not exist.
-        var vm = new AssistantOptionsViewModel(
-            profileStore: new FakeProfileStore(new AssistantProfileSlot(null, "not set up yet")));
-
-        await vm.RefreshAsync();
-
-        Assert.Null(vm.ProfileSnapshotNote);
-        Assert.False(vm.CanRefreshProfileSnapshot);
-    }
-
-    /// <summary>
-    /// The whole of part B: an edit to the profile the copy was taken from reaches the assistant, in one click.
-    /// </summary>
-    [Fact]
-    public async Task RefreshingTheSnapshot_RepointsTheSlotAtTheEditedRecord()
-    {
-        var stale = _Profile("default", "default");
-        var edited = _Profile("default", "bypassPermissions");
-        var profileStore = new FakeProfileStore(new AssistantProfileSlot(stale));
-        var vm = new AssistantOptionsViewModel(
-            profileStore: profileStore,
-            sessionProfileStore: new FakeSessionProfileStore(edited));
-        await vm.RefreshAsync();
-
-        Assert.True(vm.CanRefreshProfileSnapshot);
-        await vm.RefreshProfileSnapshotCommand.ExecuteAsync(null);
-
-        // Not "a profile named default" — the record that is on disk now, permission mode and all.
-        Assert.Same(edited, profileStore.RepointedTo);
-        Assert.Equal(
-            "bypassPermissions",
-            profileStore.RepointedTo!.Defaults!.OptionDefaults!["permission-mode"]);
-    }
-
-    /// <summary>
-    /// AC-410's protection, intact. The label is consulted in exactly one place — to offer this button a candidate
-    /// — and never to resolve the slot. So a renamed (or deleted) profile costs the button and nothing else: the
-    /// slot still holds its record, the assistant still runs, and no write happens behind the operator's back.
-    /// </summary>
-    [Fact]
-    public async Task WhenTheProfileWasRenamedAway_TheSlotKeepsItsRecord_AndNothingIsRepointed()
-    {
-        var held = _Profile("default", "bypassPermissions");
-        var profileStore = new FakeProfileStore(new AssistantProfileSlot(held));
-        var vm = new AssistantOptionsViewModel(
-            profileStore: profileStore,
-            // The same profile, renamed. On a label lookup that could lose, this is where the assistant would read
-            // as unconfigured — the AC-410 bug, exactly.
-            sessionProfileStore: new FakeSessionProfileStore(_Profile("default (old)", "bypassPermissions")));
-
-        await vm.RefreshAsync();
-
-        Assert.Same(held, vm.SelectedProfile);
-        Assert.Null(vm.ProfileUnsetReason);
-        Assert.False(vm.CanRefreshProfileSnapshot);
-        Assert.Null(profileStore.RepointedTo);
-
-        // And it still says what it is, rather than falling silent on the case where refreshing is impossible.
-        Assert.NotNull(vm.ProfileSnapshotNote);
-    }
-
-    /// <summary>
-    /// Opening the page must not repoint anything on its own. Doing so silently would mean a profile renamed away
-    /// and a <em>new</em> one created under the old name quietly becomes the assistant's — the impostor case that
-    /// is precisely why the slot does not resolve by name.
-    /// </summary>
-    [Fact]
-    public async Task RefreshAsync_NeverRepointsTheSlotByItself()
-    {
-        var profileStore = new FakeProfileStore(new AssistantProfileSlot(_Profile("default", "default")));
-        var vm = new AssistantOptionsViewModel(
-            profileStore: profileStore,
-            sessionProfileStore: new FakeSessionProfileStore(_Profile("default", "bypassPermissions")));
-
-        await vm.RefreshAsync();
-
-        Assert.Null(profileStore.RepointedTo);
-    }
-
-    private static SessionProfile _Profile(string label, string permissionMode) =>
-        new(label, new ClaudeConfig("/tmp"))
-        {
-            Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty)
-            {
-                OptionDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["permission-mode"] = permissionMode,
-                },
-            },
-        };
-
-    private sealed class FakeSessionProfileStore(params SessionProfile[] profiles) : Cockpit.Core.Abstractions.Profiles.ISessionProfileStore
-    {
-        public Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<SessionProfile>>(profiles);
-
-        public Task SaveAsync(IReadOnlyList<SessionProfile> saved, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("The Assistant page never writes the profile list.");
     }
 
     // ── AC-575: the consent-bypass rows ───────────────────────────────────────────────────────────────────────

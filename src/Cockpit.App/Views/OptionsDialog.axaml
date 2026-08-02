@@ -627,33 +627,26 @@
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <TextBlock Text="Assistant Profile" FontWeight="SemiBold"/>
                                         <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="Which provider and model the assistant runs on. This profile cannot be deleted — switching provider replaces what is behind it."/>
+                                            ToolTip.Tip="The assistant's own profile — which provider and model it runs on, and what it may do. It is not in the profile list and cannot be deleted; editing a profile elsewhere never changes it."/>
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <ComboBox ItemsSource="{Binding AssistantOptions.AvailableProfiles}"
-                                                  SelectedItem="{Binding AssistantOptions.SelectedProfile}"
-                                                  DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+
+                                    <!-- A name and an editor, not a picker. This used to be a dropdown over the
+                                         profile list, which read as "the assistant uses that profile" — so an
+                                         operator set bypassPermissions on it, saw no change, and was right to be
+                                         confused: the slot has always held a whole record of its own, copied once.
+                                         Naming it as the assistant's own removes the belief instead of annotating
+                                         it (which is what a staleness note and a refresh button were doing here). -->
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding AssistantOptions.ProfileLabel}"
+                                                   IsVisible="{Binding AssistantOptions.ProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
                                         <TextBlock Text="{Binding AssistantOptions.ProfileUnsetReason}"
                                                    IsVisible="{Binding AssistantOptions.ProfileUnsetReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                    </StackPanel>
-
-                                    <!-- The slot holds a copy of the profile, taken when it was picked, and follows
-                                         no later edit to it — that is the price of it being found by nothing at all,
-                                         which is what keeps a rename or a delete from cutting the assistant loose
-                                         (AC-410). Shown rather than left to be discovered: an operator set
-                                         bypassPermissions on the profile and was still asked for every tool call,
-                                         because the copy still said "default" and nothing anywhere said so. The
-                                         button re-copies; it is disabled when no profile of that name is left. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Top"
-                                                IsVisible="{Binding AssistantOptions.ProfileSnapshotNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                        <TextBlock Text="{Binding AssistantOptions.ProfileSnapshotNote}"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
-                                                   TextWrapping="Wrap" MaxWidth="360" VerticalAlignment="Center"/>
-                                        <Button Content="Refresh copy" VerticalAlignment="Center"
-                                                Command="{Binding AssistantOptions.RefreshProfileSnapshotCommand}"
-                                                ToolTip.Tip="Take a fresh copy of that profile. The assistant picks the new settings up at its next start — restart it from the chat window's header to make that now."/>
+                                                   VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
+                                        <Button Content="Edit…" VerticalAlignment="Center"
+                                                Command="{Binding EditAssistantProfileCommand}"
+                                                ToolTip.Tip="Provider, session defaults, MCP servers and environment variables — and the restart that applies a permission mode"/>
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
