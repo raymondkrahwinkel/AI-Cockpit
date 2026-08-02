@@ -27,6 +27,14 @@ public enum TranscriptEntryKind
     /// at Focus/Simple, which stay calm (AC-138), restoring thinking that AC-144 had dropped app-wide.
     /// </summary>
     Thinking,
+
+    /// <summary>
+    /// A rule across the transcript marking a break in the conversation the transcript itself keeps recording —
+    /// today only "context cleared" (AC-564). The transcript stays whole because it is the pane's audit surface;
+    /// this row is what says where the agent's memory stops. Visible at every reading level: it explains
+    /// everything below it.
+    /// </summary>
+    Divider,
 }
 
 /// <summary>
@@ -45,8 +53,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// <summary>A streamed reasoning/extended-thinking row (AC-213), rendered as its own dimmed, collapsible section.</summary>
     public bool IsThinking => Kind == TranscriptEntryKind.Thinking;
 
-    /// <summary>Rows not rendered as a tool-use, a standalone tool result, or a thinking section — assistant/user text, questions, errors.</summary>
-    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking;
+    /// <summary>A rule across the transcript with its label in the middle (AC-564) — not text in the reply column.</summary>
+    public bool IsDivider => Kind == TranscriptEntryKind.Divider;
+
+    /// <summary>Rows not rendered as a tool-use, a standalone tool result, a thinking section or a divider — assistant/user text, questions, errors.</summary>
+    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider;
 
     /// <summary>Assistant prose renders as markdown (T9).</summary>
     public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;

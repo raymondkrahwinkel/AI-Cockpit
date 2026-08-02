@@ -960,6 +960,8 @@ public partial class CockpitView : UserControl
 
     private void OnDuplicateSession(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.DuplicateSessionCommand.Execute(s));
 
+    private void OnClearSessionContext(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ClearSessionContextCommand.Execute(s));
+
     private void OnSetSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.SetSessionStatusCommand.Execute(s));
 
     private void OnScheduleSessionResume(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ScheduleSessionResumeCommand.Execute(s));

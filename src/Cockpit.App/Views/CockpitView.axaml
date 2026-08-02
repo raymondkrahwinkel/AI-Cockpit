@@ -481,6 +481,10 @@
                                         <ContextMenu>
                                             <MenuItem Header="Rename" Click="OnRenameSession"/>
                                             <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
+                                            <!-- AC-564: only the SDK route, which has no /clear of its own — a TTY
+                                                 session is a real TUI and the operator types it there. -->
+                                            <MenuItem Header="Clear context…" Click="OnClearSessionContext"
+                                                      IsVisible="{Binding SupportsClearContext}"/>
                                             <Separator/>
                                             <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
                                             <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
@@ -1186,8 +1190,17 @@
                     <!-- The panel measures its direct children (the generated item containers), so pane
                          visibility must gate the CONTAINER, not a Border inside the template — otherwise a
                          collapsed panel still claims a tile. -->
+                    <!-- Scoped to this grid's own containers on purpose: a bare "ContentPresenter" selector
+                         matches every presenter BELOW this control too — every ContentControl's
+                         #PART_ContentPresenter inside every session view, whose DataContext is a transcript
+                         entry, not a pane. Each one then re-evaluates IsPaneVisible against
+                         TranscriptEntryViewModel, fails, and logs; a streaming SDK session did that thousands
+                         of times a second, which is what ran the app out of memory.
+                         "> " is the LOGICAL parent, and a generated container's logical parent is the
+                         ItemsControl itself — not the SessionTilePanel it is measured in, which is only its
+                         visual parent. Naming the grid keeps it off the nested ItemsControls inside a pane. -->
                     <ItemsControl.Styles>
-                        <Style Selector="ContentPresenter">
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter">
                             <Setter Property="IsVisible" Value="{ReflectionBinding IsPaneVisible}"/>
                         </Style>
                     </ItemsControl.Styles>

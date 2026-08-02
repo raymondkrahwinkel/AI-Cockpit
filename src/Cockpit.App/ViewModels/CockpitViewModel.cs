@@ -4907,6 +4907,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>
+    /// Context-menu Clear context (AC-564): drops what the agent remembers and carries the pane itself over
+    /// unchanged. Deliberately not routed through <see cref="_LaunchSessionFromResultAsync"/>, which the sibling
+    /// Duplicate uses: that path mints a second pane and re-runs worktree isolation, which for a session already
+    /// running in its own worktree would create a second one beside it. The session restarts on the working
+    /// directory it is already in.
+    /// </summary>
+    [RelayCommand]
+    private async Task ClearSessionContextAsync(SessionPanelViewModel session)
+    {
+        if (session is not SessionViewModel sdkSession || sdkSession.LaunchResult is not { } result)
+        {
+            return;
+        }
+
+        // Not undoable and a misclick mid-task costs half a session, so it is confirmed first (decision 2) — and
+        // the confirmation says the part the operator would otherwise only find out afterwards: from here on this
+        // pane is a different conversation, and resuming by the old id reaches the old one.
+        if (!await ConfirmAsync(
+            "Clear context",
+            $"'{session.Title}' forgets this conversation and starts a new one. This cannot be undone.\n\n"
+            + "The transcript stays, with a line marking where the agent's memory stops. Nothing is deleted: the "
+            + "conversation so far keeps its own id and stays resumable — but from here this session is a new "
+            + "conversation with a new id.",
+            confirmLabel: "Clear context"))
+        {
+            return;
+        }
+
+        await sdkSession.ClearContextAsync(result.Profile);
+    }
+
     /// <summary>Opens the Manage-profiles dialog from the sidebar, independent of creating a session (L2).</summary>
     [RelayCommand]
     private async Task ManageProfilesAsync()

@@ -1,16 +1,35 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 
 namespace Cockpit.Plugin.SessionReview;
 
 /// <summary>
-/// Reads the uncommitted changes of a working directory (AC-50) via <c>git diff HEAD</c> plus the current branch via
-/// <c>git rev-parse</c> — both run in the directory, with <c>ArgumentList</c> (no shell). Fails soft: no git, not a
-/// repo, or no changes all yield an empty result rather than an error. Bounded by a per-call timeout.
+/// Reads the uncommitted changes of a working directory (AC-50) via <c>git diff HEAD</c>, plus the branch and repo
+/// root via <c>git rev-parse</c>, plus the untracked files via <c>git status</c> — all run in the directory, with
+/// <c>ArgumentList</c> (no shell). Fails soft: no git, not a repo, or no changes all yield an empty result rather
+/// than an error. Bounded by a per-call timeout.
 /// </summary>
+/// <remarks>
+/// A file that has never been staged does not appear in <c>git diff HEAD</c> at all, so the panel's promise to show
+/// "what this session changed before it lands" used to skip exactly the files a session most often adds. Each one is
+/// read here and appended to the diff as the all-added block git itself would have written, which keeps one parsing
+/// path for the panel and leaves the copied text a valid diff.
+/// </remarks>
 internal sealed class GitDiffReader
 {
-    /// <summary>The git arguments for the working-tree diff against the last commit. Internal so a test can assert them.</summary>
-    internal static readonly string[] DiffArguments = ["diff", "HEAD"];
+    /// <summary>A file this large is not something anyone reviews line by line; it is listed, not drawn.</summary>
+    private const int MaxUntrackedBytes = 1024 * 1024;
+
+    /// <summary>
+    /// The git arguments for the working-tree diff against the last commit. Internal so a test can assert them.
+    /// <c>core.quotePath=false</c> keeps non-ASCII paths readable instead of octal-escaped, and <c>--no-ext-diff</c>
+    /// stops a repository's own diff driver from replacing the unified output this panel has to parse.
+    /// </summary>
+    internal static readonly string[] DiffArguments = ["-c", "core.quotePath=false", "diff", "--no-ext-diff", "HEAD"];
+
+    /// <summary>The git arguments that list untracked files. Internal so a test can assert them.</summary>
+    internal static readonly string[] StatusArguments = ["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"];
 
     public async Task<GitDiffResult> ReadAsync(string workingDirectory, CancellationToken cancellationToken)
     {
@@ -19,11 +38,16 @@ internal sealed class GitDiffReader
             return GitDiffResult.Unavailable;
         }
 
-        var (branchExit, branchOut, _) = await _RunGitAsync(["rev-parse", "--abbrev-ref", "HEAD"], workingDirectory, cancellationToken).ConfigureAwait(false);
-        if (branchExit != 0)
+        // One call for both: the branch to name in the header, and the root the porcelain paths are relative to.
+        var (revExit, revOut, _) = await _RunGitAsync(["rev-parse", "--abbrev-ref", "HEAD", "--show-toplevel"], workingDirectory, cancellationToken).ConfigureAwait(false);
+        if (revExit != 0)
         {
             return GitDiffResult.Unavailable; // not a repo / no git
         }
+
+        var revLines = revOut.Replace("\r\n", "\n").Split('\n');
+        var branch = revLines.Length > 0 ? revLines[0].Trim() : string.Empty;
+        var root = revLines.Length > 1 ? revLines[1].Trim() : workingDirectory;
 
         var (diffExit, diffOut, _) = await _RunGitAsync(DiffArguments, workingDirectory, cancellationToken).ConfigureAwait(false);
         if (diffExit != 0)
@@ -31,33 +55,81 @@ internal sealed class GitDiffReader
             return GitDiffResult.Unavailable;
         }
 
-        return new GitDiffResult(true, branchOut.Trim(), diffOut);
+        var (statusExit, statusOut, _) = await _RunGitAsync(StatusArguments, workingDirectory, cancellationToken).ConfigureAwait(false);
+        var untracked = statusExit == 0 ? _UntrackedBlocks(statusOut, root) : string.Empty;
+
+        return new GitDiffResult(true, branch, diffOut + untracked);
     }
 
-    /// <summary>Classifies a unified-diff line for colouring. Internal so a test can pin the mapping.</summary>
-    internal static DiffLineKind ClassifyLine(string line)
+    /// <summary>
+    /// The paths <c>git status --porcelain</c> reports as untracked. Porcelain output is always relative to the
+    /// repository root, whichever directory git ran in. Internal so a test can pin the parsing.
+    /// </summary>
+    internal static IReadOnlyList<string> UntrackedPaths(string statusOutput) =>
+        [.. statusOutput.Replace("\r\n", "\n").Split('\n')
+            .Where(line => line.StartsWith("?? ", StringComparison.Ordinal))
+            .Select(line => line[3..].Trim().Trim('"'))
+            .Where(path => path.Length > 0)];
+
+    /// <summary>
+    /// The diff block git would have written for a new file: every line added, against <c>/dev/null</c>. Internal so
+    /// a test can pin the shape without touching a disk.
+    /// </summary>
+    internal static string UntrackedBlock(string path, string content)
     {
-        if (line.StartsWith("diff --git", StringComparison.Ordinal)
-            || line.StartsWith("index ", StringComparison.Ordinal)
-            || line.StartsWith("+++", StringComparison.Ordinal)
-            || line.StartsWith("---", StringComparison.Ordinal)
-            || line.StartsWith("new file", StringComparison.Ordinal)
-            || line.StartsWith("deleted file", StringComparison.Ordinal)
-            || line.StartsWith("rename ", StringComparison.Ordinal)
-            || line.StartsWith("similarity ", StringComparison.Ordinal))
+        var lines = content.Replace("\r\n", "\n").Split('\n');
+        if (lines.Length > 0 && lines[^1].Length == 0)
         {
-            return DiffLineKind.FileHeader;
+            lines = lines[..^1]; // the newline that ends the last line is not a line of its own
         }
 
-        if (line.StartsWith("@@", StringComparison.Ordinal))
+        var block = new StringBuilder()
+            .Append(CultureInfo.InvariantCulture, $"diff --git a/{path} b/{path}\n")
+            .Append("new file mode 100644\n")
+            .Append("--- /dev/null\n")
+            .Append(CultureInfo.InvariantCulture, $"+++ b/{path}\n")
+            .Append(CultureInfo.InvariantCulture, $"@@ -0,0 +1,{lines.Length} @@\n");
+
+        foreach (var line in lines)
         {
-            return DiffLineKind.Hunk;
+            block.Append('+').Append(line).Append('\n');
         }
 
-        // A single leading + or - is an added/removed line; the +++/--- file headers were already caught above.
-        return line.StartsWith('+') ? DiffLineKind.Added
-            : line.StartsWith('-') ? DiffLineKind.Removed
-            : DiffLineKind.Context;
+        return block.ToString();
+    }
+
+    /// <summary>The block for a file that is new but will not be drawn — binary, unreadable, or simply too large.</summary>
+    internal static string UntrackedBinaryBlock(string path) =>
+        $"diff --git a/{path} b/{path}\nnew file mode 100644\nBinary files /dev/null and b/{path} differ\n";
+
+    private static string _UntrackedBlocks(string statusOutput, string root)
+    {
+        var blocks = new StringBuilder();
+        foreach (var path in UntrackedPaths(statusOutput))
+        {
+            var full = Path.Combine(root, path.Replace('/', Path.DirectorySeparatorChar));
+            try
+            {
+                // A directory can appear here when git collapses one; --untracked-files=all should prevent it, but a
+                // race between the status call and this read can still hand us one.
+                if (!File.Exists(full) || new FileInfo(full).Length > MaxUntrackedBytes)
+                {
+                    blocks.Append(UntrackedBinaryBlock(path));
+                    continue;
+                }
+
+                var bytes = File.ReadAllBytes(full);
+                blocks.Append(Array.IndexOf(bytes, (byte)0) >= 0
+                    ? UntrackedBinaryBlock(path)
+                    : UntrackedBlock(path, new UTF8Encoding(false).GetString(bytes)));
+            }
+            catch (Exception)
+            {
+                blocks.Append(UntrackedBinaryBlock(path)); // locked, gone, or denied — list it rather than lose it
+            }
+        }
+
+        return blocks.ToString();
     }
 
     private static async Task<(int ExitCode, string StdOut, string StdErr)> _RunGitAsync(string[] arguments, string workingDirectory, CancellationToken cancellationToken)

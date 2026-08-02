@@ -566,6 +566,19 @@
                                            Classes="transcript" Margin="36,0,0,0"
                                            IsVisible="{Binding IsPlainNonMarkdown}"/>
 
+                                <!-- Context-cleared divider (AC-564): a hairline across the full width with its
+                                     label in the middle, so the break reads as a break in the conversation rather
+                                     than as one more message in it. -->
+                                <Grid IsVisible="{Binding IsDivider}" ColumnDefinitions="*,Auto,*" Margin="0,8">
+                                    <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
+                                            Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Text}" Margin="10,0" FontSize="10.5"
+                                               VerticalAlignment="Center"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
+                                            Background="{StaticResource CockpitHairlineBrush}"/>
+                                </Grid>
+
                                 <!-- Assistant reply (T9 / look&feel pass): the model's avatar badge sits left,
                                      with its name over the prose (MarkdownView — the cockpit's own themed
                                      renderer, selectable text, clickable links). The per-reply actions

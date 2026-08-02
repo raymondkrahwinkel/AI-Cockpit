@@ -32,6 +32,21 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: "Create backup…" no longer fails with "the process cannot access the file … because it is being used by
+  another process". The backup is built as a temporary file and then moved to the place you picked, and on Windows
+  that move happened the instant the archive was closed — the same instant a virus scanner opens a newly written
+  .zip to look inside it. The bigger the backup, the longer that scan, and the more reliably the move lost the
+  race. It now waits for the file to be released instead of giving up on it. If something really is holding a file
+  after several seconds, the message says which one and what to do about it, rather than naming an internal
+  temporary file you have never seen.
+- fixed: a long reply from a headless Claude session no longer eats the machine's memory. With a session streaming,
+  the cockpit's memory use climbed by tens of megabytes a second — one report reached 25 GB and was about a minute
+  from taking the machine down — and on Windows the window froze for seconds at a time. The reply's text was redrawn
+  from scratch on every fragment that arrived, so the longer the answer got the more work each new fragment caused,
+  and it kept accelerating instead of settling. Replies now repaint at a steady rate while they stream, the way
+  terminal sessions already did, and each repaint only redraws the part of the reply that actually changed instead
+  of the whole thing — so a long answer costs no more per fragment than a short one. This also silences a flood of
+  internal warnings — thousands a second — that a session pane was writing to the system log the whole time.
 - fixed: a headless Claude session now keeps following the newest message while it streams. Scrolling up left the
   view where you put it but never resumed on its own once you scrolled back down — the jump-to-newest button had to
   be clicked, and sometimes the view was pulled back down while you were still reading. The newest message also kept
@@ -56,6 +71,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Claude session that runs headless (rather than as a terminal pane) can clear its context. A terminal
+  session has `/clear`; a headless one had no way to reach it, so a session that filled up could only be closed and
+  started again — which also cost you its name and its place in the workspace. "Clear context" in a session's
+  right-click menu restarts that same pane on a new conversation: same name, same place, same profile, same folder
+  and the same MCP servers, with an agent that remembers nothing from before. The transcript is kept, with a line
+  across it marking where the agent's memory stops, and the context and token figures in the header start over
+  rather than describing a conversation that is no longer running. It asks first, because it cannot be undone —
+  and says that from there on the pane is a new conversation with a new id. Nothing is deleted: the conversation
+  so far stays on disk and can still be resumed under its own id. Terminal sessions do not offer it; there you
+  type `/clear`.
 - added: a Claude session that runs headless (rather than as a terminal pane) now shows the usage pill in its header
   too — how full the context window is, plus the rolling five-hour and weekly allowances. Those figures used to
   appear only for terminal sessions, because they were read from Claude's status line, which a headless session

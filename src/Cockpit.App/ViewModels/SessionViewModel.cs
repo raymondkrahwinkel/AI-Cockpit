@@ -468,6 +468,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     public virtual bool IsSessionReady => _runtime is { IsRunning: true };
 
+    /// <summary>The headless route is the one with no <c>/clear</c> of its own, so this is where the action belongs (AC-564).</summary>
+    public override bool SupportsClearContext => true;
+
     /// <summary>True from launch until the runtime settles — up <em>or</em> failed. Drives the "still starting"
     /// banner so it shows only while the session is actively coming up, and never sits stuck reading "starting"
     /// after a launch that failed (where the runtime is assigned but never running).</summary>
@@ -1033,6 +1036,98 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // runtime existed can go out. Sending it any earlier is what earns the transcript's "The session has not
         // started yet — nothing was sent."; a launch that failed leaves it held rather than sent into nothing.
         DeliverHeldPrompt();
+    }
+
+    /// <summary>
+    /// AC-564: the SDK route's equivalent of <c>/clear</c>. A headless stream-json session has no slash-command
+    /// surface, so a full context could only be escaped by closing the pane and opening another — which also
+    /// costs the operator the pane's name and its place in the workspace. This restarts the session in place
+    /// instead: the same panel, the same <see cref="SessionPanelViewModel.PaneId"/>, the same profile, working
+    /// directory and MCP selection, started through the ordinary path with no <see cref="SessionResume"/>. That
+    /// missing resume is the entire difference, and it is what makes the new conversation know nothing.
+    /// <para>
+    /// The transcript is kept and marked with a divider (decision 1): it is the pane's audit surface, and a line
+    /// showing exactly where the agent's memory stops is more use than an empty window. The old conversation is
+    /// untouched on disk and stays resumable under its own id — the new one simply has a different id, which is
+    /// what the caller's confirmation says before any of this runs (decision 2).
+    /// </para>
+    /// </summary>
+    public async Task ClearContextAsync(SessionProfile profile)
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        // A turn parked on a permission prompt has to be answered before its driver goes away, or the pane goes
+        // on asking for attention over a decision nothing is waiting for — half of the half-state AC-564 calls
+        // out. The tool never ran, and IsPendingPermission is what the chip and the status actually read.
+        // The running turn itself needs nothing here: _StopRuntimeAsync tears down through the runtime, which
+        // interrupts before it takes the process away (SessionRuntime.DisposeAsync) — a second interrupt from
+        // this side would only be the same call again.
+        foreach (var pending in Transcript.Where(entry => entry.IsPendingPermission).ToList())
+        {
+            pending.PermissionDecision = "Cancelled — context cleared";
+            pending.IsPendingPermission = false;
+        }
+
+        await _StopRuntimeAsync();
+        _ResetForNewConversation();
+
+        Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.Divider, "Context cleared — a new conversation starts here"));
+
+        // The live selections rather than the launch values: a session whose model or reading level was switched
+        // mid-flight carries on as the operator last left it. Pre-approved tools ride along too, so clearing the
+        // context of a self-driving run (AC-215) does not quietly demote it into one that stops to ask.
+        await StartConfiguredAsync(
+            profile,
+            SelectedPermissionMode,
+            SelectedModel,
+            SelectedEffort,
+            McpServerSelection,
+            WorkingDirectory,
+            resume: null,
+            _launchOptions,
+            ReadingLevel,
+            _preApprovedTools.ToList(),
+            _preApproveAllTools);
+    }
+
+    // Everything that described the conversation just dropped (AC-564). The turn's live state and the queue aimed
+    // at it go because the turn they belonged to is over; the numbers go because "ctx 66%" left standing over an
+    // empty context is a figure that actively lies (decision 3). The transcript is deliberately not among them.
+    private void _ResetForNewConversation()
+    {
+        QueuedMessages.Clear();
+        if (_activeToolCalls.Count > 0)
+        {
+            _activeToolCalls.Clear();
+            _RaiseActiveToolActivityChanged();
+        }
+
+        _subAgentLanes.Clear();
+        _currentTurnAssistantEntries.Clear();
+        _currentAssistantEntry = null;
+        _currentOrphanedSubAgentTextEntry = null;
+        _readAloudFlushedLength = 0;
+        ClearCurrentTurnImages();
+        _hasCompletedATurn = false;
+        _needsAttention = false;
+        IsBusy = false;
+
+        _usage.Reset();
+        HasUsage = _usage.HasData;
+        UsageSummary = string.Empty;
+        UsageTooltip = string.Empty;
+        ContextUsedPercent = null;
+        RateLimits.Clear();
+        LimitsTooltip = string.Empty;
+
+        // A restore offer belongs to the conversation this pane was restored with; that conversation is no longer
+        // the one running here, so the banner must not go on offering to resume it.
+        RestoreOffer = null;
+        _RecomputeStatus();
     }
 
     /// <summary>
@@ -2464,16 +2559,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             await pendingUsageWrite;
         }
 
+        await _StopRuntimeAsync();
+    }
+
+    // Ends this panel's runtime and detaches from it, leaving the panel itself intact. Two callers: the panel
+    // going away (DisposeCoreAsync) and a context clear that starts a new conversation in the same pane (AC-564).
+    //
+    // Stop through the manager, which owns the runtime: the same path an orchestrator's stop_task (#67) takes,
+    // so a session ends in one state however it was ended. Unsubscribing first means the teardown cannot post
+    // another event at a panel that is no longer listening — and since the pump no longer marshals to the UI
+    // thread, killing the child no longer depends on the dispatcher still being alive, which is what used to
+    // hang shutdown with a live child claude (#32).
+    private async Task _StopRuntimeAsync()
+    {
         if (_runtime is null)
         {
             return;
         }
 
-        // Stop through the manager, which owns the runtime: the same path an orchestrator's stop_task (#67)
-        // takes, so a session ends in one state however it was closed. Unsubscribing first means the teardown
-        // cannot post another event at a panel that is going away — and since the pump no longer marshals to
-        // the UI thread, killing the child no longer depends on the dispatcher still being alive, which is
-        // what used to hang shutdown with a live child claude (#32).
         _runtime.EventAppended -= _OnSessionEvent;
         var runtime = _runtime;
         _runtime = null;
