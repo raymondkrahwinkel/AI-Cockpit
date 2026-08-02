@@ -29,7 +29,11 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
 
     private AgentNotifyAuditLog _Audit() => new(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance);
 
-    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims);
+    // As in AgentsMcpToolsTests: the AC-396 rate limit put out of the way so these tests keep asserting what they are
+    // about. The wake cap is five a minute by default, and several tests here wake more than that in a burst.
+    private readonly AgentLineBudget _budget = new(TimeProvider.System, TimeSpan.FromMinutes(1), 10_000, 10_000);
+
+    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims, _budget);
 
     private void _DeskWith(params string[] paneIds)
     {

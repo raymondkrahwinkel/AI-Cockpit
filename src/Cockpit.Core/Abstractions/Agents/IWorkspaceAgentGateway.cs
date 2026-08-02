@@ -106,4 +106,12 @@ public enum AgentWakeOutcome
 
     /// <summary>The attempt threw. The message is delivered either way; only the turn did not happen.</summary>
     Failed,
+
+    /// <summary>
+    /// The sender has woken agents as often in the last window as one session may (AC-396), so no turn was started.
+    /// The message is delivered and waiting. This is the one refusal in this list that is about the <em>sender</em>
+    /// rather than the recipient: everything else here says something about the pane being woken, and this says the
+    /// caller is going too fast. Appended last so the values already on the trail keep meaning what they meant.
+    /// </summary>
+    RateLimited,
 }

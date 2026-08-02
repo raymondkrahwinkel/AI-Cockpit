@@ -100,6 +100,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
     private readonly IAgentMessageInbox? _agentMessages;
     private readonly IAgentResourceClaims? _agentClaims;
+    private readonly IAgentLineBudget? _agentLineBudget;
     private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
@@ -2503,6 +2504,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
         IAgentResourceClaims? agentClaims = null,
+        IAgentLineBudget? agentLineBudget = null,
         IClaimCollisionMonitor? claimCollisionMonitor = null,
         SessionStateRecorder? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
@@ -2662,6 +2664,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator = agentCoordinator;
         _agentMessages = agentMessages;
         _agentClaims = agentClaims;
+        _agentLineBudget = agentLineBudget;
         _claimCollisionMonitor = claimCollisionMonitor;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
@@ -6274,9 +6277,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-393: and whatever it had claimed. This is the whole of what keeps a claim from outliving its agent —
         // there is no expiry and no heartbeat in phase 1 — so a session that ends without releasing must not leave
         // its neighbours working around a worktree nobody is on any more.
+        //
+        // AC-396: and what it had spent against the line's rate limit. Only host memory is at stake — the counts are
+        // per sender and expire on their own within the window — but a pane id that is never coming back should not
+        // keep an entry for the life of the app.
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);
+        _agentLineBudget?.Forget(session.PaneId);
 
         // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
         // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
@@ -7098,6 +7106,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);
+        _agentLineBudget?.Forget(session.PaneId);
         if (_worktreeManager is not null)
         {
             try

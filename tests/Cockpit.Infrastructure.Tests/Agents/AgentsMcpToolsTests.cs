@@ -44,7 +44,13 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
     private AgentNotifyAuditLog _Audit() => new(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance);
 
-    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims);
+    // The rate limit (AC-396) set far out of the way, and shared across every _Tools() call so it behaves like the
+    // one the running app holds. Every test in this suite is about something else — the drain cap alone sends 28
+    // messages from one pane — and the real limit would make them fail on the twenty-first message rather than on
+    // what they assert. The cap itself is held by AgentLineBudgetTests and AgentsMcpToolsRateLimitTests.
+    private readonly AgentLineBudget _budget = new(TimeProvider.System, TimeSpan.FromMinutes(1), 10_000, 10_000);
+
+    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims, _budget);
 
     /// <summary>Puts the named panes on one desk, each resolving to the same snapshot — a sender, an addressee, one workspace.</summary>
     private void _DeskWith(params string[] paneIds)
@@ -1399,11 +1405,11 @@ public sealed class AgentsMcpToolsTests : IDisposable
         try
         {
             McpRequestContext.Set("pane-y");
-            await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+            await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget())
                 .ClaimAsync("/repo/worktree-a");
 
             McpRequestContext.Set("pane-x");
-            var result = await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+            var result = await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget())
                 .ClaimAsync("/repo/worktree-a");
 
             // The Claimed shape (ok:true, alreadyHeld:false, no heldBy) — not HeldByAnother's ok:false/heldBy, which
@@ -1445,12 +1451,12 @@ public sealed class AgentsMcpToolsTests : IDisposable
                 // matches character for character, exactly the case AC-393's own exact-match refuses to see across
                 // desks. Whether these two spellings would canonicalize to one physical resource is irrelevant to
                 // this test — the point is that pane-x cannot tell either way.
-                await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+                await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget())
                     .ClaimAsync("/repo/worktree-a/");
             }
 
             McpRequestContext.Set("pane-x");
-            var tools = new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims);
+            var tools = new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget());
             var claimJson = _Json(await tools.ClaimAsync("/repo/worktree-a"));
             var listJson = _Json(await tools.ListClaimsAsync());
 

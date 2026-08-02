@@ -335,7 +335,8 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
     private AgentsMcpTools _AgentsTools(IWorkspaceAgentGateway workspaces) =>
         new(workspaces, new WorkspaceAgentCoordinator(), new AgentMessageInbox(),
-            new AgentNotifyAuditLog(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance), new AgentResourceClaims());
+            new AgentNotifyAuditLog(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance), new AgentResourceClaims(),
+            new AgentLineBudget());
 
     private readonly string _auditPath =
         Path.Combine(Path.GetTempPath(), $"assistant-mount-audit-{Guid.NewGuid():N}.jsonl");

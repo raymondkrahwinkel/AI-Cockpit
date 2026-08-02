@@ -57,6 +57,14 @@ public enum AgentNotifyOutcome
 
     /// <summary>The attempt failed unexpectedly (a race on a closing session, say) and no message was accepted. Recorded so the trail holds every attempt, not only the ones the host reached a verdict on.</summary>
     RefusedError,
+
+    /// <summary>
+    /// The sender has sent as many messages in the last window as one session may (AC-396), so this one was not
+    /// accepted. Temporary and per sender: the sender is sending again as soon as its oldest message falls out of
+    /// the window, and nobody else's sending is affected. Appended after <see cref="RefusedError"/> rather than
+    /// filed among the other refusals so the numbers already written to the trail keep meaning what they meant.
+    /// </summary>
+    RefusedRateLimited,
 }
 
 /// <summary>One line of the agent-notify trail (AC-392).</summary>

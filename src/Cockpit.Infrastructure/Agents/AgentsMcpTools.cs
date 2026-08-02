@@ -56,7 +56,8 @@ internal sealed class AgentsMcpTools(
     IWorkspaceAgentCoordinator coordinator,
     IAgentMessageInbox inbox,
     IAgentNotifyAuditLog notifyAudit,
-    IAgentResourceClaims claims)
+    IAgentResourceClaims claims,
+    IAgentLineBudget budget)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -206,7 +207,7 @@ internal sealed class AgentsMcpTools(
     }
 
     [McpServerTool(Name = "notify")]
-    [Description("Sends a message to another agent session on your own desk. By default it interrupts nobody: on a pane list_agents shows as deliversAtTurnStart=true it is carried out with that session's next turn, whenever the session or its operator starts one, and on any other pane it waits until that session calls read_inbox. The reply says which of the two you got. Set urgent=true to also ask for the recipient to be woken — a turn started for it there and then — which only happens if that pane has opted in with set_wake_optin and is not busy or waiting on its operator; the reply always says whether it was woken and, if not, why. Address it with a pane id from list_agents. There is no sender argument: the cockpit stamps the message with the pane this request actually came from, so you cannot send as someone else and nobody can send as you. Refused, with a reason, if the addressed pane is not on your desk or is your own, if the recipient's inbox is full, or if the kind (100 characters) or body (2000 characters) is empty or over its limit — nothing is truncated silently. Terminal control sequences are stripped from both, and `sanitized: true` in the reply says so. Sending the identical message twice while the first is still unread does not queue a second copy — you get the waiting message's id back and `deduplicated: true`.")]
+    [Description("Sends a message to another agent session on your own desk. By default it interrupts nobody: on a pane list_agents shows as deliversAtTurnStart=true it is carried out with that session's next turn, whenever the session or its operator starts one, and on any other pane it waits until that session calls read_inbox. The reply says which of the two you got. Set urgent=true to also ask for the recipient to be woken — a turn started for it there and then — which only happens if that pane has opted in with set_wake_optin and is not busy or waiting on its operator; the reply always says whether it was woken and, if not, why. Address it with a pane id from list_agents. There is no sender argument: the cockpit stamps the message with the pane this request actually came from, so you cannot send as someone else and nobody can send as you. Refused, with a reason, if the addressed pane is not on your desk or is your own, if the recipient's inbox is full, or if the kind (100 characters) or body (2000 characters) is empty or over its limit — nothing is truncated silently. Terminal control sequences are stripped from both, and `sanitized: true` in the reply says so. Sending the identical message twice while the first is still unread does not queue a second copy — you get the waiting message's id back and `deduplicated: true`. There is a rate limit on how fast one session may send, and a much lower one on how often it may ask for a wake; going over either is refused with how long to wait, counts your own sends only, and lifts on its own — it is there so two agents answering each other cannot loop.")]
     public async Task<string> NotifyAsync(
         [Description("The pane id of the agent to notify — take it from list_agents. It must be a session in your own workspace.")] string toPaneId,
         [Description("A short label for what this is, at most 100 characters, e.g. 'question', 'heads-up', 'handover'. The recipient sees it as your label, not as anything the cockpit vouches for.")] string kind,
@@ -280,6 +281,23 @@ internal sealed class AgentsMcpTools(
                 return await _RefuseNotifyAsync(
                     AgentNotifyOutcome.RefusedNotInWorkspace, caller, addressee, label, text,
                     $"'{addressee}' is not a session in your workspace. You can only notify a pane list_agents shows you.", urgent).ConfigureAwait(false);
+            }
+
+            // The rate limit (AC-396), charged last of all the checks — a message the host was going to refuse on its
+            // own account is not the sender's quota to spend, or one mistyped pane id would eat the budget an agent
+            // needs for the message it got right. Charged before the delivery rather than after, so a refusal here
+            // means nothing was put in anyone's inbox and there is nothing to take back.
+            //
+            // Per sender, deliberately: RefusedRecipientInboxFull already bounds what one recipient holds across all
+            // senders, and that bound is what lets one looping neighbour fill an inbox and have every legitimate
+            // sender refused for something it did not do. This one stops the loop at its source and leaves an
+            // uninvolved third party's send untouched — the second half of AC-119's scenario S10.
+            var charged = budget.Charge(caller, AgentLineActivity.Message);
+            if (!charged.Allowed)
+            {
+                return await _RefuseNotifyAsync(
+                    AgentNotifyOutcome.RefusedRateLimited, caller, addressee, label, text,
+                    _RateLimitReason(charged), urgent).ConfigureAwait(false);
             }
 
             var delivery = inbox.Deliver(caller, addressee, label, text);
@@ -750,12 +768,23 @@ internal sealed class AgentsMcpTools(
         // ever happened. The reason given to the sender says what is true either way.
         //
         // This is a brake on repetition, not a rate limit, and it is worth being exact about how weak it is: a sender
-        // that varies a single character is past it. What actually bounds the wake rate today is the standing-still
-        // check — a woken pane reads as working until its turn completes, so at most one wake per turn, each paid for
-        // by the recipient's operator. A real cap on that rate is AC-396, and it is not built yet.
+        // that varies a single character is past it. The cap that does bound the rate is the charge below (AC-396);
+        // this one still earns its place because it answers a different question — the sender is told that this
+        // particular message added nothing, which "too fast" would not say.
         if (deduplicated)
         {
             return AgentWakeOutcome.AlreadyWaiting;
+        }
+
+        // Counted apart from the message that carries it, and against a much lower cap: a message waits in an inbox
+        // until its recipient chooses to read it, while a wake spends a turn belonging to somebody else's operator.
+        //
+        // Charged after consent and de-duplication so those two keep their own explanation — a sender that will never
+        // wake this pane should hear that rather than "too fast" — and so a wake that was never going to happen costs
+        // the sender nothing.
+        if (!budget.Charge(caller, AgentLineActivity.Wake).Allowed)
+        {
+            return AgentWakeOutcome.RateLimited;
         }
 
         try
@@ -783,8 +812,17 @@ internal sealed class AgentsMcpTools(
         AgentWakeOutcome.PaneGone => "The recipient is no longer a live session.",
         AgentWakeOutcome.NotOnDesk => "The recipient is no longer on your desk.",
         AgentWakeOutcome.Failed => "The wake could not be carried out. Your message is delivered and waiting either way.",
+        AgentWakeOutcome.RateLimited => "You have asked for a wake too often in a short time, so no turn was started. Your message is delivered and waiting either way. The limit is on you rather than on the recipient, it lifts on its own within a minute, and it does not stop your neighbours reaching each other — it is there so a loop cannot spend somebody else's turns.",
         _ => "The wake did not happen.",
     };
+
+    /// <summary>
+    /// What a rate-limited sender is told (AC-396) — the numbers it needs and, just as importantly, that this is
+    /// temporary and about it alone. A refusal an agent reads as "the line is down" is one it stops using, and the
+    /// whole of AC-119 is about a line that gets used.
+    /// </summary>
+    private static string _RateLimitReason(AgentLineBudgetVerdict verdict) =>
+        $"You have sent {verdict.Used} messages in the last {verdict.Window.TotalSeconds:0} seconds, which is as many as one session may, so this one was not delivered — nothing was dropped and nothing is held against you. Wait about {Math.Ceiling(verdict.RetryAfter.TotalSeconds):0} seconds and send it again. The limit counts your sends only: your neighbours can still reach each other, and each other's inboxes are untouched by this. It exists so two agents answering each other cannot become a loop that spends the desk's turns.";
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
 }
