@@ -1,5 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -66,6 +67,16 @@ public interface ISessionDialogService
     /// back an edited value the same way the New-session dialog hands back its choices.
     /// </summary>
     Task<Project?> ShowProjectDialogAsync(Project? project);
+
+    /// <summary>
+    /// Shows the "Finish setting up…" bind step (AC-246) for <paramref name="sharedProject"/>, a project
+    /// <paramref name="source"/> listed that this machine has not bound to a local project yet. Reads the project's
+    /// full definition through <paramref name="source"/> first; returns null both when the operator cancelled and
+    /// when that read failed (an error is shown either way, distinguishable only by which one happened, the same
+    /// as <see cref="ShowProjectDialogAsync"/> hands back null for a cancel). Persisting the result is the caller's,
+    /// same as every other project dialog here.
+    /// </summary>
+    Task<Project?> ShowSharedProjectBindingDialogAsync(SharedProject sharedProject, string sourceName, ISharedProjectSource source);
 
     /// <summary>Shows the MCP-servers dialog (#26), over the main window, for editing the shared MCP-server registry.</summary>
     Task ShowMcpServersDialogAsync();

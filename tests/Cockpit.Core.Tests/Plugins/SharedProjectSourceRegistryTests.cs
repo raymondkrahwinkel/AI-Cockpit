@@ -91,5 +91,8 @@ public class SharedProjectSourceRegistryTests
 
         public Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken) =>
             Task.FromResult(SharedProjectListResult.Success([]));
+
+        public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectBindingResult.Failed("not implemented by this fake"));
     }
 }

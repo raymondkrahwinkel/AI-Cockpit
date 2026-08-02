@@ -104,4 +104,61 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
 
         return SharedProjectListResult.Success(shared) with { VisibleButUnreadable = unreadable };
     }
+
+    /// <summary>
+    /// Reads <c>.cockpit/project.json</c> a second time (AC-246), for the one project the operator is binding right
+    /// now rather than every project on this connection — <see cref="ListAsync"/>'s own read only ever kept
+    /// <see cref="CockpitProjectDefinition.Name"/>/<c>Description</c>, so a bind step needs its own call for the
+    /// rest (<c>GitUrl</c>, <c>BehaviorPrompt</c>, the worktree switch, the MCP overlay, the resource rows).
+    /// <see cref="id"/> is expected in this source's own shape (<c>"{scheme}:{slug}"</c>), so parsing it back is a
+    /// prefix check against <paramref name="id"/>'s own scheme rather than a general <c>ProjectMemoryRef</c>-style
+    /// parse — this plugin cannot reference <c>Cockpit.Core</c> (see this class's own remarks on
+    /// <see cref="ProjectResourcePortabilityClassifier"/>), and it does not need to: it only ever has to recognise
+    /// its own scheme, never anyone else's.
+    /// </summary>
+    public async Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken)
+    {
+        var prefix = $"{scheme}:";
+        if (!id.StartsWith(prefix, StringComparison.Ordinal) || id.Length <= prefix.Length)
+        {
+            return SharedProjectBindingResult.Failed($"'{id}' does not belong to this Depot connection.");
+        }
+
+        var slug = id[prefix.Length..];
+        var definitionResult = await CockpitProjectDefinitionStore.ReadAsync(
+            host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
+
+        if (definitionResult.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+        {
+            return SharedProjectBindingResult.Failed("Sign in to this Depot connection to finish setting up this project.");
+        }
+
+        if (definitionResult.Outcome != PluginMcpToolCallOutcome.Success || definitionResult.Definition is not { } definition)
+        {
+            return SharedProjectBindingResult.Failed(
+                definitionResult.Error is { Length: > 0 } error ? error : "Depot did not return a project definition.");
+        }
+
+        var name = definition.Name is { Length: > 0 } ? definition.Name : slug;
+
+        return SharedProjectBindingResult.Success(new SharedProjectBinding(name)
+        {
+            Description = definition.Description,
+            GitUrl = definition.GitUrl,
+            BehaviorPrompt = definition.BehaviorPrompt,
+            IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
+            EnabledMcpServerNames = definition.McpOverlay?.Enabled,
+            // AC-246 (Raymond, 2026-08-02): a Placeholder row's Reference is blank on purpose — that is the row
+            // saying "fill in your own path", not "nothing to name". Only a genuinely blank, non-placeholder
+            // reference (malformed data — never something CockpitProjectResourceEntry.Create itself writes) is
+            // left out here; SharedProjectBindingDialogViewModel is what turns a blank Reference into a question
+            // row rather than a value to trust.
+            Resources =
+            [
+                .. (definition.Resources ?? [])
+                    .Where(resource => resource.Placeholder || !string.IsNullOrWhiteSpace(resource.Reference))
+                    .Select(resource => new SharedProjectBindingResource(resource.Role, resource.Reference) { Label = resource.Label }),
+            ],
+        });
+    }
 }

@@ -31,4 +31,20 @@ public interface ISharedProjectSource
     /// every other source's rows.
     /// </summary>
     Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads enough of <paramref name="id"/>'s own portable definition to bind it to a local <c>Project</c> (AC-246)
+    /// — called once, when the operator opens "Finish setting up…" on a row this source listed. A one-time read, not
+    /// a live handle: the host copies what comes back into an ordinary local project and does not call this again to
+    /// keep it current afterward — see <see cref="SharedProjectBinding"/>'s own remarks on why that is a different
+    /// concern (a source's own write/conflict path, if it has one) from this one (making the project usable at all).
+    /// <para>
+    /// Must not throw for an ordinary failure (unreachable, not signed in, the project no longer exists, or was
+    /// removed between <see cref="ListAsync"/> and this call) — report it through
+    /// <see cref="SharedProjectBindingResult.Failed"/> instead, the same contract <see cref="ListAsync"/> already
+    /// keeps for a whole source's own failure.
+    /// </para>
+    /// </summary>
+    /// <param name="id">A <see cref="SharedProject.Id"/> this source itself listed — never one <see cref="ListAsync"/> never returned.</param>
+    Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken);
 }

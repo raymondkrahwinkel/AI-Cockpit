@@ -79,6 +79,11 @@ public class CockpitProjectDefinitionSecrecyTests
             nameof(CockpitProjectResourceEntry.Label),
             nameof(CockpitProjectResourceEntry.Portability),
             nameof(CockpitProjectResourceEntry.ExtensionData),
+            // AC-246 (Raymond, 2026-08-02): a plain bool — "a row belongs here, without its reference" — cannot
+            // itself carry a secret value the way a free-text field could. The field this guard actually exists to
+            // catch (a text field a secret could hide in) is still exactly one: Reference, still governed by
+            // ProjectResourceSecretPathHeuristic before Create ever builds a row, Placeholder row or not.
+            nameof(CockpitProjectResourceEntry.Placeholder),
         ];
 
         var actual = typeof(CockpitProjectResourceEntry)

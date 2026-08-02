@@ -214,14 +214,18 @@ public class ProjectsViewModelTests
     // source's failure not costing the others, and the AC-604 ownership claim this consumes it through.
 
     private static (ProjectsViewModel ViewModel, IProjectOwnershipRegistry Ownership) BuildWithSharedSources(
-        IReadOnlyList<ISharedProjectSource> sources, params Project[] saved)
+        IReadOnlyList<ISharedProjectSource> sources, params Project[] saved) =>
+        BuildWithSharedSources(sources, dialogs: null, out _, saved);
+
+    private static (ProjectsViewModel ViewModel, IProjectOwnershipRegistry Ownership) BuildWithSharedSources(
+        IReadOnlyList<ISharedProjectSource> sources, ISessionDialogService? dialogs, out IProjectStore store, params Project[] saved)
     {
-        var store = Substitute.For<IProjectStore>();
+        store = Substitute.For<IProjectStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = saved });
 
         var ownership = new ProjectOwnershipRegistry();
         var registry = new _FakeSharedProjectSourceRegistry(sources);
-        var viewModel = new ProjectsViewModel(store, dialogs: null, ownership: ownership, sharedSources: registry);
+        var viewModel = new ProjectsViewModel(store, dialogs, ownership: ownership, sharedSources: registry);
         return (viewModel, ownership);
     }
 
@@ -405,6 +409,68 @@ public class ProjectsViewModelTests
         Assert.Same(loadTask, completed);
     }
 
+    // AC-246: the "Finish setting up…" bind step. FinishSettingUpAsync itself never talks to Depot — it only finds
+    // the right ISharedProjectSource by SharedProject.Id's own scheme prefix and hands off to ISessionDialogService,
+    // so these tests fake the dialog rather than the plugin read (that is DepotSharedProjectSourcePrepareBindingTests'
+    // and SharedProjectBindingDialogViewModelTests' job).
+
+    [Fact]
+    public async Task FinishSettingUpAsync_TheDialogReturnsAProject_PersistsItAndReloadsSharedProjects()
+    {
+        var shared = new SharedProject("depot:one", "One");
+        var source = new _FakeSharedProjectSource("depot", SharedProjectListResult.Success([shared]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var bound = Project.Create("One") with { MemoryRef = "depot:one", DefaultProfileLabel = "Zyra" };
+        dialogs.ShowSharedProjectBindingDialogAsync(shared, "depot", source).Returns(bound);
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+        Assert.Single(viewModel.SharedProjectGroups.Single().Projects); // the row is there before binding
+
+        await viewModel.FinishSettingUpCommand.ExecuteAsync(shared);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<ProjectSettings>(settings => settings.Projects.Any(project => project.Id == bound.Id)),
+            Arg.Any<CancellationToken>());
+        // Bound now — boundIds picks up its own Memory row on the very next reload this call already triggered,
+        // so the row must not still be sitting under "Shared via …" for the operator to bind a second time by
+        // mistake ("dezelfde binding twee keer koppelen", AC-246 harness).
+        Assert.Empty(viewModel.SharedProjectGroups);
+    }
+
+    [Fact]
+    public async Task FinishSettingUpAsync_TheOperatorCancels_WritesNothing()
+    {
+        var shared = new SharedProject("depot:one", "One");
+        var source = new _FakeSharedProjectSource("depot", SharedProjectListResult.Success([shared]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowSharedProjectBindingDialogAsync(shared, "depot", source).Returns((Project?)null);
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        await viewModel.FinishSettingUpCommand.ExecuteAsync(shared);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
+        Assert.Single(viewModel.SharedProjectGroups.Single().Projects); // still there, unbound
+    }
+
+    [Fact]
+    public async Task FinishSettingUpAsync_NoMatchingSourceRegisteredAnyMore_DoesNothingRatherThanThrowing()
+    {
+        // "koppelen terwijl de Depot-verbinding wegvalt" (AC-246 harness): the connection was removed between the
+        // list rendering and the click — SharedProjectGroups can still show a stale row from before that reload.
+        var shared = new SharedProject("depot:one", "One");
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var (viewModel, _) = BuildWithSharedSources([], dialogs, out var store);
+        await viewModel.LoadAsync();
+
+        await viewModel.FinishSettingUpCommand.ExecuteAsync(shared);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
+        await dialogs.DidNotReceive().ShowSharedProjectBindingDialogAsync(Arg.Any<SharedProject>(), Arg.Any<string>(), Arg.Any<ISharedProjectSource>());
+    }
+
     private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> sources) : ISharedProjectSourceRegistry
     {
         public IReadOnlyList<ISharedProjectSource> Sources => sources;
@@ -448,5 +514,10 @@ public class ProjectsViewModelTests
 
             return _result!;
         }
+
+        // AC-246: not exercised by any test in this file (none of them call ProjectsViewModel.FinishSettingUpAsync)
+        // — a fixed failure is enough to satisfy the interface without a fake result nothing here reads.
+        public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectBindingResult.Failed("not implemented by this fake"));
     }
 }

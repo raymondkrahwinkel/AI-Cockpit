@@ -1,0 +1,105 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.SharedProjectBindingDialog"
+        x:DataType="vm:SharedProjectBindingDialogViewModel"
+        Title="Finish setting up"
+        Width="520" Height="420" MinWidth="440" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:SharedProjectBindingDialogViewModel/>
+    </Design.DataContext>
+
+    <!-- AC-246: deliberately its own small window rather than ProjectDialogViewModel with everything locked (see
+         that view model's own remarks) — only the two fields that have never been set before (plus, rarely, a
+         machine-specific resource row), never the shared ones this project already carries. -->
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style Selector="TextBlock.FieldHint">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,1,0,6"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="*,Auto">
+        <Border Grid.Row="1" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="* required" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="18" Margin="24,20,24,28">
+                <TextBlock Text="{Binding Hint}" TextWrapping="Wrap" FontSize="12"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Profile *"/>
+                    <TextBlock Classes="FieldHint" Text="Profiles are local — every machine picks its own."/>
+                    <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
+                              PlaceholderText="Pick a profile…" HorizontalAlignment="Stretch" MaxWidth="340"/>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Folder"/>
+                    <TextBlock Classes="FieldHint"
+                               Text="Where this project's files live on this machine. Optional — a project with no files of its own (notes only, say) can be left blank and started as-is."/>
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                        <TextBox Grid.Column="0" Text="{Binding SourceDirectory}" PlaceholderText="not chosen yet"
+                                 FontFamily="{StaticResource CockpitMonoFont}" IsReadOnly="True"/>
+                        <Button Grid.Column="1" Content="Choose…" Command="{Binding BrowseCommand}"/>
+                        <Button Grid.Column="2" Content="Clone…" Classes="Accent" Command="{Binding CloneCommand}"
+                                IsVisible="{Binding HasGitUrl}"/>
+                    </Grid>
+                    <TextBlock Classes="FieldHint" Text="{Binding GitUrl, StringFormat='Cloning from {0}'}"
+                               IsVisible="{Binding HasGitUrl}"/>
+                </StackPanel>
+
+                <!-- AC-246 vormwaarschuwing: this block, not the two fields above it, is the one that can grow to
+                     ten rows on a project with that many machine-specific references. Bounded and independently
+                     scrollable so Profile/Folder — the two fields every operator needs, every time — never scroll
+                     out of view behind a long list on the one screen where a shared project is met for the first
+                     time. -->
+                <StackPanel Spacing="6" IsVisible="{Binding HasResourceRows}">
+                    <TextBlock Classes="FieldLabel" Text="Paths that differ on your machine"/>
+                    <TextBlock Classes="FieldHint"
+                               Text="This project's own definition names these; where they live is yours to fill in. Skipping one is fine — the project starts without that row."/>
+                    <Border MaxHeight="220" CornerRadius="{StaticResource CockpitPanelRadius}"
+                            Background="{StaticResource CockpitInsetBgBrush}" Padding="10">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding ResourceRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:SharedProjectBindingResourceRowViewModel">
+                                        <StackPanel Spacing="2" Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding DisplayLabel}" FontSize="12" FontWeight="SemiBold"/>
+                                            <TextBox Text="{Binding Reference}" PlaceholderText="leave blank to skip"/>
+                                            <TextBlock Text="{Binding OriginalReference, StringFormat='was: {0}'}"
+                                                       FontSize="10.5" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       IsVisible="{Binding OriginalReference, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

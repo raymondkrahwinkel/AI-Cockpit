@@ -92,9 +92,11 @@
 
                 <!-- AC-245: what a plugin shares elsewhere (AC-242's Depot sync) but this machine has not bound to
                      a local project yet — one section per source, populated in the background (ProjectsViewModel.
-                     LoadSharedProjectsAsync) so a slow or unreachable connection never holds this window shut. Rows
-                     are deliberately inert (no PointerPressed/DoubleTapped): binding one to a local project is
-                     AC-246, not this ticket, and a button that does nothing yet is worse than no button. -->
+                     LoadSharedProjectsAsync) so a slow or unreachable connection never holds this window shut.
+                     AC-246 adds the one action a row like this can take: "Finish setting up…", mirroring the
+                     AC-158 pattern a local project without a profile already shows (a visible button on the card
+                     itself, not a hidden context-menu-only action a first-time visitor to a shared connection would
+                     have no reason to look for). -->
                 <ItemsControl ItemsSource="{Binding SharedProjectGroups}" IsVisible="{Binding HasSharedProjects}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
@@ -129,6 +131,15 @@
                                                     <TextBlock Text="{Binding Role}" FontSize="10"
                                                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                                                IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    <!-- $parent[Window], not $parent[ItemsControl]: this row sits inside two
+                                                         nested ItemsControls (groups, then projects), so the nearest ItemsControl
+                                                         ancestor is the inner one — DataContext SharedProjectGroupViewModel, not
+                                                         ProjectsViewModel. The window itself is the nearest ancestor typed right. -->
+                                                    <Button Classes="Accent" HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Center" Padding="10,5" Margin="0,6,0,0"
+                                                            Content="Finish setting up…"
+                                                            Command="{Binding $parent[Window].((vm:ProjectsViewModel)DataContext).FinishSettingUpCommand}"
+                                                            CommandParameter="{Binding}"/>
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>

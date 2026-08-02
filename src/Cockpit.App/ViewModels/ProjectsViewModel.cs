@@ -309,6 +309,42 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(HasNothingToShow));
     }
 
+    /// <summary>
+    /// The "Finish setting up…" bind step (AC-246) for <paramref name="sharedProject"/>, one of <see cref="SharedProjectGroups"/>'s
+    /// own rows. Finds the <see cref="ISharedProjectSource"/> it came from by its own <see cref="SharedProject.Id"/>
+    /// prefix (the same <c>"{scheme}:{slug}"</c> shape <see cref="ISharedProjectSource.Key"/>'s own doc comment
+    /// describes) rather than carrying the source alongside the row — <see cref="SharedProjectGroupViewModel"/> is
+    /// AC-245's own type and this ticket does not widen it.
+    /// </summary>
+    [RelayCommand]
+    private async Task FinishSettingUpAsync(SharedProject sharedProject)
+    {
+        if (_dialogs is null || _sharedSources is null)
+        {
+            return;
+        }
+
+        var group = SharedProjectGroups.FirstOrDefault(candidate => candidate.Projects.Any(project => project.Id == sharedProject.Id));
+        var source = _sharedSources.Sources.FirstOrDefault(
+            candidate => sharedProject.Id.StartsWith(candidate.Key + ":", StringComparison.Ordinal));
+        if (source is null || group is null)
+        {
+            return;
+        }
+
+        if (await _dialogs.ShowSharedProjectBindingDialogAsync(sharedProject, group.SourceName, source) is { } created)
+        {
+            var stored = await _WithStoredLogoAsync(created);
+            await _PersistAsync(_settings.WithProject(stored));
+            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
+
+            // The row just bound must not keep showing under "Shared via …" until the next full reload — a fresh
+            // run finds it in boundIds now (its own Memory row names sharedProject.Id) and leaves it out on its own,
+            // but that reload has not happened yet and the operator is looking at this list right now.
+            await LoadSharedProjectsAsync();
+        }
+    }
+
     /// <summary>Claims every local project bound to one of <paramref name="sharedProjects"/> as owned by <paramref name="sourceName"/> — see <see cref="LoadSharedProjectsAsync"/>'s own remarks.</summary>
     private void _ClaimBoundProjects(IReadOnlyList<SharedProject> sharedProjects, string sourceName)
     {

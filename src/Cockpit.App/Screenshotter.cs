@@ -158,6 +158,16 @@ internal static class Screenshotter
         // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
         // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
         ["projects-shared"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithSharedProjects() },
+        // AC-246: the "Finish setting up…" bind step — bare, Profile required and Folder optional, matching the
+        // AC-242 mockup section 4. The design-time instance (a project with a GitUrl, so "Clone…" shows beside
+        // "Choose…") is enough to prove the two universally-needed fields render; the row above already proves the
+        // button that opens this exists on a shared-project card.
+        ["shared-project-binding"] = (_, _) => new SharedProjectBindingDialog { DataContext = new ViewModels.SharedProjectBindingDialogViewModel() },
+        // AC-246 vormwaarschuwing: the "Paths that differ on your machine" block with rows in it — proves the
+        // bounded, independently scrollable block actually renders and does not push Profile/Folder off the window
+        // the one time an operator meets a shared project with several machine-specific references at once.
+        ["shared-project-binding-resource-rows"] = (_, _) =>
+            new SharedProjectBindingDialog { DataContext = ViewModels.SharedProjectBindingDialogViewModel.DesignSampleWithResourceRows() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
         ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),

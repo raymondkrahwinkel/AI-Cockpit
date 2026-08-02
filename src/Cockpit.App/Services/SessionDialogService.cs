@@ -20,6 +20,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -334,6 +335,53 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
 
         return await _surfaces.ShowAsync(key, dialog, owner, () => saved);
+    }
+
+    public async Task<Project?> ShowSharedProjectBindingDialogAsync(SharedProject sharedProject, string sourceName, ISharedProjectSource source)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var key = (typeof(SharedProjectBindingDialog), sharedProject.Id);
+        if (_surfaces.TryActivateAsync(key) is Task<Project?> open)
+        {
+            return await open;
+        }
+
+        var (viewModel, error) = await SharedProjectBindingDialogViewModel.CreateAsync(sharedProject, sourceName, source, _profileStore);
+        if (viewModel is null)
+        {
+            // The definition read failed (unreachable, not signed in, the project vanished between the list and
+            // this click) — surfaced through the confirmation dialog's own single-button shape rather than opening
+            // an unusable binding dialog. There is no plain one-button "OK" message dialog in this codebase yet;
+            // "OK" in place of "Remove" is this call's whole adaptation, its return value unread.
+            await ShowConfirmationDialogAsync("Couldn't finish setting up", error ?? "Could not read this project's definition.", confirmLabel: "OK");
+            return null;
+        }
+
+        Project? saved = null;
+        viewModel.CloseRequested += result => saved = result;
+
+        var dialog = new SharedProjectBindingDialog { DataContext = viewModel };
+        viewModel.CloneRequested += () => _ = _CloneIntoSharedProjectBindingAsync(viewModel, dialog);
+
+        return await _surfaces.ShowAsync(key, dialog, owner, () => saved);
+    }
+
+    // Mirrors _CloneIntoProjectAsync, pre-filled with the shared definition's own GitUrl (AC-246: "Clone…" is an
+    // offer built on a URL the operator never has to type in, not a general clone-from-anywhere flow).
+    private async Task _CloneIntoSharedProjectBindingAsync(SharedProjectBindingDialogViewModel viewModel, Window owner)
+    {
+        var clonesRoot = await _cloneManager.GetEffectiveClonesRootAsync();
+        var cloneViewModel = new CloneFromGitUrlDialogViewModel(_cloneManager, clonesRoot) { Url = viewModel.GitUrl ?? string.Empty };
+        var dialog = new CloneFromGitUrlDialog { DataContext = cloneViewModel };
+
+        if (await dialog.ShowDialog<string?>(owner) is { Length: > 0 } clonePath)
+        {
+            viewModel.ApplyPickedDirectory(clonePath, cloneViewModel.Url.Trim());
+        }
     }
 
     // Keeps the URL beside the path: a project shows where its folder came from, which the clone dialog's own

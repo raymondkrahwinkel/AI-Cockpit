@@ -3,10 +3,12 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
 /// <summary>
-/// <see cref="CockpitProjectResourceEntry.Create"/> — the decision that an absolute reference is left out of a
-/// written definition rather than shipped or the write refused outright (AC-244, narrowed by AC-605: an
-/// anchor-relative reference is portable now, so it is written like any other portable row — see
-/// <see cref="Create_AnchorRelativeReference_ReturnsARowWithThatPortability"/>).
+/// <see cref="CockpitProjectResourceEntry.Create"/> — what happens to an absolute reference instead of shipping it
+/// or refusing the write outright (AC-244, narrowed by AC-605: an anchor-relative reference is portable now, so it
+/// is written like any other portable row — see <see cref="Create_AnchorRelativeReference_ReturnsARowWithThatPortability"/> —
+/// and again by AC-246: a plain absolute reference is written as a placeholder — role and label, no reference — not
+/// dropped outright any more; see <see cref="Create_AbsoluteReference_ReturnsAPlaceholderRow"/>. A secret-shaped
+/// reference is the one case still dropped in full, whatever its shape — AC-612, unchanged.
 /// </summary>
 public class CockpitProjectResourceEntryTests
 {
@@ -32,9 +34,38 @@ public class CockpitProjectResourceEntryTests
     }
 
     [Fact]
-    public void Create_AbsoluteReference_ReturnsNull()
+    public void Create_AbsoluteReference_ReturnsAPlaceholderRow()
     {
-        Assert.Null(CockpitProjectResourceEntry.Create("Reference", "/home/raymond/Notes/private.md"));
+        // AC-246 (Raymond, 2026-08-02): a machine-scope row is no longer an all-or-nothing drop — role and label
+        // travel as a placeholder, the reference itself does not.
+        var entry = CockpitProjectResourceEntry.Create("Reference", "/home/raymond/Notes/private.md", "Private notes");
+
+        Assert.NotNull(entry);
+        Assert.True(entry.Placeholder);
+        Assert.Equal("Reference", entry.Role);
+        Assert.Equal(string.Empty, entry.Reference);
+        Assert.Equal("Private notes", entry.Label);
+        Assert.Equal("absolute", entry.Portability);
+    }
+
+    [Fact]
+    public void Create_AbsoluteReferenceWithNoLabel_ReturnsAPlaceholderWithNoLabelEither()
+    {
+        var entry = CockpitProjectResourceEntry.Create("Reference", "/home/raymond/Notes/private.md");
+
+        Assert.NotNull(entry);
+        Assert.True(entry.Placeholder);
+        Assert.Null(entry.Label);
+    }
+
+    [Fact]
+    public void Create_APortableReference_NeverSetsPlaceholder()
+    {
+        // Placeholder is JsonIgnore(WhenWritingDefault) — false is the correct value for the overwhelmingly common
+        // row, not merely "unset" by omission from this test.
+        var entry = CockpitProjectResourceEntry.Create("Instructions", "docs/CONVENTIONS.md");
+
+        Assert.False(entry!.Placeholder);
     }
 
     [Fact]
@@ -80,6 +111,20 @@ public class CockpitProjectResourceEntryTests
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         Assert.Null(CockpitProjectResourceEntry.Create("Reference", Path.Combine(home, ".aws", "credentials")));
+    }
+
+    [Fact]
+    public void Create_AnAbsoluteSecretPathReferenceWithALabel_DropsTheLabelTooNotJustTheReference()
+    {
+        // AC-246: this is the row a placeholder must never become. An absolute path alone now travels as role +
+        // label; a secret-shaped one must stay a full drop, or a label like "Productie-DB" would leak by itself
+        // even with the reference withheld. The secret check runs before the placeholder branch even exists to be
+        // reached — see Create's own remarks.
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        var entry = CockpitProjectResourceEntry.Create("Reference", Path.Combine(home, ".aws", "credentials"), "Productie-DB");
+
+        Assert.Null(entry);
     }
 
     [Fact]
