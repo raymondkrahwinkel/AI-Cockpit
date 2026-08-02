@@ -156,6 +156,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         Assert.Empty(_gateway.Calls);
         Assert.Empty(_consent.Asked);
         Assert.Empty(_memory.Remembered);
+        Assert.Empty(_memory.Noted);
     }
 
     [Fact]
@@ -181,6 +182,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         Assert.Empty(_gateway.Calls);
         Assert.Empty(_consent.Asked);
         Assert.Empty(_memory.Remembered);
+        Assert.Empty(_memory.Noted);
     }
 
     [Fact]
@@ -202,7 +204,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Assert.True((bool)result["ok"]!, $"{tool.Name} refused the assistant itself.");
         }
 
-        Assert.Equal(tools.Count, _gateway.Calls.Count + _memory.Remembered.Count);
+        Assert.Equal(tools.Count, _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count);
     }
 
     [Fact]

@@ -59,6 +59,13 @@ internal static class CockpitConfigPath
     /// </summary>
     public static string AssistantMemory => Path.Combine(Root, "assistant-memory.md");
 
+    /// <summary>
+    /// Where the assistant leaves the conversation before restarting itself (AC-596). Its own file rather than a
+    /// section of the memory: one is appended to and the other overwritten, and separate files need no parser and
+    /// no lock between them.
+    /// </summary>
+    public static string AssistantCurrentState => Path.Combine(Root, "assistant-state.md");
+
     /// <summary>Creates <paramref name="directory"/> if needed and restricts it to its owner. Idempotent.</summary>
     public static void EnsurePrivateDirectory(string directory)
     {

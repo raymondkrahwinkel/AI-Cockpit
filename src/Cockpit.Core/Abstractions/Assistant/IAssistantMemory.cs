@@ -16,4 +16,16 @@ public interface IAssistantMemory
 
     /// <summary>Adds a line. Blank text is refused rather than stored — an empty memory entry is noise a later read cannot tell from a real one.</summary>
     Task RememberAsync(string text, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Where the conversation stands right now (AC-596) — what carries across the restart the assistant makes when
+    /// its context has grown too big. Empty when it has not said.
+    /// </summary>
+    Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the current state. Unlike <see cref="RememberAsync"/> this overwrites: a current state that
+    /// accumulated would be a transcript, which is the thing the restart exists to get rid of.
+    /// </summary>
+    Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default);
 }

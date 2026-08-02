@@ -16,28 +16,56 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 {
     private const string Heading = "# What the operator asked me to remember";
 
+    private const string StateHeading = "# Where the conversation stood when I last restarted";
+
     private readonly string _filePath;
 
+    private readonly string _statePath;
+
     public AssistantMemoryFile()
-        : this(CockpitConfigPath.AssistantMemory)
+        : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState)
     {
     }
 
-    /// <summary>Test seam: point the memory at an arbitrary file.</summary>
-    internal AssistantMemoryFile(string filePath)
+    /// <summary>Test seam: point the memory at arbitrary files.</summary>
+    internal AssistantMemoryFile(string filePath, string statePath)
     {
         _filePath = filePath;
+        _statePath = statePath;
     }
 
-    public async Task<string> ReadAsync(CancellationToken cancellationToken = default)
+    public Task<string> ReadAsync(CancellationToken cancellationToken = default) =>
+        _ReadAsync(_filePath, cancellationToken);
+
+    public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) =>
+        _ReadAsync(_statePath, cancellationToken);
+
+    /// <summary>
+    /// Overwrites, where <see cref="RememberAsync"/> appends — and in a second file rather than a section of the
+    /// first, so neither write has to parse or hold a lock over the other's lines.
+    /// </summary>
+    public async Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default)
+    {
+        var state = text?.Trim();
+        ArgumentException.ThrowIfNullOrWhiteSpace(state);
+
+        CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(_statePath) ?? CockpitConfigPath.Root);
+
+        await File.WriteAllTextAsync(
+            _statePath,
+            $"{StateHeading}{Environment.NewLine}{Environment.NewLine}{state}{Environment.NewLine}",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<string> _ReadAsync(string path, CancellationToken cancellationToken)
     {
         // A machine that has never remembered anything is the ordinary case on first run, not a failure to start.
-        if (!File.Exists(_filePath))
+        if (!File.Exists(path))
         {
             return string.Empty;
         }
 
-        return (await File.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false)).Trim();
+        return (await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false)).Trim();
     }
 
     // ponytail: append-only, so the file only ever grows. It is one line per thing the operator said to keep, and

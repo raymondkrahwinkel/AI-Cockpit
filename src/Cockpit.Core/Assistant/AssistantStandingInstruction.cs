@@ -16,22 +16,34 @@ public static class AssistantStandingInstruction
     public const string MemoryHeading =
         "What you have been asked to remember, from earlier conversations with this operator:";
 
+    /// <summary>What the state left behind at a hand-over is introduced as (AC-596).</summary>
+    public const string CurrentStateHeading =
+        "Where the conversation stood when you last handed over. It is yours, written before a restart, and it may "
+        + "be out of date — treat it as a note to yourself rather than as something the operator just said:";
+
     /// <summary>
     /// The instruction a session starts under: the built-in one (or the operator's, if they replaced it), then
-    /// whatever they wrote, then what the assistant was asked to remember (AC-595).
+    /// whatever they wrote, then what was remembered (AC-595) and where the conversation stood (AC-596).
     /// </summary>
-    public static string Compose(string? operatorInstruction, bool replacesDefault, string? memory = null)
+    public static string Compose(
+        string? operatorInstruction,
+        bool replacesDefault,
+        string? memory,
+        string? currentState = null)
     {
         var written = operatorInstruction?.Trim();
         var instruction = string.IsNullOrEmpty(written)
             ? AssistantSystemPrompt.Default
             : replacesDefault ? written : AssistantSystemPrompt.Default + "\n\n" + written;
 
-        // Last, and under a heading of its own: it is the operator's material rather than the product's, and an
-        // assistant that cannot tell the two apart would recite a remembered line as if it were a rule.
-        var remembered = memory?.Trim();
-        return string.IsNullOrEmpty(remembered)
-            ? instruction
-            : instruction + "\n\n" + MemoryHeading + "\n\n" + remembered;
+        // Last, and each under a heading of its own: this is the operator's material and the assistant's own note
+        // rather than the product's rules, and one that cannot tell them apart recites a remembered line as a rule.
+        return _Append(_Append(instruction, MemoryHeading, memory), CurrentStateHeading, currentState);
+    }
+
+    private static string _Append(string instruction, string heading, string? block)
+    {
+        var text = block?.Trim();
+        return string.IsNullOrEmpty(text) ? instruction : instruction + "\n\n" + heading + "\n\n" + text;
     }
 }

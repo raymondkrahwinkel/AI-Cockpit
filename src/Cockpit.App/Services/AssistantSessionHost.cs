@@ -134,7 +134,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // `Activity` on `AssistantActivity.Unavailable` with the reason set, which is the
     // chip saying out loud what the log used to say alone.
     public Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
-        _StartOrReplaceAsync(replaceALiveInstance: false, cancellationToken);
+        _StartOrReplaceAsync(replaceALiveInstance: false, startFresh: false, cancellationToken);
 
     // Stands the assistant down and brings it straight back up on the same conversation — the operator's way to
     // make a start-time setting take effect without closing the cockpit.
@@ -156,13 +156,28 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // consent routing and an unanswered consent card are all handled once, in one place, however the instance
     // came to be replaced.
     public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
-        _StartOrReplaceAsync(replaceALiveInstance: true, cancellationToken);
+        _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: false, cancellationToken);
+
+    /// <summary>
+    /// How full the context may get before the assistant hands itself over and starts again (AC-596). A percentage
+    /// rather than a token count, because it is the provider that reports the fill and it knows the window.
+    /// </summary>
+    /// <remarks>
+    /// ponytail: one number for every provider. High enough that an ordinary exchange never reaches it, low enough
+    /// to leave room for the turn that crosses it plus the one that answers the operator afterwards.
+    /// </remarks>
+    internal const double RestartAboveContextPercent = 80;
 
     // `replaceALiveInstance`:
     // Whether a healthy instance is torn down too. False is `EnsureStartedAsync`'s idempotent lazy
     // start; true is `RestartAsync`. One body rather than two so both take the same start gate — a
     // restart racing a hotkey hold must not build two instances any more than two holds may.
-    private async Task<SessionViewModel?> _StartOrReplaceAsync(bool replaceALiveInstance, CancellationToken cancellationToken)
+    // `startFresh`: whether the new instance picks up the conversation (every other start) or deliberately does
+    // not (AC-596's hand-over, where dropping the transcript is the entire point).
+    private async Task<SessionViewModel?> _StartOrReplaceAsync(
+        bool replaceALiveInstance,
+        bool startFresh,
+        CancellationToken cancellationToken)
     {
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
@@ -184,7 +199,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 await _DisposeQuietlyAsync(previous).ConfigureAwait(true);
             }
 
-            return await _StartAsync(cancellationToken).ConfigureAwait(true);
+            return await _StartAsync(startFresh, cancellationToken).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -263,7 +278,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    private async Task<SessionViewModel?> _StartAsync(CancellationToken cancellationToken)
+    private async Task<SessionViewModel?> _StartAsync(bool startFresh, CancellationToken cancellationToken)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
         if (!settings.IsEnabled)
@@ -304,13 +319,16 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             SessionOptionCatalog.DefaultEffort,
             // Picks up yesterday's conversation when there is one — the same resume the restore path uses, rather
             // than a retention rule invented here.
-            resume: await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
+            resume: startFresh
+                ? SessionResume.New
+                : await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
             launchOptions: _LaunchOptions(
                 profile,
                 slot.ReplacesStandingInstruction,
-                await _memory.ReadAsync(cancellationToken).ConfigureAwait(true)),
+                await _memory.ReadAsync(cancellationToken).ConfigureAwait(true),
+                await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true)),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
         _ApplySpeech(session, settings);
@@ -379,11 +397,51 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 // moves a different property than the SDK's permission does. Left out, the chip read "Ready" while
                 // a k8s or terminal request sat unanswered over the chat window.
                 or nameof(SessionPanelViewModel.PendingConsent)
+                // AC-596: the same three properties decide whether it may hand over, so the fill is watched here
+                // rather than on its own subscription — a context that crossed the line while it was still talking
+                // has to be reconsidered the moment it stops.
+                or nameof(SessionPanelViewModel.ContextUsedPercent)
             && sender is SessionViewModel session)
         {
             _SyncActivityWithSession(session);
+            _HandOverIfTheContextIsFull(session);
         }
     }
+
+    /// <summary>
+    /// Restarts the assistant on a fresh conversation once its context is nearly full (AC-596) — but only while
+    /// nothing is running and nothing is waiting on the operator.
+    /// </summary>
+    /// <remarks>
+    /// It is the whole conversation that goes, so what carries across is the standing instruction, the memory file
+    /// and whatever the assistant last wrote with <c>note_state</c>. Never mid-turn, and never over an unanswered
+    /// permission: that row belongs to a session that would no longer exist to receive the answer.
+    /// </remarks>
+    private void _HandOverIfTheContextIsFull(SessionViewModel session)
+    {
+        if (!ReferenceEquals(session, Session)
+            || !ShouldHandOver(
+                session.ContextUsedPercent,
+                session.IsBusy,
+                session.HasPendingPermission || session.PendingConsent is not null))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "The assistant's context is {Fill:0}% full; restarting it on a fresh conversation.",
+            session.ContextUsedPercent);
+
+        // Not awaited: this runs off a property change with nowhere to put a failure, and _StartOrReplaceAsync
+        // already reports its own — a failed hand-over leaves the chip unavailable with the reason on it.
+        _ = _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: true, CancellationToken.None);
+    }
+
+    // The rule itself, as a pure function so it can be asserted directly — the same shape as ActivityFor above.
+    // A null fill is a provider that reported nothing this turn, which says nothing about how full the context is:
+    // reading it as zero would postpone the hand-over indefinitely on a provider that only reports sometimes.
+    internal static bool ShouldHandOver(double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator) =>
+        contextUsedPercent >= RestartAboveContextPercent && !isBusy && !isWaitingOnOperator;
 
     // Maps the session's own status onto what the chip reports.
     // Deliberately narrow. It only ever moves between `AssistantActivity.Thinking` and
@@ -562,14 +620,15 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     internal static IReadOnlyDictionary<string, string> _LaunchOptions(
         Cockpit.Core.Profiles.SessionProfile profile,
         bool replacesStandingInstruction,
-        string? memory)
+        string? memory,
+        string? currentState = null)
     {
         var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
             ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] =
-            AssistantStandingInstruction.Compose(profile.SystemPrompt, replacesStandingInstruction, memory);
+            AssistantStandingInstruction.Compose(profile.SystemPrompt, replacesStandingInstruction, memory, currentState);
 
         return options;
     }

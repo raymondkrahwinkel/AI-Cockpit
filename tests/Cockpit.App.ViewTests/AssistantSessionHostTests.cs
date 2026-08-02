@@ -473,6 +473,45 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void LaunchOptions_CarryTheNoteTheAssistantLeftItself_UnderItsOwnHeading()
+    {
+        // AC-596. Labelled as possibly stale on purpose: an assistant that read this as "what the operator just
+        // said" would answer a question nobody asked again after every hand-over.
+        var options = AssistantSessionHost._LaunchOptions(
+            _Profile(),
+            replacesStandingInstruction: false,
+            memory: "- 2026-08-02 — The operator is called Raymond.",
+            currentState: "We are on AC-592; the release desk is running the tests.");
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.CurrentStateHeading, instruction, StringComparison.Ordinal);
+        Assert.EndsWith("the release desk is running the tests.", instruction, StringComparison.Ordinal);
+    }
+
+    // ── Handing over before the context fills (AC-596) ────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(79.9, false, false, false)]
+    [InlineData(80, false, false, true)]
+    [InlineData(99, false, false, true)]
+    // Never mid-turn: the restart would take the turn it is in the middle of with it.
+    [InlineData(99, true, false, false)]
+    // Never over a permission nobody has answered: that row belongs to a session that would no longer exist.
+    [InlineData(99, false, true, false)]
+    public void HandingOver_WaitsForAContextThatIsFull_AndForAnAssistantThatIsDoingNothing(
+        double fill, bool isBusy, bool isWaitingOnOperator, bool expected) =>
+        Assert.Equal(expected, AssistantSessionHost.ShouldHandOver(fill, isBusy, isWaitingOnOperator));
+
+    [Fact]
+    public void AProviderThatReportedNoFillThisTurn_DoesNotCountAsAnEmptyContext()
+    {
+        // The failure this rules out is the quiet one: reading "no reading" as zero postpones the hand-over for
+        // ever on a provider that only reports sometimes, and the first anyone hears of it is a refused turn.
+        Assert.False(AssistantSessionHost.ShouldHandOver(null, isBusy: false, isWaitingOnOperator: false));
+    }
+
+    [Fact]
     public void LaunchOptions_WithNothingEverRemembered_CarryNoMemoryHeading()
     {
         var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: "   ");

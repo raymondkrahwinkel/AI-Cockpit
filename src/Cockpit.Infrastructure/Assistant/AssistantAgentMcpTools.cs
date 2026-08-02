@@ -415,6 +415,27 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "note_state")]
+    [Description("Leaves a note to yourself about where this conversation stands, for the version of you that comes after a restart. YOU RUN ALL DAY AND YOUR CONTEXT DOES NOT: when it is nearly full the cockpit starts you again on an empty one, and everything said since this morning is gone except your instructions, the memory file and this note. Keep it current — after anything that changes what is going on, not on a timer: what the operator is working on, what they last asked you, what you are waiting for, what you promised to come back to. EACH CALL REPLACES THE LAST, so write the whole picture every time rather than the newest line; three sentences that stand on their own, no transcript. WRITE IT AS A NOTE TO A COLLEAGUE WHO WAS NOT HERE: \"we are on AC-592, the release desk is running the tests, they asked me to say when it goes green\" — not \"as I said\", and not anything that only makes sense next to a message you can still see. THIS IS NOT THE MEMORY: things meant to last go in remember, and this one is wiped clean by the next call. Nothing shows on their screen and nobody approves it. On the other side of a restart you will be handed this note with a heading saying it may be out of date — so do not write it as if it were still happening.")]
+    public async Task<string> NoteStateAsync(
+        [Description("Where the conversation stands, in a few sentences that will still make sense to someone who cannot see any of it.")] string state)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            await memory.NoteCurrentStateAsync(state).ConfigureAwait(false);
+            return _Serialize(new { ok = true, state = state.Trim() });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     /// <summary>
     /// Asks the operator, and returns the tool result to hand back when they said no — or null when they said yes.
     /// </summary>
