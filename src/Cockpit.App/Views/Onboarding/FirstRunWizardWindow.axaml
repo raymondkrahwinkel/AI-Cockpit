@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels.Onboarding"
+        xmlns:config="using:Cockpit.Core.Configuration"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.Onboarding.FirstRunWizardWindow"
+        x:DataType="vm:FirstRunWizardViewModel"
+        Icon="/Assets/AppIcon.ico"
+        Title="{x:Static config:CockpitBrand.ProductName}"
+        Width="620" Height="480" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:FirstRunWizardViewModel/>
+    </Design.DataContext>
+
+    <!-- AC-509: the shell — a step bar, whatever step content is currently hung into it, and Back/Next/Skip.
+         Steps themselves (AC-510/AC-511's own screens) are plain content controls the view model builds from
+         whatever IFirstRunWizardStep instances DI found, so a step registering itself is the intended way to add
+         one without editing this file — see FirstRunWizardViewModelTests for the shape that seam is held to. -->
+    <Grid RowDefinitions="Auto,*,Auto" Margin="28,24">
+        <ItemsControl Grid.Row="0" ItemsSource="{Binding StepBar}" Margin="0,0,0,20">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="18"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:WizardStepBarItemViewModel">
+                    <TextBlock Text="{Binding Title}" FontSize="12.5"
+                               FontWeight="{Binding FontWeight}"
+                               TextDecorations="{Binding TextDecorations}"
+                               Opacity="{Binding Opacity}"/>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <ContentControl Grid.Row="1" Content="{Binding CurrentStepContent}"/>
+
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,20,0,0">
+            <Button Grid.Column="0" Content="Skip" Command="{Binding SkipCommand}"
+                    Background="Transparent" BorderThickness="0"
+                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Button Grid.Column="2" Content="Back" Command="{Binding BackCommand}" Margin="0,0,8,0"/>
+            <Button Grid.Column="3" Content="Next" Classes="Accent" Command="{Binding NextCommand}"/>
+        </Grid>
+    </Grid>
+</Window>

@@ -177,4 +177,13 @@ internal sealed class CockpitConfigFile
 
     /// <summary>The registered verify runners (AC-86) — the per-project command the visual verify loop may run; owned by the verify-runner-registry store. The agent triggers a runner but never supplies the command, so this list is also the boundary against arbitrary command execution.</summary>
     public List<VerifyRunnerEntry> VerifyRunners { get; set; } = [];
+
+    /// <summary>
+    /// The first-run wizard's completion marker (AC-509) — the content version the operator has seen, or absent
+    /// before it has ever run; owned by the first-run-wizard-state store. A version rather than a bool, so a later
+    /// addition to the wizard can decide whether an install that already finished an earlier version still needs
+    /// to see something new, without reusing or clearing this flag.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? FirstRunWizardVersion { get; set; }
 }

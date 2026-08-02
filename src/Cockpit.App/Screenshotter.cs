@@ -283,6 +283,14 @@ internal static class Screenshotter
         // developer's own screen happens to produce.
         ["screenshot-preview-wide"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(1600, 500), "personal - webshop"),
         ["screenshot-preview-narrow"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(500, 1400), "personal - webshop"),
+
+        // AC-509: the first-run wizard shell on its first (and, off this build, only registered) step — Iron
+        // Law #9. The design-time constructor already builds it against a single WelcomeStep, the same shape the
+        // real DI-discovered step list has today.
+        ["first-run-wizard"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(),
+        },
     };
 
     /// <summary>
