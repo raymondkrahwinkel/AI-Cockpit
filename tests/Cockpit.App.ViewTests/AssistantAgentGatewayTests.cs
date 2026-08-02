@@ -635,6 +635,143 @@ public class AssistantAgentGatewayTests
             cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == busy.Id));
     }
 
+    // --- AC-592: renaming a session and a desk -----------------------------------------------------------------
+
+    [Fact]
+    public async Task RenamingARunningSession_TakesTheName_AndItCountsAsOneSomebodyChose()
+    {
+        // Criteria 1 and 2 in one test, because the second is the half that is easy to ship broken: a rename that
+        // only set the title would look right on screen and be silently replaced the next time a plugin links a
+        // ticket to that session (#AC-310).
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
+        var session = Dispatcher.UIThread.Invoke(() =>
+        {
+            var added = new SessionViewModel { WorkspaceId = desk.Id, Title = "Claude · 10:31" };
+            cockpit.Sessions.Add(added);
+            return added;
+        });
+
+        var result = await gateway.RenameSessionAsync(session.PaneId, "  Luna  ");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("Luna", result.Name);
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            Assert.Equal("Luna", session.Title);
+            Assert.False(session.HasGeneratedName);
+            Assert.False(cockpit.SuggestSessionName(session.PaneId, "AC-592"));
+            Assert.Equal("Luna", session.Title);
+        });
+
+        // Deliberately not on the spawn trail: that record exists for what costs money and starts processes.
+        Assert.Empty(trail.Entries);
+    }
+
+    [Fact]
+    public async Task RenamingAPaneIdNothingIsRunningUnder_IsRefusedWithAReason()
+    {
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions))));
+
+        var result = await gateway.RenameSessionAsync("pane-that-closed", "Luna");
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Name);
+        Assert.Contains("no session with pane id 'pane-that-closed'", result.Error);
+    }
+
+    [Fact]
+    public async Task RenamingTheAssistantsOwnSession_IsRefused_EvenWhenItSitsInTheRoster()
+    {
+        // Stamped into Sessions on purpose: the guard has to be the identity check, not the accident that the
+        // assistant is in no collection today. Same shape as the stop-side test above, and for the same reason.
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var built = _Gateway(_Settings(desk));
+            var assistant = new SessionViewModel { WorkspaceId = desk.Id, Title = "The assistant" };
+            assistant.AdoptPaneId(AssistantIdentity.PaneId);
+            built.Cockpit.Sessions.Add(assistant);
+            return built;
+        });
+
+        var result = await gateway.RenameSessionAsync(AssistantIdentity.PaneId, "Luna");
+
+        Assert.False(result.Ok);
+        Assert.Contains("my own session", result.Error);
+        Dispatcher.UIThread.Invoke(() => Assert.Equal(
+            "The assistant",
+            cockpit.Sessions.Single(session => session.PaneId == AssistantIdentity.PaneId).Title));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task RenamingASessionToNothing_IsRefused_AndLeavesTheNameStanding(string blank)
+    {
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
+        var session = Dispatcher.UIThread.Invoke(() =>
+        {
+            var added = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-592" };
+            cockpit.Sessions.Add(added);
+            return added;
+        });
+
+        var result = await gateway.RenameSessionAsync(session.PaneId, blank);
+
+        Assert.False(result.Ok);
+        Assert.Contains("needs a name", result.Error);
+        Dispatcher.UIThread.Invoke(() => Assert.Equal("AC-592", session.Title));
+    }
+
+    [Fact]
+    public async Task RenamingADesk_ChangesItsName_AndLeavesTheOperatorOnTheDeskTheyWereLookingAt()
+    {
+        // Renaming a desk is not walking to it: the desk being renamed is deliberately not the active one.
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var elsewhere = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, elsewhere)));
+
+        var result = await gateway.RenameWorkspaceAsync(elsewhere.Id, "  Luna's desk  ");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("Luna's desk", result.Name);
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            var settings = cockpit.Workspaces.Settings;
+            Assert.Equal("Luna's desk", settings.Workspaces.Single(workspace => workspace.Id == elsewhere.Id).Name);
+            Assert.Equal("Here", settings.Workspaces.Single(workspace => workspace.Id == here.Id).Name);
+            Assert.Equal(here.Id, settings.Active?.Id);
+        });
+    }
+
+    [Fact]
+    public async Task RenamingAWorkspaceIdThatNamesNothing_IsRefusedWithAReason()
+    {
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions))));
+
+        var result = await gateway.RenameWorkspaceAsync("no-such-desk", "Luna's desk");
+
+        Assert.False(result.Ok);
+        Assert.Contains("no workspace with id 'no-such-desk'", result.Error);
+    }
+
+    [Fact]
+    public async Task RenamingADeskToNothing_IsRefused_AndLeavesTheNameStanding()
+    {
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
+
+        var result = await gateway.RenameWorkspaceAsync(desk.Id, "   ");
+
+        Assert.False(result.Ok);
+        Assert.Contains("needs a name", result.Error);
+        Dispatcher.UIThread.Invoke(() => Assert.Equal("Release", Assert.Single(cockpit.Workspaces.Settings.Workspaces).Name));
+    }
+
     // --- The graph under test -------------------------------------------------------------------------------
 
     /// <summary>

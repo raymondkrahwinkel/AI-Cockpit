@@ -333,6 +333,18 @@ public sealed class AssistantActMountRuleTests : IDisposable
             return Task.FromResult(AgentStopResult.Stopped(paneId, "AC-545 tests"));
         }
 
+        public Task<AssistantRenameResult> RenameSessionAsync(string paneId, string name, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"RenameSessionAsync({paneId} -> {name})");
+            return Task.FromResult(AssistantRenameResult.Renamed(name));
+        }
+
+        public Task<AssistantRenameResult> RenameWorkspaceAsync(string workspaceId, string name, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"RenameWorkspaceAsync({workspaceId} -> {name})");
+            return Task.FromResult(AssistantRenameResult.Renamed(name));
+        }
+
         public Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default)
         {
             Calls.Add("ListWorkspacesAsync()");

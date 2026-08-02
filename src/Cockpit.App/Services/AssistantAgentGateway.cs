@@ -336,6 +336,61 @@ internal sealed class AssistantAgentGateway(
         return AgentPromptResult.Refused(reason);
     }
 
+    public Task<AssistantRenameResult> RenameSessionAsync(string paneId, string name, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(() => Task.FromResult(_RenameSession(paneId, name)));
+
+    // Not on the spawn trail, and deliberately: that record exists because a spawn starts a process and spends
+    // money. A rename costs nothing, is reversible, and shows up on the operator's own screen as it happens.
+    private AssistantRenameResult _RenameSession(string paneId, string name)
+    {
+        var trimmed = name.Trim();
+        if (trimmed.Length == 0)
+        {
+            return AssistantRenameResult.Refused("A session needs a name; that one was empty.");
+        }
+
+        // By identity rather than by whether it happens to be findable — the same rule, and the same reason, as
+        // _StopAsync: the assistant sits outside Sessions today, but that is where it sits and not a rule.
+        if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+        {
+            return AssistantRenameResult.Refused("That is my own session, and I do not get to name it.");
+        }
+
+        if (cockpit.SetSessionName(paneId, trimmed))
+        {
+            return AssistantRenameResult.Renamed(trimmed);
+        }
+
+        // SetSessionName reaches Sessions only, so false past the guards above means the pane is not one the cockpit
+        // holds. FindSession separates the two cases the assistant can actually be looking at, because it lists
+        // embedded panes and would otherwise be told they had closed.
+        var elsewhere = cockpit.FindSession(paneId);
+        return AssistantRenameResult.Refused(elsewhere is null
+            ? $"There is no session with pane id '{paneId}' — it may already have been closed."
+            : $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so I cannot rename it.");
+    }
+
+    public Task<AssistantRenameResult> RenameWorkspaceAsync(string workspaceId, string name, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(async () =>
+        {
+            var trimmed = name.Trim();
+            if (trimmed.Length == 0)
+            {
+                return AssistantRenameResult.Refused("A workspace needs a name; that one was empty.");
+            }
+
+            // Looked up here rather than left to the rename itself, which returns silently for a desk it cannot
+            // find — and a silent no-op would come back to the assistant as a rename that happened.
+            if (_FindWorkspace(workspaceId) is not { } workspace)
+            {
+                return AssistantRenameResult.Refused(
+                    $"There is no workspace with id '{workspaceId}'. List the workspaces and name one of those.");
+            }
+
+            await cockpit.Workspaces.RenameWorkspaceAsync((workspace.Id, trimmed)).ConfigureAwait(true);
+            return AssistantRenameResult.Renamed(trimmed);
+        });
+
     public Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(() => Task.FromResult(_ListWorkspaces()));
 

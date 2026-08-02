@@ -41,6 +41,22 @@ public interface IAssistantAgentGateway
     Task<AgentStopResult> StopAsync(string paneId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Renames the session on <paramref name="paneId"/> — the title in its header and its sidebar row — exactly as
+    /// an inline rename does, so it counts as a name somebody chose rather than one a later suggestion may replace.
+    /// </summary>
+    /// <remarks>
+    /// Refuses the same three things <see cref="StopAsync"/> does and for the same reasons: a pane that is not
+    /// there, one that runs inside a workspace's own surface rather than as a pane, and the assistant's own.
+    /// </remarks>
+    Task<AssistantRenameResult> RenameSessionAsync(string paneId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Renames the workspace on <paramref name="workspaceId"/> — the tab label the operator reads — and persists it.
+    /// The desk is not activated: renaming one is not the same as walking to it.
+    /// </summary>
+    Task<AssistantRenameResult> RenameWorkspaceAsync(string workspaceId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every workspace the cockpit has open, so a spoken name ("the Cockpit desk") can be turned into the id a
     /// spawn needs. Includes desks with nothing running on them, which is the half a session roster cannot show.
     /// </summary>
@@ -209,6 +225,17 @@ public sealed record AgentStopResult(bool Ok, string? PaneId, string? SessionNam
     public static AgentStopResult Stopped(string paneId, string sessionName) => new(true, paneId, sessionName, null);
 
     public static AgentStopResult Refused(string error) => new(false, null, null, error);
+}
+
+/// <summary>
+/// What came of a rename: the name that now stands, or the reason it does not. Same shape and same reason as
+/// <see cref="AgentStopResult"/> — a refusal is a sentence the assistant says, not an exception it fails on.
+/// </summary>
+public sealed record AssistantRenameResult(bool Ok, string? Name, string? Error)
+{
+    public static AssistantRenameResult Renamed(string name) => new(true, name, null);
+
+    public static AssistantRenameResult Refused(string error) => new(false, null, error);
 }
 
 /// <summary>

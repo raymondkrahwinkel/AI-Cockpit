@@ -230,6 +230,12 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
         public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<AssistantRenameResult> RenameSessionAsync(string paneId, string name, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<AssistantRenameResult> RenameWorkspaceAsync(string workspaceId, string name, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
         {
             Calls.Add($"SendMessageAsync({paneId})");
