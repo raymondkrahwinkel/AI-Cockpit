@@ -166,8 +166,16 @@ internal static class Screenshotter
         // AC-246 vormwaarschuwing: the "Paths that differ on your machine" block with rows in it — proves the
         // bounded, independently scrollable block actually renders and does not push Profile/Folder off the window
         // the one time an operator meets a shared project with several machine-specific references at once.
-        ["shared-project-binding-resource-rows"] = (_, _) =>
-            new SharedProjectBindingDialog { DataContext = ViewModels.SharedProjectBindingDialogViewModel.DesignSampleWithResourceRows() },
+        //
+        // Width/Height set from the scene's own arguments (unlike the plain scene above, which is deliberately
+        // left at the dialog's built-in 520x420 — see its own remarks): this scene exists specifically to prove the
+        // block does not push everything else off screen, and the dialog's built-in height is exactly tall enough
+        // to hide that. A caller asking for a taller render (e.g. --size 900x900) used to get the built-in size
+        // back regardless — the block rendered, but entirely below the fold, which is what actually happened here
+        // (measured: at the built-in size only the section's heading, half-cut, was ever on screen). This scene is
+        // the one place that height is worth honouring.
+        ["shared-project-binding-resource-rows"] = (width, height) =>
+            new SharedProjectBindingDialog { DataContext = ViewModels.SharedProjectBindingDialogViewModel.DesignSampleWithResourceRows(), Width = width, Height = height },
         // AC-618: categories as the list's main grouping, in a non-alphabetical order ("Werk" before "Privé"), with
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
