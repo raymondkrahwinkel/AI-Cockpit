@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Abstractions;
@@ -15,7 +16,7 @@ namespace Cockpit.Core.Tests.Onboarding;
 /// </summary>
 public class FirstRunWizardDependencyInjectionTests
 {
-    private static ServiceProvider BuildProvider()
+    private static ServiceProvider BuildProvider(Action<ServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -28,6 +29,8 @@ public class FirstRunWizardDependencyInjectionTests
             provider => () => provider.GetRequiredService<SessionViewModel>());
         services.AddTransient<Func<TtyViewModel>>(
             provider => () => provider.GetRequiredService<TtyViewModel>());
+
+        configure?.Invoke(services);
 
         return services.BuildServiceProvider();
     }
@@ -49,5 +52,26 @@ public class FirstRunWizardDependencyInjectionTests
         var steps = provider.GetServices<IFirstRunWizardStep>().ToList();
 
         Assert.Contains(steps, step => step is WelcomeStep);
+    }
+
+    /// <summary>
+    /// The Help menu reaches the wizard through an optional constructor parameter that defaults to null (AC-512),
+    /// which is a shape that fails quietly: an unsatisfied parameter still compiles, still passes a test that only
+    /// asks the container for <see cref="IFirstRunWizard"/>, and only shows up as a menu item that does nothing.
+    /// Resolving the view model the way the app does and driving the command is the one shape that tells an
+    /// injected wizard apart from the default.
+    /// </summary>
+    [Fact]
+    public async Task TheResolvedCockpitViewModel_ReachesTheWizard_RatherThanItsNullDefault()
+    {
+        var wizard = Substitute.For<IFirstRunWizard>();
+        // Awaited rather than plain `using`: resolving the view model puts an IAsyncDisposable in the container,
+        // and a synchronous Dispose then throws over the top of whatever this test was actually asserting.
+        await using var provider = BuildProvider(services => services.AddSingleton(wizard));
+
+        var cockpit = provider.GetRequiredService<CockpitViewModel>();
+        await cockpit.RunSetupAgainCommand.ExecuteAsync(null);
+
+        await wizard.Received(1).ShowAsync(Arg.Any<CancellationToken>());
     }
 }
