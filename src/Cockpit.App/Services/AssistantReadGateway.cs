@@ -93,7 +93,9 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
             project.Name,
             project.Description,
             project.SourceDirectory,
-            project.DefaultProfileLabel)),
+            project.DefaultProfileLabel,
+            project.PluginFields,
+            project.GitUrl)),
     ];
 
     private IReadOnlyList<AssistantSessionRow> _ListSessions()
@@ -125,7 +127,10 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
                         session.SessionStatus.ToString(),
                         // Only an SDK session has a permission to be stopped on; a terminal pane has no such state,
                         // and reporting false for it is the truth rather than a gap.
-                        session is SessionViewModel { HasPendingPermission: true });
+                        session is SessionViewModel { HasPendingPermission: true },
+                        // The same precondition every other waker in the cockpit already checks before sending —
+                        // not a second opinion computed here (AC-545 follow-up).
+                        session.CanTakeAPrompt);
                 }),
         ];
     }

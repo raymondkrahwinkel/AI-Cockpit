@@ -1167,6 +1167,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ProviderBadge = _ResolveProviderBadge(profile);
         // The shared header's kind chip (AC-37): the provider tag, or "SDK" for a plain Claude SDK session.
         KindLabel = string.IsNullOrEmpty(ProviderBadge) ? "SDK" : ProviderBadge;
+        // Set before the launch is even attempted, not after it succeeds (AC-545 follow-up): the label is a fact
+        // about what was launched, not about whether it came up, so a launch that throws inside the try below must
+        // not leave this session looking never-launched (empty profile) forever. Matches
+        // TtyViewModel.LaunchConfigured, which sets it before TryRaiseLaunch() for the same reason.
+        ActiveProfileLabel = profile?.Label;
 
         // A per-session working directory override reflects immediately on the shared base (so the header and
         // the read/observe surface show where this session runs) even before the CLI's own init event confirms
@@ -1240,9 +1245,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 await runtime.SetAutoApproveToolsAsync(true);
             }
 
-            ActiveProfileLabel = profile?.Label;
-            // The profile is shown separately (ActiveProfileLabel), so keep the status itself clean
-            // rather than repeating it — "Session started. · personal" read as a duplicate (L6).
+            // ActiveProfileLabel is already set (before the launch attempt, above); the profile is shown
+            // separately from Status, so keep the status itself clean rather than repeating it —
+            // "Session started. · personal" read as a duplicate (L6).
             Status = "Session started.";
             // The runtime is up: stop signalling "still starting". IsSessionReady is refreshed by the single
             // caller (StartConfiguredAsync) right after this returns, so it is not raised again here.
