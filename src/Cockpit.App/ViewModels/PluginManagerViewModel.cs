@@ -28,6 +28,15 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
+
+    /// <summary>
+    /// The provisioning seam (AC-510[b]) every store install/update/rollback below now goes through, wrapping the
+    /// same <see cref="_storeClient"/>/<see cref="_installer"/> this view model already receives — built here
+    /// rather than threaded in as its own constructor parameter, so the dozens of existing tests that stub
+    /// <see cref="IPluginStoreClient"/>/<see cref="IPluginInstaller"/> directly still observe every call.
+    /// </summary>
+    private readonly IPluginProvisioningService? _provisioningService;
+
     private readonly IReadOnlyDictionary<string, PluginSettingsRegistration>? _settingsRegistry;
     private readonly PluginDiagnostics? _diagnostics;
     private readonly IPluginContributionSink? _contributionSink;
@@ -286,6 +295,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _dialogService = dialogService;
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
+        _provisioningService = new PluginProvisioningService(storeClient, installer);
         _settingsRegistry = settingsRegistry;
         _diagnostics = diagnostics;
         _contributionSink = contributionSink;
@@ -1138,9 +1148,11 @@ public partial class PluginManagerViewModel : ViewModelBase
     private PluginRowViewModel? _InstalledRowFor(StorePluginRowViewModel row) =>
         Plugins.FirstOrDefault(installed => installed.FolderId == PluginFolderName.Normalize(row.Id));
 
-    // Download + install one store row's version — its advertised latest, or an explicit one for a rollback.
-    // Reports through StatusMessage. No IsBusy/browse of its own so it composes into the single-row install, the
-    // batch "Update all" and the per-version install. Returns whether the install succeeded.
+    // Install one store row's version — its advertised latest, or an explicit one for a rollback — through the
+    // provisioning service (AC-510[b]), then run the same UI-side aftercare every install path always has: the
+    // consent walk for a fresh install, the registration re-pin for a staged update. No IsBusy/browse of its own
+    // so it composes into the single-row install, the batch "Update all" and the per-version install. Returns
+    // whether the install succeeded.
     private async Task<bool> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null)
     {
         if ((explicitVersion ?? row.LatestVersionEntry) is not { } version)
@@ -1150,37 +1162,31 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         StatusMessage = $"Downloading '{row.Name}' v{version.Version}…";
-        var download = await _storeClient!.DownloadZipAsync(row.Store, version.Path, version.Sha256);
-        if (!download.IsSuccess || download.ZipPath is null)
+        var provision = await _provisioningService!.InstallAsync(
+            new PluginProvisionRequest(row.Id, row.Name, row.Store, version), AbstractionsContract.Version);
+
+        // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
+        // no per-artifact hash still installs, but the operator is told the download could not be verified.
+        var installedMessage = provision.Warning is { } warning
+            ? $"⚠ {warning} '{row.Name}' installed. Restart the cockpit to activate it."
+            : $"'{row.Name}' installed. Restart the cockpit to activate it.";
+
+        // Translated back to the installer's own result shape so the shared aftercare below — consent walk,
+        // registration re-pin — stays the one place that logic lives, unchanged by where the bytes came from.
+        var installResult = provision.IsSuccess
+            ? PluginInstallResult.Success(provision.FolderId!, provision.Sha256, staged: provision.Outcome == PluginProvisionOutcome.Staged)
+            : PluginInstallResult.Failure(provision.Error ?? "Install failed.");
+
+        await _AfterInstallAsync(installResult, installedMessage);
+
+        // A staged update is live only after restart, so remember the version it now effectively is, so the
+        // store stops offering the same update (and drops it out of the updates list) until the restart.
+        if (provision.Outcome == PluginProvisionOutcome.Staged)
         {
-            StatusMessage = download.Error ?? "Download failed.";
-            return false;
+            _pendingUpdateVersions[row.Id] = version.Version;
         }
 
-        try
-        {
-            // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
-            // no per-artifact hash still installs, but the operator is told the download could not be verified.
-            var installedMessage = download.Warning is { } warning
-                ? $"⚠ {warning} '{row.Name}' installed. Restart the cockpit to activate it."
-                : $"'{row.Name}' installed. Restart the cockpit to activate it.";
-
-            var result = await _installer!.InstallFromZipAsync(download.ZipPath, AbstractionsContract.Version);
-            await _AfterInstallAsync(result, installedMessage);
-
-            // A staged update is live only after restart, so remember the version it now effectively is, so the
-            // store stops offering the same update (and drops it out of the updates list) until the restart.
-            if (result.IsSuccess && result.Staged)
-            {
-                _pendingUpdateVersions[row.Id] = version.Version;
-            }
-
-            return result.IsSuccess;
-        }
-        finally
-        {
-            _TryDelete(download.ZipPath);
-        }
+        return installResult.IsSuccess;
     }
 
     // Shared tail of every install path. A fresh install walks a needs-consent plugin into the consent step;
@@ -1239,15 +1245,4 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    private static void _TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch
-        {
-            // A leftover temp download is harmless; the OS temp cleaner reclaims it.
-        }
-    }
 }
