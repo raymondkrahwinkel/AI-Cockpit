@@ -4,15 +4,11 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// Draws the cells a dashboard's widgets snap to. Its own control rather than Avalonia's
-/// <c>Grid.ShowGridLines</c>: that one is a debug aid with a fixed look, and this has to sit quietly under real
-/// widgets — visible enough to place against, faint enough not to read as content.
-/// </summary>
-/// <remarks>
-/// Renders directly instead of building a Line per cell: a 48×24 grid is 70-odd lines, and a control that
-/// redraws them on every resize should not also be allocating seventy visuals to do it.
-/// </remarks>
+// Draws the cells a dashboard's widgets snap to. Its own control rather than Avalonia's
+// `Grid.ShowGridLines`: that one is a debug aid with a fixed look, and this has to sit quietly under real
+// widgets — visible enough to place against, faint enough not to read as content.
+// Renders directly instead of building a Line per cell: a 48×24 grid is 70-odd lines, and a control that
+// redraws them on every resize should not also be allocating seventy visuals to do it.
 public sealed class DashboardGridLines : Control
 {
     public static readonly StyledProperty<int> ColumnsProperty =

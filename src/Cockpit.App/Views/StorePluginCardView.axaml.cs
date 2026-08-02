@@ -5,14 +5,12 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// One plugin card in the store dialog (#62) — reused as-is in the main grid and the Discover page's
-/// Featured/Recently-added rails, so its "Install"/"Update" button and the click-anywhere-to-open-details
-/// behaviour only live in one place. Its own <see cref="Window.DataContext"/> is the row
-/// (<see cref="StorePluginRowViewModel"/>); it reaches the dialog's <see cref="PluginStoreDialogViewModel"/>
-/// through the owning window rather than a passed-in reference, since it is instantiated per catalogue
-/// row by an <c>ItemsControl</c> template, not directly.
-/// </summary>
+// One plugin card in the store dialog (#62) — reused as-is in the main grid and the Discover page's
+// Featured/Recently-added rails, so its "Install"/"Update" button and the click-anywhere-to-open-details
+// behaviour only live in one place. Its own `Window.DataContext` is the row
+// (`StorePluginRowViewModel`); it reaches the dialog's `PluginStoreDialogViewModel`
+// through the owning window rather than a passed-in reference, since it is instantiated per catalogue
+// row by an `ItemsControl` template, not directly.
 public partial class StorePluginCardView : UserControl
 {
     public StorePluginCardView()

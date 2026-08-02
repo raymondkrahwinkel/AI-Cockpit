@@ -8,9 +8,7 @@ using Material.Icons;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Kind of a single line rendered in the Claude session transcript view.
-/// </summary>
+// Kind of a single line rendered in the Claude session transcript view.
 public enum TranscriptEntryKind
 {
     AssistantText,
@@ -21,27 +19,21 @@ public enum TranscriptEntryKind
     TurnCompleted,
     Error,
 
-    /// <summary>
-    /// A streamed reasoning/extended-thinking block (AC-213). Rendered as a dimmed, collapsible section, and
-    /// only at the Developer reading level — <see cref="TranscriptEntryViewModel.IsRowVisible"/> keeps it hidden
-    /// at Focus/Simple, which stay calm (AC-138), restoring thinking that AC-144 had dropped app-wide.
-    /// </summary>
+    // A streamed reasoning/extended-thinking block (AC-213). Rendered as a dimmed, collapsible section, and
+    // only at the Developer reading level — `TranscriptEntryViewModel.IsRowVisible` keeps it hidden
+    // at Focus/Simple, which stay calm (AC-138), restoring thinking that AC-144 had dropped app-wide.
     Thinking,
 
-    /// <summary>
-    /// A rule across the transcript marking a break in the conversation the transcript itself keeps recording —
-    /// today only "context cleared" (AC-564). The transcript stays whole because it is the pane's audit surface;
-    /// this row is what says where the agent's memory stops. Visible at every reading level: it explains
-    /// everything below it.
-    /// </summary>
+    // A rule across the transcript marking a break in the conversation the transcript itself keeps recording —
+    // today only "context cleared" (AC-564). The transcript stays whole because it is the pane's audit surface;
+    // this row is what says where the agent's memory stops. Visible at every reading level: it explains
+    // everything below it.
     Divider,
 }
 
-/// <summary>
-/// A single row in the transcript view. Assistant text entries are mutated in place
-/// (<see cref="AppendText"/>) so streaming deltas render as growing text rather than
-/// as new rows.
-/// </summary>
+// A single row in the transcript view. Assistant text entries are mutated in place
+// (`AppendText`) so streaming deltas render as growing text rather than
+// as new rows.
 public partial class TranscriptEntryViewModel : ViewModelBase
 {
     public TranscriptEntryKind Kind { get; }
@@ -50,42 +42,38 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public bool IsToolUse => Kind == TranscriptEntryKind.ToolUse;
 
-    /// <summary>A streamed reasoning/extended-thinking row (AC-213), rendered as its own dimmed, collapsible section.</summary>
+    // A streamed reasoning/extended-thinking row (AC-213), rendered as its own dimmed, collapsible section.
     public bool IsThinking => Kind == TranscriptEntryKind.Thinking;
 
-    /// <summary>A rule across the transcript with its label in the middle (AC-564) — not text in the reply column.</summary>
+    // A rule across the transcript with its label in the middle (AC-564) — not text in the reply column.
     public bool IsDivider => Kind == TranscriptEntryKind.Divider;
 
-    /// <summary>Rows not rendered as a tool-use, a standalone tool result, a thinking section or a divider — assistant/user text, questions, errors.</summary>
+    // Rows not rendered as a tool-use, a standalone tool result, a thinking section or a divider — assistant/user text, questions, errors.
     public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider;
 
-    /// <summary>Assistant prose renders as markdown (T9).</summary>
+    // Assistant prose renders as markdown (T9).
     public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;
 
-    /// <summary>The user's own message, rendered as a right-aligned bubble (T2) — plain text, not markdown.</summary>
+    // The user's own message, rendered as a right-aligned bubble (T2) — plain text, not markdown.
     public bool IsUserRow => Kind == TranscriptEntryKind.UserText;
 
-    /// <summary>Plain rows that are neither the user bubble nor markdown: questions, errors, turn results.</summary>
+    // Plain rows that are neither the user bubble nor markdown: questions, errors, turn results.
     public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow;
 
-    /// <summary>
-    /// Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
-    /// results). User and tool-use rows carry their timestamp inline in their own header line instead
-    /// (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
-    /// </summary>
+    // Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
+    // results). User and tool-use rows carry their timestamp inline in their own header line instead
+    // (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
     public bool IsTopTimestampRow => !IsUserRow && !IsToolUse && !IsThinking;
 
-    /// <summary>Chevron icon for a row's expand/collapse toggle, shared by the tool-use header and the standalone tool-result row.</summary>
+    // Chevron icon for a row's expand/collapse toggle, shared by the tool-use header and the standalone tool-result row.
     public MaterialIconKind ToggleIconKind => IsExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
 
-    /// <summary>Label for a standalone (orphan) tool-result row's toggle; the chevron itself renders separately as <see cref="ToggleIconKind"/>.</summary>
+    // Label for a standalone (orphan) tool-result row's toggle; the chevron itself renders separately as `ToggleIconKind`.
     public string ToggleLabel => IsExpanded ? "Tool result" : "Tool result (click to show)";
 
-    /// <summary>
-    /// Compact one-line label for a collapsed tool-use row (T5): tool name + a short hint pulled from the
-    /// input (command/file/pattern/…), so a call reads as "Bash · dotnet build" instead of the full input
-    /// JSON. The full input shows once expanded; the row's own chevron renders separately as <see cref="ToggleIconKind"/>.
-    /// </summary>
+    // Compact one-line label for a collapsed tool-use row (T5): tool name + a short hint pulled from the
+    // input (command/file/pattern/…), so a call reads as "Bash · dotnet build" instead of the full input
+    // JSON. The full input shows once expanded; the row's own chevron renders separately as `ToggleIconKind`.
     public string ToolHeader
     {
         get
@@ -96,28 +84,24 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         }
     }
 
-    /// <summary>The tool result coupled to this tool-use row by tool_use_id (L14), or null until it arrives.</summary>
+    // The tool result coupled to this tool-use row by tool_use_id (L14), or null until it arrives.
     [ObservableProperty]
     private string? _resultText;
 
-    /// <summary>True when the coupled tool result reported an error.</summary>
+    // True when the coupled tool result reported an error.
     [ObservableProperty]
     private bool _isResultError;
 
-    /// <summary>True once a result has been coupled to this tool-use row, driving its expandable result section.</summary>
+    // True once a result has been coupled to this tool-use row, driving its expandable result section.
     public bool HasResult => ResultText is not null;
 
-    /// <summary>
-    /// The result as it should be shown (T6): JSON is pretty-printed for readability, everything else
-    /// is passed through unchanged. Kept separate from the raw <see cref="ResultText"/> so the copy
-    /// button hands the operator the same formatted text they see.
-    /// </summary>
+    // The result as it should be shown (T6): JSON is pretty-printed for readability, everything else
+    // is passed through unchanged. Kept separate from the raw `ResultText` so the copy
+    // button hands the operator the same formatted text they see.
     public string ResultDisplayText => _FormatResult(ResultText);
 
-    /// <summary>
-    /// True when the result reads as structured/code (JSON, multi-line, or long) and so should render
-    /// in a monospace code box with a copy button rather than as a wrapped paragraph (T6).
-    /// </summary>
+    // True when the result reads as structured/code (JSON, multi-line, or long) and so should render
+    // in a monospace code box with a copy button rather than as a wrapped paragraph (T6).
     public bool ResultIsCodeLike
     {
         get
@@ -136,11 +120,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     [ObservableProperty]
     private string _text;
 
-    /// <summary>Collapsed by default for tool-use and standalone tool-result rows, so their input/output stays folded until the operator expands the chip.</summary>
+    // Collapsed by default for tool-use and standalone tool-result rows, so their input/output stays folded until the operator expands the chip.
     [ObservableProperty]
     private bool _isExpanded;
 
-    /// <summary>Non-null only for <see cref="TranscriptEntryKind.ToolUse"/> rows awaiting an allow/deny decision.</summary>
+    // Non-null only for `TranscriptEntryKind.ToolUse` rows awaiting an allow/deny decision.
     [ObservableProperty]
     private bool _isPendingPermission;
 
@@ -155,20 +139,20 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // ToolUseId. Nested here rather than flattened into the top-level Transcript, and collapsed by default
     // (Raymond, 2026-07-29): an operator sees that a sub-agent ran, and expands to see what it did.
 
-    /// <summary>Events belonging to the sub-agent this tool-use row spawned, in arrival order.</summary>
+    // Events belonging to the sub-agent this tool-use row spawned, in arrival order.
     public ObservableCollection<TranscriptEntryViewModel> SubAgentRows { get; } = [];
 
-    /// <summary>True once at least one sub-agent event has arrived — the anchor row shows its expand toggle only then.</summary>
+    // True once at least one sub-agent event has arrived — the anchor row shows its expand toggle only then.
     public bool HasSubAgentRows => SubAgentRows.Count > 0;
 
-    /// <summary>Collapsed by default; the operator expands to see the sub-agent's own activity.</summary>
+    // Collapsed by default; the operator expands to see the sub-agent's own activity.
     [ObservableProperty]
     private bool _isSubAgentExpanded;
 
-    /// <summary>The expand toggle's label, e.g. "3 sub-agent events".</summary>
+    // The expand toggle's label, e.g. "3 sub-agent events".
     public string SubAgentSummaryText => $"{SubAgentRows.Count} sub-agent event{(SubAgentRows.Count == 1 ? "" : "s")}";
 
-    /// <summary>Chevron for the sub-agent toggle, matching the expanded/collapsed state.</summary>
+    // Chevron for the sub-agent toggle, matching the expanded/collapsed state.
     public MaterialIconKind SubAgentToggleIconKind => IsSubAgentExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
 
     private void _OnSubAgentRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -182,16 +166,16 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     partial void OnIsSubAgentExpandedChanged(bool value) => OnPropertyChanged(nameof(SubAgentToggleIconKind));
 
-    /// <summary>Tool name for a tool-use row; used to build the always-allow rule label.</summary>
+    // Tool name for a tool-use row; used to build the always-allow rule label.
     public string? ToolName { get; init; }
 
-    /// <summary>The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule.</summary>
+    // The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule.
     public string? InputJson { get; init; }
 
-    /// <summary>When this row was created — its arrival time, shown as a small timestamp when the operator enables it (T7).</summary>
+    // When this row was created — its arrival time, shown as a small timestamp when the operator enables it (T7).
     public DateTimeOffset Timestamp { get; }
 
-    /// <summary>The <see cref="Timestamp"/> as a short wall-clock label (e.g. "14:07") for the transcript row.</summary>
+    // The `Timestamp` as a short wall-clock label (e.g. "14:07") for the transcript row.
     public string TimestampText => Timestamp.ToString("HH:mm");
 
     public TranscriptEntryViewModel(TranscriptEntryKind kind, string text)
@@ -199,7 +183,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     {
     }
 
-    /// <summary>Test seam: fix the arrival timestamp so the "HH:mm" label is deterministic.</summary>
+    // Test seam: fix the arrival timestamp so the "HH:mm" label is deterministic.
     internal TranscriptEntryViewModel(TranscriptEntryKind kind, string text, DateTimeOffset timestamp)
     {
         Kind = kind;
@@ -213,7 +197,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         Text += delta;
     }
 
-    /// <summary>Couples a tool result to this tool-use row (L14), matched on tool_use_id in the session view model.</summary>
+    // Couples a tool result to this tool-use row (L14), matched on tool_use_id in the session view model.
     public void SetResult(string content, bool isError)
     {
         IsResultError = isError;
@@ -223,7 +207,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 
-    /// <summary>Keeps the computed toggle icon/label/header in sync — they are computed, not observable, on their own.</summary>
+    // Keeps the computed toggle icon/label/header in sync — they are computed, not observable, on their own.
     partial void OnIsExpandedChanged(bool value)
     {
         OnPropertyChanged(nameof(ToggleIconKind));
@@ -245,40 +229,38 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // consent decisions in plain words. The grouping fields below (anchor/count/expanded) are set by the view model,
     // which is the only thing that can see a row's neighbours to form a run.
 
-    /// <summary>The reading level this row renders at (AC-138); set by the owning <see cref="SessionViewModel"/>.</summary>
+    // The reading level this row renders at (AC-138); set by the owning `SessionViewModel`.
     [ObservableProperty]
     private ReadingLevel _readingLevel = ReadingLevel.Developer;
 
-    /// <summary>True when this row anchors a folded run of auto tool calls (Focus) — it carries the "N steps run" line and the expand toggle.</summary>
+    // True when this row anchors a folded run of auto tool calls (Focus) — it carries the "N steps run" line and the expand toggle.
     [ObservableProperty]
     private bool _isGroupAnchor;
 
-    /// <summary>True when this row is part of a folded run of auto tool calls (Focus): the anchor or one of its members.</summary>
+    // True when this row is part of a folded run of auto tool calls (Focus): the anchor or one of its members.
     [ObservableProperty]
     private bool _isInGroup;
 
-    /// <summary>How many auto tool calls the run this row anchors contains — shown as "N steps run".</summary>
+    // How many auto tool calls the run this row anchors contains — shown as "N steps run".
     [ObservableProperty]
     private int _groupCount;
 
-    /// <summary>Whether this row's fold group is expanded; the view model flips it on every member of the run together.</summary>
+    // Whether this row's fold group is expanded; the view model flips it on every member of the run together.
     [ObservableProperty]
     private bool _isGroupExpanded;
 
-    /// <summary>Set by the view model on an anchor: flips the whole run's <see cref="IsGroupExpanded"/> when the "N steps run" line is clicked.</summary>
+    // Set by the view model on an anchor: flips the whole run's `IsGroupExpanded` when the "N steps run" line is clicked.
     public Action? GroupToggleRequested { get; set; }
 
-    /// <summary>A tool call that asked for approval — pending, or already allowed/denied. These stay visible at every reading level (AC-138).</summary>
+    // A tool call that asked for approval — pending, or already allowed/denied. These stay visible at every reading level (AC-138).
     public bool RequiredApproval => IsToolUse && (IsPendingPermission || !string.IsNullOrEmpty(PermissionDecision));
 
-    /// <summary>A tool call that ran without asking (never prompted for permission) — the "noise" Focus folds and Simple hides.</summary>
+    // A tool call that ran without asking (never prompted for permission) — the "noise" Focus folds and Simple hides.
     public bool IsAutoTool => IsToolUse && !RequiredApproval;
 
-    /// <summary>
-    /// Whether the whole row shows at the current level. Text/user/assistant rows always show; an auto tool call
-    /// is folded (Focus, when a non-anchor member of a collapsed run) or hidden (Simple), while a consent tool call
-    /// stays visible everywhere. A standalone tool result is treated as auto noise and hidden only in Simple.
-    /// </summary>
+    // Whether the whole row shows at the current level. Text/user/assistant rows always show; an auto tool call
+    // is folded (Focus, when a non-anchor member of a collapsed run) or hidden (Simple), while a consent tool call
+    // stays visible everywhere. A standalone tool result is treated as auto noise and hidden only in Simple.
     public bool IsRowVisible => Kind switch
     {
         // Reasoning/thinking (AC-213): the developer surface only. Focus and Simple stay calm (AC-138) —
@@ -294,7 +276,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         _ => true,
     };
 
-    /// <summary>Whether the normal tool chip + expandable body shows: Developer always, Focus only when a grouped row is expanded, never in Simple (which speaks consent as a plain line and hides auto tools).</summary>
+    // Whether the normal tool chip + expandable body shows: Developer always, Focus only when a grouped row is expanded, never in Simple (which speaks consent as a plain line and hides auto tools).
     public bool ShowToolBlock => IsToolUse && ReadingLevel switch
     {
         ReadingLevel.Simple => false,
@@ -302,23 +284,21 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         _ => true,
     };
 
-    /// <summary>Whether this row shows the "N steps run" fold line — only the anchor of a run, at the Focus level.</summary>
+    // Whether this row shows the "N steps run" fold line — only the anchor of a run, at the Focus level.
     public bool ShowGroupSummary => ReadingLevel == ReadingLevel.Focus && IsInGroup && IsGroupAnchor;
 
-    /// <summary>The fold line's label, e.g. "3 steps run".</summary>
+    // The fold line's label, e.g. "3 steps run".
     public string GroupSummaryText => $"{GroupCount} steps run";
 
-    /// <summary>Chevron for the fold line, matching the expanded/collapsed state.</summary>
+    // Chevron for the fold line, matching the expanded/collapsed state.
     public MaterialIconKind GroupToggleIconKind => IsGroupExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
 
-    /// <summary>Whether this row shows the plain-language consent line instead of the tool chip — a consent tool call, at the Simple level.</summary>
+    // Whether this row shows the plain-language consent line instead of the tool chip — a consent tool call, at the Simple level.
     public bool ShowHumanToolLine => ReadingLevel == ReadingLevel.Simple && RequiredApproval;
 
-    /// <summary>
-    /// The consent decision in plain words for the Simple level (AC-138): what the tool did, and that the operator
-    /// approved, declined, or is being asked — e.g. "✓ Changed a file — you approved this". Jargon tool names map
-    /// to human actions; an unmapped tool falls back to its own name rather than inventing one.
-    /// </summary>
+    // The consent decision in plain words for the Simple level (AC-138): what the tool did, and that the operator
+    // approved, declined, or is being asked — e.g. "✓ Changed a file — you approved this". Jargon tool names map
+    // to human actions; an unmapped tool falls back to its own name rather than inventing one.
     public string HumanToolText
     {
         get
@@ -369,7 +349,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(HumanToolText));
     }
 
-    /// <summary>Maps a tool name to a plain-language action for the Simple consent line; an unmapped tool keeps its own name.</summary>
+    // Maps a tool name to a plain-language action for the Simple consent line; an unmapped tool keeps its own name.
     private static string _HumanToolAction(string? toolName) => toolName switch
     {
         "Bash" => "Ran a command",
@@ -380,7 +360,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         _ => toolName,
     };
 
-    /// <summary>The first meaningful input value (command/file/pattern/…), truncated — the collapsed-header hint.</summary>
+    // The first meaningful input value (command/file/pattern/…), truncated — the collapsed-header hint.
     private static string _ToolSummary(string? inputJson)
     {
         if (string.IsNullOrWhiteSpace(inputJson))
@@ -413,7 +393,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         return string.Empty;
     }
 
-    /// <summary>Pretty-prints a JSON result for readability; leaves anything else untouched.</summary>
+    // Pretty-prints a JSON result for readability; leaves anything else untouched.
     private static string _FormatResult(string? result)
     {
         if (string.IsNullOrWhiteSpace(result))

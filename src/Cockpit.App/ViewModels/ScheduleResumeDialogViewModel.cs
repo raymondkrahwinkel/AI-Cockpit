@@ -2,10 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Picking a moment and a prompt for a resume by hand (AC-231) — the route that does not start from a warning,
-/// for when you know you will not be at the desk.
-/// </summary>
+// Picking a moment and a prompt for a resume by hand (AC-231) — the route that does not start from a warning,
+// for when you know you will not be at the desk.
 public sealed partial class ScheduleResumeDialogViewModel : ObservableObject
 {
     private readonly TimeZoneInfo _zone;
@@ -16,9 +14,9 @@ public sealed partial class ScheduleResumeDialogViewModel : ObservableObject
     {
     }
 
-    /// <param name="suggested">The moment to start from, in whatever offset its caller happens to carry.</param>
-    /// <param name="prompt">What the resume would send.</param>
-    /// <param name="zone">The zone the pickers speak in; the machine's own unless a test says otherwise.</param>
+    // `suggested`: The moment to start from, in whatever offset its caller happens to carry.
+    // `prompt`: What the resume would send.
+    // `zone`: The zone the pickers speak in; the machine's own unless a test says otherwise.
     public ScheduleResumeDialogViewModel(DateTimeOffset suggested, string prompt, TimeZoneInfo? zone = null)
     {
         _zone = zone ?? TimeZoneInfo.Local;
@@ -34,19 +32,19 @@ public sealed partial class ScheduleResumeDialogViewModel : ObservableObject
         _prompt = prompt;
     }
 
-    /// <summary>The day to pick up on — today unless the moment has already gone by.</summary>
+    // The day to pick up on — today unless the moment has already gone by.
     [ObservableProperty]
     private DateTime _day;
 
-    /// <summary>The time of day to pick up at.</summary>
+    // The time of day to pick up at.
     [ObservableProperty]
     private TimeSpan _timeOfDay;
 
-    /// <summary>What to send. Starts on a plain continue, because that is what picking up where you left off means.</summary>
+    // What to send. Starts on a plain continue, because that is what picking up where you left off means.
     [ObservableProperty]
     private string _prompt;
 
-    /// <summary>The chosen moment, as the two pickers together describe it in the operator's own zone.</summary>
+    // The chosen moment, as the two pickers together describe it in the operator's own zone.
     public DateTimeOffset Moment
     {
         get
@@ -71,6 +69,6 @@ public sealed partial class ScheduleResumeDialogViewModel : ObservableObject
         }
     }
 
-    /// <summary>Whether the chosen moment is still ahead — scheduling something for the past would never fire.</summary>
+    // Whether the chosen moment is still ahead — scheduling something for the past would never fire.
     public bool IsInTheFuture => Moment > DateTimeOffset.Now;
 }

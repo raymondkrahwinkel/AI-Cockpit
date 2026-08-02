@@ -2,14 +2,12 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// One plugin workspace's slice of its plugin's storage: every key is prefixed with the workspace id, so two
-/// workspaces of the same type keep separate state while the plugin still owns a single storage section. A thin
-/// scoping layer over <see cref="IPluginStorage"/> rather than a second persistence mechanism — the plugin's
-/// own section already round-trips through <c>cockpit.json</c>, the same way <see cref="WidgetInstanceStorage"/>
-/// scopes a placed widget. The prefix is namespaced (<c>workspace:</c>) so a plugin that contributes both a
-/// workspace type and a widget cannot collide their keys.
-/// </summary>
+// One plugin workspace's slice of its plugin's storage: every key is prefixed with the workspace id, so two
+// workspaces of the same type keep separate state while the plugin still owns a single storage section. A thin
+// scoping layer over `IPluginStorage` rather than a second persistence mechanism — the plugin's
+// own section already round-trips through `cockpit.json`, the same way `WidgetInstanceStorage`
+// scopes a placed widget. The prefix is namespaced (`workspace:`) so a plugin that contributes both a
+// workspace type and a widget cannot collide their keys.
 public sealed class WorkspaceStorage(IPluginStorage inner, string workspaceId) : IPluginStorage
 {
     public T? Get<T>(string key) => inner.Get<T>(_Scope(key));

@@ -1,27 +1,25 @@
 namespace Cockpit.App.ViewModels;
 
-/// <summary>The kind of scope a plugin store dialog (#62) sidebar selection narrows the catalogue to.</summary>
+// The kind of scope a plugin store dialog (#62) sidebar selection narrows the catalogue to.
 public enum PluginStoreFilterKind
 {
-    /// <summary>The Discover page: Featured + Recently-added rails, followed by the same grid as <see cref="All"/>.</summary>
+    // The Discover page: Featured + Recently-added rails, followed by the same grid as `All`.
     Discover,
 
-    /// <summary>The full, unfiltered catalogue.</summary>
+    // The full, unfiltered catalogue.
     All,
 
-    /// <summary>Entries whose <see cref="StorePluginRowViewModel.Category"/> matches <see cref="PluginStoreFilter.Category"/>.</summary>
+    // Entries whose `StorePluginRowViewModel.Category` matches `PluginStoreFilter.Category`.
     Category,
 
-    /// <summary>Entries already installed (<see cref="StorePluginRowViewModel.IsInstalled"/>).</summary>
+    // Entries already installed (`StorePluginRowViewModel.IsInstalled`).
     Installed,
 
-    /// <summary>Installed entries with a newer version in the store (<see cref="StorePluginRowViewModel.UpdateAvailable"/>).</summary>
+    // Installed entries with a newer version in the store (`StorePluginRowViewModel.UpdateAvailable`).
     UpdatesAvailable,
 
-    /// <summary>
-    /// The workflow templates the stores offer (#69) — flows somebody already drew. Their own scope, because they are
-    /// not plugins: nothing is loaded, no code runs, and what you are agreeing to is the steps on your canvas. A
-    /// section under the plugin grid is a place nobody scrolls to.
-    /// </summary>
+    // The workflow templates the stores offer (#69) — flows somebody already drew. Their own scope, because they are
+    // not plugins: nothing is loaded, no code runs, and what you are agreeing to is the steps on your canvas. A
+    // section under the plugin grid is a place nobody scrolls to.
     Templates,
 }

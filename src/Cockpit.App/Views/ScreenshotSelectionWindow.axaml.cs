@@ -16,59 +16,47 @@ using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The selection surface (AC-329): one undecorated window over the whole virtual desktop, showing the capture,
-/// with a rectangle dragged on it. Deliberately thin — every number it works with comes from
-/// <see cref="ScreenshotSelectionViewModel"/>, which is where the arithmetic can be held to a test.
-/// </summary>
-/// <remarks>
-/// One window spanning every display rather than one per screen. Avalonia issue #16128 has a fullscreen window
-/// on KDE Plasma stretching across all monitors instead of staying on one; that is filed against the XWayland
-/// path this app is on, so spanning everything is what it already does — and doing so on purpose means the
-/// conversion is window size against image size, with the per-screen scaling factors XRandR gets wrong under
-/// fractional scaling (KDE bug 502390) never entering into it.
-/// </remarks>
+// The selection surface (AC-329): one undecorated window over the whole virtual desktop, showing the capture,
+// with a rectangle dragged on it. Deliberately thin — every number it works with comes from
+// `ScreenshotSelectionViewModel`, which is where the arithmetic can be held to a test.
+// One window spanning every display rather than one per screen. Avalonia issue #16128 has a fullscreen window
+// on KDE Plasma stretching across all monitors instead of staying on one; that is filed against the XWayland
+// path this app is on, so spanning everything is what it already does — and doing so on purpose means the
+// conversion is window size against image size, with the per-screen scaling factors XRandR gets wrong under
+// fractional scaling (KDE bug 502390) never entering into it.
 public partial class ScreenshotSelectionWindow : Window
 {
     private ScreenshotSelectionViewModel? _selection;
     private Bitmap? _bitmap;
 
-    /// <summary>How far the control panels sit from the edge of the display they are on.</summary>
+    // How far the control panels sit from the edge of the display they are on.
     private const double ControlsMargin = 24;
 
-    /// <summary>How much air is left between the two panels while they are still stacked where they were put.</summary>
+    // How much air is left between the two panels while they are still stacked where they were put.
     private const double PanelGap = 10;
 
-    /// <summary>
-    /// The panels the operator has moved themselves. Those stop following the pointer's display: having been put
-    /// somewhere by hand is the strongest statement about where a panel belongs that this surface can receive.
-    /// </summary>
+    // The panels the operator has moved themselves. Those stop following the pointer's display: having been put
+    // somewhere by hand is the strongest statement about where a panel belongs that this surface can receive.
     private readonly HashSet<Control> _movedByHand = [];
 
-    /// <summary>The panel being dragged and where it was gripped, or nothing when none is.</summary>
+    // The panel being dragged and where it was gripped, or nothing when none is.
     private (Control Panel, Point Grip)? _panelDrag;
 
-    /// <summary>
-    /// What stands in for each mark on the canvas, one per mark, in the order they were placed. Added as they are
-    /// drawn and kept afterwards.
-    /// </summary>
-    /// <remarks>
-    /// Controls rather than shapes since AC-361: a wash is the one mark that is not drawn but blended, and in
-    /// Avalonia only an image carries a blend mode. A rectangle painted at a fraction of its strength would be a
-    /// different picture from the one that gets sent.
-    /// </remarks>
+    // What stands in for each mark on the canvas, one per mark, in the order they were placed. Added as they are
+    // drawn and kept afterwards.
+    // Controls rather than shapes since AC-361: a wash is the one mark that is not drawn but blended, and in
+    // Avalonia only an image carries a blend mode. A rectangle painted at a fraction of its strength would be a
+    // different picture from the one that gets sent.
     private readonly List<Control> _shapes = [];
     private bool _wasActivated;
 
-    /// <summary>Where the pointer was last seen, in the window's units. The control panel follows the display it is on.</summary>
+    // Where the pointer was last seen, in the window's units. The control panel follows the display it is on.
     private Point _pointer;
 
-    /// <summary>
-    /// The gate a confirm passes through before this window actually closes (AC-566), or nothing where there is
-    /// none — the setting is off, or whoever built the surface has no preview to offer. Set once, before
-    /// <see cref="Show"/>, so none of the three ways to confirm can end up going around it: they all call
-    /// <see cref="_Confirm"/> instead of closing themselves.
-    /// </summary>
+    // The gate a confirm passes through before this window actually closes (AC-566), or nothing where there is
+    // none — the setting is off, or whoever built the surface has no preview to offer. Set once, before
+    // `Show`, so none of the three ways to confirm can end up going around it: they all call
+    // `_Confirm` instead of closing themselves.
     internal Func<ScreenshotSelection, Window, Task<bool>>? PreviewGate { get; set; }
 
     public ScreenshotSelectionWindow()
@@ -79,10 +67,8 @@ public partial class ScreenshotSelectionWindow : Window
         TypingTarget.TextChanged += _OnTypedTextChanged;
     }
 
-    /// <summary>
-    /// Puts the surface over the desktop the capture came off and waits for the operator, handing back the
-    /// region they marked out in the image's own pixels — or nothing, if they changed their mind.
-    /// </summary>
+    // Puts the surface over the desktop the capture came off and waits for the operator, handing back the
+    // region they marked out in the image's own pixels — or nothing, if they changed their mind.
     public static async Task<ScreenshotSelection?> PickAsync(
         ScreenCapture capture, CaptureRect? lastRegion, IDesktopWindows windows, Window owner,
         Func<ScreenshotSelection, Window, Task<bool>>? previewGate = null)
@@ -106,19 +92,15 @@ public partial class ScreenshotSelectionWindow : Window
         return window._selection?.Result;
     }
 
-    /// <summary>
-    /// Whether a confirm is already on its way through the preview gate — the gap between Confirm() and the
-    /// gate's own dialog opening spans a settings load and a crop-and-burn, both awaited, and the window still
-    /// has focus for every bit of that. A second Enter or click landing in it must not start a second confirm
-    /// that could close the window out from under a preview the operator is still looking at.
-    /// </summary>
+    // Whether a confirm is already on its way through the preview gate — the gap between Confirm() and the
+    // gate's own dialog opening spans a settings load and a crop-and-burn, both awaited, and the window still
+    // has focus for every bit of that. A second Enter or click landing in it must not start a second confirm
+    // that could close the window out from under a preview the operator is still looking at.
     private bool _confirming;
 
-    /// <summary>
-    /// Confirms, and — if a preview gate is set — asks it before this window actually closes (AC-566). The one
-    /// point all three ways to confirm run through, so none of them can end up bypassing it. A decline reopens
-    /// the surface exactly as it was: nothing here has touched the selection or its marks.
-    /// </summary>
+    // Confirms, and — if a preview gate is set — asks it before this window actually closes (AC-566). The one
+    // point all three ways to confirm run through, so none of them can end up bypassing it. A decline reopens
+    // the surface exactly as it was: nothing here has touched the selection or its marks.
     private async void _Confirm(ScreenshotSelectionViewModel selection)
     {
         if (_confirming)
@@ -164,11 +146,9 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>
-    /// The surface built and wired, without being put on screen. Its own step because everything here runs
-    /// before anything is shown, and it is where the window touches the controls its XAML declares — which is
-    /// exactly what a test can reach and what nothing was reaching.
-    /// </summary>
+    // The surface built and wired, without being put on screen. Its own step because everything here runs
+    // before anything is shown, and it is where the window touches the controls its XAML declares — which is
+    // exactly what a test can reach and what nothing was reaching.
     internal static ScreenshotSelectionWindow Build(
         ScreenCapture capture, Bitmap bitmap, CaptureRect? lastRegion, IDesktopWindows windows)
     {
@@ -186,15 +166,11 @@ public partial class ScreenshotSelectionWindow : Window
         return window;
     }
 
-    /// <summary>
-    /// How light the capture is inside a rectangle, 0 to 255 — what a wash needs in order to know whether it is
-    /// ink over paper or ink over a terminal (AC-361).
-    /// </summary>
-    /// <remarks>
-    /// Read off the middle of the band rather than all of it. A highlight is dragged over one piece of text, so
-    /// its middle is what it is about; copying every row of a band the width of a 4K screen would be megabytes
-    /// moved to answer one question with a yes or a no in it.
-    /// </remarks>
+    // How light the capture is inside a rectangle, 0 to 255 — what a wash needs in order to know whether it is
+    // ink over paper or ink over a terminal (AC-361).
+    // Read off the middle of the band rather than all of it. A highlight is dragged over one piece of text, so
+    // its middle is what it is about; copying every row of a band the width of a 4K screen would be megabytes
+    // moved to answer one question with a yes or a no in it.
     private static int _BrightnessIn(Bitmap bitmap, CaptureRect area)
     {
         const int sample = 32;
@@ -227,30 +203,24 @@ public partial class ScreenshotSelectionWindow : Window
         return (int)(total / (pixels.Length / 4 * 3));
     }
 
-    /// <summary>
-    /// The accent, as a number the imaging library can take. Read here because the theme is the view's to know:
-    /// a frame is burnt into the picture by Infrastructure, which has no business holding a copy of a colour
-    /// whose one home is <c>Theme.axaml</c>.
-    /// </summary>
+    // The accent, as a number the imaging library can take. Read here because the theme is the view's to know:
+    // a frame is burnt into the picture by Infrastructure, which has no business holding a copy of a colour
+    // whose one home is `Theme.axaml`.
     private static uint _AccentColour() =>
         ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb") is ISolidColorBrush solid
             ? solid.Color.ToUInt32()
             : throw new InvalidOperationException("The accent is not a solid colour, so a frame has nothing to be drawn in.");
 
-    /// <summary>
-    /// Puts the window over every screen. The rectangle comes from Avalonia's own screen list rather than from
-    /// the capture's <see cref="CapturedDisplay.DesktopBounds"/>, because those are not in one space across
-    /// platforms — device pixels on Windows, the compositor's logical layout under Wayland — while a window's
-    /// position and size have fixed, and different, units of their own.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="Window.Position"/> is in physical pixels and <see cref="Layoutable.Width"/> in logical units,
-    /// so the size is divided by the scaling of the screen the window starts on — the same conversion
-    /// <c>VoiceOverlayWindow</c> makes, in the other direction. On a mixed-DPI desktop one factor cannot be
-    /// right for every screen at once; nothing in Avalonia's window model can express that, and the selection
-    /// arithmetic above works off the window's actual laid-out size rather than this, so a window that came out
-    /// the wrong size is visibly wrong rather than quietly cropping the wrong region.
-    /// </remarks>
+    // Puts the window over every screen. The rectangle comes from Avalonia's own screen list rather than from
+    // the capture's `CapturedDisplay.DesktopBounds`, because those are not in one space across
+    // platforms — device pixels on Windows, the compositor's logical layout under Wayland — while a window's
+    // position and size have fixed, and different, units of their own.
+    // `Window.Position` is in physical pixels and `Layoutable.Width` in logical units,
+    // so the size is divided by the scaling of the screen the window starts on — the same conversion
+    // `VoiceOverlayWindow` makes, in the other direction. On a mixed-DPI desktop one factor cannot be
+    // right for every screen at once; nothing in Avalonia's window model can express that, and the selection
+    // arithmetic above works off the window's actual laid-out size rather than this, so a window that came out
+    // the wrong size is visibly wrong rather than quietly cropping the wrong region.
     private void _Cover(Screens screens)
     {
         var bounds = screens.All
@@ -263,11 +233,9 @@ public partial class ScreenshotSelectionWindow : Window
         Height = bounds.Height / scaling;
     }
 
-    /// <summary>
-    /// Gives up when the screens change underneath it. The surface is a frozen picture of a desktop that no
-    /// longer exists the moment a monitor is unplugged or its resolution changes, and every coordinate on it
-    /// then points somewhere else — better to take nothing than to crop by a map of the wrong place.
-    /// </summary>
+    // Gives up when the screens change underneath it. The surface is a frozen picture of a desktop that no
+    // longer exists the moment a monitor is unplugged or its resolution changes, and every coordinate on it
+    // then points somewhere else — better to take nothing than to crop by a map of the wrong place.
     private void _OnScreensChanged(object? sender, EventArgs e)
     {
         if (_selection is { IsClosed: false } selection)
@@ -277,7 +245,7 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>Lets go of the decoded capture. It is a desktop's worth of pixels wrapped around native memory, and one is decoded per capture.</summary>
+    // Lets go of the decoded capture. It is a desktop's worth of pixels wrapped around native memory, and one is decoded per capture.
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
@@ -405,12 +373,10 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>
-    /// Shows what a press right now would do, before it happens (AC-565): a resize cursor over a grip, a move
-    /// cursor inside the selection, and the window's ordinary cross everywhere else — including every mode where
-    /// a press means something other than reshaping the selection, since a grip cursor there would promise a
-    /// drag the surface will not honour.
-    /// </summary>
+    // Shows what a press right now would do, before it happens (AC-565): a resize cursor over a grip, a move
+    // cursor inside the selection, and the window's ordinary cross everywhere else — including every mode where
+    // a press means something other than reshaping the selection, since a grip cursor there would promise a
+    // drag the surface will not honour.
     private void _UpdateCursor(ScreenshotSelectionViewModel selection, Point pointer)
     {
         if (selection.DraggingRegion)
@@ -431,7 +397,7 @@ public partial class ScreenshotSelectionWindow : Window
         Cursor = new Cursor(StandardCursorType.Cross);
     }
 
-    /// <summary>The resize cursor that says which way a grip moves. The two diagonal corners share their axis with the corner opposite them, the same way dragging one tips the rectangle onto the other's side.</summary>
+    // The resize cursor that says which way a grip moves. The two diagonal corners share their axis with the corner opposite them, the same way dragging one tips the rectangle onto the other's side.
     private static StandardCursorType _CursorFor(SelectionGrip grip) => grip switch
     {
         SelectionGrip.TopLeft or SelectionGrip.BottomRight => StandardCursorType.TopLeftCorner,
@@ -440,10 +406,8 @@ public partial class ScreenshotSelectionWindow : Window
         _ => StandardCursorType.SizeWestEast,
     };
 
-    /// <summary>
-    /// The panel a press landed on, or nothing where it landed on the picture. Self and ancestors, because the
-    /// padding between the tools has no child control of its own and a press there resolves to the panel.
-    /// </summary>
+    // The panel a press landed on, or nothing where it landed on the picture. Self and ancestors, because the
+    // padding between the tools has no child control of its own and a press there resolves to the panel.
     private Border? _PanelUnder(object? source) =>
         source is Visual pressed && pressed.GetSelfAndVisualAncestors().ToList() is { } chain
             ? chain.Contains(Controls) ? Controls : chain.Contains(MarkControls) ? MarkControls : null
@@ -566,18 +530,14 @@ public partial class ScreenshotSelectionWindow : Window
         _Draw();
     }
 
-    /// <summary>
-    /// The two keys that mean something to the surface while a note is open. Everything else is marked handled and
-    /// dropped here — the characters have already been dealt with by the text box they landed in, and what is
-    /// being stopped is the shortcut each of them would otherwise be.
-    /// </summary>
-    /// <remarks>
-    /// Escape closes the note rather than the surface, and a second Escape then cancels as it always did: the
-    /// operator who wants out presses it twice, and the one who wants their note keeps it by pressing it once.
-    /// Enter does the same as Escape rather than confirming the capture, for the same reason — a note is finished
-    /// before a shot is taken, and the alternative is a label that is typed and then thrown away by the key that
-    /// ends it.
-    /// </remarks>
+    // The two keys that mean something to the surface while a note is open. Everything else is marked handled and
+    // dropped here — the characters have already been dealt with by the text box they landed in, and what is
+    // being stopped is the shortcut each of them would otherwise be.
+    // Escape closes the note rather than the surface, and a second Escape then cancels as it always did: the
+    // operator who wants out presses it twice, and the one who wants their note keeps it by pressing it once.
+    // Enter does the same as Escape rather than confirming the capture, for the same reason — a note is finished
+    // before a shot is taken, and the alternative is a label that is typed and then thrown away by the key that
+    // ends it.
     private void _WhileTyping(ScreenshotSelectionViewModel selection, KeyEventArgs e)
     {
         switch (e.Key)
@@ -598,11 +558,9 @@ public partial class ScreenshotSelectionWindow : Window
         _Draw();
     }
 
-    /// <summary>
-    /// Points the keyboard at the hidden text box while a note is open, and takes it back afterwards. Everything
-    /// the operator types goes there — which is also what keeps the surface's shortcuts out of it, since the keys
-    /// are consumed before they are anything else.
-    /// </summary>
+    // Points the keyboard at the hidden text box while a note is open, and takes it back afterwards. Everything
+    // the operator types goes there — which is also what keeps the surface's shortcuts out of it, since the keys
+    // are consumed before they are anything else.
     private void _FollowTyping(ScreenshotSelectionViewModel selection)
     {
         if (selection.Typing && !TypingTarget.IsFocused)
@@ -618,7 +576,7 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>What is in that box is what the note says. Read whole rather than accumulated, because the box owns the editing.</summary>
+    // What is in that box is what the note says. Read whole rather than accumulated, because the box owns the editing.
     private void _OnTypedTextChanged(object? sender, TextChangedEventArgs e)
     {
         if (_selection is not { Typing: true } selection)
@@ -630,15 +588,11 @@ public partial class ScreenshotSelectionWindow : Window
         _Draw();
     }
 
-    /// <summary>
-    /// Gives up when the surface loses the desktop's attention. One left behind is worse than none: it covers
-    /// every screen, takes every key, and says nothing about what it is.
-    /// </summary>
-    /// <remarks>
-    /// Only after it has been activated once. A window that is deactivated before it was ever active is a
-    /// platform ordering detail, not the operator alt-tabbing away — and acting on it would close the surface
-    /// the instant it opened, on whichever platform happens to raise the events that way round.
-    /// </remarks>
+    // Gives up when the surface loses the desktop's attention. One left behind is worse than none: it covers
+    // every screen, takes every key, and says nothing about what it is.
+    // Only after it has been activated once. A window that is deactivated before it was ever active is a
+    // platform ordering detail, not the operator alt-tabbing away — and acting on it would close the surface
+    // the instant it opened, on whichever platform happens to raise the events that way round.
     private void _OnDeactivated(object? sender, EventArgs e)
     {
         if (!_wasActivated || _selection is not { IsClosed: false } selection)
@@ -650,11 +604,9 @@ public partial class ScreenshotSelectionWindow : Window
         Close();
     }
 
-    /// <summary>
-    /// The tools, chosen with the mouse (AC-358). Each makes exactly the call its key makes and is followed by
-    /// the same redraw — a button that did something subtly different from the key beside it would be worse than
-    /// no button at all.
-    /// </summary>
+    // The tools, chosen with the mouse (AC-358). Each makes exactly the call its key makes and is followed by
+    // the same redraw — a button that did something subtly different from the key beside it would be worse than
+    // no button at all.
     private void _OnRegionTool(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseRegion());
 
     private void _OnWindowTool(object? sender, RoutedEventArgs e) =>
@@ -665,10 +617,8 @@ public partial class ScreenshotSelectionWindow : Window
     private void _OnOutlineTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Outline(!selection.Outlining));
 
-    /// <summary>
-    /// The inks and the line weights (AC-375). Each is the same shape of call as a tool, and each redraws — the
-    /// mark being dragged right now is previewed in what has just been chosen.
-    /// </summary>
+    // The inks and the line weights (AC-375). Each is the same shape of call as a tool, and each redraws — the
+    // mark being dragged right now is previewed in what has just been chosen.
     private void _OnInkAccent(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseInk(_AccentColour()));
 
     private void _OnInkRed(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseInk(MarkInk.Red));
@@ -685,11 +635,9 @@ public partial class ScreenshotSelectionWindow : Window
 
     private void _OnWeightThick(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseWeight(MarkWeight.Thick));
 
-    /// <summary>
-    /// Paints the swatches in the inks they stand for, and marks the chosen ink and weight. Restated on every draw
-    /// rather than bound, because which one is on is one value against eight controls — eight bindings, each of
-    /// which would have to be told what the other seven mean.
-    /// </summary>
+    // Paints the swatches in the inks they stand for, and marks the chosen ink and weight. Restated on every draw
+    // rather than bound, because which one is on is one value against eight controls — eight bindings, each of
+    // which would have to be told what the other seven mean.
     private void _ShowPalette(ScreenshotSelectionViewModel selection)
     {
         var inks = new (Button Button, Ellipse Dot, uint Colour)[]
@@ -738,29 +686,23 @@ public partial class ScreenshotSelectionWindow : Window
         _Draw();
     }
 
-    /// <summary>
-    /// The whole capture in one press. Named here rather than written out twice so the button and the key it
-    /// carries cannot drift apart — the one thing this panel promises is that the two are the same surface said
-    /// twice. Window mode comes off first: what it marks out is a window, and taking everything is not that.
-    /// </summary>
+    // The whole capture in one press. Named here rather than written out twice so the button and the key it
+    // carries cannot drift apart — the one thing this panel promises is that the two are the same surface said
+    // twice. Window mode comes off first: what it marks out is a window, and taking everything is not that.
     private static void _ChooseEverything(ScreenshotSelectionViewModel selection)
     {
         selection.PickWindows(false);
         selection.SelectEverything();
     }
 
-    /// <summary>
-    /// Puts both panels at the top of the display the pointer is on, one under the other. The window spans every
-    /// screen at once, so its own middle is a spot nobody is looking at; the display under the pointer is the one
-    /// they are.
-    /// </summary>
-    /// <remarks>
-    /// They follow the pointer's display until the operator moves one by hand, and that one then stops — the drag
-    /// <em>is</em> the memory of where it should be. An earlier version of this stepped aside on its own for
-    /// whatever was being marked out (AC-358), and nothing remembered where it had been, so every reason to move
-    /// away became a reason to move back the moment it lapsed and the row rocked under the operator's hand. A
-    /// panel that moves because it was pulled there has no such argument with itself.
-    /// </remarks>
+    // Puts both panels at the top of the display the pointer is on, one under the other. The window spans every
+    // screen at once, so its own middle is a spot nobody is looking at; the display under the pointer is the one
+    // they are.
+    // They follow the pointer's display until the operator moves one by hand, and that one then stops — the drag
+    // *is* the memory of where it should be. An earlier version of this stepped aside on its own for
+    // whatever was being marked out (AC-358), and nothing remembered where it had been, so every reason to move
+    // away became a reason to move back the moment it lapsed and the row rocked under the operator's hand. A
+    // panel that moves because it was pulled there has no such argument with itself.
     private void _PlaceControls()
     {
         if (_selection is not { } selection)
@@ -800,11 +742,9 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>
-    /// Puts a panel at a place on the surface, clamped so that all of it stays reachable. Clamped against the
-    /// window rather than the display: a screen narrower or shorter than the panel would otherwise push it off
-    /// the edge, and a panel half outside the window is a tool you cannot press.
-    /// </summary>
+    // Puts a panel at a place on the surface, clamped so that all of it stays reachable. Clamped against the
+    // window rather than the display: a screen narrower or shorter than the panel would otherwise push it off
+    // the edge, and a panel half outside the window is a tool you cannot press.
     private void _Put(Control panel, double left, double top)
     {
         var size = panel.Bounds.Width > 0 ? panel.Bounds.Size : panel.DesiredSize;
@@ -870,15 +810,11 @@ public partial class ScreenshotSelectionWindow : Window
         Canvas.SetTop(Readout, Math.Max(0, y - 24));
     }
 
-    /// <summary>
-    /// Shows what has been marked, before the operator commits to sending it — including the one still being
-    /// dragged. A redaction is drawn solid rather than as a border: what they are checking is that nothing
-    /// readable is left, and a frame around legible text would say the opposite of what the box is going to do.
-    /// </summary>
-    /// <remarks>
-    /// Drawn from the same list, in the same order, that gets burnt in — so what is on screen is a preview of the
-    /// picture rather than a second opinion about it.
-    /// </remarks>
+    // Shows what has been marked, before the operator commits to sending it — including the one still being
+    // dragged. A redaction is drawn solid rather than as a border: what they are checking is that nothing
+    // readable is left, and a frame around legible text would say the opposite of what the box is going to do.
+    // Drawn from the same list, in the same order, that gets burnt in — so what is on screen is a preview of the
+    // picture rather than a second opinion about it.
     private void _DrawMarks(ScreenshotSelectionViewModel selection)
     {
         var beingMade = selection.PendingMarkPreview;
@@ -902,11 +838,9 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>
-    /// The shape standing in for the mark at that position, made afresh where the kind there has changed. A frame
-    /// is a rectangle and an arrow is a path, and no amount of restyling turns one into the other — where an undo
-    /// leaves a different kind of mark at an index, the shape has to be replaced rather than repainted.
-    /// </summary>
+    // The shape standing in for the mark at that position, made afresh where the kind there has changed. A frame
+    // is a rectangle and an arrow is a path, and no amount of restyling turns one into the other — where an undo
+    // leaves a different kind of mark at an index, the shape has to be replaced rather than repainted.
     private Control _ShapeAt(int index, Mark mark)
     {
         if (index < _shapes.Count && _Suits(_shapes[index], mark))
@@ -929,7 +863,7 @@ public partial class ScreenshotSelectionWindow : Window
         return shape;
     }
 
-    /// <summary>What a mark of that kind has to be drawn with. A frame is a rectangle, an arrow is a path, and a wash is an image because that is the only thing in Avalonia that carries a blend mode.</summary>
+    // What a mark of that kind has to be drawn with. A frame is a rectangle, an arrow is a path, and a wash is an image because that is the only thing in Avalonia that carries a blend mode.
     private static Control _StandInFor(Mark mark) => mark switch
     {
         ArrowMark => new Path(),
@@ -950,7 +884,7 @@ public partial class ScreenshotSelectionWindow : Window
         _ => new Rectangle(),
     };
 
-    /// <summary>Whether a kept control is still the right thing for the mark now at its position.</summary>
+    // Whether a kept control is still the right thing for the mark now at its position.
     private static bool _Suits(Control shape, Mark mark) => (shape, mark) switch
     {
         (Path, ArrowMark or StrokeMark) => true,
@@ -960,17 +894,14 @@ public partial class ScreenshotSelectionWindow : Window
         _ => false,
     };
 
-    /// <summary>
-    /// Makes one shape look like the mark it is standing in for, and puts it where that mark is. Restated on every
-    /// draw rather than set when the shape is made, because the shapes are kept and reused as marks come and go —
-    /// one that was a redaction a moment ago has to stop looking like one.
-    /// </summary>
-    /// <remarks>
-    /// Every thickness goes through the surface conversion rather than being used as it stands. A mark's thickness
-    /// is in the image's pixels; drawn as window units it comes out heavier than what will be burnt in by exactly
-    /// the display's scale, and the preview stops being a preview.
-    /// </remarks>
-    /// <param name="pending">Whether this is the mark still being made rather than one already placed — which only the caret on a note cares about.</param>
+    // Makes one shape look like the mark it is standing in for, and puts it where that mark is. Restated on every
+    // draw rather than set when the shape is made, because the shapes are kept and reused as marks come and go —
+    // one that was a redaction a moment ago has to stop looking like one.
+    // Every thickness goes through the surface conversion rather than being used as it stands. A mark's thickness
+    // is in the image's pixels; drawn as window units it comes out heavier than what will be burnt in by exactly
+    // the display's scale, and the preview stops being a preview.
+    //
+    // `pending`: Whether this is the mark still being made rather than one already placed — which only the caret on a note cares about.
     private void _Show(Control shape, Mark mark, ScreenshotSelectionViewModel selection, bool pending)
     {
         switch (mark, shape)
@@ -1044,16 +975,12 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>
-    /// Lays the arrow's own outline into a path, in the window's units. The corners are the mark's — the same list
-    /// the imaging library fills — so the shape on screen and the shape in the delivered picture are one shape
-    /// converted twice rather than two shapes worked out twice.
-    /// </summary>
-    /// <remarks>
-    /// The geometry is written relative to the shape's top-left corner and the shape is then placed there, rather
-    /// than written in the surface's coordinates and placed at the origin. A path laid out at its own absolute
-    /// position measures as though it began at zero, and the empty space in front of it becomes part of its size.
-    /// </remarks>
+    // Lays the arrow's own outline into a path, in the window's units. The corners are the mark's — the same list
+    // the imaging library fills — so the shape on screen and the shape in the delivered picture are one shape
+    // converted twice rather than two shapes worked out twice.
+    // The geometry is written relative to the shape's top-left corner and the shape is then placed there, rather
+    // than written in the surface's coordinates and placed at the origin. A path laid out at its own absolute
+    // position measures as though it began at zero, and the empty space in front of it becomes part of its size.
     private static void _Trace(Path path, ArrowMark arrow, ScreenshotSelectionViewModel selection)
     {
         if (arrow.Silhouette() is not { Count: > 0 } corners)
@@ -1089,15 +1016,11 @@ public partial class ScreenshotSelectionWindow : Window
         path.Height = double.NaN;
     }
 
-    /// <summary>
-    /// Lays the freehand line into the path that stands in for it, in the window's units, from the same curve the
-    /// imaging library draws.
-    /// </summary>
-    /// <remarks>
-    /// It took a pair of paths until AC-375 — a wider ring underneath and the line over it — because a line cannot
-    /// be drawn and ringed at once the way a filled shape can. The ring is gone with the palette, and the second
-    /// path went with it.
-    /// </remarks>
+    // Lays the freehand line into the path that stands in for it, in the window's units, from the same curve the
+    // imaging library draws.
+    // It took a pair of paths until AC-375 — a wider ring underneath and the line over it — because a line cannot
+    // be drawn and ringed at once the way a filled shape can. The ring is gone with the palette, and the second
+    // path went with it.
     private static void _Trace(Path drawn, StrokeMark stroke, ScreenshotSelectionViewModel selection)
     {
         if (stroke.Start() is not { } start || stroke.Curve() is not { Count: > 0 } curves
@@ -1140,12 +1063,10 @@ public partial class ScreenshotSelectionWindow : Window
         return new Point(onSurface.X - left, onSurface.Y - top);
     }
 
-    /// <summary>
-    /// Puts the eight grips where <see cref="ScreenshotSelectionViewModel.GripPositions"/> says they are, or
-    /// hides all of them where there is nothing to grab — no selection, or a mode where a grip would not do
-    /// anything anyway. A mark tool in hand still leaves a non-empty selection, and a grip lighting up over it
-    /// would promise a drag the surface will not honour (AC-565's ninth criterion).
-    /// </summary>
+    // Puts the eight grips where `ScreenshotSelectionViewModel.GripPositions` says they are, or
+    // hides all of them where there is nothing to grab — no selection, or a mode where a grip would not do
+    // anything anyway. A mark tool in hand still leaves a non-empty selection, and a grip lighting up over it
+    // would promise a drag the surface will not honour (AC-565's ninth criterion).
     private void _PlaceGrips(ScreenshotSelectionViewModel selection)
     {
         var positions = selection.DraggingRegion ? selection.GripPositions() : [];
@@ -1163,7 +1084,7 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
-    /// <summary>The shape standing in for a grip. Named lookup rather than a dictionary built every draw: the names are fixed by the XAML, and this is the one place that has to agree with it.</summary>
+    // The shape standing in for a grip. Named lookup rather than a dictionary built every draw: the names are fixed by the XAML, and this is the one place that has to agree with it.
     private Rectangle _GripControl(SelectionGrip grip) => grip switch
     {
         SelectionGrip.TopLeft => GripTopLeft,
@@ -1188,10 +1109,8 @@ public partial class ScreenshotSelectionWindow : Window
         shape.Height = Math.Max(0, height);
     }
 
-    /// <summary>
-    /// One pixel of a colour, to be stretched over a band. A real bitmap rather than a drawing of a filled
-    /// rectangle: the blend mode belongs to the image, and a drawing is composited before it ever gets there.
-    /// </summary>
+    // One pixel of a colour, to be stretched over a band. A real bitmap rather than a drawing of a filled
+    // rectangle: the blend mode belongs to the image, and a drawing is composited before it ever gets there.
     private static WriteableBitmap _OnePixelOf(uint colour)
     {
         var bitmap = new WriteableBitmap(
@@ -1205,7 +1124,7 @@ public partial class ScreenshotSelectionWindow : Window
         return bitmap;
     }
 
-    /// <summary>Leaves a kept shape drawing nothing — its size taken away, and, where it holds one, its geometry too.</summary>
+    // Leaves a kept shape drawing nothing — its size taken away, and, where it holds one, its geometry too.
     private static void _Empty(Control shape)
     {
         switch (shape)

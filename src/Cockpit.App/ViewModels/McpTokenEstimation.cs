@@ -3,19 +3,15 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Shared AC-134 helpers for an MCP-server checklist (the New-session dialog and the profile editor both use one):
-/// estimating each row's tool tokens in the background, and rolling the ticked rows up into a labelled running
-/// total. Kept UI-toolkit-free so it stays unit-testable; the caller owns the collection and marshals to the UI
-/// thread (the estimate awaits resume on the captured dialog context).
-/// </summary>
+// Shared AC-134 helpers for an MCP-server checklist (the New-session dialog and the profile editor both use one):
+// estimating each row's tool tokens in the background, and rolling the ticked rows up into a labelled running
+// total. Kept UI-toolkit-free so it stays unit-testable; the caller owns the collection and marshals to the UI
+// thread (the estimate awaits resume on the captured dialog context).
 internal static class McpTokenEstimation
 {
-    /// <summary>
-    /// Estimates each server in turn (the estimator caches, so re-runs are cheap unless <paramref name="refresh"/>),
-    /// marking each row as estimating while its turn is in flight. A per-server failure lands as an unavailable
-    /// estimate rather than stopping the rest.
-    /// </summary>
+    // Estimates each server in turn (the estimator caches, so re-runs are cheap unless `refresh`),
+    // marking each row as estimating while its turn is in flight. A per-server failure lands as an unavailable
+    // estimate rather than stopping the rest.
     public static async Task EstimateAllAsync(
         IReadOnlyList<McpServerSelectionItemViewModel> items,
         IMcpToolTokenEstimator estimator,
@@ -50,7 +46,7 @@ internal static class McpTokenEstimation
         }
     }
 
-    /// <summary>The rolled-up figure over the <em>ticked</em> rows: the summed known tokens, whether any ticked row is still counting, and whether any ticked row's cost is unknown (a server that would not enumerate).</summary>
+    // The rolled-up figure over the *ticked* rows: the summed known tokens, whether any ticked row is still counting, and whether any ticked row's cost is unknown (a server that would not enumerate).
     public static (int Tokens, bool AnyEstimating, bool AnyUnknown) Total(IEnumerable<McpServerSelectionItemViewModel> items)
     {
         var tokens = 0;
@@ -76,7 +72,7 @@ internal static class McpTokenEstimation
         return (tokens, anyEstimating, anyUnknown);
     }
 
-    /// <summary>The operator-facing summary line for the ticked rows, labelled clearly as a tools-only estimate.</summary>
+    // The operator-facing summary line for the ticked rows, labelled clearly as a tools-only estimate.
     public static string SummaryLabel(IEnumerable<McpServerSelectionItemViewModel> items)
     {
         var (tokens, anyEstimating, anyUnknown) = Total(items);

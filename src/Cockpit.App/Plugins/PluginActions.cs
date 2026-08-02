@@ -8,12 +8,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// <see cref="ICockpitActions"/> a plugin uses to act on the cockpit: inject text into the selected
-/// session (reusing the session's own per-kind input seam), put text on the clipboard, and ask the operator
-/// to confirm a destructive action. The clipboard is resolved lazily via a factory so this has no hard
-/// dependency on a window being up.
-/// </summary>
+// `ICockpitActions` a plugin uses to act on the cockpit: inject text into the selected
+// session (reusing the session's own per-kind input seam), put text on the clipboard, and ask the operator
+// to confirm a destructive action. The clipboard is resolved lazily via a factory so this has no hard
+// dependency on a window being up.
 public sealed class PluginActions(
     CockpitViewModel cockpit,
     Func<IClipboard?> clipboardFactory,
@@ -59,12 +57,10 @@ public sealed class PluginActions(
             }
         }).GetTask();
 
-    /// <summary>
-    /// Hands work to another profile as a background task and waits for the answer (#67, #69). The task goes through
-    /// the cockpit's own delegation service, so it is refused by the same rules an agent's delegation is refused by,
-    /// and it shows up in the delegated-tasks view — a plugin does not get a quieter way to run an agent than an agent
-    /// has.
-    /// </summary>
+    // Hands work to another profile as a background task and waits for the answer (#67, #69). The task goes through
+    // the cockpit's own delegation service, so it is refused by the same rules an agent's delegation is refused by,
+    // and it shows up in the delegated-tasks view — a plugin does not get a quieter way to run an agent than an agent
+    // has.
     public async Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null)
     {
         var task = await delegation
@@ -109,12 +105,10 @@ public sealed class PluginActions(
     public Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null) =>
         StartSessionAsync(profileLabel, prompt, workingDirectory, null);
 
-    /// <summary>
-    /// Opens a session on a named profile and hands it a prompt (#69) — the same act as the New-session dialog, minus
-    /// the dialog. The profile's own defaults are used for model, permissions and effort, because a caller who names
-    /// a profile means "the way I set that one up". <paramref name="sessionName"/> names it as it opens (#AC-312);
-    /// blank leaves the naming to the profile and the clock.
-    /// </summary>
+    // Opens a session on a named profile and hands it a prompt (#69) — the same act as the New-session dialog, minus
+    // the dialog. The profile's own defaults are used for model, permissions and effort, because a caller who names
+    // a profile means "the way I set that one up". `sessionName` names it as it opens (#AC-312);
+    // blank leaves the naming to the profile and the clock.
     public async Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)
     {
         var profiles = await profileStore.LoadAsync().ConfigureAwait(false);

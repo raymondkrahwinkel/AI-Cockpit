@@ -2,14 +2,12 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The single source of the selectable session options (permission mode, model, effort) shared by
-/// the New-session dialog and the running-session panel. Splitting <see cref="AllPermissionModes"/>
-/// (the four real CLI modes, offered only at launch) from <see cref="LivePermissionModes"/> (the
-/// three that can be switched mid-session) keeps the panel honest: bypass can only be chosen when a
-/// session is launched, never as a live switch, so it never appears as a dead control in the panel
-/// dropdown (see bug #15 / the no-dead-controls convention).
-/// </summary>
+// The single source of the selectable session options (permission mode, model, effort) shared by
+// the New-session dialog and the running-session panel. Splitting `AllPermissionModes`
+// (the four real CLI modes, offered only at launch) from `LivePermissionModes` (the
+// three that can be switched mid-session) keeps the panel honest: bypass can only be chosen when a
+// session is launched, never as a live switch, so it never appears as a dead control in the panel
+// dropdown (see bug #15 / the no-dead-controls convention).
 public static class SessionOptionCatalog
 {
     // The CLI's four real --permission-mode values. There is no "auto" mode — passing it made the
@@ -63,53 +61,49 @@ public static class SessionOptionCatalog
         new(ReadingLevel.Simple, "Simple", "For anyone: no tool noise, no cost, jargon in plain words."),
     ];
 
-    /// <summary>App-default reading level (Developer — the full surface) used when a profile carries no default.</summary>
+    // App-default reading level (Developer — the full surface) used when a profile carries no default.
     public static ReadingLevelOption DefaultReadingLevel { get; } = ReadingLevels[0];
 
-    /// <summary>Resolves a reading level (e.g. from a profile default or a per-session override) to its option, or the app default.</summary>
+    // Resolves a reading level (e.g. from a profile default or a per-session override) to its option, or the app default.
     public static ReadingLevelOption ResolveReadingLevel(ReadingLevel? value) =>
         value is { } level ? ReadingLevels.FirstOrDefault(option => option.Value == level) ?? DefaultReadingLevel : DefaultReadingLevel;
 
-    /// <summary>The <c>--permission-mode</c> value that is launch-only and locks the panel dropdown.</summary>
+    // The `--permission-mode` value that is launch-only and locks the panel dropdown.
     public const string BypassPermissionModeValue = "bypassPermissions";
 
-    /// <summary>App-default mode (Ask permissions) used when a profile carries no defaults.</summary>
+    // App-default mode (Ask permissions) used when a profile carries no defaults.
     public static PermissionModeOption DefaultPermissionMode { get; } = AllPermissionModes[0];
 
-    /// <summary>App-default model (Sonnet) used when a profile carries no defaults; looked up by value, so adding a
-    /// model to <see cref="Models"/> cannot silently move the default the way a positional index would.</summary>
+    // App-default model (Sonnet) used when a profile carries no defaults; looked up by value, so adding a
+    // model to `Models` cannot silently move the default the way a positional index would.
     public static ModelOption DefaultModel { get; } = Models.First(model => model.Value == "sonnet");
 
-    /// <summary>App-default effort (Medium) used when a profile carries no defaults.</summary>
+    // App-default effort (Medium) used when a profile carries no defaults.
     public static EffortOption DefaultEffort { get; } = Efforts[1];
 
-    /// <summary>Resolves a CLI mode value (e.g. from a profile's defaults) to an option, or the app default.</summary>
+    // Resolves a CLI mode value (e.g. from a profile's defaults) to an option, or the app default.
     public static PermissionModeOption ResolvePermissionMode(string? value) =>
         AllPermissionModes.FirstOrDefault(mode => mode.Value == value) ?? DefaultPermissionMode;
 
-    /// <summary>Resolves a CLI model value to an option, or the app default.</summary>
+    // Resolves a CLI model value to an option, or the app default.
     public static ModelOption ResolveModel(string? value) =>
         Models.FirstOrDefault(model => model.Value == value) ?? DefaultModel;
 
-    /// <summary>
-    /// The model values offered as suggestions in the editable Claude model field — the CLI's own aliases
-    /// (<c>opus</c>/<c>sonnet</c>/<c>haiku</c>), which it resolves to the current model itself, so this list needs
-    /// no per-release upkeep. The field stays free text, so an operator can still pin a specific model or snapshot.
-    /// </summary>
+    // The model values offered as suggestions in the editable Claude model field — the CLI's own aliases
+    // (`opus`/`sonnet`/`haiku`), which it resolves to the current model itself, so this list needs
+    // no per-release upkeep. The field stays free text, so an operator can still pin a specific model or snapshot.
     public static IReadOnlyList<string> ClaudeModelSuggestions { get; } = [.. Models.Select(model => model.Value)];
 
-    /// <summary>
-    /// Turns what the operator typed or picked in the editable model field back into a <see cref="ModelOption"/>:
-    /// a known alias keeps its friendly label, anything else (a pinned model/snapshot) becomes its own value, and
-    /// a blank field falls back to the app default — so the <see cref="ModelOption"/> pipeline is unchanged whether
-    /// the value came from a dropdown or free text.
-    /// </summary>
+    // Turns what the operator typed or picked in the editable model field back into a `ModelOption`:
+    // a known alias keeps its friendly label, anything else (a pinned model/snapshot) becomes its own value, and
+    // a blank field falls back to the app default — so the `ModelOption` pipeline is unchanged whether
+    // the value came from a dropdown or free text.
     public static ModelOption ModelForValue(string? value) =>
         string.IsNullOrWhiteSpace(value)
             ? DefaultModel
             : Models.FirstOrDefault(model => model.Value == value.Trim()) ?? new ModelOption(value.Trim(), value.Trim());
 
-    /// <summary>Resolves an effort value to an option, or the app default.</summary>
+    // Resolves an effort value to an option, or the app default.
     public static EffortOption ResolveEffort(string? value) =>
         Efforts.FirstOrDefault(effort => effort.Value == value) ?? DefaultEffort;
 }

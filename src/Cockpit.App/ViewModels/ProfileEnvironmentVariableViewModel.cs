@@ -3,11 +3,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One editable row of a profile's spawn environment variables (AC-22): key, value and whether the value is
-/// a credential — a secret persists encrypted and its field masks. <see cref="IsKeyValid"/> drives the row's
-/// inline hint and the dialog's save gate.
-/// </summary>
+// One editable row of a profile's spawn environment variables (AC-22): key, value and whether the value is
+// a credential — a secret persists encrypted and its field masks. `IsKeyValid` drives the row's
+// inline hint and the dialog's save gate.
 public partial class ProfileEnvironmentVariableViewModel : ViewModelBase
 {
     [ObservableProperty]
@@ -26,7 +24,7 @@ public partial class ProfileEnvironmentVariableViewModel : ViewModelBase
         _isSecret = isSecret;
     }
 
-    /// <summary>A POSIX-style variable name; an empty (still unfilled) key gets the same hint as a wrong one.</summary>
+    // A POSIX-style variable name; an empty (still unfilled) key gets the same hint as a wrong one.
     public bool IsKeyValid => ProfileEnvironmentVariable.IsValidKey(Key);
 
     partial void OnKeyChanged(string value) => OnPropertyChanged(nameof(IsKeyValid));

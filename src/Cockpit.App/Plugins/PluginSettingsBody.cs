@@ -4,25 +4,22 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>What a plugin's settings dialog puts under its Save/Close footer, and whether it drew a rail to do it.</summary>
-/// <param name="Content">The control the dialog hosts.</param>
-/// <param name="HasRail">True when a navigation rail was drawn, so the dialog owes it the width.</param>
+// What a plugin's settings dialog puts under its Save/Close footer, and whether it drew a rail to do it.
+//
+// `Content`: The control the dialog hosts.
+// `HasRail`: True when a navigation rail was drawn, so the dialog owes it the width.
 internal readonly record struct PluginSettingsBody(Control Content, bool HasRail);
 
-/// <summary>
-/// Builds the body of a plugin's settings dialog: the plugin's view in the host's scroll and inset, with the
-/// Options navigation rail beside it when the view declares sections (<see cref="IPluginSettingsSections"/>,
-/// AC-316). Separate from <see cref="PluginDialogHost"/> because it is the part that can be built and asserted
-/// on without a window — opening the dialog itself needs a running app.
-/// </summary>
+// Builds the body of a plugin's settings dialog: the plugin's view in the host's scroll and inset, with the
+// Options navigation rail beside it when the view declares sections (`IPluginSettingsSections`,
+// AC-316). Separate from `PluginDialogHost` because it is the part that can be built and asserted
+// on without a window — opening the dialog itself needs a running app.
 internal static class PluginSettingsBodyBuilder
 {
-    /// <summary>
-    /// How wide a dialog opens once it has gained a rail: wide enough that the settings themselves keep the room
-    /// they had, but never past <paramref name="maximum"/> — the cockpit's own cap, because a dialog that opens
-    /// wider than the window behind it opens with its content cut off. On a cockpit too narrow to afford both,
-    /// the cap wins and the rail does come out of the settings' width; the dialog is resizable from there.
-    /// </summary>
+    // How wide a dialog opens once it has gained a rail: wide enough that the settings themselves keep the room
+    // they had, but never past `maximum` — the cockpit's own cap, because a dialog that opens
+    // wider than the window behind it opens with its content cut off. On a cockpit too narrow to afford both,
+    // the cap wins and the rail does come out of the settings' width; the dialog is resizable from there.
     internal static (double Width, double MinWidth) GrowForRail(double width, double minWidth, double maximum, double railWidth) =>
         (Math.Min(width + railWidth, maximum), Math.Min(minWidth + railWidth, maximum));
 

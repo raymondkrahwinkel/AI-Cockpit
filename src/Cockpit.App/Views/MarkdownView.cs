@@ -13,12 +13,10 @@ using Cockpit.Core.Markdown;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Renders a markdown string into themed Avalonia controls — the cockpit's own thin markdown layer,
-/// replacing Markdown.Avalonia so the transcript look (flat text, calm inline-code, dark tables) and
-/// clickable links are fully under our control. Parsing lives in <see cref="MarkdownParser"/>; this
-/// control walks the parsed blocks and builds the visual tree, matching the approved look&amp;feel mockup.
-/// </summary>
+// Renders a markdown string into themed Avalonia controls — the cockpit's own thin markdown layer,
+// replacing Markdown.Avalonia so the transcript look (flat text, calm inline-code, dark tables) and
+// clickable links are fully under our control. Parsing lives in `MarkdownParser`; this
+// control walks the parsed blocks and builds the visual tree, matching the approved look&amp;feel mockup.
 public sealed class MarkdownView : ContentControl
 {
     private static readonly FontFamily MonoFont =
@@ -145,10 +143,8 @@ public sealed class MarkdownView : ContentControl
         _rendered = parsed;
     }
 
-    /// <summary>
-    /// One colour standing in for the whole palette. Null where there are no application resources at all
-    /// (design-time preview): nothing to compare, so nothing is ever discarded.
-    /// </summary>
+    // One colour standing in for the whole palette. Null where there are no application resources at all
+    // (design-time preview): nothing to compare, so nothing is ever discarded.
     private static Color? _CurrentPalette() =>
         Application.Current is { } app
         && app.TryGetResource("CockpitTextPrimaryBrush", null, out var value)
@@ -204,15 +200,13 @@ public sealed class MarkdownView : ContentControl
         _ => _Paragraph(block.Inlines, new Thickness(0, 3, 0, 3)),
     };
 
-    /// <summary>
-    /// Updates the control a block already has instead of building a new one, for the change a stream actually
-    /// makes: the block at the end grew. Block-level reuse alone is too coarse for the shapes that arrive as one
-    /// big block — a table or a fence is a single block however long it gets, so every repaint reconstructed its
-    /// whole grid, or its border, scroller and copy button. Measured over a 4 KB reply that is 231 MB for a table
-    /// and 188 MB for a fence against 48 MB for the same length of prose, which splits into small blocks of which
-    /// only the last is rebuilt. Returns false whenever the shape changed rather than grew, and a rebuild is then
-    /// the honest answer.
-    /// </summary>
+    // Updates the control a block already has instead of building a new one, for the change a stream actually
+    // makes: the block at the end grew. Block-level reuse alone is too coarse for the shapes that arrive as one
+    // big block — a table or a fence is a single block however long it gets, so every repaint reconstructed its
+    // whole grid, or its border, scroller and copy button. Measured over a 4 KB reply that is 231 MB for a table
+    // and 188 MB for a fence against 48 MB for the same length of prose, which splits into small blocks of which
+    // only the last is rebuilt. Returns false whenever the shape changed rather than grew, and a rebuild is then
+    // the honest answer.
     private static bool _TryUpdateInPlace(Control control, MarkdownBlock was, MarkdownBlock now)
     {
         if (was.Kind != now.Kind)
@@ -394,13 +388,13 @@ public sealed class MarkdownView : ContentControl
         return text;
     }
 
-    /// <summary>A code block that keeps hold of its text, so a fence still streaming can have its body replaced
-    /// rather than the whole border, scroller and copy button built again for every repaint.</summary>
+    // A code block that keeps hold of its text, so a fence still streaming can have its body replaced
+    // rather than the whole border, scroller and copy button built again for every repaint.
     private sealed class CodeBlockBorder : Border
     {
         public required SelectableTextBlock Code { get; init; }
 
-        /// <summary>Where the copy button goes once the pointer asks for it — see <see cref="_CodeBlock"/>.</summary>
+        // Where the copy button goes once the pointer asks for it — see `_CodeBlock`.
         public required Grid Body { get; init; }
 
         public bool HasCopyButton;
@@ -582,10 +576,8 @@ public sealed class MarkdownView : ContentControl
         }
     }
 
-    /// <summary>
-    /// A text block that keeps the link ranges its runs were built from. Refilling one while a reply streams
-    /// would otherwise stack another click handler on it per repaint, and hand out another platform cursor.
-    /// </summary>
+    // A text block that keeps the link ranges its runs were built from. Refilling one while a reply streams
+    // would otherwise stack another click handler on it per repaint, and hand out another platform cursor.
     private sealed class InlineTextBlock : SelectableTextBlock
     {
         public readonly List<(int Start, int Length, string Url)> Links = [];
@@ -597,7 +589,7 @@ public sealed class MarkdownView : ContentControl
     // without a platform at all — an initialiser would take those down on the mere mention of this class.
     private static Cursor? _handCursor;
 
-    /// <summary>Builds a selectable text block from inline runs, styling code/links and making links clickable.</summary>
+    // Builds a selectable text block from inline runs, styling code/links and making links clickable.
     private static InlineTextBlock _InlineTextBlock(IReadOnlyList<MarkdownInline> inlines)
     {
         var block = new InlineTextBlock
@@ -621,7 +613,7 @@ public sealed class MarkdownView : ContentControl
         return block;
     }
 
-    /// <summary>Replaces a block's runs in place — what a growing paragraph, list item or table cell needs.</summary>
+    // Replaces a block's runs in place — what a growing paragraph, list item or table cell needs.
     private static void _FillInlines(InlineTextBlock block, IReadOnlyList<MarkdownInline> inlines)
     {
         block.Links.Clear();

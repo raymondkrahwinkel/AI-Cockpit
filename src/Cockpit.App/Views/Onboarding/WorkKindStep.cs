@@ -5,11 +5,9 @@ using Cockpit.Core.Abstractions.Plugins;
 
 namespace Cockpit.App.Views.Onboarding;
 
-/// <summary>
-/// The wizard's work-kind step (AC-511): what kind of work this is for, the plugins that suggests, and one
-/// confirmation for the lot. Registers itself through <c>ISingletonService</c> like every other step, so the shell
-/// picks it up without being edited.
-/// </summary>
+// The wizard's work-kind step (AC-511): what kind of work this is for, the plugins that suggests, and one
+// confirmation for the lot. Registers itself through `ISingletonService` like every other step, so the shell
+// picks it up without being edited.
 internal sealed class WorkKindStep : IFirstRunWizardStep, ISingletonService
 {
     private readonly WorkKindStepViewModel _viewModel;
@@ -23,7 +21,7 @@ internal sealed class WorkKindStep : IFirstRunWizardStep, ISingletonService
     {
     }
 
-    /// <summary>Renders a step over a view model that is already populated — the screenshot scenes, which have no store to read.</summary>
+    // Renders a step over a view model that is already populated — the screenshot scenes, which have no store to read.
     internal WorkKindStep(WorkKindStepViewModel viewModel) => _viewModel = viewModel;
 
     // Leaves room below for the steps that come before it (the welcome page, AC-510's provider picker) without

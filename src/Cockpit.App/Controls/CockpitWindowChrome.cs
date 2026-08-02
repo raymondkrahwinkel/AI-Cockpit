@@ -11,13 +11,11 @@ using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// Applies the cockpit's custom window chrome to any <see cref="Window"/>: it drops the OS title bar and
-/// caption buttons (Avalonia 12 <see cref="WindowDecorations.BorderOnly"/>) while keeping a resizable
-/// border, and wraps the window's content under a hairline title bar with its own caption buttons. Shared
-/// so every window — the plugin dialogs and the app's own dialogs/main window — looks the same. Dialogs
-/// get a Close button only; the main window opts into minimize/maximize.
-/// </summary>
+// Applies the cockpit's custom window chrome to any `Window`: it drops the OS title bar and
+// caption buttons (Avalonia 12 `WindowDecorations.BorderOnly`) while keeping a resizable
+// border, and wraps the window's content under a hairline title bar with its own caption buttons. Shared
+// so every window — the plugin dialogs and the app's own dialogs/main window — looks the same. Dialogs
+// get a Close button only; the main window opts into minimize/maximize.
 internal static class CockpitWindowChrome
 {
     // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).
@@ -47,18 +45,15 @@ internal static class CockpitWindowChrome
     private static readonly Lazy<Bitmap> AppMark = new(() =>
         new Bitmap(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/BrandMark.png"))));
 
-    /// <param name="title">
-    /// The name in the bar. Ignored by <see cref="CockpitTitleBar.Window"/>: the app's own window is not named by
-    /// its caller, it carries the product's name and mark (AC-430).
-    /// </param>
-    /// <param name="subtitle">
-    /// The line under a dialog's name saying what it is for (the mockup's .tsub). Left out, the header is just
-    /// the name. Ignored by <see cref="CockpitTitleBar.Window"/>, which has no room for a second line.
-    /// </param>
-    /// <param name="onSettings">
-    /// When given, a gear appears left of the caption buttons and runs this — how a plugin's dialog offers its own
-    /// settings (#: settings from anywhere). Omitted, the title bar looks exactly as it did.
-    /// </param>
+    // `title`:
+    // The name in the bar. Ignored by `CockpitTitleBar.Window`: the app's own window is not named by
+    // its caller, it carries the product's name and mark (AC-430).
+    // `subtitle`:
+    // The line under a dialog's name saying what it is for (the mockup's .tsub). Left out, the header is just
+    // the name. Ignored by `CockpitTitleBar.Window`, which has no room for a second line.
+    // `onSettings`:
+    // When given, a gear appears left of the caption buttons and runs this — how a plugin's dialog offers its own
+    // settings (#: settings from anywhere). Omitted, the title bar looks exactly as it did.
     public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null)
     {
         window.WindowDecorations = WindowDecorations.BorderOnly;

@@ -10,12 +10,10 @@ using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Backs the Manage-profiles dialog (#12/#17): list the profiles, edit each one's label, config
-/// directory (shown so it is clear where its login lives), executable, purpose and start defaults, and
-/// add/remove entries. Save persists the whole edited list through <see cref="ISessionProfileStore"/>;
-/// the view closes via <see cref="CloseRequested"/>.
-/// </summary>
+// Backs the Manage-profiles dialog (#12/#17): list the profiles, edit each one's label, config
+// directory (shown so it is clear where its login lives), executable, purpose and start defaults, and
+// add/remove entries. Save persists the whole edited list through `ISessionProfileStore`;
+// the view closes via `CloseRequested`.
 public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
     private readonly ISessionProfileStore? _profileStore;
@@ -27,15 +25,15 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
 
-    /// <summary>The MCP servers a profile may pre-select from (AC-130), fetched once when the dialog loads; empty until then, or when no catalog was supplied.</summary>
+    // The MCP servers a profile may pre-select from (AC-130), fetched once when the dialog loads; empty until then, or when no catalog was supplied.
     private IReadOnlyList<string> _availableMcpServerNames = [];
 
-    /// <summary>Raised when the dialog should close (after a save, or on cancel).</summary>
+    // Raised when the dialog should close (after a save, or on cancel).
     public event Action? CloseRequested;
 
     public ObservableCollection<EditableProfileViewModel> Profiles { get; } = [];
 
-    /// <summary>All four modes: a profile's default may be bypass, which the New-session dialog then offers at launch.</summary>
+    // All four modes: a profile's default may be bypass, which the New-session dialog then offers at launch.
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
 
     // The Claude model field is now an editable AutoCompleteBox bound to each profile's own ClaudeModelSuggestions
@@ -92,11 +90,11 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         _providers = pluginProviderRegistry is null ? SessionProviderCatalog.Providers : SessionProviderCatalog.AllProviders(pluginProviderRegistry);
     }
 
-    /// <summary>Status of the last model refresh (count or a "server not running" hint), shown next to the model picker.</summary>
+    // Status of the last model refresh (count or a "server not running" hint), shown next to the model picker.
     [ObservableProperty]
     private string _modelFetchStatus = string.Empty;
 
-    /// <summary>Fetches the selected local profile's installed models from its server so the operator can pick one instead of typing an id (#26).</summary>
+    // Fetches the selected local profile's installed models from its server so the operator can pick one instead of typing an id (#26).
     [RelayCommand]
     private async Task RefreshModelsAsync()
     {
@@ -129,7 +127,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         ModelFetchStatus = $"Found {models.Count} model(s) — click the field to pick another, or type an id";
     }
 
-    /// <summary>Loads the stored profiles into editable rows and selects the first.</summary>
+    // Loads the stored profiles into editable rows and selects the first.
     public async Task LoadAsync()
     {
         if (_profileStore is null)
@@ -164,15 +162,15 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         SelectedProfile = added;
     }
 
-    /// <summary>True while a remove is awaiting confirmation, so the footer shows a "Remove 'X'?" prompt.</summary>
+    // True while a remove is awaiting confirmation, so the footer shows a "Remove 'X'?" prompt.
     [ObservableProperty]
     private bool _isConfirmingRemove;
 
-    /// <summary>Label of the profile pending removal, for the confirmation prompt.</summary>
+    // Label of the profile pending removal, for the confirmation prompt.
     [ObservableProperty]
     private string _pendingRemovalLabel = string.Empty;
 
-    /// <summary>Starts a remove: asks for confirmation rather than dropping the row silently.</summary>
+    // Starts a remove: asks for confirmation rather than dropping the row silently.
     [RelayCommand(CanExecute = nameof(HasSelectedProfile))]
     private void RemoveProfile()
     {
@@ -185,10 +183,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         IsConfirmingRemove = true;
     }
 
-    /// <summary>
-    /// Confirms the remove: drops the selected profile and persists the reduced list immediately, so a
-    /// removal takes effect without a separate Save (and isn't lost if another row is mid-edit).
-    /// </summary>
+    // Confirms the remove: drops the selected profile and persists the reduced list immediately, so a
+    // removal takes effect without a separate Save (and isn't lost if another row is mid-edit).
     [RelayCommand]
     private async Task ConfirmRemoveAsync()
     {

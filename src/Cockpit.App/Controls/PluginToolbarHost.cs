@@ -10,13 +10,11 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// Renders the plugin-registered Sessions-toolbar actions (<c>ICockpitHost.AddToolbarAction</c>, AC-91) as compact
-/// icon buttons next to the workspace gear. Up to <see cref="InlineLimit"/> show inline; beyond that they collapse
-/// into a single overflow (⋯) button with a flyout, so the narrow strip never overflows. Contributes nothing and
-/// takes no space when no plugin registers an action. Reads its <see cref="CockpitViewModel"/> from the inherited
-/// <see cref="StyledElement.DataContext"/>, so it renders wherever that view model is in scope (incl. headless).
-/// </summary>
+// Renders the plugin-registered Sessions-toolbar actions (`ICockpitHost.AddToolbarAction`, AC-91) as compact
+// icon buttons next to the workspace gear. Up to `InlineLimit` show inline; beyond that they collapse
+// into a single overflow (⋯) button with a flyout, so the narrow strip never overflows. Contributes nothing and
+// takes no space when no plugin registers an action. Reads its `CockpitViewModel` from the inherited
+// `StyledElement.DataContext`, so it renders wherever that view model is in scope (incl. headless).
 internal sealed class PluginToolbarHost : StackPanel
 {
     private const int InlineLimit = 3;

@@ -1,14 +1,14 @@
 namespace Cockpit.App.ViewModels;
 
-/// <summary>One provider's group of usage-threshold rows on the settings screen (AC-233).</summary>
+// One provider's group of usage-threshold rows on the settings screen (AC-233).
 public sealed class UsageThresholdProviderViewModel(string providerId, string displayName, IReadOnlyList<UsageThresholdRowViewModel> signals)
 {
-    /// <summary>The provider these thresholds belong to.</summary>
+    // The provider these thresholds belong to.
     public string ProviderId { get; } = providerId;
 
-    /// <summary>What the operator reads in the group's header.</summary>
+    // What the operator reads in the group's header.
     public string DisplayName { get; } = displayName;
 
-    /// <summary>Every signal this provider declared, in the order it declared them.</summary>
+    // Every signal this provider declared, in the order it declared them.
     public IReadOnlyList<UsageThresholdRowViewModel> Signals { get; } = signals;
 }

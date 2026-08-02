@@ -9,14 +9,12 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// A project's extra information (AC-295) in the shape every surface shows it in: a label over its value, and a
-/// value that is a web address drawn as a link. One control, shared by the overview's cards and the manager's rows,
-/// so the two cannot drift apart the way the logo well did before <see cref="ProjectLogoBadge"/>.
-/// </summary>
+// A project's extra information (AC-295) in the shape every surface shows it in: a label over its value, and a
+// value that is a web address drawn as a link. One control, shared by the overview's cards and the manager's rows,
+// so the two cannot drift apart the way the logo well did before `ProjectLogoBadge`.
 public partial class ProjectInfoList : UserControl
 {
-    /// <summary>The rows to show — a project's <see cref="Project.AdditionalInfo"/>. Empty or null draws nothing.</summary>
+    // The rows to show — a project's `Project.AdditionalInfo`. Empty or null draws nothing.
     public static readonly StyledProperty<IEnumerable?> FieldsProperty =
         AvaloniaProperty.Register<ProjectInfoList, IEnumerable?>(nameof(Fields));
 
@@ -43,10 +41,8 @@ public partial class ProjectInfoList : UserControl
         }
     }
 
-    /// <summary>
-    /// Stops a second click on a link from reaching whatever hosts these rows. The projects window puts them inside a
-    /// card that opens the project editor when it is double-clicked; a button swallows the pointer press, but the
-    /// double-tap gesture bubbles past it, so clicking a link twice opened the browser and the editor behind it.
-    /// </summary>
+    // Stops a second click on a link from reaching whatever hosts these rows. The projects window puts them inside a
+    // card that opens the project editor when it is double-clicked; a button swallows the pointer press, but the
+    // double-tap gesture bubbles past it, so clicking a link twice opened the browser and the editor behind it.
     private void OnLinkDoubleTapped(object? sender, TappedEventArgs e) => e.Handled = true;
 }

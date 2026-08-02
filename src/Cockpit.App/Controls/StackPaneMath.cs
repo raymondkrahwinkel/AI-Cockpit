@@ -1,28 +1,23 @@
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// Pure, UI-free geometry for the vertically-stacked session layout (#54 follow-up): turning per-pane
-/// <b>weights</b> into stacked rectangles, hit-testing the draggable gutters between them, transferring
-/// height between two neighbours on a splitter drag, and picking the drop index for a reorder drag.
-///
-/// Weights are proportional (unitless): only their ratios matter, so a window resize keeps each pane's
-/// share instead of snapping back to equal — the arithmetic here normalises by the running sum. Keeping
-/// it separate from <see cref="SessionTilePanel"/> lets the fiddly cases (min-height clamping, a drag
-/// past a neighbour) be unit-tested without a visual tree.
-/// </summary>
+// Pure, UI-free geometry for the vertically-stacked session layout (#54 follow-up): turning per-pane
+// *weights* into stacked rectangles, hit-testing the draggable gutters between them, transferring
+// height between two neighbours on a splitter drag, and picking the drop index for a reorder drag.
+// Weights are proportional (unitless): only their ratios matter, so a window resize keeps each pane's
+// share instead of snapping back to equal — the arithmetic here normalises by the running sum. Keeping
+// it separate from `SessionTilePanel` lets the fiddly cases (min-height clamping, a drag
+// past a neighbour) be unit-tested without a visual tree.
 internal static class StackPaneMath
 {
-    /// <summary>A pane's arranged vertical slot: <paramref name="Top"/> down by <paramref name="Height"/>.</summary>
+    // A pane's arranged vertical slot: `Top` down by `Height`.
     public readonly record struct Slot(double Top, double Height)
     {
         public double Bottom => Top + Height;
     }
 
-    /// <summary>
-    /// Stacks <paramref name="weights"/> down a column of <paramref name="totalHeight"/>, leaving a
-    /// <paramref name="gutter"/> gap between adjacent panes. Panes split the height left after the gutters
-    /// in proportion to their weight. Empty input (or non-positive height) yields an empty list.
-    /// </summary>
+    // Stacks `weights` down a column of `totalHeight`, leaving a
+    // `gutter` gap between adjacent panes. Panes split the height left after the gutters
+    // in proportion to their weight. Empty input (or non-positive height) yields an empty list.
     public static IReadOnlyList<Slot> Layout(IReadOnlyList<double> weights, double totalHeight, double gutter)
     {
         var count = weights.Count;
@@ -69,12 +64,10 @@ internal static class StackPaneMath
         return slots;
     }
 
-    /// <summary>
-    /// The index of the gutter (between pane <c>i</c> and <c>i+1</c>) whose grab band contains
-    /// <paramref name="y"/>, or -1 if the pointer is over pane content rather than a gutter. The band is
-    /// the gutter itself widened by <paramref name="grab"/> on each side so a thin gutter is still easy
-    /// to catch.
-    /// </summary>
+    // The index of the gutter (between pane `i` and `i+1`) whose grab band contains
+    // `y`, or -1 if the pointer is over pane content rather than a gutter. The band is
+    // the gutter itself widened by `grab` on each side so a thin gutter is still easy
+    // to catch.
     public static int GutterAt(IReadOnlyList<Slot> slots, double y, double gutter, double grab)
     {
         for (var i = 0; i < slots.Count - 1; i++)
@@ -90,12 +83,10 @@ internal static class StackPaneMath
         return -1;
     }
 
-    /// <summary>
-    /// Moves <paramref name="pixelDelta"/> of height across the gutter <paramref name="gutterIndex"/>
-    /// (positive grows the upper pane, shrinks the lower) and returns a fresh weight array. Only the two
-    /// neighbours change; their combined share is preserved, so the other panes hold their size. Each of
-    /// the pair is clamped to <paramref name="minPixels"/> so a pane can't be dragged shut.
-    /// </summary>
+    // Moves `pixelDelta` of height across the gutter `gutterIndex`
+    // (positive grows the upper pane, shrinks the lower) and returns a fresh weight array. Only the two
+    // neighbours change; their combined share is preserved, so the other panes hold their size. Each of
+    // the pair is clamped to `minPixels` so a pane can't be dragged shut.
     public static double[] Resize(
         IReadOnlyList<double> weights,
         int gutterIndex,
@@ -145,11 +136,9 @@ internal static class StackPaneMath
         return result;
     }
 
-    /// <summary>
-    /// The index of the slot that contains <paramref name="pos"/> along the axis — used to pick the grid
-    /// cell a pointer is hovering. A pointer in a gutter counts as the following slot; before the first or
-    /// past the last slot clamps to the ends. Empty input yields 0.
-    /// </summary>
+    // The index of the slot that contains `pos` along the axis — used to pick the grid
+    // cell a pointer is hovering. A pointer in a gutter counts as the following slot; before the first or
+    // past the last slot clamps to the ends. Empty input yields 0.
     public static int SlotAt(IReadOnlyList<Slot> slots, double pos)
     {
         for (var i = 0; i < slots.Count; i++)
@@ -163,12 +152,10 @@ internal static class StackPaneMath
         return slots.Count == 0 ? 0 : slots.Count - 1;
     }
 
-    /// <summary>
-    /// The index the pane at <paramref name="draggedIndex"/> should occupy when its grip is held at
-    /// <paramref name="pointerY"/>: it sits after every <i>other</i> pane whose vertical centre the
-    /// pointer has passed. Returns a value in <c>[0, count-1]</c>, equal to <paramref name="draggedIndex"/>
-    /// when nothing should move.
-    /// </summary>
+    // The index the pane at `draggedIndex` should occupy when its grip is held at
+    // `pointerY`: it sits after every *other* pane whose vertical centre the
+    // pointer has passed. Returns a value in `[0, count-1]`, equal to `draggedIndex`
+    // when nothing should move.
     public static int ReorderTarget(IReadOnlyList<Slot> slots, int draggedIndex, double pointerY)
     {
         if (draggedIndex < 0 || draggedIndex >= slots.Count)

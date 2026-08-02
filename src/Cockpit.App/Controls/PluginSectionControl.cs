@@ -8,22 +8,19 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// A collapsible left-menu section for a plugin contribution (#14), built in code to match the cockpit
-/// theme. It deliberately replaces Avalonia's <c>Expander</c>, whose header is an internal ToggleButton
-/// that inherits the app's accent-on-checked style (a stray accent-coloured header). Here the header is a plain
-/// themed row — secondary background, hairline border, a chevron and the title — that toggles the content.
-/// </summary>
+// A collapsible left-menu section for a plugin contribution (#14), built in code to match the cockpit
+// theme. It deliberately replaces Avalonia's `Expander`, whose header is an internal ToggleButton
+// that inherits the app's accent-on-checked style (a stray accent-coloured header). Here the header is a plain
+// themed row — secondary background, hairline border, a chevron and the title — that toggles the content.
 internal sealed class PluginSectionControl : UserControl
 {
     private readonly MaterialIcon _chevron;
     private readonly Border _body;
     private bool _expanded = true;
 
-    /// <param name="onSettings">
-    /// When given, a gear in the section's header runs it — the same short way into a plugin's settings that its
-    /// left-menu button has, for the plugins that contribute a section instead of a button.
-    /// </param>
+    // `onSettings`:
+    // When given, a gear in the section's header runs it — the same short way into a plugin's settings that its
+    // left-menu button has, for the plugins that contribute a section instead of a button.
     public PluginSectionControl(string title, Control content, Action? onSettings = null)
     {
         _chevron = CockpitIcons.Icon(MaterialIconKind.ChevronDown, 13);

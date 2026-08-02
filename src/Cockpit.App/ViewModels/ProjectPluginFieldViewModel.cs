@@ -4,16 +4,13 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One field a plugin contributed to the project editor (AC-317): what this project is called in a tracker or on a
-/// forge. The plugin described it and supplies the choices; this holds the row's state while the dialog is open —
-/// what is stored, what is in the box, and whether the list is still coming.
-/// <para>
-/// <see cref="Value"/> and <see cref="Text"/> are separate because the operator picks by name and the plugin queries
-/// by identifier: "AI-Cockpit — AC" is what is read, <c>AC</c> is what is kept. They only agree for a value typed by
-/// hand, which is exactly what a repository nobody granted read access to needs.
-/// </para>
-/// </summary>
+// One field a plugin contributed to the project editor (AC-317): what this project is called in a tracker or on a
+// forge. The plugin described it and supplies the choices; this holds the row's state while the dialog is open —
+// what is stored, what is in the box, and whether the list is still coming.
+//
+// `Value` and `Text` are separate because the operator picks by name and the plugin queries
+// by identifier: "AI-Cockpit — AC" is what is read, `AC` is what is kept. They only agree for a value typed by
+// hand, which is exactly what a repository nobody granted read access to needs.
 public partial class ProjectPluginFieldViewModel : ViewModelBase
 {
     private readonly ProjectFieldRegistration _registration;
@@ -37,29 +34,27 @@ public partial class ProjectPluginFieldViewModel : ViewModelBase
 
     public string? Placeholder => _registration.Placeholder;
 
-    /// <summary>What gets stored on the project: the picked option's identifier, or whatever the operator typed.</summary>
+    // What gets stored on the project: the picked option's identifier, or whatever the operator typed.
     [ObservableProperty]
     private string _value;
 
-    /// <summary>What is in the box — an option's display text once one is picked, the identifier itself otherwise.</summary>
+    // What is in the box — an option's display text once one is picked, the identifier itself otherwise.
     [ObservableProperty]
     private string _text;
 
-    /// <summary>The choices the plugin supplied, empty until they have loaded (or when it had none to offer).</summary>
+    // The choices the plugin supplied, empty until they have loaded (or when it had none to offer).
     public ObservableCollection<ProjectFieldOption> Options { get; } = [];
 
-    /// <summary>Whether the choices are still coming — the row stays usable while they are, so the dialog never waits on a network call.</summary>
+    // Whether the choices are still coming — the row stays usable while they are, so the dialog never waits on a network call.
     [ObservableProperty]
     private bool _isLoadingOptions;
 
-    /// <summary>Why the choices could not be fetched, shown under the box. Null when they arrived, including when there were none.</summary>
+    // Why the choices could not be fetched, shown under the box. Null when they arrived, including when there were none.
     [ObservableProperty]
     private string? _loadError;
 
-    /// <summary>
-    /// Fills <see cref="Options"/> from the plugin, and shows a saved value under its proper name once the list can
-    /// say what that name is. Never throws: a tracker that is unreachable costs this row its list, not the editor.
-    /// </summary>
+    // Fills `Options` from the plugin, and shows a saved value under its proper name once the list can
+    // say what that name is. Never throws: a tracker that is unreachable costs this row its list, not the editor.
     public async Task LoadOptionsAsync(CancellationToken cancellationToken = default)
     {
         IsLoadingOptions = true;

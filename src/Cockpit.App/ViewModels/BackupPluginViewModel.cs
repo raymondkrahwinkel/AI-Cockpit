@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>One plugin, and whether it goes into the backup (#70) — its binaries and everything it stored, which travel together or not at all.</summary>
+// One plugin, and whether it goes into the backup (#70) — its binaries and everything it stored, which travel together or not at all.
 public sealed partial class BackupPluginViewModel(string id, string name) : ViewModelBase
 {
     public string Id => id;

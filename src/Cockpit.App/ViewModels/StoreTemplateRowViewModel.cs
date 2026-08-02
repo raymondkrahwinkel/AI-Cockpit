@@ -3,20 +3,17 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One workflow template as the store shows it (#69): what it does, who published it, which plugins its steps come
-/// from, and whether it is already installed.
-/// <para>
-/// A template is not code, but it is not inert either — a flow can carry a shell command — so the row says what the
-/// flow needs before you install it, and an installed flow arrives switched off. Reading it before arming it is the
-/// operator's own check, and the app does not pretend to have made it for them.
-/// </para>
-/// </summary>
+// One workflow template as the store shows it (#69): what it does, who published it, which plugins its steps come
+// from, and whether it is already installed.
+//
+// A template is not code, but it is not inert either — a flow can carry a shell command — so the row says what the
+// flow needs before you install it, and an installed flow arrives switched off. Reading it before arming it is the
+// operator's own check, and the app does not pretend to have made it for them.
 public partial class StoreTemplateRowViewModel(WorkflowTemplateStoreEntry entry, PluginStoreConfig store, bool isInstalled) : ObservableObject
 {
     public WorkflowTemplateStoreEntry Entry { get; } = entry;
 
-    /// <summary>The store that offered it (AC-7), so its flow is fetched the same way — through that store's auth or local path.</summary>
+    // The store that offered it (AC-7), so its flow is fetched the same way — through that store's auth or local path.
     public PluginStoreConfig Store { get; } = store;
 
     public string Id => Entry.Id;
@@ -29,7 +26,7 @@ public partial class StoreTemplateRowViewModel(WorkflowTemplateStoreEntry entry,
 
     public string Version => string.IsNullOrWhiteSpace(Entry.Version) ? string.Empty : $"v{Entry.Version}";
 
-    /// <summary>The plugins whose steps this flow uses, said plainly — a flow built on YouTrack is no use without it.</summary>
+    // The plugins whose steps this flow uses, said plainly — a flow built on YouTrack is no use without it.
     public string Needs => Entry.Requires is { Count: > 0 } requires
         ? $"Needs: {string.Join(", ", requires)}"
         : string.Empty;
@@ -39,7 +36,7 @@ public partial class StoreTemplateRowViewModel(WorkflowTemplateStoreEntry entry,
     [ObservableProperty]
     private bool _isInstalled = isInstalled;
 
-    /// <summary>An installed template is offered again as an update rather than a second copy: same id, newer text.</summary>
+    // An installed template is offered again as an update rather than a second copy: same id, newer text.
     public string ActionLabel => IsInstalled ? "Reinstall" : "Install";
 
     partial void OnIsInstalledChanged(bool value) => OnPropertyChanged(nameof(ActionLabel));

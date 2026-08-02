@@ -13,13 +13,11 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The "Plugins" Options tab (#14): the installed plugins (install-from-zip, enable with first-load
-/// consent, disable, remove) and the plugin stores (add/remove a public-repo store, browse its catalogue,
-/// install or update from it). It is a config editor over discovery + the registration store; a store
-/// download always goes through the same installer + consent, never bypassing them. Enable/disable/remove
-/// and installs take effect on the next restart (a non-collectible plugin cannot load or unload live).
-/// </summary>
+// The "Plugins" Options tab (#14): the installed plugins (install-from-zip, enable with first-load
+// consent, disable, remove) and the plugin stores (add/remove a public-repo store, browse its catalogue,
+// install or update from it). It is a config editor over discovery + the registration store; a store
+// download always goes through the same installer + consent, never bypassing them. Enable/disable/remove
+// and installs take effect on the next restart (a non-collectible plugin cannot load or unload live).
 public partial class PluginManagerViewModel : ViewModelBase
 {
     private readonly IPluginRegistrationStore? _registrationStore;
@@ -29,15 +27,13 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
 
-    /// <summary>
-    /// The provisioning seam (AC-510[b]) every store install/update/rollback below now goes through. Optionally
-    /// injected through the constructor below: the composition root (<c>CockpitViewModel</c>) resolves it from
-    /// DI and hands it in — the exact same singleton the first-run wizard's provider step (AC-510[b]) receives, so
-    /// there is one install path, not two. Falls back to wrapping <see cref="_storeClient"/>/<see cref="_installer"/>
-    /// itself only when nothing was handed in, so the dozens of existing tests that construct this view model by
-    /// hand and stub <see cref="IPluginStoreClient"/>/<see cref="IPluginInstaller"/> directly keep observing every
-    /// call without also having to stub this interface.
-    /// </summary>
+    // The provisioning seam (AC-510[b]) every store install/update/rollback below now goes through. Optionally
+    // injected through the constructor below: the composition root (`CockpitViewModel`) resolves it from
+    // DI and hands it in — the exact same singleton the first-run wizard's provider step (AC-510[b]) receives, so
+    // there is one install path, not two. Falls back to wrapping `_storeClient`/`_installer`
+    // itself only when nothing was handed in, so the dozens of existing tests that construct this view model by
+    // hand and stub `IPluginStoreClient`/`IPluginInstaller` directly keep observing every
+    // call without also having to stub this interface.
     private readonly IPluginProvisioningService? _provisioningService;
 
     private readonly IReadOnlyDictionary<string, PluginSettingsRegistration>? _settingsRegistry;
@@ -50,23 +46,19 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     public ObservableCollection<PluginStoreConfig> Stores { get; } = [];
 
-    /// <summary>
-    /// The configured stores as display rows for the Manage-stores dialog (#62): the same URLs as
-    /// <see cref="Stores"/>, each wrapped with a name/icon/plugin-count. Rebuilt from <see cref="Stores"/> on
-    /// load, then enriched from each store's <c>index.json</c> on <see cref="BrowseStoresAsync"/>.
-    /// </summary>
+    // The configured stores as display rows for the Manage-stores dialog (#62): the same URLs as
+    // `Stores`, each wrapped with a name/icon/plugin-count. Rebuilt from `Stores` on
+    // load, then enriched from each store's `index.json` on `BrowseStoresAsync`.
     public ObservableCollection<PluginStoreInfo> StoreInfos { get; } = [];
 
     public ObservableCollection<StorePluginRowViewModel> AvailablePlugins { get; } = [];
 
-    /// <summary>
-    /// The workflow templates the stores offer (#69) — flows somebody already drew. Browsed with the plugins, from the
-    /// same index: a store that publishes both is one store, and asking the operator to visit two places to find out
-    /// what it has would be an implementation detail leaking into the app.
-    /// </summary>
+    // The workflow templates the stores offer (#69) — flows somebody already drew. Browsed with the plugins, from the
+    // same index: a store that publishes both is one store, and asking the operator to visit two places to find out
+    // what it has would be an implementation detail leaking into the app.
     public ObservableCollection<StoreTemplateRowViewModel> AvailableTemplates { get; } = [];
 
-    /// <summary>Whether any store offers a template at all — no templates, no section.</summary>
+    // Whether any store offers a template at all — no templates, no section.
     public bool HasAvailableTemplates => AvailableTemplates.Count > 0;
 
     // Plugins updated this session, keyed by plugin id → the version just staged. An update is only swapped live
@@ -76,11 +68,9 @@ public partial class PluginManagerViewModel : ViewModelBase
     // install commands mutate it on the UI thread (AC-76).
     private readonly ConcurrentDictionary<string, string> _pendingUpdateVersions = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// How many plugin updates the background checker found waiting (AC-76) — bound by the sidebar "Plugin store"
-    /// button's badge, so an update is a persistent indicator in the main window rather than only a transient toast.
-    /// Fed by <see cref="SetUpdateBadgeCount"/> from the checker, and counted down as the operator stages each update.
-    /// </summary>
+    // How many plugin updates the background checker found waiting (AC-76) — bound by the sidebar "Plugin store"
+    // button's badge, so an update is a persistent indicator in the main window rather than only a transient toast.
+    // Fed by `SetUpdateBadgeCount` from the checker, and counted down as the operator stages each update.
     [ObservableProperty]
     private int _updateBadgeCount;
 
@@ -93,27 +83,25 @@ public partial class PluginManagerViewModel : ViewModelBase
     [ObservableProperty]
     private string _newStoreUrl = string.Empty;
 
-    /// <summary>Whether the add-store form is set to a local folder rather than a remote URL (AC-7) — flips which fields the Manage-stores dialog shows.</summary>
+    // Whether the add-store form is set to a local folder rather than a remote URL (AC-7) — flips which fields the Manage-stores dialog shows.
     [ObservableProperty]
     private bool _newStoreIsLocal;
 
-    /// <summary>An optional bearer token for a private remote store (AC-7) — sent as an Authorization header, and encrypted at rest when secret protection is on.</summary>
+    // An optional bearer token for a private remote store (AC-7) — sent as an Authorization header, and encrypted at rest when secret protection is on.
     [ObservableProperty]
     private string _newStoreToken = string.Empty;
 
-    /// <summary>The chosen local store folder (AC-7), set by the folder picker.</summary>
+    // The chosen local store folder (AC-7), set by the folder picker.
     [ObservableProperty]
     private string _newStoreFolder = string.Empty;
 
     [ObservableProperty]
     private bool _isBusy;
 
-    /// <summary>
-    /// The busy overlay's bar (AC-420), in the shape the calibration overlay already uses: indeterminate
-    /// until there is an honest fraction to draw, and a 0..100 value once there is. A single install is one
-    /// step and has no fraction — the download arrives in one piece — so only "Update all" leaves it, fed by
-    /// the same counter it already writes into <see cref="StatusMessage"/>.
-    /// </summary>
+    // The busy overlay's bar (AC-420), in the shape the calibration overlay already uses: indeterminate
+    // until there is an honest fraction to draw, and a 0..100 value once there is. A single install is one
+    // step and has no fraction — the download arrives in one piece — so only "Update all" leaves it, fed by
+    // the same counter it already writes into `StatusMessage`.
     [ObservableProperty]
     private bool _busyProgressIndeterminate = true;
 
@@ -148,12 +136,10 @@ public partial class PluginManagerViewModel : ViewModelBase
     // the next one, so the routes no longer decide this for themselves — _InstallExclusivelyAsync does, once.
     private bool _installInFlight;
 
-    /// <summary>
-    /// Runs work that unpacks into the plugins folder, and refuses while another such run holds it (AC-456) —
-    /// the single owner the per-route gates were standing in for. A plain bool carries it because these are
-    /// dispatcher-thread commands: they interleave at their awaits, never in parallel, so there is no
-    /// read-modify-write to lose.
-    /// </summary>
+    // Runs work that unpacks into the plugins folder, and refuses while another such run holds it (AC-456) —
+    // the single owner the per-route gates were standing in for. A plain bool carries it because these are
+    // dispatcher-thread commands: they interleave at their awaits, never in parallel, so there is no
+    // read-modify-write to lose.
     private async Task _InstallExclusivelyAsync(Func<Task> install)
     {
         if (_installInFlight)
@@ -221,58 +207,48 @@ public partial class PluginManagerViewModel : ViewModelBase
         RemoveTemplateCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>
-    /// True once an install/enable/disable/remove has actually changed plugin state this session (#53) — the
-    /// manager shows a "Restart now" button once this flips, instead of the operator having to remember to
-    /// close and relaunch the app by hand. Sticky for the session: it never resets to false, since an
-    /// earlier change still needs that restart even after a later one.
-    /// </summary>
+    // True once an install/enable/disable/remove has actually changed plugin state this session (#53) — the
+    // manager shows a "Restart now" button once this flips, instead of the operator having to remember to
+    // close and relaunch the app by hand. Sticky for the session: it never resets to false, since an
+    // earlier change still needs that restart even after a later one.
     [ObservableProperty]
     private bool _needsRestart;
 
-    /// <summary>
-    /// Whether a "Restart now" affordance can do anything — false in the design-time/no-op constructor, where
-    /// there is no real app to restart, and false while an install or a batch update is running (AC-420).
-    /// "Update all" raises <see cref="NeedsRestart"/> after the *first* plugin of the batch, so the button
-    /// appeared while the other nine were still downloading; restarting there left them silently un-updated
-    /// with a banner saying the update was done.
-    /// </summary>
+    // Whether a "Restart now" affordance can do anything — false in the design-time/no-op constructor, where
+    // there is no real app to restart, and false while an install or a batch update is running (AC-420).
+    // "Update all" raises `NeedsRestart` after the *first* plugin of the batch, so the button
+    // appeared while the other nine were still downloading; restarting there left them silently un-updated
+    // with a banner saying the update was done.
     public bool CanRestart => _restartService is not null && !IsBusy;
 
-    /// <summary>
-    /// Whether the operator may change what the store is made of — the installed plugins, the workflow
-    /// templates, and the stores they come from (AC-455). Closed while the store is working, and read by every
-    /// one of those commands rather than by the overlay drawn over their buttons: an overlay stops a pointer
-    /// and leaves the focus underneath it, so a Tab and a space bar walk straight past it.
-    /// </summary>
-    /// <remarks>
-    /// Four families, with four different reasons, which is why the list is longer than "everything that
-    /// reloads". All twelve are here:
-    /// <list type="bullet">
-    /// <item><see cref="EnablePluginCommand"/>, <see cref="DisablePluginCommand"/>,
-    /// <see cref="RemovePluginCommand"/>, <see cref="TogglePluginMenuVisibilityCommand"/> and
-    /// <see cref="ToggleStorePluginCommand"/> rewrite the registration entry an install re-pins on its way out
-    /// (<see cref="_AfterInstallAsync"/>), then reload — and the store toggle re-browses on top of that,
-    /// rebuilding the catalogue the install is walking.</item>
-    /// <item><see cref="MovePluginUpCommand"/> and <see cref="MovePluginDownCommand"/> reload nothing, but
-    /// write <em>every</em> plugin's position into that same registration file, one save per plugin,
-    /// interleaved with the install's own writes to it.</item>
-    /// <item><see cref="InstallTemplateCommand"/> and <see cref="RemoveTemplateCommand"/> touch neither the
-    /// plugins folder nor the registration store. They are here for <see cref="StatusMessage"/> and
-    /// <see cref="NeedsRestart"/>: the status line is the running install's only line — it is what the overlay
-    /// is showing — and a template installed over it replaces the sentence naming the plugin being downloaded
-    /// with one naming the template.</item>
-    /// <item><see cref="AddStoreCommand"/>, <see cref="RemoveStoreCommand"/> and
-    /// <see cref="BrowseStoresCommand"/> clear and refill <see cref="Stores"/>, <see cref="StoreInfos"/> and
-    /// <see cref="AvailablePlugins"/> — the collections a running browse is walking and enriching, and the one
-    /// a batch update took its snapshot from.</item>
-    /// </list>
-    /// The two settings buttons deliberately stay live: they open a plugin's own settings dialog, which
-    /// writes that plugin's settings and touches none of the above.
-    /// </remarks>
+    // Whether the operator may change what the store is made of — the installed plugins, the workflow
+    // templates, and the stores they come from (AC-455). Closed while the store is working, and read by every
+    // one of those commands rather than by the overlay drawn over their buttons: an overlay stops a pointer
+    // and leaves the focus underneath it, so a Tab and a space bar walk straight past it.
+    // Four families, with four different reasons, which is why the list is longer than "everything that
+    // reloads". All twelve are here:
+    // - `EnablePluginCommand`, `DisablePluginCommand`,
+    // `RemovePluginCommand`, `TogglePluginMenuVisibilityCommand` and
+    // `ToggleStorePluginCommand` rewrite the registration entry an install re-pins on its way out
+    // (`_AfterInstallAsync`), then reload — and the store toggle re-browses on top of that,
+    // rebuilding the catalogue the install is walking.
+    // - `MovePluginUpCommand` and `MovePluginDownCommand` reload nothing, but
+    // write *every* plugin's position into that same registration file, one save per plugin,
+    // interleaved with the install's own writes to it.
+    // - `InstallTemplateCommand` and `RemoveTemplateCommand` touch neither the
+    // plugins folder nor the registration store. They are here for `StatusMessage` and
+    // `NeedsRestart`: the status line is the running install's only line — it is what the overlay
+    // is showing — and a template installed over it replaces the sentence naming the plugin being downloaded
+    // with one naming the template.
+    // - `AddStoreCommand`, `RemoveStoreCommand` and
+    // `BrowseStoresCommand` clear and refill `Stores`, `StoreInfos` and
+    // `AvailablePlugins` — the collections a running browse is walking and enriching, and the one
+    // a batch update took its snapshot from.
+    // The two settings buttons deliberately stay live: they open a plugin's own settings dialog, which
+    // writes that plugin's settings and touches none of the above.
     public bool CanChangePlugins => !IsBusy;
 
-    /// <summary>Design-time constructor for the previewer.</summary>
+    // Design-time constructor for the previewer.
     public PluginManagerViewModel()
     {
         _WatchAvailablePluginsForUpdateGate();
@@ -325,13 +301,11 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanRestart))]
     private void RestartNow() => _restartService?.Restart();
 
-    /// <summary>
-    /// Opens the plugin store dialog (#62) — now the single home for all plugin control (from the main menu's
-    /// "Plugin store" and the plugin-update toast) — over this same manager instance, so installs/updates/
-    /// consent/restart stay on the one shared flow. Loads the installed plugins + stores first: unlike the
-    /// old Options→Plugins tab, the store can be opened without ever opening Options, and its Installed view
-    /// needs <see cref="Plugins"/> populated.
-    /// </summary>
+    // Opens the plugin store dialog (#62) — now the single home for all plugin control (from the main menu's
+    // "Plugin store" and the plugin-update toast) — over this same manager instance, so installs/updates/
+    // consent/restart stay on the one shared flow. Loads the installed plugins + stores first: unlike the
+    // old Options→Plugins tab, the store can be opened without ever opening Options, and its Installed view
+    // needs `Plugins` populated.
     [RelayCommand]
     private async Task OpenStoreDialogAsync()
     {
@@ -344,22 +318,19 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _dialogService.ShowPluginStoreDialogAsync(this);
     }
 
-    /// <summary>Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.</summary>
-    /// <remarks>
-    /// Deliberately not gated on <see cref="IsBusy"/>, unlike the commands above (AC-455). Three routes reach
-    /// it from the main window — Options, the store, the update toast — and none of them belongs to the store
-    /// dialog, so a gate here would mean "you cannot open Options while a plugin installs", a real cost for a
-    /// small risk: since the sweeps moved to startup this is a read of the plugins folder.
-    /// <para>
-    /// They are genuinely reachable mid-install, though it takes one step to see how: the store dialog is
-    /// modal over the main window, but its footer's Close sits outside the busy layer and closes
-    /// unconditionally, while the install carries on — the work belongs to this manager, not to the dialog. So
-    /// close it and Ctrl+O is live with an install still running. The one crash that opens (clearing the store
-    /// list a running browse is enumerating) is closed by that browse taking a snapshot. What is left is
-    /// cosmetic and outlives this ticket: a rebuild mid-install leaves the Manage-stores dialog's per-store
-    /// counts stale until the next browse.
-    /// </para>
-    /// </remarks>
+    // Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.
+    // Deliberately not gated on `IsBusy`, unlike the commands above (AC-455). Three routes reach
+    // it from the main window — Options, the store, the update toast — and none of them belongs to the store
+    // dialog, so a gate here would mean "you cannot open Options while a plugin installs", a real cost for a
+    // small risk: since the sweeps moved to startup this is a read of the plugins folder.
+    //
+    // They are genuinely reachable mid-install, though it takes one step to see how: the store dialog is
+    // modal over the main window, but its footer's Close sits outside the busy layer and closes
+    // unconditionally, while the install carries on — the work belongs to this manager, not to the dialog. So
+    // close it and Ctrl+O is live with an install still running. The one crash that opens (clearing the store
+    // list a running browse is enumerating) is closed by that browse taking a snapshot. What is left is
+    // cosmetic and outlives this ticket: a rebuild mid-install leaves the Manage-stores dialog's per-store
+    // counts stale until the next browse.
     public async Task LoadAsync()
     {
         if (_bootstrap is not null)
@@ -414,7 +385,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Whether a zip install can be started — it reaches the same installer as a store install, so it is closed while the store is working (AC-420). Nothing queues: the button goes dead and the operator presses it again afterwards.</summary>
+    // Whether a zip install can be started — it reaches the same installer as a store install, so it is closed while the store is working (AC-420). Nothing queues: the button goes dead and the operator presses it again afterwards.
     public bool CanInstallFromZip => !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanInstallFromZip))]
@@ -465,7 +436,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         NeedsRestart = true;
     }
 
-    /// <summary>The manager's gear is now one of several ways into a plugin's settings, so it opens them the same way the others do.</summary>
+    // The manager's gear is now one of several ways into a plugin's settings, so it opens them the same way the others do.
     [RelayCommand]
     private async Task OpenPluginSettingsAsync(PluginRowViewModel row)
     {
@@ -477,24 +448,20 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _contributionSink.OpenPluginSettingsAsync(row.FolderId);
     }
 
-    /// <summary>Moves the plugin up the left menu (#72) — and up this list, which is ordered the same way.</summary>
+    // Moves the plugin up the left menu (#72) — and up this list, which is ordered the same way.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MovePluginUpAsync(PluginRowViewModel row) => MovePluginToAsync(row, Plugins.IndexOf(row) - 1);
 
-    /// <summary>Moves the plugin down the left menu (#72).</summary>
+    // Moves the plugin down the left menu (#72).
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MovePluginDownAsync(PluginRowViewModel row) => MovePluginToAsync(row, Plugins.IndexOf(row) + 1);
 
-    /// <summary>
-    /// Moves a plugin to an absolute position in the menu order. The neighbour is the caller's to choose because
-    /// it is not always the next one along: the store dialog lists these under category headings, and "up" there
-    /// means past the previous plugin <em>under the same heading</em>, which the flat list may have several rows
-    /// away. This list stays the menu order either way — that is the one thing being written.
-    /// </summary>
-    /// <remarks>
-    /// Reordering writes every plugin's position, not just the ones that moved: the stored order is only
-    /// meaningful as a whole, and a plugin that was never moved has no position of its own yet.
-    /// </remarks>
+    // Moves a plugin to an absolute position in the menu order. The neighbour is the caller's to choose because
+    // it is not always the next one along: the store dialog lists these under category headings, and "up" there
+    // means past the previous plugin *under the same heading*, which the flat list may have several rows
+    // away. This list stays the menu order either way — that is the one thing being written.
+    // Reordering writes every plugin's position, not just the ones that moved: the stored order is only
+    // meaningful as a whole, and a plugin that was never moved has no position of its own yet.
     public async Task MovePluginToAsync(PluginRowViewModel row, int target)
     {
         var index = Plugins.IndexOf(row);
@@ -524,10 +491,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         StatusMessage = $"'{row.DisplayName}' moved {(offset < 0 ? "up" : "down")} in the left menu.";
     }
 
-    /// <summary>
-    /// Hides or shows the plugin's left-menu contributions (#72). The plugin keeps running either way — its
-    /// shortcut and command-palette entry still work — so this is emphatically not a quieter way to disable it.
-    /// </summary>
+    // Hides or shows the plugin's left-menu contributions (#72). The plugin keeps running either way — its
+    // shortcut and command-palette entry still work — so this is emphatically not a quieter way to disable it.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task TogglePluginMenuVisibilityAsync(PluginRowViewModel row)
     {
@@ -586,7 +551,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         NeedsRestart = true;
     }
 
-    /// <summary>Opens a folder picker for a local store (AC-7) and puts the chosen path in the add-store form.</summary>
+    // Opens a folder picker for a local store (AC-7) and puts the chosen path in the add-store form.
     [RelayCommand]
     private async Task PickStoreFolderAsync()
     {
@@ -682,12 +647,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _LoadStoresAsync();
     }
 
-    /// <summary>
-    /// Refetches every configured store's index and rebuilds the catalogue. Public because the install paths
-    /// call it directly on their way out and must not be refused: the command is gated for the operator (a
-    /// refresh mid-install clears and refills the collection that install is walking), and the method is the
-    /// way in for the code that owns the install around it.
-    /// </summary>
+    // Refetches every configured store's index and rebuilds the catalogue. Public because the install paths
+    // call it directly on their way out and must not be refused: the command is gated for the operator (a
+    // refresh mid-install clears and refills the collection that install is walking), and the method is the
+    // way in for the code that owns the install around it.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     public async Task BrowseStoresAsync()
     {
@@ -830,11 +793,9 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Installs a workflow template (#69): fetches its flow, checks it against the store's checksum, and writes it into
-    /// the library the editor's picker reads. Nothing is loaded and no code runs — a template is a flow as text, and it
-    /// arrives switched off, for the operator to read before arming it.
-    /// </summary>
+    // Installs a workflow template (#69): fetches its flow, checks it against the store's checksum, and writes it into
+    // the library the editor's picker reads. Nothing is loaded and no code runs — a template is a flow as text, and it
+    // arrives switched off, for the operator to read before arming it.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task InstallTemplateAsync(StoreTemplateRowViewModel row)
     {
@@ -877,7 +838,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Takes an installed template out of the library. The flows already made from it are yours and stay.</summary>
+    // Takes an installed template out of the library. The flows already made from it are yours and stay.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private void RemoveTemplate(StoreTemplateRowViewModel row)
     {
@@ -892,7 +853,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         StatusMessage = $"'{row.Name}' removed. Flows you already made from it are unaffected.";
     }
 
-    /// <summary>Whether a store install can be started — nothing else may already be in flight (AC-420).</summary>
+    // Whether a store install can be started — nothing else may already be in flight (AC-420).
     public bool CanInstallFromStore => !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanInstallFromStore))]
@@ -925,18 +886,16 @@ public partial class PluginManagerViewModel : ViewModelBase
         });
     }
 
-    /// <summary>
-    /// True when at least one installed plugin has a newer, installable version in a store — gates the "Update
-    /// all" button. Reads <see cref="StorePluginRowViewModel.CanUpdate"/>, not the raw version comparison
-    /// (AC-181): an update this host cannot run yet (a <c>minHostVersion</c>/contract mismatch) is not something
-    /// "Update all" should download and have the installer refuse — the row's own card already shows why.
-    /// </summary>
+    // True when at least one installed plugin has a newer, installable version in a store — gates the "Update
+    // all" button. Reads `StorePluginRowViewModel.CanUpdate`, not the raw version comparison
+    // (AC-181): an update this host cannot run yet (a `minHostVersion`/contract mismatch) is not something
+    // "Update all" should download and have the installer refuse — the row's own card already shows why.
     public bool HasAvailableUpdates => AvailablePlugins.Any(row => row.CanUpdate);
 
-    /// <summary>How many installed plugins have a newer, installable version available — shown on the "Update all" button.</summary>
+    // How many installed plugins have a newer, installable version available — shown on the "Update all" button.
     public int AvailableUpdateCount => AvailablePlugins.Count(row => row.CanUpdate);
 
-    /// <summary>Whether the sidebar "Plugin store" badge shows — true while the background checker's last count found updates (AC-76).</summary>
+    // Whether the sidebar "Plugin store" badge shows — true while the background checker's last count found updates (AC-76).
     public bool HasUpdateBadge => UpdateBadgeCount > 0;
 
     partial void OnUpdateBadgeCountChanged(int value) => OnPropertyChanged(nameof(HasUpdateBadge));
@@ -952,27 +911,23 @@ public partial class PluginManagerViewModel : ViewModelBase
     private int _seededPendingApprovalCount;
     private bool _hasDiscoveredPluginsOnce;
 
-    /// <summary>
-    /// How many installed plugins are sitting at awaiting-approval (AC-208) — new, or their bytes changed since
-    /// last approved. Before the first <see cref="LoadAsync"/> this is the startup snapshot seeded via
-    /// <see cref="SeedPendingApprovalCount"/>; after, it reads straight off <see cref="Plugins"/>, live.
-    /// </summary>
+    // How many installed plugins are sitting at awaiting-approval (AC-208) — new, or their bytes changed since
+    // last approved. Before the first `LoadAsync` this is the startup snapshot seeded via
+    // `SeedPendingApprovalCount`; after, it reads straight off `Plugins`, live.
     public int PendingApprovalCount => _hasDiscoveredPluginsOnce
         ? Plugins.Count(row => row.Discovered.Decision is PluginLoadDecision.NeedsConsent)
         : _seededPendingApprovalCount;
 
-    /// <summary>Whether the sidebar "Plugin store" badge should show the pending-approval count (AC-208).</summary>
+    // Whether the sidebar "Plugin store" badge should show the pending-approval count (AC-208).
     public bool HasPendingApproval => PendingApprovalCount > 0;
 
-    /// <summary>
-    /// Seeds the sidebar pending-approval badge at app startup (AC-208), before <see cref="Plugins"/> is ever
-    /// populated — called from <see cref="Cockpit.App.ViewModels.CockpitViewModel.RefreshPluginFailures"/> with
-    /// <see cref="Cockpit.App.Plugins.PluginDiagnostics.PendingApprovals"/>'s count, the same place the startup
-    /// banner is raised — itself run synchronously from <c>App.axaml.cs</c>'s UI-thread startup sequence, so
-    /// unlike <see cref="SetUpdateBadgeCount"/> (fed from a background timer) this needs no dispatcher marshal.
-    /// A no-op once a real discovery (<see cref="LoadAsync"/>) has run — the live count owns the badge from
-    /// then on, so a stale seed can never keep it showing after the operator has dealt with everything.
-    /// </summary>
+    // Seeds the sidebar pending-approval badge at app startup (AC-208), before `Plugins` is ever
+    // populated — called from `Cockpit.App.ViewModels.CockpitViewModel.RefreshPluginFailures` with
+    // `Cockpit.App.Plugins.PluginDiagnostics.PendingApprovals`'s count, the same place the startup
+    // banner is raised — itself run synchronously from `App.axaml.cs`'s UI-thread startup sequence, so
+    // unlike `SetUpdateBadgeCount` (fed from a background timer) this needs no dispatcher marshal.
+    // A no-op once a real discovery (`LoadAsync`) has run — the live count owns the badge from
+    // then on, so a stale seed can never keep it showing after the operator has dealt with everything.
     public void SeedPendingApprovalCount(int count)
     {
         _seededPendingApprovalCount = Math.Max(0, count);
@@ -999,7 +954,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasPendingApproval));
         };
 
-    /// <summary>Sets the sidebar badge count from the background update checker (AC-76); marshaled to the UI thread since the checker runs off it, or set directly when already on it.</summary>
+    // Sets the sidebar badge count from the background update checker (AC-76); marshaled to the UI thread since the checker runs off it, or set directly when already on it.
     public void SetUpdateBadgeCount(int count)
     {
         var clamped = Math.Max(0, count);
@@ -1013,16 +968,14 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Whether an update to <paramref name="latestVersion"/> for the plugin id <paramref name="entryId"/> has already
-    /// been staged this session (AC-76). The background checker compares store versions against the on-disk manifest,
-    /// which does not change until restart, so without this a just-installed update would re-inflate the badge on the
-    /// next 15-minute pass — a staged update is up to date until the restart applies it.
-    /// </summary>
+    // Whether an update to `latestVersion` for the plugin id `entryId` has already
+    // been staged this session (AC-76). The background checker compares store versions against the on-disk manifest,
+    // which does not change until restart, so without this a just-installed update would re-inflate the badge on the
+    // next 15-minute pass — a staged update is up to date until the restart applies it.
     public bool IsUpdateStaged(string entryId, string latestVersion) =>
         _pendingUpdateVersions.TryGetValue(entryId, out var staged) && !PluginVersion.IsNewer(latestVersion, staged);
 
-    /// <summary>Whether the batch update can be started — it unpacks into the same folder as every other route, so it is closed while the store is working (AC-456).</summary>
+    // Whether the batch update can be started — it unpacks into the same folder as every other route, so it is closed while the store is working (AC-456).
     public bool CanUpdateAll => !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanUpdateAll))]
@@ -1101,7 +1054,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         });
     }
 
-    /// <summary>Opens the settings of the installed plugin behind a store row (the card's ⚙). No-op when it isn't installed or has no settings.</summary>
+    // Opens the settings of the installed plugin behind a store row (the card's ⚙). No-op when it isn't installed or has no settings.
     [RelayCommand]
     private async Task OpenStorePluginSettingsAsync(StorePluginRowViewModel row)
     {
@@ -1111,7 +1064,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Enables or disables the installed plugin behind a store row (the card's power toggle), then refreshes the catalogue so the toggle reflects the new state.</summary>
+    // Enables or disables the installed plugin behind a store row (the card's power toggle), then refreshes the catalogue so the toggle reflects the new state.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task ToggleStorePluginAsync(StorePluginRowViewModel row)
     {
@@ -1134,7 +1087,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         StatusMessage = message;
     }
 
-    /// <summary>Installs a specific advertised version of a plugin (the detail panel's per-version Install), so a newer install can be rolled back to an older one.</summary>
+    // Installs a specific advertised version of a plugin (the detail panel's per-version Install), so a newer install can be rolled back to an older one.
     public async Task InstallStoreVersionAsync(StorePluginRowViewModel row, PluginStoreVersion version)
     {
         if (_storeClient is null || _installer is null)

@@ -1,32 +1,28 @@
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Coarse-grained lifecycle/attention state for a single <see cref="SessionViewModel"/>,
-/// derived from the session events it already receives. Drives the sidebar status-dot and the
-/// "needs attention" affordance — see <c>Memory/Cockpit/Plan.md</c> §UX-eisen.
-/// </summary>
+// Coarse-grained lifecycle/attention state for a single `SessionViewModel`,
+// derived from the session events it already receives. Drives the sidebar status-dot and the
+// "needs attention" affordance — see `Memory/Cockpit/Plan.md` §UX-eisen.
 public enum SessionStatus
 {
-    /// <summary>Not started, or started and waiting for the user to type — no turn in flight, nothing pending.</summary>
+    // Not started, or started and waiting for the user to type — no turn in flight, nothing pending.
     Idle,
 
-    /// <summary>A turn is in flight (message sent, no <c>TurnCompleted</c>/error yet).</summary>
+    // A turn is in flight (message sent, no `TurnCompleted`/error yet).
     Busy,
 
-    /// <summary>
-    /// The main agent's own turn has gone quiet, but background work it spawned (a Claude sub-agent) is still
-    /// running (#9) — the session is not idle and closing it would interrupt real work, but the main agent is not
-    /// itself producing output. A distinct dot so "sub-agents still churning" reads differently from "the agent
-    /// is typing" and from "done".
-    /// </summary>
+    // The main agent's own turn has gone quiet, but background work it spawned (a Claude sub-agent) is still
+    // running (#9) — the session is not idle and closing it would interrupt real work, but the main agent is not
+    // itself producing output. A distinct dot so "sub-agents still churning" reads differently from "the agent
+    // is typing" and from "done".
     WorkingBackground,
 
-    /// <summary>A tool-use permission decision is pending, or the CLI reported <c>needs_action</c>.</summary>
+    // A tool-use permission decision is pending, or the CLI reported `needs_action`.
     WaitingForInput,
 
-    /// <summary>The most recent turn finished successfully and nothing is pending.</summary>
+    // The most recent turn finished successfully and nothing is pending.
     Done,
 
-    /// <summary>Same signal as <see cref="WaitingForInput"/> but reserved for the sidebar's "jumps out" affordance (badge/highlight).</summary>
+    // Same signal as `WaitingForInput` but reserved for the sidebar's "jumps out" affordance (badge/highlight).
     NeedsAttention,
 }

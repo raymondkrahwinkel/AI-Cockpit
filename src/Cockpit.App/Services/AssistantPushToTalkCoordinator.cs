@@ -178,16 +178,12 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _logger.LogInformation("Assistant push-to-talk hold started: capturing={Capturing}", _isRecording);
     }
 
-    /// <summary>
-    /// Starts everything this hold is going to need while the operator is still talking into it (AC-602, AC-603):
-    /// the session, the transcriber, and the voice that will read the answer back.
-    /// </summary>
-    /// <remarks>
-    /// The press is the only free window there is. Afterwards the operator has stopped speaking and every one of
-    /// these is a silence they are waiting through — which is the same silence the assistant is built to avoid.
-    /// None of it is awaited and none of it is reported: a warm-up that fails leaves first use to do what it
-    /// already does, including saying what went wrong.
-    /// </remarks>
+    // Starts everything this hold is going to need while the operator is still talking into it (AC-602, AC-603):
+    // the session, the transcriber, and the voice that will read the answer back.
+    // The press is the only free window there is. Afterwards the operator has stopped speaking and every one of
+    // these is a silence they are waiting through — which is the same silence the assistant is built to avoid.
+    // None of it is awaited and none of it is reported: a warm-up that fails leaves first use to do what it
+    // already does, including saying what went wrong.
     private void _WarmUpWhileTheySpeak()
     {
         _ = _assistant.EnsureStartedAsync();

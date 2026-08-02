@@ -9,101 +9,77 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.App;
 
-/// <summary>
-/// The selection surface as scenes for the screenshot harness (AC-357), one per mode it can be in. Nothing here
-/// changes what an operator sees; it exists so the surface can be looked at without a display and without anyone
-/// present — which every other window in this app could already be, and this one could not.
-/// </summary>
-/// <remarks>
-/// The modes are reached by driving the window's own input handling rather than by setting the view model,
-/// because a mode nobody can get to is not a mode. That is the whole reason this scene is worth having: the
-/// surface once shipped unable to open at all while 152 view tests stayed green, every one of them stopping at
-/// the arithmetic. A render of a posed view model would have stayed green too.
-/// </remarks>
+// The selection surface as scenes for the screenshot harness (AC-357), one per mode it can be in. Nothing here
+// changes what an operator sees; it exists so the surface can be looked at without a display and without anyone
+// present — which every other window in this app could already be, and this one could not.
+// The modes are reached by driving the window's own input handling rather than by setting the view model,
+// because a mode nobody can get to is not a mode. That is the whole reason this scene is worth having: the
+// surface once shipped unable to open at all while 152 view tests stayed green, every one of them stopping at
+// the arithmetic. A render of a posed view model would have stayed green too.
 internal static class ScreenshotSelectionScene
 {
-    /// <summary>The resting surface: the frozen desktop, nothing marked out, the hint above it.</summary>
+    // The resting surface: the frozen desktop, nothing marked out, the hint above it.
     public const string Idle = "screenshot-selection";
 
-    /// <summary>A region dragged out — the marquee, the size readout, and everything outside it dimmed.</summary>
+    // A region dragged out — the marquee, the size readout, and everything outside it dimmed.
     public const string Region = "screenshot-selection-region";
 
-    /// <summary>
-    /// A region with its eight grips showing (AC-565), dragged well clear of the window's own edges so none of
-    /// them sit off the visible surface. The grips already draw on <see cref="Region"/>'s own selection — this
-    /// scene exists so a reviewer does not have to know that to find them.
-    /// </summary>
+    // A region with its eight grips showing (AC-565), dragged well clear of the window's own edges so none of
+    // them sit off the visible surface. The grips already draw on `Region`'s own selection — this
+    // scene exists so a reviewer does not have to know that to find them.
     public const string Grips = "screenshot-selection-grips";
 
-    /// <summary>Window mode, with the window under the pointer marked out.</summary>
+    // Window mode, with the window under the pointer marked out.
     public const string WindowPick = "screenshot-selection-window";
 
-    /// <summary>Redaction mode, with boxes drawn over part of a region that was already chosen.</summary>
+    // Redaction mode, with boxes drawn over part of a region that was already chosen.
     public const string Redaction = "screenshot-selection-redaction";
 
-    /// <summary>
-    /// The mark layer with both its tools on one region (AC-359): a frame around something to look at, and a box
-    /// over something not to send. One scene rather than two, because what is worth looking at is that they sit
-    /// on the same picture and are drawn in the order they were placed.
-    /// </summary>
+    // The mark layer with both its tools on one region (AC-359): a frame around something to look at, and a box
+    // over something not to send. One scene rather than two, because what is worth looking at is that they sit
+    // on the same picture and are drawn in the order they were placed.
     public const string Marks = "screenshot-selection-marks";
 
-    /// <summary>
-    /// Arrows across the stand-in desktop (AC-360), drawn deliberately from its light half into its dark half and
-    /// back the other way. Legibility over both is the thing this tool can most easily get wrong and the thing no
-    /// assertion catches: a mark that vanishes into a terminal is still a mark by every measure a test can take.
-    /// </summary>
+    // Arrows across the stand-in desktop (AC-360), drawn deliberately from its light half into its dark half and
+    // back the other way. Legibility over both is the thing this tool can most easily get wrong and the thing no
+    // assertion catches: a mark that vanishes into a terminal is still a mark by every measure a test can take.
     public const string Arrow = "screenshot-selection-arrow";
 
-    /// <summary>
-    /// Washes over both halves of the stand-in desktop (AC-361) — one band across the light document, another
-    /// across the dark terminal. The two are the tool's whole problem: ink over paper and ink over a terminal have
-    /// to move the pixels in opposite directions, and a scene with only one of them would show a tool that works.
-    /// </summary>
+    // Washes over both halves of the stand-in desktop (AC-361) — one band across the light document, another
+    // across the dark terminal. The two are the tool's whole problem: ink over paper and ink over a terminal have
+    // to move the pixels in opposite directions, and a scene with only one of them would show a tool that works.
     public const string Highlight = "screenshot-selection-highlight";
 
-    /// <summary>
-    /// A freehand line drawn round something and another scribbled across the dark half (AC-362). Drawn as an arc
-    /// of many small steps, because the thing worth looking at is whether it comes out a curve or a polygon.
-    /// </summary>
+    // A freehand line drawn round something and another scribbled across the dark half (AC-362). Drawn as an arc
+    // of many small steps, because the thing worth looking at is whether it comes out a curve or a polygon.
     public const string Stroke = "screenshot-selection-stroke";
 
-    /// <summary>
-    /// Notes typed onto the capture (AC-363), one on each half of the stand-in desktop. Typed through the window's
-    /// own text input, so what the scene shows is what the keys actually do — including that they stopped being
-    /// shortcuts while the note was open.
-    /// </summary>
+    // Notes typed onto the capture (AC-363), one on each half of the stand-in desktop. Typed through the window's
+    // own text input, so what the scene shows is what the keys actually do — including that they stopped being
+    // shortcuts while the note was open.
     public const string Text = "screenshot-selection-text";
 
-    /// <summary>
-    /// Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
-    /// spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
-    /// whether the control panel found the screen the operator is actually on (AC-358).
-    /// </summary>
+    // Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
+    // spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
+    // whether the control panel found the screen the operator is actually on (AC-358).
     public const string TwoDisplays = "screenshot-selection-two-displays";
 
-    /// <summary>
-    /// How much bigger the stand-in capture is than the surface drawing it. Two, rather than one, so the ratio
-    /// between window units and image pixels is not 1: a capture the same size as its window makes every
-    /// conversion look right whether or not it is, and a surface that only worked at 1 is how AC-329 came to
-    /// refuse every drag past two thirds of a scaled screen.
-    /// </summary>
+    // How much bigger the stand-in capture is than the surface drawing it. Two, rather than one, so the ratio
+    // between window units and image pixels is not 1: a capture the same size as its window makes every
+    // conversion look right whether or not it is, and a surface that only worked at 1 is how AC-329 came to
+    // refuse every drag past two thirds of a scaled screen.
     private const int CaptureScale = 2;
 
-    /// <summary>
-    /// This surface's scene names. One list rather than a name test written out a second time, so a mode that is
-    /// added here cannot be missing from whatever walks the scenes — the theme baseline (AC-338) reads it.
-    /// </summary>
+    // This surface's scene names. One list rather than a name test written out a second time, so a mode that is
+    // added here cannot be missing from whatever walks the scenes — the theme baseline (AC-338) reads it.
     public static IReadOnlyList<string> Names { get; } =
         [Idle, Region, Grips, WindowPick, Redaction, Marks, Arrow, Highlight, Stroke, Text, TwoDisplays];
 
-    /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
+    // Whether a scene name is one of this surface's, so the harness knows to build and stage it.
     public static bool Covers(string? scene) => scene is not null && Names.Contains(scene);
 
-    /// <summary>
-    /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
-    /// window — what tells them apart happens afterwards, in <see cref="Stage"/>, once it is on screen.
-    /// </summary>
+    // The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
+    // window — what tells them apart happens afterwards, in `Stage`, once it is on screen.
     public static ScreenshotSelectionWindow Build(string? scene, int width, int height)
     {
         var desktop = new CaptureRect(0, 0, width, height);
@@ -118,11 +94,9 @@ internal static class ScreenshotSelectionScene
         return window;
     }
 
-    /// <summary>
-    /// Puts a shown surface into the mode its scene name asks for, through the pointer and the keys — the same
-    /// route an operator takes. Called after the window is shown because that is when it has a size, and every
-    /// position here is measured against it.
-    /// </summary>
+    // Puts a shown surface into the mode its scene name asks for, through the pointer and the keys — the same
+    // route an operator takes. Called after the window is shown because that is when it has a size, and every
+    // position here is measured against it.
     public static void Stage(ScreenshotSelectionWindow surface, string? scene)
     {
         var width = surface.ClientSize.Width;
@@ -224,19 +198,16 @@ internal static class ScreenshotSelectionScene
         _AssertStaged(surface, scene);
     }
 
-    /// <summary>
-    /// How many marks each scene's staging has to leave behind. Everything above is driven through the pointer, so
-    /// a press that lands somewhere it is not wanted is simply lost, and the scene then renders perfectly well and
-    /// one mark short — looking like a tool that works. Two scenes were doing exactly that at the size a render
-    /// defaults to: the note scene pressed its first note inside the control panel, so no note opened, the text
-    /// that followed ran as shortcuts and Enter took the shot; and the highlighter lost the band over the
-    /// document, leaving the one over the terminal.
-    /// <para>
-    /// Both went unseen because the view tests stage at 1440x900 and a render defaults to 1100x760, and every
-    /// position here is a fraction of the window while the panel it has to miss is a fixed size. So this is
-    /// checked against the surface that was actually staged, rather than reasoned about from the numbers.
-    /// </para>
-    /// </summary>
+    // How many marks each scene's staging has to leave behind. Everything above is driven through the pointer, so
+    // a press that lands somewhere it is not wanted is simply lost, and the scene then renders perfectly well and
+    // one mark short — looking like a tool that works. Two scenes were doing exactly that at the size a render
+    // defaults to: the note scene pressed its first note inside the control panel, so no note opened, the text
+    // that followed ran as shortcuts and Enter took the shot; and the highlighter lost the band over the
+    // document, leaving the one over the terminal.
+    //
+    // Both went unseen because the view tests stage at 1440x900 and a render defaults to 1100x760, and every
+    // position here is a fraction of the window while the panel it has to miss is a fixed size. So this is
+    // checked against the surface that was actually staged, rather than reasoned about from the numbers.
     private static readonly Dictionary<string, int> StagedMarks = new(StringComparer.Ordinal)
     {
         [Marks] = 2,
@@ -266,12 +237,10 @@ internal static class ScreenshotSelectionScene
         }
     }
 
-    /// <summary>
-    /// A y far enough down to be clear of the control panel, whatever size the surface came up at. Every position
-    /// in a scene is a fraction of the window and the panel is a fixed size, so a fraction that misses it at one
-    /// size lands inside it at another — which is how two scenes came to stage marks that were never drawn, and
-    /// why this is measured off the panel rather than tuned until the default size looked right.
-    /// </summary>
+    // A y far enough down to be clear of the control panel, whatever size the surface came up at. Every position
+    // in a scene is a fraction of the window and the panel is a fixed size, so a fraction that misses it at one
+    // size lands inside it at another — which is how two scenes came to stage marks that were never drawn, and
+    // why this is measured off the panel rather than tuned until the default size looked right.
     private static double _ClearOfTheControls(ScreenshotSelectionWindow surface, double preferred)
     {
         // The panels are placed once the surface has a region to place them against, and their bounds are whatever
@@ -294,10 +263,8 @@ internal static class ScreenshotSelectionScene
         return lowest is null ? preferred : Math.Max(preferred, lowest.Value + 12);
     }
 
-    /// <summary>
-    /// A note clicked open at a spot and typed into, through the window's own text input — which is the route an
-    /// operator's keyboard takes, and the one that would run the shortcuts instead if the surface let it.
-    /// </summary>
+    // A note clicked open at a spot and typed into, through the window's own text input — which is the route an
+    // operator's keyboard takes, and the one that would run the shortcuts instead if the surface let it.
     private static void _Note(ScreenshotSelectionWindow surface, Point at, string text)
     {
         surface.MouseDown(at, MouseButton.Left);
@@ -306,11 +273,9 @@ internal static class ScreenshotSelectionScene
         surface.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
     }
 
-    /// <summary>
-    /// A ring drawn round a point, as a hand would draw it: a great many small moves rather than a handful of long
-    /// ones. Far enough apart that none of them are thinned away — thinning is for a hand that hesitates or shakes,
-    /// and a scene that fired it would be showing the exception rather than the ordinary case.
-    /// </summary>
+    // A ring drawn round a point, as a hand would draw it: a great many small moves rather than a handful of long
+    // ones. Far enough apart that none of them are thinned away — thinning is for a hand that hesitates or shakes,
+    // and a scene that fired it would be showing the exception rather than the ordinary case.
     private static void _Circle(ScreenshotSelectionWindow surface, Point centre, double acrossX, double acrossY)
     {
         const int steps = 48;
@@ -339,12 +304,10 @@ internal static class ScreenshotSelectionScene
         surface.MouseUp(to, MouseButton.Left);
     }
 
-    /// <summary>
-    /// The displays the stand-in image is made of: one holding all of it, or two side by side splitting it down
-    /// the middle. One is enough for everything that is only about how the surface looks; two is what the control
-    /// panel needs, since its whole job is to be on the screen the operator is on rather than in the middle of a
-    /// window that spans them all.
-    /// </summary>
+    // The displays the stand-in image is made of: one holding all of it, or two side by side splitting it down
+    // the middle. One is enough for everything that is only about how the surface looks; two is what the control
+    // panel needs, since its whole job is to be on the screen the operator is on rather than in the middle of a
+    // window that spans them all.
     private static ScreenCapture _Capture(CaptureRect desktop, PixelSize image, bool split) => new()
     {
         // The bytes are never decoded: the surface is handed the bitmap directly, and this only has to say where
@@ -353,11 +316,9 @@ internal static class ScreenshotSelectionScene
         Displays = split ? _SideBySide(desktop, image) : [_Display(desktop, new CaptureRect(0, 0, image.Width, image.Height))],
     };
 
-    /// <summary>
-    /// Two screens meeting in the middle. The right-hand one takes what is left rather than half again, so an odd
-    /// width leaves neither a gap nor an overlap between them — a column belonging to no display is a column the
-    /// surface refuses to drag on.
-    /// </summary>
+    // Two screens meeting in the middle. The right-hand one takes what is left rather than half again, so an odd
+    // width leaves neither a gap nor an overlap between them — a column belonging to no display is a column the
+    // surface refuses to drag on.
     private static IReadOnlyList<CapturedDisplay> _SideBySide(CaptureRect desktop, PixelSize image)
     {
         var desktopSplit = desktop.Width / 2;
@@ -379,10 +340,8 @@ internal static class ScreenshotSelectionScene
         ImageBounds = image,
     };
 
-    /// <summary>
-    /// Windows for the picker to highlight, laid out on the stand-in desktop where the panels were drawn, so the
-    /// rectangle that lights up is around something rather than around nothing.
-    /// </summary>
+    // Windows for the picker to highlight, laid out on the stand-in desktop where the panels were drawn, so the
+    // rectangle that lights up is around something rather than around nothing.
     private sealed class StandInWindows(CaptureRect desktop) : IDesktopWindows
     {
         public bool IsSupported => true;
