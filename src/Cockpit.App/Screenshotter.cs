@@ -158,6 +158,10 @@ internal static class Screenshotter
         // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
         // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
         ["projects-shared"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithSharedProjects() },
+        // AC-618: categories as the list's main grouping, in a non-alphabetical order ("Werk" before "Privé"), with
+        // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
+        // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
+        ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
         ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),

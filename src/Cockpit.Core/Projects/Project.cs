@@ -161,6 +161,21 @@ public sealed record Project(string Id, string Name)
     public bool HasAdditionalInfo => AdditionalInfo.Count > 0;
 
     /// <summary>
+    /// Which category this project sits under in the manager's list (AC-618) — "Privé", "Werk", whatever the
+    /// operator types; null/blank groups it under "Uncategorized" instead. Always local, even for a project bound
+    /// to a shared Depot definition: the operator who shares a project does not get to impose their own filing on
+    /// everyone who opens it, the same local/portable line <see cref="ProjectResource"/> already draws for memory.
+    /// <para>
+    /// Compared case-insensitively (<see cref="StringComparison.OrdinalIgnoreCase"/> — never the culture-sensitive
+    /// default, which is exactly the AC-372 class of bug: a Turkish locale's lowercase of <c>I</c> is not <c>i</c>,
+    /// so <c>"Werk"</c> and <c>"werk"</c> would stop matching there). This project's own text is kept exactly as
+    /// typed rather than rewritten to a shared casing — the group heading it shows under is what carries the
+    /// "shown as first typed" rule; see <see cref="ProjectSettings.CategoryOrder"/>.
+    /// </para>
+    /// </summary>
+    public string? Category { get; init; }
+
+    /// <summary>
     /// What this project is called elsewhere (AC-317), under the key the plugin that asked registered: the YouTrack
     /// project it is tracked in, the repository it lives in. Where <see cref="AdditionalInfo"/> is what the operator
     /// wants to remember, this is what a plugin resolves — a value it queries with, not a note anyone reads.

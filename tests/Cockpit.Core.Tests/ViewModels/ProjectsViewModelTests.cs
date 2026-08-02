@@ -405,6 +405,160 @@ public class ProjectsViewModelTests
         Assert.Same(loadTask, completed);
     }
 
+    // AC-618: the category groups the list actually renders, and the per-card origin badge that replaces AC-245's
+    // separate "On this machine" heading.
+
+    [Fact]
+    public async Task ProjectCategoryGroups_NoProjectHasACategory_IsOneHeaderlessGroupWithEveryProject()
+    {
+        var (viewModel, _, _) = Build(Project.Create("Cockpit"), Project.Create("Depot"));
+
+        await viewModel.LoadAsync();
+
+        var group = Assert.Single(viewModel.ProjectCategoryGroups);
+        Assert.False(group.HasHeader);
+        Assert.Null(group.CategoryName);
+        Assert.Equal(["Cockpit", "Depot"], group.Cards.Select(card => card.Project.Name));
+    }
+
+    [Fact]
+    public async Task ProjectCategoryGroups_GroupsByCategory_InCategoryOrderNotAlphabetical()
+    {
+        var work = Project.Create("Cockpit") with { Category = "Werk" };
+        var personal = Project.Create("Home lab") with { Category = "Privé" };
+        var plain = Project.Create("Scratch");
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new ProjectSettings { Projects = [work, personal, plain], CategoryOrder = ["Werk", "Privé"] });
+        var viewModel = new ProjectsViewModel(store, dialogs: null);
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal(["Werk", "Privé", "Uncategorized"], viewModel.ProjectCategoryGroups.Select(group => group.CategoryName));
+        Assert.Equal(["Cockpit"], viewModel.ProjectCategoryGroups[0].Cards.Select(card => card.Project.Name));
+        Assert.Equal(["Home lab"], viewModel.ProjectCategoryGroups[1].Cards.Select(card => card.Project.Name));
+        Assert.Equal(["Scratch"], viewModel.ProjectCategoryGroups[2].Cards.Select(card => card.Project.Name));
+        Assert.True(viewModel.ProjectCategoryGroups[2].HasHeader);
+    }
+
+    [Fact]
+    public async Task ProjectCategoryGroups_MatchesCategoryCaseInsensitively()
+    {
+        var lower = Project.Create("A") with { Category = "werk" };
+        var upper = Project.Create("B") with { Category = "WERK" };
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new ProjectSettings { Projects = [lower, upper], CategoryOrder = ["Werk"] });
+        var viewModel = new ProjectsViewModel(store, dialogs: null);
+
+        await viewModel.LoadAsync();
+
+        var group = viewModel.ProjectCategoryGroups.Single(g => g.CategoryName == "Werk");
+        Assert.Equal(["A", "B"], group.Cards.Select(card => card.Project.Name));
+    }
+
+    [Fact]
+    public async Task ProjectCategoryGroups_UncategorizedGroup_NeverDisappearsEvenWhenEmpty()
+    {
+        var work = Project.Create("Cockpit") with { Category = "Werk" };
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new ProjectSettings { Projects = [work], CategoryOrder = ["Werk"] });
+        var viewModel = new ProjectsViewModel(store, dialogs: null);
+
+        await viewModel.LoadAsync();
+
+        var uncategorized = viewModel.ProjectCategoryGroups.Last();
+        Assert.Equal("Uncategorized", uncategorized.CategoryName);
+        Assert.Empty(uncategorized.Cards);
+    }
+
+    /// <summary>
+    /// Reproduces the ordering hazard directly: <c>_PersistAsync</c> assigns the settings it was handed, not the
+    /// normalized settings <c>IProjectStore.SaveAsync</c> actually wrote — a category typed for the very first time
+    /// on this save has no <c>CategoryOrder</c> entry yet in the in-memory <c>_settings</c>. The group must still
+    /// show (reading a locally normalized view rather than trusting <c>_settings.CategoryOrder</c> verbatim) —
+    /// otherwise the project would render in neither the new category's group nor "Uncategorized".
+    /// </summary>
+    [Fact]
+    public async Task ProjectCategoryGroups_ANewlyTypedCategory_ShowsImmediatelyEvenBeforeCategoryOrderCatchesUp()
+    {
+        var (viewModel, store, dialogs) = Build();
+        var created = Project.Create("Cockpit") with { Category = "Werk" };
+        dialogs.ShowProjectDialogAsync(null).Returns(created);
+        await viewModel.LoadAsync();
+
+        await viewModel.AddProjectCommand.ExecuteAsync(null);
+
+        var group = viewModel.ProjectCategoryGroups.Single(g => g.CategoryName == "Werk");
+        Assert.Equal(["Cockpit"], group.Cards.Select(card => card.Project.Name));
+    }
+
+    [Fact]
+    public async Task ProjectCardViewModel_UnclaimedProject_ShowsTheLocalBadge()
+    {
+        var (viewModel, _, _) = Build(Project.Create("Cockpit"));
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal("● This machine", Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards).OriginBadge);
+    }
+
+    [Fact]
+    public async Task ProjectCardViewModel_AProjectBoundToASharedSource_ShowsItsConnectionBadge()
+    {
+        // The claim itself only happens inside the background LoadSharedProjectsAsync call (_ClaimBoundProjects) —
+        // this also proves that call's own AC-618 refresh actually reaches ProjectCategoryGroups, not only
+        // SharedProjectGroups, once it resolves.
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, _) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var card = Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards);
+        Assert.Equal("◆ Depot — Work", card.OriginBadge);
+    }
+
+    /// <summary>Meet table edge case: editing the last project in a category out of it removes that category's group entirely — it does not linger as an empty one the way "Uncategorized" does.</summary>
+    [Fact]
+    public async Task ProjectCategoryGroups_TheLastProjectInACategory_EditedToDropIt_RemovesTheGroup()
+    {
+        var project = Project.Create("Cockpit") with { Category = "Werk" };
+        var (viewModel, _, dialogs) = Build(project);
+        await viewModel.LoadAsync();
+        viewModel.SelectedProject = viewModel.Projects[0];
+        dialogs.ShowProjectDialogAsync(Arg.Any<Project?>()).Returns(project with { Category = null });
+
+        await viewModel.EditProjectCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(viewModel.ProjectCategoryGroups, group => group.CategoryName == "Werk");
+        var uncategorized = viewModel.ProjectCategoryGroups.Single();
+        Assert.Null(uncategorized.CategoryName);
+    }
+
+    /// <summary>Meet table edge case: a shared project with no category sits beside a categorized local one — same "Uncategorized" group, badges independent of category.</summary>
+    [Fact]
+    public async Task ProjectCategoryGroups_ASharedProjectWithoutACategory_SitsInUncategorized_NextToACategorizedLocalOne()
+    {
+        var categorizedLocal = Project.Create("Cockpit") with { Category = "Werk" };
+        var uncategorizedBound = Project.Create("Onboarding flow") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, _) = BuildWithSharedSources([source], categorizedLocal, uncategorizedBound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var uncategorized = viewModel.ProjectCategoryGroups.Single(group => group.CategoryName == "Uncategorized");
+        var card = Assert.Single(uncategorized.Cards);
+        Assert.Equal("Onboarding flow", card.Project.Name);
+        Assert.Equal("◆ Depot — Work", card.OriginBadge);
+
+        var werk = viewModel.ProjectCategoryGroups.Single(group => group.CategoryName == "Werk");
+        Assert.Equal("Cockpit", Assert.Single(werk.Cards).Project.Name);
+    }
+
     private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> sources) : ISharedProjectSourceRegistry
     {
         public IReadOnlyList<ISharedProjectSource> Sources => sources;

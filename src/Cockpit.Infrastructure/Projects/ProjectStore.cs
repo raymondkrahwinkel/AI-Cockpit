@@ -29,7 +29,7 @@ internal sealed class ProjectStore : IProjectStore, ISingletonService
     public async Task<ProjectSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
-        if (configFile is null || (configFile.Projects.Count == 0 && configFile.HiddenSharedProjectIds.Count == 0))
+        if (configFile is null || (configFile.Projects.Count == 0 && configFile.HiddenSharedProjectIds.Count == 0 && configFile.CategoryOrder.Count == 0))
         {
             return ProjectSettings.Empty;
         }
@@ -38,6 +38,7 @@ internal sealed class ProjectStore : IProjectStore, ISingletonService
         {
             Projects = [.. configFile.Projects.Select(entry => entry.ToDomain())],
             HiddenSharedProjectIds = [.. configFile.HiddenSharedProjectIds],
+            CategoryOrder = [.. configFile.CategoryOrder],
         }.Normalized();
     }
 
@@ -48,6 +49,7 @@ internal sealed class ProjectStore : IProjectStore, ISingletonService
                 var normalized = settings.Normalized();
                 configFile.Projects = [.. normalized.Projects.Select(ProjectEntry.FromDomain)];
                 configFile.HiddenSharedProjectIds = [.. normalized.HiddenSharedProjectIds];
+                configFile.CategoryOrder = [.. normalized.CategoryOrder];
             },
             cancellationToken);
 }

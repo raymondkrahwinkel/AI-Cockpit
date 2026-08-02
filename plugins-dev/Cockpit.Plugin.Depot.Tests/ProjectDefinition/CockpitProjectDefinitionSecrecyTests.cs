@@ -53,6 +53,21 @@ public class CockpitProjectDefinitionSecrecyTests
     }
 
     /// <summary>
+    /// AC-618 acceptance criterion 3: a project's category is explicitly local (<c>Project.Category</c>, stored only
+    /// in <c>cockpit.json</c>) — sharing it here would let whoever shares a project impose their own filing on every
+    /// colleague who binds to it. <see cref="Definition_CarriesOnlyFieldsClearedForSharing_SoAddingOneIsADeliberateAct"/>
+    /// above already guards this by construction (the exhaustive whitelist would need editing), but this pins the
+    /// specific rule by name so it reads as a decision rather than an accident of that other test's coverage.
+    /// </summary>
+    [Fact]
+    public void Definition_CarriesNoCategory_SinceCategoryIsAlwaysLocalToEachOperator()
+    {
+        var names = typeof(CockpitProjectDefinition).GetProperties().Select(property => property.Name).ToArray();
+
+        Assert.DoesNotContain(names, name => name.Contains("Category", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// The known gap, pinned so it is a documented limit rather than a surprise. <c>ExtensionData</c> exists to
     /// carry a newer Cockpit's fields through a read-then-write untouched (AC-244) — which means an older build
     /// forwards a field it cannot recognise, including one holding a secret a later version chose to share. Keeping

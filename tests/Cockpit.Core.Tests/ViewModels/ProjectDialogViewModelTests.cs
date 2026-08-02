@@ -285,12 +285,55 @@ public class ProjectDialogViewModelTests
         viewModel.Name = "  Cockpit  ";
         viewModel.Description = "   ";
         viewModel.BehaviorPrompt = string.Empty;
+        viewModel.Category = "   ";
 
         var project = viewModel.ToProject();
 
         Assert.Equal("Cockpit", project.Name);
         Assert.Null(project.Description);
         Assert.Null(project.BehaviorPrompt);
+        Assert.Null(project.Category);
+    }
+
+    // AC-618: category — a plain, never-claimed field on the editor.
+
+    [Fact]
+    public async Task CreateAsync_ExistingProjectWithACategory_OpensWithItFilledIn()
+    {
+        var project = Project.Create("Cockpit") with { Category = "Werk" };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+
+        Assert.Equal("Werk", viewModel.Category);
+    }
+
+    [Fact]
+    public async Task ToProject_ANewCategory_IsTrimmedAndSaved()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.Name = "Cockpit";
+        viewModel.Category = "  Werk  ";
+
+        Assert.Equal("Werk", viewModel.ToProject().Category);
+    }
+
+    /// <summary>
+    /// Category is never one of the six claimable <c>HostProjectField</c>s (AC-604) — a shared project's own
+    /// definition never gets a say in what this operator files it under, so unlike Name/Description above there is
+    /// no origin badge to gate this and no <c>_Carry</c> path that could silently keep an edit from landing.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_CategoryIsNeverCarriedFromTheOriginalProject_EvenWhenOtherFieldsAreClaimed()
+    {
+        var project = Project.Create("Cockpit") with { Name = "Cockpit", Category = "Werk" };
+        var ownership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Name] = new ProjectFieldOwnership("Depot — Work"),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), fieldOwnership: ownership);
+
+        viewModel.Category = "Privé";
+
+        Assert.Equal("Privé", viewModel.ToProject().Category);
     }
 
     [Fact]

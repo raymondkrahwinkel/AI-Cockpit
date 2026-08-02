@@ -115,6 +115,18 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     public bool HasSharedProjects => SharedProjectGroups.Count > 0;
 
     /// <summary>
+    /// <see cref="Projects"/> grouped by category for the list (AC-618), rebuilt by <see cref="_Republish"/> —
+    /// replaces AC-245's "On this machine" heading with a per-card origin badge instead
+    /// (<see cref="ProjectCardViewModel.OriginBadge"/>). No project with a category anywhere means exactly one
+    /// group with a null <see cref="ProjectCategoryGroupViewModel.CategoryName"/>, which the workspace draws with
+    /// no heading at all — see that type's own remarks.
+    /// </summary>
+    public ObservableCollection<ProjectCategoryGroupViewModel> ProjectCategoryGroups { get; } = [];
+
+    /// <summary>The always-present, never-disappearing catch-all category group's heading (AC-618).</summary>
+    private const string _UncategorizedLabel = "Uncategorized";
+
+    /// <summary>
     /// Whether the workspace has nothing at all to show — what the "No projects yet" empty state is gated on
     /// instead of <c>!HasProjects</c> alone, so that text does not sit above a populated "Shared via …" section
     /// once one arrives a moment after the window opens (<see cref="LoadSharedProjectsAsync"/> runs in the background).
@@ -204,6 +216,50 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             Error: null));
         viewModel.SharedProjectGroups.Add(new SharedProjectGroupViewModel(
             "Depot — Personal", [], "Sign in to this Depot connection to see its shared projects."));
+
+        return viewModel;
+    }
+
+    /// <summary>
+    /// Categories (AC-618) as the list's main grouping — "Werk" before "Privé", not alphabetical, from an explicit
+    /// <see cref="ProjectSettings.CategoryOrder"/> rather than either name's own spelling — with "Uncategorized"
+    /// always last, shown even though nothing is in it here, and every card's own origin badge instead of AC-245's
+    /// retired "On this machine" heading: "Onboarding flow" carries a real <see cref="ProjectOwnershipRegistry"/>
+    /// claim, the same seam AC-604/AC-245 use, so it draws "◆ Depot — Work" rather than "● This machine".
+    /// </summary>
+    internal static ProjectsViewModel DesignSampleWithCategories()
+    {
+        var cockpit = Project.Create("Cockpit") with
+        {
+            Description = "The cockpit itself — the desktop app these sessions run in.",
+            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            Category = "Privé",
+        };
+        var eveWorkbench = Project.Create("EVE Workbench") with
+        {
+            Description = "Community platform for fits and market.",
+            SourceDirectory = "/home/raymond/RiderProjects/Eveworkbench",
+            Category = "Privé",
+        };
+        var onboarding = Project.Create("Onboarding flow") with
+        {
+            Description = "New-hire checklist and the tooling walkthrough.",
+            SourceDirectory = "/home/raymond/work/onboarding",
+            Category = "Werk",
+            MemoryRef = "depot:onboarding",
+        };
+        var scratch = Project.Create("Testproject") with { SourceDirectory = "/home/raymond/tmp/scratch" };
+
+        var ownership = new ProjectOwnershipRegistry();
+        ownership.Register(new ProjectOwnershipRegistration(onboarding.Id, new ProjectFieldOwnership("Depot — Work")));
+
+        var viewModel = new ProjectsViewModel(new DesignTimeProjectStore(), dialogs: null, ownership: ownership);
+        viewModel._settings = ProjectSettings.Empty with
+        {
+            Projects = [cockpit, eveWorkbench, onboarding, scratch],
+            CategoryOrder = ["Werk", "Privé"],
+        };
+        viewModel._Republish();
 
         return viewModel;
     }
@@ -307,6 +363,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         OnPropertyChanged(nameof(HasSharedProjects));
         OnPropertyChanged(nameof(HasNothingToShow));
+
+        // AC-618: _ClaimBoundProjects above may just have registered an ownership claim this run — a bound
+        // project's card must show its "◆ <connection>" badge without the operator having to touch anything else
+        // for _Republish to run again.
+        _RepublishCategoryGroups();
     }
 
     /// <summary>Claims every local project bound to one of <paramref name="sharedProjects"/> as owned by <paramref name="sourceName"/> — see <see cref="LoadSharedProjectsAsync"/>'s own remarks.</summary>
@@ -489,7 +550,56 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(OpenedProjectCount));
         OnPropertyChanged(nameof(MostRecentProject));
         OnPropertyChanged(nameof(HasMoreThanSidebarShows));
+
+        _RepublishCategoryGroups();
     }
+
+    /// <summary>
+    /// Rebuilds <see cref="ProjectCategoryGroups"/> (AC-618) from a locally normalized view of <see cref="_settings"/>
+    /// — <see cref="ProjectSettings.Normalized"/> is read here rather than trusted to already be reflected in
+    /// <see cref="_settings"/> itself (<see cref="_PersistAsync"/> assigns the settings it was handed, not what
+    /// <see cref="IProjectStore.SaveAsync"/> actually normalized and wrote), so a category typed for the first time
+    /// this save shows its heading immediately instead of one republish cycle late. Reading it this way changes
+    /// nothing about <see cref="_settings"/> itself or what gets persisted.
+    /// </summary>
+    private void _RepublishCategoryGroups()
+    {
+        ProjectCategoryGroups.Clear();
+
+        var normalized = _settings.Normalized();
+        if (!normalized.Projects.Any(project => !string.IsNullOrWhiteSpace(project.Category)))
+        {
+            ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(CategoryName: null, [.. normalized.Projects.Select(_ToCard)]));
+            return;
+        }
+
+        foreach (var category in normalized.CategoryOrder)
+        {
+            var cards = normalized.Projects
+                .Where(project => string.Equals(project.Category, category, StringComparison.OrdinalIgnoreCase))
+                .Select(_ToCard)
+                .ToList();
+            ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(category, cards));
+        }
+
+        var uncategorized = normalized.Projects
+            .Where(project => string.IsNullOrWhiteSpace(project.Category))
+            .Select(_ToCard)
+            .ToList();
+        ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(_UncategorizedLabel, uncategorized));
+    }
+
+    private ProjectCardViewModel _ToCard(Project project) => new(project, _OriginBadge(project));
+
+    /// <summary>
+    /// "● This machine", or "◆ &lt;connection&gt;" once <see cref="_ownership"/> has a claim on
+    /// <paramref name="project"/> (AC-604's own seam, claimed for a bound project by
+    /// <see cref="_ClaimBoundProjects"/>) — the per-card replacement for AC-245's "On this machine" heading.
+    /// </summary>
+    private string _OriginBadge(Project project) =>
+        _ownership?.Resolve(project.Id)?.Values.FirstOrDefault(ownership => ownership is not null) is { } claim
+            ? $"◆ {claim.SourceName}"
+            : "● This machine";
 
     partial void OnSelectedProjectChanged(Project? value)
     {

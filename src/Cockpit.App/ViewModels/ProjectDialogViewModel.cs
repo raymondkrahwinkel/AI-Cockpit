@@ -70,6 +70,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
 
         Name = project.Name;
+        Category = project.Category ?? string.Empty;
         Description = project.Description ?? string.Empty;
         SourceDirectory = project.SourceDirectory ?? string.Empty;
         GitUrl = project.GitUrl;
@@ -316,6 +317,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _name = string.Empty;
 
+    /// <summary>
+    /// Which category this project sits under in the manager's list (AC-618). Always local — never one of the six
+    /// claimable <see cref="HostProjectField"/>s, so unlike Name/Description above there is no origin badge and no
+    /// <see cref="_Carry{T}"/> here: nothing a shared project's definition claims can ever own this field.
+    /// </summary>
+    [ObservableProperty]
+    private string _category = string.Empty;
+
     [ObservableProperty]
     private string _description = string.Empty;
 
@@ -446,6 +455,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         return new(_projectId ?? Guid.NewGuid().ToString("n"), _Carry(NameOrigin, Name.Trim(), p => p.Name))
         {
+            Category = _NullIfBlank(Category),
             Description = _Carry(DescriptionOrigin, _NullIfBlank(Description), p => p.Description),
             SourceDirectory = _NullIfBlank(SourceDirectory),
             GitUrl = GitUrl,
