@@ -3,7 +3,11 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Consent;
+using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -42,8 +46,14 @@ namespace Cockpit.Infrastructure.Assistant;
 /// scoping rules, and whose remarks explain why a coordinator's stricter rule must not be built as a check bolted
 /// onto this one.
 /// </para>
+/// <para>
+/// <b>Two of these ask on their own account.</b> <c>send_message</c> and <c>send_prompt</c> reach into a session the
+/// assistant did not start, so they raise a cockpit consent card as well — under two separate sources
+/// (<see cref="ConsentSourceCatalog.AssistantMessage"/> and <see cref="ConsentSourceCatalog.AssistantPrompt"/>), so
+/// that an operator who lets the assistant leave notes unasked has not thereby let it start work unasked.
+/// </para>
 /// </remarks>
-internal sealed class AssistantAgentMcpTools(IAssistantAgentGateway gateway)
+internal sealed class AssistantAgentMcpTools(IAssistantAgentGateway gateway, IConsentBroker? consent = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -210,6 +220,138 @@ internal sealed class AssistantAgentMcpTools(IAssistantAgentGateway gateway)
         {
             return _Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    [McpServerTool(Name = "send_message")]
+    [Description("Leaves a message in a running agent session's inbox — the same inbox the agents on a desk use to talk to each other, so the recipient reads yours exactly as it reads theirs. This TELLS an agent something; it does not make it do anything. The recipient decides what to do with what you wrote, and anything that needs the operator's approval still needs it — so use this for what an agent would want to know (\"the operator changed their mind about the branch\", \"another session is about to touch that worktree\"), and use send_prompt when the operator actually wants work started. Address it with a pane id from list_sessions, never by name: two sessions can be called the same thing. IT NEEDS THE OPERATOR'S CLICK: an Allow/Deny row appears in the chat window showing your message word for word and which session gets it, and nothing is delivered until it is answered — say out loud that it is waiting on their screen, and never treat a spoken \"yes\" as the approval. A REFUSAL IS NORMAL — a pane that has closed, a terminal pane with no agent on it, your own session, or a recipient whose inbox is full — so read the reason out and carry on. The reply says whether the message will reach the recipient on its own with its next turn (deliversAtTurnStart) or only when that session next calls read_inbox; when it is false, do not tell the operator the agent has been told, because it has not been yet. Sending the identical message twice while the first is still unread adds nothing and comes back deduplicated. WHAT THIS CANNOT DO: it cannot reach your own session, cannot reach a pane that is not an agent session (a plain terminal has a pane id and nobody reading it), and cannot reach a delegated task (delegate_task), which runs with no pane and is invisible from where you are standing — say that rather than reporting an absence as a fact. It also does not interrupt: nothing is woken, nobody is pulled off what they are doing, and delivery is at the recipient's next turn at the earliest. If the operator needs something to happen now, this is the wrong tool and you should say so.")]
+    public async Task<string> SendMessageAsync(
+        [Description("The pane id of the agent session to write to, exactly as list_sessions reports it. Read the session's NAME back to the operator before you ask — a pane id is not something anyone can check by ear.")] string paneId,
+        [Description("A short label for what this is, at most 100 characters, e.g. 'heads-up', 'question', 'handover'. The recipient sees it as your label, not as anything the cockpit vouches for.")] string kind,
+        [Description("The message itself, at most 2000 characters, and shown to the operator word for word on the approval row — so write what you actually mean to send, not a summary of it. Write it as information for another agent, not as an order.")] string body)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            // Bounded and stripped of terminal control sequences before the operator is shown anything, so the card
+            // and the inbox carry the same bytes. Showing the raw argument and delivering the cleaned one would make
+            // the card a description of the message rather than the message.
+            var label = AgentMessageContent.Normalize(kind, out var strippedKind);
+            var text = AgentMessageContent.Normalize(body, out var strippedBody);
+            var addressee = AgentMessageContent.Normalize(paneId, out _);
+            if (AgentMessageContent.Reject(addressee, label, text) is { } rejection)
+            {
+                return _Serialize(new { ok = false, error = rejection });
+            }
+
+            if (await _ApprovedAsync(
+                    "The assistant wants to put a message in another session's inbox",
+                    $"Send to session {addressee}\nkind: {label}\n\n{text}",
+                    ConsentSourceCatalog.AssistantMessage,
+                    "assistant.message",
+                    ConsentRisk.LowRisk).ConfigureAwait(false) is { } denial)
+            {
+                return denial;
+            }
+
+            var result = await gateway.SendMessageAsync(addressee, label, text).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new
+                {
+                    ok = true,
+                    paneId = result.PaneId,
+                    name = result.SessionName,
+                    messageId = result.MessageId,
+                    result.Deduplicated,
+                    // Said here and not only in list_sessions, because this is the moment the assistant forms the
+                    // sentence it speaks: "delivered" on a pane with no passive delivery means the message is
+                    // waiting, not that anybody has been told.
+                    deliversAtTurnStart = result.DeliversAtTurnStart,
+                    // True means what was delivered is not byte-for-byte what was passed: terminal control sequences
+                    // were removed. Reported rather than done quietly.
+                    sanitized = strippedKind || strippedBody,
+                })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "send_prompt")]
+    [Description("Hands a running agent session a turn: the text goes into that session and is SENT, so the agent starts working on it straight away. This is not a message — it is you typing into someone else's session on the operator's behalf, and whatever the session is allowed to do, it will now do without being asked again. Use it when the operator wants work started or steered in a session that is already open (\"tell the release worker to run the tests\"); use send_message when they only want an agent told something. Address it with a pane id from list_sessions, never by name. IT NEEDS THE OPERATOR'S CLICK, EVERY SINGLE TIME: an Allow/Deny row appears in the chat window showing the prompt word for word and which session receives it, it is never remembered, and nothing is sent until it is answered — so say out loud that it is waiting on their screen, and never treat a spoken \"yes\" as the approval, because it is not one and cannot become one. Read the prompt back to the operator before you ask, in the words you are about to send: they are approving those words, and the row is where they will check them. A REFUSAL IS NORMAL — a pane that has closed, a terminal pane, your own session, or the operator simply saying no — so read the reason out and carry on. The reply's delivered field says whether the turn went in on the spot or is being held because the session is still coming up; while it is false the agent has not started, so do not report that it has. WHAT THIS CANNOT DO: it cannot hand a turn to your own session, cannot reach a pane that is not an agent session (a plain terminal has a pane id and no agent on the other end), and cannot reach a delegated task (delegate_task), which runs with no pane and is invisible from where you are standing — say that rather than reporting an absence as a fact. It also cannot take a turn back: once the row is clicked the words are in that session's own transcript and its agent is acting on them.")]
+    public async Task<string> SendPromptAsync(
+        [Description("The pane id of the agent session to hand the turn to, exactly as list_sessions reports it. Read the session's NAME back to the operator before you ask — a pane id is not something anyone can check by ear, and the wrong one starts work in the wrong place.")] string paneId,
+        [Description("The turn to submit, in the exact words that will be sent — the operator reads this verbatim on the approval row and is agreeing to these words, not to your description of them.")] string prompt)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (string.IsNullOrWhiteSpace(prompt))
+            {
+                return _Serialize(new { ok = false, error = "A turn needs something to say; that prompt was empty." });
+            }
+
+            if (await _ApprovedAsync(
+                    "The assistant wants to submit a turn in another session",
+                    $"Send to session {paneId}, as the operator:\n\n{prompt}",
+                    ConsentSourceCatalog.AssistantPrompt,
+                    "assistant.prompt",
+                    ConsentRisk.Dangerous).ConfigureAwait(false) is { } denial)
+            {
+                return denial;
+            }
+
+            var result = await gateway.SendPromptAsync(paneId, prompt).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new { ok = true, paneId = result.PaneId, name = result.SessionName, result.Delivered })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    /// <summary>
+    /// Asks the operator, and returns the tool result to hand back when they said no — or null when they said yes.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="action"/> is passed straight through to <see cref="ConsentRequest.Action"/>, which is rendered
+    /// verbatim, and is composed at each call site out of the literal arguments rather than out of a sentence about
+    /// them. That is the rule the type states and the reason it states it: the assistant's words are supplied by a
+    /// model that can be argued into supplying different ones, so a card showing a friendly description of a hostile
+    /// message is a card that approves the message. The pane id is shown rather than the session's name for the same
+    /// reason — the id is what the cockpit will act on, and a name would be the assistant's rendering of it.
+    /// <para>
+    /// No broker means no operator to ask, and these two tools deliver into someone else's session, so the answer is
+    /// no. <c>AllowRemember</c> is deliberately left off both: the operator's lever for "stop asking me about this"
+    /// is the per-source bypass in Options (AC-575), which is per source and switchable back off, rather than a
+    /// per-call promise made on a row that was about one particular message.
+    /// </para>
+    /// </remarks>
+    private async Task<string?> _ApprovedAsync(string title, string action, string sourceLabel, string scope, ConsentRisk risk)
+    {
+        if (consent is null)
+        {
+            return _Serialize(new { ok = false, error = "This needs the operator's approval, and there is nobody here to ask." });
+        }
+
+        var decision = await consent.RequestConsentAsync(
+            new ConsentRequest(title, action, new ConsentSource(AssistantIdentity.PaneId, null, sourceLabel), scope, risk))
+            .ConfigureAwait(false);
+
+        return decision.IsApproved
+            ? null
+            : _Serialize(new { ok = false, error = "The operator did not approve this." });
     }
 
     /// <summary>

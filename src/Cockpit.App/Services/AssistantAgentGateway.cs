@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
@@ -40,7 +41,10 @@ namespace Cockpit.App.Services;
 internal sealed class AssistantAgentGateway(
     CockpitViewModel cockpit,
     ISessionProfileStore profiles,
-    IAssistantSpawnAuditLog auditLog) : IAssistantAgentGateway, ISingletonService
+    IAssistantSpawnAuditLog auditLog,
+    IWorkspaceAgentGateway agents,
+    IAgentMessageInbox inbox,
+    IAgentNotifyAuditLog notifyAudit) : IAssistantAgentGateway, ISingletonService
 {
     public async Task<AgentSpawnResult> SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken = default)
     {
@@ -205,6 +209,129 @@ internal sealed class AssistantAgentGateway(
 
             return AgentStopResult.Stopped(paneId, name);
         });
+
+    /// <inheritdoc/>
+    public async Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // By identity, before anything is looked up, for the same reason StopAsync checks it first: the assistant
+            // is not in Sessions today, but that is where it sits and not a rule. A message to itself is a note to
+            // nobody — and, if anything ever did read it, a way to put text of its own choosing into its own turn.
+            if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+            {
+                return AgentMessageResult.Refused("That is my own session. There is nobody on the other end of a message I send myself.");
+            }
+
+            // The agent line's own answer to "is this a live agent session, and does it hear at turn start" — asked of
+            // the addressee's pane rather than of a caller's desk, which is what makes this reach every desk without
+            // changing what any other sender may reach. A pane that is not an agent session (a plain terminal), or
+            // that no longer exists, resolves to nothing here.
+            if (await agents.GetWorkspaceSnapshotAsync(paneId).ConfigureAwait(false) is not { } snapshot
+                || snapshot.Panes.FirstOrDefault(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal)) is not { } recipient)
+            {
+                return await _RefuseMessageAsync(
+                    paneId, kind, body, AgentNotifyOutcome.RefusedNotInWorkspace,
+                    $"There is no agent session with pane id '{paneId}' that can be written to — it may have closed, or it may be a terminal pane with no agent on the other end.").ConfigureAwait(false);
+            }
+
+            var delivery = inbox.Deliver(AssistantIdentity.PaneId, paneId, kind, body);
+            if (delivery is not { Message: { } message })
+            {
+                return await _RefuseMessageAsync(
+                    paneId, kind, body, AgentNotifyOutcome.RefusedRecipientInboxFull,
+                    $"'{recipient.Name}' has not read its inbox and it is full, so this message was not accepted. Nothing was dropped to make room for it.").ConfigureAwait(false);
+            }
+
+            var deduplicated = delivery.Outcome == AgentMessageDeliveryOutcome.Deduplicated;
+            await notifyAudit.RecordAsync(new AgentNotifyAuditEntry(
+                DateTimeOffset.UtcNow,
+                deduplicated ? AgentNotifyOutcome.Deduplicated : AgentNotifyOutcome.Accepted,
+                AssistantIdentity.PaneId,
+                paneId,
+                kind,
+                body,
+                message.Id), cancellationToken).ConfigureAwait(false);
+
+            return AgentMessageResult.Sent(paneId, recipient.Name, message.Id, deduplicated, recipient.DeliversAtTurnStart);
+        }
+        catch (Exception exception)
+        {
+            return await _RefuseMessageAsync(paneId, kind, body, AgentNotifyOutcome.RefusedError, exception.Message).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Records the refusal on the same trail an agent's own refused <c>notify</c> lands on, then reports it.</summary>
+    private async Task<AgentMessageResult> _RefuseMessageAsync(
+        string paneId, string kind, string body, AgentNotifyOutcome outcome, string reason)
+    {
+        await notifyAudit.RecordAsync(new AgentNotifyAuditEntry(
+            DateTimeOffset.UtcNow, outcome, AssistantIdentity.PaneId, paneId, kind, body, MessageId: null)).ConfigureAwait(false);
+        return AgentMessageResult.Refused(reason);
+    }
+
+    /// <inheritdoc/>
+    public Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(async () =>
+        {
+            // The same three refusals as StopAsync, in the same order and for the same reasons — see the comments
+            // there. A pane the assistant may not end is a pane it may not speak as either.
+            if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+            {
+                return await _RefusePromptAsync(paneId, "That is my own session, and I do not get to hand myself a turn.", cancellationToken).ConfigureAwait(true);
+            }
+
+            if (cockpit.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal)) is not { } session)
+            {
+                var elsewhere = cockpit.FindSession(paneId);
+                return await _RefusePromptAsync(paneId, elsewhere is null
+                        ? $"There is no session with pane id '{paneId}' — it may already have been closed."
+                        : $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so I cannot hand it a turn. Whoever started it drives it.",
+                    cancellationToken).ConfigureAwait(true);
+            }
+
+            if (!session.ShowPluginHeaderItems)
+            {
+                return await _RefusePromptAsync(paneId, $"'{session.Title}' is a terminal pane, not an agent session.", cancellationToken).ConfigureAwait(true);
+            }
+
+            // Held rather than dropped when the session is still coming up, and the caller is told which of the two
+            // happened — see SessionPanelViewModel.SubmitPromptWhenReady.
+            var delivered = session.SubmitPromptWhenReady(prompt);
+
+            await _RecordAsync(new AssistantSpawnAuditEntry(
+                DateTimeOffset.Now,
+                AssistantSpawnAction.Prompt,
+                SpawnCaller.Assistant,
+                CallerPaneId: null,
+                session.WorkspaceId ?? string.Empty,
+                _FindWorkspace(session.WorkspaceId)?.Name,
+                session.ActiveProfileLabel,
+                WorkingDirectory: null,
+                paneId,
+                session.Title,
+                Refusal: null), cancellationToken).ConfigureAwait(true);
+
+            return AgentPromptResult.Handed(paneId, session.Title, delivered);
+        });
+
+    private async Task<AgentPromptResult> _RefusePromptAsync(string paneId, string reason, CancellationToken cancellationToken)
+    {
+        await _RecordAsync(new AssistantSpawnAuditEntry(
+            DateTimeOffset.Now,
+            AssistantSpawnAction.Prompt,
+            SpawnCaller.Assistant,
+            CallerPaneId: null,
+            WorkspaceId: string.Empty,
+            WorkspaceName: null,
+            Profile: null,
+            WorkingDirectory: null,
+            paneId,
+            SessionName: null,
+            reason), cancellationToken).ConfigureAwait(true);
+
+        return AgentPromptResult.Refused(reason);
+    }
 
     public Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(() => Task.FromResult(_ListWorkspaces()));

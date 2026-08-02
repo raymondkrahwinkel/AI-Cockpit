@@ -33,9 +33,25 @@ public static class ConsentSourceCatalog
     /// <summary>The debug-gated sample prompt (#73). Not a real consumer, but it does ask, so it is nameable.</summary>
     public const string Debug = "Debug";
 
+    /// <summary>
+    /// The assistant putting a message in another session's inbox: information the recipient reads in its own time.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately <em>not</em> the same label as <see cref="AssistantPrompt"/>, and this is the whole reason both
+    /// exist. The key is the label (a host-internal caller has no plugin id), so one label would mean one row in
+    /// Options and one switch — and telling an agent something would then be un-separable from making it do
+    /// something. An operator who is happy for the assistant to leave notes unasked is not thereby happy for it to
+    /// start work unasked; a single switch would decide both, and would decide them the permissive way.
+    /// </remarks>
+    public const string AssistantMessage = "Assistant message";
+
+    /// <summary>The assistant submitting a turn in another session — a hand-off of the operator's own rights.</summary>
+    /// <remarks>See <see cref="AssistantMessage"/> for why these are two labels and not one.</remarks>
+    public const string AssistantPrompt = "Assistant prompt";
+
     /// <summary>Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.</summary>
     public static IReadOnlyList<string> HostSources { get; } =
-        [TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, Debug];
+        [TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt, Debug];
 
     /// <summary>
     /// The bypass key for one source: the host-stamped <paramref name="pluginId"/> under a <c>plugin:</c> prefix, or

@@ -920,7 +920,25 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// pty stdin the keystrokes go to. Set by the view once the terminal is launched, because the pty is the view's
     /// to own; null before that, and the session then reports it cannot take a prompt yet.
     /// </summary>
-    public Action<string>? PromptSink { get; set; }
+    /// <remarks>
+    /// Assigning it is the moment this pane becomes able to take a prompt, so it is also the moment a brief held by
+    /// <see cref="SessionPanelViewModel.SubmitPromptWhenReady"/> goes out — a spawned session's opening brief is
+    /// handed over before any of this exists, and this is the one place the answer changes.
+    /// </remarks>
+    public Action<string>? PromptSink
+    {
+        get => _promptSink;
+        set
+        {
+            _promptSink = value;
+            if (value is not null)
+            {
+                DeliverHeldPrompt();
+            }
+        }
+    }
+
+    private Action<string>? _promptSink;
 
     /// <inheritdoc/>
     /// <remarks>The pty sink is the whole answer here: with one, a prompt is typed and submitted; without one, there is nowhere to type it.</remarks>

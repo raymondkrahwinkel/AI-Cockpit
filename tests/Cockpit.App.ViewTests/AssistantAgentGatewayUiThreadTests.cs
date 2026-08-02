@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
@@ -193,6 +194,14 @@ public class AssistantAgentGatewayUiThreadTests
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
 
-        return (new AssistantAgentGateway(cockpit, profiles, Substitute.For<IAssistantSpawnAuditLog>()), desk.Id);
+        return (
+            new AssistantAgentGateway(
+                cockpit,
+                profiles,
+                Substitute.For<IAssistantSpawnAuditLog>(),
+                Substitute.For<IWorkspaceAgentGateway>(),
+                Substitute.For<IAgentMessageInbox>(),
+                Substitute.For<IAgentNotifyAuditLog>()),
+            desk.Id);
     }
 }

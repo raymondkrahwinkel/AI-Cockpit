@@ -77,6 +77,80 @@ public interface IAssistantAgentGateway
     /// <c>WorkspacesViewModel.CanClose</c> already says no — the button greys out for both.
     /// </remarks>
     Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts a message in the inbox of the agent session on <paramref name="paneId"/>, whichever desk it is on — the
+    /// same inbox <c>cockpit-agents</c>' own <c>notify</c> delivers into, so a recipient reads it with the same
+    /// <c>read_inbox</c> and the same turn-start delivery it already has.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this reaches every desk when <c>notify</c> reaches one.</b> <c>notify</c>'s rule is that a sender may
+    /// address only its own desk, enforced on the host's answer to "who is on the caller's desk". The assistant sits
+    /// on no desk at all — the same structural fact AC-544/AC-545 were shaped around — so that rule does not narrow
+    /// it, it excludes it outright. This is the assistant's own door, and it is the assistant's alone: nothing here
+    /// relaxes the check on <c>notify</c>, which still refuses every agent that reaches past its own desk.
+    /// <para>
+    /// Nothing is woken. <c>notify</c>'s <c>urgent</c> spends the recipient operator's money on a turn they did not
+    /// ask for, which is a different weight of act from leaving a note; the assistant's message is delivered and
+    /// waits, exactly as an ordinary <c>notify</c> does.
+    /// </para>
+    /// </remarks>
+    Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Submits <paramref name="prompt"/> as a turn in the agent session on <paramref name="paneId"/>, whichever desk
+    /// it is on — the text goes in <em>and</em> is sent, which is what separates this from a message.
+    /// </summary>
+    /// <remarks>
+    /// Refuses the same three things <see cref="StopAsync"/> refuses, for the same reasons: the assistant's own
+    /// session, a pane that is not an agent session, and a pane that does not exist or runs inside a workspace's own
+    /// surface rather than as a pane.
+    /// <para>
+    /// Delivery rides <c>SessionPanelViewModel.SubmitPromptWhenReady</c>, so a session that has only just been
+    /// started holds the turn until it can take one instead of dropping it —
+    /// <see cref="AgentPromptResult.Delivered"/> says which of the two happened, and is never true for a turn that
+    /// is still waiting.
+    /// </para>
+    /// </remarks>
+    Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What came of a message. Same shape and same reason as <see cref="AgentStopResult"/>.</summary>
+/// <param name="MessageId">The id the message is waiting under, so a repeat send can be recognised as the same one.</param>
+/// <param name="Deduplicated">True when the identical message was already waiting unread: this call added nothing, and <paramref name="MessageId"/> is the one that was already there.</param>
+/// <param name="DeliversAtTurnStart">
+/// Whether the recipient will see this without going to look. Reported because "delivered" on a pane with no passive
+/// delivery means the message is waiting, not that anyone has been told — and an assistant that then reports "I told
+/// them" to the operator has said something untrue on the strength of a field that read like success.
+/// </param>
+public sealed record AgentMessageResult(
+    bool Ok,
+    string? PaneId,
+    string? SessionName,
+    string? MessageId,
+    bool Deduplicated,
+    bool DeliversAtTurnStart,
+    string? Error)
+{
+    public static AgentMessageResult Sent(string paneId, string sessionName, string messageId, bool deduplicated, bool deliversAtTurnStart) =>
+        new(true, paneId, sessionName, messageId, deduplicated, deliversAtTurnStart, null);
+
+    public static AgentMessageResult Refused(string error) => new(false, null, null, null, false, false, error);
+}
+
+/// <summary>What came of a prompt. Same shape and same reason as <see cref="AgentStopResult"/>.</summary>
+/// <param name="Delivered">
+/// True when the turn was submitted on the spot. False means the session cannot take one yet — it is still coming up
+/// — and the turn is being held for it. Not an error, and not a delivery either: the difference is the whole reason
+/// this field exists, because an assistant that says "sent" for a turn that is still waiting has reported work that
+/// has not started.
+/// </param>
+public sealed record AgentPromptResult(bool Ok, string? PaneId, string? SessionName, bool Delivered, string? Error)
+{
+    public static AgentPromptResult Handed(string paneId, string sessionName, bool delivered) =>
+        new(true, paneId, sessionName, delivered, null);
+
+    public static AgentPromptResult Refused(string error) => new(false, null, null, false, error);
 }
 
 /// <summary>What came of removing a workspace. Same shape and same reason as <see cref="AgentStopResult"/>.</summary>

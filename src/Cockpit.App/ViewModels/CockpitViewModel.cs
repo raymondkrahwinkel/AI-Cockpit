@@ -6276,7 +6276,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             // By pane id rather than "the one just added": a session the operator opened at the same moment must not
             // catch a brief meant for this one.
-            FindSession(paneId)?.InjectAndSubmit(prompt);
+            //
+            // SubmitPromptWhenReady rather than InjectAndSubmit: launching returns as soon as the pane exists, and on a
+            // TTY pane that is well before the view has realised and started the pty the brief has to be typed into.
+            // InjectAndSubmit publishes to whoever is listening at that instant, which for a pane nobody has drawn yet
+            // is nobody — the brief vanished and this method still returned a pane id, so the spawn tool reported
+            // ok:true on a session that came up empty. Twice in a row, which is how it was caught.
+            FindSession(paneId)?.SubmitPromptWhenReady(prompt);
         }
 
         return (paneId, name);

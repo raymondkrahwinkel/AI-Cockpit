@@ -1514,6 +1514,70 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnVoiceSubmitRequested();
     }
 
+    /// <summary>The brief handed to <see cref="SubmitPromptWhenReady"/> before this session could take one, kept until it can. At most one: a session is spawned with a single opening brief, and a second would be a second turn, not a longer one.</summary>
+    private string? _promptHeldUntilReady;
+
+    /// <summary>True while a brief is waiting for this session to become able to take it — see <see cref="SubmitPromptWhenReady"/>.</summary>
+    public bool HasPromptWaitingToBeDelivered => _promptHeldUntilReady is not null;
+
+    /// <summary>
+    /// Hands this session an opening brief and submits it, waiting for the session to be able to receive one first.
+    /// Returns <see langword="true"/> when it went out on the spot and <see langword="false"/> when it is being
+    /// held — never that it was delivered when it was not.
+    /// </summary>
+    /// <remarks>
+    /// What a freshly spawned session needs and <see cref="InjectAndSubmit"/> alone cannot give it. That one is the
+    /// operator's-hands seam (a voice transcript, a paste), so it assumes the session is already on screen and able to
+    /// hear: on a TTY pane it publishes to the view's pty writer, and a pane whose view has not been realised yet has
+    /// no such writer, so the brief goes to nobody and the caller is told nothing. That is the failure the spawn tool
+    /// reported <c>ok:true</c> for.
+    /// <para>
+    /// The condition waited on is <see cref="CanTakeAPrompt"/> — the property that already answers "would a send
+    /// actually reach the agent" for AC-234's scheduled resume and AC-395's wake, rather than a new signal or a delay
+    /// long enough to work on the machine it was written on. It is strictly stronger than "something is subscribed":
+    /// on a TTY pane it is <c>TtyViewModel.PromptSink</c>, which the view wires only once the pty process has actually
+    /// spawned (<c>TtyView.StartPty</c>), and on an SDK pane it is a running runtime. Each kind flushes the hold from
+    /// the one place its own answer changes, so nothing polls and nothing sleeps.
+    /// </para>
+    /// <para>
+    /// A brief that is held and whose session never comes up is never delivered, and
+    /// <see cref="HasPromptWaitingToBeDelivered"/> stays true so a caller can say so rather than claim it landed.
+    /// </para>
+    /// </remarks>
+    public bool SubmitPromptWhenReady(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return false;
+        }
+
+        if (CanTakeAPrompt)
+        {
+            InjectAndSubmit(prompt);
+            return true;
+        }
+
+        _promptHeldUntilReady = prompt;
+        return false;
+    }
+
+    /// <summary>
+    /// Sends the brief <see cref="SubmitPromptWhenReady"/> is holding, if there is one and this session can now take
+    /// it. Called by each session kind at the single point where its own <see cref="CanTakeAPrompt"/> turns true.
+    /// </summary>
+    protected void DeliverHeldPrompt()
+    {
+        if (_promptHeldUntilReady is not { } held || !CanTakeAPrompt)
+        {
+            return;
+        }
+
+        // Cleared before the send, not after: a delivery that throws must not leave the brief queued to be sent a
+        // second time by the next readiness change.
+        _promptHeldUntilReady = null;
+        InjectAndSubmit(held);
+    }
+
     /// <summary>
     /// Injects an open-mic transcript into this session and submits it when <see cref="AutoSubmitAfterVoice"/>
     /// is on — the finished-transcript half of <see cref="EndVoiceHoldAsync"/>, for the hands-free open-mic

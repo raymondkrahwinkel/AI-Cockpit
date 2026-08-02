@@ -1028,6 +1028,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // Refresh the ready-gate (the empty-state's "type to start" prompt) now the launch has settled:
         // true on a live runtime, false when it failed.
         OnPropertyChanged(nameof(IsSessionReady));
+
+        // The one point where this kind's CanTakeAPrompt turns true, so the one point a brief handed over before the
+        // runtime existed can go out. Sending it any earlier is what earns the transcript's "The session has not
+        // started yet — nothing was sent."; a launch that failed leaves it held rather than sent into nothing.
+        DeliverHeldPrompt();
     }
 
     /// <summary>

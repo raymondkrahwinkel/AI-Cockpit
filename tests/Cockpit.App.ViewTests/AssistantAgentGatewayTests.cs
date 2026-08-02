@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia.Threading;
 using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
@@ -623,7 +624,16 @@ public class AssistantAgentGatewayTests
             [new SessionProfile(ProfileLabel, new ClaudeConfig(@"C:\fake\.claude"))]));
 
         var trail = new RecordingSpawnTrail();
-        return (new AssistantAgentGateway(cockpit, profiles, trail), cockpit, trail);
+        return (
+            new AssistantAgentGateway(
+                cockpit,
+                profiles,
+                trail,
+                Substitute.For<IWorkspaceAgentGateway>(),
+                Substitute.For<IAgentMessageInbox>(),
+                Substitute.For<IAgentNotifyAuditLog>()),
+            cockpit,
+            trail);
     }
 
     /// <summary>
