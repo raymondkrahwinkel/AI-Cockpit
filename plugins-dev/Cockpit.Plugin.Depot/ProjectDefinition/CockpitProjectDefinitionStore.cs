@@ -8,7 +8,10 @@ namespace Cockpit.Plugin.Depot.ProjectDefinition;
 /// Reads and writes <c>.cockpit/project.json</c> in a Depot project through a connection's own MCP server (AC-244), the same <see cref="ICockpitHost.CallMcpToolAsync"/> seam <see cref="DepotMemorySource"/> already uses for <c>list_projects</c>.
 /// </summary>
 // AC-244: a baseChecksum mismatch on write surfaces as an ordinary PluginMcpToolCallOutcome.Failed with Depot's own
-// error text — there is no separate conflict signal to detect, so WriteAsync does not invent one either.
+// error text — Depot's MCP layer carries no separate, typed conflict signal (its tool wrapper turns any handler
+// failure, conflict or otherwise, into the same shape: an error with only a message). AC-247 classifies that text
+// after the fact instead (see CockpitProjectDefinitionWriteResult.Failed) — WriteAsync itself stays a thin,
+// unopinionated relay of whatever Depot said.
 public static class CockpitProjectDefinitionStore
 {
     public const string DefinitionPath = ".cockpit/project.json";
@@ -33,10 +36,23 @@ public static class CockpitProjectDefinitionStore
     }
 
     /// <param name="baseChecksum">From a prior <see cref="ReadAsync"/> — omit only for a project's first write.</param>
+    /// <param name="callerRole">
+    /// The caller's <see cref="CockpitProjectRole"/> on this project, when already known (e.g. from a prior
+    /// <c>list_projects</c> row) — a role below Editor short-circuits here with
+    /// <see cref="CockpitProjectDefinitionWriteResult.PermissionDenied"/> and never calls Depot at all. Omit (the
+    /// default) to skip this local check and rely solely on Depot's own enforcement, which always applies
+    /// regardless — this parameter only saves the round trip and lets a caller name the reason before it dims a
+    /// field, it grants nothing Depot itself would not already refuse.
+    /// </param>
     public static async Task<CockpitProjectDefinitionWriteResult> WriteAsync(
         ICockpitHost host, string mcpServerName, string depotProjectSlug, CockpitProjectDefinition definition,
-        string? baseChecksum, CancellationToken cancellationToken = default)
+        string? baseChecksum, CockpitProjectRole? callerRole = null, CancellationToken cancellationToken = default)
     {
+        if (callerRole is { } role && !role.CanWrite())
+        {
+            return CockpitProjectDefinitionWriteResult.PermissionDenied(role.WriteDeniedReason());
+        }
+
         var arguments = new Dictionary<string, object?>
         {
             ["project"] = depotProjectSlug,
