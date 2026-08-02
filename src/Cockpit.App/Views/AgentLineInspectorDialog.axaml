@@ -1,0 +1,164 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.AgentLineInspectorDialog"
+        x:DataType="vm:AgentLineInspectorViewModel"
+        Title="Agent line"
+        Width="880" Height="600"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:AgentLineInspectorViewModel/>
+    </Design.DataContext>
+
+    <DockPanel Margin="16">
+
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4"
+                   Text="What the agents on this desk have been saying to each other. You are not in this path — nothing here was typed by you, and nothing here can be answered from this window."
+                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,12" Text="{Binding DeskNote}"
+                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                   IsVisible="{Binding DeskNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+        <!-- Refresh and Close only. There is deliberately no third button: a window that could send, wake or release
+             from here would put the operator into the message path this exists to observe from outside. -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+            <Button Grid.Column="0" Classes="Subtle Compact"
+                    HorizontalAlignment="Left" Command="{Binding RefreshCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12"/>
+                    <TextBlock Text="Refresh"/>
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Content="Close" Click="OnClose"/>
+        </Grid>
+
+        <!-- Empty looks empty, not broken: one sentence saying which kind of empty this is. -->
+        <TextBlock DockPanel.Dock="Top" Text="{Binding EmptyNote}" Margin="0,8,0,0"
+                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="12" TextWrapping="Wrap"
+                   IsVisible="{Binding EmptyNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+        <ScrollViewer>
+            <StackPanel Spacing="12">
+
+                <StackPanel Spacing="4" IsVisible="{Binding Gaps.Count}">
+                    <TextBlock Text="Not heard from" FontWeight="SemiBold" FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <ItemsControl ItemsSource="{Binding Gaps}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AgentLineGapRow">
+                                <Border Padding="8,6" Margin="0,1" CornerRadius="{StaticResource CockpitControlRadius}"
+                                        Background="{StaticResource CockpitSecondaryBgBrush}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding PaneId}" FontSize="12" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Note}" FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding Claims.Count}">
+                    <TextBlock Text="Claimed right now" FontWeight="SemiBold" FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <ItemsControl ItemsSource="{Binding Claims}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AgentLineClaimRow">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="8,3">
+                                    <TextBlock Grid.Column="0" Text="{Binding Resource}" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding HeldBy}" FontSize="11"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <!-- The age, because a claim that has stood for hours is what an agent that went
+                                         away without releasing leaves behind, and nothing expires it. -->
+                                    <TextBlock Grid.Column="2" Text="{Binding Age}" FontSize="11"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding Wakes.Count}">
+                    <TextBlock Text="Wakes asked for" FontWeight="SemiBold" FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <ItemsControl ItemsSource="{Binding Wakes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AgentLineWakeRow">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="8,3">
+                                    <TextBlock Grid.Column="0" Text="{Binding When}" FontSize="11"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <TextBlock Grid.Column="1" FontSize="12" TextTrimming="CharacterEllipsis">
+                                        <Run Text="{Binding From}"/><Run Text=" → "/><Run Text="{Binding To}"/>
+                                    </TextBlock>
+                                    <TextBlock Grid.Column="2" Text="{Binding Outcome}" FontSize="11"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding Budget.Count}">
+                    <TextBlock Text="Against the rate limit" FontWeight="SemiBold" FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <ItemsControl ItemsSource="{Binding Budget}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AgentLineBudgetRow">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="8,3">
+                                    <TextBlock Grid.Column="0" Text="{Binding PaneId}" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Activity}" FontSize="11"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Spent}" FontSize="11"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding Messages.Count}">
+                    <TextBlock Text="Messages" FontWeight="SemiBold" FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <ItemsControl ItemsSource="{Binding Messages}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AgentLineMessageRow">
+                                <Border Padding="8,6" Margin="0,1" CornerRadius="{StaticResource CockpitControlRadius}"
+                                        Background="{StaticResource CockpitSecondaryBgBrush}">
+                                    <StackPanel Spacing="2">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0" Text="{Binding When}" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                            <TextBlock Grid.Column="1" FontSize="12" TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding From}"/><Run Text=" → "/><Run Text="{Binding To}"/>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="2" Text="{Binding Kind}" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                            <!-- Refusals sit in the same list as accepted sends, spelled out: a
+                                                 stream of them is the thing worth finding later, and a list of only
+                                                 what succeeded would not show it. -->
+                                            <TextBlock Grid.Column="3" Text="{Binding Outcome}" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding Body}" FontSize="11" TextWrapping="Wrap"
+                                                   MaxLines="3" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

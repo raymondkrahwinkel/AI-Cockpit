@@ -300,6 +300,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.</summary>
     public DelegatedTasksViewModel DelegatedTasks { get; }
 
+    /// <summary>The operator's read-only view on the agent line (AC-397) — the only window on traffic they are not part of.</summary>
+    public AgentLineInspectorViewModel AgentLineInspector { get; } = new();
+
     /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
     public WorktreesViewModel Worktrees { get; }
 
@@ -2521,6 +2524,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAgentMessageInbox? agentMessages = null,
         IAgentResourceClaims? agentClaims = null,
         IAgentLineBudget? agentLineBudget = null,
+        IAgentNotifyAuditLog? agentNotifyTrail = null,
         IClaimCollisionMonitor? claimCollisionMonitor = null,
         SessionStateRecorder? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
@@ -2682,6 +2686,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentClaims = agentClaims;
         _agentLineBudget = agentLineBudget;
         _claimCollisionMonitor = claimCollisionMonitor;
+
+        // AC-397. Built here rather than injected, because it is only useful with all four stores present and this is
+        // the one place that holds them; a graph missing any of them gets the design-time shape, which says so in the
+        // window instead of drawing empty lists.
+        //
+        // Deliberately *not* given IWorkspaceAgentGateway, though that is where "who shares this desk" properly
+        // lives. That gateway is constructed from this view model, so depending on it here is a cycle — and a
+        // container follows it until the stack runs out, which is a crashed process rather than a failed resolve.
+        // The desk is worked out below from the same SessionWorkspacePlacement rule the gateway itself applies, so
+        // there is one rule and not two; what is duplicated is the call, not the decision.
+        AgentLineInspector = agentCoordinator is not null && agentClaims is not null && agentLineBudget is not null
+                && agentNotifyTrail is not null
+            ? new AgentLineInspectorViewModel(agentNotifyTrail, agentClaims, agentLineBudget, agentCoordinator)
+            : new AgentLineInspectorViewModel();
+        // Read fresh on every refresh rather than captured, because the desk follows the operator's selection.
+        AgentLineInspector.Desk = _SelectedSessionDesk;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
@@ -5297,6 +5317,54 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _dialogService.ShowDelegatedTasksDialogAsync();
+    }
+
+    /// <summary>
+    /// The desk the selected session is on, and the agent panes sharing it (AC-397) — the same answer
+    /// <c>WorkspaceAgentGateway</c> gives an agent asking who its neighbours are, worked out here through the same
+    /// <see cref="SessionWorkspacePlacement"/> rule because depending on that gateway from this view model is the
+    /// cycle it is built on top of.
+    /// <para>
+    /// Null when nothing is selected, when the selection is a plain terminal pane (no agent on the other end), or
+    /// when it sits on no desk at all — the three cases where there is no line to report on rather than an empty one.
+    /// </para>
+    /// </summary>
+    private AgentLineDesk? _SelectedSessionDesk()
+    {
+        if (SelectedSession is not { ShowPluginHeaderItems: true } selected)
+        {
+            return null;
+        }
+
+        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+        if (SessionWorkspacePlacement.Resolve(selected, firstSessionsWorkspaceId) is not { } workspaceId)
+        {
+            return null;
+        }
+
+        return new AgentLineDesk(
+            workspaceId,
+            AllSessions()
+                .Where(candidate => candidate.ShowPluginHeaderItems
+                    && SessionWorkspacePlacement.Resolve(candidate, firstSessionsWorkspaceId) == workspaceId)
+                .Select(candidate => candidate.PaneId)
+                .ToHashSet(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// Opens the agent-line inspector (AC-397). The operator is not in the message path, so without this the traffic
+    /// between agents on their own desk is invisible to them — including the wakes one agent asked for on another's
+    /// session, and the refusals nobody was told about.
+    /// </summary>
+    [RelayCommand]
+    private async Task ShowAgentLineAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowAgentLineInspectorDialogAsync(AgentLineInspector);
     }
 
     [RelayCommand]
