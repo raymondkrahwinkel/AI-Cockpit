@@ -9,7 +9,7 @@
         x:DataType="vm:FirstRunWizardViewModel"
         Icon="/Assets/AppIcon.ico"
         Title="{x:Static config:CockpitBrand.ProductName}"
-        Width="620" Height="480" CanResize="False"
+        Width="880" Height="680" MinWidth="620" MinHeight="480" CanResize="True"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource CockpitPanelBgBrush}">
 
