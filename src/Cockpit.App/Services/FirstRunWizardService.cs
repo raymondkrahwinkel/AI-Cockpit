@@ -6,18 +6,14 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Opens the first-run wizard shell (AC-509) and marks it complete once the window closes — Skip, Next on the
-/// last step, or the operator dismissing it some other way all reach the same <c>Closed</c> event, so there is one
-/// place that sets the flag rather than one per way of leaving. This is the Help menu's "Run setup again" route
-/// (AC-512): running it again does not undo anything an earlier run installed, it just walks the same steps once
-/// more against whatever state exists now.
-/// </summary>
-/// <remarks>
-/// The startup gate does not go through here — see <c>App._ShowOnboardingWizard</c>'s own remarks for why the
-/// cockpit-already-running shape this method assumes does not fit a wizard that has to replace the main window
-/// before one exists.
-/// </remarks>
+// Opens the first-run wizard shell (AC-509) and marks it complete once the window closes — Skip, Next on the
+// last step, or the operator dismissing it some other way all reach the same `Closed` event, so there is one
+// place that sets the flag rather than one per way of leaving. This is the Help menu's "Run setup again" route
+// (AC-512): running it again does not undo anything an earlier run installed, it just walks the same steps once
+// more against whatever state exists now.
+// The startup gate does not go through here — see `App._ShowOnboardingWizard`'s own remarks for why the
+// cockpit-already-running shape this method assumes does not fit a wizard that has to replace the main window
+// before one exists.
 internal sealed class FirstRunWizardService(IEnumerable<IFirstRunWizardStep> steps, IFirstRunWizardStateStore stateStore)
     : IFirstRunWizard, ISingletonService
 {

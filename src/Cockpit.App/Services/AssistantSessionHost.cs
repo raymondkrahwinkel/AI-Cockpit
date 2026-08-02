@@ -12,55 +12,44 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Spins up the voice assistant's own session and owns it (AC-543, decision 3).
-/// </summary>
-/// <remarks>
-/// <b>Why the host makes it.</b> The assistant gets to see across every workspace, which is a level of reach no
-/// ordinary session has. If it were started the way other sessions are — through the delegation path, or as a pane
-/// — then "which session is the assistant" would be a claim something makes, and a claim can be made by anything
-/// that learns to make it. Here the host builds the instance and keeps the only reference to it, so the answer is
-/// settled by construction: <see cref="Session"/> <em>is</em> the assistant, and there is no sentence an agent can
-/// say that puts it in this field.
-/// <para>
-/// <b>Lazily.</b> Nothing starts at app start — not on the first render, not on a timer. The first hold of the
-/// assistant hotkey or the first click on the chip is what brings it up, so an operator who has the feature on but
-/// never uses it pays for no model in memory and no session on a bill. The first-time wait is visible in the
-/// indicator (<see cref="AssistantActivity.Thinking"/> while it comes up) rather than spent as silence.
-/// </para>
-/// <para>
-/// <b>And it comes back.</b> A delegated task reaps itself when it is done; this does the opposite. A session that
-/// falls over quietly is only discovered the next time you ask it something — the silence this product refuses
-/// everywhere else — so <see cref="EnsureStartedAsync"/> notices a dead instance and stands a new one up in its
-/// place, resuming the same conversation. <see cref="RestartAsync"/> is the operator asking for the same thing on
-/// a healthy one, which is what makes a setting that can only be chosen at a launch reachable at all.
-/// </para>
-/// <para>
-/// <b>The conversation outlives everything.</b> The pop-out window is a view onto this session, never its owner:
-/// closing it leaves the instance running. Across a restart the thread is picked up the way every other session
-/// does it (AC-409/AC-410) — the state store's last record for <see cref="AssistantPaneId"/> names the
-/// conversation, and the start resumes it. No separate retention rule of its own, deliberately: this surface is
-/// the audit trail, and one that emptied on every restart would protect nothing.
-/// </para>
-/// <para>
-/// It implements <see cref="IAssistantSessionHost"/> only so the chat window can be built against something a
-/// test and the screenshotter can stand in for — this class needs a whole <c>CockpitViewModel</c> behind it. The
-/// interface is not a seam for a second implementation: there is one assistant, and that there is exactly one is
-/// the point.
-/// </para>
-/// </remarks>
+// Spins up the voice assistant's own session and owns it (AC-543, decision 3).
+// *Why the host makes it.* The assistant gets to see across every workspace, which is a level of reach no
+// ordinary session has. If it were started the way other sessions are — through the delegation path, or as a pane
+// — then "which session is the assistant" would be a claim something makes, and a claim can be made by anything
+// that learns to make it. Here the host builds the instance and keeps the only reference to it, so the answer is
+// settled by construction: `Session` *is* the assistant, and there is no sentence an agent can
+// say that puts it in this field.
+//
+// *Lazily.* Nothing starts at app start — not on the first render, not on a timer. The first hold of the
+// assistant hotkey or the first click on the chip is what brings it up, so an operator who has the feature on but
+// never uses it pays for no model in memory and no session on a bill. The first-time wait is visible in the
+// indicator (`AssistantActivity.Thinking` while it comes up) rather than spent as silence.
+//
+// *And it comes back.* A delegated task reaps itself when it is done; this does the opposite. A session that
+// falls over quietly is only discovered the next time you ask it something — the silence this product refuses
+// everywhere else — so `EnsureStartedAsync` notices a dead instance and stands a new one up in its
+// place, resuming the same conversation. `RestartAsync` is the operator asking for the same thing on
+// a healthy one, which is what makes a setting that can only be chosen at a launch reachable at all.
+//
+// *The conversation outlives everything.* The pop-out window is a view onto this session, never its owner:
+// closing it leaves the instance running. Across a restart the thread is picked up the way every other session
+// does it (AC-409/AC-410) — the state store's last record for `AssistantPaneId` names the
+// conversation, and the start resumes it. No separate retention rule of its own, deliberately: this surface is
+// the audit trail, and one that emptied on every restart would protect nothing.
+//
+// It implements `IAssistantSessionHost` only so the chat window can be built against something a
+// test and the screenshotter can stand in for — this class needs a whole `CockpitViewModel` behind it. The
+// interface is not a seam for a second implementation: there is one assistant, and that there is exactly one is
+// the point.
 public sealed partial class AssistantSessionHost : ObservableObject, ISingletonService, IAssistantSessionHost
 {
-    /// <summary>
-    /// The pane id the assistant is always known by. Fixed rather than a fresh guid per launch: the state store
-    /// keys the last conversation on the pane, so an id that changed every start would leave yesterday's
-    /// conversation on disk under a name nothing looks up again.
-    /// <para>
-    /// Now also the identity the broad read tools check against (AC-544), which is why the value itself lives in
-    /// Core: Infrastructure hosts those tools and cannot see this assembly, and two copies of a guardrail's
-    /// constant is a guardrail that can quietly stop matching.
-    /// </para>
-    /// </summary>
+    // The pane id the assistant is always known by. Fixed rather than a fresh guid per launch: the state store
+    // keys the last conversation on the pane, so an id that changed every start would leave yesterday's
+    // conversation on disk under a name nothing looks up again.
+    //
+    // Now also the identity the broad read tools check against (AC-544), which is why the value itself lives in
+    // Core: Infrastructure hosts those tools and cannot see this assembly, and two copies of a guardrail's
+    // constant is a guardrail that can quietly stop matching.
     internal const string AssistantPaneId = AssistantIdentity.PaneId;
 
     private readonly CockpitViewModel _cockpit;
@@ -70,7 +59,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private readonly IMcpServerCatalog _mcpServers;
     private readonly ILogger<AssistantSessionHost> _logger;
 
-    /// <summary>Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.</summary>
+    // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
 
     public AssistantSessionHost(
@@ -89,42 +78,34 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _logger = logger;
     }
 
-    /// <summary>The living assistant instance, or null while it has not been woken yet. The one reference there is.</summary>
+    // The living assistant instance, or null while it has not been woken yet. The one reference there is.
     [ObservableProperty]
     private SessionViewModel? _session;
 
-    /// <summary>What the indicator reports. Fed from here rather than read off the session, because "off" and "never started" are states no session exists to report.</summary>
+    // What the indicator reports. Fed from here rather than read off the session, because "off" and "never started" are states no session exists to report.
     [ObservableProperty]
     private AssistantActivity _activity = AssistantActivity.Unavailable;
 
-    /// <summary>
-    /// Why the assistant cannot be reached, in words for the operator — the feature is off, no profile is set, or
-    /// the start failed. Non-null exactly while <see cref="Activity"/> is <see cref="AssistantActivity.Unavailable"/>:
-    /// an unavailable chip that does not say why sends someone into Options looking for a setting that is not the
-    /// problem.
-    /// </summary>
+    // Why the assistant cannot be reached, in words for the operator — the feature is off, no profile is set, or
+    // the start failed. Non-null exactly while `Activity` is `AssistantActivity.Unavailable`:
+    // an unavailable chip that does not say why sends someone into Options looking for a setting that is not the
+    // problem.
     [ObservableProperty]
     private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Voice.";
 
-    /// <summary>
-    /// The Assistant Profile's provider/model, formatted with <see cref="ProfileDisplay.Format"/> — the same
-    /// convention every other profile picker in the app already uses, rather than a bespoke string invented for
-    /// this one chip. Fed to the indicator as its Ready-state subtitle (AC-543 vormgeving pass, criterion 3: the
-    /// question a Ready chip answers is "which model am I about to talk to"). Null until a profile has actually
-    /// been read — an unset/unreadable profile leaves the chip with no subtitle rather than a stale one.
-    /// </summary>
+    // The Assistant Profile's provider/model, formatted with `ProfileDisplay.Format` — the same
+    // convention every other profile picker in the app already uses, rather than a bespoke string invented for
+    // this one chip. Fed to the indicator as its Ready-state subtitle (AC-543 vormgeving pass, criterion 3: the
+    // question a Ready chip answers is "which model am I about to talk to"). Null until a profile has actually
+    // been read — an unset/unreadable profile leaves the chip with no subtitle rather than a stale one.
     [ObservableProperty]
     private string? _profileLabel;
 
-    /// <summary>
-    /// The assistant hotkey went down or came back up. Reported here rather than left for the indicator to infer
-    /// from the shared voice pill — see <see cref="IAssistantSessionHost.ReportHoldListening"/> for what that
-    /// inference got wrong.
-    /// </summary>
-    /// <remarks>
-    /// Only moves between Ready and Listening: a hold that ends hands over to <see cref="SendAsync"/>, which sets
-    /// Thinking, and neither may overwrite an Unavailable the operator still needs to read.
-    /// </remarks>
+    // The assistant hotkey went down or came back up. Reported here rather than left for the indicator to infer
+    // from the shared voice pill — see `IAssistantSessionHost.ReportHoldListening` for what that
+    // inference got wrong.
+    // Only moves between Ready and Listening: a hold that ends hands over to `SendAsync`, which sets
+    // Thinking, and neither may overwrite an Unavailable the operator still needs to read.
     public void ReportHoldListening(bool listening)
     {
         if (listening)
@@ -143,52 +124,41 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    /// <summary>
-    /// Brings the assistant up if it is not already, and returns it. Idempotent, and the recovery path too: an
-    /// instance that died is replaced rather than handed back dead.
-    /// </summary>
-    /// <remarks>
-    /// Never throws. Its callers are a hotkey handler and a click handler, neither of which has anywhere to put an
-    /// exception — and what a swallowed one would take with it is the assistant, silently. A failed start leaves
-    /// <see cref="Activity"/> on <see cref="AssistantActivity.Unavailable"/> with the reason set, which is the
-    /// chip saying out loud what the log used to say alone.
-    /// </remarks>
+    // Brings the assistant up if it is not already, and returns it. Idempotent, and the recovery path too: an
+    // instance that died is replaced rather than handed back dead.
+    // Never throws. Its callers are a hotkey handler and a click handler, neither of which has anywhere to put an
+    // exception — and what a swallowed one would take with it is the assistant, silently. A failed start leaves
+    // `Activity` on `AssistantActivity.Unavailable` with the reason set, which is the
+    // chip saying out loud what the log used to say alone.
     public Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(replaceALiveInstance: false, cancellationToken);
 
-    /// <summary>
-    /// Stands the assistant down and brings it straight back up on the same conversation — the operator's way to
-    /// make a start-time setting take effect without closing the cockpit.
-    /// </summary>
-    /// <remarks>
-    /// <b>Why a restart has to exist at all.</b> A permission mode is chosen at a start and, for
-    /// <c>bypassPermissions</c>, only at a start: the CLI cannot be switched into or out of bypass live, which is
-    /// why <see cref="SessionOptionCatalog"/> keeps <c>LivePermissionModes</c> apart from <c>AllPermissionModes</c>
-    /// (bug #15, and the no-dead-controls convention). Every other session gets its next start for free — it is
-    /// closed and opened again. The assistant cannot be closed: it is not in the grid, its window is a peephole
-    /// that deliberately never ends it, and <see cref="EnsureStartedAsync"/> only replaces an instance that is
-    /// already <em>dead</em>. So "this applies at the next start" was a sentence with no next start behind it.
-    /// <para>
-    /// <b>The conversation is kept.</b> This is a restart, not a reset: it runs the same
-    /// <see cref="_StartAsync"/> as every other start, which resumes through <see cref="_ResolveResumeAsync"/> —
-    /// the state store's last record for <see cref="AssistantPaneId"/>. Losing the thread here would defeat the
-    /// whole reason that record exists, and this surface is the audit trail.
-    /// </para>
-    /// <para>
-    /// <b>And it is the same teardown.</b> Not a second one: <see cref="_DisposeQuietlyAsync"/> is what the
-    /// replace-a-dead-instance path already runs, so a turn in flight, the host's own subscription, the cockpit's
-    /// consent routing and an unanswered consent card are all handled once, in one place, however the instance
-    /// came to be replaced.
-    /// </para>
-    /// </remarks>
+    // Stands the assistant down and brings it straight back up on the same conversation — the operator's way to
+    // make a start-time setting take effect without closing the cockpit.
+    // *Why a restart has to exist at all.* A permission mode is chosen at a start and, for
+    // `bypassPermissions`, only at a start: the CLI cannot be switched into or out of bypass live, which is
+    // why `SessionOptionCatalog` keeps `LivePermissionModes` apart from `AllPermissionModes`
+    // (bug #15, and the no-dead-controls convention). Every other session gets its next start for free — it is
+    // closed and opened again. The assistant cannot be closed: it is not in the grid, its window is a peephole
+    // that deliberately never ends it, and `EnsureStartedAsync` only replaces an instance that is
+    // already *dead*. So "this applies at the next start" was a sentence with no next start behind it.
+    //
+    // *The conversation is kept.* This is a restart, not a reset: it runs the same
+    // `_StartAsync` as every other start, which resumes through `_ResolveResumeAsync` —
+    // the state store's last record for `AssistantPaneId`. Losing the thread here would defeat the
+    // whole reason that record exists, and this surface is the audit trail.
+    //
+    // *And it is the same teardown.* Not a second one: `_DisposeQuietlyAsync` is what the
+    // replace-a-dead-instance path already runs, so a turn in flight, the host's own subscription, the cockpit's
+    // consent routing and an unanswered consent card are all handled once, in one place, however the instance
+    // came to be replaced.
     public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(replaceALiveInstance: true, cancellationToken);
 
-    /// <param name="replaceALiveInstance">
-    /// Whether a healthy instance is torn down too. False is <see cref="EnsureStartedAsync"/>'s idempotent lazy
-    /// start; true is <see cref="RestartAsync"/>. One body rather than two so both take the same start gate — a
-    /// restart racing a hotkey hold must not build two instances any more than two holds may.
-    /// </param>
+    // `replaceALiveInstance`:
+    // Whether a healthy instance is torn down too. False is `EnsureStartedAsync`'s idempotent lazy
+    // start; true is `RestartAsync`. One body rather than two so both take the same start gate — a
+    // restart racing a hotkey hold must not build two instances any more than two holds may.
     private async Task<SessionViewModel?> _StartOrReplaceAsync(bool replaceALiveInstance, CancellationToken cancellationToken)
     {
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
@@ -225,11 +195,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    /// <summary>
-    /// Sends one utterance or typed line to the assistant, starting it first if this is the first time. The single
-    /// entry point for both input paths, so speaking and typing reach the same conversation by the same route —
-    /// which is what makes the assistant fully usable with no microphone at all.
-    /// </summary>
+    // Sends one utterance or typed line to the assistant, starting it first if this is the first time. The single
+    // entry point for both input paths, so speaking and typing reach the same conversation by the same route —
+    // which is what makes the assistant fully usable with no microphone at all.
     public async Task SendAsync(string text, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -249,10 +217,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         session.InjectAndSubmit(text.Trim());
     }
 
-    /// <summary>
-    /// Re-reads the settings and stands the assistant down if the feature was switched off — including mid-sentence,
-    /// which is the point: whoever clicks off wants silence, not one more paragraph.
-    /// </summary>
+    // Re-reads the settings and stands the assistant down if the feature was switched off — including mid-sentence,
+    // which is the point: whoever clicks off wants silence, not one more paragraph.
     public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -355,33 +321,26 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         return session;
     }
 
-    /// <summary>
-    /// Gives the assistant's session what it needs to actually be heard — decision 2's "TTS erna", which nothing
-    /// was doing.
-    /// </summary>
-    /// <remarks>
-    /// <b>Why it has to be done here at all.</b> Nothing else seeds a starting session's speech: the cockpit's
-    /// voice fan-out fires on an Options save, and a session started after the last save would keep the bare
-    /// defaults — <c>ReadResponsesAloud</c> false, which makes the read-aloud flush return before it speaks a word,
-    /// and <c>ReadAloudLanguage</c> "en", which would read Dutch replies in an English voice. The operator heard
-    /// nothing at all and there was nothing on screen to say why.
-    /// <para>
-    /// Called from <see cref="ApplySettingsAsync"/> as well as from the start, so an Options save reaches the
-    /// running instance. The voice and language additionally arrive through the cockpit's own fan-out, which now
-    /// includes the assistant; both routes write the same two values, and neither is load-bearing alone — the
-    /// fan-out does not fire at start, and this does not fire when only the voice settings are saved.
-    /// </para>
-    /// <para>
-    /// <b>Read-aloud speaks the reply verbatim, never a rewrite.</b> AC-542 decision 10 is explicit that the
-    /// assistant's words go out one-to-one: what shortens a 300-word answer is
-    /// <see cref="AssistantSystemPrompt.Default"/>, not a rewrite afterwards. Read-aloud has no rewrite step left
-    /// to pick a mode for (AC-546) — it only ever extracts and speaks the prose as-is.
-    /// </para>
-    /// <para>
-    /// The voice and language do follow the operator's settings, read off the cockpit's already-resolved
-    /// selections — the same values the fan-out to ordinary sessions uses, rather than a second copy of them.
-    /// </para>
-    /// </remarks>
+    // Gives the assistant's session what it needs to actually be heard — decision 2's "TTS erna", which nothing
+    // was doing.
+    // *Why it has to be done here at all.* Nothing else seeds a starting session's speech: the cockpit's
+    // voice fan-out fires on an Options save, and a session started after the last save would keep the bare
+    // defaults — `ReadResponsesAloud` false, which makes the read-aloud flush return before it speaks a word,
+    // and `ReadAloudLanguage` "en", which would read Dutch replies in an English voice. The operator heard
+    // nothing at all and there was nothing on screen to say why.
+    //
+    // Called from `ApplySettingsAsync` as well as from the start, so an Options save reaches the
+    // running instance. The voice and language additionally arrive through the cockpit's own fan-out, which now
+    // includes the assistant; both routes write the same two values, and neither is load-bearing alone — the
+    // fan-out does not fire at start, and this does not fire when only the voice settings are saved.
+    //
+    // *Read-aloud speaks the reply verbatim, never a rewrite.* AC-542 decision 10 is explicit that the
+    // assistant's words go out one-to-one: what shortens a 300-word answer is
+    // `AssistantSystemPrompt.Default`, not a rewrite afterwards. Read-aloud has no rewrite step left
+    // to pick a mode for (AC-546) — it only ever extracts and speaks the prose as-is.
+    //
+    // The voice and language do follow the operator's settings, read off the cockpit's already-resolved
+    // selections — the same values the fan-out to ordinary sessions uses, rather than a second copy of them.
     private void _ApplySpeech(SessionViewModel session, AssistantSettings settings)
     {
         // One synthesis for the whole reply instead of one per sentence. Measured on this machine, sentence-by-
@@ -394,11 +353,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         session.ReadResponsesAloud = settings.SpeakReplies;
     }
 
-    /// <summary>
-    /// Turns speaking on or off on the live session, so the header toggle takes effect on the next reply rather
-    /// than at the next restart. Does not stop what is already playing — that is the toggle's own job, and it
-    /// already does it (AC-543 criterion 9: off breaks off mid-sentence).
-    /// </summary>
+    // Turns speaking on or off on the live session, so the header toggle takes effect on the next reply rather
+    // than at the next restart. Does not stop what is already playing — that is the toggle's own job, and it
+    // already does it (AC-543 criterion 9: off breaks off mid-sentence).
     public void SetSpeakReplies(bool speak)
     {
         if (Session is { } session)
@@ -422,40 +379,32 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    /// <summary>
-    /// Maps the session's own status onto what the chip reports.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately narrow. It only ever moves between <see cref="AssistantActivity.Thinking"/> and
-    /// <see cref="AssistantActivity.Ready"/>, and it refuses to speak over the two states the host owns and the
-    /// session knows nothing about: <see cref="AssistantActivity.Unavailable"/> is a fact about the feature rather
-    /// than about a turn, and <see cref="AssistantActivity.Listening"/> is a key being held right now — a turn
-    /// completing mid-hold must not tell the operator the microphone closed.
-    /// <para>
-    /// Written as the set that means "working" rather than the set that means "done", so a status added later
-    /// arrives as Ready and has to be argued into Thinking deliberately — the same direction
-    /// <c>WorkspaceAgentGateway</c>'s wake check is written in, and for the same reason.
-    /// </para>
-    /// </remarks>
+    // Maps the session's own status onto what the chip reports.
+    // Deliberately narrow. It only ever moves between `AssistantActivity.Thinking` and
+    // `AssistantActivity.Ready`, and it refuses to speak over the two states the host owns and the
+    // session knows nothing about: `AssistantActivity.Unavailable` is a fact about the feature rather
+    // than about a turn, and `AssistantActivity.Listening` is a key being held right now — a turn
+    // completing mid-hold must not tell the operator the microphone closed.
+    //
+    // Written as the set that means "working" rather than the set that means "done", so a status added later
+    // arrives as Ready and has to be argued into Thinking deliberately — the same direction
+    // `WorkspaceAgentGateway`'s wake check is written in, and for the same reason.
     private void _SyncActivityWithSession(SessionViewModel session) =>
         // Either kind of waiting counts: the SDK's own permission row, and the cockpit's consent gate for a
         // host-side tool. Both stop the turn dead until somebody clicks, and the chip's job is to say so.
         Activity = ActivityFor(Activity, session.IsBusy, session.HasPendingPermission || session.PendingConsent is not null);
 
-    /// <summary>The rule itself, as a pure function so it can be asserted directly. Internal for that and no other caller.</summary>
-    /// <remarks>
-    /// <b>Both inputs are read raw, and neither is <see cref="SessionPanelViewModel.SessionStatus"/>.</b> That
-    /// status is derived for a different audience and carries a deliberate stickiness this surface cannot use:
-    /// <c>_needsAttention</c> is set when a prompt appears and cleared only when the operator sends their next
-    /// message, and it outranks busy in the derivation. Reading it cost two wrong chips in a row — first stuck on
-    /// "Needs you" long after the approval was given and the reply spoken, then, once the pending flag was read
-    /// properly, stuck on "Ready" while the assistant was plainly working, because a session that still carries
-    /// NeedsAttention never reports Busy at all. Right for a sidebar you are not looking at; useless for a chip
-    /// that answers "what is it doing right now".
-    /// <para>
-    /// So: is a decision waiting, and is it working. Two facts, each read from where it actually lives.
-    /// </para>
-    /// </remarks>
+    // The rule itself, as a pure function so it can be asserted directly. Internal for that and no other caller.
+    // *Both inputs are read raw, and neither is `SessionPanelViewModel.SessionStatus`.* That
+    // status is derived for a different audience and carries a deliberate stickiness this surface cannot use:
+    // `_needsAttention` is set when a prompt appears and cleared only when the operator sends their next
+    // message, and it outranks busy in the derivation. Reading it cost two wrong chips in a row — first stuck on
+    // "Needs you" long after the approval was given and the reply spoken, then, once the pending flag was read
+    // properly, stuck on "Ready" while the assistant was plainly working, because a session that still carries
+    // NeedsAttention never reports Busy at all. Right for a sidebar you are not looking at; useless for a chip
+    // that answers "what is it doing right now".
+    //
+    // So: is a decision waiting, and is it working. Two facts, each read from where it actually lives.
     internal static AssistantActivity ActivityFor(
         AssistantActivity current, bool isBusy, bool hasPendingPermission) => current switch
     {
@@ -466,14 +415,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _ => isBusy ? AssistantActivity.Thinking : AssistantActivity.Ready,
     };
 
-    /// <summary>
-    /// The conversation to pick up: the one the state store last recorded for this pane, or a fresh one when there
-    /// is none (a first run, or a store that could not be read).
-    /// </summary>
-    /// <remarks>
-    /// Internal so the rule can be asserted directly — a restart's whole promise is that it picks this
-    /// conversation up rather than starting a fresh one, and that promise lives here.
-    /// </remarks>
+    // The conversation to pick up: the one the state store last recorded for this pane, or a fresh one when there
+    // is none (a first run, or a store that could not be read).
+    // Internal so the rule can be asserted directly — a restart's whole promise is that it picks this
+    // conversation up rather than starting a fresh one, and that promise lives here.
     internal async Task<SessionResume> _ResolveResumeAsync(CancellationToken cancellationToken)
     {
         var states = await _sessionState.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -483,32 +428,26 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             : SessionResume.New;
     }
 
-    /// <summary>
-    /// The MCP servers the assistant launches with: what it would have had anyway, plus the broad read server that
-    /// only it may mount (AC-544, criterion 2).
-    /// </summary>
-    /// <remarks>
-    /// <b>This is the mount rule.</b> <c>cockpit-assistant</c> is registered as an internal endpoint, which means it
-    /// never reaches a session through the no-selection fan-out and never appears in a picker for anyone to tick —
-    /// it is mounted only by a launch that names it, and this line is the only one that does. That is exclusion by
-    /// construction rather than by permission check: the reason an ordinary session does not get these tools is that
-    /// nothing hands them to it, not that something decided not to.
-    /// <para>
-    /// <b>Why the rest of the selection has to be spelled out.</b> Passing an explicit set overrides the profile's own
-    /// saved one (<c>McpServerRegistryFilter.EffectiveSessionSelection</c>), and passing <em>only</em> the assistant
-    /// server would therefore leave the assistant with nothing else — no Depot, no YouTrack, none of what the epic
-    /// expects it to reach. So the profile's selection is carried through when it has one, and when it has none the
-    /// set is what the no-selection fan-out would have given it: every enabled server that is a choice at all.
-    /// <c>OfferedToOperator</c> is asked for that rather than a fourth hand-written copy of the same predicate — and
-    /// asking it is also what keeps <em>other</em> internal endpoints out of this set. Widening one privileged
-    /// launch into "and every internal endpoint too" is precisely the accident this rule exists to make impossible.
-    /// </para>
-    /// <para>
-    /// A catalog that cannot be read is not a reason to start with a crippled assistant, but it is also not a reason
-    /// to invent a selection: the failure is logged and the assistant launches with the broad server alone, which is
-    /// the one thing this method is actually responsible for. Reporting less would be a silent downgrade.
-    /// </para>
-    /// </remarks>
+    // The MCP servers the assistant launches with: what it would have had anyway, plus the broad read server that
+    // only it may mount (AC-544, criterion 2).
+    // *This is the mount rule.* `cockpit-assistant` is registered as an internal endpoint, which means it
+    // never reaches a session through the no-selection fan-out and never appears in a picker for anyone to tick —
+    // it is mounted only by a launch that names it, and this line is the only one that does. That is exclusion by
+    // construction rather than by permission check: the reason an ordinary session does not get these tools is that
+    // nothing hands them to it, not that something decided not to.
+    //
+    // *Why the rest of the selection has to be spelled out.* Passing an explicit set overrides the profile's own
+    // saved one (`McpServerRegistryFilter.EffectiveSessionSelection`), and passing *only* the assistant
+    // server would therefore leave the assistant with nothing else — no Depot, no YouTrack, none of what the epic
+    // expects it to reach. So the profile's selection is carried through when it has one, and when it has none the
+    // set is what the no-selection fan-out would have given it: every enabled server that is a choice at all.
+    // `OfferedToOperator` is asked for that rather than a fourth hand-written copy of the same predicate — and
+    // asking it is also what keeps *other* internal endpoints out of this set. Widening one privileged
+    // launch into "and every internal endpoint too" is precisely the accident this rule exists to make impossible.
+    //
+    // A catalog that cannot be read is not a reason to start with a crippled assistant, but it is also not a reason
+    // to invent a selection: the failure is logged and the assistant launches with the broad server alone, which is
+    // the one thing this method is actually responsible for. Reporting less would be a silent downgrade.
     private async Task<IReadOnlySet<string>> _McpSelectionAsync(
         Cockpit.Core.Profiles.SessionProfile profile, CancellationToken cancellationToken)
     {
@@ -531,11 +470,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         return McpSelection(profile, catalog);
     }
 
-    /// <summary>
-    /// The selection itself, as a pure function of the profile and the catalog — so the rule that matters can be
-    /// asserted directly rather than inferred from a started session. Internal for that test and for no other
-    /// caller.
-    /// </summary>
+    // The selection itself, as a pure function of the profile and the catalog — so the rule that matters can be
+    // asserted directly rather than inferred from a started session. Internal for that test and for no other
+    // caller.
     internal static IReadOnlySet<string> McpSelection(
         Cockpit.Core.Profiles.SessionProfile profile, IReadOnlyList<McpServerConfig> catalog)
     {
@@ -559,75 +496,62 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         return selection;
     }
 
-    /// <summary>
-    /// Servers the assistant is deliberately not handed by the no-selection fan-out (AC-545, Raymond 2026-08-01).
-    /// </summary>
-    /// <remarks>
-    /// <b>One name, and the bar for a second one is high.</b> The assistant is meant to be over the whole cockpit
-    /// (AC-545: "hij is overkoepelend over alles"), so a server is kept out only when there is something structural
-    /// wrong with it being here — never because a category of tool feels like a lot of authority to hand to a voice.
-    /// The first draft of this list also held the shell, containers, the cluster, worktrees, the repo's checks and
-    /// its workflows, on that reasoning. It does not hold: every one of those raises its own Allow/Deny row in the
-    /// chat window with the literal action spelled out, which is the same gate this ticket built for spawning. A
-    /// tool that goes through the gate is not a reason to remove the tool.
-    /// <para>
-    /// <c>cockpit-orchestrator</c> is different in kind, not in degree. <c>delegate_task</c> starts real AI work with
-    /// <em>no pane</em>: it appears in no roster, raises no Allow row of the kind this ticket built, and is written
-    /// to no spawn trail — a second way to start work that goes around every guarantee AC-545 put in front of the
-    /// first, rather than through them. Asked for "the same profile but as an SDK session" before
-    /// <c>start_agent</c> had a route parameter, the assistant went looking for it there: a missing parameter and an
-    /// open side door meet, and the guardrail is what loses.
-    /// </para>
-    /// <para>
-    /// Still a default and not a boundary: an operator who wants it here ticks it on the Assistant Profile and gets
-    /// it, selection and all. <c>AlwaysMounted</c> endpoints (<c>cockpit-session</c>, <c>cockpit-agents</c>) are not
-    /// reachable from here by construction — they go to every session whatever any selection says.
-    /// </para>
-    /// </remarks>
+    // Servers the assistant is deliberately not handed by the no-selection fan-out (AC-545, Raymond 2026-08-01).
+    // *One name, and the bar for a second one is high.* The assistant is meant to be over the whole cockpit
+    // (AC-545: "hij is overkoepelend over alles"), so a server is kept out only when there is something structural
+    // wrong with it being here — never because a category of tool feels like a lot of authority to hand to a voice.
+    // The first draft of this list also held the shell, containers, the cluster, worktrees, the repo's checks and
+    // its workflows, on that reasoning. It does not hold: every one of those raises its own Allow/Deny row in the
+    // chat window with the literal action spelled out, which is the same gate this ticket built for spawning. A
+    // tool that goes through the gate is not a reason to remove the tool.
+    //
+    // `cockpit-orchestrator` is different in kind, not in degree. `delegate_task` starts real AI work with
+    // *no pane*: it appears in no roster, raises no Allow row of the kind this ticket built, and is written
+    // to no spawn trail — a second way to start work that goes around every guarantee AC-545 put in front of the
+    // first, rather than through them. Asked for "the same profile but as an SDK session" before
+    // `start_agent` had a route parameter, the assistant went looking for it there: a missing parameter and an
+    // open side door meet, and the guardrail is what loses.
+    //
+    // Still a default and not a boundary: an operator who wants it here ticks it on the Assistant Profile and gets
+    // it, selection and all. `AlwaysMounted` endpoints (`cockpit-session`, `cockpit-agents`) are not
+    // reachable from here by construction — they go to every session whatever any selection says.
     internal static readonly HashSet<string> NotFannedOutToTheAssistant = new(StringComparer.OrdinalIgnoreCase)
     {
         Cockpit.Core.Delegation.DelegationMcp.ServerName,
     };
 
-    /// <summary>
-    /// What the assistant's session launches with: the Assistant Profile's own start defaults, plus the assistant's
-    /// standing instruction on the launch option every provider honours.
-    /// </summary>
-    /// <remarks>
-    /// <b>The profile's defaults are the whole of how a profile is obeyed.</b> A plugin profile does not carry its
-    /// permission mode, model and effort in <c>Defaults.PermissionMode/Model/Effort</c> — those three are legacy,
-    /// kept only for the one-time migration (see <see cref="Cockpit.Core.Profiles.ProfileDefaults"/>'s own
-    /// <c>[Obsolete]</c> notes) — it carries them in the generic <c>OptionDefaults</c> map, which travels as launch
-    /// options and is read by the driver (<c>ClaudeSdkSessionDriver._ResolveOption</c>). Starting that map here is
-    /// exactly what every other launch does: the New-session dialog seeds its option rows from
-    /// <c>OptionDefaults</c> and hands them back as the launch options, and every programmatic start passes
-    /// <c>profile.Defaults?.OptionDefaults</c> straight through (<c>CockpitViewModel._EmbeddedLaunchOptions</c> and
-    /// the plugin/quick-start paths). Without it the assistant was the one session in the app that read a profile
-    /// and then ignored what it said: an operator's <c>bypassPermissions</c> reached the driver as "default" and
-    /// every tool call was still asked about.
-    /// <para>
-    /// <b>The typed mode/model/effort at the call site stay on the app defaults, deliberately.</b> They are the
-    /// fallback, not the answer: <c>PluginSessionDriverAdapter._MergePermissionMode</c> only folds the typed value
-    /// in when the options carry none, so a profile that says nothing lands on the app default and a profile that
-    /// says something wins. Seeding them from the profile instead would be a second answer to "what is this
-    /// profile's default", and two answers is the divergence that put this bug here.
-    /// </para>
-    /// <para>
-    /// 🔴 <b>What that means, and Raymond confirmed it (2026-08-02) with the edge spelled out.</b> The Assistant
-    /// Profile set to <c>bypassPermissions</c> gives a session that can act across <em>every</em> workspace and is
-    /// asked about nothing: the SDK's own Allow/Deny is gone by the mode, and the cockpit's consent card can be
-    /// gone too through AC-575's bypass list. Together there is no gate left that asks anybody anything. That is
-    /// the operator's choice to make on their own machine, and it is written here rather than left to be read back
-    /// as an oversight — see the restart affordance (<see cref="RestartAsync"/>), which exists because
-    /// <c>bypassPermissions</c> can only be chosen at a start, so the choice would otherwise be unreachable
-    /// without closing the cockpit.
-    /// </para>
-    /// <para>
-    /// The assistant's own standing instruction is written last, so it wins over anything the map happens to carry
-    /// on the same key. The profile's own system prompt wins over <see cref="AssistantSystemPrompt.Default"/> —
-    /// that is what "overridable per profile" means.
-    /// </para>
-    /// </remarks>
+    // What the assistant's session launches with: the Assistant Profile's own start defaults, plus the assistant's
+    // standing instruction on the launch option every provider honours.
+    // *The profile's defaults are the whole of how a profile is obeyed.* A plugin profile does not carry its
+    // permission mode, model and effort in `Defaults.PermissionMode/Model/Effort` — those three are legacy,
+    // kept only for the one-time migration (see `Cockpit.Core.Profiles.ProfileDefaults`'s own
+    // `[Obsolete]` notes) — it carries them in the generic `OptionDefaults` map, which travels as launch
+    // options and is read by the driver (`ClaudeSdkSessionDriver._ResolveOption`). Starting that map here is
+    // exactly what every other launch does: the New-session dialog seeds its option rows from
+    // `OptionDefaults` and hands them back as the launch options, and every programmatic start passes
+    // `profile.Defaults?.OptionDefaults` straight through (`CockpitViewModel._EmbeddedLaunchOptions` and
+    // the plugin/quick-start paths). Without it the assistant was the one session in the app that read a profile
+    // and then ignored what it said: an operator's `bypassPermissions` reached the driver as "default" and
+    // every tool call was still asked about.
+    //
+    // *The typed mode/model/effort at the call site stay on the app defaults, deliberately.* They are the
+    // fallback, not the answer: `PluginSessionDriverAdapter._MergePermissionMode` only folds the typed value
+    // in when the options carry none, so a profile that says nothing lands on the app default and a profile that
+    // says something wins. Seeding them from the profile instead would be a second answer to "what is this
+    // profile's default", and two answers is the divergence that put this bug here.
+    //
+    // 🔴 *What that means, and Raymond confirmed it (2026-08-02) with the edge spelled out.* The Assistant
+    // Profile set to `bypassPermissions` gives a session that can act across *every* workspace and is
+    // asked about nothing: the SDK's own Allow/Deny is gone by the mode, and the cockpit's consent card can be
+    // gone too through AC-575's bypass list. Together there is no gate left that asks anybody anything. That is
+    // the operator's choice to make on their own machine, and it is written here rather than left to be read back
+    // as an oversight — see the restart affordance (`RestartAsync`), which exists because
+    // `bypassPermissions` can only be chosen at a start, so the choice would otherwise be unreachable
+    // without closing the cockpit.
+    //
+    // The assistant's own standing instruction is written last, so it wins over anything the map happens to carry
+    // on the same key. The profile's own system prompt wins over `AssistantSystemPrompt.Default` —
+    // that is what "overridable per profile" means.
     internal static IReadOnlyDictionary<string, string> _LaunchOptions(Cockpit.Core.Profiles.SessionProfile profile)
     {
         var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
@@ -649,10 +573,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         ProfileLabel = null;
     }
 
-    /// <summary>
-    /// Reads the Assistant Profile purely for display — no session, no model load — so an idle Ready chip can
-    /// name what it would talk to before the operator's first hold or click brings the assistant up.
-    /// </summary>
+    // Reads the Assistant Profile purely for display — no session, no model load — so an idle Ready chip can
+    // name what it would talk to before the operator's first hold or click brings the assistant up.
     private async Task _RefreshProfileLabelAsync(CancellationToken cancellationToken)
     {
         var slot = await _profiles.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -661,10 +583,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             : null;
     }
 
-    /// <summary>
-    /// Whether the instance is still usable. Asked of the session rather than remembered as a flag here: a runtime
-    /// can end without anything telling this class, which is exactly the quiet death that has to be noticed.
-    /// </summary>
+    // Whether the instance is still usable. Asked of the session rather than remembered as a flag here: a runtime
+    // can end without anything telling this class, which is exactly the quiet death that has to be noticed.
     private static bool _IsAlive(SessionViewModel session) => session.IsSessionReady;
 
     // A teardown failure must not become the caller's problem: the instance is already out of Session by the time

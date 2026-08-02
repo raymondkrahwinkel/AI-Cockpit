@@ -8,25 +8,20 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Routes the desktop-wide push-to-talk key to the currently selected session and the floating voice
-/// overlay (#34): a hold starts, the overlay shows "Listening" and the selected session's microphone capture
-/// begins; the hold ends, the overlay flips to "Transcribing", the session's own STT+cleanup pipeline runs,
-/// and the overlay hides once the text has been injected.
-/// </summary>
-/// <remarks>
-/// Whether the key is armed at all is <see cref="GlobalHotkeyCoordinator"/>'s: it registers only what the
-/// operator switched on, so with global push-to-talk off nothing arrives here and the per-view local F9
-/// handlers keep doing the job untouched.
-/// <para>
-/// Threading: <see cref="GlobalHotkeyCoordinator.Pressed"/>/<see cref="GlobalHotkeyCoordinator.Released"/>
-/// fire on the backend's own thread (the D-Bus loop on Linux, the keyboard-hook thread on Windows),
-/// never the UI thread — every touch of <see cref="CockpitViewModel"/> or the overlay is marshaled onto
-/// the UI thread via <see cref="Dispatcher.UIThread"/> first. <see cref="HandleHoldStarted"/> and
-/// <see cref="HandleHoldEndedAsync"/> are the actual (UI-thread) routing logic and the seam the tests
-/// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
-/// </para>
-/// </remarks>
+// Routes the desktop-wide push-to-talk key to the currently selected session and the floating voice
+// overlay (#34): a hold starts, the overlay shows "Listening" and the selected session's microphone capture
+// begins; the hold ends, the overlay flips to "Transcribing", the session's own STT+cleanup pipeline runs,
+// and the overlay hides once the text has been injected.
+// Whether the key is armed at all is `GlobalHotkeyCoordinator`'s: it registers only what the
+// operator switched on, so with global push-to-talk off nothing arrives here and the per-view local F9
+// handlers keep doing the job untouched.
+//
+// Threading: `GlobalHotkeyCoordinator.Pressed`/`GlobalHotkeyCoordinator.Released`
+// fire on the backend's own thread (the D-Bus loop on Linux, the keyboard-hook thread on Windows),
+// never the UI thread — every touch of `CockpitViewModel` or the overlay is marshaled onto
+// the UI thread via `Dispatcher.UIThread` first. `HandleHoldStarted` and
+// `HandleHoldEndedAsync` are the actual (UI-thread) routing logic and the seam the tests
+// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
 public sealed class VoicePushToTalkCoordinator : ISingletonService
 {
     private readonly GlobalHotkeyCoordinator _hotkeys;
@@ -36,7 +31,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly IOpenMicState? _openMicState;
     private readonly ILogger<VoicePushToTalkCoordinator> _logger;
 
-    /// <summary>Whether the hold in progress actually opened a microphone — see <see cref="HandleHoldStarted"/>.</summary>
+    // Whether the hold in progress actually opened a microphone — see `HandleHoldStarted`.
     private bool _isRecording;
 
     public VoicePushToTalkCoordinator(
@@ -69,7 +64,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _hotkeys.TriggerDescriptionsChanged += (_, _) => Dispatcher.UIThread.Post(HandleTriggerDescriptionsChanged);
     }
 
-    /// <summary>Test seam, like the hold handlers below: puts the trigger where the operator can see it — or says why there is none. What the cases are is <see cref="GlobalHotkeyCoordinator.DescribeTrigger"/>'s; the words for this key are here.</summary>
+    // Test seam, like the hold handlers below: puts the trigger where the operator can see it — or says why there is none. What the cases are is `GlobalHotkeyCoordinator.DescribeTrigger`'s; the words for this key are here.
     internal void HandleTriggerDescriptionsChanged() =>
         _cockpit.VoiceGlobalHotkeyTrigger = _hotkeys.DescribeTrigger(
             GlobalHotkeys.PushToTalk,
@@ -77,7 +72,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             unsupportedMessage: "Not available on macOS — the in-window key still works while the cockpit has focus.",
             failedMessage: "It is switched on but could not be registered — see the log. The in-window key still works while the cockpit has focus.");
 
-    /// <summary>The pill's view model. Reports what the hold is doing; what the pill actually shows is <see cref="VoiceOverlayCoordinator"/>'s call, since open-mic and read-aloud want it too.</summary>
+    // The pill's view model. Reports what the hold is doing; what the pill actually shows is `VoiceOverlayCoordinator`'s call, since open-mic and read-aloud want it too.
     public VoiceOverlayViewModel Overlay => _overlayCoordinator.Overlay;
 
     private void _OnHoldStarted() => Dispatcher.UIThread.Post(HandleHoldStarted);
@@ -86,7 +81,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
 
     private void _OnAudioLevelSampled(object? sender, double level) => Dispatcher.UIThread.Post(() => _overlayCoordinator.PushLevel(level));
 
-    /// <summary>Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.</summary>
+    // Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.
     internal void HandleHoldStarted()
     {
         // Open-mic is already capturing and transcribing continuously; routing a hold to the session on top of it
@@ -129,21 +124,17 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             _cockpit.Sessions.Count);
     }
 
-    /// <summary>
-    /// Why a hold is not recording, in words for the pill — or null when there is nothing to explain. A declined
-    /// hold with no reason here means <see cref="PushToTalkHoldGuard"/> still has one running: that pill is
-    /// already listening and must be left alone.
-    /// </summary>
-    /// <remarks>
-    /// It is <em>not</em> the OS repeating the held key, which this used to say. Key-repeat is real on the local
-    /// per-view F9 handlers — Avalonia raises KeyDown for every repeat, which is what the hold guard was written
-    /// for — but it cannot reach this coordinator: both hotkey backends collapse a hold to a single edge
-    /// (<c>SharpHookGlobalHotkeyService</c> and <c>PortalGlobalHotkeyService</c> each gate their
-    /// <c>HoldStarted</c> on an <c>_isHolding</c> flag), and the local handlers stand down entirely while global
-    /// push-to-talk is on (<see cref="PushToTalkKeyGate"/>). The claim came from the local path and was carried
-    /// here, where it is not true — and it later cost a code review a finding chased against a comment rather
-    /// than the code.
-    /// </remarks>
+    // Why a hold is not recording, in words for the pill — or null when there is nothing to explain. A declined
+    // hold with no reason here means `PushToTalkHoldGuard` still has one running: that pill is
+    // already listening and must be left alone.
+    // It is *not* the OS repeating the held key, which this used to say. Key-repeat is real on the local
+    // per-view F9 handlers — Avalonia raises KeyDown for every repeat, which is what the hold guard was written
+    // for — but it cannot reach this coordinator: both hotkey backends collapse a hold to a single edge
+    // (`SharpHookGlobalHotkeyService` and `PortalGlobalHotkeyService` each gate their
+    // `HoldStarted` on an `_isHolding` flag), and the local handlers stand down entirely while global
+    // push-to-talk is on (`PushToTalkKeyGate`). The claim came from the local path and was carried
+    // here, where it is not true — and it later cost a code review a finding chased against a comment rather
+    // than the code.
     private static string? _WhyNothingIsBeingRecorded(SessionPanelViewModel? session) => session switch
     {
         null => "No session selected",
@@ -151,7 +142,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _ => null,
     };
 
-    /// <summary>Test seam: the UI-thread logic for a hold ending — see the threading remarks on this class.</summary>
+    // Test seam: the UI-thread logic for a hold ending — see the threading remarks on this class.
     internal async Task HandleHoldEndedAsync()
     {
         _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
@@ -193,26 +184,22 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _overlayCoordinator.SetPushToTalk(null);
     }
 
-    /// <summary>
-    /// Fires off the UI thread (the download's own), so it marshals like the level feed does. Each step both
-    /// puts the pill into <see cref="VoiceOverlayState.Preparing"/> and names what it is waiting on — the
-    /// state cannot be set up front, because on every run after the first there is nothing to prepare and the
-    /// pill should go straight to transcribing.
-    /// </summary>
+    // Fires off the UI thread (the download's own), so it marshals like the level feed does. Each step both
+    // puts the pill into `VoiceOverlayState.Preparing` and names what it is waiting on — the
+    // state cannot be set up front, because on every run after the first there is nothing to prepare and the
+    // pill should go straight to transcribing.
     private void _OnPreparing(object? sender, VoicePreparationProgress step) =>
         Dispatcher.UIThread.Post(() => HandlePreparing(step));
 
     private void _OnPrepared(object? sender, EventArgs e) =>
         Dispatcher.UIThread.Post(HandlePrepared);
 
-    /// <summary>
-    /// Test seam, like the hold handlers above: the UI-thread half of a preparation step. Each step sets the
-    /// state as well as the text — it cannot be set up front, because on every run after the first there is
-    /// nothing to prepare and the pill should go straight to its spinner.
-    /// </summary>
+    // Test seam, like the hold handlers above: the UI-thread half of a preparation step. Each step sets the
+    // state as well as the text — it cannot be set up front, because on every run after the first there is
+    // nothing to prepare and the pill should go straight to its spinner.
     internal void HandlePreparing(VoicePreparationProgress step) =>
         _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Preparing, step.Description, step.Fraction);
 
-    /// <summary>Test seam: preparation is over, so the pill goes back to the plain spinner — which is now telling the truth.</summary>
+    // Test seam: preparation is over, so the pill goes back to the plain spinner — which is now telling the truth.
     internal void HandlePrepared() => _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Transcribing);
 }

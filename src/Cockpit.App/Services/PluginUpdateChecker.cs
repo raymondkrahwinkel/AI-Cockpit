@@ -10,21 +10,17 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Real <see cref="IPluginUpdateChecker"/> (#59): compares every installed plugin's version against the
-/// `latestVersion` its configured store(s) advertise (<see cref="PluginVersion.IsNewer"/>, the same
-/// comparison the manual "Browse stores" flow in <see cref="PluginManagerViewModel"/> uses) and toasts a
-/// summary once a newly detected update appears. Never toasts twice for the same (plugin, version) pair —
-/// only a version bump beyond what was already reported toasts again, so the 15-minute timer in
-/// <see cref="App"/> doesn't nag on every tick.
-/// </summary>
-/// <remarks>
-/// The installed-plugin lookup is an injectable delegate (defaulting to the real
-/// <see cref="PluginBootstrap.DiscoverAsync"/>) rather than a direct <see cref="PluginBootstrap"/> call,
-/// mirroring <see cref="AppRestartService"/>'s delegate-seam pattern — <see cref="PluginBootstrap"/> is a
-/// sealed class with no interface, so a test needs this seam to supply a fixed installed set instead of
-/// touching the real plugins folder on disk.
-/// </remarks>
+// Real `IPluginUpdateChecker` (#59): compares every installed plugin's version against the
+// `latestVersion` its configured store(s) advertise (`PluginVersion.IsNewer`, the same
+// comparison the manual "Browse stores" flow in `PluginManagerViewModel` uses) and toasts a
+// summary once a newly detected update appears. Never toasts twice for the same (plugin, version) pair —
+// only a version bump beyond what was already reported toasts again, so the 15-minute timer in
+// `App` doesn't nag on every tick.
+// The installed-plugin lookup is an injectable delegate (defaulting to the real
+// `PluginBootstrap.DiscoverAsync`) rather than a direct `PluginBootstrap` call,
+// mirroring `AppRestartService`'s delegate-seam pattern — `PluginBootstrap` is a
+// sealed class with no interface, so a test needs this seam to supply a fixed installed set instead of
+// touching the real plugins folder on disk.
 public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonService
 {
     private readonly Func<CancellationToken, Task<IReadOnlyList<DiscoveredPlugin>>> _getInstalledPluginsAsync;

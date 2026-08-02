@@ -10,31 +10,25 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Owns the cockpit's desktop-wide keys: reads what each feature wants, arms them as one set, and hands the
-/// presses on to whoever asked for them. The single arm point exists because
-/// <see cref="IGlobalHotkeyService.StartAsync"/> registers a whole set — two features each arming their own
-/// key would mean the second wiping out the first.
-/// </summary>
-/// <remarks>
-/// Feature coordinators (<see cref="VoicePushToTalkCoordinator"/>, <see cref="ScreenshotCoordinator"/>)
-/// subscribe here and filter on the hotkey id rather than talking to the OS service themselves. The events are
-/// re-raised, not forwarded through a shared subscription list, so a coordinator built later still hears
-/// everything: this one subscribes once, for the life of the app.
-/// <para>
-/// Threading is unchanged from the service's: <see cref="Pressed"/>/<see cref="Released"/> arrive on the
-/// backend's own thread, never the UI thread. Marshalling stays each subscriber's job, as it was.
-/// </para>
-/// <para>
-/// AC-71: neither <see cref="IGlobalHotkeyService"/> backend can say whether some other cockpit instance
-/// already has a key — the OS-level "armed" it reports is not the same claim as "and nobody else is". An
-/// <see cref="IHotkeyExclusivityGuard"/> claim per hotkey id is what actually answers that, cross-process and
-/// the same on every platform; only a binding this instance holds the claim for reaches
-/// <see cref="IGlobalHotkeyService.StartAsync"/>. A binding refused a claim retries on a timer rather than
-/// waiting for a restart, since the holder releasing it (the other instance closing) is exactly the case that
-/// used to need one.
-/// </para>
-/// </remarks>
+// Owns the cockpit's desktop-wide keys: reads what each feature wants, arms them as one set, and hands the
+// presses on to whoever asked for them. The single arm point exists because
+// `IGlobalHotkeyService.StartAsync` registers a whole set — two features each arming their own
+// key would mean the second wiping out the first.
+// Feature coordinators (`VoicePushToTalkCoordinator`, `ScreenshotCoordinator`)
+// subscribe here and filter on the hotkey id rather than talking to the OS service themselves. The events are
+// re-raised, not forwarded through a shared subscription list, so a coordinator built later still hears
+// everything: this one subscribes once, for the life of the app.
+//
+// Threading is unchanged from the service's: `Pressed`/`Released` arrive on the
+// backend's own thread, never the UI thread. Marshalling stays each subscriber's job, as it was.
+//
+// AC-71: neither `IGlobalHotkeyService` backend can say whether some other cockpit instance
+// already has a key — the OS-level "armed" it reports is not the same claim as "and nobody else is". An
+// `IHotkeyExclusivityGuard` claim per hotkey id is what actually answers that, cross-process and
+// the same on every platform; only a binding this instance holds the claim for reaches
+// `IGlobalHotkeyService.StartAsync`. A binding refused a claim retries on a timer rather than
+// waiting for a restart, since the holder releasing it (the other instance closing) is exactly the case that
+// used to need one.
 public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
 {
     private static readonly TimeSpan DefaultConflictRetryInterval = TimeSpan.FromSeconds(15);
@@ -48,22 +42,21 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
     private readonly ILogger<GlobalHotkeyCoordinator> _logger;
     private readonly TimeSpan _conflictRetryInterval;
 
-    /// <summary>This instance's live claims, by hotkey id — held until the feature switches off or the process exits.</summary>
+    // This instance's live claims, by hotkey id — held until the feature switches off or the process exits.
     private readonly Dictionary<string, IDisposable> _claims = [];
 
-    /// <summary>Hotkey ids asked for whose claim another instance holds — what a toast is owed for, once, and what the retry timer watches.</summary>
+    // Hotkey ids asked for whose claim another instance holds — what a toast is owed for, once, and what the retry timer watches.
     private IReadOnlySet<string> _conflicted = new HashSet<string>();
 
-    /// <summary>Serializes arm attempts: the retry timer and a settings save can otherwise land on <see cref="_claims"/> at the same time.</summary>
+    // Serializes arm attempts: the retry timer and a settings save can otherwise land on `_claims` at the same time.
     private readonly SemaphoreSlim _applyGate = new(1, 1);
 
     private Timer? _retryTimer;
     private bool _disposed;
 
-    /// <param name="conflictRetryInterval">
-    /// How often a conflicted binding tries again. Overridable for tests, which cannot wait fifteen seconds to
-    /// watch a retry happen — the same reasoning as <see cref="ScheduledResumeCoordinator"/>'s tick interval.
-    /// </param>
+    // `conflictRetryInterval`:
+    // How often a conflicted binding tries again. Overridable for tests, which cannot wait fifteen seconds to
+    // watch a retry happen — the same reasoning as `ScheduledResumeCoordinator`'s tick interval.
     public GlobalHotkeyCoordinator(
         IGlobalHotkeyService hotkeys,
         IVoiceSettingsStore voiceSettingsStore,
@@ -88,66 +81,55 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         _hotkeys.TriggerDescriptionsChanged += (_, _) => TriggerDescriptionsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>A registered hotkey went down; the argument is its <see cref="GlobalHotkeyBinding.Id"/>.</summary>
+    // A registered hotkey went down; the argument is its `GlobalHotkeyBinding.Id`.
     public event EventHandler<string>? Pressed;
 
-    /// <summary>A registered hotkey came back up; the argument is its <see cref="GlobalHotkeyBinding.Id"/>.</summary>
+    // A registered hotkey came back up; the argument is its `GlobalHotkeyBinding.Id`.
     public event EventHandler<string>? Released;
 
-    /// <summary>Raised when what the desktop reports about any binding changes — see <see cref="IGlobalHotkeyService.TriggerDescriptionsChanged"/>.</summary>
+    // Raised when what the desktop reports about any binding changes — see `IGlobalHotkeyService.TriggerDescriptionsChanged`.
     public event EventHandler? TriggerDescriptionsChanged;
 
-    /// <summary>How the given hotkey is actually triggered, to show the operator — or null when nothing is armed for it.</summary>
+    // How the given hotkey is actually triggered, to show the operator — or null when nothing is armed for it.
     public string? TriggerDescriptionFor(string hotkeyId) => _hotkeys.TriggerDescriptionFor(hotkeyId);
 
-    /// <summary>
-    /// Whether the operator has this hotkey switched on. Distinct from having a trigger description, which is
-    /// null both for a key nobody asked for and for one the desktop has not bound yet — and telling an operator
-    /// their desktop has not bound a key they never enabled is a confusing thing to say.
-    /// </summary>
+    // Whether the operator has this hotkey switched on. Distinct from having a trigger description, which is
+    // null both for a key nobody asked for and for one the desktop has not bound yet — and telling an operator
+    // their desktop has not bound a key they never enabled is a confusing thing to say.
     public bool IsArmed(string hotkeyId) => _armed.Contains(hotkeyId);
 
     private IReadOnlySet<string> _armed = new HashSet<string>();
 
-    /// <summary>
-    /// The keys the operator has switched on, whether or not arming them worked. Kept apart from
-    /// <see cref="_armed"/> precisely so the two can disagree: that disagreement is a hotkey the operator asked
-    /// for and did not get, which is the one thing this class used to be unable to say out loud (AC-332).
-    /// </summary>
+    // The keys the operator has switched on, whether or not arming them worked. Kept apart from
+    // `_armed` precisely so the two can disagree: that disagreement is a hotkey the operator asked
+    // for and did not get, which is the one thing this class used to be unable to say out loud (AC-332).
     private IReadOnlySet<string> _asked = new HashSet<string>();
 
-    /// <summary>
-    /// The line a settings screen shows about one hotkey. Three truths behind it, and a fourth that has to come
-    /// first: the operator never switched it on, in which case there is nothing to report — telling them their
-    /// desktop has not bound a key they never asked for sends them into their shortcut settings looking for
-    /// nothing. Then: Windows armed the key it was given, a Wayland compositor bound whatever it chose (or is
-    /// still waiting for the operator to choose), and macOS has no global hotkey at all.
-    /// </summary>
-    /// <param name="unboundMessage">Shown when the key is armed but no desktop has bound it yet — name the shortcut the operator should look for.</param>
-    /// <param name="unsupportedMessage">Shown on a platform with no global hotkey at all, where the honest thing is to point at what does work.</param>
-    /// <param name="failedMessage">Shown when the operator switched the key on and arming it did not work — the case that used to look exactly like never having switched it on.</param>
-    /// <remarks>
-    /// The failed case was silence until AC-332. A key the operator had switched on and the desktop had refused
-    /// read the same as one they never enabled: an empty line, no error, and a shortcut that simply did nothing
-    /// when pressed. That is the failure this whole reporting path exists to prevent, and it had it too.
-    /// </remarks>
+    // The line a settings screen shows about one hotkey. Three truths behind it, and a fourth that has to come
+    // first: the operator never switched it on, in which case there is nothing to report — telling them their
+    // desktop has not bound a key they never asked for sends them into their shortcut settings looking for
+    // nothing. Then: Windows armed the key it was given, a Wayland compositor bound whatever it chose (or is
+    // still waiting for the operator to choose), and macOS has no global hotkey at all.
+    //
+    // `unboundMessage`: Shown when the key is armed but no desktop has bound it yet — name the shortcut the operator should look for.
+    // `unsupportedMessage`: Shown on a platform with no global hotkey at all, where the honest thing is to point at what does work.
+    // `failedMessage`: Shown when the operator switched the key on and arming it did not work — the case that used to look exactly like never having switched it on.
+    // The failed case was silence until AC-332. A key the operator had switched on and the desktop had refused
+    // read the same as one they never enabled: an empty line, no error, and a shortcut that simply did nothing
+    // when pressed. That is the failure this whole reporting path exists to prevent, and it had it too.
     public string DescribeTrigger(
         string hotkeyId, string unboundMessage, string unsupportedMessage, string failedMessage) =>
         IsArmed(hotkeyId)
             ? TriggerDescriptionFor(hotkeyId) ?? (OperatingSystem.IsMacOS() ? unsupportedMessage : unboundMessage)
             : _asked.Contains(hotkeyId) ? failedMessage : string.Empty;
 
-    /// <summary>
-    /// Arms exactly the keys the operator has switched on. Also the re-arm path: the OS service replaces its
-    /// whole registration, so saving a changed key comes back through here rather than needing a restart.
-    /// </summary>
-    /// <remarks>
-    /// Never throws. Its callers discard the task (app startup, a settings save), so anything thrown here used
-    /// to land on a task nobody observes and be gone — and what it took with it was the hotkey. Reading the
-    /// settings goes through the shared <c>cockpit.json</c>, which a write elsewhere in this process can briefly
-    /// lock; on 2026-07-15 that raced at startup and F9 was dead for the whole session with not one line in the
-    /// log to say so. It still cannot arm if the read fails — but now it says which.
-    /// </remarks>
+    // Arms exactly the keys the operator has switched on. Also the re-arm path: the OS service replaces its
+    // whole registration, so saving a changed key comes back through here rather than needing a restart.
+    // Never throws. Its callers discard the task (app startup, a settings save), so anything thrown here used
+    // to land on a task nobody observes and be gone — and what it took with it was the hotkey. Reading the
+    // settings goes through the shared `cockpit.json`, which a write elsewhere in this process can briefly
+    // lock; on 2026-07-15 that raced at startup and F9 was dead for the whole session with not one line in the
+    // log to say so. It still cannot arm if the read fails — but now it says which.
     public async Task ApplyAsync(CancellationToken cancellationToken = default)
     {
         // Dropped before the attempt, not after it fails. A re-arm that throws leaves nothing registered with the
@@ -216,7 +198,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         }
     }
 
-    /// <summary>What each feature wants, if it wants anything — a feature that is switched off contributes no binding, so nothing is registered with the desktop for it.</summary>
+    // What each feature wants, if it wants anything — a feature that is switched off contributes no binding, so nothing is registered with the desktop for it.
     private async Task<IReadOnlyList<GlobalHotkeyBinding>> _LoadBindingsAsync(CancellationToken cancellationToken)
     {
         var bindings = new List<GlobalHotkeyBinding>();
@@ -245,7 +227,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         return bindings;
     }
 
-    /// <summary>Drops the claim for any hotkey id no longer asked for — a feature just switched off, or a settings read changed what it wants.</summary>
+    // Drops the claim for any hotkey id no longer asked for — a feature just switched off, or a settings read changed what it wants.
     private void _ReleaseClaimsNoLongerAsked()
     {
         foreach (var goneId in _claims.Keys.Where(id => !_asked.Contains(id)).ToList())
@@ -255,11 +237,9 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         }
     }
 
-    /// <summary>
-    /// Splits the requested bindings into what this instance may arm and what another cockpit instance already
-    /// holds. A binding this instance already claimed (the ordinary re-arm path) is not asked for again — only a
-    /// binding new to <see cref="_claims"/> goes through <see cref="IHotkeyExclusivityGuard.TryAcquire"/>.
-    /// </summary>
+    // Splits the requested bindings into what this instance may arm and what another cockpit instance already
+    // holds. A binding this instance already claimed (the ordinary re-arm path) is not asked for again — only a
+    // binding new to `_claims` goes through `IHotkeyExclusivityGuard.TryAcquire`.
     private (List<GlobalHotkeyBinding> Owned, List<GlobalHotkeyBinding> Conflicted) _ClaimBindings(
         IReadOnlyList<GlobalHotkeyBinding> bindings)
     {
@@ -285,10 +265,8 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         return (owned, conflicted);
     }
 
-    /// <summary>
-    /// Logs every conflicted binding, and tells the operator about the ones new to the conflicted set — once,
-    /// not on every retry tick, since a conflict that has not resolved yet is not new information.
-    /// </summary>
+    // Logs every conflicted binding, and tells the operator about the ones new to the conflicted set — once,
+    // not on every retry tick, since a conflict that has not resolved yet is not new information.
     private void _ReportConflicts(IReadOnlyList<GlobalHotkeyBinding> conflicted)
     {
         foreach (var binding in conflicted)
@@ -310,10 +288,8 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         _conflicted = conflicted.Select(binding => binding.Id).ToHashSet();
     }
 
-    /// <summary>
-    /// Keeps a retry running for as long as some binding is conflicted, and stops it the moment none is — the
-    /// re-arm that used to need a restart when the other instance closed.
-    /// </summary>
+    // Keeps a retry running for as long as some binding is conflicted, and stops it the moment none is — the
+    // re-arm that used to need a restart when the other instance closed.
     private void _ManageRetryTimer()
     {
         if (_disposed)
@@ -333,13 +309,11 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
 
     private void _OnRetryTick(object? state) => _ = _RetryConflictedAsync();
 
-    /// <summary>
-    /// A tick's worth of the ordinary re-arm path, kept deliberately cheaper: it only tries to claim what is
-    /// still conflicted, and stops right there if nothing new came free. An idle tick otherwise ran the full
-    /// <see cref="ApplyAsync"/> path every fifteen seconds for as long as one binding stayed conflicted — which
-    /// meant re-registering an already-working binding with the OS service, and blanking <see cref="_armed"/>
-    /// (so the settings screen briefly reported it as failed) for a key nothing was wrong with.
-    /// </summary>
+    // A tick's worth of the ordinary re-arm path, kept deliberately cheaper: it only tries to claim what is
+    // still conflicted, and stops right there if nothing new came free. An idle tick otherwise ran the full
+    // `ApplyAsync` path every fifteen seconds for as long as one binding stayed conflicted — which
+    // meant re-registering an already-working binding with the OS service, and blanking `_armed`
+    // (so the settings screen briefly reported it as failed) for a key nothing was wrong with.
     private async Task _RetryConflictedAsync()
     {
         if (_disposed)

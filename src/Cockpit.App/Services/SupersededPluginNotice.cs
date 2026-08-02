@@ -8,17 +8,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Tells the operator when a plugin they have has been replaced by others in this build, and offers to remove
-/// it — asked, never done for them (Raymond, 2026-07-15, choosing this over cleaning up silently: nothing
-/// disappears from their plugins folder behind their back).
-/// <para>
-/// It has to be said rather than left alone: the successors keep the widget type ids their predecessor
-/// registered, so a saved dashboard survives the split — and so the old plugin and the new one claim the same
-/// types. The registry refuses the second claim, which keeps the gallery honest, but it also means one of the
-/// two plugins is doing nothing while looking installed. That is worth one sentence.
-/// </para>
-/// </summary>
+// Tells the operator when a plugin they have has been replaced by others in this build, and offers to remove
+// it — asked, never done for them (Raymond, 2026-07-15, choosing this over cleaning up silently: nothing
+// disappears from their plugins folder behind their back).
+//
+// It has to be said rather than left alone: the successors keep the widget type ids their predecessor
+// registered, so a saved dashboard survives the split — and so the old plugin and the new one claim the same
+// types. The registry refuses the second claim, which keeps the gallery honest, but it also means one of the
+// two plugins is doing nothing while looking installed. That is worth one sentence.
 internal sealed class SupersededPluginNotice(
     PluginManager plugins,
     IPluginRegistrationStore registrations,
@@ -26,18 +23,14 @@ internal sealed class SupersededPluginNotice(
     IToastService toasts,
     ILogger<SupersededPluginNotice> logger) : ISingletonService
 {
-    /// <summary>
-    /// Says something if there is something to say. Safe to call on every start: it goes quiet the moment the
-    /// operator acts, because the condition it asks about is the old plugin still being loaded.
-    /// </summary>
-    /// <remarks>
-    /// It asks the plugin manager what actually loaded, which is the only thing that makes the sentence true. It
-    /// used to ask the registration store for its keys — a different question with a different answer: a
-    /// registration means the plugin has been consented to, and one that is switched off, or whose pinned hash no
-    /// longer matches its assembly, is never loaded (<see cref="PluginLoadPolicy"/> returns <c>Disabled</c> or
-    /// <c>NeedsConsent</c>). None of those claim a widget type, so none of them are competing for one, and there
-    /// is nothing to say — while offering to remove one talks over a decision the operator made on purpose.
-    /// </remarks>
+    // Says something if there is something to say. Safe to call on every start: it goes quiet the moment the
+    // operator acts, because the condition it asks about is the old plugin still being loaded.
+    // It asks the plugin manager what actually loaded, which is the only thing that makes the sentence true. It
+    // used to ask the registration store for its keys — a different question with a different answer: a
+    // registration means the plugin has been consented to, and one that is switched off, or whose pinned hash no
+    // longer matches its assembly, is never loaded (`PluginLoadPolicy` returns `Disabled` or
+    // `NeedsConsent`). None of those claim a widget type, so none of them are competing for one, and there
+    // is nothing to say — while offering to remove one talks over a decision the operator made on purpose.
     public async Task CheckAsync(CancellationToken cancellationToken = default)
     {
         try

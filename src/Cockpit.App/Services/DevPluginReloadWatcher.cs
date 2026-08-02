@@ -7,24 +7,19 @@ using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// AC-185's dev inner loop: watches <c>plugins-dev</c> for a rebuilt first-party plugin and offers one toast
-/// action to bring it into the running sandbox — instead of the operator remembering to restart by hand after
-/// every build. <see cref="Start"/> is only ever called under DEBUG (see <c>App.axaml.cs</c>) and finds nothing
-/// to watch off a dev checkout anyway (<see cref="DevPluginInstaller.FindPluginsDevRoot"/>); a release build
-/// never watches anything.
-/// <para>
-/// Not a hot-swap: the toast's action re-runs <see cref="DevPluginInstaller.InstallAsync"/> — the same
-/// <c>installNew: false</c> restraint the startup pass already uses, a build must never decide what a cockpit
-/// carries — and then restarts through <see cref="IAppRestartService"/>, the same "close and relaunch" every
-/// other plugin change already goes through, because a loaded plugin assembly cannot be unloaded live.
-/// </para>
-/// </summary>
-/// <remarks>
-/// The filesystem watch and the debounce timer are both injectable seams (see the internal test constructor),
-/// mirroring <see cref="ScheduledResumeCoordinator"/>'s delegate style — a test drives <c>_OnBuildOutputChanged</c>
-/// directly and a synchronous debounce, rather than touching real disk events or a real timer.
-/// </remarks>
+// AC-185's dev inner loop: watches `plugins-dev` for a rebuilt first-party plugin and offers one toast
+// action to bring it into the running sandbox — instead of the operator remembering to restart by hand after
+// every build. `Start` is only ever called under DEBUG (see `App.axaml.cs`) and finds nothing
+// to watch off a dev checkout anyway (`DevPluginInstaller.FindPluginsDevRoot`); a release build
+// never watches anything.
+//
+// Not a hot-swap: the toast's action re-runs `DevPluginInstaller.InstallAsync` — the same
+// `installNew: false` restraint the startup pass already uses, a build must never decide what a cockpit
+// carries — and then restarts through `IAppRestartService`, the same "close and relaunch" every
+// other plugin change already goes through, because a loaded plugin assembly cannot be unloaded live.
+// The filesystem watch and the debounce timer are both injectable seams (see the internal test constructor),
+// mirroring `ScheduledResumeCoordinator`'s delegate style — a test drives `_OnBuildOutputChanged`
+// directly and a synchronous debounce, rather than touching real disk events or a real timer.
 public sealed class DevPluginReloadWatcher : ISingletonService, IDisposable
 {
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(750);
@@ -67,7 +62,7 @@ public sealed class DevPluginReloadWatcher : ISingletonService, IDisposable
         _debounce = debounce ?? _DebounceOnUiThread;
     }
 
-    /// <summary>Starts watching, if this is a dev checkout. A second call, or one after <see cref="Dispose"/>, is ignored.</summary>
+    // Starts watching, if this is a dev checkout. A second call, or one after `Dispose`, is ignored.
     public void Start()
     {
         if (_watcher is not null || _disposed)
@@ -159,7 +154,7 @@ public sealed class DevPluginReloadWatcher : ISingletonService, IDisposable
         });
     }
 
-    /// <summary>Simulates a build-output write for a test, bypassing the real <see cref="FileSystemWatcher"/>.</summary>
+    // Simulates a build-output write for a test, bypassing the real `FileSystemWatcher`.
     internal void SimulateBuildOutputChangedForTests(string fullPath) =>
         _OnBuildOutputChanged(this, new FileSystemEventArgs(WatcherChangeTypes.Changed, Path.GetDirectoryName(fullPath) ?? ".", Path.GetFileName(fullPath)));
 

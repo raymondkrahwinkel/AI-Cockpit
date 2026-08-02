@@ -13,20 +13,15 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Takes a screenshot into the selected session (AC-220): the desktop's own picker opens, and what comes back
-/// lands on the session in view as a pending attachment — the operator types the sentence that goes with it
-/// and sends when they mean to. The same flow behind the global hotkey and the composer's button.
-/// </summary>
-/// <remarks>
-/// The responsibility is the cockpit's, not the operator's — the same choice push-to-talk makes: the capture
-/// goes to <see cref="CockpitViewModel.SelectedSession"/> rather than asking which session it was for.
-/// <para>
-/// Nothing here is allowed to end in silence. The capture runs the OS picker, so it can be cancelled, refused
-/// by a privacy prompt or land on a session that cannot carry an image — each of those gets a toast saying
-/// which, because the operator pressed a key and is owed an answer.
-/// </para>
-/// </remarks>
+// Takes a screenshot into the selected session (AC-220): the desktop's own picker opens, and what comes back
+// lands on the session in view as a pending attachment — the operator types the sentence that goes with it
+// and sends when they mean to. The same flow behind the global hotkey and the composer's button.
+// The responsibility is the cockpit's, not the operator's — the same choice push-to-talk makes: the capture
+// goes to `CockpitViewModel.SelectedSession` rather than asking which session it was for.
+//
+// Nothing here is allowed to end in silence. The capture runs the OS picker, so it can be cancelled, refused
+// by a privacy prompt or land on a session that cannot carry an image — each of those gets a toast saying
+// which, because the operator pressed a key and is owed an answer.
 public sealed class ScreenshotCoordinator : ISingletonService
 {
     private readonly GlobalHotkeyCoordinator _hotkeys;
@@ -38,17 +33,15 @@ public sealed class ScreenshotCoordinator : ISingletonService
     private readonly IDesktopWindows _windows;
     private readonly ILogger<ScreenshotCoordinator> _logger;
 
-    /// <summary>Guards against a second capture while the picker is already open — the hotkey is easy to press twice.</summary>
+    // Guards against a second capture while the picker is already open — the hotkey is easy to press twice.
     private bool _isCapturing;
 
-    /// <summary>
-    /// What puts the selection surface in front of the operator, or null where there is no window to put one
-    /// over — a headless or design-time graph, which takes the whole capture rather than losing screenshots
-    /// altogether. Swappable so the crop-and-remember path can be tested without a desktop. The destination name
-    /// travels alongside the capture rather than being closed over once at construction, because it names
-    /// whichever session this particular call is for — the composer button's session, not necessarily the one
-    /// selected when the coordinator was built.
-    /// </summary>
+    // What puts the selection surface in front of the operator, or null where there is no window to put one
+    // over — a headless or design-time graph, which takes the whole capture rather than losing screenshots
+    // altogether. Swappable so the crop-and-remember path can be tested without a desktop. The destination name
+    // travels alongside the capture rather than being closed over once at construction, because it names
+    // whichever session this particular call is for — the composer button's session, not necessarily the one
+    // selected when the coordinator was built.
     private Func<ScreenCapture, CaptureRect?, string, Task<ScreenshotSelection?>>? _showSelection;
 
     public ScreenshotCoordinator(
@@ -90,11 +83,11 @@ public sealed class ScreenshotCoordinator : ISingletonService
         hotkeys.TriggerDescriptionsChanged += (_, _) => Dispatcher.UIThread.Post(HandleTriggerDescriptionsChanged);
     }
 
-    /// <summary>Test seam: stands in for the selection surface, which needs a desktop to be put over.</summary>
+    // Test seam: stands in for the selection surface, which needs a desktop to be put over.
     internal void UseSelection(Func<ScreenCapture, CaptureRect?, string, Task<ScreenshotSelection?>> showSelection) =>
         _showSelection = showSelection;
 
-    /// <summary>Test seam, like push-to-talk's: puts what the desktop bound where the operator can see it. What the cases are is <see cref="GlobalHotkeyCoordinator.DescribeTrigger"/>'s; the words for this key are here.</summary>
+    // Test seam, like push-to-talk's: puts what the desktop bound where the operator can see it. What the cases are is `GlobalHotkeyCoordinator.DescribeTrigger`'s; the words for this key are here.
     internal void HandleTriggerDescriptionsChanged() =>
         _cockpit.ScreenshotHotkeyTrigger = _hotkeys.DescribeTrigger(
             GlobalHotkeys.Screenshot,
@@ -102,20 +95,16 @@ public sealed class ScreenshotCoordinator : ISingletonService
             unsupportedMessage: "Not available on macOS — use the button in the composer.",
             failedMessage: "It is switched on but could not be registered — see the log. The button in the composer still works.");
 
-    /// <summary>Whether this platform can capture at all — what the composer's button reads to disable itself with a reason rather than offering something that cannot work.</summary>
+    // Whether this platform can capture at all — what the composer's button reads to disable itself with a reason rather than offering something that cannot work.
     public bool IsSupported => _capture.IsSupported;
 
-    /// <summary>
-    /// Completes once <see cref="IsSupported"/> means anything (AC-326). On Linux the answer is a D-Bus round
-    /// trip, and this coordinator is built in the same statement that wires the composer's button — so whoever
-    /// read it there has to come back and read it again.
-    /// </summary>
+    // Completes once `IsSupported` means anything (AC-326). On Linux the answer is a D-Bus round
+    // trip, and this coordinator is built in the same statement that wires the composer's button — so whoever
+    // read it there has to come back and read it again.
     public Task SupportSettled => _capture.SupportSettled;
 
-    /// <summary>
-    /// Runs the picker and puts the result on the session in view — the global hotkey's path, which has no
-    /// session of its own to name and so takes the selected one, exactly as push-to-talk does.
-    /// </summary>
+    // Runs the picker and puts the result on the session in view — the global hotkey's path, which has no
+    // session of its own to name and so takes the selected one, exactly as push-to-talk does.
     public Task CaptureIntoSelectedSessionAsync(CancellationToken cancellationToken = default)
     {
         // Resolved before the picker opens, not after: the operator can click another session while dragging a
@@ -130,12 +119,10 @@ public sealed class ScreenshotCoordinator : ISingletonService
         return CaptureIntoAsync(session, cancellationToken);
     }
 
-    /// <summary>
-    /// Runs the picker and puts the result on the given session — the composer button's path, which names its
-    /// own panel rather than the selected one: in a grid the button you clicked and the session in view are not
-    /// necessarily the same, and the screenshot belongs to the composer it was asked from.
-    /// </summary>
-    /// <remarks>Safe to call from a command or a hotkey; never throws, since both callers discard the task.</remarks>
+    // Runs the picker and puts the result on the given session — the composer button's path, which names its
+    // own panel rather than the selected one: in a grid the button you clicked and the session in view are not
+    // necessarily the same, and the screenshot belongs to the composer it was asked from.
+    // Safe to call from a command or a hotkey; never throws, since both callers discard the task.
     public async Task CaptureIntoAsync(SessionPanelViewModel session, CancellationToken cancellationToken = default)
     {
         if (_isCapturing)
@@ -191,15 +178,11 @@ public sealed class ScreenshotCoordinator : ISingletonService
         }
     }
 
-    /// <summary>
-    /// Puts the selection surface over the frozen capture and returns the region the operator marked out, cropped
-    /// (AC-329) — or nothing, when they dismissed it.
-    /// </summary>
-    /// <remarks>
-    /// The whole capture is used as-is where there is no window to put a surface over: a headless or design-time
-    /// graph has nothing to show it on, and failing there would take screenshots away from a test harness that
-    /// only ever wanted the bytes.
-    /// </remarks>
+    // Puts the selection surface over the frozen capture and returns the region the operator marked out, cropped
+    // (AC-329) — or nothing, when they dismissed it.
+    // The whole capture is used as-is where there is no window to put a surface over: a headless or design-time
+    // graph has nothing to show it on, and failing there would take screenshots away from a test harness that
+    // only ever wanted the bytes.
     private async Task<byte[]?> _PickAsync(ScreenCapture capture, SessionPanelViewModel session)
     {
         if (_showSelection is not { } show)
@@ -233,12 +216,10 @@ public sealed class ScreenshotCoordinator : ISingletonService
         return marked;
     }
 
-    /// <summary>
-    /// The preview gate behind Confirm() (AC-566): the one place all three ways to confirm run through, so a
-    /// setting switched off costs nothing and one switched on cannot be skipped by picking a different key or
-    /// click. Renders exactly the bytes the real crop would produce — the same <see cref="_editor"/>, the same
-    /// region and marks — and asks before they leave the selection window.
-    /// </summary>
+    // The preview gate behind Confirm() (AC-566): the one place all three ways to confirm run through, so a
+    // setting switched off costs nothing and one switched on cannot be skipped by picking a different key or
+    // click. Renders exactly the bytes the real crop would produce — the same `_editor`, the same
+    // region and marks — and asks before they leave the selection window.
     private async Task<bool> _ShowPreviewAsync(ScreenCapture capture, ScreenshotSelection chosen, string destination, Window owner)
     {
         var settings = await _settings.LoadAsync().ConfigureAwait(true);

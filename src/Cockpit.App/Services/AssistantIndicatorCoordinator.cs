@@ -10,22 +10,17 @@ using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Feeds the sidebar's <see cref="AssistantIndicatorViewModel"/> and acts on what the operator does to it
-/// (AC-543). The one place that answers the question the indicator exists to ask: <em>who</em> is listening.
-/// </summary>
-/// <remarks>
-/// The indicator itself knows nothing about any of this — it is a reusable component (criterion 21) that AC-238
-/// will drop into the companion window, so the three sources that decide its state are joined here instead of
-/// reached for from inside it: the assistant host (ready/thinking/speaking/unavailable), open-mic (listening
-/// continuously), and dictation (<c>F9</c>, which is not the assistant at all and is the one state on this chip
-/// that means your words are going somewhere else).
-/// <para>
-/// Dictation outranks everything else shown here, deliberately. The other states are about the assistant and are
-/// merely informative; this one is a warning that the microphone is pointed at a session, and a chip that showed
-/// "Ready" while F9 was recording would be wrong in the single way that costs something.
-/// </para>
-/// </remarks>
+// Feeds the sidebar's `AssistantIndicatorViewModel` and acts on what the operator does to it
+// (AC-543). The one place that answers the question the indicator exists to ask: *who* is listening.
+// The indicator itself knows nothing about any of this — it is a reusable component (criterion 21) that AC-238
+// will drop into the companion window, so the three sources that decide its state are joined here instead of
+// reached for from inside it: the assistant host (ready/thinking/speaking/unavailable), open-mic (listening
+// continuously), and dictation (`F9`, which is not the assistant at all and is the one state on this chip
+// that means your words are going somewhere else).
+//
+// Dictation outranks everything else shown here, deliberately. The other states are about the assistant and are
+// merely informative; this one is a warning that the microphone is pointed at a session, and a chip that showed
+// "Ready" while F9 was recording would be wrong in the single way that costs something.
 public sealed class AssistantIndicatorCoordinator : ISingletonService
 {
     private readonly AssistantSessionHost _assistant;
@@ -35,10 +30,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly IAssistantSpawnAuditLog _spawnAuditLog;
 
-    /// <summary>The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).</summary>
+    // The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).
     private AssistantChatWindow? _chatWindow;
 
-    /// <summary>The open pop-out's view model, so a settings change can reach it without touching the window off the UI thread. Null whenever <see cref="_chatWindow"/> is.</summary>
+    // The open pop-out's view model, so a settings change can reach it without touching the window off the UI thread. Null whenever `_chatWindow` is.
     private AssistantChatViewModel? _chatViewModel;
 
     public AssistantIndicatorCoordinator(
@@ -57,10 +52,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _spawnAuditLog = spawnAuditLog;
     }
 
-    /// <summary>The chip the sidebar binds to. One instance, fed from here.</summary>
+    // The chip the sidebar binds to. One instance, fed from here.
     public AssistantIndicatorViewModel Indicator { get; } = new();
 
-    /// <summary>Subscribes to everything that can change what the chip says, and to what the operator does to it.</summary>
+    // Subscribes to everything that can change what the chip says, and to what the operator does to it.
     public void Start()
     {
         _assistant.PropertyChanged += _OnSourceChanged;
@@ -93,7 +88,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         Indicator.IsFeatureEnabled = settings.IsEnabled;
     }
 
-    /// <summary>Re-reads whether the feature is on, so switching it in Options adds or removes the chip without a restart.</summary>
+    // Re-reads whether the feature is on, so switching it in Options adds or removes the chip without a restart.
     public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -112,18 +107,16 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         }
     }
 
-    /// <summary>Mirrors the sidebar's collapsed state onto the chip, which drops to its bare badge for the rail.</summary>
+    // Mirrors the sidebar's collapsed state onto the chip, which drops to its bare badge for the rail.
     public void SetCollapsed(bool collapsed) => Indicator.IsCollapsed = collapsed;
 
     private void _OnSourceChanged(object? sender, PropertyChangedEventArgs e) =>
         Dispatcher.UIThread.Post(_Refresh);
 
-    /// <summary>Whether the playback queue is speaking right now — the chip's <see cref="AssistantActivity.Speaking"/>.</summary>
-    /// <remarks>
-    /// Kept as a field rather than asked of the queue in <see cref="_ResolveActivity"/>, because the queue reports
-    /// this by event and has no property to read back — and the event arrives on the playback thread, so the value
-    /// is captured here and the refresh marshalled like every other source.
-    /// </remarks>
+    // Whether the playback queue is speaking right now — the chip's `AssistantActivity.Speaking`.
+    // Kept as a field rather than asked of the queue in `_ResolveActivity`, because the queue reports
+    // this by event and has no property to read back — and the event arrives on the playback thread, so the value
+    // is captured here and the refresh marshalled like every other source.
     private bool _isSpeaking;
 
     private void _OnPlaybackActiveChanged(object? sender, bool active) =>
@@ -144,10 +137,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         Indicator.ListeningMode = _openMic.IsListening ? AssistantListeningMode.AlwaysOn : AssistantListeningMode.Off;
     }
 
-    /// <summary>
-    /// What the chip shows, in priority order. Dictation first — see the remarks on this class for why the one
-    /// state that is not about the assistant is the one that wins.
-    /// </summary>
+    // What the chip shows, in priority order. Dictation first — see the remarks on this class for why the one
+    // state that is not about the assistant is the one that wins.
     private AssistantActivity _ResolveActivity()
     {
         if (_overlay.Overlay.State is VoiceOverlayState.Listening or VoiceOverlayState.Transcribing
@@ -178,10 +169,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         return _assistant.Activity;
     }
 
-    /// <summary>
-    /// The chip is clicked: bring the assistant up if this is the first time, and show the conversation. Equal to
-    /// holding the hotkey as far as starting goes — a voice feature reachable only by a key shuts people out.
-    /// </summary>
+    // The chip is clicked: bring the assistant up if this is the first time, and show the conversation. Equal to
+    // holding the hotkey as far as starting goes — a voice feature reachable only by a key shuts people out.
     private async Task _OpenChatAsync()
     {
         await _assistant.EnsureStartedAsync().ConfigureAwait(true);
@@ -214,18 +203,14 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _chatWindow.Activate();
     }
 
-    /// <summary>The cockpit's own window closed, so the pop-out onto it goes too — see <see cref="_OpenChatAsync"/> for why by hand.</summary>
+    // The cockpit's own window closed, so the pop-out onto it goes too — see `_OpenChatAsync` for why by hand.
     private void _OnMainWindowClosed(object? sender, EventArgs e) => _chatWindow?.Close();
 
-    /// <summary>
-    /// Switches the microphone between held-only and held-open — the only two modes the chip offers.
-    /// </summary>
-    /// <remarks>
-    /// The wake-word mode is refused rather than absent from this check: the enum still carries it (the wake word
-    /// is its own future ticket), and a mode that cannot be picked today is one a caller could still pass
-    /// tomorrow by reading the enum rather than the UI. Guarding here costs one line and means the microphone
-    /// never opens on a filter that does not exist.
-    /// </remarks>
+    // Switches the microphone between held-only and held-open — the only two modes the chip offers.
+    // The wake-word mode is refused rather than absent from this check: the enum still carries it (the wake word
+    // is its own future ticket), and a mode that cannot be picked today is one a caller could still pass
+    // tomorrow by reading the enum rather than the UI. Guarding here costs one line and means the microphone
+    // never opens on a filter that does not exist.
     private async Task _ApplyListeningModeAsync(AssistantListeningMode mode)
     {
         if (mode == AssistantListeningMode.AlwaysOnWithWakeWord)

@@ -5,21 +5,17 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Assembles the diagnostics snapshot the Debug tab shows and the tester copies (AC-58). It lives in the App layer
-/// because that is the only one that can name the render backend and the toolkit version; the memory and process
-/// figures reuse the same readers the resource monitor already uses (#78), so the panel and the status bar cannot
-/// disagree about what a session weighs.
-/// </summary>
+// Assembles the diagnostics snapshot the Debug tab shows and the tester copies (AC-58). It lives in the App layer
+// because that is the only one that can name the render backend and the toolkit version; the memory and process
+// figures reuse the same readers the resource monitor already uses (#78), so the panel and the status bar cannot
+// disagree about what a session weighs.
 public sealed class DiagnosticsCollector(IProcessTableReader processTable, ICrashLogReader crashLogReader) : ISingletonService
 {
     private const int MaxCrashEntries = 3;
 
-    /// <summary>
-    /// Reads the machine once and builds a full snapshot for <paramref name="sessions"/>. A session with a process
-    /// is weighed as its whole tree (the <c>claude</c> process plus what it spawned), the same figure the status
-    /// bar reports; one with no process contributes nothing local to weigh.
-    /// </summary>
+    // Reads the machine once and builds a full snapshot for `sessions`. A session with a process
+    // is weighed as its whole tree (the `claude` process plus what it spawned), the same figure the status
+    // bar reports; one with no process contributes nothing local to weigh.
     public DiagnosticsSnapshot Collect(IReadOnlyList<SessionDescriptor> sessions)
     {
         var rows = processTable.Read();
@@ -39,11 +35,9 @@ public sealed class DiagnosticsCollector(IProcessTableReader processTable, ICras
         };
     }
 
-    /// <summary>
-    /// The sections that read only this process — platform, render backend, and native/managed memory — with no
-    /// sessions or crash logs. These need nothing injected, so the panel can show them even where the collector is
-    /// not registered (the design-time previewer and the screenshotter), rather than a blank "unavailable".
-    /// </summary>
+    // The sections that read only this process — platform, render backend, and native/managed memory — with no
+    // sessions or crash logs. These need nothing injected, so the panel can show them even where the collector is
+    // not registered (the design-time previewer and the screenshotter), rather than a blank "unavailable".
     public static DiagnosticsSnapshot SelfReadSnapshot() => new(
         DateTimeOffset.Now,
         PlatformInfo.Current(_ToolkitVersion(), _AppVersion()),
@@ -74,6 +68,6 @@ public sealed class DiagnosticsCollector(IProcessTableReader processTable, ICras
     }
 }
 
-/// <summary>What the diagnostics collector needs to know about one open session (AC-58): built from the session view
-/// models by the cockpit, so the collector stays free of any view-model dependency.</summary>
+// What the diagnostics collector needs to know about one open session (AC-58): built from the session view
+// models by the cockpit, so the collector stays free of any view-model dependency.
 public sealed record SessionDescriptor(string Title, string Kind, int? ProcessId);
