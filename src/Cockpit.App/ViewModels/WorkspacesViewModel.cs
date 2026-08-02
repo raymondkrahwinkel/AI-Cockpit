@@ -382,8 +382,12 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     [RelayCommand]
     private Task SelectNextWorkspaceAsync() => _ApplyAsync(Settings.WithSteppedActive(1));
 
+    /// <summary>
+    /// Renames a desk and persists it. Public because the tab strip is no longer the only caller — the assistant
+    /// renames one too (AC-592) — and a command executed from code hides whether it was awaited.
+    /// </summary>
     [RelayCommand]
-    private Task RenameWorkspaceAsync((string WorkspaceId, string Name) rename)
+    public Task RenameWorkspaceAsync((string WorkspaceId, string Name) rename)
     {
         if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == rename.WorkspaceId) is not { } workspace
             || string.IsNullOrWhiteSpace(rename.Name))

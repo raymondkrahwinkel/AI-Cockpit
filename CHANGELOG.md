@@ -30,6 +30,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Added
+
+- added: the voice assistant can rename a session and a desk. It could already name a session at the moment it
+  started one, but not afterwards — so "call that one Luna" meant leaving the conversation and doing it yourself in
+  the sidebar. Both renames ask for your approval first, the same as starting or stopping a session does, and a name
+  the assistant sets counts as one you chose: nothing later relabels it behind your back.
+
 ### Fixed
 
 - fixed: "Create backup…" no longer fails with "the process cannot access the file … because it is being used by
