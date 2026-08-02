@@ -622,7 +622,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     partial void OnNameChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
 
-    /// <summary>Re-running the portability check whenever the folder itself changes — a row already flagged machine-bound may no longer be once the operator points the project at a folder that now contains it, or the reverse.</summary>
+    /// <summary>Re-running the repo-relative-fix check whenever the folder itself changes (AC-605 criterion 5) — a row already offering "make repo-relative" may no longer once the operator points the project at a folder that no longer contains it, or the reverse.</summary>
     partial void OnSourceDirectoryChanged(string value) => _RefreshResourceDiagnostics();
 
     private void _AddResourceRow(ProjectResourceRowViewModel row)
@@ -634,7 +634,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         //
         // AC-485 review (FIX 6) — Role is included, but not for either reason this comment used to give: Role does
         // not gate the broken-reference probe (ReachesSessions does, see _RefreshResourceDiagnostics below), and it
-        // does not gate portability either (ProjectResourcePathPortability.IsMachineBound never looks at a row's
+        // does not gate scope either (ProjectResourcePathPortability.ClassifyScope never looks at a row's
         // Role at all). The real reason is MUST-FIX 1: switching a row's role away from Memory (or back to it) can
         // itself rewrite Reference's own text — see ProjectResourceRowViewModel.OnRoleChanged — and it is that
         // rewritten value the diagnostics below must judge, not whatever Reference held a moment before the switch.
@@ -712,7 +712,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// answer onto every row, or been superseded by a later one (AC-485 review, MUST-FIX 2) — a hook a test can
     /// await deterministically instead of sleeping for a computation whose entire point is to run off the UI
     /// thread. Production code never awaits this itself: what the operator sees update is each row's own bound
-    /// <see cref="ProjectResourceRowViewModel.IsBroken"/>/<see cref="ProjectResourceRowViewModel.IsMachineBound"/>,
+    /// <see cref="ProjectResourceRowViewModel.IsBroken"/>/<see cref="ProjectResourceRowViewModel.Scope"/>,
     /// whenever the background work gets there.
     /// </summary>
     internal Task ResourceDiagnosticsRefreshCompleted { get; private set; } = Task.CompletedTask;
@@ -752,8 +752,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// are read only on the calling (UI) thread, into a plain snapshot — touching a
     /// <see cref="ProjectResourceRowViewModel"/> off the UI thread is not safe — and the snapshot alone, plain data
     /// with no UI affinity, is handed to <see cref="Task.Run{TResult}(Func{TResult})"/> for the part that can
-    /// actually take a while: <see cref="ProjectResourceProbe.FindUnresolved"/> and
-    /// <see cref="ProjectResourcePathPortability.IsMachineBound"/> over every row. Once that finishes, the answer is
+    /// actually take a while: <see cref="ProjectResourceProbe.FindUnresolved"/>,
+    /// <see cref="ProjectResourcePathPortability.ClassifyScope"/> and
+    /// <see cref="ProjectResourcePathPortability.SuggestRepoRelativeFix"/> over every row. Once that finishes, the answer is
     /// written back onto each row — but only if no newer call has started in the meantime: <c>version</c> is
     /// compared against <see cref="_resourceDiagnosticsRefreshVersion"/>'s current value, and a stale answer
     /// (a slow, earlier call finishing after a faster, later one already has) is simply dropped rather than
@@ -819,10 +820,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
         var fsProbeTask = Task.Run(() =>
         {
             var unresolvedReferences = ProjectResourceProbe.FindUnresolved(resources.Select(pair => pair.resource));
-            var isMachineBound = resources.ToDictionary(
+            var scopes = resources.ToDictionary(
                 pair => pair.row,
-                pair => ProjectResourcePathPortability.IsMachineBound(sourceDirectory, pair.resource.Reference));
-            return (Unresolved: unresolvedReferences, MachineBound: isMachineBound);
+                pair => ProjectResourcePathPortability.ClassifyScope(pair.resource.Reference));
+            var repoRelativeFixes = resources.ToDictionary(
+                pair => pair.row,
+                pair => ProjectResourcePathPortability.SuggestRepoRelativeFix(sourceDirectory, pair.resource.Reference));
+            return (Unresolved: unresolvedReferences, Scopes: scopes, RepoRelativeFixes: repoRelativeFixes);
         });
 
         // AC-503: a Memory row whose picked source has a reachability check and a non-blank typed value gets one,
@@ -844,7 +848,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 reachabilityCancellation.Token))
             .ToList();
 
-        var (unresolved, machineBound) = await fsProbeTask.ConfigureAwait(true);
+        var (unresolved, scopes, repoRelativeFixes) = await fsProbeTask.ConfigureAwait(true);
         await Task.WhenAll(reachabilityTasks).ConfigureAwait(true);
 
         if (version != _resourceDiagnosticsRefreshVersion)
@@ -855,7 +859,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         foreach (var (row, resource) in resources)
         {
             row.IsBroken = resource.ReachesSessions && unresolved.Contains(resource.Reference);
-            row.IsMachineBound = machineBound[row];
+            row.Scope = scopes[row];
+            row.RepoRelativeFix = repoRelativeFixes[row];
         }
     }
 

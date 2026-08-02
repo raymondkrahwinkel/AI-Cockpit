@@ -76,9 +76,13 @@ public partial class ProjectDialog : Window
 
             if (row.Role == ProjectResourceRole.Memory)
             {
+                // AC-605: a "~"-anchored Memory-folder reference (a legitimate, portable form — see
+                // ProjectResourcePathPortability's own remarks) must be resolved before it reaches the storage
+                // provider, which has no notion of "~" of its own; unresolved, it would simply fail to find a
+                // start location and the picker would open unseeded rather than at the folder the row names.
                 var start = string.IsNullOrWhiteSpace(row.Reference)
                     ? null
-                    : await StorageProvider.TryGetFolderFromPathAsync(row.Reference);
+                    : await StorageProvider.TryGetFolderFromPathAsync(ProjectResourcePathPortability.ResolveHomeAnchor(row.Reference));
 
                 var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
                 {

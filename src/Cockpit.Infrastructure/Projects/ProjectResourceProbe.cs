@@ -25,7 +25,12 @@ namespace Cockpit.Infrastructure.Projects;
 /// </description></item>
 /// <item><description>
 /// A relative path is never checked either — whether a relative path travels with the project it is relative to is
-/// AC-485's question, not this one's.
+/// AC-485's question, not this one's. A <c>~</c>-anchored reference is the one exception (AC-605 criterion 2): it is
+/// not fully qualified as far as <see cref="Path.IsPathFullyQualified(string)"/> is concerned, but this probe has
+/// enough on its own to resolve it (<see cref="ProjectResourcePathPortability.ResolveHomeAnchor"/> needs only the
+/// reference itself, no <c>SourceDirectory</c>) and does — a <c>~</c> row that does not exist on this machine gets
+/// the same "could not be found" treatment as any other missing absolute path, rather than being silently skipped
+/// the way a repo-relative reference still is.
 /// </description></item>
 /// <item><description>
 /// A UNC path (<c>\\host\share\...</c>) is fully qualified but never checked either (AC-484 review, MUST-FIX 4): an
@@ -139,16 +144,20 @@ public static class ProjectResourceProbe
                     continue;
                 }
 
-                // A relative path's portability is AC-485's concern; only an absolute, fully qualified path is
-                // ever weighed in as "broken" here.
-                if (!Path.IsPathFullyQualified(reference))
+                // AC-605 criterion 2: a `~`-anchored reference resolves to a real, checkable path on its own,
+                // without needing SourceDirectory — see the class remarks. Anything else that is still not fully
+                // qualified is AC-485's concern, not this probe's, and is skipped exactly as before.
+                var isHomeAnchored = ProjectResourcePathPortability.IsHomeAnchored(reference);
+                if (!isHomeAnchored && !Path.IsPathFullyQualified(reference))
                 {
                     continue;
                 }
 
+                var resolved = isHomeAnchored ? ProjectResourcePathPortability.ResolveHomeAnchor(reference) : reference;
+
                 // A UNC path is fully qualified but this probe cannot afford to check one cheaply — see the class
                 // remarks on the 1282 ms measurement that documents why.
-                if (reference.StartsWith(@"\\", StringComparison.Ordinal))
+                if (resolved.StartsWith(@"\\", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -191,7 +200,7 @@ public static class ProjectResourceProbe
                 {
                     try
                     {
-                        found = exists(reference);
+                        found = exists(resolved);
                     }
                     finally
                     {

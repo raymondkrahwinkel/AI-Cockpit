@@ -241,6 +241,105 @@ public class ProjectInstructionContentReaderTests : IDisposable
         Assert.Empty(ProjectInstructionContentReader.Read(resources));
     }
 
+    // --- AC-605: a "~"-anchored reference is resolved before it ever reaches disk -----------------------------
+
+    /// <summary>
+    /// AC-605 (coordinator review): this reader used to hand <see cref="ProjectResource.Reference"/> straight to
+    /// <c>new FileInfo(path)</c>/<c>File.ReadAllText(path)</c> — both throw for a literal <c>"~/..."</c> string,
+    /// which this reader's own unreadable-file <c>catch</c> then swallowed the same way it swallows a genuinely
+    /// missing file, so a ticked "~/house-rules.md" row silently never reached a session. Proven here against the
+    /// <em>content</em> a session would actually receive, not merely "something came back" — a test that only
+    /// checked the result was non-empty stayed green through exactly this bug, because a broken resolve and a
+    /// working one can both produce a non-empty dictionary keyed by the same stored reference if the assertion
+    /// never looks at what path the hooks were actually called with or what the row's own key maps to.
+    /// </summary>
+    [Fact]
+    public void AHomeAnchoredReference_IsResolvedBeforeEitherHookRunsAndKeptUnderItsOwnStoredReference()
+    {
+        const string reference = "~/house-rules.md";
+        var resolvedPath = ProjectResourcePathPortability.ResolveHomeAnchor(reference);
+        // The whole point of this test is that resolution actually changes the path handed to disk — if it did
+        // not (a $HOME so exotic that "~/house-rules.md" already looks fully qualified as typed, which never
+        // happens on any platform this repo builds on), the assertions below would pass trivially and prove
+        // nothing about the fix.
+        Assert.NotEqual(reference, resolvedPath);
+        var resources = new[] { new ProjectResource(reference, ProjectResourceRole.Instructions) { SendsContent = true } };
+
+        var result = ProjectInstructionContentReader.Read(
+            resources,
+            fileLength: path =>
+            {
+                Assert.Equal(resolvedPath, path);
+                return 10;
+            },
+            readAllText: path =>
+            {
+                Assert.Equal(resolvedPath, path);
+                return "Always write tests first.";
+            });
+
+        Assert.True(result.ContainsKey(reference));
+        Assert.Equal("Always write tests first.", result[reference]);
+        // Keyed by the stored reference, never by the resolved path — SessionStartDefaults.Resolve looks a row's
+        // content up by that row's own Reference (its stored, unresolved text), so a result keyed by the resolved
+        // path would be unfindable by the only key its caller ever uses.
+        Assert.False(result.ContainsKey(resolvedPath));
+    }
+
+    /// <summary>
+    /// AC-605 review: the same file named two different ways (an anchor form and its own already-resolved absolute
+    /// form) is not deduplicated into one entry — each row is read and kept under its own stored Reference, because
+    /// that is the only key <see cref="Cockpit.Core.Sessions.SessionStartDefaults.Resolve"/> ever looks a row up
+    /// by. Both entries carry the same content because both resolve to the same underlying path (proven by the
+    /// hook receiving that identical path for each), which is the point: this is a deliberate "read it twice, key
+    /// it twice" choice, not a missed dedup opportunity.
+    /// </summary>
+    [Fact]
+    public void TwoRowsNamingTheSameFileThroughDifferentReferenceForms_AreBothReadAndKeptUnderTheirOwnKey()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var anchoredForm = "~/shared.md";
+        var resolvedForm = Path.Combine(home, "shared.md");
+        Assert.Equal(ProjectResourcePathPortability.ResolveHomeAnchor(anchoredForm), resolvedForm);
+        var resources = new[]
+        {
+            new ProjectResource(anchoredForm, ProjectResourceRole.Instructions) { SendsContent = true },
+            new ProjectResource(resolvedForm, ProjectResourceRole.Instructions) { SendsContent = true },
+        };
+
+        var result = ProjectInstructionContentReader.Read(
+            resources,
+            fileLength: _ => 10,
+            readAllText: path => $"content for {path}");
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal($"content for {resolvedForm}", result[anchoredForm]);
+        Assert.Equal($"content for {resolvedForm}", result[resolvedForm]);
+    }
+
+    /// <summary>AC-605: a form starting with "~" that is not a supported anchor (Raymond's decision — only "~" itself and "~/..." resolve) is left exactly as typed, so it reads (and fails to read) as ordinary relative text, not as this operator's home.</summary>
+    [Fact]
+    public void ATildeReferenceThatIsNotASupportedAnchorForm_IsPassedThroughUnresolved()
+    {
+        const string reference = "~henk/private-notes.md";
+        var resources = new[] { new ProjectResource(reference, ProjectResourceRole.Instructions) { SendsContent = true } };
+
+        var result = ProjectInstructionContentReader.Read(
+            resources,
+            fileLength: path =>
+            {
+                Assert.Equal(reference, path);
+                return 10;
+            },
+            readAllText: path =>
+            {
+                Assert.Equal(reference, path);
+                return "unchanged";
+            });
+
+        Assert.Equal("unchanged", result[reference]);
+    }
+
     /// <summary>
     /// AC-486 review, must-fix 2: this class promised it "never blocks a session from starting", and every test
     /// here proved only that it never <em>throws</em>. Reading is heavier than the existence check its sibling

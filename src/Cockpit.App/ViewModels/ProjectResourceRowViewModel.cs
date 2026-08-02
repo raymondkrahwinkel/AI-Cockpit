@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
@@ -136,13 +137,30 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     private bool _isBroken;
 
     /// <summary>
-    /// Whether this reference names an absolute path outside the project's own folder (AC-485) — a reference that
-    /// means nothing on a machine that has this project somewhere else, or does not have it at all. Set from
-    /// outside the same way <see cref="IsBroken"/> is (see <see cref="Cockpit.Core.Projects.ProjectResourcePathPortability"/>),
-    /// since judging it needs <c>SourceDirectory</c>, which this row does not itself know.
+    /// How far this reference travels (AC-605 criteria 6, 7) — set from outside, by
+    /// <see cref="ProjectDialogViewModel"/>, from <see cref="Cockpit.Core.Projects.ProjectResourcePathPortability.ClassifyScope"/>.
+    /// Renamed from the old <c>IsMachineBound</c> bool (AC-605 criterion 6): a property that only ever answered
+    /// "machine-bound or not" could not tell an anchor-relative reference (travels to any machine the operator
+    /// opens the project on) apart from a repo-relative one (travels with the repo) — both simply read as "not
+    /// machine-bound". Null for a row this was never judged for (a brand-new row, a blank reference).
     /// </summary>
     [ObservableProperty]
-    private bool _isMachineBound;
+    [NotifyPropertyChangedFor(nameof(ScopeLabel))]
+    [NotifyPropertyChangedFor(nameof(ShowsScopeLabel))]
+    private ProjectResourceScope? _scope;
+
+    /// <summary>
+    /// The repo-relative form this row's <see cref="Reference"/> should have been saved as, when it is a fully
+    /// qualified path that already lives inside the project's own folder but was never actually converted (AC-605
+    /// criterion 5) — hand-typed, or written by hand into <c>cockpit.json</c>. Set from outside by
+    /// <see cref="ProjectDialogViewModel"/> from <see cref="Cockpit.Core.Projects.ProjectResourcePathPortability.SuggestRepoRelativeFix"/>.
+    /// Null when there is nothing to fix, which gates <see cref="HasRepoRelativeFix"/> and the editor's own
+    /// remediation action.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRepoRelativeFix))]
+    [NotifyPropertyChangedFor(nameof(ShowsScopeLabel))]
+    private string? _repoRelativeFix;
 
     /// <summary>
     /// What a Memory row's own registered source found about the typed value (AC-503), or null when nothing is
@@ -529,6 +547,60 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
 
     /// <summary>Whether this row has neither a reference nor a label — the same "untouched" shape <see cref="ProjectInfoFieldViewModel"/> drops on save.</summary>
     public bool IsBlank => string.IsNullOrWhiteSpace(Reference) && string.IsNullOrWhiteSpace(Label);
+
+    /// <summary>
+    /// The sentence shown under this row for its <see cref="Scope"/> (AC-605 criterion 7) — null (hidden) for a row
+    /// with no scope known yet. Deliberately full sentences rather than a terse ◆/● badge: AC-604 already put a
+    /// two-glyph ownership badge next to a project field's own <c>Origin</c>, and a second badge language reading
+    /// the same way on the same screen would tell the operator nothing about which question either one answers. The
+    /// <see cref="ProjectResourceScope.Machine"/> wording is unchanged from the pre-AC-605 hint on purpose — the one
+    /// case this scene's own render already showed (see <c>Screenshotter._ProjectEditorWithResources</c>).
+    /// <para>
+    /// AC-605 review round (Raymond): <see cref="ProjectResourceScope.Home"/>'s sentence used to lead with "your
+    /// home folder — travels to any machine <em>you</em> open this project on", the AC-482 framing this ticket
+    /// reverses. This is the one place an operator can see whether a row leaves the machine at all — reading that
+    /// sentence, a <c>~/...</c> row looked like it stayed put, when criterion 3 already made it travel in
+    /// <c>.cockpit/project.json</c> to everyone the project is shared with. Rewritten so "shared" is the sentence's
+    /// own point, not an implication left for the operator to work out.
+    /// </para>
+    /// </summary>
+    public string? ScopeLabel => Scope switch
+    {
+        ProjectResourceScope.Repo => "Travels with the repo.",
+        ProjectResourceScope.Home => "Anchored to a home folder — travels to everyone this project is shared with, resolved against whoever opens it.",
+        ProjectResourceScope.Instance => "Resolved through its plugin's own connection — the same reference works for anyone with access to it.",
+        ProjectResourceScope.Machine => "This is an absolute path specific to this machine — it will not travel if the project definition is shared.",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Whether <see cref="ScopeLabel"/> is actually shown (AC-605 review round) — hidden once
+    /// <see cref="HasRepoRelativeFix"/> is true, even though <see cref="Scope"/> is still <see cref="ProjectResourceScope.Machine"/>
+    /// in that state: the fix banner's own sentence already says this path will not travel and, unlike the plain
+    /// scope sentence, also offers the remedy — showing both repeated the same closing clause ("it will not travel
+    /// if the project definition is shared") twice in a row for no benefit. Found rendering the AC-605 scope-scene:
+    /// with both shown, a row with a fix available cost two lines' worth of near-identical text where one said
+    /// everything the other did and more.
+    /// </summary>
+    public bool ShowsScopeLabel => ScopeLabel is not null && !HasRepoRelativeFix;
+
+    /// <summary>Whether <see cref="RepoRelativeFix"/> has something to offer (AC-605 criterion 5) — gates the editor's own "make repo-relative" action.</summary>
+    public bool HasRepoRelativeFix => RepoRelativeFix is not null;
+
+    /// <summary>
+    /// Applies <see cref="RepoRelativeFix"/> in place (AC-605 criterion 5) — the one path that ever rewrites
+    /// <see cref="Reference"/> for an absolute-but-already-inside-the-folder row: an explicit action the operator
+    /// took, never automatic (see <see cref="Cockpit.Core.Projects.ProjectResourcePathPortability"/>'s own remarks
+    /// on why only a picked path is rewritten without being asked).
+    /// </summary>
+    [RelayCommand]
+    private void ApplyRepoRelativeFix()
+    {
+        if (RepoRelativeFix is { } fix)
+        {
+            Reference = fix;
+        }
+    }
 
     /// <summary>
     /// This row as the domain model that is actually saved: the scheme folded into the reference when a Memory row
