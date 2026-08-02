@@ -1,0 +1,130 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:onboarding="using:Cockpit.App.ViewModels.Onboarding"
+             xmlns:plugins="using:Cockpit.Core.Plugins"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="560"
+             x:DataType="onboarding:WorkKindStepViewModel"
+             x:Class="Cockpit.App.Views.Onboarding.WorkKindStepView">
+
+    <!-- AC-511: one list instead of one consent dialog per plugin. The confirm button and the standing terms are
+         docked and only the list scrolls — the same lesson PluginConsentDialog learned the hard way: a list long
+         enough to push the answer past the bottom edge is a consent screen with no visible consent. Every row
+         carries what that plugin's own dialog would have said, so the guard moved rather than went. -->
+    <DockPanel>
+
+        <StackPanel DockPanel.Dock="Top" Spacing="5" Margin="0,0,0,10">
+            <TextBlock Text="What kind of work is this for?" FontSize="14" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" FontSize="11.5"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       Text="Picking one only ticks boxes. Nothing is installed until you press Install."/>
+
+            <StackPanel Spacing="3" IsVisible="{Binding HasRecommendations}">
+                <ListBox ItemsSource="{Binding WorkKinds}" SelectedItem="{Binding SelectedWorkKind}"
+                         Background="Transparent" BorderThickness="0" Padding="0">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="6"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="plugins:PluginWorkKindOption">
+                            <!-- The description hovers rather than sitting under the chips: the shell's window is
+                                 480px tall and fixed, and every line spent up here is a line the plugin list —
+                                 which carries what the operator is consenting to — does not get. -->
+                            <TextBlock Text="{Binding Label}" FontSize="12.5" ToolTip.Tip="{Binding Description}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- AC-511 criterion 6: the set is Raymond's to decide, so it may not ship looking settled. -->
+                <TextBlock Text="{x:Static plugins:PluginWorkKinds.PlaceholderNotice}" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+
+            <TextBlock Text="No store said which work its plugins are for, so nothing is suggested — tick what you want."
+                       IsVisible="{Binding !HasRecommendations}"
+                       FontSize="11.5" TextWrapping="Wrap"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,10,0,0">
+            <TextBlock Text="{x:Static vm:PluginConsentTerms.PermissionsNotice}"
+                       TextWrapping="Wrap" FontSize="11.5"
+                       Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding Summary}"
+                           IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           TextWrapping="Wrap" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,12,0"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <Button Grid.Column="1" Classes="Accent" Content="{Binding ConfirmLabel}"
+                        Command="{Binding ConfirmCommand}"/>
+            </Grid>
+        </StackPanel>
+
+        <ScrollViewer Name="PluginList" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Loading what the stores offer…" IsVisible="{Binding IsLoading}"
+                           FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBlock Text="{Binding LoadError}"
+                           IsVisible="{Binding LoadError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+
+                <ItemsControl ItemsSource="{Binding Plugins}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="6"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="onboarding:WorkKindPluginRowViewModel">
+                            <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="9,7">
+                                <!-- A grid, not a horizontal stack: a stack hands its children infinite width, so
+                                     the "May" line would run off the right edge instead of wrapping. -->
+                                <Grid ColumnDefinitions="Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                                    <CheckBox Grid.Row="0" Grid.RowSpan="4" Grid.Column="0"
+                                              IsChecked="{Binding IsSelected}" Margin="0,0,6,0" VerticalAlignment="Top"/>
+
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
+                                                Orientation="Horizontal" Spacing="7">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12.5"/>
+                                        <TextBlock Text="{Binding Version}" FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding Author}" FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    </StackPanel>
+
+                                    <!-- The line the operator is saying yes to. It was CockpitTextFaintBrush in the
+                                         mockup — 3.19:1 on this ground, and text nobody can read is its own way of
+                                         saying less. WorkKindConsentParityTests measures it where it sits. -->
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="May:" FontSize="11" FontWeight="SemiBold"
+                                               Margin="0,2,5,0" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding May}" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="From:" FontSize="11" FontWeight="SemiBold"
+                                               Margin="0,2,5,0" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding From}" FontSize="10.5"
+                                               FontFamily="{StaticResource CockpitMonoFont}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="SHA-256 (pinned on install):" FontSize="11" FontWeight="SemiBold"
+                                               Margin="0,2,5,0" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding Checksum}" FontSize="10.5"
+                                               FontFamily="{StaticResource CockpitMonoFont}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

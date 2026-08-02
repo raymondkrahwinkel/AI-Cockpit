@@ -12,4 +12,15 @@ public static class PluginWorkKinds
     // the per-plugin defaults it implies — is decided (the work-kind screen itself, not part of AC-511 [c]).
     public const string Developer = "developer";
     public const string Administration = "administration";
+
+    /// <summary>What the wizard's chooser offers, in the order it offers it — the single place a work kind is
+    /// added, renamed or dropped. Still the placeholder set above; see <see cref="PlaceholderNotice"/>.</summary>
+    public static IReadOnlyList<PluginWorkKindOption> All { get; } =
+    [
+        new(Developer, "Development", "Writing, reviewing and shipping code."),
+        new(Administration, "Administration", "Records, invoicing and the paperwork around the work."),
+    ];
+
+    /// <summary>Shown wherever <see cref="All"/> is offered, so a placeholder taxonomy cannot ship looking settled.</summary>
+    public const string PlaceholderNotice = "Placeholder set — the real work kinds are still to be decided.";
 }

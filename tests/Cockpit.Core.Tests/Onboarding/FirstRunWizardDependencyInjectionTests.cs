@@ -55,6 +55,21 @@ public class FirstRunWizardDependencyInjectionTests
     }
 
     /// <summary>
+    /// AC-511 adds its step the way the shell says a step is added — an <c>ISingletonService</c> marker and nothing
+    /// else — so this is what catches a constructor dependency the container cannot satisfy: the step would then be
+    /// absent from the wizard with nothing failing anywhere else.
+    /// </summary>
+    [Fact]
+    public void TheContainer_ResolvesTheWorkKindStep_WithoutTheShellKnowingAboutIt()
+    {
+        using var provider = BuildProvider();
+
+        var steps = provider.GetServices<IFirstRunWizardStep>().ToList();
+
+        Assert.Contains(steps, step => step is WorkKindStep);
+    }
+
+    /// <summary>
     /// The Help menu reaches the wizard through an optional constructor parameter that defaults to null (AC-512),
     /// which is a shape that fails quietly: an unsatisfied parameter still compiles, still passes a test that only
     /// asks the container for <see cref="IFirstRunWizard"/>, and only shows up as a menu item that does nothing.

@@ -321,7 +321,35 @@ internal static class Screenshotter
         // Criterion 2's remaining two shapes — a fresh install and a batch failure — plus the "half succeeded"
         // summary line, all only reachable in the real app after InstallSelectedCommand actually runs.
         ["provider-step-install-outcomes"] = (_, _) => _AsWindow(_ProviderStepInstallOutcomes(), 640, 560),
+
+
+        // AC-511 criterion 7: the work-kind step in the shell it actually lives in, at the shell's own fixed size,
+        // in both the state that fits and the one that does not. A work kind that pre-ticks six plugins is the
+        // case where the confirm button can be pushed past the bottom edge, and nobody sees that on three rows.
+        ["first-run-work-kind"] = (_, _) => _WorkKindWizard(pluginCount: 3),
+        ["first-run-work-kind-long"] = (_, _) => _WorkKindWizard(pluginCount: 6),
     };
+
+    private static Window _WorkKindWizard(int pluginCount)
+    {
+        var rows = Enumerable.Range(1, pluginCount).Select(index => new ViewModels.Onboarding.WorkKindPluginRowViewModel(
+            name: WorkKindPluginNames[(index - 1) % WorkKindPluginNames.Length],
+            version: $"1.{index}.0",
+            author: "Cockpit",
+            from: $"https://plugins.example.org/index.json → pack-{index}/pack-1.{index}.0.zip",
+            checksum: $"9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b{index:D2}",
+            isSelected: true));
+
+        var step = new Views.Onboarding.WorkKindStep(new ViewModels.Onboarding.WorkKindStepViewModel(rows));
+
+        return new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([step]),
+        };
+    }
+
+    private static readonly string[] WorkKindPluginNames =
+        ["GitHub Issues", "GitHub Pull Requests", "YouTrack", "Weather", "Time Tracking", "Invoices"];
 
     /// <summary>
     /// Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps

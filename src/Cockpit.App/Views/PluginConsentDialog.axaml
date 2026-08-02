@@ -52,8 +52,10 @@
                 <Border Background="{StaticResource CockpitSecondaryBgBrush}"
                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource CockpitControlRadius}" Padding="12">
+                    <!-- AC-511: the wizard's batch consent shows this same sentence, so it is one constant both
+                         screens read rather than a literal here and a copy there. -->
                     <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                               Text="A plugin runs with your account's permissions — it is not sandboxed. Only enable plugins you trust. If the file changes later, you will be asked to consent again."/>
+                               Text="{x:Static vm:PluginConsentTerms.PermissionsNotice}"/>
                 </Border>
             </StackPanel>
         </ScrollViewer>
