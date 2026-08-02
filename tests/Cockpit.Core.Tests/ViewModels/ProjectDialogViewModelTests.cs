@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -439,5 +440,110 @@ public class ProjectDialogViewModelTests
 
         Assert.True(closed);
         Assert.Null(closedWith);
+    }
+
+    // --- AC-604: project-field ownership --------------------------------------------------------------------
+
+    [Fact]
+    public async Task CreateAsync_AProjectNoOneClaimed_ShowsNoOriginBadges()
+    {
+        // Acceptance criterion 4: character-for-character as before — no badge, no locked field, no extra row.
+        var project = Project.Create("Cockpit");
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog());
+
+        Assert.False(viewModel.HasFieldOwnership);
+        Assert.False(viewModel.NameOrigin.IsClaimed);
+        Assert.False(viewModel.NameOrigin.IsLockedHere);
+        Assert.Null(viewModel.NameOrigin.ReadOnlyReason);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AClaimedField_ResolvesItsSourceAndLeavesOtherFieldsLocal()
+    {
+        var project = Project.Create("Cockpit");
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Name] = new ProjectFieldOwnership("Depot — Work", IsEditable: true),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), Catalog(), fieldOwnership: fieldOwnership);
+
+        Assert.True(viewModel.HasFieldOwnership);
+        Assert.True(viewModel.NameOrigin.IsClaimed);
+        Assert.Equal("Depot — Work", viewModel.NameOrigin.SourceName);
+        // The project has a claim, but nothing named Description here — it stays local, still badged as such since
+        // the project overall is a shared one (the mixed case AC-604 exists for).
+        Assert.False(viewModel.DescriptionOrigin.IsClaimed);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AnEditableClaimedField_IsStillLockedUntilThereIsSomewhereToWriteBackTo()
+    {
+        // Regression (Raymond, review of the first render): ProjectFieldOwnership.IsEditable: true used to unlock
+        // the control while there was still nowhere for an edit to go — the operator's typing vanished on Save
+        // without a word about it. Until AC-247 gives an editable claim a write-back destination, every claimed
+        // field is locked regardless of IsEditable.
+        var project = Project.Create("Cockpit");
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Behavior] = new ProjectFieldOwnership("Depot — Work", IsEditable: true),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), Catalog(), fieldOwnership: fieldOwnership);
+
+        Assert.True(viewModel.BehaviorOrigin.IsLockedHere, "an editable claim must not offer an edit with nowhere to go");
+        Assert.Contains("Depot — Work", viewModel.BehaviorOrigin.ReadOnlyReason);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AReadOnlyClaimedField_LocksTheControlAndExplainsWhy()
+    {
+        var project = Project.Create("Cockpit");
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Behavior] = new ProjectFieldOwnership("EVE Workbench — Team", IsEditable: false),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), Catalog(), fieldOwnership: fieldOwnership);
+
+        Assert.True(viewModel.BehaviorOrigin.IsLockedHere);
+        Assert.Contains("EVE Workbench — Team", viewModel.BehaviorOrigin.ReadOnlyReason);
+    }
+
+    [Fact]
+    public async Task ToProject_AClaimedField_CarriesTheOriginalValueRatherThanTheLocalEdit()
+    {
+        // Acceptance criterion 3: an edit to a claimed field must never reach cockpit.json. Editable=true here on
+        // purpose — even a field the control lets the operator type into must not save that edit, since the write
+        // destination for an editable claim is the plugin, not cockpit.json (not built by this seam ticket).
+        var project = Project.Create("Cockpit") with { Name = "Original name" };
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Name] = new ProjectFieldOwnership("Depot — Work", IsEditable: true),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), Catalog(), fieldOwnership: fieldOwnership);
+
+        viewModel.Name = "Edited locally";
+
+        Assert.Equal("Original name", viewModel.ToProject().Name);
+    }
+
+    [Fact]
+    public async Task ToProject_AnUnclaimedField_StillSavesTheLocalEdit()
+    {
+        // The mirror of the guard above: a field this project's claim does not name is not carried — it is an
+        // ordinary field, and an edit to it must reach the saved project exactly as it always did.
+        var project = Project.Create("Cockpit") with { Description = "Original description" };
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Name] = new ProjectFieldOwnership("Depot — Work"),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), Catalog(), fieldOwnership: fieldOwnership);
+
+        viewModel.Description = "Edited locally";
+
+        Assert.Equal("Edited locally", viewModel.ToProject().Description);
     }
 }

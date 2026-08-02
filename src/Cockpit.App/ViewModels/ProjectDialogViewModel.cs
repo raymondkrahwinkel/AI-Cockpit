@@ -20,6 +20,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
 {
     private readonly string? _projectId;
 
+    /// <summary>
+    /// The project exactly as it was loaded, kept only so <see cref="ToProject"/> can carry forward a claimed
+    /// field's value untouched (AC-604 acceptance criterion 3) — an edit to a field this project's ownership
+    /// claims must never reach <c>cockpit.json</c>, whether or not the control is locked. Null for a new project,
+    /// which cannot yet be claimed (a claim is keyed by an id nothing has assigned).
+    /// </summary>
+    private readonly Project? _originalProject;
+
     /// <summary>Raised when the dialog is done: the saved project, or null when the operator cancelled.</summary>
     public event Action<Project?>? CloseRequested;
 
@@ -53,6 +61,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     private ProjectDialogViewModel(Project? project)
     {
         _projectId = project?.Id;
+        _originalProject = project;
         IsEditing = project is not null;
 
         if (project is null)
@@ -92,10 +101,18 @@ public partial class ProjectDialogViewModel : ViewModelBase
         IReadOnlyList<ProjectMemorySourceRegistration>? memorySources = null,
         IReadOnlyList<ProjectMemorySourceFamily>? memorySourceFamilies = null,
         Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)>? refreshMemorySources = null,
+        IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? fieldOwnership = null,
         CancellationToken cancellationToken = default)
     {
         var viewModel = new ProjectDialogViewModel(project)
         {
+            HasFieldOwnership = fieldOwnership is not null,
+            NameOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.Name),
+            DescriptionOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.Description),
+            LogoOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.Logo),
+            BehaviorOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.Behavior),
+            McpOverlayOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.McpOverlay),
+            WorktreeSwitchOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.WorktreeSwitch),
             // AC-523: the same source CreateAsync itself reads from below, kept so a later "Servers…" call
             // (ConfigureMemorySourceAsync) can re-read it once its own settings screen has closed, rather than
             // rebuilding forever from the one-time snapshot memorySources/memorySourceFamilies handed to this call.
@@ -270,6 +287,31 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     public string ConfirmLabel => IsEditing ? "Save" : "Create project";
 
+    /// <summary>
+    /// Whether anything ever claimed this project's ownership (AC-604) — gates every origin badge below. False
+    /// (the default, and the only possibility for a new project) means the dialog draws exactly as it always has:
+    /// no badge, no locked field, matching AC-166's own "an unclaimed project is unchanged" bar.
+    /// </summary>
+    public bool HasFieldOwnership { get; private init; }
+
+    public ProjectFieldOriginViewModel NameOrigin { get; private init; } = ProjectFieldOriginViewModel.Local;
+
+    public ProjectFieldOriginViewModel DescriptionOrigin { get; private init; } = ProjectFieldOriginViewModel.Local;
+
+    public ProjectFieldOriginViewModel LogoOrigin { get; private init; } = ProjectFieldOriginViewModel.Local;
+
+    public ProjectFieldOriginViewModel BehaviorOrigin { get; private init; } = ProjectFieldOriginViewModel.Local;
+
+    public ProjectFieldOriginViewModel McpOverlayOrigin { get; private init; } = ProjectFieldOriginViewModel.Local;
+
+    public ProjectFieldOriginViewModel WorktreeSwitchOrigin { get; private init; } = ProjectFieldOriginViewModel.Local;
+
+    private static ProjectFieldOriginViewModel _ResolveOrigin(
+        IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? fieldOwnership, HostProjectField field) =>
+        fieldOwnership is not null && fieldOwnership.TryGetValue(field, out var ownership) && ownership is not null
+            ? ProjectFieldOriginViewModel.Claimed(ownership.SourceName, ownership.IsEditable)
+            : ProjectFieldOriginViewModel.Local;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _name = string.Empty;
@@ -379,18 +421,40 @@ public partial class ProjectDialogViewModel : ViewModelBase
     }
 
     /// <summary>The edited values as a project, reusing the id when editing so the sessions and settings that reference it keep pointing at the same one.</summary>
-    public Project ToProject() =>
-        new(_projectId ?? Guid.NewGuid().ToString("n"), Name.Trim())
+    public Project ToProject()
+    {
+        var editedOverlay = new ProjectMcpOverlay
         {
-            Description = _NullIfBlank(Description),
+            // A list only for a project that actually narrowed something. Leaving it null where every server is
+            // ticked is the difference between "this project wants these" and "this project has no opinion": the
+            // second keeps picking up a server added to the registry later, which is what a project that never
+            // switched anything off should do — and the first, deliberately, does not (Raymond, 2026-08-01).
+            // It is also the way back: ticking every row on again drops the list, and the project follows the
+            // registry once more. A carried name either way still counts as narrowing — there is a decision to
+            // keep, and no row on screen through which it could be taken back.
+            EnabledServerNames = McpServers.Any(server => !server.IsEnabledForSession)
+                || _carriedEnabledServerNames.Count > 0
+                || _carriedDisabledServerNames.Count > 0
+                ?
+                [
+                    .. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name),
+                    .. _carriedEnabledServerNames,
+                ]
+                : null,
+            AdditionalServers = _additionalServers,
+        };
+
+        return new(_projectId ?? Guid.NewGuid().ToString("n"), _Carry(NameOrigin, Name.Trim(), p => p.Name))
+        {
+            Description = _Carry(DescriptionOrigin, _NullIfBlank(Description), p => p.Description),
             SourceDirectory = _NullIfBlank(SourceDirectory),
             GitUrl = GitUrl,
             DefaultProfileLabel = SelectedProfileLabel,
-            BehaviorPrompt = _NullIfBlank(BehaviorPrompt),
+            BehaviorPrompt = _Carry(BehaviorOrigin, _NullIfBlank(BehaviorPrompt), p => p.BehaviorPrompt),
             // What the operator pointed at — a file, a URL, or the stored copy's path when they left it alone. The
             // manager turns it into a copy the cockpit owns; the editor only carries the answer, as it does the rest.
-            LogoPath = _NullIfBlank(LogoSource),
-            IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
+            LogoPath = _Carry(LogoOrigin, _NullIfBlank(LogoSource), p => p.LogoPath),
+            IsolateInWorktreeByDefault = _Carry(WorktreeSwitchOrigin, IsolateInWorktreeByDefault, p => p.IsolateInWorktreeByDefault),
             // Resources only — never MemoryRef beside it (see Project.MemoryRef's own doc comment on why an
             // initializer must pick one: both write the same underlying list, and whichever is set last wins). Every
             // row the operator can see and edit is right here in ResourceRows now, Memory rows included, so there is
@@ -399,26 +463,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             [
                 .. ResourceRows.Select(row => row.ToDomain()).Where(resource => !string.IsNullOrWhiteSpace(resource.Reference)),
             ],
-            McpOverlay = new ProjectMcpOverlay
-            {
-                // A list only for a project that actually narrowed something. Leaving it null where every server is
-                // ticked is the difference between "this project wants these" and "this project has no opinion": the
-                // second keeps picking up a server added to the registry later, which is what a project that never
-                // switched anything off should do — and the first, deliberately, does not (Raymond, 2026-08-01).
-                // It is also the way back: ticking every row on again drops the list, and the project follows the
-                // registry once more. A carried name either way still counts as narrowing — there is a decision to
-                // keep, and no row on screen through which it could be taken back.
-                EnabledServerNames = McpServers.Any(server => !server.IsEnabledForSession)
-                    || _carriedEnabledServerNames.Count > 0
-                    || _carriedDisabledServerNames.Count > 0
-                    ?
-                    [
-                        .. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name),
-                        .. _carriedEnabledServerNames,
-                    ]
-                    : null,
-                AdditionalServers = _additionalServers,
-            },
+            McpOverlay = _Carry(McpOverlayOrigin, editedOverlay, p => p.McpOverlay),
             // Tidied here rather than only in the store, so what the caller gets back is what will be saved — an
             // empty row the operator added and left alone is not information, and a pasted value brings newlines
             // the single-line row cannot show.
@@ -428,6 +473,17 @@ public partial class ProjectDialogViewModel : ViewModelBase
             ],
             PluginFields = _LinkedProjectFields(),
         };
+    }
+
+    /// <summary>
+    /// <paramref name="edited"/> unless <paramref name="origin"/> says this field is claimed (AC-604 acceptance
+    /// criterion 3), in which case the value <see cref="_originalProject"/> already had wins instead — an edit to a
+    /// field this project's ownership claims must never reach <c>cockpit.json</c>, whether or not the control was
+    /// locked while the operator had it open. <see cref="_originalProject"/> is null only for a new project, which
+    /// cannot yet be claimed, so falling back to <paramref name="edited"/> there changes nothing.
+    /// </summary>
+    private T _Carry<T>(ProjectFieldOriginViewModel origin, T edited, Func<Project, T> original) =>
+        origin.IsClaimed && _originalProject is not null ? original(_originalProject) : edited;
 
     /// <summary>
     /// What this project is linked to: the rows the operator filled in, plus the keys carried through from plugins

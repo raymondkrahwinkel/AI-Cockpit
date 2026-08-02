@@ -307,7 +307,15 @@
          plugin that implements this interface and is rebuilt). AbstractionsContract.Version — the gate
          PluginLoadPolicy enforces — stays 1, so no installed plugin is refused. On balance a removal that no shipped
          binary can observe; the package version follows suit as a minor. -->
-    <Version>1.45.0</Version>
+    <!-- 1.46.0 (AC-604): added the project-ownership seam — ICockpitHost.ClaimProjectOwnership/GetProjectFieldOwnership
+         (both default-implemented: no-op / null) plus HostProjectField, ProjectFieldOwnership and
+         ProjectOwnershipRegistration (new types) — a plugin that shares a project's definition elsewhere (AC-242's
+         Depot sync) can claim Name/Description/Logo/Behaviour/McpOverlay/WorktreeSwitch as externally managed, with
+         a project-wide default overridable per field, so the editor draws a ◆ Shared / ● This machine origin badge
+         instead of treating every project the same. A project nothing ever claims resolves null and the editor is
+         unchanged (acceptance criterion 4). Additions only — a minor; major and abstractionsVersion stay 1. No
+         in-repo plugin calls this yet, so no minHostVersion bump accompanies it. -->
+    <Version>1.46.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

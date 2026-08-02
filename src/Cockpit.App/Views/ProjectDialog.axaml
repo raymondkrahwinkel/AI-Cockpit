@@ -35,6 +35,42 @@
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
+
+        <!-- AC-604: the field-origin badge — "◆ Shared" / "● This machine" next to a field's label, shown only
+             once a plugin has claimed this project (HasFieldOwnership). Geometry and colour transcribed from the
+             mockup (Depot Mockups/depot-project-sync-2026-08-02.html, section 3, .org/.org.shared/.org.local):
+             pill radius, 10.5px semibold text, 1x8 padding. "Shared" reuses the existing isolated-badge tokens —
+             the same violet the worktree-isolated chip already uses — rather than a new colour; "local" reuses the
+             inset/hairline/secondary trio the rest of this dialog already uses. -->
+        <Style Selector="Border.originBadge">
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Border.originBadge > TextBlock">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.originBadge.shared">
+            <Setter Property="Background" Value="{StaticResource CockpitIsolatedBadgeBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+        </Style>
+        <Style Selector="Border.originBadge.shared > TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+        </Style>
+        <Style Selector="Border.originBadge.local">
+            <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        </Style>
+        <Style Selector="Border.originBadge.local > TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldReadOnlyReason">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
     </Window.Styles>
 
     <!-- Two explicit rows rather than a docked fill: the footer is exactly as tall as it needs to be and the row
@@ -76,14 +112,30 @@
 
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="22">
                         <StackPanel Grid.Column="0" Spacing="2">
-                            <TextBlock Classes="FieldLabel" Text="Name *"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Classes="FieldLabel" Text="Name *"/>
+                                <Border Classes="originBadge" Classes.shared="{Binding NameOrigin.IsClaimed}"
+                                        Classes.local="{Binding NameOrigin.IsLocalOrigin}"
+                                        IsVisible="{Binding HasFieldOwnership}" ToolTip.Tip="{Binding NameOrigin.SourceName}">
+                                    <TextBlock Text="{Binding NameOrigin.BadgeText}"/>
+                                </Border>
+                            </StackPanel>
                             <TextBlock Classes="FieldHint" Text="What you call this project."/>
-                            <TextBox Text="{Binding Name}" PlaceholderText="Invoices"/>
+                            <TextBox Text="{Binding Name}" PlaceholderText="Invoices" IsEnabled="{Binding !NameOrigin.IsLockedHere}"/>
+                            <TextBlock Classes="FieldReadOnlyReason" Text="{Binding NameOrigin.ReadOnlyReason}"
+                                       IsVisible="{Binding NameOrigin.IsLockedHere}"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Spacing="2" MinWidth="200">
-                            <TextBlock Classes="FieldLabel" Text="Logo"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Classes="FieldLabel" Text="Logo"/>
+                                <Border Classes="originBadge" Classes.shared="{Binding LogoOrigin.IsClaimed}"
+                                        Classes.local="{Binding LogoOrigin.IsLocalOrigin}"
+                                        IsVisible="{Binding HasFieldOwnership}" ToolTip.Tip="{Binding LogoOrigin.SourceName}">
+                                    <TextBlock Text="{Binding LogoOrigin.BadgeText}"/>
+                                </Border>
+                            </StackPanel>
                             <TextBlock Classes="FieldHint" Text="A file — SVG included."/>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" IsEnabled="{Binding !LogoOrigin.IsLockedHere}">
                                 <!-- The preview is the check: it shows what the card will show, so a file that is
                                      not an image is visible here rather than as a missing picture later. -->
                                 <controls:ProjectLogoBadge Grid.Column="0" Size="34" ShowsInitial="False"
@@ -96,14 +148,26 @@
                                             IsEnabled="{Binding LogoSource, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                 </StackPanel>
                             </Grid>
+                            <TextBlock Classes="FieldReadOnlyReason" Text="{Binding LogoOrigin.ReadOnlyReason}"
+                                       IsVisible="{Binding LogoOrigin.IsLockedHere}"/>
                         </StackPanel>
                     </Grid>
 
                     <StackPanel Spacing="2">
-                        <TextBlock Classes="FieldLabel" Text="Description"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Classes="FieldLabel" Text="Description"/>
+                            <Border Classes="originBadge" Classes.shared="{Binding DescriptionOrigin.IsClaimed}"
+                                    Classes.local="{Binding DescriptionOrigin.IsLocalOrigin}"
+                                    IsVisible="{Binding HasFieldOwnership}" ToolTip.Tip="{Binding DescriptionOrigin.SourceName}">
+                                <TextBlock Text="{Binding DescriptionOrigin.BadgeText}"/>
+                            </Border>
+                        </StackPanel>
                         <TextBlock Classes="FieldHint" Text="In plain words — what is this project for? This is what a colleague reads on its card."/>
                         <TextBox Text="{Binding Description}" AcceptsReturn="True" TextWrapping="Wrap" Height="66"
-                                 PlaceholderText="Read invoices and prepare them for the bookkeeping."/>
+                                 PlaceholderText="Read invoices and prepare them for the bookkeeping."
+                                 IsEnabled="{Binding !DescriptionOrigin.IsLockedHere}"/>
+                        <TextBlock Classes="FieldReadOnlyReason" Text="{Binding DescriptionOrigin.ReadOnlyReason}"
+                                   IsVisible="{Binding DescriptionOrigin.IsLockedHere}"/>
                     </StackPanel>
 
                     <StackPanel Spacing="2" IsVisible="{Binding LogoSource, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -201,7 +265,16 @@
                     </StackPanel>
 
                     <StackPanel Spacing="2">
-                        <TextBlock Classes="FieldLabel" Text="Folder"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Classes="FieldLabel" Text="Folder"/>
+                            <!-- Not one of the six claimable host fields — a checkout path is always this machine's,
+                                 never a plugin's to claim (AC-604 review). Fixed "local", not bound to an Origin
+                                 view model: shown whenever the project has any claim at all, so its absence never
+                                 reads as "unknown" next to a row that really does say so. -->
+                            <Border Classes="originBadge local" IsVisible="{Binding HasFieldOwnership}">
+                                <TextBlock Text="● This machine"/>
+                            </Border>
+                        </StackPanel>
                         <TextBlock Classes="FieldHint" Text="Where its sessions start. Leave empty for a project without files of its own."/>
                         <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                             <TextBox Grid.Column="0" Text="{Binding SourceDirectory}" PlaceholderText="No folder chosen"/>
@@ -391,30 +464,72 @@
                     </StackPanel>
 
                     <StackPanel Spacing="2">
-                        <TextBlock Classes="FieldLabel" Text="Profile"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Classes="FieldLabel" Text="Profile"/>
+                            <!-- Same reasoning as Folder above: not claimable, fixed "local", shown once the
+                                 project has any claim so no field is ever left without a badge. -->
+                            <Border Classes="originBadge local" IsVisible="{Binding HasFieldOwnership}">
+                                <TextBlock Text="● This machine"/>
+                            </Border>
+                        </StackPanel>
                         <TextBlock Classes="FieldHint" Text="Which profile starts by default. The project uses a profile — it does not replace one."/>
                         <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
                                   HorizontalAlignment="Stretch" PlaceholderText="Leave the dialog's own choice"/>
                     </StackPanel>
 
                     <StackPanel Spacing="2">
-                        <TextBlock Classes="FieldLabel" Text="Behaviour"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Classes="FieldLabel" Text="Behaviour"/>
+                            <Border Classes="originBadge" Classes.shared="{Binding BehaviorOrigin.IsClaimed}"
+                                    Classes.local="{Binding BehaviorOrigin.IsLocalOrigin}"
+                                    IsVisible="{Binding HasFieldOwnership}" ToolTip.Tip="{Binding BehaviorOrigin.SourceName}">
+                                <TextBlock Text="{Binding BehaviorOrigin.BadgeText}"/>
+                            </Border>
+                        </StackPanel>
                         <TextBlock Classes="FieldHint" Text="Optional — how should the profile behave here? Added to what the profile already says."/>
                         <TextBox Text="{Binding BehaviorPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="78"
-                                 PlaceholderText="Follow the project conventions. Test before opening a PR; ask when unsure."/>
+                                 PlaceholderText="Follow the project conventions. Test before opening a PR; ask when unsure."
+                                 IsEnabled="{Binding !BehaviorOrigin.IsLockedHere}"/>
+                        <TextBlock Classes="FieldReadOnlyReason" Text="{Binding BehaviorOrigin.ReadOnlyReason}"
+                                   IsVisible="{Binding BehaviorOrigin.IsLockedHere}"/>
                     </StackPanel>
 
-                    <CheckBox Classes="Switch" IsChecked="{Binding IsolateInWorktreeByDefault}">
-                        <StackPanel Spacing="1">
-                            <TextBlock Classes="FieldLabel" Text="Isolate new sessions in a git worktree"/>
-                            <TextBlock Classes="FieldHint" Margin="0"
-                                       Text="For code projects — every session starts in its own worktree, still switchable per session."/>
-                        </StackPanel>
-                    </CheckBox>
+                    <StackPanel Spacing="2">
+                        <CheckBox Classes="Switch" IsChecked="{Binding IsolateInWorktreeByDefault}"
+                                  IsEnabled="{Binding !WorktreeSwitchOrigin.IsLockedHere}">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Classes="FieldLabel" Text="Isolate new sessions in a git worktree"/>
+                                    <Border Classes="originBadge" Classes.shared="{Binding WorktreeSwitchOrigin.IsClaimed}"
+                                            Classes.local="{Binding WorktreeSwitchOrigin.IsLocalOrigin}"
+                                            IsVisible="{Binding HasFieldOwnership}" ToolTip.Tip="{Binding WorktreeSwitchOrigin.SourceName}">
+                                        <TextBlock Text="{Binding WorktreeSwitchOrigin.BadgeText}"/>
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock Classes="FieldHint" Margin="0"
+                                           Text="For code projects — every session starts in its own worktree, still switchable per session."/>
+                            </StackPanel>
+                        </CheckBox>
+                        <TextBlock Classes="FieldReadOnlyReason" Text="{Binding WorktreeSwitchOrigin.ReadOnlyReason}"
+                                   IsVisible="{Binding WorktreeSwitchOrigin.IsLockedHere}"/>
+                    </StackPanel>
 
-                    <controls:McpServerChecklist IsVisible="{Binding HasMcpServers}"
-                                                 Servers="{Binding McpServers}"
-                                                 Hint="Which servers this project's sessions start with ticked. Unticking one turns it off for this project only — the server itself stays in the global configuration, and a session can tick it back on."/>
+                    <StackPanel Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasFieldOwnership}">
+                            <TextBlock Classes="FieldLabel" Text="MCP overlay"/>
+                            <Border Classes="originBadge" Classes.shared="{Binding McpOverlayOrigin.IsClaimed}"
+                                    Classes.local="{Binding McpOverlayOrigin.IsLocalOrigin}"
+                                    ToolTip.Tip="{Binding McpOverlayOrigin.SourceName}">
+                                <TextBlock Text="{Binding McpOverlayOrigin.BadgeText}"/>
+                            </Border>
+                        </StackPanel>
+                        <controls:McpServerChecklist IsVisible="{Binding HasMcpServers}"
+                                                     IsEnabled="{Binding !McpOverlayOrigin.IsLockedHere}"
+                                                     Servers="{Binding McpServers}"
+                                                     Hint="Which servers this project's sessions start with ticked. Unticking one turns it off for this project only — the server itself stays in the global configuration, and a session can tick it back on."/>
+                        <TextBlock Classes="FieldReadOnlyReason" Text="{Binding McpOverlayOrigin.ReadOnlyReason}"
+                                   IsVisible="{Binding McpOverlayOrigin.IsLockedHere}"/>
+                    </StackPanel>
                 </StackPanel>
 
             </StackPanel>

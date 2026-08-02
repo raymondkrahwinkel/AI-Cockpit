@@ -714,6 +714,38 @@ public interface ICockpitHost
     IReadOnlyList<Projects.ProjectFieldRegistration> ProjectFields => [];
 
     /// <summary>
+    /// Claims some or all of a project's own host fields — Name, Description, Logo, Behaviour, the MCP overlay,
+    /// the worktree switch — as externally managed (AC-604, route B): a project shared through this plugin
+    /// (AC-242's Depot sync, say) tells the editor which of those fields come from there instead of
+    /// <c>cockpit.json</c>, so it can draw the ◆ Shared / ● This machine badge instead of drawing every project
+    /// the same way. Unlike <see cref="AddProjectField"/>, this does not add a field — it claims ownership of
+    /// fields that already exist.
+    /// <para>
+    /// The first registration for a given <see cref="Projects.ProjectOwnershipRegistration.ProjectId"/> wins,
+    /// the same agreement <see cref="AddProjectField"/> already makes for a key two plugins both register (see
+    /// <see cref="Projects.ProjectFieldRegistration.Key"/>) — a second plugin claiming a project another already
+    /// claimed is ignored, not refused with an error.
+    /// </para>
+    /// An edit made to a claimed field here never reaches <c>cockpit.json</c> — see
+    /// <see cref="GetProjectFieldOwnership"/>, which is what the editor's save path reads to know which fields
+    /// that applies to. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older
+    /// plugin builds) keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void ClaimProjectOwnership(Projects.ProjectOwnershipRegistration registration)
+    {
+    }
+
+    /// <summary>
+    /// The resolved ownership of <paramref name="projectId"/>'s own host fields (AC-604) — every
+    /// <see cref="Projects.HostProjectField"/> the project editor knows about, each either claimed (with who owns
+    /// it and whether it is editable here) or left local. Null when nothing ever claimed this project: the editor
+    /// then draws it exactly as it always has — no badge, no locked field (acceptance criterion 4). Default null
+    /// so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host resolves a real claim.
+    /// </summary>
+    IReadOnlyDictionary<Projects.HostProjectField, Projects.ProjectFieldOwnership?>? GetProjectFieldOwnership(string projectId) => null;
+
+    /// <summary>
     /// Registers a place a project's memory can live other than a folder (AC-165/166) — a Depot project, say — so a
     /// project's editor can offer it beside "Folder" and a session started on a project pointing at this scheme is
     /// told, in its own standing instructions, how to reach it rather than only where it is.
