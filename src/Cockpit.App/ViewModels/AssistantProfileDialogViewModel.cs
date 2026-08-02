@@ -82,6 +82,13 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
+    /// <summary>
+    /// Whether the standing instruction above replaces the assistant's built-in one instead of adding to it
+    /// (AC-594). Lives here rather than on the record: an ordinary profile has no built-in instruction to replace.
+    /// </summary>
+    [ObservableProperty]
+    private bool _replacesStandingInstruction;
+
     /// <summary>Whether a running assistant can be restarted from here. False in the design-time graph and in a cockpit that never wired a host.</summary>
     public bool CanRestartAssistant => _assistant is not null;
 
@@ -189,6 +196,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
             // this dialog is where an assistant profile comes into being, so "there is none yet" is its empty state,
             // not an error. Its own display name is the starting label — the assistant is what it is for.
             Profile = _Editable(slot.Profile ?? new SessionProfile(AssistantProfileSlot.DisplayName, new ClaudeConfig(string.Empty)));
+            ReplacesStandingInstruction = slot.ReplacesStandingInstruction;
             StatusMessage = slot.Profile is null ? slot.UnsetReason ?? string.Empty : string.Empty;
         }
     }
@@ -275,7 +283,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         // SessionProfile and hands it over — including a save that changed the provider. That is what keeps
         // SessionProfile's own "a record never changes provider" invariant true while the assistant stays
         // switchable between Claude, Codex and a local model (AC-543).
-        await _slotStore.RepointAsync(Profile.ToProfile(), cancellationToken).ConfigureAwait(true);
+        await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken).ConfigureAwait(true);
         StatusMessage = "Saved.";
         return true;
     }

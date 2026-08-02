@@ -88,7 +88,7 @@ public class AssistantProfileDialogTests
             viewModel.Profile.PluginOptionDefaults.Single(option => option.Key == "permission-mode").Value);
 
         // Nothing on disk yet: a fill the operator can still look at and cancel out of.
-        slotStore.DidNotReceive().RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
+        slotStore.DidNotReceive().RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class AssistantProfileDialogTests
         Received.InOrder(() =>
         {
             slotStore.RepointAsync(Arg.Is<SessionProfile>(record =>
-                record.Defaults!.OptionDefaults!["permission-mode"] == "bypassPermissions"), Arg.Any<CancellationToken>());
+                record.Defaults!.OptionDefaults!["permission-mode"] == "bypassPermissions"), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             assistant.RestartAsync(Arg.Any<CancellationToken>());
         });
     }
@@ -229,8 +229,8 @@ public class AssistantProfileDialogTests
     {
         var store = Substitute.For<IAssistantProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(slot);
-        store.RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
-            .Returns(call => new AssistantProfileSlot(call.Arg<SessionProfile>()));
+        store.RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(call => new AssistantProfileSlot(call.Arg<SessionProfile>(), null, call.Arg<bool>()));
         return store;
     }
 

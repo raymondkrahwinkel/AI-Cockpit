@@ -44,13 +44,16 @@ internal sealed class AssistantProfileStore : IAssistantProfileStore, ISingleton
             ?? new AssistantProfileSlot(null, AssistantProfileEntry.NoRecordYetReason);
     }
 
-    public Task<AssistantProfileSlot> RepointAsync(SessionProfile record, CancellationToken cancellationToken = default)
+    public Task<AssistantProfileSlot> RepointAsync(
+        SessionProfile record,
+        bool replacesStandingInstruction,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(record);
 
         // The whole record is replaced, never edited: this is the only write that produces a configured slot, and
         // it cannot express "keep the record, change its provider" — which is the mutation SessionProfile forbids.
-        return _WriteAsync(new AssistantProfileSlot(record), cancellationToken);
+        return _WriteAsync(new AssistantProfileSlot(record, null, replacesStandingInstruction), cancellationToken);
     }
 
     public Task<AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default)

@@ -304,7 +304,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             resume: await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
-            launchOptions: _LaunchOptions(profile),
+            launchOptions: _LaunchOptions(profile, slot.ReplacesStandingInstruction),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
         _ApplySpeech(session, settings);
@@ -550,16 +550,19 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // without closing the cockpit.
     //
     // The assistant's own standing instruction is written last, so it wins over anything the map happens to carry
-    // on the same key. The profile's own system prompt wins over `AssistantSystemPrompt.Default` —
-    // that is what "overridable per profile" means.
-    internal static IReadOnlyDictionary<string, string> _LaunchOptions(Cockpit.Core.Profiles.SessionProfile profile)
+    // on the same key. AC-594: what the operator typed is *added* to `AssistantSystemPrompt.Default` — replacing it
+    // outright is the advanced choice on the Assistant Profile, because that default carries the language rule, the
+    // speak-don't-write rule, the honesty clause and the whole permission paragraph.
+    internal static IReadOnlyDictionary<string, string> _LaunchOptions(
+        Cockpit.Core.Profiles.SessionProfile profile,
+        bool replacesStandingInstruction)
     {
         var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
             ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] =
-            string.IsNullOrWhiteSpace(profile.SystemPrompt) ? AssistantSystemPrompt.Default : profile.SystemPrompt.Trim();
+            AssistantStandingInstruction.Compose(profile.SystemPrompt, replacesStandingInstruction);
 
         return options;
     }

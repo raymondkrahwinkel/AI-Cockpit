@@ -374,7 +374,7 @@ public class AssistantSessionHostTests
     public void LaunchOptions_CarryTheProfilesOwnPermissionMode()
     {
         var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
-            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)));
+            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)), replacesStandingInstruction: false);
 
         Assert.Equal(
             SessionOptionCatalog.BypassPermissionModeValue,
@@ -390,7 +390,7 @@ public class AssistantSessionHostTests
         // the host does not (and must not) know what a provider's options mean.
         var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
             ("model", "opus"),
-            ("effort", "high")));
+            ("effort", "high")), replacesStandingInstruction: false);
 
         Assert.Equal("opus", options["model"]);
         Assert.Equal("high", options["effort"]);
@@ -404,7 +404,7 @@ public class AssistantSessionHostTests
         // in only when the options carry none — so an absent key is what makes today's behaviour survive this
         // change. A "helpful" default written here (say, always naming the mode) would silently move every
         // existing assistant.
-        var options = AssistantSessionHost._LaunchOptions(_Profile());
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false);
 
         Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
         Assert.False(options.ContainsKey("model"));
@@ -424,9 +424,47 @@ public class AssistantSessionHostTests
             with
         { SystemPrompt = "You are Olaf." };
 
-        var options = AssistantSessionHost._LaunchOptions(profile);
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false);
 
-        Assert.Equal("You are Olaf.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.DoesNotContain("teapot", instruction, StringComparison.Ordinal);
+        Assert.EndsWith("You are Olaf.", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_WhatTheOperatorWrote_IsAddedToTheBuiltInInstruction_RatherThanPutInItsPlace()
+    {
+        // AC-594. The old behaviour dropped all of AssistantSystemPrompt.Default the moment this box had anything in
+        // it, so "your name is Zyra" silently cost the language rule and the whole permission paragraph.
+        var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
+
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
+        Assert.EndsWith("Your name is Zyra.", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_WithTheAdvancedOptionOn_CarryWhatTheOperatorWroteAndNothingElse()
+    {
+        var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
+
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true);
+
+        Assert.Equal("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+    }
+
+    [Fact]
+    public void LaunchOptions_WithAnEmptyBox_AreTheBuiltInInstruction_WhicheverWayTheAdvancedOptionIsSet()
+    {
+        // Nothing written is nothing to replace: an operator who ticked the box and then cleared the text would
+        // otherwise start an assistant with no instruction at all.
+        var profile = _Profile() with { SystemPrompt = "   " };
+
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true);
+
+        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     // ── The restart (the operator's only way to reach a start-time setting) ───────────────────────────────────
