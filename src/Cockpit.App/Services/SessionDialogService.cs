@@ -628,6 +628,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         });
     }
 
+    public async Task ShowGlossaryDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        await _ShowSurfaceAsync(typeof(GlossaryDialog), owner, () => new GlossaryDialog());
+    }
+
     public async Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })

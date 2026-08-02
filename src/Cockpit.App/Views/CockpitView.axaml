@@ -368,6 +368,24 @@
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
+
+                    <!-- AC-512: the guide's content lives on the website, not in the app (Raymond) — this is the
+                         one findable door to it, plus the two things that need no browser at all: a glossary and
+                         re-running first-run setup. -->
+                    <Button x:Name="HelpButton" Content="Help" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            ToolTip.Tip="The online guide, a glossary of terms, and re-running first-run setup">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="TopEdgeAlignedLeft">
+                                <MenuItem Header="Guide" Command="{Binding OpenGuideCommand}"
+                                          ToolTip.Tip="Opens in your browser — the guide is online and needs a connection"/>
+                                <MenuItem Header="Glossary" Command="{Binding ShowGlossaryCommand}"
+                                          ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
+                                <Separator/>
+                                <MenuItem Header="Run setup again" Command="{Binding RunSetupAgainCommand}"
+                                          ToolTip.Tip="Reopens the first-run wizard"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                 </StackPanel>
 
                 <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the

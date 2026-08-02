@@ -29,6 +29,7 @@ public sealed partial class DialogModalitySplitTests
         "ShowDelegatedTasksDialogAsync",
         "ShowWorktreesDialogAsync",
         "ShowAboutDialogAsync",
+        "ShowGlossaryDialogAsync",
     ];
 
     // Answered in seconds, and nothing may carry on half-answered: a removal to confirm, a password, trusting a

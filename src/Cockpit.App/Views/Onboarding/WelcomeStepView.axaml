@@ -1,0 +1,37 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:config="using:Cockpit.Core.Configuration"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="560"
+             x:Class="Cockpit.App.Views.Onboarding.WelcomeStepView">
+
+    <!-- AC-509 criterion 4: two things, not a feature list — the guarantee (nothing happens without you) and the
+         independence (your work isn't locked to one AI vendor). The product name is never spelled out here: it
+         is resolved from CockpitBrand.ProductName, the one place criterion 5 wants it to live — see
+         ProductNameGuardTests, which fails the moment a screen under this folder repeats it literally instead. -->
+    <StackPanel Spacing="22" Margin="4,8">
+        <StackPanel Spacing="2">
+            <Image Source="/Assets/BrandMark.png" Height="40" Stretch="Uniform"
+                   RenderOptions.BitmapInterpolationMode="HighQuality"
+                   HorizontalAlignment="Left"/>
+            <TextBlock Text="Welcome to" FontSize="13" Margin="0,10,0,0"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <TextBlock Text="{x:Static config:CockpitBrand.ProductName}" FontSize="22" FontWeight="Bold"/>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+            <TextBlock Text="Nothing happens without you" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" FontSize="12.5"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       Text="Every install, every change, and every message an AI provider sees starts with something you asked for or approved. Nothing runs in the background without you having said yes to it first."/>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+            <TextBlock Text="Your work isn't locked to one AI vendor" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" FontSize="12.5"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       Text="Your sessions, profiles and settings live on your own machine, not inside a vendor's account. Switch models or providers whenever you want — you keep everything you built and never start over."/>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

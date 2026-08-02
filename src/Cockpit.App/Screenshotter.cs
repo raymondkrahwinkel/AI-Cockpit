@@ -61,6 +61,12 @@ internal static class Screenshotter
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = new(StringComparer.Ordinal)
     {
         ["about"] = (_, _) => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
+        // AC-512: the in-app glossary — the guide's own depth stays on the website, this is what a fresh install
+        // can still read without a browser.
+        ["glossary"] = (_, _) => new GlossaryDialog(),
+        // AC-512: the sidebar's Help flyout, opened the way session-settings-flyout already proves headless
+        // rendering can — after the window is up, via the Hovers table below.
+        ["help-menu"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
@@ -203,6 +209,17 @@ internal static class Screenshotter
             DataContext = new ViewModels.ConfirmationDialogViewModel(
                 "Remove store", "Remove 'AI-Cockpit Plugins'? The plugins you installed from it stay where they are.", "Remove"),
         },
+        // AC-512 criterion 4: the honest notice a browser that would not even start gets, instead of the Guide
+        // menu item quietly opening nothing — reuses the same confirmation surface with an OK-only label.
+        ["guide-unreachable"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ViewModels.ConfirmationDialogViewModel(
+                "Can't open your browser",
+                $"{Core.Configuration.CockpitBrand.ProductName} could not open your browser to show the guide. "
+                + $"It lives online at {Core.Configuration.CockpitBrand.GuideUrl} — visit it once you have a "
+                + "browser and a connection.",
+                "OK"),
+        },
         // Asked for while changing a password, which is the variant with the extra field: the same dialog with
         // one fewer box paints nothing this one does not.
         ["password"] = (_, _) => new PasswordDialog
@@ -283,7 +300,56 @@ internal static class Screenshotter
         // developer's own screen happens to produce.
         ["screenshot-preview-wide"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(1600, 500), "personal - webshop"),
         ["screenshot-preview-narrow"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(500, 1400), "personal - webshop"),
+
+        // AC-509: the first-run wizard shell on its first (and, off this build, only registered) step — Iron
+        // Law #9. The design-time constructor already builds it against a single WelcomeStep, the same shape the
+        // real DI-discovered step list has today.
+        ["first-run-wizard"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(),
+        },
+
+        // AC-510[b] criterion 6: the provider step's own catalogue, staged straight into the view model's
+        // collection rather than through a real store fetch (the plugin store dialog's own pattern) — a found CLI
+        // provider and a not-found one side by side (criterion 1's contrast), plus the two states the plugin
+        // store's own StorePluginRowViewModel already carries, reused rather than re-verified here: incompatible
+        // and already-installed (criterion 2, shown proactively, before any Install click).
+        ["provider-step-catalogue"] = (_, _) => _AsWindow(_ProviderStepCatalogue(), 640, 560),
+        // Criterion 3: offline is a plain statement, not styled as an error — the local-providers note above it
+        // is unaffected either way.
+        ["provider-step-offline"] = (_, _) => _AsWindow(_ProviderStepOffline(), 640, 480),
+        // Criterion 2's remaining two shapes — a fresh install and a batch failure — plus the "half succeeded"
+        // summary line, all only reachable in the real app after InstallSelectedCommand actually runs.
+        ["provider-step-install-outcomes"] = (_, _) => _AsWindow(_ProviderStepInstallOutcomes(), 640, 560),
+
+
+        // AC-511 criterion 7: the work-kind step in the shell it actually lives in, at the shell's own fixed size,
+        // in both the state that fits and the one that does not. A work kind that pre-ticks six plugins is the
+        // case where the confirm button can be pushed past the bottom edge, and nobody sees that on three rows.
+        ["first-run-work-kind"] = (_, _) => _WorkKindWizard(pluginCount: 3),
+        ["first-run-work-kind-long"] = (_, _) => _WorkKindWizard(pluginCount: 6),
     };
+
+    private static Window _WorkKindWizard(int pluginCount)
+    {
+        var rows = Enumerable.Range(1, pluginCount).Select(index => new ViewModels.Onboarding.WorkKindPluginRowViewModel(
+            name: WorkKindPluginNames[(index - 1) % WorkKindPluginNames.Length],
+            version: $"1.{index}.0",
+            author: "Cockpit",
+            from: $"https://plugins.example.org/index.json → pack-{index}/pack-1.{index}.0.zip",
+            checksum: $"9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b{index:D2}",
+            isSelected: true));
+
+        var step = new Views.Onboarding.WorkKindStep(new ViewModels.Onboarding.WorkKindStepViewModel(rows));
+
+        return new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([step]),
+        };
+    }
+
+    private static readonly string[] WorkKindPluginNames =
+        ["GitHub Issues", "GitHub Pull Requests", "YouTrack", "Weather", "Time Tracking", "Invoices"];
 
     /// <summary>
     /// Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
@@ -329,6 +395,7 @@ internal static class Screenshotter
     {
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),
@@ -1057,6 +1124,88 @@ internal static class Screenshotter
         cockpit.Plugins.SetUpdateBadgeCount(3);
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // Wraps a plain UserControl (a wizard step has no Window of its own) in a Window carrying the same
+    // DataContext, so a test can reach the view model straight off window.DataContext the way every other scene
+    // here already lets it — rather than reaching through window.Content each time.
+    private static Window _AsWindow(UserControl content, int width, int height) =>
+        new() { Width = width, Height = height, Content = content, DataContext = content.DataContext };
+
+    // AC-510[b]: one provider row per state the step distinguishes, staged directly the way _PluginStoreViewModel
+    // stages its own catalogue — no store fetch, no PATH probe (Detection is passed in explicitly, so this scene
+    // never depends on what happens to be installed on the machine that renders it).
+    private static ViewModels.Onboarding.ProviderPickerRowViewModel _ProviderRow(
+        string id, string name, string description, ViewModels.Onboarding.ProviderDetectionState detection,
+        string? installedVersion = null, int hostAbstractionsMajor = Cockpit.Plugins.Abstractions.AbstractionsContract.Version)
+    {
+        var entry = new PluginStoreEntry(
+            id, name, description, "Cockpit", "1.0.0",
+            [new PluginStoreVersion("1.0.0", $"{id}-1.0.0.zip", 1, null, null, null)],
+            Category: PluginStoreEntry.ProviderCategory);
+        var store = PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit-Plugins/main/index.json");
+        var row = new StorePluginRowViewModel(entry, store, installedVersion, hostAbstractionsMajor: hostAbstractionsMajor);
+
+        return new ViewModels.Onboarding.ProviderPickerRowViewModel(row, detection);
+    }
+
+    private static Views.Onboarding.ProviderStepView _ProviderStepCatalogue()
+    {
+        var viewModel = new ViewModels.Onboarding.ProviderStepViewModel();
+        viewModel.Providers.Add(_ProviderRow(
+            "claude-provider", "Claude Code", "Requires the claude CLI installed and logged in on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.Found));
+        viewModel.Providers.Add(_ProviderRow(
+            "cli-agent-provider", "CLI Agent Provider (Codex)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.NotFound));
+        viewModel.Providers.Add(_ProviderRow(
+            "gemini-provider", "Gemini / OpenAI Provider", "Configure an API key and model per profile in Manage profiles.",
+            ViewModels.Onboarding.ProviderDetectionState.NotApplicable));
+        viewModel.Providers.Add(_ProviderRow(
+            "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
+            ViewModels.Onboarding.ProviderDetectionState.Found, installedVersion: "0.2.0"));
+        viewModel.Providers.Add(_ProviderRow(
+            "github-models-provider", "GitHub Models", "Configure a GitHub personal access token (models:read scope) and model per profile.",
+            ViewModels.Onboarding.ProviderDetectionState.NotApplicable, hostAbstractionsMajor: 999));
+
+        return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
+    }
+
+    private static Views.Onboarding.ProviderStepView _ProviderStepOffline()
+    {
+        var viewModel = new ViewModels.Onboarding.ProviderStepViewModel
+        {
+            IsOffline = true,
+            OfflineMessage = "Could not fetch the store index: No such host is known.",
+        };
+
+        return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
+    }
+
+    private static Views.Onboarding.ProviderStepView _ProviderStepInstallOutcomes()
+    {
+        var viewModel = new ViewModels.Onboarding.ProviderStepViewModel { SummaryMessage = "Installed 2 of 3 provider(s); Kimi Code Provider (ACP) didn't make it — see the reasons below." };
+
+        var installed = _ProviderRow(
+            "claude-provider", "Claude Code", "Requires the claude CLI installed and logged in on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.Found);
+        installed.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Installed, "claude-provider", "Claude Code", null, null, "claude-provider", "sha"));
+
+        var staged = _ProviderRow(
+            "cli-agent-provider", "CLI Agent Provider (Codex)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.NotFound, installedVersion: "0.5.2");
+        staged.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Staged, "cli-agent-provider", "CLI Agent Provider (Codex)", null, null, "cli-agent-provider", "sha"));
+
+        var failed = _ProviderRow(
+            "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
+            ViewModels.Onboarding.ProviderDetectionState.Found);
+        failed.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Failed, "kimi-provider", "Kimi Code Provider (ACP)", "Could not download the plugin: the connection was reset.", null, null, null));
+
+        viewModel.Providers.Add(installed);
+        viewModel.Providers.Add(staged);
+        viewModel.Providers.Add(failed);
+
+        return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
     }
 
     // Renders the plugin store (#62) with a sample catalogue seeded straight into the manager's collections

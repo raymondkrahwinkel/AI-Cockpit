@@ -18,8 +18,6 @@ namespace Cockpit.Core.Terminal;
 /// </remarks>
 public static class ShellCatalog
 {
-    private static readonly string[] _WindowsExecutableExtensions = [".exe", ".cmd", ".bat"];
-
     /// <summary>
     /// The shells present on this machine, most-preferred first, each with an absolute path. Reads the real
     /// environment and filesystem; empty only on a machine with no resolvable shell at all (which should not happen).
@@ -118,54 +116,8 @@ public static class ShellCatalog
 
     /// <summary>
     /// Resolves a shell command to an absolute path on this machine, or null when it is not here. A rooted path is
-    /// taken as given (subject to the file probe); a bare name is looked up on PATH — on Windows trying <c>.exe</c>/
-    /// <c>.cmd</c>/<c>.bat</c> per directory, the same reason the Claude locator does (<c>Process</c> does no
-    /// <c>PATHEXT</c> lookup). Host-native by design: it only ever runs for the OS it is on.
+    /// taken as given (subject to the file probe); a bare name is looked up via <see cref="HostExecutableProbe"/>,
+    /// the shared PATH/<c>PATHEXT</c> probe. Host-native by design: it only ever runs for the OS it is on.
     /// </summary>
-    private static string? _Resolve(string command, string pathVariable)
-    {
-        if (string.IsNullOrWhiteSpace(command))
-        {
-            return null;
-        }
-
-        if (Path.IsPathRooted(command))
-        {
-            return File.Exists(command) ? command : null;
-        }
-
-        foreach (var directory in pathVariable.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            string candidate;
-            try
-            {
-                candidate = Path.Combine(directory, command);
-            }
-            catch (ArgumentException)
-            {
-                // A malformed PATH entry (stray quote/invalid char) — skip it, don't fail the whole probe.
-                continue;
-            }
-
-            if (OperatingSystem.IsWindows() && !Path.HasExtension(command))
-            {
-                foreach (var extension in _WindowsExecutableExtensions)
-                {
-                    if (File.Exists(candidate + extension))
-                    {
-                        return candidate + extension;
-                    }
-                }
-
-                continue;
-            }
-
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
+    private static string? _Resolve(string command, string pathVariable) => HostExecutableProbe.Resolve(command, pathVariable);
 }

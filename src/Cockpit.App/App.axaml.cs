@@ -10,7 +10,10 @@ using Cockpit.App.Logging;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.Views;
+using Cockpit.App.Views.Onboarding;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
@@ -70,10 +73,79 @@ public partial class App : Application
                 return;
             }
 
-            _StartCockpit(desktop);
+            _StartCockpitAndOnboard(desktop);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// AC-509 criterion 4: unlock first, onboarding after. Every route that ends in the main window being shown
+    /// goes through this — see the Show()-inventory in the App.axaml.cs class doc and the two callers below.
+    /// </summary>
+    private void _StartCockpitAndOnboard(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        // Read before either window exists, the same way _IsLockedAtStartup reads its own decision: this picks
+        // which window shows next, so it has to be known before that window is built rather than raced against it.
+        if (_NeedsOnboarding())
+        {
+            _ShowOnboardingWizard(desktop);
+
+            return;
+        }
+
+        _StartCockpit(desktop);
+    }
+
+    // A broken read must not stop the app from starting at all — same reasoning as _IsLockedAtStartup, and the
+    // same fail-open: skipping onboarding once is recoverable (Help menu's "Run setup again", AC-512), a cockpit
+    // that never starts is not.
+    private static bool _NeedsOnboarding()
+    {
+        try
+        {
+            return Program.Services.GetRequiredService<IFirstRunWizardStateStore>()
+                .GetCompletedVersionAsync().GetAwaiter().GetResult() is null;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The wizard stands in for the main window the same way <see cref="_ShowUnlockWindow"/>'s own unlock window
+    /// does: it is the app's only window until it is done, and the real cockpit is built and shown before this one
+    /// closes — never the other way round — so the desktop lifetime never sees zero windows open.
+    /// </summary>
+    /// <remarks>
+    /// Built directly here rather than through <c>IFirstRunWizard</c>: that interface's contract is "show, wait for
+    /// the operator, and only then return" — which for the Help menu's "Run setup again" (AC-512, cockpit already
+    /// running) is exactly right, but here would close the wizard window before this method ever got a chance to
+    /// build the cockpit's, reopening the same zero-window gap one step later. Hooked on <c>Closing</c> rather
+    /// than the view model's <c>RequestClose</c> so every way of leaving reaches it uniformly — Skip, Next on the
+    /// last step, and the operator's own close button all end up closing the window, and <c>Closing</c> fires
+    /// before any of them actually do.
+    /// </remarks>
+    private void _ShowOnboardingWizard(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
+        var viewModel = new FirstRunWizardViewModel([.. Program.Services.GetServices<IFirstRunWizardStep>()]);
+        var window = new FirstRunWizardWindow { DataContext = viewModel };
+
+        window.Closing += (_, _) =>
+        {
+            _ = stateStore.MarkCompletedAsync(FirstRunWizardVersion.Current);
+            _StartCockpit(desktop);
+        };
+
+        desktop.MainWindow = window;
+
+        // Explicit, the same reason _StartCockpit's own comment gives for _mainWindow.Show(): the framework only
+        // auto-shows the very first MainWindow assignment at startup. When this replaces UnlockWindow instead (the
+        // locked-at-startup route through _ShowUnlockWindow's Unlocked handler), that first assignment was
+        // already the unlock window's, and nothing shows this one without an explicit call.
+        window.Show();
     }
 
     // The startup probe reads cockpit.json through the same retry the settings stores use, so a save publishing at
@@ -105,7 +177,9 @@ public partial class App : Application
 
         viewModel.Unlocked += (_, _) =>
         {
-            _StartCockpit(desktop);
+            // AC-509 criterion 4: unlock first, onboarding after — this is the "locked at startup" half of that
+            // ordering, the other half is the direct call in OnFrameworkInitializationCompleted below.
+            _StartCockpitAndOnboard(desktop);
             window.Close();
         };
 
@@ -128,6 +202,10 @@ public partial class App : Application
             return;
         }
 
+        // AC-509 Show()-inventory (2 of 3): _mainWindow already exists here, which only happens after
+        // _StartCockpitAndOnboard has already run once this session — the onboarding gate is already resolved by
+        // the time this route is reachable, so it needs no gate of its own.
+        //
         // Bring the cockpit to the front first: a lock screen hidden behind a minimized or tray-hidden window reads
         // as a freeze, not as a lock. ShowDialog also needs a shown owner.
         _mainWindow.Show();
@@ -185,6 +263,9 @@ public partial class App : Application
         // the null check each already has, instead of each having to learn what a closed window looks like.
         _mainWindow.Closed += (_, _) => _mainWindow = null;
 
+        // AC-509 Show()-inventory (1 of 3): the one route where _mainWindow is created — every call to
+        // _StartCockpit goes through _StartCockpitAndOnboard, which is the gate (see its own remarks).
+        //
         // Shown here rather than left to the lifetime: when this replaces the unlock window, the framework has
         // already shown its MainWindow and will not show a second one on its own.
         _mainWindow.Show();
@@ -460,7 +541,12 @@ public partial class App : Application
             });
     }
 
-    /// <summary>Restores and focuses the main window (tray left-click / the tray menu's "Show …" entry).</summary>
+    /// <summary>
+    /// Restores and focuses the main window (tray left-click / the tray menu's "Show …" entry).
+    /// AC-509 Show()-inventory (3 of 3): reachable only once <see cref="_mainWindow"/> is non-null, i.e. after
+    /// <see cref="_StartCockpitAndOnboard"/> already ran this session — same reasoning as <see cref="_LockToUnlockScreen"/>,
+    /// no gate needed here.
+    /// </summary>
     public void ShowMainWindow()
     {
         if (_mainWindow is null)

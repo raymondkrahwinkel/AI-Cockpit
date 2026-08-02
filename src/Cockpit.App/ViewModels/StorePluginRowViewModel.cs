@@ -1,5 +1,4 @@
 using Material.Icons;
-using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 
@@ -163,25 +162,10 @@ public sealed class StorePluginRowViewModel(
     /// carry that distinction instead of mislabelling a working plugin. A version the catalogue declares nothing
     /// about is never flagged incompatible over it — an absent field means "nothing declared", not "unsupported".
     /// </summary>
-    public bool IsIncompatible => !IsInstalled && LatestVersionEntry is { } version && !_IsCompatible(version);
+    public bool IsIncompatible =>
+        !IsInstalled && LatestVersionEntry is { } version && !PluginCompatibility.IsCompatible(version, hostAbstractionsMajor, EffectiveHostVersion);
 
     /// <summary>Why this host cannot run <see cref="LatestVersionEntry"/>, or null when it can (or there is no version to judge).</summary>
-    public string? IncompatibilityReason
-    {
-        get
-        {
-            if (LatestVersionEntry is not { } version || _IsCompatible(version))
-            {
-                return null;
-            }
-
-            return version.AbstractionsVersion is { } abstractionsVersion && abstractionsVersion != hostAbstractionsMajor
-                ? $"Built for plugin contract version {abstractionsVersion}, this cockpit provides {hostAbstractionsMajor}"
-                : $"Requires {CockpitProduct.DisplayName} {version.MinHostVersion} or later";
-        }
-    }
-
-    private bool _IsCompatible(PluginStoreVersion version) =>
-        (version.AbstractionsVersion is not { } abstractionsVersion || abstractionsVersion == hostAbstractionsMajor)
-        && PluginLoadPolicy.MeetsMinHostVersion(version.MinHostVersion, EffectiveHostVersion);
+    public string? IncompatibilityReason =>
+        LatestVersionEntry is { } version ? PluginCompatibility.IncompatibilityReason(version, hostAbstractionsMajor, EffectiveHostVersion) : null;
 }

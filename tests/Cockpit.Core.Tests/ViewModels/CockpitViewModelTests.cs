@@ -2,7 +2,9 @@ using Avalonia.Controls;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
@@ -50,6 +52,79 @@ public class CockpitViewModelTests
         await vm.AboutCommand.ExecuteAsync(null);
 
         await dialogService.Received(1).ShowAboutDialogAsync();
+    }
+
+    [Fact]
+    public async Task GlossaryCommand_ShowsTheGlossaryDialog()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService);
+
+        await vm.ShowGlossaryCommand.ExecuteAsync(null);
+
+        await dialogService.Received(1).ShowGlossaryDialogAsync();
+    }
+
+    [Fact]
+    public async Task RunSetupAgainCommand_ReopensTheFirstRunWizard()
+    {
+        var wizard = Substitute.For<IFirstRunWizard>();
+        var vm = NewVm(firstRunWizard: wizard);
+
+        await vm.RunSetupAgainCommand.ExecuteAsync(null);
+
+        await wizard.Received(1).ShowAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunSetupAgainCommand_WithNoWizardWired_DoesNothing()
+    {
+        // Not registered yet (the wizard is a parallel strand's) is a design/host state this command has to
+        // survive rather than crash on — the same "no service, no-op" rule every other Help-menu command follows.
+        var vm = NewVm();
+
+        await vm.RunSetupAgainCommand.ExecuteAsync(null);
+    }
+
+    [Fact]
+    public async Task GuideCommand_WhenTheBrowserOpens_ShowsNoNotice()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService, tryOpenExternalLink: _ => true);
+
+        await vm.OpenGuideCommand.ExecuteAsync(null);
+
+        await dialogService.DidNotReceive().ShowConfirmationDialogAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task GuideCommand_WhenTheBrowserWontOpen_SaysSoInsteadOfOpeningNothing()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService, tryOpenExternalLink: _ => false);
+
+        await vm.OpenGuideCommand.ExecuteAsync(null);
+
+        await dialogService.Received(1).ShowConfirmationDialogAsync(
+            Arg.Any<string>(),
+            Arg.Is<string>(message => message.Contains(CockpitBrand.GuideUrl, StringComparison.Ordinal)),
+            "OK");
+    }
+
+    [Fact]
+    public async Task GuideCommand_AsksForTheCockpitBrandGuideUrl_NotALiteral()
+    {
+        string? askedUrl = null;
+        var vm = NewVm(tryOpenExternalLink: url =>
+        {
+            askedUrl = url;
+            return true;
+        });
+
+        await vm.OpenGuideCommand.ExecuteAsync(null);
+
+        Assert.Equal(CockpitBrand.GuideUrl, askedUrl);
     }
 
     [Fact]
@@ -1157,7 +1232,9 @@ public class CockpitViewModelTests
         ILayoutSettingsStore? layoutSettingsStore = null,
         IPluginDialogHost? pluginDialogHost = null,
         ITerminalAccessRegistry? terminals = null,
-        ProjectsViewModel? projects = null)
+        ProjectsViewModel? projects = null,
+        IFirstRunWizard? firstRunWizard = null,
+        Func<string, bool>? tryOpenExternalLink = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
@@ -1197,7 +1274,9 @@ public class CockpitViewModelTests
             terminalSettingsStore,
             pluginDialogHost: pluginDialogHost,
             terminals: terminals,
-            projects: projects);
+            projects: projects,
+            firstRunWizard: firstRunWizard,
+            tryOpenExternalLink: tryOpenExternalLink);
     }
 
     /// <summary>A projects view model over a store holding exactly <paramref name="saved"/>, already loaded.</summary>
