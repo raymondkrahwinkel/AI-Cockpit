@@ -221,6 +221,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     public NewSessionResult? LaunchResult { get; set; }
 
     /// <summary>
+    /// Whether this pane offers "Clear context" (AC-564). False here, and true for the SDK panel that overrides
+    /// it: a TTY session is a real TUI where the operator simply types <c>/clear</c>, so offering a second, less
+    /// capable way to do it there would be the confusing one.
+    /// </summary>
+    public virtual bool SupportsClearContext => false;
+
+    /// <summary>
     /// Whether this pane has a persisted <c>WorkspacePane</c> record in <c>cockpit.json</c> (AC-410) — true for an
     /// AI session (written when it starts, or already there when it is restored), false for a plain terminal pane,
     /// which is out of scope for this feature. Set by <see cref="CockpitViewModel"/>; gates whether closing this

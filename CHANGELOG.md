@@ -71,6 +71,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Claude session that runs headless (rather than as a terminal pane) can clear its context. A terminal
+  session has `/clear`; a headless one had no way to reach it, so a session that filled up could only be closed and
+  started again — which also cost you its name and its place in the workspace. "Clear context" in a session's
+  right-click menu restarts that same pane on a new conversation: same name, same place, same profile, same folder
+  and the same MCP servers, with an agent that remembers nothing from before. The transcript is kept, with a line
+  across it marking where the agent's memory stops, and the context and token figures in the header start over
+  rather than describing a conversation that is no longer running. It asks first, because it cannot be undone —
+  and says that from there on the pane is a new conversation with a new id. Nothing is deleted: the conversation
+  so far stays on disk and can still be resumed under its own id. Terminal sessions do not offer it; there you
+  type `/clear`.
 - added: a Claude session that runs headless (rather than as a terminal pane) now shows the usage pill in its header
   too — how full the context window is, plus the rolling five-hour and weekly allowances. Those figures used to
   appear only for terminal sessions, because they were read from Claude's status line, which a headless session

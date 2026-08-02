@@ -481,6 +481,10 @@
                                         <ContextMenu>
                                             <MenuItem Header="Rename" Click="OnRenameSession"/>
                                             <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
+                                            <!-- AC-564: only the SDK route, which has no /clear of its own — a TTY
+                                                 session is a real TUI and the operator types it there. -->
+                                            <MenuItem Header="Clear context…" Click="OnClearSessionContext"
+                                                      IsVisible="{Binding SupportsClearContext}"/>
                                             <Separator/>
                                             <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
                                             <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
