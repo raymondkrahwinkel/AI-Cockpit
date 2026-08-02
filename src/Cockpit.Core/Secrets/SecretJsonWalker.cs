@@ -3,24 +3,19 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Core.Secrets;
 
-/// <summary>
-/// Walks the cockpit's settings and rewrites every credential-bearing string, wherever it sits.
-/// <para>
-/// Extracted from the backup scrubber so the scrubber and the encryption layer traverse the settings the same
-/// way. The traversal is the subtle part, not what each does with the value it finds: a plugin keeps its
-/// settings as a JSON string <em>inside</em> the cockpit's JSON, which is where the plugins' tokens actually
-/// live — a walker that only visited the outer document would report a clean backup and ship the token, and
-/// would encrypt a config while leaving those same tokens in the clear.
-/// </para>
-/// </summary>
+// Walks the cockpit's settings and rewrites every credential-bearing string, wherever it sits.
+//
+// Extracted from the backup scrubber so the scrubber and the encryption layer traverse the settings the same
+// way. The traversal is the subtle part, not what each does with the value it finds: a plugin keeps its
+// settings as a JSON string *inside* the cockpit's JSON, which is where the plugins' tokens actually
+// live — a walker that only visited the outer document would report a clean backup and ship the token, and
+// would encrypt a config while leaving those same tokens in the clear.
 public static class SecretJsonWalker
 {
-    /// <summary>
-    /// Applies <paramref name="transform"/> to every secret-named string value in <paramref name="root"/>, in
-    /// place. The transform receives the field's JSON path (which the protector binds the ciphertext to) and its
-    /// current value, and returns the replacement — or <see langword="null"/> to leave the value untouched.
-    /// Returns the paths it rewrote.
-    /// </summary>
+    // Applies `transform` to every secret-named string value in `root`, in
+    // place. The transform receives the field's JSON path (which the protector binds the ciphertext to) and its
+    // current value, and returns the replacement — or `null` to leave the value untouched.
+    // Returns the paths it rewrote.
     public static IReadOnlyList<string> Transform(JsonNode root, SecretFields fields, Func<string, string, string?> transform)
     {
         var rewritten = new List<string>();
@@ -83,7 +78,7 @@ public static class SecretJsonWalker
         }
     }
 
-    /// <summary>A string that is itself a JSON object or array — how a plugin stores its settings inside the cockpit's.</summary>
+    // A string that is itself a JSON object or array — how a plugin stores its settings inside the cockpit's.
     private static JsonNode? Embedded(string value)
     {
         var trimmed = value.AsSpan().Trim();

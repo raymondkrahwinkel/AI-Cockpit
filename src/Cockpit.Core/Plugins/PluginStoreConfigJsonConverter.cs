@@ -3,13 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Core.Plugins;
 
-/// <summary>
-/// Reads a <see cref="PluginStoreConfig"/> from either shape it can take in <c>cockpit.json</c> (AC-7): a bare
-/// URL string — how every store was written before AC-7, read as a public remote store — or an object with
-/// <c>kind</c>, <c>location</c> and an optional <c>token</c>. It always writes the object form, so the file
-/// migrates itself the first time it is saved. The token is written under the name <c>token</c> so the host's
-/// secret layer encrypts it at rest and scrubs it from backups.
-/// </summary>
+// Reads a `PluginStoreConfig` from either shape it can take in `cockpit.json` (AC-7): a bare
+// URL string — how every store was written before AC-7, read as a public remote store — or an object with
+// `kind`, `location` and an optional `token`. It always writes the object form, so the file
+// migrates itself the first time it is saved. The token is written under the name `token` so the host's
+// secret layer encrypts it at rest and scrubs it from backups.
 public sealed class PluginStoreConfigJsonConverter : JsonConverter<PluginStoreConfig>
 {
     public override PluginStoreConfig? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

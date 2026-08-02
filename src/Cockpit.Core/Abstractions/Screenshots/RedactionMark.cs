@@ -1,10 +1,9 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
-/// <summary>
-/// A box the operator does not want leaving the machine (AC-331), pixelated into the image when the shot is
-/// confirmed. One mark type among the others since AC-359, on the same list and the same undo.
-/// </summary>
-/// <param name="Area">Where it sits, in the pixels of whichever image it is being spoken about in.</param>
+// A box the operator does not want leaving the machine (AC-331), pixelated into the image when the shot is
+// confirmed. One mark type among the others since AC-359, on the same list and the same undo.
+//
+// `Area`: Where it sits, in the pixels of whichever image it is being spoken about in.
 public sealed record RedactionMark(CaptureRect Area) : Mark
 {
     public override Mark? ClipTo(CaptureRect region) =>

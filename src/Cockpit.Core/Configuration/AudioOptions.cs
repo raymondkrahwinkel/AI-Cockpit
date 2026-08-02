@@ -2,8 +2,6 @@ namespace Cockpit.Core.Configuration;
 
 public sealed class AudioOptions
 {
-    /// <summary>
-    /// Preferred input/output device name. Null falls back to the system default device.
-    /// </summary>
+    // Preferred input/output device name. Null falls back to the system default device.
     public string? PreferredDeviceName { get; set; }
 }

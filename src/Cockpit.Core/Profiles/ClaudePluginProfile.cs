@@ -2,32 +2,28 @@ using System.Text.Json;
 
 namespace Cockpit.Core.Profiles;
 
-/// <summary>
-/// Mints the <see cref="PluginProviderConfig"/> a Claude profile runs under now that Claude is a bundled provider
-/// plugin (Fase 4). The Claude plugin registers under the id <c>claude</c> and reads a
-/// <c>{"configDir","executablePath"}</c> blob from the opaque config JSON the host round-trips; this is the one place
-/// the host mints that blob, so a profile loaded from an older config (which stored Claude as a first-class provider)
-/// or auto-detected from a well-known <c>~/.claude*</c> directory becomes a plugin profile on load. Idempotent: a
-/// profile already stored as this plugin is read back as-is and never passes through here.
-/// </summary>
+// Mints the `PluginProviderConfig` a Claude profile runs under now that Claude is a bundled provider
+// plugin (Fase 4). The Claude plugin registers under the id `claude` and reads a
+// `{"configDir","executablePath"}` blob from the opaque config JSON the host round-trips; this is the one place
+// the host mints that blob, so a profile loaded from an older config (which stored Claude as a first-class provider)
+// or auto-detected from a well-known `~/.claude*` directory becomes a plugin profile on load. Idempotent: a
+// profile already stored as this plugin is read back as-is and never passes through here.
 public static class ClaudePluginProfile
 {
-    /// <summary>The id the bundled Claude provider plugin registers its session and TTY routes under.</summary>
+    // The id the bundled Claude provider plugin registers its session and TTY routes under.
     public const string ProviderId = "claude";
 
-    /// <summary>Builds the plugin config for a Claude profile from the two settings its in-tree <c>ClaudeConfig</c> carried.</summary>
+    // Builds the plugin config for a Claude profile from the two settings its in-tree `ClaudeConfig` carried.
     public static PluginProviderConfig Create(string? configDir, string? executablePath) =>
         new(ProviderId, _SerializeConfig(configDir, executablePath));
 
-    /// <summary>
-    /// Reads the <c>{configDir,executablePath}</c> blob a Claude plugin profile carries back into a
-    /// <see cref="ClaudeConfig"/> — the inverse of <see cref="Create"/>. Host-side Claude features that predate the
-    /// plugin (the config directory the status transcript tailer locates the JSONL under, the login check)
-    /// ask a profile for its <see cref="SessionProfile.Claude"/>; without this they would see <see langword="null"/>
-    /// for a migrated profile and fall back to <c>~/.claude</c>, tailing the wrong directory for a non-default profile.
-    /// A blank/unreadable blob yields a <see cref="ClaudeConfig"/> with an empty directory, which resolves to the CLI
-    /// default. Pass only a config for this plugin's own id.
-    /// </summary>
+    // Reads the `{configDir,executablePath}` blob a Claude plugin profile carries back into a
+    // `ClaudeConfig` — the inverse of `Create`. Host-side Claude features that predate the
+    // plugin (the config directory the status transcript tailer locates the JSONL under, the login check)
+    // ask a profile for its `SessionProfile.Claude`; without this they would see `null`
+    // for a migrated profile and fall back to `~/.claude`, tailing the wrong directory for a non-default profile.
+    // A blank/unreadable blob yields a `ClaudeConfig` with an empty directory, which resolves to the CLI
+    // default. Pass only a config for this plugin's own id.
     public static ClaudeConfig ReadClaudeConfig(string? configJson)
     {
         if (string.IsNullOrWhiteSpace(configJson))
@@ -49,16 +45,14 @@ public static class ClaudePluginProfile
         }
     }
 
-    /// <summary>
-    /// A one-time migration of a Claude profile's legacy typed permission-mode/model/effort defaults into the generic
-    /// <see cref="ProfileDefaults.OptionDefaults"/> format (Fase 4). A non-blank legacy field wins — so a profile keeps
-    /// its saved start settings, and recovers if an earlier build seeded OptionDefaults with the plugin's own defaults
-    /// instead of the operator's values. Once the profile is re-saved the legacy fields are written blank (the editor's
-    /// <c>ToProfile</c> does that), so this becomes a no-op on later loads and OptionDefaults is the single source.
-    /// Keys a provider owns itself (a sandbox, say) pass through untouched. Core cannot reference the plugin
-    /// abstractions, so these key literals — matching the host's <c>WellKnownPluginSessionOptions</c> — are the one
-    /// Claude-specific detail here.
-    /// </summary>
+    // A one-time migration of a Claude profile's legacy typed permission-mode/model/effort defaults into the generic
+    // `ProfileDefaults.OptionDefaults` format (Fase 4). A non-blank legacy field wins — so a profile keeps
+    // its saved start settings, and recovers if an earlier build seeded OptionDefaults with the plugin's own defaults
+    // instead of the operator's values. Once the profile is re-saved the legacy fields are written blank (the editor's
+    // `ToProfile` does that), so this becomes a no-op on later loads and OptionDefaults is the single source.
+    // Keys a provider owns itself (a sandbox, say) pass through untouched. Core cannot reference the plugin
+    // abstractions, so these key literals — matching the host's `WellKnownPluginSessionOptions` — are the one
+    // Claude-specific detail here.
     public static ProfileDefaults WithMigratedOptionDefaults(ProfileDefaults defaults)
     {
         var options = defaults.OptionDefaults is { Count: > 0 } existing

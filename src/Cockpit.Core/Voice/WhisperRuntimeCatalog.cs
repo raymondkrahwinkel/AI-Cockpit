@@ -1,16 +1,13 @@
 namespace Cockpit.Core.Voice;
 
-/// <summary>
-/// Resolves which NuGet package carries a backend's native libraries and the layout Whisper.net's loader
-/// expects to find them in. Sits next to <see cref="WhisperBackendPlanner"/> on purpose: the planner decides
-/// the try-order, this decides what has to be on disk for an entry in that order to be tryable at all.
-/// <para>
-/// The GPU runtimes are fetched on first use instead of shipped — they cannot be picked at build time, since
-/// which GPU a machine has is not knowable then, and bundling all of them cost a win-x64 publish 1.5 GB (the
-/// natives weigh ~748 MB and a single-file publish carried them twice). The CPU runtimes are not here because
-/// they stay bundled: small, work everywhere, and the floor transcription always falls back to.
-/// </para>
-/// </summary>
+// Resolves which NuGet package carries a backend's native libraries and the layout Whisper.net's loader
+// expects to find them in. Sits next to `WhisperBackendPlanner` on purpose: the planner decides
+// the try-order, this decides what has to be on disk for an entry in that order to be tryable at all.
+//
+// The GPU runtimes are fetched on first use instead of shipped — they cannot be picked at build time, since
+// which GPU a machine has is not knowable then, and bundling all of them cost a win-x64 publish 1.5 GB (the
+// natives weigh ~748 MB and a single-file publish carried them twice). The CPU runtimes are not here because
+// they stay bundled: small, work everywhere, and the floor transcription always falls back to.
 public static class WhisperRuntimeCatalog
 {
     public static WhisperRuntimePackage? Resolve(WhisperRuntimeBackend backend, WhisperHostPlatform platform, string architecture)
@@ -27,10 +24,8 @@ public static class WhisperRuntimeCatalog
         return new WhisperRuntimePackage(packageId, $"build/{rid}", Path.Combine("runtimes", runtimeFolder, rid));
     }
 
-    /// <summary>
-    /// What Whisper.net's own loader calls this platform when it builds a runtime path — its scheme, which is
-    /// not the NuGet RID's (<c>macos</c>, not <c>osx</c>).
-    /// </summary>
+    // What Whisper.net's own loader calls this platform when it builds a runtime path — its scheme, which is
+    // not the NuGet RID's (`macos`, not `osx`).
     public static string PathSegment(WhisperHostPlatform platform) => platform switch
     {
         WhisperHostPlatform.Windows => "win",
@@ -39,20 +34,16 @@ public static class WhisperRuntimeCatalog
         _ => throw new ArgumentOutOfRangeException(nameof(platform), platform, "Unmapped Whisper host platform."),
     };
 
-    /// <summary>
-    /// Turns the directory holding the cached <c>runtimes/</c> tree into the value Whisper.net wants as
-    /// <c>RuntimeOptions.LibraryPath</c>. It reads that option as a path to a <em>file</em> and takes its
-    /// directory, so the trailing separator is what makes it resolve to this folder instead of its parent —
-    /// and a parent lookup finds no runtime at all, silently, on the CPU.
-    /// </summary>
+    // Turns the directory holding the cached `runtimes/` tree into the value Whisper.net wants as
+    // `RuntimeOptions.LibraryPath`. It reads that option as a path to a *file* and takes its
+    // directory, so the trailing separator is what makes it resolve to this folder instead of its parent —
+    // and a parent lookup finds no runtime at all, silently, on the CPU.
     public static string ToLibrarySearchPath(string runtimeRoot) =>
         runtimeRoot.EndsWith(Path.DirectorySeparatorChar) ? runtimeRoot : runtimeRoot + Path.DirectorySeparatorChar;
 
-    /// <summary>
-    /// The runtime version to fetch, read from Whisper.net's own informational version — the natives have to
-    /// match the library loading them. Strips SemVer build metadata (<c>1.9.1+abc123</c> becomes <c>1.9.1</c>)
-    /// but keeps a prerelease suffix, which is the part the assembly version would silently drop.
-    /// </summary>
+    // The runtime version to fetch, read from Whisper.net's own informational version — the natives have to
+    // match the library loading them. Strips SemVer build metadata (`1.9.1+abc123` becomes `1.9.1`)
+    // but keeps a prerelease suffix, which is the part the assembly version would silently drop.
     public static string NormalizePackageVersion(string informationalVersion)
     {
         var buildMetadata = informationalVersion.IndexOf('+');

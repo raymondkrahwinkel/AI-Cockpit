@@ -1,30 +1,24 @@
 namespace Cockpit.Core.Assistant;
 
-/// <summary>
-/// Composes the instruction an assistant session starts under: <see cref="AssistantSystemPrompt.Default"/> and
-/// whatever the operator wrote on the Assistant Profile (AC-594).
-/// </summary>
-/// <remarks>
-/// The box on that dialog used to <em>replace</em> the default. It reads as a place to add a name or a house rule,
-/// and doing so silently dropped the language rule, the speak-don't-write rule, the honesty clause and the whole
-/// permission paragraph — none of which the operator was asking to lose. Adding is now the default and replacing is
-/// the advanced choice, which is also what the same field means on an ordinary profile.
-/// </remarks>
+// Composes the instruction an assistant session starts under: `AssistantSystemPrompt.Default` and
+// whatever the operator wrote on the Assistant Profile (AC-594).
+// The box on that dialog used to *replace* the default. It reads as a place to add a name or a house rule,
+// and doing so silently dropped the language rule, the speak-don't-write rule, the honesty clause and the whole
+// permission paragraph — none of which the operator was asking to lose. Adding is now the default and replacing is
+// the advanced choice, which is also what the same field means on an ordinary profile.
 public static class AssistantStandingInstruction
 {
-    /// <summary>What the remembered lines are introduced as, so the assistant can tell them from its own instructions.</summary>
+    // What the remembered lines are introduced as, so the assistant can tell them from its own instructions.
     public const string MemoryHeading =
         "What you have been asked to remember, from earlier conversations with this operator:";
 
-    /// <summary>What the state left behind at a hand-over is introduced as (AC-596).</summary>
+    // What the state left behind at a hand-over is introduced as (AC-596).
     public const string CurrentStateHeading =
         "Where the conversation stood when you last handed over. It is yours, written before a restart, and it may "
         + "be out of date — treat it as a note to yourself rather than as something the operator just said:";
 
-    /// <summary>
-    /// The instruction a session starts under: the built-in one (or the operator's, if they replaced it), then
-    /// whatever they wrote, then what was remembered (AC-595) and where the conversation stood (AC-596).
-    /// </summary>
+    // The instruction a session starts under: the built-in one (or the operator's, if they replaced it), then
+    // whatever they wrote, then what was remembered (AC-595) and where the conversation stood (AC-596).
     public static string Compose(
         string? operatorInstruction,
         bool replacesDefault,

@@ -1,45 +1,40 @@
 namespace Cockpit.Core.Markdown;
 
-/// <summary>
-/// One top-level markdown block. A flat record carrying the fields each kind needs (only the relevant
-/// ones are populated) so the parser output stays a simple list the renderer walks with a switch —
-/// deliberately not a type hierarchy for such a small, closed set.
-/// </summary>
+// One top-level markdown block. A flat record carrying the fields each kind needs (only the relevant
+// ones are populated) so the parser output stays a simple list the renderer walks with a switch —
+// deliberately not a type hierarchy for such a small, closed set.
 public sealed record MarkdownBlock
 {
     public required MarkdownBlockKind Kind { get; init; }
 
-    /// <summary>Heading level 1–6 (<see cref="MarkdownBlockKind.Heading"/> only).</summary>
+    // Heading level 1–6 (`MarkdownBlockKind.Heading` only).
     public int HeadingLevel { get; init; }
 
-    /// <summary>Inline runs for a paragraph or heading.</summary>
+    // Inline runs for a paragraph or heading.
     public IReadOnlyList<MarkdownInline> Inlines { get; init; } = [];
 
-    /// <summary>Fenced-code language label, if any (<see cref="MarkdownBlockKind.CodeBlock"/>).</summary>
+    // Fenced-code language label, if any (`MarkdownBlockKind.CodeBlock`).
     public string? Language { get; init; }
 
-    /// <summary>Raw code text (<see cref="MarkdownBlockKind.CodeBlock"/>).</summary>
+    // Raw code text (`MarkdownBlockKind.CodeBlock`).
     public string Code { get; init; } = string.Empty;
 
-    /// <summary>True for an ordered list (<see cref="MarkdownBlockKind.List"/>).</summary>
+    // True for an ordered list (`MarkdownBlockKind.List`).
     public bool Ordered { get; init; }
 
-    /// <summary>List items, each a run of inlines (<see cref="MarkdownBlockKind.List"/>); or table header cells (<see cref="MarkdownBlockKind.Table"/>).</summary>
+    // List items, each a run of inlines (`MarkdownBlockKind.List`); or table header cells (`MarkdownBlockKind.Table`).
     public IReadOnlyList<IReadOnlyList<MarkdownInline>> Items { get; init; } = [];
 
-    /// <summary>Table body rows, each a list of cells, each cell a run of inlines (<see cref="MarkdownBlockKind.Table"/>).</summary>
+    // Table body rows, each a list of cells, each cell a run of inlines (`MarkdownBlockKind.Table`).
     public IReadOnlyList<IReadOnlyList<IReadOnlyList<MarkdownInline>>> Rows { get; init; } = [];
 
-    /// <summary>
-    /// Structural equality, spelled out because the compiler's version is not. A record compares each property
-    /// with <c>EqualityComparer&lt;T&gt;.Default</c>, and for the three list properties here that is reference
-    /// equality — so two separately parsed but identical blocks came out unequal, while the record's shape
-    /// promises the opposite. Any caller trusting that promise got a wrong answer silently.
-    /// <para>
-    /// The transcript renderer is one such caller: it re-parses a streaming reply on every repaint and rebuilds
-    /// only the blocks that actually changed, which is exactly this comparison.
-    /// </para>
-    /// </summary>
+    // Structural equality, spelled out because the compiler's version is not. A record compares each property
+    // with `EqualityComparer&lt;T&gt;.Default`, and for the three list properties here that is reference
+    // equality — so two separately parsed but identical blocks came out unequal, while the record's shape
+    // promises the opposite. Any caller trusting that promise got a wrong answer silently.
+    //
+    // The transcript renderer is one such caller: it re-parses a streaming reply on every repaint and rebuilds
+    // only the blocks that actually changed, which is exactly this comparison.
     public bool Equals(MarkdownBlock? other)
     {
         if (ReferenceEquals(this, other))
@@ -58,11 +53,9 @@ public sealed record MarkdownBlock
             && _RowsEqual(Rows, other.Rows);
     }
 
-    /// <remarks>
-    /// Only the scalars, the inline runs and the collection sizes go in. Equal blocks always agree on all of
-    /// those, which is all a hash has to guarantee; walking every table cell as well would cost more than the
-    /// collisions it saves.
-    /// </remarks>
+    // Only the scalars, the inline runs and the collection sizes go in. Equal blocks always agree on all of
+    // those, which is all a hash has to guarantee; walking every table cell as well would cost more than the
+    // collisions it saves.
     public override int GetHashCode()
     {
         var hash = new HashCode();

@@ -2,22 +2,18 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Core.Voice;
 
-/// <summary>
-/// Deterministic noise removal for a raw dictation transcript, so a normal spoken sentence reaches the agent as
-/// intent rather than as everything the microphone happened to catch. Runs on every dictation path (push-to-talk
-/// and open-mic, SDK and TTY) — unlike the LLM cleanup, which is SDK-only and skips short utterances, exactly the
-/// cases ("um", a throat-clear) this has to catch. Two kinds of noise are dropped:
-/// <list type="bullet">
-/// <item><b>Whisper's non-speech tags</b> — sound events it heard but that were not speech, wrapped in asterisks,
-/// square brackets or parentheses: <c>*Clears throat*</c>, <c>[BLANK_AUDIO]</c>, <c>(coughs)</c>. Whisper does not
-/// use those wrappers for dictated words, so removing the wrapped spans is safe.</item>
-/// <item><b>Hesitation fillers</b> — standalone "um", "uh", "uhm", "erm", "ehm", "hmm", "mmm" (and their drawn-out
-/// spellings). The set is deliberately cross-language-safe: it excludes tokens that are real words in English or
-/// Dutch (notably "er" and "eh"), and word boundaries keep it from touching "umbrella" or "summary".</item>
-/// </list>
-/// Returns the cleaned text, trimmed — empty when the utterance was nothing but noise, which the caller drops
-/// instead of injecting or auto-submitting.
-/// </summary>
+// Deterministic noise removal for a raw dictation transcript, so a normal spoken sentence reaches the agent as
+// intent rather than as everything the microphone happened to catch. Runs on every dictation path (push-to-talk
+// and open-mic, SDK and TTY) — unlike the LLM cleanup, which is SDK-only and skips short utterances, exactly the
+// cases ("um", a throat-clear) this has to catch. Two kinds of noise are dropped:
+// - *Whisper's non-speech tags* — sound events it heard but that were not speech, wrapped in asterisks,
+// square brackets or parentheses: `*Clears throat*`, `[BLANK_AUDIO]`, `(coughs)`. Whisper does not
+// use those wrappers for dictated words, so removing the wrapped spans is safe.
+// - *Hesitation fillers* — standalone "um", "uh", "uhm", "erm", "ehm", "hmm", "mmm" (and their drawn-out
+// spellings). The set is deliberately cross-language-safe: it excludes tokens that are real words in English or
+// Dutch (notably "er" and "eh"), and word boundaries keep it from touching "umbrella" or "summary".
+// Returns the cleaned text, trimmed — empty when the utterance was nothing but noise, which the caller drops
+// instead of injecting or auto-submitting.
 public static partial class DictationNoiseFilter
 {
     public static string Strip(string text)

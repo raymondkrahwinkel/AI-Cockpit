@@ -158,7 +158,8 @@ def prose(text, marker):
 
 def check_file(path: Path) -> list[str]:
     old = subprocess.run(["git", "show", "HEAD:./" + path.name],
-                         cwd=path.parent, capture_output=True, text=True).stdout
+                         cwd=path.parent, capture_output=True, text=True,
+                         encoding="utf-8").stdout
     new = path.read_text(encoding="utf-8")
     # What was in /// must now be in //, on top of the // comments that were already there.
     was = Counter(prose(old, "///")) + Counter(prose(old, "//"))

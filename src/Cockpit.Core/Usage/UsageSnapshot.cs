@@ -1,44 +1,38 @@
 namespace Cockpit.Core.Usage;
 
-/// <summary>
-/// What one session had run up at a moment in time (AC-251): the token buckets, the cost and the turns behind
-/// the header's meter, plus enough about the session to tell later which work they belong to. Written after every
-/// completed turn, so the newest record for a <see cref="PaneId"/> is that session's total — that the totals are
-/// carried on every record rather than only at the end is what makes them survive a crash or a kill, which is
-/// the whole point: until this existed the numbers lived only in memory and yesterday's spend was unrecoverable.
-/// </summary>
+// What one session had run up at a moment in time (AC-251): the token buckets, the cost and the turns behind
+// the header's meter, plus enough about the session to tell later which work they belong to. Written after every
+// completed turn, so the newest record for a `PaneId` is that session's total — that the totals are
+// carried on every record rather than only at the end is what makes them survive a crash or a kill, which is
+// the whole point: until this existed the numbers lived only in memory and yesterday's spend was unrecoverable.
 public sealed record UsageSnapshot
 {
-    /// <summary>The session this belongs to — the cockpit's own pane id, unique to one session for as long as it exists.</summary>
+    // The session this belongs to — the cockpit's own pane id, unique to one session for as long as it exists.
     public string PaneId { get; init; } = string.Empty;
 
-    /// <summary>When the session's runtime went up — the start of its working life, which is what <see cref="Duration"/> measures from.</summary>
+    // When the session's runtime went up — the start of its working life, which is what `Duration` measures from.
     public DateTimeOffset StartedAt { get; init; }
 
-    /// <summary>When this record was written — the moment the turn behind it settled.</summary>
+    // When this record was written — the moment the turn behind it settled.
     public DateTimeOffset RecordedAt { get; init; }
 
-    /// <summary>Whether the operator drove this session or a plugin did.</summary>
+    // Whether the operator drove this session or a plugin did.
     public UsageRunKind RunKind { get; init; }
 
-    /// <summary>
-    /// The run this session was embedded for, when a plugin said so (<c>EmbeddedSessionRequest.RunId</c>). An
-    /// Autopilot run spends across a session per step plus its CEO, so grouping on this is what turns a pile of
-    /// session records into "what that run cost". Null for a session that belongs to no run.
-    /// </summary>
+    // The run this session was embedded for, when a plugin said so (`EmbeddedSessionRequest.RunId`). An
+    // Autopilot run spends across a session per step plus its CEO, so grouping on this is what turns a pile of
+    // session records into "what that run cost". Null for a session that belongs to no run.
     public string? RunId { get; init; }
 
-    /// <summary>The run's name as the plugin knew it, so a costly <see cref="RunId"/> can be recognised without looking it up elsewhere.</summary>
+    // The run's name as the plugin knew it, so a costly `RunId` can be recognised without looking it up elsewhere.
     public string? RunLabel { get; init; }
 
-    /// <summary>The profile the session ran under — whose account the tokens came off.</summary>
+    // The profile the session ran under — whose account the tokens came off.
     public string? ProfileLabel { get; init; }
 
-    /// <summary>
-    /// The model in effect when this record was written. The totals are cumulative over the session, so a session
-    /// that switched models attributes the whole sum to the last one — read a per-model split off the records
-    /// before and after the switch rather than off a single one.
-    /// </summary>
+    // The model in effect when this record was written. The totals are cumulative over the session, so a session
+    // that switched models attributes the whole sum to the last one — read a per-model split off the records
+    // before and after the switch rather than off a single one.
     public string? Model { get; init; }
 
     public int InputTokens { get; init; }
@@ -49,18 +43,16 @@ public sealed record UsageSnapshot
 
     public int CacheCreationInputTokens { get; init; }
 
-    /// <summary>What the provider said this cost so far, in US dollars. Zero where the provider reports no cost at all (a local model).</summary>
+    // What the provider said this cost so far, in US dollars. Zero where the provider reports no cost at all (a local model).
     public double TotalCostUsd { get; init; }
 
-    /// <summary>Completed turns behind these totals.</summary>
+    // Completed turns behind these totals.
     public int Turns { get; init; }
 
     public int TotalTokens => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
 
-    /// <summary>
-    /// How long the session had been going when this was written. Measured to the turn that produced this record,
-    /// not to the pane being closed: a session that sat idle for an hour after its last turn did not work for that
-    /// hour, and a token baseline wants the working time.
-    /// </summary>
+    // How long the session had been going when this was written. Measured to the turn that produced this record,
+    // not to the pane being closed: a session that sat idle for an hour after its last turn did not work for that
+    // hour, and a token baseline wants the working time.
     public TimeSpan Duration => RecordedAt - StartedAt;
 }

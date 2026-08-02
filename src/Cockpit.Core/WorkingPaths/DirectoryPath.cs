@@ -1,28 +1,22 @@
 namespace Cockpit.Core.WorkingPaths;
 
-/// <summary>
-/// Comparing folders the way the platform does. Two spellings of one folder — a trailing separator, a relative
-/// segment, a different case where the file system does not care — are the same folder, and code that decides
-/// what a session works on has to agree with the file system about that.
-/// </summary>
+// Comparing folders the way the platform does. Two spellings of one folder — a trailing separator, a relative
+// segment, a different case where the file system does not care — are the same folder, and code that decides
+// what a session works on has to agree with the file system about that.
 public static class DirectoryPath
 {
-    /// <summary>
-    /// How folder names compare here: case-insensitively on Windows and macOS, exactly on Linux — the same rule the
-    /// worktree engine applies, so a path means one thing across the app rather than one thing per caller.
-    /// </summary>
+    // How folder names compare here: case-insensitively on Windows and macOS, exactly on Linux — the same rule the
+    // worktree engine applies, so a path means one thing across the app rather than one thing per caller.
     public static readonly StringComparison Comparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    /// <summary><see cref="Comparison"/> as a comparer, for a set or dictionary keyed by folder.</summary>
+    // `Comparison` as a comparer, for a set or dictionary keyed by folder.
     public static readonly StringComparer Comparer =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    /// <summary>
-    /// <paramref name="path"/> as one absolute, separator-normalised folder name without a trailing separator, or
-    /// <see langword="null"/> when it names no folder — blank, or a path the platform itself rejects. Null rather
-    /// than a throw: this runs on the way to starting a session, and an unusable path is an answer, not a failure.
-    /// </summary>
+    // `path` as one absolute, separator-normalised folder name without a trailing separator, or
+    // `null` when it names no folder — blank, or a path the platform itself rejects. Null rather
+    // than a throw: this runs on the way to starting a session, and an unusable path is an answer, not a failure.
     public static string? Normalize(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -40,10 +34,8 @@ public static class DirectoryPath
         }
     }
 
-    /// <summary>
-    /// Whether <paramref name="path"/> is <paramref name="folder"/> itself or something inside it. The containment
-    /// test is on a separator boundary, so <c>/repo-two</c> is not inside <c>/repo</c>.
-    /// </summary>
+    // Whether `path` is `folder` itself or something inside it. The containment
+    // test is on a separator boundary, so `/repo-two` is not inside `/repo`.
     public static bool IsWithin(string? path, string? folder)
     {
         if (Normalize(path) is not { } target || Normalize(folder) is not { } root)

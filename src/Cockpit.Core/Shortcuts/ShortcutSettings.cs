@@ -1,29 +1,27 @@
 namespace Cockpit.Core.Shortcuts;
 
-/// <summary>
-/// The user's configured gestures (#: shortcuts): per-action for the built-in app actions (defaulting to
-/// <see cref="ShortcutCatalog"/> where unset), and per-id overrides for plugin-contributed shortcuts (which
-/// otherwise use the gesture the plugin registered). A blank gesture unbinds. Immutable; the <c>With…</c>
-/// helpers return a new instance and the store persists it.
-/// </summary>
+// The user's configured gestures (#: shortcuts): per-action for the built-in app actions (defaulting to
+// `ShortcutCatalog` where unset), and per-id overrides for plugin-contributed shortcuts (which
+// otherwise use the gesture the plugin registered). A blank gesture unbinds. Immutable; the `With…`
+// helpers return a new instance and the store persists it.
 public sealed record ShortcutSettings(
     IReadOnlyDictionary<ShortcutAction, string> Gestures,
     IReadOnlyDictionary<string, string> PluginGestures)
 {
-    /// <summary>Every app action bound to its catalog default, and no plugin overrides.</summary>
+    // Every app action bound to its catalog default, and no plugin overrides.
     public static ShortcutSettings Default { get; } =
         new(ShortcutCatalog.All.ToDictionary(descriptor => descriptor.Action, descriptor => descriptor.DefaultGesture),
             new Dictionary<string, string>());
 
-    /// <summary>The gesture bound to <paramref name="action"/>, falling back to the catalog default when unset.</summary>
+    // The gesture bound to `action`, falling back to the catalog default when unset.
     public string GestureFor(ShortcutAction action) =>
         Gestures.TryGetValue(action, out var gesture) ? gesture : ShortcutCatalog.DefaultGesture(action);
 
-    /// <summary>The user's override gesture for a plugin shortcut <paramref name="shortcutId"/>, or <paramref name="pluginDefault"/> when the user never changed it.</summary>
+    // The user's override gesture for a plugin shortcut `shortcutId`, or `pluginDefault` when the user never changed it.
     public string GestureForPlugin(string shortcutId, string pluginDefault) =>
         PluginGestures.TryGetValue(shortcutId, out var gesture) ? gesture : pluginDefault;
 
-    /// <summary>Returns a copy with <paramref name="action"/> bound to <paramref name="gesture"/> (trimmed; null/blank unbinds it).</summary>
+    // Returns a copy with `action` bound to `gesture` (trimmed; null/blank unbinds it).
     public ShortcutSettings With(ShortcutAction action, string? gesture)
     {
         var map = new Dictionary<ShortcutAction, string>(Gestures)
@@ -33,7 +31,7 @@ public sealed record ShortcutSettings(
         return this with { Gestures = map };
     }
 
-    /// <summary>Returns a copy with the plugin shortcut <paramref name="shortcutId"/> overridden to <paramref name="gesture"/> (trimmed; null/blank unbinds it).</summary>
+    // Returns a copy with the plugin shortcut `shortcutId` overridden to `gesture` (trimmed; null/blank unbinds it).
     public ShortcutSettings WithPlugin(string shortcutId, string? gesture)
     {
         var map = new Dictionary<string, string>(PluginGestures)

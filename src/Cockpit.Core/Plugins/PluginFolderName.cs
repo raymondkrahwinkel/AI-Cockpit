@@ -2,11 +2,9 @@ using System.Text;
 
 namespace Cockpit.Core.Plugins;
 
-/// <summary>
-/// Turns a plugin id into a filesystem-safe folder slug: lowercase, <c>[a-z0-9-]</c>, other runs
-/// collapsed to a single dash, trimmed. Returns empty when nothing usable remains — the caller then
-/// falls back to a generated installation id (a GUID) so every plugin still gets a unique folder.
-/// </summary>
+// Turns a plugin id into a filesystem-safe folder slug: lowercase, `[a-z0-9-]`, other runs
+// collapsed to a single dash, trimmed. Returns empty when nothing usable remains — the caller then
+// falls back to a generated installation id (a GUID) so every plugin still gets a unique folder.
 public static class PluginFolderName
 {
     public static string Normalize(string id)
