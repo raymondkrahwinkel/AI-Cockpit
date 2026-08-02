@@ -195,6 +195,21 @@ internal sealed class CockpitHost(
     public IReadOnlyList<ProjectFieldRegistration> ProjectFields =>
         services.GetRequiredService<IProjectFieldRegistry>().Fields;
 
+    public void ClaimProjectOwnership(ProjectOwnershipRegistration registration)
+    {
+        // Refused means another plugin already claims this project. That is the agreed case, not a mistake — the
+        // same reason AddProjectField logs at debug level rather than warning.
+        if (!services.GetRequiredService<IProjectOwnershipRegistry>().Register(registration))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+                "Project '{ProjectId}' ownership is already claimed by another plugin; this registration is ignored",
+                registration.ProjectId);
+        }
+    }
+
+    public IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? GetProjectFieldOwnership(string projectId) =>
+        services.GetRequiredService<IProjectOwnershipRegistry>().Resolve(projectId);
+
     public void AddProjectMemorySource(ProjectMemorySourceRegistration registration)
     {
         // Refused means another plugin already contributes this scheme — agreement, not a clash, the same reason

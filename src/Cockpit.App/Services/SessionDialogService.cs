@@ -55,6 +55,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProjectStore _projectStore;
     private readonly IProjectFieldRegistry _projectFields;
     private readonly IProjectMemorySourceRegistry _memorySources;
+    private readonly IProjectOwnershipRegistry _projectOwnership;
     private readonly SurfaceWindows _surfaces;
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
@@ -81,6 +82,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IProjectStore projectStore,
         IProjectFieldRegistry projectFields,
         IProjectMemorySourceRegistry memorySources,
+        IProjectOwnershipRegistry projectOwnership,
         SurfaceWindows surfaces,
         IAssistantProfileStore assistantProfileStore)
     {
@@ -106,6 +108,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _projectStore = projectStore;
         _projectFields = projectFields;
         _memorySources = memorySources;
+        _projectOwnership = projectOwnership;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
@@ -311,7 +314,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources, _memorySources.Families,
             // AC-523: the "Servers…" flow re-reads the live registry through this rather than replaying the
             // snapshot above, so a connection added or removed in the settings screen it opens shows up back here.
-            refreshMemorySources: () => (_memorySources.Sources, _memorySources.Families));
+            refreshMemorySources: () => (_memorySources.Sources, _memorySources.Families),
+            // AC-604: a new project has no id yet, so nothing could have claimed it — only an existing project is
+            // resolved against the ownership registry.
+            fieldOwnership: project is not null ? _projectOwnership.Resolve(project.Id) : null);
 
         // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
         // window's own X both leave this null, which is the same answer.

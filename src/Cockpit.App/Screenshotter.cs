@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
@@ -107,6 +108,14 @@ internal static class Screenshotter
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
+        // AC-604: a project a plugin partly claims — the mixed case the whole ticket exists for. Name and
+        // Behaviour are shared (Name read-only, Behaviour editable — the badge's own two lock states), Description/
+        // Logo/MCP overlay/the worktree switch stay local, each carrying its own "● This machine" badge rather than
+        // no badge at all, since the project as a whole has a claim (HasFieldOwnership). Built through the async
+        // CreateAsync factory (unlike the other project-editor scenes above, which build the design-time
+        // constructor directly): the origin properties this scene exists to show are private-init, set only inside
+        // that factory.
+        ["project-editor-ownership"] = (_, _) => _ProjectEditorWithOwnership(),
         // AC-499: the server row's own two states — a family with instances to pick from (its dropdown), and a
         // family with none yet (its empty hint plus "Servers…" in the dropdown's place) — staged together since
         // only one row of each is needed to prove both render, and DialogScreenClamp caps how much of this dialog
@@ -534,6 +543,46 @@ internal static class Screenshotter
         // to 90% of the headless screen either way, but still what pushes the resource section as far above that
         // ceiling as this dialog's other sections leave room for.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    private static ProjectDialog _ProjectEditorWithOwnership()
+    {
+        var project = new Project("proj-eve-workbench", "EVE Workbench") { BehaviorPrompt = "Community-platform. Multi-user is inherent to the product." };
+
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Name] = new ProjectFieldOwnership("Depot — Work", IsEditable: false),
+            [HostProjectField.Behavior] = new ProjectFieldOwnership("Depot — Work", IsEditable: true),
+        };
+
+        // Run on a pool thread rather than a bare .GetAwaiter().GetResult() on this (dispatcher-context-carrying)
+        // thread: CreateAsync's own resource-diagnostics pass does a genuine Task.Run + ConfigureAwait(true), whose
+        // continuation would otherwise be posted back to a headless dispatcher nothing is pumping — a deadlock
+        // reproduced while building this scene, not a hypothetical one. Task.Run carries no SynchronizationContext,
+        // so ConfigureAwait(true) inside it has nothing to capture and every continuation runs to completion.
+        var viewModel = Task.Run(() => ProjectDialogViewModel.CreateAsync(
+            project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), fieldOwnership: fieldOwnership))
+            .GetAwaiter().GetResult();
+
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    private sealed class _FakeSessionProfileStore : ISessionProfileStore
+    {
+        public Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SessionProfile>>([]);
+
+        public Task SaveAsync(IReadOnlyList<SessionProfile> profiles, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class _FakeMcpServerCatalog : IMcpServerCatalog
+    {
+        public Task<IReadOnlyList<McpServerConfig>> GetServersAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
+
+        public Task<IReadOnlyList<McpServerConfig>> GetServersForProjectAsync(string? projectId, CancellationToken cancellationToken = default) =>
+            GetServersAsync(cancellationToken);
     }
 
     /// <summary>
