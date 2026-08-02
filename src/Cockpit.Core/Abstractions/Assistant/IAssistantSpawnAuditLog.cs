@@ -57,4 +57,7 @@ public enum AssistantSpawnAction
 {
     Start,
     Stop,
+
+    /// <summary>A turn submitted into a session the assistant did not start — the hand-off <c>send_prompt</c> makes.</summary>
+    Prompt,
 }

@@ -458,8 +458,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public bool HasTranscript => Transcript.Count > 0;
 
     /// <summary>True once the runtime is up and can accept a turn. Gates the empty-state's "type to start" prompt
-    /// so it only invites input once the session is actually ready.</summary>
-    public bool IsSessionReady => _runtime is { IsRunning: true };
+    /// so it only invites input once the session is actually ready.
+    /// <para>
+    /// Virtual only so a test can stand in a session that is <em>alive</em>. A running runtime cannot be faked —
+    /// it is a real child process — and "alive" is the input to decisions that only exist for a live session:
+    /// <c>AssistantSessionHost</c> replaces a dead instance but not a healthy one, and its restart is defined as
+    /// the opposite. Without an override, both branches read the same in a test and neither could be told apart.
+    /// </para>
+    /// </summary>
+    public virtual bool IsSessionReady => _runtime is { IsRunning: true };
 
     /// <summary>The headless route is the one with no <c>/clear</c> of its own, so this is where the action belongs (AC-564).</summary>
     public override bool SupportsClearContext => true;
@@ -895,7 +902,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null,
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
@@ -909,7 +915,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState);
     }
 
     /// <summary>
@@ -1025,6 +1031,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // Refresh the ready-gate (the empty-state's "type to start" prompt) now the launch has settled:
         // true on a live runtime, false when it failed.
         OnPropertyChanged(nameof(IsSessionReady));
+
+        // The one point where this kind's CanTakeAPrompt turns true, so the one point a brief handed over before the
+        // runtime existed can go out. Sending it any earlier is what earns the transcript's "The session has not
+        // started yet — nothing was sent."; a launch that failed leaves it held rather than sent into nothing.
+        DeliverHeldPrompt();
     }
 
     /// <summary>
@@ -1597,9 +1608,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _CloseThinkingRow();
         IsBusy = true;
         _needsAttention = false;
-        // Speak a quick "let me take a look" now (AC-99) so a voice conversation is not met with silence while the
-        // turn spins up — no-op unless read-aloud is on and an acknowledgement mode is chosen.
-        _ = SpeakTurnAcknowledgmentAsync(text);
         _RecomputeStatus();
 
         // Remember this message's images as the turn's images (AC-116) before the send, so a tool result that
@@ -1851,18 +1859,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ = EnqueueReadAloudAsync(pending);
     }
 
-    /// <summary>On-demand read-aloud for a single transcript row (#35) — works regardless of <see cref="ReadResponsesAloud"/>, since the speaker button next to an assistant reply is an explicit request to hear it.</summary>
-    [RelayCommand]
-    private void ReadAloud(TranscriptEntryViewModel entry)
-    {
-        if (entry.Kind != TranscriptEntryKind.AssistantText)
-        {
-            return;
-        }
-
-        _ = EnqueueReadAloudAsync(entry.Text);
-    }
-
     // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI
     // thread is this panel's job, because it is the consumer that touches UI — a headless consumer of the same
     // runtime marshals nothing.
@@ -2078,6 +2074,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // dotnet build") rather than re-deriving a summary from the input JSON a second time.
                 _activeToolCalls.Add(new ActiveToolCall(toolUse.ToolUseId, toolUseRow.ToolHeader, DateTimeOffset.Now));
                 _RaiseActiveToolActivityChanged();
+
+                // The wait starts here, so the lead-in is spoken here. Until now the only mid-turn flushes were a
+                // permission prompt and a question, which was enough while every tool call raised one — and stopped
+                // being enough the moment an operator turned on bypassPermissions or the cockpit's consent bypass
+                // (AC-575). Then nothing paused the turn, nothing flushed, and a spoken assistant went silent from
+                // the question until the whole answer was ready. Flushing on the call itself does not depend on
+                // anyone being asked anything.
+                _FlushPendingProseForReadAloud();
                 break;
 
             case ToolResult toolResult:

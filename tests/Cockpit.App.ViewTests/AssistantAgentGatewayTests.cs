@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia.Threading;
 using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
@@ -337,6 +338,10 @@ public class AssistantAgentGatewayTests
 
         var typesById = Dispatcher.UIThread.Invoke(
             () => cockpit.Workspaces.Settings.Workspaces.ToDictionary(w => w.Id, w => w.Type));
+        // The type id itself, not the record's ToString() — a live transcript showed the model receiving
+        // "WorkspaceType { Id = Sessions, IsBuiltIn = True }", which is a dump of the struct rather than the
+        // "sessions" this row's own contract promises.
+        Assert.All(rows, row => Assert.Equal(typesById[row.Id].Id, row.Type));
         Assert.All(rows, row => Assert.Equal(typesById[row.Id] == WorkspaceType.Sessions, row.CanHostSessions));
         Assert.Contains(rows, row => row.CanHostSessions);
         Assert.Contains(rows, row => !row.CanHostSessions);
@@ -415,6 +420,221 @@ public class AssistantAgentGatewayTests
         Assert.Null(trail.Entries[1].Refusal);
     }
 
+    // --- Removing a desk: the counterpart of create_workspace, and the tab's own ✕ ----------------------------
+
+    [Fact]
+    public async Task RemovingADeskWithSessionsOnIt_IsRefused_AndNeitherTheDeskNorItsSessionsAreTouched()
+    {
+        // The guarantee the tool's description makes, attacked directly. Closing a desk stops everything on it in
+        // one go, and what the operator approved was a row naming a desk — so the sessions go first, through
+        // stop_agent and an approval each. Both halves are asserted: the reason, and that nothing was already
+        // half-done by the time it came back.
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var busy = _Desk("Henk", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var built = _Gateway(_Settings(here, busy));
+            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
+            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-546" });
+            return built;
+        });
+
+        var result = await gateway.RemoveWorkspaceAsync(busy.Id);
+
+        Assert.False(result.Ok);
+        Assert.Equal("There are still 2 sessions on 'Henk'. Stop them first — I do not close a desk with work still on it.", result.Error);
+
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == busy.Id);
+            Assert.Equal(2, cockpit.Sessions.Count(session => session.WorkspaceId == busy.Id));
+        });
+    }
+
+    [Fact]
+    public async Task RemovingADeskWithExactlyOneSessionOnIt_SaysOneSession_NotOneSessions()
+    {
+        // The singular is not a nicety: this reason is read out loud, and "there are still 1 sessions" is the
+        // sentence that tells the operator the assistant is reciting a template rather than looking at their desk.
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var busy = _Desk("Henk", WorkspaceType.Sessions);
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var built = _Gateway(_Settings(here, busy));
+            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
+            return built;
+        });
+
+        var result = await gateway.RemoveWorkspaceAsync(busy.Id);
+
+        Assert.False(result.Ok);
+        Assert.Equal("There is still 1 session on 'Henk'. Stop it first — I do not close a desk with work still on it.", result.Error);
+    }
+
+    [Fact]
+    public async Task RemovingADeskThatHoldsOnlyAPlainTerminal_IsStillRefused_ThoughTheRosterCountsItAsEmpty()
+    {
+        // The one place this check may not simply reuse list_workspaces' number. A terminal is not an agent
+        // session, so the roster reports the desk as empty — but closing the desk kills its pty just the same, and
+        // that is precisely the work nobody asked to lose. Both facts are pinned in one test, because the second
+        // only means something next to the first.
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var withATerminal = _Desk("Henk", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var built = _Gateway(_Settings(here, withATerminal));
+            built.Cockpit.Sessions.Add(new TtyViewModel { WorkspaceId = withATerminal.Id, Title = "pwsh", ShowPluginHeaderItems = false });
+            return built;
+        });
+
+        Assert.Equal(0, (await gateway.ListWorkspacesAsync()).Single(row => row.Id == withATerminal.Id).SessionCount);
+
+        var result = await gateway.RemoveWorkspaceAsync(withATerminal.Id);
+
+        Assert.False(result.Ok);
+        Assert.Contains("still 1 session on 'Henk'", result.Error);
+        Dispatcher.UIThread.Invoke(
+            () => Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == withATerminal.Id));
+    }
+
+    [Fact]
+    public async Task RemovingAnEmptyDesk_TakesItOutOfTheWorkspacesTheCockpitHolds_AndNamesWhatWent()
+    {
+        // The other side of every refusal above: an empty desk really does go, out of the same settings the tab
+        // strip renders, and the name comes back so the assistant can say which tab the operator just lost.
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var empty = _Desk("Henk", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, empty)));
+
+        var result = await gateway.RemoveWorkspaceAsync(empty.Id);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("Henk", result.Name);
+        Dispatcher.UIThread.Invoke(() => Assert.Equal(
+            [here.Id],
+            cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Id)));
+    }
+
+    /// <summary>
+    /// Only a sessions desk. Every other type is refused outright and stays exactly where it was.
+    /// </summary>
+    /// <remarks>
+    /// The occupancy check counts sessions, and a desk of another type has none — so a dashboard holding a full
+    /// screen of widgets read as empty and was closed on the spot, taking a layout nobody was shown and nothing can
+    /// rebuild. Warning about it was not the fix: a consent card shows one line of text and cannot enumerate what a
+    /// close would destroy, so the tool is narrower than the ✕ instead of pretending to be the same act.
+    /// <para>
+    /// Driven off <see cref="WorkspaceType"/> itself, like the spawn refusal above and for the same reason: the set
+    /// is open, and a hand-written list of "dashboard and projects" would stay green on the day a plugin desk
+    /// arrives. A second desk is present only so the last-desk rule is not what refuses.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(EveryWorkspaceTypeThatCannotHostASession))]
+    public async Task RemovingADeskThatIsNotASessionsDesk_IsRefused_AndTheDeskIsStillThere(string workspaceTypeId)
+    {
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var other = _Desk("Monitoring", WorkspaceType.FromId(workspaceTypeId));
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, other)));
+
+        var result = await gateway.RemoveWorkspaceAsync(other.Id);
+
+        Assert.False(result.Ok);
+        Assert.NotNull(result.Error);
+        Dispatcher.UIThread.Invoke(
+            () => Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == other.Id));
+    }
+
+    /// <summary>
+    /// And the reason says which kind of desk it is, in the type's own id — the same string
+    /// <c>list_workspaces</c> hands back, so what the assistant was told a desk is and why it will not close it
+    /// cannot disagree. Asserted on a dashboard because the projects overview is refused one rule earlier, by its
+    /// own more specific sentence.
+    /// </summary>
+    [Fact]
+    public async Task TheRefusalForANonSessionsDesk_NamesTheTypeTheRosterReportedForIt()
+    {
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var dashboard = _Desk("Monitoring", WorkspaceType.Dashboard);
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, dashboard)));
+
+        var reportedType = (await gateway.ListWorkspacesAsync()).Single(row => row.Id == dashboard.Id).Type;
+        var result = await gateway.RemoveWorkspaceAsync(dashboard.Id);
+
+        Assert.False(result.Ok);
+        Assert.Contains(reportedType, result.Error);
+        Assert.Contains("Monitoring", result.Error);
+    }
+
+    [Fact]
+    public async Task RemovingTheOnlyDeskLeft_IsRefused_BecauseTheCockpitAlwaysNeedsOneToShow()
+    {
+        // CanClose is the tab's own gate, asked here rather than re-derived — this is the half of it that has
+        // nothing to do with what is on the desk.
+        var only = _Desk("Henk", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(only)));
+
+        var result = await gateway.RemoveWorkspaceAsync(only.Id);
+
+        Assert.False(result.Ok);
+        Assert.Equal("'Henk' is the only desk left, and the cockpit always needs one to show.", result.Error);
+        Dispatcher.UIThread.Invoke(() => Assert.Single(cockpit.Workspaces.Settings.Workspaces));
+    }
+
+    [Fact]
+    public async Task RemovingTheProjectsOverview_IsRefused_AndSaysWhyRatherThanCountingSessions()
+    {
+        // The other half of CanClose, and a different sentence on purpose: the projects overview is a fixture, so
+        // "stop what is on it first" would send the operator off to do something that cannot help.
+        var projects = _Desk("Projects", WorkspaceType.Projects);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Here", WorkspaceType.Sessions), projects)));
+
+        var result = await gateway.RemoveWorkspaceAsync(projects.Id);
+
+        Assert.False(result.Ok);
+        Assert.Contains("projects overview", result.Error);
+        Dispatcher.UIThread.Invoke(
+            () => Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == projects.Id));
+    }
+
+    [Fact]
+    public async Task RemovingAWorkspaceIdThatNamesNothing_IsRefusedWithAReason_NotAnException()
+    {
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Here", WorkspaceType.Sessions))));
+
+        var result = await gateway.RemoveWorkspaceAsync("no-such-desk");
+
+        Assert.False(result.Ok);
+        Assert.Contains("no workspace with id 'no-such-desk'", result.Error);
+    }
+
+    [Fact]
+    public async Task ADeskThatWasRefusedWhileBusy_IsRemovedOnceItsSessionsAreStopped()
+    {
+        // The order the tool's description sends the assistant round: refuse, stop, ask again. Without this the
+        // refusals above would all pass just as happily on a gateway that never removes anything at all.
+        var here = _Desk("Here", WorkspaceType.Sessions);
+        var busy = _Desk("Henk", WorkspaceType.Sessions);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var built = _Gateway(_Settings(here, busy));
+            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
+            return built;
+        });
+        var session = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single(pane => pane.WorkspaceId == busy.Id));
+
+        Assert.False((await gateway.RemoveWorkspaceAsync(busy.Id)).Ok);
+
+        Assert.True((await gateway.StopAsync(session.PaneId)).Ok);
+        var removed = await gateway.RemoveWorkspaceAsync(busy.Id);
+
+        Assert.True(removed.Ok, removed.Error);
+        Dispatcher.UIThread.Invoke(() => Assert.DoesNotContain(
+            cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == busy.Id));
+    }
+
     // --- The graph under test -------------------------------------------------------------------------------
 
     /// <summary>
@@ -455,7 +675,16 @@ public class AssistantAgentGatewayTests
             [new SessionProfile(ProfileLabel, new ClaudeConfig(@"C:\fake\.claude"))]));
 
         var trail = new RecordingSpawnTrail();
-        return (new AssistantAgentGateway(cockpit, profiles, trail), cockpit, trail);
+        return (
+            new AssistantAgentGateway(
+                cockpit,
+                profiles,
+                trail,
+                Substitute.For<IWorkspaceAgentGateway>(),
+                Substitute.For<IAgentMessageInbox>(),
+                Substitute.For<IAgentNotifyAuditLog>()),
+            cockpit,
+            trail);
     }
 
     /// <summary>

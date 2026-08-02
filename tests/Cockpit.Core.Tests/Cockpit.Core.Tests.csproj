@@ -7,6 +7,26 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- AC-577: this project sets up no Avalonia application, so Dispatcher.UIThread binds to whichever thread
+       touches it first — a coin flip under the parallel xUnit run (see BannedSymbols.Avalonia.txt for the two
+       failure modes this produced). A test that needs a real, pumped UI-thread dispatcher belongs in
+       Cockpit.App.ViewTests instead.
+
+       RS0030 (the banned-API diagnostic) is a warning by default and only becomes an error repo-wide under CI's
+       "-warnaserror" build flag (Directory.Build.props sets no TreatWarningsAsErrors). That is too late and in the
+       wrong place for a guardrail whose entire point is to turn eighteen minutes of silent CI hang into a mistake
+       the next developer sees as a red squiggle while typing — a warning that only turns hard on CI reaches
+       nobody until the push, and by then the mistake is already committed. Forced to an error here, and only
+       here: the rest of the repo keeps leaning on the CI flag, since this project is the one whose specific
+       failure mode (a hang with a passing summary) is not a warning-shaped problem. -->
+  <PropertyGroup>
+    <WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="BannedSymbols.Avalonia.txt" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />

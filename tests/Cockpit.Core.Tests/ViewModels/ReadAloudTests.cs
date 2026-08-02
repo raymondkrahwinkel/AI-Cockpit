@@ -10,8 +10,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
 /// Read-aloud (#35): the per-session <see cref="SessionViewModel.ReadResponsesAloud"/> toggle
-/// gates the turn-completion trigger, the per-row <see cref="SessionViewModel.ReadAloudCommand"/>
-/// works regardless of that toggle, and a push-to-talk hold interrupts whatever is queued/playing.
+/// gates the turn-completion trigger, and a push-to-talk hold interrupts whatever is queued/playing.
 /// </summary>
 public class ReadAloudTests
 {
@@ -66,104 +65,95 @@ public class ReadAloudTests
     }
 
     [Fact]
-    public void ReadAloudCommand_OnAssistantRow_Enqueues_EvenWhenTheSessionToggleIsOff()
+    public void TurnCompleted_AsOneUtterance_JoinsTheSentencesIntoOneEnqueue()
     {
+        // The gaps the operator hears are the boundaries between clips: the queue synthesises one sentence ahead
+        // while the previous plays, and on this machine synthesis is slower than playback, so every full stop
+        // opens a hole that look-ahead cannot close. One sentence in means one synthesis and one continuous clip.
+        // This is the assistant's setting (AssistantSessionHost sets it) and the reason it sounds like speech
+        // rather than a list, so it is pinned here on the turn path — the only route left after AC-546.
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
         {
-            ReadResponsesAloud = false,
+            ReadResponsesAloud = true,
+            ReadAloudAsOneUtterance = true,
         };
-        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Read this one.");
 
-        vm.ReadAloudCommand.Execute(entry);
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "First sentence. Second sentence. Third sentence." });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
+        // The joined text, not just the count of one: "keep the first sentence and drop the rest" also yields one
+        // entry, and would silently throw away everything after the first full stop of every reply the assistant
+        // gives. Counting alone let that mutation through with all nine tests green.
         voicePlaybackQueue.Received(1).Enqueue(
-            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Read this one." })),
+            Arg.Is<IReadOnlyList<string>>(sentences =>
+                sentences.Count == 1 && sentences[0] == "First sentence. Second sentence. Third sentence."),
             vm.TtsVoiceSid,
             "en");
     }
 
     [Fact]
-    public void ReadAloudCommand_OnANonAssistantRow_DoesNothing()
+    public void TurnCompleted_NotAsOneUtterance_KeepsTheSentencesSeparate()
     {
+        // The other side of the flag: a reply can run for paragraphs, and one synthesis there would be a long
+        // silence before the first word. Joining must stay something the caller asks for, never the default.
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue);
-        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "not an assistant reply");
-
-        vm.ReadAloudCommand.Execute(entry);
-
-        Assert.Empty(voicePlaybackQueue.ReceivedCalls());
-    }
-
-    [Fact]
-    public async Task TurnCompleted_NaturalizeMode_SplitsMarkedLanguagesIntoSegments()
-    {
-        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings
-        {
-            ReadAloudMode = ReadAloudMode.Naturalized,
-            TtsVoiceSid = 3,
-        });
-        var cleanupService = Substitute.For<ITranscriptCleanupService>();
-        cleanupService.NaturalizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("[[en]]Here is the answer. [[nl]]Dit is het antwoord.");
-        var vm = new SessionViewModel(
-            new SessionManager(Substitute.For<ISessionDriverFactory>()),
-            voiceSettingsStore: voiceSettingsStore,
-            voicePlaybackQueue: voicePlaybackQueue,
-            cleanupService: cleanupService)
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = true,
         };
-        await _WaitUntilAsync(() => vm.ReadAloudMode == ReadAloudMode.Naturalized);
 
-        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is the answer." });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "First sentence. Second sentence. Third sentence." });
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        await _WaitUntilAsync(() => voicePlaybackQueue.ReceivedCalls().Any());
-
         voicePlaybackQueue.Received(1).Enqueue(
-            Arg.Is<IReadOnlyList<SpeechSegment>>(segments =>
-                segments.Count == 2 &&
-                segments[0].Language == "en" &&
-                segments[1].Language == "nl"),
-            3);
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.Count == 3),
+            vm.TtsVoiceSid,
+            "en");
     }
 
     [Fact]
-    public async Task TurnCompleted_SummarizeMode_SummarizesTheReplyBeforeSpeaking()
+    public void ToolUseRequested_ReadAloudOn_SpeaksTheLeadInWhenTheWaitStarts_NotOnlyWhenSomethingIsAsked()
     {
+        // The assistant's lead-in used to be spoken because every tool call raised a permission prompt, and that
+        // prompt is what flushed. Turn on bypassPermissions or the cockpit's consent bypass (AC-575) and nothing
+        // pauses the turn any more — so a spoken assistant fell silent from the question until the whole answer was
+        // ready, which is exactly the wait the lead-in exists to cover. The call itself is the moment the operator
+        // starts waiting, so that is where it is spoken.
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings
-        {
-            ReadAloudMode = ReadAloudMode.Summarized,
-            TtsVoiceSid = 1,
-        });
-        var cleanupService = Substitute.For<ITranscriptCleanupService>();
-        cleanupService.SummarizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("[[en]]Short summary.");
-        var vm = new SessionViewModel(
-            new SessionManager(Substitute.For<ISessionDriverFactory>()),
-            voiceSettingsStore: voiceSettingsStore,
-            voicePlaybackQueue: voicePlaybackQueue,
-            cleanupService: cleanupService)
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = true,
         };
-        await _WaitUntilAsync(() => vm.ReadAloudMode == ReadAloudMode.Summarized);
 
-        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "A long reply with lots of detail." });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Even kijken welke sessies er draaien." });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "list_sessions", InputJson = "{}" });
+
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Even kijken welke sessies er draaien." })),
+            vm.TtsVoiceSid,
+            "en");
+    }
+
+    [Fact]
+    public void ToolUseRequested_ThenTurnCompleted_SpeaksTheLeadInOnce_NotTwice()
+    {
+        // The flushed-count is what makes an entry spoken exactly once however many times a turn pauses. A flush
+        // added at the tool call must ride that, not repeat the lead-in when the turn ends.
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Even kijken." });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "list_sessions", InputJson = "{}" });
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        await _WaitUntilAsync(() => voicePlaybackQueue.ReceivedCalls().Any());
-
-        await cleanupService.Received(1).SummarizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await cleanupService.DidNotReceiveWithAnyArgs().NaturalizeForSpeechAsync(default!, default);
         voicePlaybackQueue.Received(1).Enqueue(
-            Arg.Is<IReadOnlyList<SpeechSegment>>(segments => segments.Count == 1 && segments[0].Language == "en"),
-            1);
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Even kijken." })),
+            vm.TtsVoiceSid,
+            "en");
     }
 
     [Fact]
@@ -248,6 +238,49 @@ public class ReadAloudTests
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "First, the setup." })), 3, "en");
         voicePlaybackQueue.Received(1).Enqueue(
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Now, the result." })), 3, "en");
+    }
+
+    /// <summary>
+    /// A queue whose <see cref="NotifyPreparing"/> cancels read-aloud — the barge-in that lands while the overlay
+    /// event is still firing, which is what the generation check exists for. A substitute cannot express this:
+    /// <c>Generation</c> has to change as a consequence of the call.
+    /// </summary>
+    private sealed class BargesInWhilePreparing : IVoicePlaybackQueue
+    {
+        public List<IReadOnlyList<string>> Enqueued { get; } = [];
+
+        public int Generation { get; private set; }
+
+        public void NotifyPreparing() => StopAll();
+
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language) => Enqueued.Add(sentences);
+
+        public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId) =>
+            Enqueued.Add([.. segments.SelectMany(segment => segment.Sentences)]);
+
+        public void StopAll() => Generation++;
+
+        public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
+
+        public event EventHandler? SpeakingStarted { add { } remove { } }
+    }
+
+    [Fact]
+    public void TurnCompleted_ABargeInWhilePreparing_DropsTheBatch_RatherThanSpeakingOverTheInterrupt()
+    {
+        // The generation is read before NotifyPreparing and checked after it. Read afterwards it is compared to
+        // itself, which is always equal — so the batch was queued and the assistant spoke over the interrupt the
+        // operator had just made.
+        var voicePlaybackQueue = new BargesInWhilePreparing();
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is the answer." });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        Assert.Empty(voicePlaybackQueue.Enqueued);
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)

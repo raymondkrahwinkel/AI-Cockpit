@@ -23,8 +23,8 @@ public class AssistantPushToTalkCoordinatorTests
         // the operator. The chip flicked back to Ready, no words appeared, and unlike the dictation path there is
         // no composer here to show an empty result. Held against a live microphone, that is indistinguishable from
         // an assistant that ignored you, and it costs an attempt every single time.
-        var (coordinator, overlay, assistant, pushToTalk, _) = _Coordinator();
-        pushToTalk.EndHoldAsync(applyCleanup: false).Returns(string.Empty);
+        var (coordinator, overlay, assistant, pushToTalk, _, _) = _Coordinator();
+        pushToTalk.EndHoldAsync().Returns(string.Empty);
 
         coordinator.HandleHoldStarted();
         await coordinator.HandleHoldEndedAsync();
@@ -40,8 +40,8 @@ public class AssistantPushToTalkCoordinatorTests
     {
         // The other side of the same branch: a rule that reported "no speech heard" for everything would pass the
         // test above and ship an assistant that never hears anything.
-        var (coordinator, overlay, assistant, pushToTalk, _) = _Coordinator();
-        pushToTalk.EndHoldAsync(applyCleanup: false).Returns("wat is de status van AC-223");
+        var (coordinator, overlay, assistant, pushToTalk, _, _) = _Coordinator();
+        pushToTalk.EndHoldAsync().Returns("wat is de status van AC-223");
 
         coordinator.HandleHoldStarted();
         await coordinator.HandleHoldEndedAsync();
@@ -57,7 +57,7 @@ public class AssistantPushToTalkCoordinatorTests
     [Fact]
     public void HoldStarted_StopsTheReadAloud_SoTheAssistantDoesNotTalkOverTheOperator()
     {
-        var (coordinator, _, _, _, playback) = _Coordinator();
+        var (coordinator, _, _, _, playback, _) = _Coordinator();
 
         coordinator.HandleHoldStarted();
 
@@ -66,8 +66,40 @@ public class AssistantPushToTalkCoordinatorTests
         playback.Received(1).StopAll();
     }
 
+    /// <summary>
+    /// AC-577: a failed hold's own message must make way for a read-aloud that starts while it is still up,
+    /// rather than hiding it for good — see <see cref="VoiceOverlayCoordinator"/>'s priority rule. Real production
+    /// behaviour waits four seconds for the message to clear; the tests shorten that the same way
+    /// <see cref="Cockpit.Core.Tests.Sessions.ScheduledResumeCoordinatorTests"/> shortens its tick interval — but
+    /// what makes the assertion below sound is awaiting the coordinator's own clear task, not this number. A
+    /// wall-clock budget "long enough" for the linger is a guess that loses on a loaded first run, which is what
+    /// the first version of this test did.
+    /// </summary>
+    private static readonly TimeSpan TestLinger = TimeSpan.FromMilliseconds(20);
+
+    [Fact]
+    public async Task AfterAHoldThatTranscribedNothing_AReadAloudThatStartsMeanwhile_ReachesThePill()
+    {
+        // Measured on a running dev build (Raymond): push-to-talk's own "keep holding" message stayed on the pill
+        // forever, because neither failure branch cleared it — so a read-aloud that started afterwards played its
+        // audio while the pill kept showing the stale push-to-talk message. Without the fix this never turns
+        // Speaking: the message has nothing that would ever clear it.
+        var (coordinator, overlay, _, pushToTalk, _, overlayCoordinator) = _Coordinator();
+        pushToTalk.EndHoldAsync().Returns(string.Empty);
+
+        coordinator.HandleHoldStarted();
+        await coordinator.HandleHoldEndedAsync();
+        Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
+
+        overlayCoordinator.SetReadAloud(VoiceOverlayState.Speaking);
+        await coordinator.PendingLingerClear;
+
+        Assert.Equal(VoiceOverlayState.Speaking, overlay.State);
+    }
+
     private static (AssistantPushToTalkCoordinator Coordinator, VoiceOverlayViewModel Overlay,
-        IAssistantSessionHost Assistant, IVoicePushToTalkService PushToTalk, IVoicePlaybackQueue Playback) _Coordinator()
+        IAssistantSessionHost Assistant, IVoicePushToTalkService PushToTalk, IVoicePlaybackQueue Playback,
+        VoiceOverlayCoordinator OverlayCoordinator) _Coordinator()
     {
         var assistant = Substitute.For<IAssistantSessionHost>();
         assistant.Activity.Returns(AssistantActivity.Ready);
@@ -79,14 +111,16 @@ public class AssistantPushToTalkCoordinatorTests
 
         var overlay = new VoiceOverlayViewModel();
         var playback = Substitute.For<IVoicePlaybackQueue>();
+        var overlayCoordinator = new VoiceOverlayCoordinator(overlay, new FakeVoiceOverlayPresenter());
         var coordinator = new AssistantPushToTalkCoordinator(
             TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()),
             assistant,
-            new VoiceOverlayCoordinator(overlay, new FakeVoiceOverlayPresenter()),
+            overlayCoordinator,
             pushToTalk,
             NullLogger<AssistantPushToTalkCoordinator>.Instance,
-            playback);
+            playback,
+            messageLinger: TestLinger);
 
-        return (coordinator, overlay, assistant, pushToTalk, playback);
+        return (coordinator, overlay, assistant, pushToTalk, playback, overlayCoordinator);
     }
 }

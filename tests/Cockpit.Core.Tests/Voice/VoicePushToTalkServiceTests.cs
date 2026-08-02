@@ -7,9 +7,10 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Voice;
 
 /// <summary>
-/// The push-to-talk orchestration end to end, with fakes standing in for the microphone/VAD/STT/
-/// cleanup so the tests exercise the gating and wiring logic without any native runtime: silence never
-/// reaches STT, cleanup is only applied when asked for, and the hold guard is enforced.
+/// The push-to-talk orchestration end to end, with fakes standing in for the microphone/VAD/STT so the
+/// tests exercise the gating and wiring logic without any native runtime: silence never reaches STT, and
+/// the hold guard is enforced. What Whisper transcribes is what <see cref="IVoicePushToTalkService.EndHoldAsync"/>
+/// returns (AC-546) — no local-LLM cleanup step sits between them any more.
 /// </summary>
 public class VoicePushToTalkServiceTests
 {
@@ -22,40 +23,23 @@ public class VoicePushToTalkServiceTests
         var service = _CreateService(vad: vad, speechToText: speechToText, frames: [[1, 0, 2, 0]]);
 
         service.BeginHold();
-        var result = await service.EndHoldAsync(applyCleanup: false);
+        var result = await service.EndHoldAsync();
 
         Assert.Empty(result);
         await speechToText.DidNotReceiveWithAnyArgs().TranscribeAsync(default!, default);
     }
 
     [Fact]
-    public async Task EndHoldAsync_SpeechDetected_ReturnsRawTranscript_WhenCleanupNotApplied()
+    public async Task EndHoldAsync_SpeechDetected_ReturnsTheRawTranscript()
     {
         var speechToText = Substitute.For<ISpeechToTextService>();
         speechToText.TranscribeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns("open the file");
-        var cleanup = Substitute.For<ITranscriptCleanupService>();
-        var service = _CreateService(speechToText: speechToText, cleanup: cleanup, frames: [[1, 0, 2, 0]]);
+        var service = _CreateService(speechToText: speechToText, frames: [[1, 0, 2, 0]]);
 
         service.BeginHold();
-        var result = await service.EndHoldAsync(applyCleanup: false);
+        var result = await service.EndHoldAsync();
 
         Assert.Equal("open the file", result);
-        await cleanup.DidNotReceiveWithAnyArgs().CleanupAsync(default!, default);
-    }
-
-    [Fact]
-    public async Task EndHoldAsync_SpeechDetected_RunsCleanup_WhenApplyCleanupIsTrue()
-    {
-        var speechToText = Substitute.For<ISpeechToTextService>();
-        speechToText.TranscribeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns("open the file");
-        var cleanup = Substitute.For<ITranscriptCleanupService>();
-        cleanup.CleanupAsync("open the file", Arg.Any<CancellationToken>()).Returns("Open the file.");
-        var service = _CreateService(speechToText: speechToText, cleanup: cleanup, frames: [[1, 0, 2, 0]]);
-
-        service.BeginHold();
-        var result = await service.EndHoldAsync(applyCleanup: true);
-
-        Assert.Equal("Open the file.", result);
     }
 
     [Fact]
@@ -71,7 +55,7 @@ public class VoicePushToTalkServiceTests
         var service = _CreateService(speechToText: speechToText, logger: logger, frames: [[1, 0, 2, 0]]);
 
         service.BeginHold();
-        var act = () => service.EndHoldAsync(applyCleanup: false);
+        var act = () => service.EndHoldAsync();
 
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(act);
         Assert.Same(boom, thrown);
@@ -86,7 +70,7 @@ public class VoicePushToTalkServiceTests
         service.AudioLevelSampled += (_, level) => levels.Add(level);
 
         service.BeginHold();
-        await service.EndHoldAsync(applyCleanup: false);
+        await service.EndHoldAsync();
 
         Assert.Equal(3, System.Linq.Enumerable.Count(levels));
         Assert.All(levels, level => Assert.True(level >= 0 && level <= 1));
@@ -107,7 +91,7 @@ public class VoicePushToTalkServiceTests
     {
         var service = _CreateService();
 
-        var act = () => service.EndHoldAsync(applyCleanup: false);
+        var act = () => service.EndHoldAsync();
 
         await Assert.ThrowsAsync<InvalidOperationException>(act);
     }
@@ -117,7 +101,7 @@ public class VoicePushToTalkServiceTests
     {
         var service = _CreateService(frames: [[1, 0]]);
         service.BeginHold();
-        await service.EndHoldAsync(applyCleanup: false);
+        await service.EndHoldAsync();
 
         Assert.True(service.BeginHold());
     }
@@ -125,19 +109,16 @@ public class VoicePushToTalkServiceTests
     private static VoicePushToTalkService _CreateService(
         IVoiceActivityDetector? vad = null,
         ISpeechToTextService? speechToText = null,
-        ITranscriptCleanupService? cleanup = null,
         ILogger<VoicePushToTalkService>? logger = null,
         params byte[][] frames)
     {
         vad ??= _AlwaysDetectsSpeech();
         speechToText ??= Substitute.For<ISpeechToTextService>();
-        cleanup ??= Substitute.For<ITranscriptCleanupService>();
 
         return new VoicePushToTalkService(
             new FakeAudioCaptureService(frames),
             vad,
             speechToText,
-            cleanup,
             logger ?? NullLogger<VoicePushToTalkService>.Instance);
     }
 

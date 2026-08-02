@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Consent;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
@@ -165,7 +166,7 @@ internal sealed class WorktreeTools
             var decision = await _consent.RequestConsentAsync(new ConsentRequest(
                 "An agent wants to remove a worktree with unsaved changes",
                 $"Remove worktree {_SingleLine(record.Path)}\nbranch {_SingleLine(record.Branch)}\nThis discards its uncommitted changes and untracked files. Any committed history stays on the branch.",
-                new ConsentSource(null, null, "Worktrees MCP"),
+                new ConsentSource(null, null, ConsentSourceCatalog.WorktreesMcp),
                 "worktree.remove.dirty",
                 ConsentRisk.Dangerous));
             if (!decision.IsApproved)

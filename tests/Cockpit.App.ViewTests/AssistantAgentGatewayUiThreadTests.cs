@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
@@ -119,7 +120,11 @@ public class AssistantAgentGatewayUiThreadTests
 
         Assert.NotNull(created);
         Assert.Equal("Release work", created!.Name);
-        Assert.Equal(WorkspaceType.Sessions.ToString(), created.Type);
+        // The type id ("sessions"), which is what this row's own contract promises — not the record struct's
+        // ToString(), which hands the model "WorkspaceType { Id = Sessions, IsBuiltIn = True }". This assertion
+        // used to read ToString() and so pinned the leak rather than the contract (found in a live transcript,
+        // Raymond 2026-08-02).
+        Assert.Equal(WorkspaceType.Sessions.Id, created.Type);
 
         // Reported rather than left to be inferred from the type: this is the answer a spawn depends on, and the
         // whole reason to make a desk is to put something on it.
@@ -189,6 +194,14 @@ public class AssistantAgentGatewayUiThreadTests
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
 
-        return (new AssistantAgentGateway(cockpit, profiles, Substitute.For<IAssistantSpawnAuditLog>()), desk.Id);
+        return (
+            new AssistantAgentGateway(
+                cockpit,
+                profiles,
+                Substitute.For<IAssistantSpawnAuditLog>(),
+                Substitute.For<IWorkspaceAgentGateway>(),
+                Substitute.For<IAgentMessageInbox>(),
+                Substitute.For<IAgentNotifyAuditLog>()),
+            desk.Id);
     }
 }

@@ -367,14 +367,14 @@ public partial class SessionView : UserControl
         }
     }
 
-    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold, transcribes with cleanup, and appends the result to the input box.</summary>
+    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold, transcribes, and appends the result to the input box.</summary>
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (DataContext is SessionViewModel vm
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled, vm.OpenMicActive))
         {
             e.Handled = true;
-            _ = vm.EndVoiceHoldAsync(applyCleanup: true);
+            _ = vm.EndVoiceHoldAsync();
         }
     }
 }

@@ -36,6 +36,19 @@ public interface ISessionDialogService
     Task ShowManageProfilesDialogAsync();
 
     /// <summary>
+    /// Shows the assistant's own profile editor (Options → Voice). Its own dialog rather than a row in the profile
+    /// list: that record is not a session profile, is not in the list, and cannot be deleted from it.
+    /// </summary>
+    /// <param name="assistant">
+    /// The living assistant, for the dialog's restart button — a permission mode is read at a launch, so the setting
+    /// and the start that applies it belong together. Taken as a parameter rather than injected for the same reason
+    /// <see cref="ShowWorktreesDialogAsync"/> and <see cref="ShowProjectsDialogAsync"/> take theirs: the host is
+    /// built from <c>CockpitViewModel</c>, which depends on this service, so injecting it would be a circle. Null
+    /// leaves the dialog fully usable and simply offers no restart.
+    /// </param>
+    Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant);
+
+    /// <summary>
     /// Shows the projects manager (AC-161) in its own window: the saved projects, with add, edit and remove. Its
     /// own dialog rather than a tab in Options (Raymond, 2026-07-24) — a project is the work the cockpit is pointed
     /// at, not a setting of it, and where projects come from is about to widen beyond this machine.

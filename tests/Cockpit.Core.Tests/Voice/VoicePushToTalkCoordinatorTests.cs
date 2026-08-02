@@ -71,10 +71,10 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     [Fact]
-    public async Task HandleHoldEndedAsync_SdkSession_EndsTheHoldWithCleanup_AndHidesTheOverlay()
+    public async Task HandleHoldEndedAsync_SdkSession_EndsTheHold_AndHidesTheOverlay()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
-        voicePushToTalk.EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>()).Returns("open the file");
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the file");
         var session = _CreateSdkSession(voicePushToTalk);
         var overlayPresenter = new FakeVoiceOverlayPresenter();
         var coordinator = _CreateCoordinator(session, overlayPresenter, out var overlay);
@@ -82,7 +82,7 @@ public class VoicePushToTalkCoordinatorTests
 
         await coordinator.HandleHoldEndedAsync();
 
-        await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>());
+        await voicePushToTalk.Received(1).EndHoldAsync(Arg.Any<CancellationToken>());
         Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
         Assert.Equal(1, overlayPresenter.HideCallCount);
     }
@@ -191,17 +191,17 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     [Fact]
-    public async Task HandleHoldEndedAsync_TtySession_EndsTheHoldWithoutCleanup()
+    public async Task HandleHoldEndedAsync_TtySession_EndsTheHold()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
-        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the file");
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the file");
         var session = _CreateTtySession(voicePushToTalk);
         var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out _);
         _StartARecordingHold(coordinator, session, voicePushToTalk);
 
         await coordinator.HandleHoldEndedAsync();
 
-        await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>());
+        await voicePushToTalk.Received(1).EndHoldAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]

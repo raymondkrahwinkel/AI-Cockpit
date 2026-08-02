@@ -1228,7 +1228,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
-    private ITranscriptCleanupService? _cleanupService;
     private IOpenMicState? _openMicState;
 
     /// <summary>
@@ -1237,17 +1236,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <c>PushToTalkKeyGate</c>), so a held key does not transcribe the same speech the open mic already is.
     /// </summary>
     public bool OpenMicActive => _openMicState?.IsListening ?? false;
-
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudMode"/>: how a reply is rendered before read-aloud synthesis (verbatim / naturalized / summarized) (#35).</summary>
-    [ObservableProperty]
-    private ReadAloudMode _readAloudMode = ReadAloudMode.Verbatim;
-
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TurnAckMode"/>: how a turn-start acknowledgement is produced (off / preset phrase / local LLM) (AC-99).</summary>
-    [ObservableProperty]
-    private TurnAckMode _turnAckMode = TurnAckMode.InstantPhrases;
-
-    // Rotates the preset acknowledgement phrases so back-to-back turns do not repeat the same one.
-    private int _turnAckPhraseIndex;
 
     /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
     [ObservableProperty]
@@ -1310,16 +1298,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private int _ttsVoiceSid = 1;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudLanguage"/> — the preferred base language ("en"/"nl") for read-aloud (#35): unmarked text speaks in it and the naturalize/summarize pass leans to it.</summary>
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudLanguage"/> — the language ("en"/"nl") this session's read-aloud is synthesized in (#35), passed on every enqueue.</summary>
     [ObservableProperty]
     private string _readAloudLanguage = "en";
 
     /// <summary>
-    /// Per-session read-aloud toggle (#35/#35b): when true, completed assistant replies are extracted
-    /// and enqueued for TTS playback. Shared on the base since both session kinds offer the toggle, even
-    /// though the source differs — the SDK session reads its already-open event stream at turn
-    /// completion, the TTY session tails the live JSONL transcript (see
-    /// <see cref="OnReadAloudToggleChanged"/>). Ephemeral runtime state, off by default.
+    /// Per-session read-aloud toggle (#35): when true, completed assistant replies are extracted and
+    /// enqueued for TTS playback as the SDK session's event stream completes a turn. Shared on the base
+    /// (the assistant's own session sets it directly, with no header button of its own). Ephemeral
+    /// runtime state, off by default.
     /// </summary>
     [ObservableProperty]
     private bool _readResponsesAloud;
@@ -1332,17 +1319,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _voicePlaybackQueue?.StopAll();
         }
-
-        OnReadAloudToggleChanged(value);
-    }
-
-    /// <summary>
-    /// Hook for a session kind whose read-aloud source needs starting/stopping when the toggle flips.
-    /// No-op by default (the SDK session needs no separate start/stop — it just checks the flag at each
-    /// turn completion); the TTY session overrides this to begin/end tailing the transcript.
-    /// </summary>
-    protected virtual void OnReadAloudToggleChanged(bool isEnabled)
-    {
     }
 
     /// <summary>
@@ -1354,13 +1330,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         IVoicePushToTalkService? voicePushToTalk,
         IVoiceSettingsStore? voiceSettingsStore,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null,
         IOpenMicState? openMicState = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
-        _cleanupService = cleanupService;
         _openMicState = openMicState;
 
         if (voiceSettingsStore is not null)
@@ -1378,51 +1352,67 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
         TtsVoiceSid = settings.TtsVoiceSid;
         ReadAloudLanguage = settings.ReadAloudLanguage;
-        ReadAloudMode = settings.ReadAloudMode;
-        TurnAckMode = settings.TurnAckMode;
     }
 
     /// <summary>
-    /// Extracts the prose from assistant text and enqueues it for read-aloud (#35), first rewriting it into
-    /// natural spoken sentences via the local LLM when <see cref="ReadAloudMode"/> is Naturalized or Summarized
-    /// (falling back to the plain extracted prose if the LLM is unavailable). The extractor already strips
-    /// code/tables and swaps paths/URLs for spoken words; the LLM pass smooths the rest and tags language runs
-    /// (<c>[[nl]]</c>/<c>[[en]]</c>) so mixed Dutch/English replies speak each segment in its own language. A no-op
-    /// when the playback queue was never wired (design-time/tests) or there is nothing to say. Shares the one
-    /// rendering path with the Options "Test" button via <see cref="ReadAloudPipeline"/>.
+    /// Extracts the prose from assistant text and enqueues it for read-aloud (#35). The extractor strips
+    /// code/tables and swaps paths/URLs for spoken words before anything is queued. A no-op when the playback
+    /// queue was never wired (design-time/tests) or there is nothing to say.
     /// </summary>
-    protected Task EnqueueReadAloudAsync(string text) =>
-        _voicePlaybackQueue is null
-            ? Task.CompletedTask
-            : ReadAloudPipeline.SpeakAsync(
-                _voicePlaybackQueue, _cleanupService, text, ReadAloudMode, TtsVoiceSid, ReadAloudLanguage,
-                ReadAloudAsOneUtterance);
-
-    /// <summary>
-    /// Whether this session's replies are spoken as one synthesis rather than sentence by sentence — see
-    /// <see cref="ReadAloudPipeline.SpeakAsync"/>'s <c>asOneUtterance</c> for the measurement behind it. False
-    /// here, because a session's reply can run for paragraphs; the assistant sets it, because its answers are
-    /// short by instruction and the gaps between sentences are the whole of how it sounds.
-    /// </summary>
-    public bool ReadAloudAsOneUtterance { get; set; }
-
-    /// <summary>
-    /// Speaks a short acknowledgement as a turn starts (AC-99) so a voice conversation is not met with silence while
-    /// the agent works. Only when read-aloud is on (the operator is already listening to the cockpit) and a queue is
-    /// wired; the mode picks a rotating preset phrase or a local-LLM line (which falls back to a preset). Shares the
-    /// barge-in-aware playback queue, so a push-to-talk hold cuts it off like any other read-aloud. Fire-and-forget,
-    /// the same as <see cref="EnqueueReadAloudAsync"/> — the acknowledgement is a nicety, never load-bearing.
-    /// </summary>
-    protected async Task SpeakTurnAcknowledgmentAsync(string userMessage)
+    protected Task EnqueueReadAloudAsync(string text)
     {
-        if (_voicePlaybackQueue is null || !ReadResponsesAloud || TurnAckMode == TurnAckMode.Off)
+        if (_voicePlaybackQueue is null)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        _turnAckPhraseIndex = await TurnAcknowledgmentPipeline.SpeakAsync(
-            _voicePlaybackQueue, _cleanupService, TurnAckMode, _turnAckPhraseIndex, userMessage, TtsVoiceSid, ReadAloudLanguage);
+        var sentences = TtsProseExtractor.Extract(text);
+        if (ReadAloudAsOneUtterance && sentences.Count > 1)
+        {
+            // Joined after extraction, not instead of it: the extractor is what strips code blocks and tables
+            // out of something that would otherwise be read character by character, and that job is unrelated
+            // to how many clips the result is spoken in.
+            sentences = [string.Join(" ", sentences)];
+        }
+
+        if (sentences.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Read before the call, not after it: a barge-in that lands while NotifyPreparing is running — a subscriber
+        // to its PlaybackActiveChanged event calling StopAll, or the push-to-talk hold doing so from its own thread —
+        // bumps the generation in between. Taking the reading afterwards compares a value to itself and lets every
+        // such batch through, which is what this guard did before AC-546 removed the awaited rewrite step it used to
+        // straddle.
+        var generation = _voicePlaybackQueue.Generation;
+
+        // Show the overlay now: the first synthesis (and any first-use model download) runs before a word is
+        // heard, and that gap otherwise reads as nothing happening.
+        _voicePlaybackQueue.NotifyPreparing();
+
+        if (_voicePlaybackQueue.Generation != generation)
+        {
+            // Read-aloud was cancelled while this batch was being prepared — drop it instead of speaking over the
+            // interrupt the operator just made.
+            return Task.CompletedTask;
+        }
+
+        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage);
+        return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Whether this session's replies are spoken as one synthesis rather than sentence by sentence. The queue
+    /// normally synthesises one sentence ahead while the previous plays, which is right when the reply is long:
+    /// you hear the first sentence within a second instead of waiting for the whole thing. It only works while
+    /// synthesis keeps up with playback, and measured on this machine it does not — four short sentences took
+    /// 14.7 seconds to get through about 8 seconds of speech, so roughly half of it was silence at the sentence
+    /// boundaries. False here, because a session's reply can run for paragraphs and one synthesis would be a
+    /// long silence before the first word; the assistant sets it, because its answers are short by instruction
+    /// and the gaps between sentences are the whole of how it sounds.
+    /// </summary>
+    public bool ReadAloudAsOneUtterance { get; set; }
 
     /// <summary>
     /// Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
@@ -1454,7 +1444,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// Ends the push-to-talk hold (KeyUp), transcribes it, and hands any resulting text to
     /// <see cref="OnVoiceTextReady"/> for this session kind to inject. No-op when voice was never wired.
     /// </summary>
-    public async Task EndVoiceHoldAsync(bool applyCleanup)
+    public async Task EndVoiceHoldAsync()
     {
         if (_voicePushToTalk is null)
         {
@@ -1475,7 +1465,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _voicePushToTalk.Prepared += OnPrepared;
         try
         {
-            var text = await _voicePushToTalk.EndHoldAsync(applyCleanup);
+            var text = await _voicePushToTalk.EndHoldAsync();
             VoiceStatus = string.Empty;
             if (!string.IsNullOrEmpty(text))
             {
@@ -1529,6 +1519,92 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         OnVoiceTextReady(text);
         OnVoiceSubmitRequested();
+    }
+
+    /// <summary>The brief handed to <see cref="SubmitPromptWhenReady"/> before this session could take one, kept until it can. At most one: a session is spawned with a single opening brief, and a second would be a second turn, not a longer one.</summary>
+    private string? _promptHeldUntilReady;
+
+    /// <summary>
+    /// True while a brief is waiting for this session to become able to take it — see
+    /// <see cref="SubmitPromptWhenReady"/>, whose two <see langword="false"/> results (held, and refused because one
+    /// is already held) this is what tells apart. Read by <c>AssistantAgentGateway.SendPromptAsync</c> before it
+    /// hands one over, so the assistant is refused out loud instead of being told "held" about a brief it does not
+    /// own.
+    /// </summary>
+    public bool HasPromptWaitingToBeDelivered => _promptHeldUntilReady is not null;
+
+    /// <summary>
+    /// Hands this session an opening brief and submits it, waiting for the session to be able to receive one first.
+    /// Returns <see langword="true"/> when it went out on the spot and <see langword="false"/> when it is being held
+    /// or was refused — never that it was delivered when it was not.
+    /// </summary>
+    /// <remarks>
+    /// What a freshly spawned session needs and <see cref="InjectAndSubmit"/> alone cannot give it. That one is the
+    /// operator's-hands seam (a voice transcript, a paste), so it assumes the session is already on screen and able to
+    /// hear: on a TTY pane it publishes to the view's pty writer, and a pane whose view has not been realised yet has
+    /// no such writer, so the brief goes to nobody and the caller is told nothing. That is the failure the spawn tool
+    /// reported <c>ok:true</c> for.
+    /// <para>
+    /// The condition waited on is <see cref="CanTakeAPrompt"/> — the property that already answers "would a send
+    /// actually reach the agent" for AC-234's scheduled resume and AC-395's wake, rather than a new signal or a delay
+    /// long enough to work on the machine it was written on. It is strictly stronger than "something is subscribed":
+    /// on a TTY pane it is <c>TtyViewModel.PromptSink</c>, which the view wires only once the pty process has actually
+    /// spawned (<c>TtyView.StartPty</c>), and on an SDK pane it is a running runtime. Each kind flushes the hold from
+    /// the one place its own answer changes, so nothing polls and nothing sleeps.
+    /// </para>
+    /// <para>
+    /// A brief that is held and whose session never comes up is never delivered, and
+    /// <see cref="HasPromptWaitingToBeDelivered"/> stays true so a caller can say so rather than claim it landed.
+    /// </para>
+    /// <para>
+    /// <b>The first brief wins; a second while one is still waiting is refused.</b> The field holds one by design
+    /// (a session is spawned with a single opening brief, and a second is a second turn rather than a longer one),
+    /// and the three ways to enforce that are refuse, queue, or overwrite. Overwrite is the one this method's own
+    /// contract forbids: the first caller was told <see langword="false"/> — held, not lost — and a silent
+    /// replacement makes that a lie with no refusal, no trace and no signal. A queue was not built because nothing
+    /// asks for one: two briefs are a caller mistake (or a retry invited by reading <see langword="false"/> as "try
+    /// again"), not a workload. Refusing keeps the promise the first caller was given.
+    /// </para>
+    /// </remarks>
+    public bool SubmitPromptWhenReady(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return false;
+        }
+
+        if (CanTakeAPrompt)
+        {
+            InjectAndSubmit(prompt);
+            return true;
+        }
+
+        // Refused rather than overwritten — see the remarks. Both falses mean "not delivered"; which one it is,
+        // HasPromptWaitingToBeDelivered answers, and the caller that cares asks it before calling.
+        if (_promptHeldUntilReady is not null)
+        {
+            return false;
+        }
+
+        _promptHeldUntilReady = prompt;
+        return false;
+    }
+
+    /// <summary>
+    /// Sends the brief <see cref="SubmitPromptWhenReady"/> is holding, if there is one and this session can now take
+    /// it. Called by each session kind at the single point where its own <see cref="CanTakeAPrompt"/> turns true.
+    /// </summary>
+    protected void DeliverHeldPrompt()
+    {
+        if (_promptHeldUntilReady is not { } held || !CanTakeAPrompt)
+        {
+            return;
+        }
+
+        // Cleared before the send, not after: a delivery that throws must not leave the brief queued to be sent a
+        // second time by the next readiness change.
+        _promptHeldUntilReady = null;
+        InjectAndSubmit(held);
     }
 
     /// <summary>

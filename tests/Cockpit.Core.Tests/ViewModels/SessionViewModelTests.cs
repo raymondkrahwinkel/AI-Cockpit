@@ -1797,7 +1797,7 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         var voice = Substitute.For<IVoicePushToTalkService>();
         voice.BeginHold().Returns(true);
-        voice.EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>()).Returns("open the file");
+        voice.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the file");
         var voiceSettings = Substitute.For<IVoiceSettingsStore>();
         voiceSettings.LoadAsync(Arg.Any<CancellationToken>()).Returns(
             new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
@@ -1811,7 +1811,7 @@ public class SessionViewModelTests
         }
 
         Assert.True(vm.BeginVoiceHold());
-        await vm.EndVoiceHoldAsync(applyCleanup: true);
+        await vm.EndVoiceHoldAsync();
 
         // Auto-submit sent the appended transcript rather than leaving it in the input box for review.
         await session.Received(1).SendUserMessageAsync("open the file", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());

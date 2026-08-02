@@ -35,7 +35,7 @@
             <Border DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
                     BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
                     Padding="12,9" PointerPressed="_OnHeaderPressed">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
                     <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
                         <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -47,6 +47,17 @@
                         <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding Session.ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <!-- AC-575, criterion 5. This window is where the assistant's work is read, so it is also
+                             where "some of these were never shown to you" has to be legible. Says that it is on,
+                             not which sources — that list is Options', and a header is not a settings page. -->
+                        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ConsentBypassActive}">
+                            <materialIcons:MaterialIcon Kind="ShieldOffOutline" Width="11" Height="11"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                            <TextBlock Text="Consent card skipped for some sources" FontSize="10.5"
+                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                       ToolTip.Tip="Set in Options → Voice. Every skipped card is still written to the consent trail."/>
+                        </StackPanel>
                     </StackPanel>
                     <ToggleButton Grid.Column="2" IsChecked="{Binding SpeakReplies}" Classes="Subtle Compact"
                                   VerticalAlignment="Center" Margin="0,0,4,0"
@@ -132,6 +143,11 @@
                         <materialIcons:MaterialIcon Kind="TrayArrowDown" Width="14" Height="14"/>
                     </Button>
 
+                    <!-- No restart button here, deliberately. It was here first, on the reasoning that a restart is
+                         a handling and this window carries handlings — which argues that it *may* stand here, not
+                         that it belongs. It belongs beside the setting that needs it: the permission mode in
+                         Options → Voice → Assistant Profile, where the sentence "this applies at the next start"
+                         and the start that answers it are one thing instead of two windows apart. -->
                     <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>

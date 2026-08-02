@@ -172,11 +172,11 @@ public sealed record TtyProviderRegistration(
     public Func<string, IReadOnlyList<PluginUsageReading>>? ReadUsage { get; init; }
 
     /// <summary>
-    /// Builds the provider's transcript reader for the host's read-aloud (#35b) and status (#39) — the piece that
-    /// tails this provider's own on-disk conversation record, keeping the host free of any transcript format. The
-    /// host resolves this once from the container and dispatches to it for a session under this provider.
+    /// Builds the provider's transcript reader for the host's status (#39) — the piece that tails this provider's
+    /// own on-disk conversation record, keeping the host free of any transcript format. The host resolves this
+    /// once from the container and dispatches to it for a session under this provider.
     /// <see langword="null"/> (the default) when the provider records no tailable transcript, and the host offers
-    /// no read-aloud/status-from-transcript for it. Init-only so adding it does not change the constructor
+    /// no status-from-transcript for it. Init-only so adding it does not change the constructor
     /// signature — an already-compiled plugin keeps constructing this the old way and simply reports no reader.
     /// </summary>
     public Func<IServiceProvider, IPluginTranscriptReader>? CreateTranscriptReader { get; init; }

@@ -65,7 +65,24 @@ internal static class Screenshotter
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
+        // AC-546 follow-up: Voice dropped from three sub-pages to two once "Read-aloud" merged into "Assistant" —
+        // its own scenes rather than reusing "options", since neither sub-page renders on the tab that scene opens
+        // on (Notifications) and a layout change to a page nothing captures is a layout change nobody would see
+        // regress.
+        ["voice-transcribe"] = (_, _) => _OptionsVoicePage("Transcribe"),
+        ["voice-assistant"] = (_, _) => _OptionsVoiceAssistantPage(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+        // The assistant's own profile editor. Its own scene rather than a state of "profiles": it is a different
+        // window with a different, shorter set of blocks, and the one control this ticket moved — the restart, which
+        // only shows with a living assistant behind it — renders nowhere else. Taller than it opens, the way the
+        // Manage-profiles editor scenes are, so the environment-variables block at the bottom is not the part of
+        // the scene nobody can see.
+        ["assistant-profile"] = (_, _) => new AssistantProfileDialog
+        {
+            DataContext = new ViewModels.AssistantProfileDialogViewModel(
+                new _FakeAssistantSessionHost(), new _FakeClaudeProviderRegistry()),
+            Height = 1220,
+        },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with
         // the toggle pre-set to TTY, the same profile with it pre-set to SDK, and a local-provider profile (no TTY
         // route at all) where the toggle disappears in favour of a plain "SDK-only" label. Tall enough that the
@@ -750,6 +767,60 @@ internal static class Screenshotter
         return dialog;
     }
 
+    /// <summary>Voice tab, on the named sub-page (AC-546 follow-up: "Transcribe" or "Assistant").</summary>
+    private static OptionsDialog _OptionsVoicePage(string subPage)
+    {
+        var dialog = _OptionsOnTab("Voice");
+
+        var rail = dialog.FindControl<ListBox>("VoiceNav")
+            ?? throw new InvalidOperationException("The Voice tab has no 'VoiceNav' rail to select on.");
+
+        var index = rail.Items
+            .OfType<ListBoxItem>()
+            .Select((item, i) => (item, i))
+            .Where(pair => string.Equals(pair.item.Content as string, subPage, StringComparison.OrdinalIgnoreCase))
+            .Select(pair => (int?)pair.i)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"The Voice rail has no '{subPage}' item.");
+
+        rail.SelectedIndex = index;
+        return dialog;
+    }
+
+    /// <summary>
+    /// The Assistant sub-page (AC-546 follow-up), enabled rather than dimmed under the off master switch, with one
+    /// recognised consent-bypass row and one orphaned one (#K11: a stored key — "kubernetes" — this build no
+    /// longer recognises now that a plugin source keys as "plugin:&lt;id&gt;") — so the merged voice/barge-in block,
+    /// the reading-level dropdown and the orphan row all render in the state an operator actually sees them in.
+    /// </summary>
+    private static OptionsDialog _OptionsVoiceAssistantPage()
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.AssistantOptions.IsEnabled = true;
+        // The design-time graph has no profile store, so the row would otherwise render an "Edit…" button with
+        // nothing beside it — a state no real cockpit has (an unset slot fills in its reason instead).
+        cockpit.AssistantOptions.ProfileLabel = "Claude (assistant) · claude · sonnet";
+        cockpit.AssistantOptions.ConsentBypassSources.Add(
+            new ViewModels.ConsentBypassSourceViewModel(
+                Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp, Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp)
+            { BypassLowRisk = true });
+        cockpit.AssistantOptions.ConsentBypassSources.Add(
+            new ViewModels.ConsentBypassSourceViewModel("kubernetes", "kubernetes", isOrphan: true)
+            { BypassLowRisk = true, BypassDangerous = true });
+
+        var dialog = new OptionsDialog { DataContext = cockpit };
+        var tabs = dialog.FindControl<TabControl>("Tabs")
+            ?? throw new InvalidOperationException("The Options dialog has no 'Tabs' TabControl to select on.");
+        tabs.SelectedItem = tabs.Items.OfType<TabItem>().First(tab => tab.Header as string == "Voice");
+
+        var rail = dialog.FindControl<ListBox>("VoiceNav")
+            ?? throw new InvalidOperationException("The Voice tab has no 'VoiceNav' rail to select on.");
+        rail.SelectedIndex = rail.Items.OfType<ListBoxItem>().ToList()
+            .FindIndex(item => string.Equals(item.Content as string, "Assistant", StringComparison.OrdinalIgnoreCase));
+
+        return dialog;
+    }
+
     // Renders the sessions workspace with a couple of plugin toolbar actions seeded (AC-91) so the quick-action
     // buttons next to the workspace gear are verifiable headless.
     private static MainWindow _ToolbarActions()
@@ -1264,6 +1335,10 @@ internal static class Screenshotter
 
         public Task<ViewModels.SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
 
+        // Same again: a still frame cannot show a restart, and a scene that tore its own session down would render
+        // the empty state instead of the one its name promises.
+        public Task<ViewModels.SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
+
         public Task SendAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         // Same reason as ApplySettingsAsync below: a scene is staged and rendered, and speaking is not something a
@@ -1276,6 +1351,68 @@ internal static class Screenshotter
 
         public void ReportHoldListening(bool listening)
         {
+        }
+    }
+
+    /// <summary>
+    /// Stands in for the bundled Claude provider plugin, which a headless render has no way to load.
+    /// </summary>
+    /// <remarks>
+    /// Without it the assistant-profile scene renders a form for a provider that resolved to nothing: the label
+    /// falls back to Ollama, the session-defaults block has no options to show, and the environment-variables block
+    /// is hidden because <c>SupportsEnvVars</c> is a capability read off a registration. Three of the five blocks
+    /// the dialog exists for, absent from the one picture that is supposed to prove them. The config panel itself
+    /// stays a placeholder — that control belongs to the plugin, and its layout is proved by the Manage-profiles
+    /// scenes rather than faked here.
+    /// </remarks>
+    private sealed class _FakeClaudeProviderRegistry : Cockpit.Infrastructure.Sessions.IPluginProviderRegistry
+    {
+        private static readonly Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration Claude = new(
+            ClaudePluginProfile.ProviderId,
+            "Claude",
+            _ => throw new NotSupportedException("A screenshot starts no session."),
+            new Cockpit.Plugins.Abstractions.Sessions.PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
+            _ => new _PlaceholderConfigView())
+        {
+            Options =
+            [
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption(
+                    "permission-mode", "Permission mode", ["default", "acceptEdits", "plan", "bypassPermissions"], "default")
+                {
+                    ChoiceLabels = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["default"] = "Ask permissions",
+                        ["acceptEdits"] = "Accept edits",
+                        ["plan"] = "Plan only",
+                        ["bypassPermissions"] = "Bypass permissions",
+                    },
+                },
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption("model", "Model", ["opus", "sonnet", "haiku"], "sonnet"),
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption("effort", "Effort", ["low", "medium", "high"], "medium"),
+            ],
+        };
+
+        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration) { }
+
+        public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Claude];
+
+        public Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration? Resolve(string providerId) =>
+            providerId == ClaudePluginProfile.ProviderId ? Claude : null;
+    }
+
+    private sealed class _PlaceholderConfigView : Cockpit.Plugins.Abstractions.Sessions.IPluginProviderConfigView
+    {
+        public Control View { get; } = new TextBlock
+        {
+            Text = "The Claude plugin's own settings render here — config directory, executable, managed CLI.",
+            FontSize = 11,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        };
+
+        public bool TryGetConfigJson(out string configJson)
+        {
+            configJson = "{}";
+            return true;
         }
     }
 

@@ -98,6 +98,46 @@ public class TtyInjectedTextTests
         Assert.Equal(new[] { "resume the review\r" }, written);
     }
 
+    /// <summary>
+    /// The spawn bug, at the seam it happened on. A TTY pane's view subscribes to <c>VoiceTranscriptReady</c> when the
+    /// data context attaches, but only wires <see cref="TtyViewModel.PromptSink"/> once the pty process has actually
+    /// spawned — so between those two moments there is a listener and still nowhere for text to go. A brief handed
+    /// over then must wait for the pty, not be published into the gap.
+    /// </summary>
+    [Fact]
+    public void SubmitPromptWhenReady_BeforeThePtyIsUp_HoldsTheBrief_ThenSendsItWhenTheSinkArrives()
+    {
+        var writes = new List<string>();
+        var vm = _NewTty(writes);
+        vm.SetAutoSubmitScheduler(submit => submit());
+
+        var wentOutNow = vm.SubmitPromptWhenReady("start on the migration");
+
+        Assert.False(wentOutNow);
+        Assert.Empty(writes);
+        Assert.True(vm.HasPromptWaitingToBeDelivered);
+
+        // What TtyView.StartPty does the instant the pty exists — and the measured moment text written into that pty
+        // reaches the child process.
+        vm.PromptSink = _ => { };
+
+        Assert.Equal(new[] { "start on the migration", "\r" }, writes);
+        Assert.False(vm.HasPromptWaitingToBeDelivered);
+    }
+
+    /// <summary>A pane whose pty is already up takes the brief straight away — the wait is for the condition, not for a delay.</summary>
+    [Fact]
+    public void SubmitPromptWhenReady_OnAPaneWhosePtyIsAlreadyUp_SendsImmediately()
+    {
+        var writes = new List<string>();
+        var vm = _NewTty(writes);
+        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.PromptSink = _ => { };
+
+        Assert.True(vm.SubmitPromptWhenReady("start on the migration"));
+        Assert.Equal(new[] { "start on the migration", "\r" }, writes);
+    }
+
     /// <summary>A TTY panel that records into <paramref name="writes"/> every write it asks the view to make into the pty, in order.</summary>
     private static TtyViewModel _NewTty(List<string> writes)
     {

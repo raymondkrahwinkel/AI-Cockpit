@@ -8,7 +8,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
-using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -33,7 +32,8 @@ namespace Cockpit.App.Services;
 /// <b>And it comes back.</b> A delegated task reaps itself when it is done; this does the opposite. A session that
 /// falls over quietly is only discovered the next time you ask it something — the silence this product refuses
 /// everywhere else — so <see cref="EnsureStartedAsync"/> notices a dead instance and stands a new one up in its
-/// place, resuming the same conversation.
+/// place, resuming the same conversation. <see cref="RestartAsync"/> is the operator asking for the same thing on
+/// a healthy one, which is what makes a setting that can only be chosen at a launch reachable at all.
 /// </para>
 /// <para>
 /// <b>The conversation outlives everything.</b> The pop-out window is a view onto this session, never its owner:
@@ -153,23 +153,62 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// <see cref="Activity"/> on <see cref="AssistantActivity.Unavailable"/> with the reason set, which is the
     /// chip saying out loud what the log used to say alone.
     /// </remarks>
-    public async Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default)
+    public Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+        _StartOrReplaceAsync(replaceALiveInstance: false, cancellationToken);
+
+    /// <summary>
+    /// Stands the assistant down and brings it straight back up on the same conversation — the operator's way to
+    /// make a start-time setting take effect without closing the cockpit.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why a restart has to exist at all.</b> A permission mode is chosen at a start and, for
+    /// <c>bypassPermissions</c>, only at a start: the CLI cannot be switched into or out of bypass live, which is
+    /// why <see cref="SessionOptionCatalog"/> keeps <c>LivePermissionModes</c> apart from <c>AllPermissionModes</c>
+    /// (bug #15, and the no-dead-controls convention). Every other session gets its next start for free — it is
+    /// closed and opened again. The assistant cannot be closed: it is not in the grid, its window is a peephole
+    /// that deliberately never ends it, and <see cref="EnsureStartedAsync"/> only replaces an instance that is
+    /// already <em>dead</em>. So "this applies at the next start" was a sentence with no next start behind it.
+    /// <para>
+    /// <b>The conversation is kept.</b> This is a restart, not a reset: it runs the same
+    /// <see cref="_StartAsync"/> as every other start, which resumes through <see cref="_ResolveResumeAsync"/> —
+    /// the state store's last record for <see cref="AssistantPaneId"/>. Losing the thread here would defeat the
+    /// whole reason that record exists, and this surface is the audit trail.
+    /// </para>
+    /// <para>
+    /// <b>And it is the same teardown.</b> Not a second one: <see cref="_DisposeQuietlyAsync"/> is what the
+    /// replace-a-dead-instance path already runs, so a turn in flight, the host's own subscription, the cockpit's
+    /// consent routing and an unanswered consent card are all handled once, in one place, however the instance
+    /// came to be replaced.
+    /// </para>
+    /// </remarks>
+    public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
+        _StartOrReplaceAsync(replaceALiveInstance: true, cancellationToken);
+
+    /// <param name="replaceALiveInstance">
+    /// Whether a healthy instance is torn down too. False is <see cref="EnsureStartedAsync"/>'s idempotent lazy
+    /// start; true is <see cref="RestartAsync"/>. One body rather than two so both take the same start gate — a
+    /// restart racing a hotkey hold must not build two instances any more than two holds may.
+    /// </param>
+    private async Task<SessionViewModel?> _StartOrReplaceAsync(bool replaceALiveInstance, CancellationToken cancellationToken)
     {
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
-            if (Session is { } live && _IsAlive(live))
+            if (!replaceALiveInstance && Session is { } live && _IsAlive(live))
             {
                 return live;
             }
 
             // A dead instance is dropped before a new one is built, so a start that fails does not leave the
             // corpse in place looking reachable.
-            if (Session is { } dead)
+            if (Session is { } previous)
             {
-                _logger.LogInformation("The assistant session had stopped; starting a new one on the same conversation.");
+                _logger.LogInformation(
+                    replaceALiveInstance
+                        ? "Restarting the assistant session on the same conversation."
+                        : "The assistant session had stopped; starting a new one on the same conversation.");
                 Session = null;
-                await _DisposeQuietlyAsync(dead).ConfigureAwait(true);
+                await _DisposeQuietlyAsync(previous).ConfigureAwait(true);
             }
 
             return await _StartAsync(cancellationToken).ConfigureAwait(true);
@@ -217,6 +256,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+
+        // Everything the start path applies from these settings is re-applied here, so a save reaches the running
+        // assistant instead of only its next start. Written as "the start path's own call, again" rather than a
+        // hand-picked field or two: picking is what left SpeakReplies behind while the header checkbox moved, and
+        // the next field added to _ApplySpeech would have been left behind the same way.
+        if (Session is { } live)
+        {
+            live.ReadingLevel = settings.ReadingLevel;
+            _ApplySpeech(live, settings);
+        }
+
         if (settings.IsEnabled)
         {
             // Deliberately does not start anything: switching the feature on makes the assistant available, and
@@ -275,6 +325,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         await session.StartConfiguredAsync(
             profile,
+            // The app defaults, and only as the floor. The Assistant Profile's own permission mode, model and
+            // effort ride the launch options below — the single route a plugin profile's start defaults take on
+            // every other launch in this app — and the driver takes those over these. A profile that says nothing
+            // therefore still starts exactly where it did before. See _LaunchOptions for the whole rule, including
+            // what an operator is choosing when they put bypassPermissions on this profile.
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
@@ -283,7 +338,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             resume: await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
-            launchOptions: _LaunchOptions(profile)).ConfigureAwait(true);
+            launchOptions: _LaunchOptions(profile),
+            readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
         _ApplySpeech(session, settings);
         Session = session;
@@ -304,20 +360,22 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// was doing.
     /// </summary>
     /// <remarks>
-    /// <b>Why it has to be done here at all.</b> The cockpit pushes the voice settings to its sessions by walking
-    /// <c>Sessions</c>, and the assistant is deliberately not in that collection — it has no pane. So it kept the
-    /// bare defaults: <c>ReadResponsesAloud</c> false, which makes the read-aloud flush return before it speaks a
-    /// word, and <c>ReadAloudLanguage</c> "en", which would have read Dutch replies in an English voice. The
-    /// operator heard nothing at all and there was nothing on screen to say why.
+    /// <b>Why it has to be done here at all.</b> Nothing else seeds a starting session's speech: the cockpit's
+    /// voice fan-out fires on an Options save, and a session started after the last save would keep the bare
+    /// defaults — <c>ReadResponsesAloud</c> false, which makes the read-aloud flush return before it speaks a word,
+    /// and <c>ReadAloudLanguage</c> "en", which would read Dutch replies in an English voice. The operator heard
+    /// nothing at all and there was nothing on screen to say why.
     /// <para>
-    /// <b>Verbatim, and stated rather than left to the default.</b> <see cref="ReadAloudMode.Naturalized"/> and
-    /// <see cref="ReadAloudMode.Summarized"/> both send the reply through the local-LLM cleanup service first, and
-    /// AC-542 decision 10 is explicit that the assistant's words go out one-to-one: what shortens a 300-word answer
-    /// is <see cref="AssistantSystemPrompt.Default"/>, not a rewrite afterwards. That is also why this is set on the
-    /// session rather than followed from the operator's global read-aloud mode — their choice there is about
-    /// sessions, and picking Summarized for those must not quietly put an LLM back in the assistant's path. The
-    /// mode's own default happens to be Verbatim today; written out anyway, because a default that changes
-    /// elsewhere would reintroduce the pipeline this epic is removing, silently.
+    /// Called from <see cref="ApplySettingsAsync"/> as well as from the start, so an Options save reaches the
+    /// running instance. The voice and language additionally arrive through the cockpit's own fan-out, which now
+    /// includes the assistant; both routes write the same two values, and neither is load-bearing alone — the
+    /// fan-out does not fire at start, and this does not fire when only the voice settings are saved.
+    /// </para>
+    /// <para>
+    /// <b>Read-aloud speaks the reply verbatim, never a rewrite.</b> AC-542 decision 10 is explicit that the
+    /// assistant's words go out one-to-one: what shortens a 300-word answer is
+    /// <see cref="AssistantSystemPrompt.Default"/>, not a rewrite afterwards. Read-aloud has no rewrite step left
+    /// to pick a mode for (AC-546) — it only ever extracts and speaks the prose as-is.
     /// </para>
     /// <para>
     /// The voice and language do follow the operator's settings, read off the cockpit's already-resolved
@@ -326,17 +384,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// </remarks>
     private void _ApplySpeech(SessionViewModel session, AssistantSettings settings)
     {
-        session.ReadAloudMode = ReadAloudMode.Verbatim;
-
-        // The second door to the same local model, and the one that is easy to miss: the turn acknowledgement
-        // (AC-99) has a LocalLlm mode that writes its short "let me look" line with the cleanup service. Pinned to
-        // the preset phrases — instant, no model call — so no local model is ever reached from here either.
-        // Today the assistant keeps this value only because the operator's choice is fanned out by walking
-        // `Sessions`, which it is not in; that is an accident of where it sits, not a rule, and it would stop
-        // protecting anything the day someone adds the assistant to that loop. Raymond, 2026-08-01: a local model
-        // is the operator's to choose as the Assistant Profile and nowhere else — never machinery underneath it.
-        session.TurnAckMode = TurnAckMode.InstantPhrases;
-
         // One synthesis for the whole reply instead of one per sentence. Measured on this machine, sentence-by-
         // sentence spent about as long synthesising as speaking, so every full stop came with an audible hole in
         // it — for a surface whose entire output is speech, that is not a rough edge but the product.
@@ -423,7 +470,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// The conversation to pick up: the one the state store last recorded for this pane, or a fresh one when there
     /// is none (a first run, or a store that could not be read).
     /// </summary>
-    private async Task<SessionResume> _ResolveResumeAsync(CancellationToken cancellationToken)
+    /// <remarks>
+    /// Internal so the rule can be asserted directly — a restart's whole promise is that it picks this
+    /// conversation up rather than starting a fresh one, and that promise lives here.
+    /// </remarks>
+    internal async Task<SessionResume> _ResolveResumeAsync(CancellationToken cancellationToken)
     {
         var states = await _sessionState.LoadAsync(cancellationToken).ConfigureAwait(true);
         return states.FirstOrDefault(state => string.Equals(state.PaneId, AssistantPaneId, StringComparison.Ordinal))
@@ -539,16 +590,55 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     };
 
     /// <summary>
-    /// The assistant's standing instruction, on the launch option every provider honours. The profile's own system
-    /// prompt wins when it has one — that is what "overridable per profile" means — and
-    /// <see cref="AssistantSystemPrompt.Default"/> is what a profile that says nothing gets.
+    /// What the assistant's session launches with: the Assistant Profile's own start defaults, plus the assistant's
+    /// standing instruction on the launch option every provider honours.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> _LaunchOptions(Cockpit.Core.Profiles.SessionProfile profile) =>
-        new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            [WellKnownPluginSessionOptions.AppendSystemPrompt] =
-                string.IsNullOrWhiteSpace(profile.SystemPrompt) ? AssistantSystemPrompt.Default : profile.SystemPrompt.Trim(),
-        };
+    /// <remarks>
+    /// <b>The profile's defaults are the whole of how a profile is obeyed.</b> A plugin profile does not carry its
+    /// permission mode, model and effort in <c>Defaults.PermissionMode/Model/Effort</c> — those three are legacy,
+    /// kept only for the one-time migration (see <see cref="Cockpit.Core.Profiles.ProfileDefaults"/>'s own
+    /// <c>[Obsolete]</c> notes) — it carries them in the generic <c>OptionDefaults</c> map, which travels as launch
+    /// options and is read by the driver (<c>ClaudeSdkSessionDriver._ResolveOption</c>). Starting that map here is
+    /// exactly what every other launch does: the New-session dialog seeds its option rows from
+    /// <c>OptionDefaults</c> and hands them back as the launch options, and every programmatic start passes
+    /// <c>profile.Defaults?.OptionDefaults</c> straight through (<c>CockpitViewModel._EmbeddedLaunchOptions</c> and
+    /// the plugin/quick-start paths). Without it the assistant was the one session in the app that read a profile
+    /// and then ignored what it said: an operator's <c>bypassPermissions</c> reached the driver as "default" and
+    /// every tool call was still asked about.
+    /// <para>
+    /// <b>The typed mode/model/effort at the call site stay on the app defaults, deliberately.</b> They are the
+    /// fallback, not the answer: <c>PluginSessionDriverAdapter._MergePermissionMode</c> only folds the typed value
+    /// in when the options carry none, so a profile that says nothing lands on the app default and a profile that
+    /// says something wins. Seeding them from the profile instead would be a second answer to "what is this
+    /// profile's default", and two answers is the divergence that put this bug here.
+    /// </para>
+    /// <para>
+    /// 🔴 <b>What that means, and Raymond confirmed it (2026-08-02) with the edge spelled out.</b> The Assistant
+    /// Profile set to <c>bypassPermissions</c> gives a session that can act across <em>every</em> workspace and is
+    /// asked about nothing: the SDK's own Allow/Deny is gone by the mode, and the cockpit's consent card can be
+    /// gone too through AC-575's bypass list. Together there is no gate left that asks anybody anything. That is
+    /// the operator's choice to make on their own machine, and it is written here rather than left to be read back
+    /// as an oversight — see the restart affordance (<see cref="RestartAsync"/>), which exists because
+    /// <c>bypassPermissions</c> can only be chosen at a start, so the choice would otherwise be unreachable
+    /// without closing the cockpit.
+    /// </para>
+    /// <para>
+    /// The assistant's own standing instruction is written last, so it wins over anything the map happens to carry
+    /// on the same key. The profile's own system prompt wins over <see cref="AssistantSystemPrompt.Default"/> —
+    /// that is what "overridable per profile" means.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyDictionary<string, string> _LaunchOptions(Cockpit.Core.Profiles.SessionProfile profile)
+    {
+        var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
+            ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        options[WellKnownPluginSessionOptions.AppendSystemPrompt] =
+            string.IsNullOrWhiteSpace(profile.SystemPrompt) ? AssistantSystemPrompt.Default : profile.SystemPrompt.Trim();
+
+        return options;
+    }
 
     private void _SetUnavailable(string reason)
     {
@@ -587,6 +677,19 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // otherwise leave the dead session subscribed for the life of the process.
         session.PropertyChanged -= _OnSessionPropertyChanged;
         _cockpit.ReleaseAssistantSession(session);
+
+        // An unanswered consent card is answered here, and answered No. The broker has no timeout of its own
+        // (CockpitViewModel's routing says so where it denies a second prompt for the same reason), so a card left
+        // open on a session that is going away hangs its caller for the life of the process — and the caller is a
+        // tool call that would otherwise still be waiting to act on the operator's behalf. Denied rather than
+        // dropped: the operator restarted instead of clicking Allow, and an action nobody approved must not become
+        // an action nobody refused either. Here rather than in the restart, so the replace-a-dead-instance path
+        // gets it too — a session that fell over mid-prompt leaves exactly the same card behind.
+        if (session.PendingConsent is { } consent)
+        {
+            consent.DenyCommand.Execute(null);
+            session.PendingConsent = null;
+        }
 
         try
         {

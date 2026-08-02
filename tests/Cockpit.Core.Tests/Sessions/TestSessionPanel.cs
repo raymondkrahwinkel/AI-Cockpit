@@ -23,11 +23,24 @@ internal sealed class TestSessionPanel : SessionPanelViewModel
         return Task.FromResult(true);
     }
 
+    /// <summary>Everything this panel's own input surface was handed, in order — "text" for an injection, "submit" for the send gesture that follows it. What <c>InjectAndSubmit</c> does, seen from the inside.</summary>
+    public List<string> Injected { get; } = [];
+
+    /// <summary>Lets a test drive the flush from outside, standing in for the moment a real session kind's readiness changes (a TTY's pty sink arriving, an SDK runtime coming up).</summary>
+    public void BecomeReady()
+    {
+        CanTakeAPromptOverride = true;
+        DeliverHeldPrompt();
+    }
+
+    /// <summary>The same announcement without becoming ready — a launch that settled as a failure.</summary>
+    public void DeliverHeldPromptForTest() => DeliverHeldPrompt();
+
     protected override ValueTask DisposeCoreAsync() => ValueTask.CompletedTask;
 
-    protected override void OnVoiceTextReady(string text)
-    {
-    }
+    protected override void OnVoiceTextReady(string text) => Injected.Add(text);
+
+    protected override void OnVoiceSubmitRequested() => Injected.Add("submit");
 
     public override Task<bool> FeedVerifyResultAsync(string text, byte[] image) => Task.FromResult(false);
 

@@ -71,13 +71,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>
     /// The transcript files that already existed when this session launched, snapshotted once in
-    /// <see cref="LaunchConfigured"/> so the read-aloud/status tailers can single out the new <c>.jsonl</c>
+    /// <see cref="LaunchConfigured"/> so the status tailer can single out the new <c>.jsonl</c>
     /// <c>claude</c> writes for this session — its id is not forced (undocumented for interactive sessions),
     /// so the transcript is found as the file that appears after launch, not matched by name.
     /// </summary>
     private IReadOnlySet<string>? _transcriptBaseline;
-
-    private CancellationTokenSource? _transcriptTailCancellation;
 
     // Transcript-driven session status: a TTY panel hosts the real TUI, so there is no event stream to read
     // status from — instead the provider plugin classifies each transcript reading (busy / working-background /
@@ -247,7 +245,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ISessionTranscriptReader? transcriptReader = null,
-        ITranscriptCleanupService? cleanupService = null,
         IOptions<CockpitOptions>? options = null,
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null)
@@ -261,7 +258,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
         // TTY working dir is known up front (unlike an SDK session, which learns it from its init event).
         WorkingDirectory = WorkingPath;
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState);
     }
 
     // The effective TTY working directory — the configured Claude:WorkingDirectory when set, else the process
@@ -272,12 +269,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return string.IsNullOrWhiteSpace(configured) ? Directory.GetCurrentDirectory() : configured;
     }
 
-    // The text from the OnVoiceTextReady that precedes a submit (AC-120) — a voice-hold transcript, or text injected
-    // via InjectAndSubmit/InjectVoiceTranscript (AC-152, plugin SendToSession, an embedded Autopilot step's opening
-    // brief), which this base already treats as "the same per-kind path as a finished voice transcript". Carried
-    // here because OnVoiceSubmitRequested has no text parameter of its own to hand SpeakTurnAcknowledgmentAsync.
-    private string? _lastVoiceText;
-
     /// <summary>
     /// No cleanup — the terminal has no input box to proofread in, so the text goes straight to the pty like a typed
     /// keystroke. Typed is all it may be: it is reduced to <see cref="_AsTypedText"/> first, so nothing in it can act
@@ -286,7 +277,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     protected override void OnVoiceTextReady(string text)
     {
-        _lastVoiceText = text;
         var typed = _AsTypedText(text);
         if (typed.Length > 0)
         {
@@ -305,21 +295,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// lands as a real Enter on every platform. Scheduled on the UI thread, so it is robust whether the request came
     /// from push-to-talk or open-mic.
     /// </para>
-    /// <para>
-    /// Also speaks the turn-start acknowledgement (AC-120, follow-up on AC-99's SDK-only wiring) for whatever text
-    /// just landed — matching the SDK session, which speaks it for every dispatched turn regardless of origin.
-    /// <see cref="SessionPanelViewModel.SpeakTurnAcknowledgmentAsync"/> itself no-ops unless read-aloud + a
-    /// non-Off ack mode are on, so this is safe to fire unconditionally.
-    /// </para>
     /// </summary>
     protected override void OnVoiceSubmitRequested()
     {
-        if (_lastVoiceText is { } voiceText)
-        {
-            _lastVoiceText = null;
-            _ = SpeakTurnAcknowledgmentAsync(voiceText);
-        }
-
         _scheduleAutoSubmit(() => VoiceTranscriptReady?.Invoke("\r"));
     }
 
@@ -669,52 +647,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
-    /// Starts/stops tailing the live session transcript for read-aloud (#35b) as the toggle flips.
-    /// Requires the effective config dir (which locates the transcript, resolved at launch even for a
-    /// profile-less session) and a wired reader; both are present on the real launch path — only the
-    /// design-time/parameterless VM lacks them, where the toggle simply has nothing to tail.
-    /// </summary>
-    protected override void OnReadAloudToggleChanged(bool isEnabled)
-    {
-        if (!isEnabled)
-        {
-            _transcriptTailCancellation?.Cancel();
-            _transcriptTailCancellation?.Dispose();
-            _transcriptTailCancellation = null;
-            return;
-        }
-
-        if (_transcriptReader is null || _transcriptBaseline is null || _transcriptTailCancellation is not null)
-        {
-            return;
-        }
-
-        _transcriptTailCancellation = new CancellationTokenSource();
-        _ = _TailTranscriptForReadAloudAsync(_configuredProfile, _transcriptBaseline, _transcriptTailCancellation.Token);
-    }
-
-    /// <summary>Consumes the transcript tailer and enqueues each assistant turn's prose for TTS — mirrors <c>SessionViewModel._EnqueueTurnProseForReadAloud</c>, just fed by the tailer instead of the SDK event stream.</summary>
-    private async Task _TailTranscriptForReadAloudAsync(SessionProfile? profile, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
-    {
-        if (_transcriptReader is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(profile, transcriptBaseline, cancellationToken))
-            {
-                _ = EnqueueReadAloudAsync(assistantText);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when the toggle is switched off or the panel closes.
-        }
-    }
-
-    /// <summary>
     /// Called by the view when the hosted TUI process exits after running (the user closed claude in the
     /// TUI, or it ended). A TTY panel is ordinarily a live terminal with nothing left to interact with once the
     /// process is gone, so this asks the cockpit to close the panel — mirrors closing claude itself.
@@ -988,7 +920,25 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// pty stdin the keystrokes go to. Set by the view once the terminal is launched, because the pty is the view's
     /// to own; null before that, and the session then reports it cannot take a prompt yet.
     /// </summary>
-    public Action<string>? PromptSink { get; set; }
+    /// <remarks>
+    /// Assigning it is the moment this pane becomes able to take a prompt, so it is also the moment a brief held by
+    /// <see cref="SessionPanelViewModel.SubmitPromptWhenReady"/> goes out — a spawned session's opening brief is
+    /// handed over before any of this exists, and this is the one place the answer changes.
+    /// </remarks>
+    public Action<string>? PromptSink
+    {
+        get => _promptSink;
+        set
+        {
+            _promptSink = value;
+            if (value is not null)
+            {
+                DeliverHeldPrompt();
+            }
+        }
+    }
+
+    private Action<string>? _promptSink;
 
     /// <inheritdoc/>
     /// <remarks>The pty sink is the whole answer here: with one, a prompt is typed and submitted; without one, there is nowhere to type it.</remarks>
@@ -1162,12 +1112,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     protected override async ValueTask DisposeCoreAsync()
     {
         // The terminal control owns the pty lifetime (it created it via the launcher); it disposes
-        // the ConPtyProcess on unload/close. The transcript tailer is this VM's own background loop,
-        // so it does need stopping here — otherwise it would keep polling a file for a session that no
-        // longer has a panel to read aloud into.
-        _transcriptTailCancellation?.Cancel();
-        _transcriptTailCancellation?.Dispose();
-        _transcriptTailCancellation = null;
+        // the ConPtyProcess on unload/close. The status tailer is this VM's own background loop, so it
+        // does need stopping here — otherwise it would keep polling a file for a session that no longer
+        // has a panel to report status to.
         _limitsPollCancellation?.Cancel();
         _limitsPollCancellation?.Dispose();
         _limitsPollCancellation = null;
@@ -1205,5 +1152,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // fires. A screenshot that lands after that would otherwise find a live delegate, paste into a terminal
         // that no longer exists, and report success with nothing to show for it (AC-226).
         PasteTextAsync = null;
+
+        // The prompt route goes with it, and for the identical reason. It points at the view's _WriteToPty, which
+        // returns without a word once the pty is gone — so a pane left with a sink still set answers CanTakeAPrompt
+        // true, takes the prompt, drops it, and lets send_prompt report delivered:true into nothing. The screenshot
+        // path settled this for its own delegate above; a prompt is the same delegate-outlives-its-target shape.
+        PromptSink = null;
     }
 }

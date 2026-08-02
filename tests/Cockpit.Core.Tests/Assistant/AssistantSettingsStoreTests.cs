@@ -1,4 +1,5 @@
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Core.Layout;
@@ -31,6 +32,14 @@ public class AssistantSettingsStoreTests : IDisposable
         Assert.True(settings.SpeakReplies);
         Assert.Equal("F10", settings.PushToTalkKeyName);
         Assert.False(settings.AlwaysOnCostAcknowledged);
+        // AC-138 follow-up: the chat window's reading level defaults to the same level a fresh SDK session
+        // opens at, so turning the assistant on for the first time never shows a level nobody chose.
+        Assert.Equal(ReadingLevel.Developer, settings.ReadingLevel);
+
+        // AC-575: nothing is exempt from the consent card until the operator says so.
+        Assert.Empty(settings.ConsentBypassSources);
+        Assert.Empty(settings.ConsentBypassDangerousSources);
+        Assert.False(settings.HasConsentBypass);
     }
 
     [Fact]
@@ -44,6 +53,9 @@ public class AssistantSettingsStoreTests : IDisposable
             SpeakReplies = false,
             PushToTalkKeyName = "F11",
             AlwaysOnCostAcknowledged = true,
+            ReadingLevel = ReadingLevel.Simple,
+            ConsentBypassSources = ["Terminal MCP", "cockpit-kubernetes"],
+            ConsentBypassDangerousSources = ["cockpit-kubernetes"],
         });
         var loaded = await store.LoadAsync();
 
@@ -51,6 +63,48 @@ public class AssistantSettingsStoreTests : IDisposable
         Assert.False(loaded.SpeakReplies);
         Assert.Equal("F11", loaded.PushToTalkKeyName);
         Assert.True(loaded.AlwaysOnCostAcknowledged);
+        Assert.Equal(ReadingLevel.Simple, loaded.ReadingLevel);
+        Assert.Equal(["Terminal MCP", "cockpit-kubernetes"], loaded.ConsentBypassSources);
+        Assert.Equal(["cockpit-kubernetes"], loaded.ConsentBypassDangerousSources);
+    }
+
+    /// <summary>
+    /// A reading level name this build does not recognise — a hand edit, or a newer build's fourth level — must
+    /// not cost the whole <c>assistant</c> section the way an unparsed non-nullable enum would (see
+    /// <c>AssistantSettingsEntry.ReadingLevel</c>'s doc-comment). It reads back as the app default instead.
+    /// </summary>
+    [Fact]
+    public async Task LoadAsync_AnUnrecognisedReadingLevelName_FallsBackToDeveloper()
+    {
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """{"Assistant":{"IsEnabled":true,"SpeakReplies":true,"PushToTalkKeyName":"F10","ReadingLevel":"Verbose"}}""");
+
+        var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
+
+        Assert.True(loaded.IsEnabled);
+        Assert.Equal(ReadingLevel.Developer, loaded.ReadingLevel);
+    }
+
+    /// <summary>
+    /// A config written before #AC-575, or edited by hand, has no bypass lists at all. It must read as "nothing is
+    /// exempt" — the least powerful answer — rather than as a missing value some default fills in. Two string lists
+    /// were chosen over one enum per source precisely so this direction is the safe one: an absent list is empty,
+    /// and a name this build does not recognise is a name that matches no source.
+    /// </summary>
+    [Fact]
+    public async Task LoadAsync_AConfigWithNoBypassSection_ExemptsNothing()
+    {
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """{"Assistant":{"IsEnabled":true,"SpeakReplies":true,"PushToTalkKeyName":"F10","ConsentBypassSources":null}}""");
+
+        var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
+
+        Assert.True(loaded.IsEnabled);
+        Assert.Empty(loaded.ConsentBypassSources);
+        Assert.Empty(loaded.ConsentBypassDangerousSources);
+        Assert.False(loaded.HasConsentBypass);
     }
 
     // Criterion 9: speaking and being enabled are two separate decisions — turning the assistant on must not

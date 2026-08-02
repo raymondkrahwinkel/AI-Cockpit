@@ -4,7 +4,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
 /// <summary>
-/// <see cref="ClaudeTranscriptReader"/> (#35b/#39, weg A): locates the session's live JSONL transcript as the
+/// <see cref="ClaudeTranscriptReader"/> (#39, weg A): locates the session's live JSONL transcript as the
 /// new <c>configDir/projects/*/*.jsonl</c> file that appears after launch (not matched by a forced session id —
 /// undocumented for interactive sessions), waiting for it if the launch has not written it yet, tails it from
 /// its current end so history is never replayed, and buffers a partial line across polls so a write caught
@@ -20,80 +20,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
 
     // No transcript from a prior session exists, so the one the test writes is always the "new" one.
     private static readonly IReadOnlySet<string> NoBaseline = new HashSet<string>();
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_IgnoresLinesWrittenBeforeTailingStarted()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        await File.WriteAllTextAsync(transcriptPath, _AssistantLine("Old text, from before the tail started.") + "\n");
-
-        var firstLine = await _ConsumeOneLineAsync(
-            transcriptPath, appendAfterStarting: [_AssistantLine("New text, written after the tail started.") + "\n"]);
-
-        Assert.Equal("New text, written after the tail started.", firstLine);
-    }
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_SkipsNonAssistantLinesAndToolUseOnlyTurns()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-
-        var firstLine = await _ConsumeOneLineAsync(transcriptPath, appendAfterStarting:
-        [
-            """{"type":"user","message":{"content":[{"type":"text","text":"ignored"}]}}""" + "\n" +
-            """{"type":"system","subtype":"init"}""" + "\n" +
-            """{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{}}]}}""" + "\n" +
-            _AssistantLine("The only line worth reading.") + "\n",
-        ]);
-
-        Assert.Equal("The only line worth reading.", firstLine);
-    }
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_BuffersAPartialLine_UntilItsNewlineArrivesInALaterWrite()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        var fullLine = _AssistantLine("Split across two separate writes.");
-        var splitPoint = fullLine.Length / 2;
-
-        var firstLine = await _ConsumeOneLineAsync(
-            transcriptPath,
-            appendAfterStarting: [fullLine[..splitPoint]],
-            thenDelay: TimeSpan.FromMilliseconds(400),
-            appendAfterDelay: [fullLine[splitPoint..] + "\n"]);
-
-        Assert.Equal("Split across two separate writes.", firstLine);
-    }
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_WhenTheTranscriptDoesNotExistYet_WaitsForItThenTailsIt()
-    {
-        var projectDir = Path.Combine(_configDir, "projects", "some-cwd-hash");
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var received = new List<string>();
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                received.Add(text);
-                break;
-            }
-        });
-
-        // Nothing under projects/ yet — the reader must keep polling instead of giving up.
-        await Task.Delay(400);
-        Directory.CreateDirectory(projectDir);
-        var transcriptPath = Path.Combine(projectDir, $"{Guid.NewGuid()}.jsonl");
-        await File.WriteAllTextAsync(transcriptPath, string.Empty);
-
-        // Let the reader notice the (empty) file and seek to its end before anything is written to it.
-        await Task.Delay(500);
-        await File.AppendAllTextAsync(transcriptPath, _AssistantLine("Appeared after the launch.") + "\n");
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal("Appeared after the launch.", Assert.Single(received));
-    }
 
     [Fact]
     public async Task ReadActivityAsync_YieldsEveryAppendedRawLine_NotJustAssistantText()
@@ -334,7 +260,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
     [Fact]
     public async Task ReadActivityAsync_CarriesUsage_FromAnAssistantLine()
     {
-        // AC-398: the same tail read-aloud/status already use, now also carrying the token usage an assistant
+        // AC-398: the same tail status already uses, now also carrying the token usage an assistant
         // line reports — so the host's usage trail can be fed from the transcript tail without a second read of
         // the same file.
         var transcriptPath = _CreateEmptyTranscriptFile();
@@ -440,48 +366,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
         {
             await Task.Delay(10);
         }
-    }
-
-    /// <summary>
-    /// Drives one <see cref="ClaudeTranscriptReader.ReadAssistantTextAsync"/> consumption in the background (the
-    /// natural <c>await foreach</c> shape production code uses), appends the given lines to the transcript once
-    /// it is underway, and returns the first assistant text the reader yields.
-    /// </summary>
-    private async Task<string> _ConsumeOneLineAsync(
-        string transcriptPath,
-        IReadOnlyList<string> appendAfterStarting,
-        TimeSpan? thenDelay = null,
-        IReadOnlyList<string>? appendAfterDelay = null)
-    {
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var received = new List<string>();
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                received.Add(text);
-                break;
-            }
-        });
-
-        await Task.Delay(500);
-        foreach (var line in appendAfterStarting)
-        {
-            await File.AppendAllTextAsync(transcriptPath, line);
-        }
-
-        if (thenDelay is { } delay)
-        {
-            await Task.Delay(delay);
-            foreach (var line in appendAfterDelay ?? [])
-            {
-                await File.AppendAllTextAsync(transcriptPath, line);
-            }
-        }
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        return Assert.Single(received);
     }
 
     private string _CreateEmptyTranscriptFile()

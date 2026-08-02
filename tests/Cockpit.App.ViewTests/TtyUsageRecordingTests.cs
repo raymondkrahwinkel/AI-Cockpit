@@ -20,7 +20,7 @@ namespace Cockpit.App.ViewTests;
 /// work is never run, and the recording would never happen, in a test or in the app (see <see cref="HeadlessAvalonia"/>).
 /// Waited for by polling, not <c>Task.WaitAsync</c>: that timeout mechanism resumes its continuation off the
 /// dispatcher's own synchronization context, so it does not pump the queued <c>Dispatcher.UIThread.Post</c> work
-/// this path depends on — the same reason <c>TtyReadAloudTests</c>/<c>ScheduledResumeTimerTests</c> poll instead.
+/// this path depends on — the same reason <c>TtyDisposeStopsPlaybackTests</c>/<c>ScheduledResumeTimerTests</c> poll instead.
 /// Asserted with xunit's own Assert: the fluent library its neighbours use is on its way out (AC-372).
 /// </remarks>
 [Collection("avalonia")]

@@ -21,10 +21,10 @@ public interface IVoicePlaybackQueue
 
     /// <summary>
     /// Marks read-aloud as active before anything is queued, so the overlay shows it is working during the
-    /// gap the operator otherwise sees as silence — the local-LLM cleanup/naturalize/summarize pass and the
-    /// first synthesis (including the one-time model download) that run before any audio plays. Raises
-    /// <see cref="PlaybackActiveChanged"/> the same as real playback; the batch that follows clears it when it
-    /// finishes, and <see cref="StopAll"/> clears it if nothing ends up queued.
+    /// gap the operator otherwise sees as silence — the first synthesis, including the one-time model download,
+    /// which runs before any audio plays. Raises <see cref="PlaybackActiveChanged"/> the same as real playback;
+    /// the batch that follows clears it when it finishes, and <see cref="StopAll"/> clears it if nothing ends up
+    /// queued.
     /// </summary>
     void NotifyPreparing();
 
@@ -38,8 +38,8 @@ public interface IVoicePlaybackQueue
 
     /// <summary>
     /// Raised the moment the first synthesized clip actually starts playing, once per active window — the boundary
-    /// between "preparing" (the local-LLM rewrite + text-to-sound synthesis, still silent) and "speaking". Lets the
-    /// overlay show a distinct status while it is getting ready rather than claiming to read aloud before a word.
+    /// between "preparing" (text-to-sound synthesis, still silent) and "speaking". Lets the overlay show a distinct
+    /// status while it is getting ready rather than claiming to read aloud before a word.
     /// </summary>
     event EventHandler? SpeakingStarted;
 
@@ -47,10 +47,12 @@ public interface IVoicePlaybackQueue
     void StopAll();
 
     /// <summary>
-    /// A counter bumped by every <see cref="StopAll"/>. A caller that awaits a slow step (the local-LLM rewrite)
-    /// between <see cref="NotifyPreparing"/> and enqueuing reads this before the await and again after: if it
-    /// changed, a barge-in (or a newer turn) cancelled read-aloud while it was preparing, so the now-stale batch
-    /// must be dropped instead of spoken over the interrupt.
+    /// A counter bumped by every <see cref="StopAll"/>. A caller preparing a batch reads it before
+    /// <see cref="NotifyPreparing"/> and again before <see cref="Enqueue(IReadOnlyList{string}, int, string)"/>: if
+    /// it changed, a barge-in (or a newer turn) cancelled read-aloud in between — <see cref="StopAll"/> is called
+    /// from the push-to-talk hold's own thread and from subscribers to <see cref="PlaybackActiveChanged"/>, which
+    /// <see cref="NotifyPreparing"/> raises — so the now-stale batch must be dropped instead of spoken over the
+    /// interrupt.
     /// </summary>
     int Generation { get; }
 }

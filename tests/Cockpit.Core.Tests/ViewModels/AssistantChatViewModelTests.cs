@@ -27,8 +27,37 @@ public class AssistantChatViewModelTests
         host.Session.Returns(session);
         host.Activity.Returns(activity);
         host.EnsureStartedAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(session));
+        host.RestartAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(session));
         host.SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         return host;
+    }
+
+    /// <summary>
+    /// This window never restarts the assistant — not on any path it has. The restart lives beside the setting
+    /// that needs it (Options → Voice → Assistant Profile), because "this applies at the next start" is only
+    /// useful next to the thing that provides one.
+    /// </summary>
+    /// <remarks>
+    /// Written against the host rather than against the absence of a command, so it keeps holding if a future
+    /// header control grows one: whatever this window offers, it must not be the thing that ends the conversation
+    /// it is showing.
+    /// </remarks>
+    [Fact]
+    public async Task TheChatWindow_NeverRestartsTheAssistant_OnAnyPathItHas()
+    {
+        var session = new SessionViewModel();
+        var host = FakeHost(session);
+        var vm = new AssistantChatViewModel(host, FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
+
+        await vm.EnsureOpenedAsync();
+        vm.InputText = "what did AC-223 do overnight";
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.SpeakReplies = false;
+        await vm.ApplySettingsAsync();
+        vm.Dispose();
+
+        await host.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
+        Assert.Same(session, host.Session);
     }
 
     private static IAssistantSettingsStore FakeSettingsStore(bool speakReplies = true)
@@ -37,6 +66,32 @@ public class AssistantChatViewModelTests
         store.LoadAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, SpeakReplies = speakReplies }));
         return store;
+    }
+
+    /// <summary>
+    /// AC-575 criterion 5: the "some of these were never shown to you" mark has to be true while the window is open,
+    /// not only at the moment it opened. The window is ownerless and kept between openings, so Options is reachable
+    /// without it closing — and it only ever read the flag in <see cref="AssistantChatViewModel.EnsureOpenedAsync"/>,
+    /// once per window lifetime. Turning the bypass on while the window sat there left it saying the opposite, in
+    /// the state the operator is in most.
+    /// </summary>
+    [Fact]
+    public async Task ABypassSwitchedOnWhileTheWindowIsOpen_ReachesTheHeaderOnTheSaveSignal()
+    {
+        var store = Substitute.For<IAssistantSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true }));
+        var vm = new AssistantChatViewModel(FakeHost(), store, Substitute.For<IVoicePlaybackQueue>());
+
+        await vm.EnsureOpenedAsync();
+        Assert.False(vm.ConsentBypassActive);
+
+        // Options saves a bypass. The window is still the same instance — nothing reopened.
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, ConsentBypassSources = ["Terminal MCP"] }));
+        await vm.ApplySettingsAsync();
+
+        Assert.True(vm.ConsentBypassActive);
     }
 
     [Fact]
@@ -94,10 +149,13 @@ public class AssistantChatViewModelTests
         var firstWindow = new AssistantChatViewModel(host, FakeSettingsStore(), playback);
         Assert.Contains(firstWindow.Session!.Transcript, entry => entry.Text.Contains("AC-223"));
 
-        // "Closing" a window is exactly Dispose() (AssistantChatWindow.OnClosed calls nothing else on it). There
-        // is no member on IAssistantSessionHost this could even call to end a session with — Dispose only
-        // detaches the peephole's own PropertyChanged subscription.
+        // "Closing" a window is exactly Dispose() (AssistantChatWindow.OnClosed calls nothing else on it), and
+        // Dispose only detaches the peephole's own PropertyChanged subscription. The one member on the host that
+        // does end a session — RestartAsync — this window never reaches at all (see
+        // TheChatWindow_NeverRestartsTheAssistant_OnAnyPathItHas), which is what the assertion below is really
+        // holding here: closing is not restarting.
         firstWindow.Dispose();
+        host.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
         Assert.Same(session, host.Session);
         Assert.NotEmpty(session.Transcript);
 

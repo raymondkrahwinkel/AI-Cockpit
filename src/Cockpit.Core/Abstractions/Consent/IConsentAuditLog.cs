@@ -27,6 +27,19 @@ public enum ConsentAuditAction
 
     /// <summary>The operator denied it, or it was denied without asking — no consent surface, or the request was cancelled (fail-closed).</summary>
     Denied,
+
+    /// <summary>
+    /// Nobody was asked: the operator had switched the assistant's consent bypass on for this source beforehand
+    /// (#AC-575), so the card never appeared. Its own value rather than an <see cref="Approved"/> with a flag —
+    /// the window that answers "what has this thing ever done" has to be able to tell an approval the operator
+    /// gave from one they had clicked away in advance.
+    /// </summary>
+    /// <remarks>
+    /// Added last on purpose. The value is persisted by name, but an older build reading a trail that contains it
+    /// gets a <see cref="System.Text.Json.JsonException"/> on that line — which <c>JsonlAuditLog</c> catches per
+    /// line, so the unknown value costs that one entry and not the rest of the trail.
+    /// </remarks>
+    Bypassed,
 }
 
 /// <summary>One line of the consent audit trail (#AC-47).</summary>

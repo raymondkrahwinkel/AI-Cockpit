@@ -38,7 +38,7 @@
         <!-- AC-69 redesign: the top tab-bar stays, but each tab's body is now a master–detail split — a
              left sub-navigation rail (Border.subnavRail + ListBox.subnav) beside a detail column with its
              own scroll. A tab scales by gaining rail items instead of growing into one long scroll. Voice
-             is the fully-worked example (Read-aloud · Transcribe · Cleanup, switched by a Carousel bound to
+             is the fully-worked example (Transcribe · Assistant, switched by a Carousel bound to
              the rail); the other tabs hang their existing content under a one-item rail and split into their
              own sub-pages in their own tickets. Pure presentation — every binding and the shared Save are
              unchanged. -->
@@ -349,7 +349,7 @@
                 </Grid>
             </TabItem>
 
-            <!-- Voice: the fully-worked sub-navigation. Read-aloud · Transcribe · Cleanup are three pages
+            <!-- Voice: the fully-worked sub-navigation. Transcribe · Assistant are two pages
                  switched by a Carousel bound to the rail's selection, instead of one long scroll. Dictation
                  input (mic, push-to-talk, language, auto-submit) sits under Transcribe — it is the capture
                  side of speech-to-text; AC-68 fills the model/backend advisor into that same page later. -->
@@ -359,118 +359,12 @@
                         <StackPanel>
                             <TextBlock Classes="subnavGroup" Text="VOICE"/>
                             <ListBox x:Name="VoiceNav" Classes="subnav" SelectedIndex="0">
-                                <ListBoxItem>Read-aloud</ListBoxItem>
                                 <ListBoxItem>Transcribe</ListBoxItem>
-                                <ListBoxItem>Cleanup</ListBoxItem>
                                 <ListBoxItem>Assistant</ListBoxItem>
                             </ListBox>
                         </StackPanel>
                     </Border>
                     <Carousel Grid.Column="1" SelectedIndex="{Binding #VoiceNav.SelectedIndex}" PageTransition="{x:Null}">
-
-                        <!-- Read-aloud -->
-                        <ScrollViewer>
-                            <StackPanel Spacing="8" Margin="16">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="Read aloud" FontWeight="SemiBold"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="A per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="Mode"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding ReadAloudModes}"
-                                              SelectedItem="{Binding SelectedReadAloudMode}"
-                                              DisplayMemberBinding="{Binding Label}" MinWidth="260"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Verbatim reads the reply as-is. Naturalized and Summarized use the same local LLM as transcript cleanup to phrase (or shorten) it naturally before speaking — Summarized keeps every number, decision, warning and action item. Both add a short local LLM call per turn."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="Acknowledge"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding TurnAckModes}"
-                                              SelectedItem="{Binding SelectedTurnAckMode}"
-                                              DisplayMemberBinding="{Binding Label}" MinWidth="260"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Speaks a short 'let me take a look' the moment a turn starts, so a voice conversation isn't met with silence while Claude works. Preset phrases are instant; Local LLM writes a contextual line via the same local model (falling back to a preset if it's slow). Only spoken when read-aloud is on."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="Voice"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding TtsVoices}"
-                                              SelectedItem="{Binding SelectedTtsVoice}"
-                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="Language"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding ReadAloudLanguages}"
-                                              SelectedItem="{Binding SelectedReadAloudLanguage}"
-                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="The voice leans to this language and speaks unmarked text in it. Naturalized and Summarized keep code, names and genuinely foreign phrases in their own language, spoken correctly."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                    <Button Content="▶ Test read-aloud" Command="{Binding PreviewReadAloudCommand}"/>
-                                    <TextBlock Text="{Binding VoiceTestStatus}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Speaks a short sample in the selected voice and mode so you can hear it. The voice model downloads on first use, so the first test can take a few seconds."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="Output device"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding OutputDevices}"
-                                              SelectedItem="{Binding SelectedOutputDevice}"
-                                              DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Which speaker/headset read-aloud plays to. 'System default' follows your OS setting."/>
-                                </StackPanel>
-
-                                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
-
-                                <TextBlock Text="While you're talking" FontWeight="SemiBold"/>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
-                                    <CheckBox Content="Stop read-aloud when I start talking"
-                                              IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops read-aloud and needs neither. Use headphones: on speakers the microphone hears the read-aloud itself and stops it straight away."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                            IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
-                                    <TextBlock Text="…when the microphone is louder than"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
-                                                   Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                            IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
-                                    <ToggleButton Content="Test microphone" IsChecked="{Binding IsTestingMic}" Classes="Compact"/>
-                                    <controls:MicLevelMeter Level="{Binding MicTestLevel}" Threshold="{Binding VoiceStopReadAloudThresholdValue}"
-                                                            Width="200" Height="12" VerticalAlignment="Center"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). Read-aloud only stops when it hears real speech above this level, not on a stray noise. Set the threshold so normal speech crosses it but the room does not."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
-                                    <TextBlock Text="Open-mic: end utterance after (silence ms)"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
-                                                   Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Open mic is turned on/off at runtime from the sidebar mic button, not here — this is only its tuning."/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ScrollViewer>
 
                         <!-- Transcribe -->
                         <ScrollViewer>
@@ -549,7 +443,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Transcription" FontWeight="SemiBold"/>
                                     <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Turns your speech into text with Whisper, on-device. This is the speech-to-text model — separate from the local LLM that tidies the text on the Cleanup page."/>
+                                        ToolTip.Tip="Turns your speech into text with Whisper, on-device. What Whisper hears is what you get — the model and backend below (and the calibration further down) are the only levers on accuracy."/>
                                 </StackPanel>
                                 <!-- AC-68: detected acceleration, so the choices below read as host-aware rather than generic. -->
                                 <Border Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -713,54 +607,9 @@
                             </StackPanel>
                         </ScrollViewer>
 
-                        <!-- Cleanup -->
-                        <ScrollViewer>
-                            <StackPanel Spacing="8" Margin="16">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="Cleanup" FontWeight="SemiBold"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Tidies the raw transcript with a local LLM. Sends it to a local OpenAI-compatible server (Ollama or LM Studio) and falls back to the raw transcript automatically when it is unavailable or its output looks unreliable."/>
-                                </StackPanel>
-                                <CheckBox Content="Clean up transcript with local LLM"
-                                          IsChecked="{Binding VoiceCleanupEnabled}"/>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
-                                    <CheckBox Content="Auto-detect the local server (Ollama / LM Studio)"
-                                              IsChecked="{Binding VoiceAutoDetectLocalLlm}"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Detects whichever server is running and picks a model from it, so the same setting works on a laptop with Ollama and a desktop with LM Studio. Turn it off to set the server and model by hand."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowLocalLlmServerPicker}">
-                                    <TextBlock Text="Prefer server"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding LocalLlmPreferences}"
-                                              SelectedItem="{Binding SelectedLocalLlmPreference}"
-                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding VoiceLlmAutoSummary}"
-                                           IsVisible="{Binding ShowAutoLlmSummary}"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowLlmModelPicker}">
-                                    <TextBlock Text="Model"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding VoiceLlmModels}"
-                                              SelectedItem="{Binding VoiceLlmModel}" MinWidth="200"/>
-                                    <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Shared by transcript cleanup and read-aloud. In auto-detect this is the preferred model, used when the detected server has it; otherwise auto prefers an instruction-tuned model, then a small/mini one, and never an embedding model. With auto-detect off it is the exact model. gemma3:4b reads Dutch best, qwen2.5:3b is a safe fallback."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
-                                    <TextBlock Text="Local LLM URL"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center"/>
-                                    <TextBox Text="{Binding VoiceLlmBaseUrl}" Width="150"
-                                             PlaceholderText="http://localhost:11434 (Ollama) / :1234 (LM Studio)"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ScrollViewer>
-
-                        <!-- Assistant (AC-543): the master switch, the Assistant Profile picker, the push-to-talk
-                             hotkey and the independent speak-replies switch. Off is the begin state (decision 7) —
+                        <!-- Assistant (AC-543): the master switch, the Assistant Profile row (a name and an editor,
+                             not a picker — see the comment on that row), the push-to-talk hotkey and the
+                             independent speak-replies switch. Off is the begin state (decision 7) —
                              the rows below the switch stay visible and merely dim, so what is off stays legible
                              instead of disappearing (criterion: "off is not removed"). -->
                         <ScrollViewer>
@@ -779,16 +628,26 @@
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <TextBlock Text="Assistant Profile" FontWeight="SemiBold"/>
                                         <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="Which provider and model the assistant runs on. This profile cannot be deleted — switching provider replaces what is behind it."/>
+                                            ToolTip.Tip="The assistant's own profile — which provider and model it runs on, and what it may do. It is not in the profile list and cannot be deleted; editing a profile elsewhere never changes it."/>
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <ComboBox ItemsSource="{Binding AssistantOptions.AvailableProfiles}"
-                                                  SelectedItem="{Binding AssistantOptions.SelectedProfile}"
-                                                  DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+
+                                    <!-- A name and an editor, not a picker. This used to be a dropdown over the
+                                         profile list, which read as "the assistant uses that profile" — so an
+                                         operator set bypassPermissions on it, saw no change, and was right to be
+                                         confused: the slot has always held a whole record of its own, copied once.
+                                         Naming it as the assistant's own removes the belief instead of annotating
+                                         it (which is what a staleness note and a refresh button were doing here). -->
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding AssistantOptions.ProfileLabel}"
+                                                   IsVisible="{Binding AssistantOptions.ProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
                                         <TextBlock Text="{Binding AssistantOptions.ProfileUnsetReason}"
                                                    IsVisible="{Binding AssistantOptions.ProfileUnsetReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                   VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
+                                        <Button Content="Edit…" VerticalAlignment="Center"
+                                                Command="{Binding EditAssistantProfileCommand}"
+                                                ToolTip.Tip="Provider, session defaults, MCP servers and environment variables — and the restart that applies a permission mode"/>
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -806,6 +665,145 @@
                                     </StackPanel>
                                     <CheckBox Content="Speak replies"
                                               IsChecked="{Binding AssistantOptions.SpeakReplies}"/>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Chat window reading level" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="How much the chat window shows: Developer sees everything (tool calls, thinking, costs, jargon); Focus folds tool runs and moves cost to the usage pill; Simple drops tool noise and jargon. The same three levels an SDK session's own header dropdown offers — set here instead, since the chat window is a display, not a control panel."/>
+                                    </StackPanel>
+                                    <ComboBox ItemsSource="{Binding AssistantOptions.ReadingLevels}"
+                                              SelectedItem="{Binding AssistantOptions.SelectedReadingLevel}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"
+                                              HorizontalAlignment="Left"/>
+
+                                    <!-- AC-575: the assistant may skip the Cockpit consent card, per source, and only
+                                         because the operator switched it on here first. Two checkboxes per row rather
+                                         than one three-state picker: "everything" must not sit one mouse movement away
+                                         from "the harmless things". The rows come from sources the host has stamped —
+                                         there is no field to type a source name into, deliberately. -->
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Skip Cockpit's consent card" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Normally every host-side action the assistant takes raises Cockpit's own consent card and waits for you. Tick a source here and it stops asking for that source — you are giving that approval now, once, instead of each time. This is Cockpit's card only: Claude's own Allow/Deny inside the chat is a separate gate and keeps asking regardless of this setting. Off for everything until you turn it on, and it stays on until you turn it off. Only the assistant is ever exempt; an ordinary session is asked about exactly as before, and every skipped card is still written to the consent trail."/>
+                                    </StackPanel>
+                                    <TextBlock Text="Skips Cockpit's own consent card for these — Claude's own Allow/Deny in the chat still asks. Every skip is still recorded in the consent trail."
+                                               IsVisible="{Binding AssistantOptions.HasConsentBypass}"
+                                               Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="11"
+                                               TextWrapping="Wrap"/>
+                                    <Grid ColumnDefinitions="*,120,120" Margin="0,2,0,0">
+                                        <TextBlock Grid.Column="1" Text="Everyday" FontSize="11"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Grid.Column="2" Text="Dangerous" FontSize="11"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding AssistantOptions.ConsentBypassSources}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ConsentBypassSourceViewModel">
+                                                <Grid ColumnDefinitions="*,120,120" Margin="0,3">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Label}"
+                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                        <!-- The host-stamped key, when it is not the label itself: a plugin
+                                                             names its own label, so this is what says which plugin a row
+                                                             really belongs to. -->
+                                                        <TextBlock Text="{Binding KeyDetail}" FontSize="10"
+                                                                   IsVisible="{Binding KeyDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        <!-- Switched on but not a source this build recognises any more —
+                                                             typically a stored key from before a source's id changed
+                                                             underneath it. Still shown, still switchable off; never
+                                                             hidden or silently migrated to a new key (#K11). -->
+                                                        <TextBlock Text="Unknown source — no longer in use" FontSize="10"
+                                                                   IsVisible="{Binding IsOrphan}"
+                                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                    </StackPanel>
+                                                    <CheckBox Grid.Column="1" IsChecked="{Binding BypassLowRisk}"
+                                                              ToolTip.Tip="Skip the card for this source's everyday, repeatable actions."/>
+                                                    <CheckBox Grid.Column="2" IsChecked="{Binding BypassDangerous}"
+                                                              ToolTip.Tip="Skip it for this source's dangerous actions too: shell commands, handing over a session with your rights, arbitrary network access. Separate on purpose — the box on the left does not include these."/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Moved here from the old Voice → Read-aloud page (AC-546 follow-up): these
+                                         settings exist because the assistant speaks, and sessions no longer do —
+                                         so they belong with the rest of the assistant's settings, not on a page
+                                         named after a feature that was removed. -->
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Speech" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="The voice the assistant speaks in, and the language it defaults to. The voice model downloads on first use."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Voice"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox ItemsSource="{Binding TtsVoices}"
+                                                  SelectedItem="{Binding SelectedTtsVoice}"
+                                                  DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                        <Button Content="▶ Hear it" Command="{Binding PreviewVoiceCommand}"
+                                                ToolTip.Tip="Speaks one sentence in this voice and language. The voice model downloads on first use, so the very first press can take a moment."/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Language"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox ItemsSource="{Binding ReadAloudLanguages}"
+                                                  SelectedItem="{Binding SelectedReadAloudLanguage}"
+                                                  DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="The assistant speaks its replies in this language."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Output device"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox ItemsSource="{Binding OutputDevices}"
+                                                  SelectedItem="{Binding SelectedOutputDevice}"
+                                                  DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Which speaker/headset the assistant's speech plays to. 'System default' follows your OS setting."/>
+                                    </StackPanel>
+
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
+
+                                    <TextBlock Text="While you're talking" FontWeight="SemiBold"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
+                                        <CheckBox Content="Stop the assistant when I start talking"
+                                                  IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops the assistant and needs neither. Use headphones: on speakers the microphone hears the assistant's own voice and stops it straight away."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                                IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                                        <TextBlock Text="…when the microphone is louder than"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
+                                                       Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                                IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                                        <ToggleButton Content="Test microphone" IsChecked="{Binding IsTestingMic}" Classes="Compact"/>
+                                        <controls:MicLevelMeter Level="{Binding MicTestLevel}" Threshold="{Binding VoiceStopReadAloudThresholdValue}"
+                                                                Width="200" Height="12" VerticalAlignment="Center"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). The assistant only stops speaking when it hears real speech above this level, not on a stray noise. Set the threshold so normal speech crosses it but the room does not."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
+                                        <TextBlock Text="Open-mic: end utterance after (silence ms)"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
+                                                       Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Open mic is turned on/off at runtime from the sidebar mic button, not here — this is only its tuning."/>
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>

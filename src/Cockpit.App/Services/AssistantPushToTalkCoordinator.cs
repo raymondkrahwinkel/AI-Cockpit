@@ -19,10 +19,11 @@ namespace Cockpit.App.Services;
 /// together would mean a branch at each of those steps, and the failure mode of getting one branch wrong is the
 /// exact thing the indicator exists to prevent — words landing in the wrong place.
 /// <para>
-/// <b>Straight through, no cleanup.</b> <c>EndHoldAsync(applyCleanup: false)</c>: what Whisper heard is what the
-/// assistant gets (decision 10). The tidying that the removed rewrite step used to do is the system prompt's job
-/// now, and a cleanup pass here would be the second copy of it — running on every utterance, for a model that
-/// reads through filler words on its own.
+/// <b>Straight through, no cleanup.</b> What Whisper heard is what the assistant gets (decision 10): this
+/// coordinator hands <see cref="IVoicePushToTalkService.EndHoldAsync"/>'s transcript to
+/// <see cref="IAssistantSessionHost.SendAsync"/> unaltered. Tidying it is the system prompt's job, and a pass here
+/// would be a second copy of it — running on every utterance, for a model that reads through filler words on its
+/// own.
 /// </para>
 /// <para>
 /// Threading matches <see cref="VoicePushToTalkCoordinator"/>'s: the hotkey events arrive on the backend's own
@@ -44,6 +45,25 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     /// <summary>Whether the hold in progress actually opened a microphone — nothing to transcribe if it did not.</summary>
     private bool _isRecording;
 
+    private static readonly TimeSpan DefaultMessageLinger = TimeSpan.FromSeconds(4);
+
+    /// <summary>
+    /// How long a failed hold's own explanation stays on the pill before making way for whatever wants it next.
+    /// Long enough to read a sentence; short enough that a read-aloud starting in the meantime is not left hidden
+    /// behind it for good — see <see cref="_ShowThenClear"/>.
+    /// </summary>
+    private readonly TimeSpan _messageLinger;
+
+    /// <summary>
+    /// Bumped at the start of every hold (<see cref="HandleHoldStarted"/>), so a linger from an earlier, unrelated
+    /// hold can tell it is stale and skip clearing a pill a newer hold now owns.
+    /// </summary>
+    private int _pushToTalkGeneration;
+
+    /// <param name="messageLinger">
+    /// Overridden only by the tests, which cannot wait four seconds to watch a linger clear — same reasoning as
+    /// <see cref="ScheduledResumeCoordinator"/>'s tick interval.
+    /// </param>
     public AssistantPushToTalkCoordinator(
         GlobalHotkeyCoordinator hotkeys,
         IAssistantSessionHost assistant,
@@ -51,7 +71,8 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         IVoicePushToTalkService pushToTalk,
         ILogger<AssistantPushToTalkCoordinator> logger,
         IVoicePlaybackQueue playbackQueue,
-        IOpenMicState? openMicState = null)
+        IOpenMicState? openMicState = null,
+        TimeSpan? messageLinger = null)
     {
         _hotkeys = hotkeys;
         _assistant = assistant;
@@ -60,6 +81,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _playbackQueue = playbackQueue;
         _openMicState = openMicState;
         _logger = logger;
+        _messageLinger = messageLinger ?? DefaultMessageLinger;
 
         // Subscribed once, for the life of the app, and filtered on this key's own id: the hotkey coordinator
         // re-arms in place rather than handing out a new event source, so there is no re-subscription here to
@@ -110,6 +132,10 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     /// <summary>Test seam: the UI-thread logic for a hold starting.</summary>
     internal void HandleHoldStarted()
     {
+        // Invalidates any linger still pending from an earlier hold's failure message (see _ShowThenClearAsync):
+        // this hold's own state is what belongs on the pill from here on, not a delayed clear stepping on it.
+        _pushToTalkGeneration++;
+
         // Open-mic is already listening to the assistant continuously; a hold on top of it would send the same
         // sentence twice. Open-mic wins and says so, exactly as the dictation path stands down for it.
         if (_openMicState?.IsListening == true)
@@ -184,8 +210,8 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
 
         try
         {
-            // applyCleanup: false — see this class's remarks. One-to-one is the decision, not an oversight.
-            var text = await _pushToTalk.EndHoldAsync(applyCleanup: false);
+            // Straight through, one-to-one — see this class's remarks.
+            var text = await _pushToTalk.EndHoldAsync();
             if (string.IsNullOrWhiteSpace(text))
             {
                 // The most common way this fails, and until now the only one that said nothing at all. A hold
@@ -198,9 +224,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
                 // Only on this path, deliberately. F9 hands its transcript straight to a session's composer, where
                 // "nothing appeared in the box" is at least visible; there is no shared point below this one where
                 // both could be told, because that path never sees the text at all.
-                _overlay.SetPushToTalk(
-                    VoiceOverlayState.Unavailable,
-                    "No speech heard — keep holding the key while you talk, then let go.");
+                _ShowThenClear("No speech heard — keep holding the key while you talk, then let go.");
                 return;
             }
 
@@ -211,7 +235,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
             // The pill is the only place the operator is looking, so the failure belongs there and not only in the
             // log — a hold that produced nothing and said nothing reads as the assistant ignoring you.
             _logger.LogWarning(exception, "An assistant push-to-talk hold produced no transcript.");
-            _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, "That could not be transcribed");
+            _ShowThenClear("That could not be transcribed");
             return;
         }
         finally
@@ -221,6 +245,37 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         }
 
         _overlay.SetPushToTalk(null);
+    }
+
+    /// <summary>
+    /// Puts a failed hold's explanation on the pill and, after <see cref="MessageLinger"/>, clears it — unless a
+    /// newer hold has since taken the pill over (see <see cref="_pushToTalkGeneration"/>). Without the clear this
+    /// message never went away on its own: read-aloud starting afterwards is masked (<see
+    /// cref="VoiceOverlayCoordinator"/> puts a hold's own report ahead of read-aloud's) and stayed that way for
+    /// good, since nothing else in this file writes to the pill until the next hold.
+    /// </summary>
+    private void _ShowThenClear(string message)
+    {
+        var generation = _pushToTalkGeneration;
+        _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, message);
+        PendingLingerClear = _ClearAfterLingerAsync(generation);
+    }
+
+    /// <summary>
+    /// Test seam: the linger started by the last failed hold, so a test can await the clear itself instead of
+    /// sleeping for longer than it hopes the linger takes. Completed when there is none — the resting state, and
+    /// what a test that never triggered a failure message awaits.
+    /// </summary>
+    internal Task PendingLingerClear { get; private set; } = Task.CompletedTask;
+
+    private async Task _ClearAfterLingerAsync(int generation)
+    {
+        await Task.Delay(_messageLinger);
+
+        if (generation == _pushToTalkGeneration)
+        {
+            _overlay.SetPushToTalk(null);
+        }
     }
 
     private void _OnPreparing(object? sender, VoicePreparationProgress step) =>

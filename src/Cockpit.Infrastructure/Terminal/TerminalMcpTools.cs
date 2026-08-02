@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -269,7 +270,7 @@ internal sealed class TerminalMcpTools
             ? new ConsentRequest(
                 "An agent wants to read a terminal live",
                 $"Let this agent read terminal pane {_SingleLine(pane.Name)}. It will see everything printed there from now on — not the earlier history. It cannot type into it: that is a separate question, asked separately. You can Disconnect at any time.",
-                new ConsentSource(pane.PaneId, null, "Terminal MCP"),
+                new ConsentSource(pane.PaneId, null, ConsentSourceCatalog.TerminalMcp),
                 "terminal.watch",
                 ConsentRisk.Dangerous)
             : new ConsentRequest(
@@ -277,7 +278,7 @@ internal sealed class TerminalMcpTools
                     ? "An agent that is reading a terminal now wants to type into it"
                     : "An agent wants to read and drive a terminal live",
                 $"Let this agent type into terminal pane {_SingleLine(pane.Name)}, including Ctrl-C, and read everything printed there from now on — not the earlier history. You can watch, type alongside, and Disconnect at any time, which interrupts whatever it started.",
-                new ConsentSource(pane.PaneId, null, "Terminal MCP"),
+                new ConsentSource(pane.PaneId, null, ConsentSourceCatalog.TerminalMcp),
                 "terminal.drive",
                 ConsentRisk.Dangerous);
 

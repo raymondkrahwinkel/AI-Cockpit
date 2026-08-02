@@ -38,6 +38,12 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     /// <summary>Idempotent lazy start: returns the running session if there is one, restarts it if it fell over, and no-ops (leaving <see cref="Activity"/> at Unavailable) if the feature is off or the slot is empty.</summary>
     Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stands the running assistant down and brings it back up on the same conversation, so a setting that can
+    /// only be chosen at a start actually gets one. Starts it if nothing is running yet.
+    /// </summary>
+    Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.</summary>
     Task SendAsync(string text, CancellationToken cancellationToken = default);
 
@@ -67,10 +73,18 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
 /// <remarks>
 /// <b>Criterion 7 — reads a conversation, never starts one.</b> <see cref="Session"/> is read straight off
 /// <see cref="IAssistantSessionHost.Session"/>; this view model never creates a <see cref="SessionViewModel"/>
-/// itself. <see cref="EnsureOpenedAsync"/> is the one call this view model makes that can cause a start, and it
-/// only runs the host's own idempotent lazy-start (opening the chip is "an operator handling" per criterion 1) —
-/// it never resets or replaces whatever conversation the host already holds. <see cref="Dispose"/> only detaches
-/// this peephole's own event subscription; it never touches the session, so closing the window can never end it.
+/// itself. <see cref="EnsureOpenedAsync"/> is the one call this view model makes <em>on its own</em> that can
+/// cause a start, and it only runs the host's own idempotent lazy-start (opening the chip is "an operator
+/// handling" per criterion 1) — it never resets or replaces whatever conversation the host already holds.
+/// <see cref="Dispose"/> only detaches this peephole's own event subscription; it never touches the session, so
+/// closing the window can never end it.
+/// <para>
+/// <b>And nothing here ends one either.</b> <see cref="IAssistantSessionHost.RestartAsync"/> is the one member that
+/// does, and this window does not call it: a restart is asked for beside the setting that needs it, in
+/// Options → Voice → Assistant Profile, not from the surface the conversation is being read on. The header carries
+/// handlings of the <em>running</em> assistant — speaking on or off — and one standing safety fact it must show
+/// without Options being open (AC-575's bypass mark).
+/// </para>
 /// <para>
 /// <b>Criterion 8 — no microphone required.</b> This view model carries no STT/voice code path at all: sending is
 /// <see cref="SendAsync"/> on typed <see cref="InputText"/>, full stop. The assistant hotkey (<c>F10</c>) is a
@@ -116,6 +130,21 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // not flash "off" for the one frame before EnsureOpenedAsync's load completes.
     [ObservableProperty]
     private bool _speakReplies = true;
+
+    /// <summary>
+    /// Whether the operator has switched the consent bypass on for at least one source (#AC-575) — shown in this
+    /// window's header, and on the chip for when the window is closed. Read on open alongside
+    /// <see cref="SpeakReplies"/>, and again on every Options save through <see cref="ApplySettingsAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// The second half is what makes this true rather than merely usually true. This window is ownerless and is kept
+    /// between openings (<c>AssistantIndicatorCoordinator</c>, criterion 7), so it can sit open while Options is used:
+    /// losing focus is not closing, <c>Show()</c> on a live window raises no new <c>Opened</c>, and a mark that were
+    /// only read in <see cref="EnsureOpenedAsync"/> would be read once per window lifetime — stale in exactly the
+    /// state the operator is in most.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _consentBypassActive;
 
     public AssistantChatViewModel(
         IAssistantSessionHost host,
@@ -172,9 +201,22 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         await _host.EnsureStartedAsync(cancellationToken).ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// Re-reads the settings this window mirrors, for an Options save that landed while it was open — the same
+    /// saved signal the chip already follows (<c>AssistantPushToTalkCoordinator._OnSettingsSavedAsync</c> →
+    /// <c>AssistantIndicatorCoordinator.ApplySettingsAsync</c>), so the two cannot disagree about the bypass mark.
+    /// </summary>
+    public Task ApplySettingsAsync(CancellationToken cancellationToken = default) =>
+        _LoadSpeakRepliesAsync(cancellationToken);
+
     private async Task _LoadSpeakRepliesAsync(CancellationToken cancellationToken)
     {
         var settings = await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
+
+        // AC-575, criterion 5. The window where the assistant's actions are read is also where "some of these were
+        // never shown to you" has to be legible; the chip carries the same mark for when this window is closed.
+        ConsentBypassActive = settings.HasConsentBypass;
+
         _loadingSpeakReplies = true;
         try
         {

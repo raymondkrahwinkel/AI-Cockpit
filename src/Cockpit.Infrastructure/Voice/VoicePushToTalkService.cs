@@ -9,15 +9,14 @@ namespace Cockpit.Infrastructure.Voice;
 
 /// <summary>
 /// <see cref="IVoicePushToTalkService"/>: buffers microphone audio for the duration of a hold, then on
-/// release gates it through VAD, transcribes, and optionally cleans up. Registered as a singleton — in
-/// this single-user desktop cockpit only one session can hold the push-to-talk hotkey at a time (the
-/// one with keyboard focus), so one shared hold/capture pipeline is all that is ever needed.
+/// release gates it through VAD and transcribes. Registered as a singleton — in this single-user desktop
+/// cockpit only one session can hold the push-to-talk hotkey at a time (the one with keyboard focus), so
+/// one shared hold/capture pipeline is all that is ever needed.
 /// </summary>
 internal sealed class VoicePushToTalkService(
     IAudioCaptureService captureService,
     IVoiceActivityDetector vad,
     ISpeechToTextService speechToText,
-    ITranscriptCleanupService cleanup,
     ILogger<VoicePushToTalkService> logger)
     : IVoicePushToTalkService, ISingletonService
 {
@@ -58,7 +57,7 @@ internal sealed class VoicePushToTalkService(
         return true;
     }
 
-    public async Task<string> EndHoldAsync(bool applyCleanup, CancellationToken cancellationToken = default)
+    public async Task<string> EndHoldAsync(CancellationToken cancellationToken = default)
     {
         if (_captureTask is null || _captureCancellation is null)
         {
@@ -87,7 +86,7 @@ internal sealed class VoicePushToTalkService(
                 return string.Empty;
             }
 
-            return applyCleanup ? await cleanup.CleanupAsync(raw, cancellationToken).ConfigureAwait(false) : raw;
+            return raw;
         }
         catch (Exception ex)
         {
@@ -95,7 +94,7 @@ internal sealed class VoicePushToTalkService(
             // ~1.6 GB) or a native transcription fault. The caller (SessionPanelViewModel.EndVoiceHoldAsync)
             // catches this to show a "Voice error" status, but without a log line the failure was invisible —
             // exactly why F9 looked like a dead hotkey. Log it here, then let the caller surface it.
-            logger.LogError(ex, "Voice dictation failed after capture (VAD/STT/cleanup)");
+            logger.LogError(ex, "Voice dictation failed after capture (VAD/STT)");
             throw;
         }
     }

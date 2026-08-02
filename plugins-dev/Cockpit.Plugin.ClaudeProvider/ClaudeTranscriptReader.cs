@@ -5,12 +5,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.ClaudeProvider;
 
 /// <summary>
-/// The Claude plugin's own transcript reader (weg A) for the host's read-aloud (#35b) and status (#39): a TTY
-/// session runs the real interactive TUI, so there is no parsed event stream — but <c>claude</c> writes every
-/// session live to <c>&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;session-id&gt;.jsonl</c>, so tailing that
-/// file gets the assistant's text cleanly without touching the ANSI/TUI stream. Ported from the host's former
-/// in-tree reader so the core carries no Claude-format knowledge; the config directory is resolved from this
-/// plugin's own opaque <c>ConfigJson</c> rather than a host-supplied path.
+/// The Claude plugin's own transcript reader (weg A) for the host's status (#39): a TTY session runs the real
+/// interactive TUI, so there is no parsed event stream — but <c>claude</c> writes every session live to
+/// <c>&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;session-id&gt;.jsonl</c>, so tailing that file gets the
+/// turn's activity cleanly without touching the ANSI/TUI stream. Ported from the host's former in-tree reader
+/// so the core carries no Claude-format knowledge; the config directory is resolved from this plugin's own
+/// opaque <c>ConfigJson</c> rather than a host-supplied path.
 /// <para>
 /// The session id is <em>not</em> forced on the launch (undocumented for interactive sessions and does not
 /// persist a transcript), so the file is identified as the new transcript that appears after launch — see
@@ -33,20 +33,6 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     // while still running (median longest silence 56s, p95 368s, max 3142s). Every one of those silences read as
     // "finished" and dropped the session to Done until the agent wrote again — the reported flicker. A thinking
     // pause is indistinguishable from completion by mtime alone, so no choice of window fixes it.
-
-    public async IAsyncEnumerable<string> ReadAssistantTextAsync(
-        string configJson,
-        IReadOnlySet<string> knownTranscriptsAtLaunch,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var reading in ReadActivityAsync(configJson, knownTranscriptsAtLaunch, cancellationToken).ConfigureAwait(false))
-        {
-            if (reading.RawLine is { } line && ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var assistantText))
-            {
-                yield return assistantText;
-            }
-        }
-    }
 
     public async IAsyncEnumerable<PluginTranscriptActivity> ReadActivityAsync(
         string configJson,

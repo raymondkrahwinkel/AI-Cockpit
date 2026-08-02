@@ -5,7 +5,9 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Consent;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
 
@@ -25,7 +27,7 @@ namespace Cockpit.Infrastructure.Tests.Assistant;
 /// <see cref="IAssistantAgentGateway"/> was never even asked.
 /// <para>
 /// <b>Two things in here are derived rather than typed out, and both are a lesson from AC-544's phase 2.</b> First,
-/// the tool set: it comes from the <c>[McpServerTool]</c> methods on the class, so a fifth tool added without the
+/// the tool set: it comes from the <c>[McpServerTool]</c> methods on the class, so a tool added without the
 /// pane check fails these tests on the day it is written rather than on the day someone remembers to extend a
 /// hand-written list. Second, the server's mount flags: they are read off the endpoint the app actually registers.
 /// The phase-2 fan-out tests hand-built an <c>McpServerConfig { Internal = true }</c>, which is a true statement
@@ -42,7 +44,9 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
     private readonly RecordingGateway _gateway = new();
 
-    private AssistantAgentMcpTools _Tools() => new(_gateway);
+    private readonly ApprovingBroker _consent = new();
+
+    private AssistantAgentMcpTools _Tools() => new(_gateway, _consent);
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -105,7 +109,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
     public async Task EveryToolOnTheActingServer_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheGateway()
     {
         // The test that matters. Not "start_agent refuses" — every tool on this server, taken from the class, so the
-        // fifth one cannot be added without its guard and still ship green.
+        // next one cannot be added without its guard and still ship green.
         var tools = _EveryTool();
         Assert.NotEmpty(tools); // A reflection query that found nothing would pass everything below it.
 
@@ -123,6 +127,11 @@ public sealed class AssistantActMountRuleTests : IDisposable
         // spawned, stopped or created something first would be a refusal in wording only. These tools cost money and
         // start processes, so "returned an error" is not the assertion — "never got as far as the host" is.
         Assert.Empty(_gateway.Calls);
+
+        // And never got as far as the operator either. The two tools that ask for approval must fail the pane check
+        // first: a card raised on behalf of a session that may not be here puts an unauthorised caller's own words on
+        // the operator's screen with a button under them.
+        Assert.Empty(_consent.Asked);
     }
 
     [Fact]
@@ -143,6 +152,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         }
 
         Assert.Empty(_gateway.Calls);
+        Assert.Empty(_consent.Asked);
     }
 
     [Fact]
@@ -166,6 +176,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         }
 
         Assert.Empty(_gateway.Calls);
+        Assert.Empty(_consent.Asked);
     }
 
     [Fact]
@@ -336,11 +347,56 @@ public sealed class AssistantActMountRuleTests : IDisposable
                 new AssistantWorkspaceRow("ws-new", name, "sessions", true, 0, true));
         }
 
+        public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"RemoveWorkspaceAsync({workspaceId})");
+            return Task.FromResult(WorkspaceRemovalResult.Removed("Release"));
+        }
+
         public Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
         {
             Calls.Add("ListProfilesAsync()");
             return Task.FromResult<IReadOnlyList<AssistantProfileRow>>(
                 [new AssistantProfileRow("Claude Test", "Claude", "sonnet")]);
+        }
+
+        public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"SendMessageAsync({paneId})");
+            return Task.FromResult(AgentMessageResult.Sent(paneId, "AC-545 tests", "msg-1", deduplicated: false, deliversAtTurnStart: true));
+        }
+
+        public Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"SendPromptAsync({paneId})");
+            return Task.FromResult(AgentPromptResult.Handed(paneId, "AC-545 tests", delivered: true));
+        }
+    }
+
+    /// <summary>
+    /// An operator who says yes to everything. The two tools that ask cannot reach the gateway without an answer, so
+    /// the sweeps above would otherwise be measuring the absence of a broker rather than the pane gate — and the
+    /// refusal sweeps assert that this one is never even consulted.
+    /// </summary>
+    private sealed class ApprovingBroker : IConsentBroker
+    {
+        public List<ConsentRequest> Asked { get; } = [];
+
+        public event EventHandler<ConsentPrompt>? PromptOpened;
+
+        public event EventHandler<Guid>? PromptClosed;
+
+        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(request);
+            // Referenced so the compiler does not warn the events are never raised; nothing here opens a prompt.
+            PromptOpened?.Invoke(this, null!);
+            PromptClosed?.Invoke(this, Guid.Empty);
+            return Task.FromResult(new ConsentDecision(ConsentOutcome.Approved, false));
+        }
+
+        public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
+        {
         }
     }
 

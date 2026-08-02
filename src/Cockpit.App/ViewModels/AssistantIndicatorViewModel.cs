@@ -105,6 +105,19 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isCollapsed;
 
+    /// <summary>
+    /// Whether the operator has switched the consent bypass on for at least one source (#AC-575). Drawn as a
+    /// standing mark on the chip, in both the expanded and the collapsed stand.
+    /// </summary>
+    /// <remarks>
+    /// It lives here rather than only in Options because it is the one setting in this feature that removes a
+    /// confirmation the operator would otherwise get, and criterion 5 asks that it be visible without opening
+    /// Options — the chip is the only surface that is always on screen while the assistant is on. Which sources,
+    /// and at what risk, is Options' question; this only answers "is anything being skipped right now".
+    /// </remarks>
+    [ObservableProperty]
+    private bool _isConsentBypassActive;
+
     /// <summary>Raised when the chip (expanded or rail) is clicked — opens the chat window, or starts the assistant lazily if it has not run yet. The host decides what that means; this view model only reports the click.</summary>
     public event EventHandler? Clicked;
 
