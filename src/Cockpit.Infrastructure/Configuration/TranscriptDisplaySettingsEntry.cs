@@ -2,10 +2,8 @@ using Cockpit.Core.TranscriptDisplay;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of <see cref="TranscriptDisplaySettings"/> in the <c>transcriptDisplay</c> section of
-/// <c>cockpit.json</c>.
-/// </summary>
+// On-disk shape of `TranscriptDisplaySettings` in the `transcriptDisplay` section of
+// `cockpit.json`.
 internal sealed class TranscriptDisplaySettingsEntry
 {
     public bool ShowTimestamps { get; set; }

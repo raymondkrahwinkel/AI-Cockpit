@@ -3,29 +3,26 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a <see cref="ProjectInfoField"/> inside a <see cref="ProjectEntry"/>. The label is the operator's
-/// own words and is never a key the cockpit looks anything up by.
-/// <para>
-/// A credential is stored under <see cref="SecretValue"/> — a field name the secret rule recognises
-/// (<c>SecretFields</c>), so it is encrypted at rest and scrubbed from backups without this entry knowing how
-/// (AC-318, the same route <c>ProfileEnvironmentVariableEntry</c> takes). An ordinary value stays readable in
-/// <c>cockpit.json</c> under <see cref="Value"/>, on purpose: the config file is the operator's to inspect.
-/// </para>
-/// </summary>
+// On-disk shape of a `ProjectInfoField` inside a `ProjectEntry`. The label is the operator's
+// own words and is never a key the cockpit looks anything up by.
+//
+// A credential is stored under `SecretValue` — a field name the secret rule recognises
+// (`SecretFields`), so it is encrypted at rest and scrubbed from backups without this entry knowing how
+// (AC-318, the same route `ProfileEnvironmentVariableEntry` takes). An ordinary value stays readable in
+// `cockpit.json` under `Value`, on purpose: the config file is the operator's to inspect.
 internal sealed class ProjectInfoFieldEntry
 {
-    /// <summary>Nullable because a hand-edited config can write <c>null</c> here, and the deserializer assigns it: the domain row takes strings, so the null is answered at this boundary rather than by every reader of it.</summary>
+    // Nullable because a hand-edited config can write `null` here, and the deserializer assigns it: the domain row takes strings, so the null is answered at this boundary rather than by every reader of it.
     public string? Label { get; set; }
 
-    /// <summary>The value when it is not a credential.</summary>
+    // The value when it is not a credential.
     public string? Value { get; set; }
 
-    /// <summary>The value when it is a credential; the field's name is what routes it through encryption.</summary>
+    // The value when it is a credential; the field's name is what routes it through encryption.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SecretValue { get; set; }
 
-    /// <summary>Absent for a row no session is told about, which is the default and most of them.</summary>
+    // Absent for a row no session is told about, which is the default and most of them.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool IsSharedWithSessions { get; set; }
 

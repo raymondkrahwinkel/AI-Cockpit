@@ -5,19 +5,16 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Security;
 
-/// <summary>
-/// Watches macOS for screen lock/unlock via CoreFoundation's distributed notification center (AC-5): the system-wide
-/// <c>com.apple.screenIsLocked</c> / <c>com.apple.screenIsUnlocked</c> notifications, the same source 1Password and
-/// Slack use for this. These names are observable-stable rather than a published Apple API — decades unchanged, but
-/// undocumented; the research covers that tradeoff, which is acceptable for Cockpit's distribution. <c>screenIsLocked</c>
-/// also fires on screensaver/sleep, i.e. slightly more eagerly than a strict session lock — which for "re-ask for the
-/// password" is the safe direction.
-/// <para>
-/// A distributed observer is delivered on the run loop of the thread that added it, so this runs a dedicated thread
-/// whose only job is <c>CFRunLoopRun</c>. There is no Mac here to live-verify on, so this is written to the standard
-/// P/Invoke pattern and kept thin; the gate that decides what a lock means lives in the testable coordinator above.
-/// </para>
-/// </summary>
+// Watches macOS for screen lock/unlock via CoreFoundation's distributed notification center (AC-5): the system-wide
+// `com.apple.screenIsLocked` / `com.apple.screenIsUnlocked` notifications, the same source 1Password and
+// Slack use for this. These names are observable-stable rather than a published Apple API — decades unchanged, but
+// undocumented; the research covers that tradeoff, which is acceptable for Cockpit's distribution. `screenIsLocked`
+// also fires on screensaver/sleep, i.e. slightly more eagerly than a strict session lock — which for "re-ask for the
+// password" is the safe direction.
+//
+// A distributed observer is delivered on the run loop of the thread that added it, so this runs a dedicated thread
+// whose only job is `CFRunLoopRun`. There is no Mac here to live-verify on, so this is written to the standard
+// P/Invoke pattern and kept thin; the gate that decides what a lock means lives in the testable coordinator above.
 [SupportedOSPlatform("macos")]
 internal sealed class MacScreenLockMonitor(ILogger<MacScreenLockMonitor> logger) : IScreenLockMonitor
 {

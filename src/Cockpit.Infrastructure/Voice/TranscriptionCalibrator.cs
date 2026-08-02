@@ -6,14 +6,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Runs the first-use calibration (AC-68) in two phases. Phase one times the configured model on every backend this
-/// machine can use — the CPU always, plus the GPU when a runtime loads — each in its own child process (Whisper.net
-/// loads its native runtime once per process), while this parent samples desktop hitch across the timed runs (GPU
-/// contention is system-wide, so a child on the GPU stutters this desktop as a real dictation would). A CPU-preferring
-/// verdict picks the backend. Phase two then times a ladder of models on that winning backend — one child, one
-/// factory per model — so the accuracy-vs-speed advice rests on real numbers too. The result is remembered per machine.
-/// </summary>
+// Runs the first-use calibration (AC-68) in two phases. Phase one times the configured model on every backend this
+// machine can use — the CPU always, plus the GPU when a runtime loads — each in its own child process (Whisper.net
+// loads its native runtime once per process), while this parent samples desktop hitch across the timed runs (GPU
+// contention is system-wide, so a child on the GPU stutters this desktop as a real dictation would). A CPU-preferring
+// verdict picks the backend. Phase two then times a ladder of models on that winning backend — one child, one
+// factory per model — so the accuracy-vs-speed advice rests on real numbers too. The result is remembered per machine.
 internal sealed class TranscriptionCalibrator(
     ITranscriptionAdvisor advisor,
     IUiHitchProbe hitchProbe,
@@ -21,8 +19,8 @@ internal sealed class TranscriptionCalibrator(
     IVoiceSettingsStore settingsStore,
     ILogger<TranscriptionCalibrator> logger) : ITranscriptionCalibrator, ISingletonService
 {
-    /// <summary>The models the phase-two ladder spans, most to least accurate. The configured model is added if it
-    /// is a known model not already here, so the table includes what the operator actually runs.</summary>
+    // The models the phase-two ladder spans, most to least accurate. The configured model is added if it
+    // is a known model not already here, so the table includes what the operator actually runs.
     private static readonly string[] CuratedModelLadder = ["large-v3-turbo", "small", "base", "tiny"];
 
     public async Task<TranscriptionCalibration> MeasureAsync(
@@ -63,7 +61,7 @@ internal sealed class TranscriptionCalibrator(
         return calibration;
     }
 
-    /// <summary>The CPU always, plus the fastest-family GPU the probe says will actually load here.</summary>
+    // The CPU always, plus the fastest-family GPU the probe says will actually load here.
     private IReadOnlyList<(VoiceBackendPreference Backend, string Label)> _BackendsToMeasure()
     {
         var backends = new List<(VoiceBackendPreference, string)> { (VoiceBackendPreference.Cpu, "CPU") };
@@ -177,12 +175,10 @@ internal sealed class TranscriptionCalibrator(
         return ladder;
     }
 
-    /// <summary>
-    /// Spawns this same executable in its headless calibration mode for one backend and a set of models, relaying
-    /// its protocol lines and collecting one result per model. A child that outlives a cancellation is killed with
-    /// its tree so a wedged native load cannot linger; the caller's <paramref name="onMessage"/> sees every decoded
-    /// line before it is handled here.
-    /// </summary>
+    // Spawns this same executable in its headless calibration mode for one backend and a set of models, relaying
+    // its protocol lines and collecting one result per model. A child that outlives a cancellation is killed with
+    // its tree so a wedged native load cannot linger; the caller's `onMessage` sees every decoded
+    // line before it is handled here.
     private async Task<IReadOnlyList<CalibrationChildMessage>> _RunChildAsync(
         VoiceBackendPreference backend,
         IReadOnlyList<string> models,
@@ -271,11 +267,9 @@ internal sealed class TranscriptionCalibrator(
         return results;
     }
 
-    /// <summary>
-    /// A non-zero exit with nothing decoded is the calibration equivalent of the dictation worker's "exited
-    /// unexpectedly" (AC-534): fold the remembered stderr tail in so the cause is not just "produced no result". A
-    /// zero exit or a child that said nothing on stderr logs nothing — routine calibration stays quiet.
-    /// </summary>
+    // A non-zero exit with nothing decoded is the calibration equivalent of the dictation worker's "exited
+    // unexpectedly" (AC-534): fold the remembered stderr tail in so the cause is not just "produced no result". A
+    // zero exit or a child that said nothing on stderr logs nothing — routine calibration stays quiet.
     private void _LogChildFailureIfAny(int exitCode, string label, ProcessStderrTail stderrTail)
     {
         if (exitCode == 0)

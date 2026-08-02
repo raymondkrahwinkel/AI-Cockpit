@@ -2,10 +2,8 @@ using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a single <see cref="PermissionRule"/> in the <c>permissionRules</c> section.
-/// Stores the scope as its enum name so the JSON stays human-readable (<c>Exact</c>/<c>Wildcard</c>).
-/// </summary>
+// On-disk shape of a single `PermissionRule` in the `permissionRules` section.
+// Stores the scope as its enum name so the JSON stays human-readable (`Exact`/`Wildcard`).
 internal sealed class PermissionRuleEntry
 {
     public string ToolName { get; set; } = string.Empty;

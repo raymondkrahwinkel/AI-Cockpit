@@ -6,28 +6,23 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-/// <summary>
-/// Reads the macOS desktop (AC-328): the displays from CoreGraphics, and their pixels from
-/// <c>/usr/sbin/screencapture</c>, one display at a time.
-/// </summary>
-/// <remarks>
-/// Not ScreenCaptureKit. That framework is for a stream of frames and needs Objective-C interop for a still the
-/// system binary already writes to a path. Shelling out also keeps the "the capture is finished" signal clean:
-/// the process exits.
-/// <para>
-/// There is no Mac here to run this against, so — as with <c>MacScreenLockMonitor</c> — the interop is kept thin
-/// and written to the standard P/Invoke pattern, and everything that decides anything lives above the seam where
-/// it is tested. What that leaves unverified is stated rather than glossed: <c>CGGetActiveDisplayList</c>'s
-/// ordering matching <c>screencapture -D</c>'s numbering is the assumption this rests on.
-/// </para>
-/// </remarks>
+// Reads the macOS desktop (AC-328): the displays from CoreGraphics, and their pixels from
+// `/usr/sbin/screencapture`, one display at a time.
+// Not ScreenCaptureKit. That framework is for a stream of frames and needs Objective-C interop for a still the
+// system binary already writes to a path. Shelling out also keeps the "the capture is finished" signal clean:
+// the process exits.
+//
+// There is no Mac here to run this against, so — as with `MacScreenLockMonitor` — the interop is kept thin
+// and written to the standard P/Invoke pattern, and everything that decides anything lives above the seam where
+// it is tested. What that leaves unverified is stated rather than glossed: `CGGetActiveDisplayList`'s
+// ordering matching `screencapture -D`'s numbering is the assumption this rests on.
 [SupportedOSPlatform("macos")]
 internal sealed class MacScreenReader(ILogger<MacScreenReader> logger) : IMacScreenReader
 {
     private const string CoreGraphics = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
     private const string ScreenCapture = "/usr/sbin/screencapture";
 
-    /// <summary>More displays than anyone attaches, and a fixed ceiling is what the CoreGraphics call wants.</summary>
+    // More displays than anyone attaches, and a fixed ceiling is what the CoreGraphics call wants.
     private const int MaxDisplays = 16;
 
     public IReadOnlyList<MacDisplay> ReadDisplays()
@@ -115,7 +110,7 @@ internal sealed class MacScreenReader(ILogger<MacScreenReader> logger) : IMacScr
             (int)Math.Ceiling(bounds.Origin.Y + bounds.Size.Height) - top);
     }
 
-    /// <summary>Ends a capture nobody is waiting for any more. A process that has already exited is the ordinary case, not a failure.</summary>
+    // Ends a capture nobody is waiting for any more. A process that has already exited is the ordinary case, not a failure.
     private void _TryKill(Process process)
     {
         try
@@ -131,7 +126,7 @@ internal sealed class MacScreenReader(ILogger<MacScreenReader> logger) : IMacScr
         }
     }
 
-    /// <summary>Removes the file screencapture was told to write, whether or not it got that far — a picture of the operator's screen is not something to leave in the temp directory.</summary>
+    // Removes the file screencapture was told to write, whether or not it got that far — a picture of the operator's screen is not something to leave in the temp directory.
     private void _Discard(string path)
     {
         try

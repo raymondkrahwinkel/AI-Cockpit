@@ -3,14 +3,14 @@ using Cockpit.Core.Screenshots;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="ScreenshotSettings"/> in the <c>screenshots</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of `ScreenshotSettings` in the `screenshots` section of `cockpit.json`.
 internal sealed class ScreenshotSettingsEntry
 {
     public bool GlobalHotkeyEnabled { get; set; }
 
     public string HotkeyKeyName { get; set; } = "F8";
 
-    /// <summary>The last region as four numbers, so the file stays readable and a hand-edited one cannot land a half-built rectangle in memory.</summary>
+    // The last region as four numbers, so the file stays readable and a hand-edited one cannot land a half-built rectangle in memory.
     public int[]? LastRegion { get; set; }
 
     public bool PreviewEnabled { get; set; }

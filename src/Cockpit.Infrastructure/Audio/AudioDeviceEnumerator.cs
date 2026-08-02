@@ -6,14 +6,12 @@ using CoreAudioDeviceInfo = Cockpit.Core.Audio.AudioDeviceInfo;
 
 namespace Cockpit.Infrastructure.Audio;
 
-/// <summary>
-/// The single serialized gateway to the shared <see cref="AudioEngine"/>'s device enumeration. Capture,
-/// playback and the Options device list all query the same engine instance, potentially from different
-/// threads at once — a push-to-talk hold or TTS playback resolves its device on a background thread while
-/// the Options dialog enumerates on the UI thread. The engine gives no concurrency guarantee, so every
-/// <c>UpdateAudioDevicesInfo</c> + device-array read runs under one lock here rather than being duplicated
-/// (and raced) across the three call sites.
-/// </summary>
+// The single serialized gateway to the shared `AudioEngine`'s device enumeration. Capture,
+// playback and the Options device list all query the same engine instance, potentially from different
+// threads at once — a push-to-talk hold or TTS playback resolves its device on a background thread while
+// the Options dialog enumerates on the UI thread. The engine gives no concurrency guarantee, so every
+// `UpdateAudioDevicesInfo` + device-array read runs under one lock here rather than being duplicated
+// (and raced) across the three call sites.
 internal sealed class AudioDeviceEnumerator(AudioEngine engine) : ISingletonService
 {
     private readonly object _gate = new();
@@ -36,7 +34,7 @@ internal sealed class AudioDeviceEnumerator(AudioEngine engine) : ISingletonServ
         }
     }
 
-    /// <summary>Empty name → the system default device (null); a configured name no longer present also falls back to the default, so an unplugged device never leaves capture/playback dead.</summary>
+    // Empty name → the system default device (null); a configured name no longer present also falls back to the default, so an unplugged device never leaves capture/playback dead.
     public DeviceInfo? ResolveInputDevice(string preferredName)
     {
         lock (_gate)

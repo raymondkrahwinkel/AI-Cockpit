@@ -5,22 +5,17 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-/// <summary>
-/// Reads the Windows desktop through GDI (AC-327): the whole virtual screen in one <c>BitBlt</c>, and the
-/// monitors behind it from <c>EnumDisplayMonitors</c>.
-/// </summary>
-/// <remarks>
-/// <c>BitBlt</c> rather than DXGI Desktop Duplication. Duplication is the right tool for a stream of frames and
-/// costs a native dependency plus a few hundred lines of device, output and acquire management; for one still of
-/// a screen nobody is animating it lands on the same pixels. Both are equally subject to
-/// <c>WDA_EXCLUDEFROMCAPTURE</c>, which the compositor enforces below either of them, so neither sees a window
-/// that opted out.
-/// <para>
-/// Coordinates come from the same enumeration as the pixels: the virtual-screen metrics say what is blitted, and
-/// the monitor rectangles are in that same space, so the image and the layout cannot drift apart the way they
-/// can where the layout has to be asked for separately (AC-326).
-/// </para>
-/// </remarks>
+// Reads the Windows desktop through GDI (AC-327): the whole virtual screen in one `BitBlt`, and the
+// monitors behind it from `EnumDisplayMonitors`.
+// `BitBlt` rather than DXGI Desktop Duplication. Duplication is the right tool for a stream of frames and
+// costs a native dependency plus a few hundred lines of device, output and acquire management; for one still of
+// a screen nobody is animating it lands on the same pixels. Both are equally subject to
+// `WDA_EXCLUDEFROMCAPTURE`, which the compositor enforces below either of them, so neither sees a window
+// that opted out.
+//
+// Coordinates come from the same enumeration as the pixels: the virtual-screen metrics say what is blitted, and
+// the monitor rectangles are in that same space, so the image and the layout cannot drift apart the way they
+// can where the layout has to be asked for separately (AC-326).
 [SupportedOSPlatform("windows")]
 internal sealed class Win32ScreenReader : IWindowsScreenReader
 {
@@ -31,19 +26,19 @@ internal sealed class Win32ScreenReader : IWindowsScreenReader
 
     private const int SrcCopy = 0x00CC0020;
 
-    /// <summary>Includes layered windows in the blit. Without it a window drawn with transparency is simply missing from the capture.</summary>
+    // Includes layered windows in the blit. Without it a window drawn with transparency is simply missing from the capture.
     private const int CaptureBlt = 0x40000000;
 
     private const int BiRgb = 0;
     private const uint DibRgbColors = 0;
 
-    /// <summary>What <c>GetDpiForMonitor</c> is asked for: the factor this monitor's windows are actually scaled by.</summary>
+    // What `GetDpiForMonitor` is asked for: the factor this monitor's windows are actually scaled by.
     private const int MdtEffectiveDpi = 0;
 
-    /// <summary>The DPI at which Windows reports no scaling. A monitor's factor is its DPI over this.</summary>
+    // The DPI at which Windows reports no scaling. A monitor's factor is its DPI over this.
     private const double UnscaledDpi = 96d;
 
-    /// <summary><c>PROCESS_PER_MONITOR_DPI_AWARE</c> — the process is told each monitor's real DPI rather than the primary's.</summary>
+    // `PROCESS_PER_MONITOR_DPI_AWARE` — the process is told each monitor's real DPI rather than the primary's.
     private const int ProcessPerMonitorDpiAware = 2;
 
     public bool IsPerMonitorDpiAware =>
@@ -91,11 +86,9 @@ internal sealed class Win32ScreenReader : IWindowsScreenReader
         }
     }
 
-    /// <summary>
-    /// Test seam: the same copy against a device context a test drew itself. Row order and the bitmap handover
-    /// to <c>GetDIBits</c> are the two ways this can be wrong while still returning a perfectly valid PNG of
-    /// exactly the right size — so they need a source whose pixels are known, which the desktop's never are.
-    /// </summary>
+    // Test seam: the same copy against a device context a test drew itself. Row order and the bitmap handover
+    // to `GetDIBits` are the two ways this can be wrong while still returning a perfectly valid PNG of
+    // exactly the right size — so they need a source whose pixels are known, which the desktop's never are.
     internal byte[] CopyFromForTest(IntPtr source, CaptureRect bounds) => _CopyFrom(source, bounds);
 
     private static byte[] _CopyFrom(IntPtr screen, CaptureRect bounds)
@@ -140,10 +133,8 @@ internal sealed class Win32ScreenReader : IWindowsScreenReader
         }
     }
 
-    /// <summary>
-    /// One monitor as the capture contract describes it, or null when Windows will not say — a display that was
-    /// unplugged between being enumerated and being asked about is the ordinary way that happens.
-    /// </summary>
+    // One monitor as the capture contract describes it, or null when Windows will not say — a display that was
+    // unplugged between being enumerated and being asked about is the ordinary way that happens.
     private static DesktopDisplay? _Describe(IntPtr monitor)
     {
         var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
@@ -167,11 +158,9 @@ internal sealed class Win32ScreenReader : IWindowsScreenReader
         };
     }
 
-    /// <summary>
-    /// The bitmap's rows read straight into Skia's buffer and encoded. A negative height asks GDI for top-down
-    /// rows, which is the order Skia expects — the default is bottom-up and would hand back the desktop upside
-    /// down.
-    /// </summary>
+    // The bitmap's rows read straight into Skia's buffer and encoded. A negative height asks GDI for top-down
+    // rows, which is the order Skia expects — the default is bottom-up and would hand back the desktop upside
+    // down.
     private static byte[] _EncodePng(IntPtr deviceContext, IntPtr bitmap, int width, int height)
     {
         using var surface = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque));

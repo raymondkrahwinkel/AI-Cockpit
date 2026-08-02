@@ -2,10 +2,8 @@ using Cockpit.Core.Rendering;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// The <c>rendering</c> section of <c>cockpit.json</c> (AC-67): the operator's render-backend choice. The enum
-/// round-trips as its name via the shared <see cref="System.Text.Json.Serialization.JsonStringEnumConverter"/>.
-/// </summary>
+// The `rendering` section of `cockpit.json` (AC-67): the operator's render-backend choice. The enum
+// round-trips as its name via the shared `System.Text.Json.Serialization.JsonStringEnumConverter`.
 internal sealed class RenderingSettingsEntry
 {
     public RenderBackendChoice Backend { get; set; } = RenderBackendChoice.Auto;

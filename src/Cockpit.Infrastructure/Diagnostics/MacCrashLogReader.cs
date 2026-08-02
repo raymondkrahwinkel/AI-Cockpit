@@ -4,12 +4,10 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.Infrastructure.Diagnostics;
 
-/// <summary>
-/// macOS crash and memory-kill reports, from <c>~/Library/Logs/DiagnosticReports</c> (AC-58). This is the folder
-/// AC-57 needed and the tester could not find: app crashes land here as <c>.ips</c> (and legacy <c>.crash</c>)
-/// files, and a real memory-pressure kill leaves a <c>JetsamEvent-*.ips</c> — which is shown even though it does
-/// not name the app, because its absence was itself the clue that AC-57's crash was in-process, not a jetsam kill.
-/// </summary>
+// macOS crash and memory-kill reports, from `~/Library/Logs/DiagnosticReports` (AC-58). This is the folder
+// AC-57 needed and the tester could not find: app crashes land here as `.ips` (and legacy `.crash`)
+// files, and a real memory-pressure kill leaves a `JetsamEvent-*.ips` — which is shown even though it does
+// not name the app, because its absence was itself the clue that AC-57's crash was in-process, not a jetsam kill.
 [SupportedOSPlatform("macos")]
 internal sealed class MacCrashLogReader : ICrashLogReader
 {

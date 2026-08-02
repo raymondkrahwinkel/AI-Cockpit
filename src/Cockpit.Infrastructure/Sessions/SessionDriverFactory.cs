@@ -7,19 +7,15 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// <see cref="ISessionDriverFactory"/> that resolves a fresh driver per session from the container. It is
-/// an orchestrator building a runtime-parameterized child (the driver chosen by the profile's provider),
-/// which is the sanctioned use of <see cref="IServiceProvider"/> (Code.md §2). A local provider is an in-tree
-/// OpenAI-compatible driver; every other session — a plugin profile, and a profile-less default session — runs
-/// a plugin-registered driver resolved from <see cref="IPluginProviderRegistry"/> and wrapped in a
-/// <see cref="PluginSessionDriverAdapter"/>.
-/// </summary>
-/// <remarks>
-/// Fase 4: Claude is a provider plugin like every other. A Claude profile is migrated to a
-/// <see cref="PluginProviderConfig"/> on load, so it takes the plugin arm; a profile-less default session runs the
-/// bundled Claude provider plugin with a default config.
-/// </remarks>
+// `ISessionDriverFactory` that resolves a fresh driver per session from the container. It is
+// an orchestrator building a runtime-parameterized child (the driver chosen by the profile's provider),
+// which is the sanctioned use of `IServiceProvider` (Code.md §2). A local provider is an in-tree
+// OpenAI-compatible driver; every other session — a plugin profile, and a profile-less default session — runs
+// a plugin-registered driver resolved from `IPluginProviderRegistry` and wrapped in a
+// `PluginSessionDriverAdapter`.
+// Fase 4: Claude is a provider plugin like every other. A Claude profile is migrated to a
+// `PluginProviderConfig` on load, so it takes the plugin arm; a profile-less default session runs the
+// bundled Claude provider plugin with a default config.
 internal sealed class SessionDriverFactory(IServiceProvider services, IPluginProviderRegistry pluginProviderRegistry) : ISessionDriverFactory, ISingletonService
 {
     public ISessionDriver Create(SessionProfile? profile)

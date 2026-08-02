@@ -6,18 +6,15 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// The MCP tools a session uses to say what it is working on (#AC-13), exposed as <c>mcp__cockpit-session__*</c>.
-/// Deliberately its own server, separate from the orchestrator: setting your own status is a capability every
-/// session should have — including a delegated sub-agent, which is denied the orchestrator (delegation) tools to
-/// stop it delegating further, yet still needs to report what it is doing. Thin by design: it only routes to
-/// <see cref="ISessionLabelSink"/>, which the App implements over its session view-models.
-/// <para>
-/// Status and name travel on one tool because they are one act — "I picked this up" — and because the workflow node
-/// that does the same job (<c>cockpit.set-status</c>) already carries both. They are not equally binding: the
-/// statusline is the agent's to write, the name is only proposed (#AC-312).
-/// </para>
-/// </summary>
+// The MCP tools a session uses to say what it is working on (#AC-13), exposed as `mcp__cockpit-session__*`.
+// Deliberately its own server, separate from the orchestrator: setting your own status is a capability every
+// session should have — including a delegated sub-agent, which is denied the orchestrator (delegation) tools to
+// stop it delegating further, yet still needs to report what it is doing. Thin by design: it only routes to
+// `ISessionLabelSink`, which the App implements over its session view-models.
+//
+// Status and name travel on one tool because they are one act — "I picked this up" — and because the workflow node
+// that does the same job (`cockpit.set-status`) already carries both. They are not equally binding: the
+// statusline is the agent's to write, the name is only proposed (#AC-312).
 internal sealed class SessionStatusTools(ISessionLabelSink labels)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };

@@ -4,12 +4,10 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Probes the host once for loadable Whisper GPU runtimes (AC-68 slice 1). It leans on the same
-/// <see cref="WhisperGpuProbe"/> the runtime fetcher uses, so "usable" here means exactly what it means at
-/// load time — a CUDA/Vulkan native library that loads and reports a device — never a guess from the OS alone.
-/// GPU runtimes are only published off macOS, so a Mac (or an unknown OS) is reported CPU-only without probing.
-/// </summary>
+// Probes the host once for loadable Whisper GPU runtimes (AC-68 slice 1). It leans on the same
+// `WhisperGpuProbe` the runtime fetcher uses, so "usable" here means exactly what it means at
+// load time — a CUDA/Vulkan native library that loads and reports a device — never a guess from the OS alone.
+// GPU runtimes are only published off macOS, so a Mac (or an unknown OS) is reported CPU-only without probing.
 internal sealed class TranscriptionAdvisor : ITranscriptionAdvisor, ISingletonService
 {
     private readonly object _gate = new();

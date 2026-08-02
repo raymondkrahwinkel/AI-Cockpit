@@ -15,14 +15,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// <see cref="ISessionDriver"/> for the local OpenAI-compatible providers (Ollama, LM Studio) via
-/// Microsoft.Extensions.AI's <see cref="IChatClient"/>. It streams assistant text, holds the conversation
-/// history itself (HTTP is stateless), and — when the shared MCP registry has servers — runs an agentic
-/// tool-loop (#26): the model's tool calls are gated through the cockpit's PermissionRequested flow and
-/// executed via MCP only on approval. The Claude-CLI-specific control operations (permission mode, thinking
-/// budget) remain no-ops; <see cref="Capabilities"/> tells the UI which controls to show.
-/// </summary>
+// `ISessionDriver` for the local OpenAI-compatible providers (Ollama, LM Studio) via
+// Microsoft.Extensions.AI's `IChatClient`. It streams assistant text, holds the conversation
+// history itself (HTTP is stateless), and — when the shared MCP registry has servers — runs an agentic
+// tool-loop (#26): the model's tool calls are gated through the cockpit's PermissionRequested flow and
+// executed via MCP only on approval. The Claude-CLI-specific control operations (permission mode, thinking
+// budget) remain no-ops; `Capabilities` tells the UI which controls to show.
 internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalGate, ITransientService
 {
     private readonly IChatClientFactory _chatClientFactory;
@@ -258,13 +256,11 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         }
     }
 
-    /// <summary>
-    /// Streams one model turn under <paramref name="tools"/> (null = no tools), emitting the assistant deltas and a
-    /// terminal <see cref="TurnCompleted"/>. A turn that produces no visible text and no tool call surfaces a
-    /// "no response" notice rather than a silent success, and only a turn with text is carried into the history so a
-    /// blank assistant message never rides along in later requests (AC-132). Exceptions propagate to the caller,
-    /// which decides between an interrupt, a tool-unsupported retry, and a plain error.
-    /// </summary>
+    // Streams one model turn under `tools` (null = no tools), emitting the assistant deltas and a
+    // terminal `TurnCompleted`. A turn that produces no visible text and no tool call surfaces a
+    // "no response" notice rather than a silent success, and only a turn with text is carried into the history so a
+    // blank assistant message never rides along in later requests (AC-132). Exceptions propagate to the caller,
+    // which decides between an interrupt, a tool-unsupported retry, and a plain error.
     private async Task _StreamTurnAsync(IReadOnlyList<AITool>? tools, CancellationToken cancellationToken)
     {
         var options = new ChatOptions { ModelId = _model, Tools = tools is { Count: > 0 } ? [.. tools] : null };
@@ -324,12 +320,10 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
     }
 
-    /// <summary>
-    /// Whether a failed request looks like the local runtime refusing tool-calling itself — a GGUF/chat-template
-    /// tool-parser that cannot be generated, or a server saying tools are unsupported — as opposed to an ordinary
-    /// request error. A heuristic over the response body (AC-135): the message wording is the only signal a local
-    /// OpenAI-compatible server gives, and only weighed when tools were actually sent this turn.
-    /// </summary>
+    // Whether a failed request looks like the local runtime refusing tool-calling itself — a GGUF/chat-template
+    // tool-parser that cannot be generated, or a server saying tools are unsupported — as opposed to an ordinary
+    // request error. A heuristic over the response body (AC-135): the message wording is the only signal a local
+    // OpenAI-compatible server gives, and only weighed when tools were actually sent this turn.
     internal static bool _IsToolTemplateError(string message) =>
         _ToolTemplateErrorSignals.Any(signal => message.Contains(signal, StringComparison.OrdinalIgnoreCase));
 
@@ -345,21 +339,17 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         "tool_use is not supported",
     ];
 
-    /// <summary>
-    /// Whether a turn's text still carries a Hermes tool-call marker the parser shim did not convert — an opening
-    /// <c>&lt;function=</c> for a block that never completed, or a stray <c>&lt;/tool_call&gt;</c> wrapper. Weighed only
-    /// when no tool actually ran this turn, so a converted-and-executed call (which leaves no marker) never trips it.
-    /// </summary>
+    // Whether a turn's text still carries a Hermes tool-call marker the parser shim did not convert — an opening
+    // `&lt;function=` for a block that never completed, or a stray `&lt;/tool_call&gt;` wrapper. Weighed only
+    // when no tool actually ran this turn, so a converted-and-executed call (which leaves no marker) never trips it.
     internal static bool _ContainsUnprocessedToolCallMarker(string text) =>
         text.Contains("<function=", StringComparison.OrdinalIgnoreCase)
         || text.Contains("</tool_call>", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The most useful message for a failed turn: the exception message, plus — for a
-    /// <see cref="ClientResultException"/> from the OpenAI SDK — the HTTP response body. A local server puts the
-    /// real reason there (an <c>exceed_context_size_error</c>, a tool-template parser failure, …), which the
-    /// exception's own "HTTP 400 (Bad Request)" message hides (AC-132).
-    /// </summary>
+    // The most useful message for a failed turn: the exception message, plus — for a
+    // `ClientResultException` from the OpenAI SDK — the HTTP response body. A local server puts the
+    // real reason there (an `exceed_context_size_error`, a tool-template parser failure, …), which the
+    // exception's own "HTTP 400 (Bad Request)" message hides (AC-132).
     internal static string _DescribeError(Exception ex)
     {
         if (ex is ClientResultException clientError)

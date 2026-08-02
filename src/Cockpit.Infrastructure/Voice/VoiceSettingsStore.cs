@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Persists <see cref="VoiceSettings"/> under the <c>voice</c> section of <c>cockpit.json</c> (same
-/// file/pattern as <c>LayoutSettingsStore</c>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched. When no settings
-/// were ever saved, <see cref="LoadAsync"/> returns the defaults (voice disabled).
-/// </summary>
+// Persists `VoiceSettings` under the `voice` section of `cockpit.json` (same
+// file/pattern as `LayoutSettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched. When no settings
+// were ever saved, `LoadAsync` returns the defaults (voice disabled).
 internal sealed class VoiceSettingsStore : IVoiceSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class VoiceSettingsStore : IVoiceSettingsStore, ISingletonServic
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal VoiceSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

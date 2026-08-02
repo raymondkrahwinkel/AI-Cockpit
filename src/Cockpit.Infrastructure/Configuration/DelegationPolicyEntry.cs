@@ -2,10 +2,8 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a profile's <see cref="DelegationPolicy"/> (#67) in the <c>profiles</c> section. Absent for a
-/// profile that is not a delegation target, which is every profile until it is opted in by hand.
-/// </summary>
+// On-disk shape of a profile's `DelegationPolicy` (#67) in the `profiles` section. Absent for a
+// profile that is not a delegation target, which is every profile until it is opted in by hand.
 internal sealed class DelegationPolicyEntry
 {
     public bool AllowedAsTarget { get; set; }

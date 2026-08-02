@@ -4,7 +4,7 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.Infrastructure.Diagnostics;
 
-/// <summary>Linux's process table, read straight from <c>/proc</c> (#78) — no shelling out, so it is cheap enough to do every couple of seconds.</summary>
+// Linux's process table, read straight from `/proc` (#78) — no shelling out, so it is cheap enough to do every couple of seconds.
 [SupportedOSPlatform("linux")]
 internal sealed class ProcProcessTableReader : IProcessTableReader
 {

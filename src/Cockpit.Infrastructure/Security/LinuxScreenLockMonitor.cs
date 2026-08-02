@@ -4,26 +4,22 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Security;
 
-/// <summary>
-/// Watches systemd-logind for this session's lock/unlock on the D-Bus system bus (AC-5). This is the
-/// desktop-environment-independent source the research recommended: GNOME, KDE and anything else that integrates with
-/// logind expose the operator's lock state as the session's <c>LockedHint</c> property.
-/// <para>
-/// Two things make this work from a real desktop launch, both of which the first cut got wrong. First, the session is
-/// resolved from <c>XDG_SESSION_ID</c> (falling back to logind's <c>"auto"</c>), not from this process's PID: a cockpit
-/// started as an AppImage or <c>.desktop</c> entry runs under <c>app.slice</c> and belongs to no session of its own, so
-/// <c>GetSessionByPID</c> answered <c>NoSessionForPID</c> and the feature never came up. Second, it reacts to
-/// <c>LockedHint</c> via <c>PropertiesChanged</c> rather than the session's <c>Lock</c> signal, which GNOME raises only
-/// for <c>loginctl lock-session</c> and not for an interactive Super+L.
-/// </para>
-/// <para>
-/// Best-effort by nature: on a minimal window manager with no logind lock integration nothing sets the hint, and there
-/// is then no portable notification to have. A connection or lookup that fails is logged once and left — the app keeps
-/// running with the feature simply inert, never crashed. This half cannot be unit-tested (it needs a live system bus
-/// and a real desktop lock), so it is deliberately thin; the gate that decides what a lock means lives in the testable
-/// coordinator above it. Raymond live-verifies this on Linux.
-/// </para>
-/// </summary>
+// Watches systemd-logind for this session's lock/unlock on the D-Bus system bus (AC-5). This is the
+// desktop-environment-independent source the research recommended: GNOME, KDE and anything else that integrates with
+// logind expose the operator's lock state as the session's `LockedHint` property.
+//
+// Two things make this work from a real desktop launch, both of which the first cut got wrong. First, the session is
+// resolved from `XDG_SESSION_ID` (falling back to logind's `"auto"`), not from this process's PID: a cockpit
+// started as an AppImage or `.desktop` entry runs under `app.slice` and belongs to no session of its own, so
+// `GetSessionByPID` answered `NoSessionForPID` and the feature never came up. Second, it reacts to
+// `LockedHint` via `PropertiesChanged` rather than the session's `Lock` signal, which GNOME raises only
+// for `loginctl lock-session` and not for an interactive Super+L.
+//
+// Best-effort by nature: on a minimal window manager with no logind lock integration nothing sets the hint, and there
+// is then no portable notification to have. A connection or lookup that fails is logged once and left — the app keeps
+// running with the feature simply inert, never crashed. This half cannot be unit-tested (it needs a live system bus
+// and a real desktop lock), so it is deliberately thin; the gate that decides what a lock means lives in the testable
+// coordinator above it. Raymond live-verifies this on Linux.
 internal sealed class LinuxScreenLockMonitor(ILogger<LinuxScreenLockMonitor> logger) : IScreenLockMonitor
 {
     private const string BusName = "org.freedesktop.login1";
@@ -82,11 +78,9 @@ internal sealed class LinuxScreenLockMonitor(ILogger<LinuxScreenLockMonitor> log
         }
     }
 
-    /// <summary>
-    /// Resolves the operator's login session, tolerating a launch from an app-scope where the process has no session
-    /// of its own. <c>XDG_SESSION_ID</c> is a plain hashmap lookup in logind, so it works regardless of cgroup; a stale
-    /// or absent id falls through to <c>"auto"</c>, which logind maps server-side to the user's display session.
-    /// </summary>
+    // Resolves the operator's login session, tolerating a launch from an app-scope where the process has no session
+    // of its own. `XDG_SESSION_ID` is a plain hashmap lookup in logind, so it works regardless of cgroup; a stale
+    // or absent id falls through to `"auto"`, which logind maps server-side to the user's display session.
     private async Task<ObjectPath> _ResolveDisplaySessionPathAsync(ILogindManager manager)
     {
         var sessionId = Environment.GetEnvironmentVariable("XDG_SESSION_ID");

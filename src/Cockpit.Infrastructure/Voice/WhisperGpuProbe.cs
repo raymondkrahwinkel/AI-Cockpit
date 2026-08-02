@@ -3,21 +3,17 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Answers whether this machine can actually use a GPU backend, before <see cref="WhisperRuntimeCache"/>
-/// spends hundreds of megabytes fetching its runtime.
-/// <para>
-/// The CUDA probe mirrors Whisper.net's own <c>CudaHelper</c> (read at tag 1.9.1) deliberately: it decides
-/// which runtimes it is willing to load, so any disagreement here means we either fetch a runtime it will
-/// refuse or skip one it would have used. It pairs <see cref="WhisperRuntimeBackend.Cuda"/> with CUDA major
-/// 13 and <see cref="WhisperRuntimeBackend.Cuda12"/> with major 12, and rejects a mismatch — which is why
-/// both exist rather than one: CUDA-13 natives on a CUDA-12.8 host fall silently back to CPU.
-/// </para>
-/// <para>
-/// Probing before the download is not circular: cudart is not in the runtime packages (they hold only the
-/// ggml/whisper natives), it comes from a system CUDA install.
-/// </para>
-/// </summary>
+// Answers whether this machine can actually use a GPU backend, before `WhisperRuntimeCache`
+// spends hundreds of megabytes fetching its runtime.
+//
+// The CUDA probe mirrors Whisper.net's own `CudaHelper` (read at tag 1.9.1) deliberately: it decides
+// which runtimes it is willing to load, so any disagreement here means we either fetch a runtime it will
+// refuse or skip one it would have used. It pairs `WhisperRuntimeBackend.Cuda` with CUDA major
+// 13 and `WhisperRuntimeBackend.Cuda12` with major 12, and rejects a mismatch — which is why
+// both exist rather than one: CUDA-13 natives on a CUDA-12.8 host fall silently back to CPU.
+//
+// Probing before the download is not circular: cudart is not in the runtime packages (they hold only the
+// ggml/whisper natives), it comes from a system CUDA install.
 internal static class WhisperGpuProbe
 {
     private const int CudaSuccess = 0;
@@ -37,11 +33,9 @@ internal static class WhisperGpuProbe
         _ => false,
     };
 
-    /// <summary>
-    /// A loadable cudart of the expected major version, reporting at least one device. The version check is the
-    /// point: a host with CUDA 12 loads a cudart just fine, and only the major tells us the CUDA-13 natives
-    /// would be refused.
-    /// </summary>
+    // A loadable cudart of the expected major version, reporting at least one device. The version check is the
+    // point: a host with CUDA 12 loads a cudart just fine, and only the major tells us the CUDA-13 natives
+    // would be refused.
     private static bool _HasCudaDevice(int expectedMajorVersion)
     {
         foreach (var libraryName in _CudartLibraryNames(expectedMajorVersion))
@@ -98,12 +92,10 @@ internal static class WhisperGpuProbe
             // is what decides whether whatever it resolves to is the one we want.
             : [$"libcudart.so.{majorVersion}", "libcudart.so"];
 
-    /// <summary>
-    /// Whether a Vulkan loader is installed. Whisper.net probes nothing for Vulkan — it just tries the natives —
-    /// so this is our own bar, and a deliberately low one: it keeps a machine with no GPU drivers at all from
-    /// fetching 151 MB, but a loader present without a usable device still ends up on the CPU floor. Answering
-    /// that properly needs a VkInstance, which is a lot of interop to save one download on a rare machine.
-    /// </summary>
+    // Whether a Vulkan loader is installed. Whisper.net probes nothing for Vulkan — it just tries the natives —
+    // so this is our own bar, and a deliberately low one: it keeps a machine with no GPU drivers at all from
+    // fetching 151 MB, but a loader present without a usable device still ends up on the CPU floor. Answering
+    // that properly needs a VkInstance, which is a lot of interop to save one download on a rare machine.
     private static IEnumerable<string> _VulkanLibraryNames() =>
         OperatingSystem.IsWindows() ? ["vulkan-1"] : ["libvulkan.so.1", "libvulkan.so"];
 

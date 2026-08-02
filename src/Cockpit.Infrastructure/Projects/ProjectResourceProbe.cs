@@ -3,114 +3,99 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.Infrastructure.Projects;
 
-/// <summary>
-/// Checks a project's <see cref="ProjectResource"/> rows for a reference that names an absolute, existing-or-not
-/// filesystem path and finds it missing (AC-484) — the one piece of I/O
-/// <see cref="Cockpit.Core.Sessions.SessionStartDefaults.Resolve"/> deliberately never does itself (see that
-/// method's own remarks on <c>unresolvedReferences</c>: purity is a property of that class, not an oversight here).
-/// The layer that assembles an actual launch (<c>ProjectQuickStart</c>, the New-session dialog's Start) runs this
-/// once and hands the result in as plain data — both call sites do so synchronously from a UI thread
-/// (<c>NewSessionDialogViewModel.Confirm()</c>'s <c>[RelayCommand]</c>, and <c>ProjectQuickStart.ComposeAsync</c>
-/// after its own <c>ConfigureAwait(true)</c>), so this method is one of a very small number in the codebase whose
-/// own running time is a UI-responsiveness concern, not merely a correctness one.
-/// <para>
-/// Scope is deliberately narrow — only a reference that is a <em>fully qualified</em> path
-/// (<see cref="Path.IsPathFullyQualified(string)"/>) is checked at all:
-/// </para>
-/// <list type="bullet">
-/// <item><description>
-/// A <c>&lt;scheme&gt;:&lt;value&gt;</c> reference (<see cref="ProjectMemoryRef.TryParse"/>) is never checked —
-/// only the plugin that registered that scheme could judge whether its value is reachable, and this probe knows
-/// nothing about plugins.
-/// </description></item>
-/// <item><description>
-/// A relative path is never checked either — whether a relative path travels with the project it is relative to is
-/// AC-485's question, not this one's.
-/// </description></item>
-/// <item><description>
-/// A UNC path (<c>\\host\share\...</c>) is fully qualified but never checked either (AC-484 review, MUST-FIX 4): an
-/// unreachable host turns <see cref="File.Exists(string)"/>/<see cref="Directory.Exists(string)"/> into a network
-/// round trip — measured at 1282 ms for a single unreachable host, synchronous, with no cancellation, which on a
-/// UI thread is not a slow answer but a frozen window. Better to say nothing about a reference this probe cannot
-/// afford to judge cheaply than to block the caller for however long the network takes to give up.
-/// </description></item>
-/// </list>
-/// <para>
-/// Better to say nothing about a reference this probe cannot fairly judge than to call it broken when it might
-/// simply be a kind — a scheme, a relative path, a UNC path — outside what a cheap filesystem check can answer.
-/// </para>
-/// <para>
-/// AC-484 review (FIX 7) — a platform asymmetry deliberately left as-is rather than "fixed": whether a path counts
-/// as fully qualified depends on the OS this runtime is on. <c>Path.IsPathFullyQualified("/home/raymond/Notes")</c>
-/// is <c>false</c> on Windows, so a POSIX-shaped reference is silently never checked there — and the reverse holds
-/// for a <c>C:\...</c> reference interpreted on Linux. There is no project-portable notion of "absolute path" for
-/// this probe to fall back on instead, so a project that keeps its resources on the platform it was not authored
-/// on gets no unresolved-reference warning at all for those rows, on either side. All of this class's current tests
-/// use POSIX-shaped paths, which is exactly why this gap does not show up in them. Separately: this probe cannot
-/// and does not distinguish "does not exist" from "exists but this process may not read it" — both
-/// <see cref="File.Exists(string)"/> and <see cref="Directory.Exists(string)"/> answer <c>false</c> for a path
-/// blocked by permissions, the same as for one that is simply not there.
-/// </para>
-/// </summary>
+// Checks a project's `ProjectResource` rows for a reference that names an absolute, existing-or-not
+// filesystem path and finds it missing (AC-484) — the one piece of I/O
+// `Cockpit.Core.Sessions.SessionStartDefaults.Resolve` deliberately never does itself (see that
+// method's own remarks on `unresolvedReferences`: purity is a property of that class, not an oversight here).
+// The layer that assembles an actual launch (`ProjectQuickStart`, the New-session dialog's Start) runs this
+// once and hands the result in as plain data — both call sites do so synchronously from a UI thread
+// (`NewSessionDialogViewModel.Confirm()`'s `[RelayCommand]`, and `ProjectQuickStart.ComposeAsync`
+// after its own `ConfigureAwait(true)`), so this method is one of a very small number in the codebase whose
+// own running time is a UI-responsiveness concern, not merely a correctness one.
+//
+// Scope is deliberately narrow — only a reference that is a *fully qualified* path
+// (`Path.IsPathFullyQualified(string)`) is checked at all:
+// - <description>
+// A `&lt;scheme&gt;:&lt;value&gt;` reference (`ProjectMemoryRef.TryParse`) is never checked —
+// only the plugin that registered that scheme could judge whether its value is reachable, and this probe knows
+// nothing about plugins.
+// </description>
+// - <description>
+// A relative path is never checked either — whether a relative path travels with the project it is relative to is
+// AC-485's question, not this one's.
+// </description>
+// - <description>
+// A UNC path (`\\host\share\...`) is fully qualified but never checked either (AC-484 review, MUST-FIX 4): an
+// unreachable host turns `File.Exists(string)`/`Directory.Exists(string)` into a network
+// round trip — measured at 1282 ms for a single unreachable host, synchronous, with no cancellation, which on a
+// UI thread is not a slow answer but a frozen window. Better to say nothing about a reference this probe cannot
+// afford to judge cheaply than to block the caller for however long the network takes to give up.
+// </description>
+//
+// Better to say nothing about a reference this probe cannot fairly judge than to call it broken when it might
+// simply be a kind — a scheme, a relative path, a UNC path — outside what a cheap filesystem check can answer.
+//
+// AC-484 review (FIX 7) — a platform asymmetry deliberately left as-is rather than "fixed": whether a path counts
+// as fully qualified depends on the OS this runtime is on. `Path.IsPathFullyQualified("/home/raymond/Notes")`
+// is `false` on Windows, so a POSIX-shaped reference is silently never checked there — and the reverse holds
+// for a `C:\...` reference interpreted on Linux. There is no project-portable notion of "absolute path" for
+// this probe to fall back on instead, so a project that keeps its resources on the platform it was not authored
+// on gets no unresolved-reference warning at all for those rows, on either side. All of this class's current tests
+// use POSIX-shaped paths, which is exactly why this gap does not show up in them. Separately: this probe cannot
+// and does not distinguish "does not exist" from "exists but this process may not read it" — both
+// `File.Exists(string)` and `Directory.Exists(string)` answer `false` for a path
+// blocked by permissions, the same as for one that is simply not there.
 public static class ProjectResourceProbe
 {
-    /// <summary>
-    /// The ceiling on how long <see cref="FindUnresolved"/> may spend checking every row together (AC-484 review,
-    /// MUST-FIX 4) — not a per-row budget, because a caller waiting on a UI thread cares about the total wait, not
-    /// how it was divided among rows. 200 ms is enough for the ordinary case (a handful of local paths, each
-    /// answered by the OS in well under a millisecond) while staying far short of anything a human would notice as
-    /// the dialog hanging.
-    /// <para>
-    /// AC-484 confirming round (FIX 4): this was called a "hard" ceiling, and <see cref="FindUnresolved"/>'s own doc
-    /// claimed it "never blocks past its time budget" — neither is quite true. This is a per-row deadline the loop
-    /// checks before starting each row's own dedicated <see cref="Thread"/>; once a row's thread has been started,
-    /// this method still waits out that row's own <see cref="ManualResetEventSlim.Wait(TimeSpan)"/>, and starting
-    /// the thread plus that wait's own granularity both take a little real time of their own that this budget does
-    /// not account for. Measured (AC-484 confirming round) at up to 207.7 ms wall-clock over ten runs against the
-    /// nominal 200 — close enough that it does not read as the dialog hanging, but a real overrun rather than the
-    /// hard wall the earlier wording promised.
-    /// </para>
-    /// </summary>
+    // The ceiling on how long `FindUnresolved` may spend checking every row together (AC-484 review,
+    // MUST-FIX 4) — not a per-row budget, because a caller waiting on a UI thread cares about the total wait, not
+    // how it was divided among rows. 200 ms is enough for the ordinary case (a handful of local paths, each
+    // answered by the OS in well under a millisecond) while staying far short of anything a human would notice as
+    // the dialog hanging.
+    //
+    // AC-484 confirming round (FIX 4): this was called a "hard" ceiling, and `FindUnresolved`'s own doc
+    // claimed it "never blocks past its time budget" — neither is quite true. This is a per-row deadline the loop
+    // checks before starting each row's own dedicated `Thread`; once a row's thread has been started,
+    // this method still waits out that row's own `ManualResetEventSlim.Wait(TimeSpan)`, and starting
+    // the thread plus that wait's own granularity both take a little real time of their own that this budget does
+    // not account for. Measured (AC-484 confirming round) at up to 207.7 ms wall-clock over ten runs against the
+    // nominal 200 — close enough that it does not read as the dialog hanging, but a real overrun rather than the
+    // hard wall the earlier wording promised.
     private static readonly TimeSpan _TimeBudget = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>
-    /// The <see cref="ProjectResource.Reference"/> value of every row in <paramref name="resources"/> that is a
-    /// fully qualified path and does not exist as either a file or a directory. Never throws — a probe is a
-    /// convenience, not a dependency (the same line the bundled-plugin installer draws): whatever this method finds
-    /// out about a reference, it finds out by returning normally, never by raising. Stays close to its time budget
-    /// either (AC-484 review, MUST-FIX 4; see <see cref="_TimeBudget"/>'s own remarks on how close), which is a
-    /// separate promise from "never throws": a call that hangs for a second on an unreachable network host raises
-    /// no exception at all, so "never throws" alone would say nothing about the one failure mode that actually
-    /// froze the caller's UI thread. A row left unanswered when the budget runs out is treated the same way as one
-    /// this probe declines to judge at all — left out, not reported broken.
-    /// <para>
-    /// AC-484 confirming round (FIX 4): this used to also claim that a reference this runtime cannot even parse as
-    /// a path is "left out of the result rather than reported broken" — true of whatever narrower case still throws
-    /// inside the <c>catch</c> below, but not of the two cases actually measured here: a path with invalid
-    /// characters (<c>C:\bad&lt;&gt;|?*\0name.md</c>) and an absurdly long one (32,000 characters). On .NET 10,
-    /// <see cref="File.Exists(string)"/> and <see cref="Directory.Exists(string)"/> return <c>false</c> rather than
-    /// throwing for either, so both flow through as an ordinary "does not exist" and end up <em>in</em> the result —
-    /// reported unresolved, not silently skipped. The <c>catch</c> block is a narrower safety net than this comment
-    /// used to describe, kept for whatever case still does throw, while the malformed-path case it was written
-    /// about no longer reaches it at all.
-    /// </para>
-    /// <para>
-    /// A row with <see cref="ProjectResource.ReachesSessions"/> set to false is filtered out before any I/O runs
-    /// (AC-484 review, MUST-FIX 4): a row that will never reach a starting session's prompt gains nothing from
-    /// being checked, so it is not worth spending any of the shared time budget on.
-    /// </para>
-    /// </summary>
-    /// <param name="resources">The rows to check. A row that does not reach sessions is skipped before any I/O.</param>
-    /// <param name="timeBudget">
-    /// Overrides <see cref="_TimeBudget"/> for the whole call — a test's own hook for proving the budget is
-    /// enforced without needing an actually slow filesystem to prove it against. Null (the default) is production
-    /// behavior.
-    /// </param>
-    /// <param name="pathExists">
-    /// Overrides the existence check itself — another test-only hook, letting a test simulate a check that never
-    /// returns in time without needing a genuinely unreachable UNC host to do it. Null (the default) is
-    /// <see cref="File.Exists(string)"/> or <see cref="Directory.Exists(string)"/>, exactly as before.
-    /// </param>
+    // The `ProjectResource.Reference` value of every row in `resources` that is a
+    // fully qualified path and does not exist as either a file or a directory. Never throws — a probe is a
+    // convenience, not a dependency (the same line the bundled-plugin installer draws): whatever this method finds
+    // out about a reference, it finds out by returning normally, never by raising. Stays close to its time budget
+    // either (AC-484 review, MUST-FIX 4; see `_TimeBudget`'s own remarks on how close), which is a
+    // separate promise from "never throws": a call that hangs for a second on an unreachable network host raises
+    // no exception at all, so "never throws" alone would say nothing about the one failure mode that actually
+    // froze the caller's UI thread. A row left unanswered when the budget runs out is treated the same way as one
+    // this probe declines to judge at all — left out, not reported broken.
+    //
+    // AC-484 confirming round (FIX 4): this used to also claim that a reference this runtime cannot even parse as
+    // a path is "left out of the result rather than reported broken" — true of whatever narrower case still throws
+    // inside the `catch` below, but not of the two cases actually measured here: a path with invalid
+    // characters (`C:\bad&lt;&gt;|?*\0name.md`) and an absurdly long one (32,000 characters). On .NET 10,
+    // `File.Exists(string)` and `Directory.Exists(string)` return `false` rather than
+    // throwing for either, so both flow through as an ordinary "does not exist" and end up *in* the result —
+    // reported unresolved, not silently skipped. The `catch` block is a narrower safety net than this comment
+    // used to describe, kept for whatever case still does throw, while the malformed-path case it was written
+    // about no longer reaches it at all.
+    //
+    // A row with `ProjectResource.ReachesSessions` set to false is filtered out before any I/O runs
+    // (AC-484 review, MUST-FIX 4): a row that will never reach a starting session's prompt gains nothing from
+    // being checked, so it is not worth spending any of the shared time budget on.
+    //
+    // `resources`: The rows to check. A row that does not reach sessions is skipped before any I/O.
+    // `timeBudget`:
+    // Overrides `_TimeBudget` for the whole call — a test's own hook for proving the budget is
+    // enforced without needing an actually slow filesystem to prove it against. Null (the default) is production
+    // behavior.
+    // `pathExists`:
+    // Overrides the existence check itself — another test-only hook, letting a test simulate a check that never
+    // returns in time without needing a genuinely unreachable UNC host to do it. Null (the default) is
+    // `File.Exists(string)` or `Directory.Exists(string)`, exactly as before.
     public static IReadOnlyCollection<string> FindUnresolved(
         IEnumerable<ProjectResource> resources,
         TimeSpan? timeBudget = null,

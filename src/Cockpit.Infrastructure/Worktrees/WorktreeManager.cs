@@ -8,10 +8,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-/// <inheritdoc cref="IWorktreeManager" />
+// <inheritdoc cref="IWorktreeManager" />
 internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 {
-    /// <summary>Cap on the readable branch fragment in a folder name, so a long branch cannot push a Windows worktree path past its limit.</summary>
+    // Cap on the readable branch fragment in a folder name, so a long branch cannot push a Windows worktree path past its limit.
     private const int SlugLength = 32;
 
     private static readonly StringComparison PathComparison = GitPaths.PlatformComparison;
@@ -20,7 +20,6 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     private readonly Func<CancellationToken, Task<string>> _resolveRoot;
     private readonly ILogger<WorktreeManager>? _logger;
 
-    /// <inheritdoc />
     public event Action<WorktreeSourceRefresh>? SourceRefreshed;
 
     public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings, ILogger<WorktreeManager>? logger = null)
@@ -48,7 +47,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         };
     }
 
-    /// <summary>Test seam: place the worktrees under an arbitrary fixed root instead of the app state directory.</summary>
+    // Test seam: place the worktrees under an arbitrary fixed root instead of the app state directory.
     internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot, ILogger<WorktreeManager>? logger = null)
     {
         _registry = registry;

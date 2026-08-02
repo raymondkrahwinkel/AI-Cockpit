@@ -11,18 +11,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-/// <summary>
-/// Runs a plugin's <see cref="IPluginTtyProvider"/> as one of the cockpit's own <see cref="ITtySessionProvider"/>s.
-/// The two contracts say the same thing in two vocabularies — the plugin SDK cannot reference the core's types
-/// without binding every plugin to the core's version of them — so this is where one becomes the other.
-/// </summary>
-/// <remarks>
-/// The host resolves the things a plugin cannot reach across the isolation boundary and hands them through the
-/// grown context (Fase 4): the shared MCP registry (#26) and whether the orchestrator is enabled (#67), so a rich
-/// TUI like Claude can fan the registry into <c>--mcp-config</c> and append the delegation prompt. The status
-/// snapshot file the provider names in its spec is carried back to the core spec, so the session header still
-/// polls the provider's limits.
-/// </remarks>
+// Runs a plugin's `IPluginTtyProvider` as one of the cockpit's own `ITtySessionProvider`s.
+// The two contracts say the same thing in two vocabularies — the plugin SDK cannot reference the core's types
+// without binding every plugin to the core's version of them — so this is where one becomes the other.
+// The host resolves the things a plugin cannot reach across the isolation boundary and hands them through the
+// grown context (Fase 4): the shared MCP registry (#26) and whether the orchestrator is enabled (#67), so a rich
+// TUI like Claude can fan the registry into `--mcp-config` and append the delegation prompt. The status
+// snapshot file the provider names in its spec is carried back to the core spec, so the session header still
+// polls the provider's limits.
 internal sealed class PluginTtySessionProviderAdapter(
     string providerId,
     IPluginTtyProvider inner,
@@ -72,17 +68,15 @@ internal sealed class PluginTtySessionProviderAdapter(
             spec.StatusFile);
     }
 
-    /// <summary>
-    /// The agent-eligible MCP servers and whether the orchestrator is enabled — read once per launch. The
-    /// per-session selection (#44) narrows the eligible registry to the operator's checklist first (an unchecked
-    /// server never reaches the CLI), exactly as the SDK route's <c>PluginSessionDriverAdapter</c> does; a
-    /// <see langword="null"/> selection means no narrowing. Delegation is judged on the <em>selected</em> set: if
-    /// the operator unchecked the orchestrator server, this session cannot delegate. Sync (the spawn path is
-    /// synchronous) and best-effort: no store (a unit test wiring none) or a read failure means no servers and no
-    /// delegation, rather than blocking the launch. <paramref name="projectId"/> (AC-218) scopes the registry read
-    /// to that project's own view — resolved host-side into the launch context, never a paneId→projectId lookup
-    /// here (that would need a UI-thread hop this synchronous spawn path cannot take).
-    /// </summary>
+    // The agent-eligible MCP servers and whether the orchestrator is enabled — read once per launch. The
+    // per-session selection (#44) narrows the eligible registry to the operator's checklist first (an unchecked
+    // server never reaches the CLI), exactly as the SDK route's `PluginSessionDriverAdapter` does; a
+    // `null` selection means no narrowing. Delegation is judged on the *selected* set: if
+    // the operator unchecked the orchestrator server, this session cannot delegate. Sync (the spawn path is
+    // synchronous) and best-effort: no store (a unit test wiring none) or a read failure means no servers and no
+    // delegation, rather than blocking the launch. `projectId` (AC-218) scopes the registry read
+    // to that project's own view — resolved host-side into the launch context, never a paneId→projectId lookup
+    // here (that would need a UI-thread hop this synchronous spawn path cannot take).
     private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId)
     {
         if (mcpServerCatalog is null)
@@ -132,29 +126,24 @@ internal sealed class PluginTtySessionProviderAdapter(
         }
     }
 
-    /// <summary>
-    /// How long a launch will wait, in total, for stale tokens to be renewed. This path is synchronous all the way out
-    /// to <c>ITtyLauncher.Launch</c>, which is reached from the UI thread, so the wait is the window in which the app
-    /// stops repainting. A renewal is one token-endpoint round trip and either answers well within this or is not
-    /// going to; letting it run unbounded would trade a session's missing tools for a frozen application.
-    /// </summary>
+    // How long a launch will wait, in total, for stale tokens to be renewed. This path is synchronous all the way out
+    // to `ITtyLauncher.Launch`, which is reached from the UI thread, so the wait is the window in which the app
+    // stops repainting. A renewal is one token-endpoint round trip and either answers well within this or is not
+    // going to; letting it run unbounded would trade a session's missing tools for a frozen application.
     private static readonly TimeSpan RenewalBudget = TimeSpan.FromSeconds(5);
 
-    /// <summary>
-    /// The credential this launch presents to <paramref name="server"/> (AC-353). Asked for non-interactively, so a
-    /// launch never makes a browser window appear on its own; a server whose authorization cannot be renewed is left
-    /// out of the launch and said so, rather than the CLI meeting a 401 later with no way to act on it.
-    /// <para>
-    /// Blocking, like the registry read a few lines up and for the same reason: this spawn path is synchronous. That
-    /// read is local and quick; this one can go to the network when a stored token has expired, which is ordinary
-    /// rather than rare — hence the budget above, and never an unbounded wait.
-    /// </para>
-    /// </summary>
-    /// <param name="theSessionWillHoldIt">
-    /// Whether the credential is written into the launch's config and kept there — see the SDK route's own
-    /// parameter of the same name. Behind the loopback endpoint it is not, and the question narrows to whether a
-    /// sign-in exists at all.
-    /// </param>
+    // The credential this launch presents to `server` (AC-353). Asked for non-interactively, so a
+    // launch never makes a browser window appear on its own; a server whose authorization cannot be renewed is left
+    // out of the launch and said so, rather than the CLI meeting a 401 later with no way to act on it.
+    //
+    // Blocking, like the registry read a few lines up and for the same reason: this spawn path is synchronous. That
+    // read is local and quick; this one can go to the network when a stored token has expired, which is ordinary
+    // rather than rare — hence the budget above, and never an unbounded wait.
+    //
+    // `theSessionWillHoldIt`:
+    // Whether the credential is written into the launch's config and kept there — see the SDK route's own
+    // parameter of the same name. Behind the loopback endpoint it is not, and the question narrows to whether a
+    // sign-in exists at all.
     private McpOAuthAccess _AcquireCredential(McpServerConfig server, bool theSessionWillHoldIt, CancellationToken budget)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
@@ -203,16 +192,13 @@ internal sealed class PluginTtySessionProviderAdapter(
         return access;
     }
 
-    /// <summary>
-    /// The loopback address that stands in for an OAuth server (AC-524), resolved inside the same launch budget as
-    /// the credential above and blocking for the same reason — this spawn path is synchronous out to the launcher.
-    /// Binding a loopback listener is local and quick, but it shares the budget rather than getting one of its own:
-    /// the budget is the window in which the application stops repainting, and it is the launch's in total.
-    /// <para>
-    /// Anything that goes wrong answers <see langword="null"/>, which falls back to writing the token into the
-    /// config — degraded, and no worse than before this existed.
-    /// </para>
-    /// </summary>
+    // The loopback address that stands in for an OAuth server (AC-524), resolved inside the same launch budget as
+    // the credential above and blocking for the same reason — this spawn path is synchronous out to the launcher.
+    // Binding a loopback listener is local and quick, but it shares the budget rather than getting one of its own:
+    // the budget is the window in which the application stops repainting, and it is the launch's in total.
+    //
+    // Anything that goes wrong answers `null`, which falls back to writing the token into the
+    // config — degraded, and no worse than before this existed.
     private string? _ProxyUrl(McpServerConfig server, CancellationToken budget)
     {
         if (oauthProxy is null)
@@ -264,11 +250,9 @@ internal sealed class PluginTtySessionProviderAdapter(
         _ => null,
     };
 
-    /// <summary>
-    /// A plugin says "resume this conversation, or the last one" and nothing else. The core's <see cref="SessionResume"/>
-    /// also has a "start fresh" case, which is the absence of a resume — so it maps to null rather than to an
-    /// object that says nothing.
-    /// </summary>
+    // A plugin says "resume this conversation, or the last one" and nothing else. The core's `SessionResume`
+    // also has a "start fresh" case, which is the absence of a resume — so it maps to null rather than to an
+    // object that says nothing.
     private static PluginTtyResume? _Resume(SessionResume? resume) => resume switch
     {
         { Mode: SessionResumeMode.MostRecent } => new PluginTtyResume(null),

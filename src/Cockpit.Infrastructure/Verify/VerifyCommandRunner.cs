@@ -7,13 +7,11 @@ using Cockpit.Core.Verify;
 
 namespace Cockpit.Infrastructure.Verify;
 
-/// <summary>
-/// Runs a verify runner's registered command as a child process (AC-86). The command and its arguments go through
-/// <see cref="ProcessStartInfo.ArgumentList"/> — never a shell string — so nothing the operator wrote is re-parsed,
-/// and both output pipes are drained concurrently so a chatty child cannot deadlock by filling one while we wait on
-/// the other. A run that outlives the timeout has its whole process tree killed; everything is fail-soft, so the
-/// tool gets a <see cref="VerifyRunResult"/> to report rather than an exception to handle.
-/// </summary>
+// Runs a verify runner's registered command as a child process (AC-86). The command and its arguments go through
+// `ProcessStartInfo.ArgumentList` — never a shell string — so nothing the operator wrote is re-parsed,
+// and both output pipes are drained concurrently so a chatty child cannot deadlock by filling one while we wait on
+// the other. A run that outlives the timeout has its whole process tree killed; everything is fail-soft, so the
+// tool gets a `VerifyRunResult` to report rather than an exception to handle.
 internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonService
 {
     private static readonly TimeSpan RunTimeout = TimeSpan.FromMinutes(5);

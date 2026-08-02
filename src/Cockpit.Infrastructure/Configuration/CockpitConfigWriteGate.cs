@@ -1,38 +1,32 @@
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// The single write gate for <c>cockpit.json</c>: one lock file next to the config that every writer takes
-/// before a read-modify-write, in this process and in any other cockpit on this machine.
-/// <para>
-/// It used to live privately inside <see cref="CockpitConfigFileAccess"/>, where only the typed settings stores
-/// reached it. The encryption migration and the awareness-banner dismissal (AC-41) rewrite the same file, so
-/// they have to take the same lock — otherwise a migration could interleave with a store write and one of them
-/// would silently restore the other's section. Hoisting it here makes "who serialises against whom" one fact in
-/// one place: everyone locks on <c>&lt;path&gt;.lock</c>.
-/// </para>
-/// <para>
-/// A lock file rather than a named mutex: the operating system drops it when the holder exits — including a
-/// process killed mid-write — and it behaves the same on the three platforms the cockpit runs on. The lock is
-/// non-reentrant (<see cref="FileShare.None"/>), so a leaf operation must never take it while already holding it:
-/// re-entering deadlocks until the timeout. That is why <c>ChangePasswordAsync</c> takes the gate exactly once
-/// and re-encrypts in that single pass rather than delegating to Disable+Enable — nesting would re-enter and
-/// deadlock, and Disable would put every credential back in the clear on disk for the width of the window.
-/// </para>
-/// </summary>
+// The single write gate for `cockpit.json`: one lock file next to the config that every writer takes
+// before a read-modify-write, in this process and in any other cockpit on this machine.
+//
+// It used to live privately inside `CockpitConfigFileAccess`, where only the typed settings stores
+// reached it. The encryption migration and the awareness-banner dismissal (AC-41) rewrite the same file, so
+// they have to take the same lock — otherwise a migration could interleave with a store write and one of them
+// would silently restore the other's section. Hoisting it here makes "who serialises against whom" one fact in
+// one place: everyone locks on `&lt;path&gt;.lock`.
+//
+// A lock file rather than a named mutex: the operating system drops it when the holder exits — including a
+// process killed mid-write — and it behaves the same on the three platforms the cockpit runs on. The lock is
+// non-reentrant (`FileShare.None`), so a leaf operation must never take it while already holding it:
+// re-entering deadlocks until the timeout. That is why `ChangePasswordAsync` takes the gate exactly once
+// and re-encrypts in that single pass rather than delegating to Disable+Enable — nesting would re-enter and
+// deadlock, and Disable would put every credential back in the clear on disk for the width of the window.
 internal static class CockpitConfigWriteGate
 {
-    /// <summary>Holds the write gate; empty, and only its existence-while-open means anything.</summary>
+    // Holds the write gate; empty, and only its existence-while-open means anything.
     private const string LockSuffix = ".lock";
 
-    /// <summary>Generous on purpose: a write is milliseconds, so reaching this means something is wrong, not busy.</summary>
+    // Generous on purpose: a write is milliseconds, so reaching this means something is wrong, not busy.
     private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(10);
 
     private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);
 
-    /// <summary>
-    /// Takes the write gate for <paramref name="configFilePath"/>, waiting for whoever holds it. Dispose the
-    /// returned stream to release it.
-    /// </summary>
+    // Takes the write gate for `configFilePath`, waiting for whoever holds it. Dispose the
+    // returned stream to release it.
     public static async Task<FileStream> AcquireAsync(string configFilePath, CancellationToken cancellationToken)
     {
         var lockFilePath = configFilePath + LockSuffix;

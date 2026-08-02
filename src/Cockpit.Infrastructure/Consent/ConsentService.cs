@@ -7,17 +7,13 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Consent;
 
-/// <summary>
-/// The host's consent gate (#AC-47). Holds each waiting request as a <see cref="TaskCompletionSource{TResult}"/>
-/// the UI resolves, the session's set of remembered low-risk approvals, and writes every decision to the audit
-/// trail. Single instance so all callers share one remember-set and one list of open prompts.
-/// </summary>
-/// <remarks>
-/// <paramref name="bypassPolicy"/> is the assistant's consent bypass (#AC-575) and is optional: with none
-/// registered — the design-time graph, every test that does not ask for one — nothing is ever bypassed and this
-/// class behaves exactly as it did before. Fail-closed by construction rather than by a flag someone has to
-/// remember to leave off.
-/// </remarks>
+// The host's consent gate (#AC-47). Holds each waiting request as a `TaskCompletionSource{TResult}`
+// the UI resolves, the session's set of remembered low-risk approvals, and writes every decision to the audit
+// trail. Single instance so all callers share one remember-set and one list of open prompts.
+// `bypassPolicy` is the assistant's consent bypass (#AC-575) and is optional: with none
+// registered — the design-time graph, every test that does not ask for one — nothing is ever bypassed and this
+// class behaves exactly as it did before. Fail-closed by construction rather than by a flag someone has to
+// remember to leave off.
 internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPolicy? bypassPolicy = null)
     : IConsentBroker, ISingletonService
 {
@@ -176,18 +172,14 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
     private static (string? PaneId, string? PluginId, string Scope, string Action) _Key(ConsentRequest request) =>
         (request.Source.PaneId, request.Source.PluginId, request.Scope, request.Action);
 
-    /// <summary>
-    /// Who asked, for the bypass switches (#AC-575) — the host-stamped plugin id (<c>CockpitHost</c> sets it and a
-    /// plugin cannot ask under another's name) under its own prefix, or the label, which for a host-internal caller
-    /// is a compile-time constant in <see cref="ConsentSourceCatalog"/>. The prefixing rule lives there, next to
-    /// those constants, because the Options list has to build the identical key.
-    /// </summary>
-    /// <remarks>
-    /// Scope and Action are absent for the same reason <see cref="_remembered"/> includes them: they are text an
-    /// agent influences. There the whole request is the key so a remembered "GET the issues" cannot approve a later
-    /// "GET evil.com/exfil"; here the operator is switching off a <em>source</em>, so agent-authored text must not
-    /// be able to name a source that is not its own.
-    /// </remarks>
+    // Who asked, for the bypass switches (#AC-575) — the host-stamped plugin id (`CockpitHost` sets it and a
+    // plugin cannot ask under another's name) under its own prefix, or the label, which for a host-internal caller
+    // is a compile-time constant in `ConsentSourceCatalog`. The prefixing rule lives there, next to
+    // those constants, because the Options list has to build the identical key.
+    // Scope and Action are absent for the same reason `_remembered` includes them: they are text an
+    // agent influences. There the whole request is the key so a remembered "GET the issues" cannot approve a later
+    // "GET evil.com/exfil"; here the operator is switching off a *source*, so agent-authored text must not
+    // be able to name a source that is not its own.
     private static string _SourceKey(ConsentRequest request) =>
         ConsentSourceCatalog.KeyFor(request.Source.PluginId, request.Source.Label);
 

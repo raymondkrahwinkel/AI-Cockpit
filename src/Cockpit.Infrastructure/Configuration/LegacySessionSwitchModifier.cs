@@ -1,9 +1,7 @@
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// The modifier values the old <c>sessionSwitching</c> section could hold, kept only so an existing
-/// <c>cockpit.json</c> still parses and can be carried over to the session-switch shortcuts.
-/// </summary>
+// The modifier values the old `sessionSwitching` section could hold, kept only so an existing
+// `cockpit.json` still parses and can be carried over to the session-switch shortcuts.
 internal enum LegacySessionSwitchModifier
 {
     Ctrl,

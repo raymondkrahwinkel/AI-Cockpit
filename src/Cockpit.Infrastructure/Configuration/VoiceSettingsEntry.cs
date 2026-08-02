@@ -2,18 +2,16 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="VoiceSettings"/> in the <c>voice</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of `VoiceSettings` in the `voice` section of `cockpit.json`.
 internal sealed class VoiceSettingsEntry
 {
     public bool IsEnabled { get; set; }
 
     public string ModelName { get; set; } = "large-v3-turbo";
 
-    /// <summary>
-    /// Whether the model follows the per-machine recommendation (AC-68 slice 2). Nullable so a config written
-    /// before this key existed is distinguishable from an explicit false: a missing key means the operator had
-    /// hand-picked <see cref="ModelName"/> under the old free-text box, so it is kept as an explicit choice.
-    /// </summary>
+    // Whether the model follows the per-machine recommendation (AC-68 slice 2). Nullable so a config written
+    // before this key existed is distinguishable from an explicit false: a missing key means the operator had
+    // hand-picked `ModelName` under the old free-text box, so it is kept as an explicit choice.
     public bool? ModelAutoSelected { get; set; }
 
     public VoiceBackendPreference BackendPreference { get; set; } = VoiceBackendPreference.Auto;
@@ -24,14 +22,12 @@ internal sealed class VoiceSettingsEntry
 
     public bool AutoSubmitAfterVoice { get; set; }
 
-    /// <summary>
-    /// SupertonicTTS speaker id for read-aloud. The pre-Supertonic <c>TtsVoiceId</c>/<c>TtsVoiceIdDutch</c>
-    /// Piper-voice keys have no meaningful mapping onto a Supertonic sid, so a config written before this key
-    /// existed is simply read at the default sid (the old keys are ignored) rather than migrated.
-    /// </summary>
+    // SupertonicTTS speaker id for read-aloud. The pre-Supertonic `TtsVoiceId`/`TtsVoiceIdDutch`
+    // Piper-voice keys have no meaningful mapping onto a Supertonic sid, so a config written before this key
+    // existed is simply read at the default sid (the old keys are ignored) rather than migrated.
     public int TtsVoiceSid { get; set; } = 1;
 
-    /// <summary>Preferred base language for read-aloud ("en"/"nl"). New key; defaults to "en" for an existing config.</summary>
+    // Preferred base language for read-aloud ("en"/"nl"). New key; defaults to "en" for an existing config.
     public string ReadAloudLanguage { get; set; } = "en";
 
     public string SttLanguage { get; set; } = "auto";

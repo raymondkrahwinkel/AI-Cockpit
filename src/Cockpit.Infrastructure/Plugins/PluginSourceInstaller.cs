@@ -4,30 +4,24 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// The shared "bring a plugins directory into line with a set of source folders" routine, used by both
-/// <see cref="BundledPluginInstaller"/> (the plugins this build ships) and <see cref="DevPluginInstaller"/>
-/// (a developer's freshly built first-party plugins, DEBUG only). Each source folder holds one plugin's
-/// <c>plugin.json</c> and its files; the rule is the same for both callers, which is why it lives once here:
-/// <list type="bullet">
-/// <item>a plugin the operator disabled is left exactly as it is — shipping or rebuilding is not a reason to
-/// reinstate a decision they made;</item>
-/// <item>a version they updated past the source (from the store) is not rolled back;</item>
-/// <item>a newer source version, or the same version built from different bytes (a rebuild has no version to
-/// bump to), replaces the installed one and re-pins its consent to the new bytes.</item>
-/// </list>
-/// </summary>
+// The shared "bring a plugins directory into line with a set of source folders" routine, used by both
+// `BundledPluginInstaller` (the plugins this build ships) and `DevPluginInstaller`
+// (a developer's freshly built first-party plugins, DEBUG only). Each source folder holds one plugin's
+// `plugin.json` and its files; the rule is the same for both callers, which is why it lives once here:
+// - a plugin the operator disabled is left exactly as it is — shipping or rebuilding is not a reason to
+// reinstate a decision they made;
+// - a version they updated past the source (from the store) is not rolled back;
+// - a newer source version, or the same version built from different bytes (a rebuild has no version to
+// bump to), replaces the installed one and re-pins its consent to the new bytes.
 internal sealed class PluginSourceInstaller(IPluginRegistrationStore registrations, ILogger? logger)
 {
-    /// <summary>
-    /// Installs/refreshes each source folder into <paramref name="pluginsRoot"/> under the rule above.
-    /// </summary>
-    /// <param name="installNew">
-    /// True to install a plugin that is not there yet (a bundled plugin ships, so it should simply be present);
-    /// false to only refresh ones already installed (a dev sync must not silently install everything in the repo
-    /// — the operator still chooses what their cockpit carries).
-    /// </param>
-    /// <returns>The ids installed or refreshed, for logging.</returns>
+    // Installs/refreshes each source folder into `pluginsRoot` under the rule above.
+    //
+    // `installNew`:
+    // True to install a plugin that is not there yet (a bundled plugin ships, so it should simply be present);
+    // false to only refresh ones already installed (a dev sync must not silently install everything in the repo
+    // — the operator still chooses what their cockpit carries).
+    // The ids installed or refreshed, for logging.
     public async Task<IReadOnlyList<string>> InstallFromSourceFoldersAsync(
         IEnumerable<string> sourceFolders,
         string pluginsRoot,

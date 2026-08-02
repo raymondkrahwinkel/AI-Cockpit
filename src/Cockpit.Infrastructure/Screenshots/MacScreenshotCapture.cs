@@ -4,33 +4,27 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-/// <summary>
-/// Screen capture on macOS (AC-328): every display read whole and silently, then drawn into the one image the
-/// capture contract asks for. The selection is the cockpit's own (AC-329); this only supplies the pixels.
-/// </summary>
-/// <remarks>
-/// AC-220 ran <c>screencapture -i</c>, which is the system's own crosshair — drag a region, press space for a
-/// window. Dropping the <c>-i</c> is the whole change: the same binary writes the screen with no picker and no
-/// interaction.
-/// <para>
-/// macOS does not force one scale across displays the way a Linux compositor does, so a Retina panel beside an
-/// ordinary monitor captures at two different resolutions. They are composed here onto a canvas at the largest
-/// of those scales, positioned by the point geometry, which is the same shape the Linux portal hands back
-/// whole — so the selection surface above meets one kind of image rather than three.
-/// </para>
-/// <para>
-/// <strong>This ships unverified.</strong> There is no Mac to run it on, and the codebase's convention for that
-/// is not to pretend: what cannot be checked says so. Screen Recording permission is granted once per app, and
-/// until it is, <c>screencapture</c> runs and yields nothing — which is why nothing captured is reported as
-/// possibly-not-permitted rather than as a picker somebody dismissed.
-/// </para>
-/// </remarks>
+// Screen capture on macOS (AC-328): every display read whole and silently, then drawn into the one image the
+// capture contract asks for. The selection is the cockpit's own (AC-329); this only supplies the pixels.
+// AC-220 ran `screencapture -i`, which is the system's own crosshair — drag a region, press space for a
+// window. Dropping the `-i` is the whole change: the same binary writes the screen with no picker and no
+// interaction.
+//
+// macOS does not force one scale across displays the way a Linux compositor does, so a Retina panel beside an
+// ordinary monitor captures at two different resolutions. They are composed here onto a canvas at the largest
+// of those scales, positioned by the point geometry, which is the same shape the Linux portal hands back
+// whole — so the selection surface above meets one kind of image rather than three.
+//
+// <strong>This ships unverified.</strong> There is no Mac to run it on, and the codebase's convention for that
+// is not to pretend: what cannot be checked says so. Screen Recording permission is granted once per app, and
+// until it is, `screencapture` runs and yields nothing — which is why nothing captured is reported as
+// possibly-not-permitted rather than as a picker somebody dismissed.
 internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<MacScreenshotCapture> logger)
     : IScreenshotCapture
 {
     public bool IsSupported => true;
 
-    /// <summary>Nothing to ask anyone: <c>screencapture</c> is part of macOS.</summary>
+    // Nothing to ask anyone: `screencapture` is part of macOS.
     public Task SupportSettled => Task.CompletedTask;
 
     public async Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default)
@@ -71,11 +65,9 @@ internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<Mac
         return _Compose(captured);
     }
 
-    /// <summary>
-    /// The displays drawn into one image. The canvas is the desktop's own rectangle at the largest scale any
-    /// display uses, so nothing is captured at less than its native resolution — a Retina panel keeps its
-    /// pixels and an ordinary monitor beside it is drawn across the same area at that scale.
-    /// </summary>
+    // The displays drawn into one image. The canvas is the desktop's own rectangle at the largest scale any
+    // display uses, so nothing is captured at less than its native resolution — a Retina panel keeps its
+    // pixels and an ordinary monitor beside it is drawn across the same area at that scale.
     private static ScreenCapture _Compose(IReadOnlyList<(MacDisplay Display, byte[] Image)> captured)
     {
         var displays = captured

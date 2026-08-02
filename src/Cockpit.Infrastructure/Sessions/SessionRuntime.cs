@@ -5,20 +5,16 @@ using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// Owns one session's driver and pumps its events on a plain task — no Dispatcher, no ObservableCollection,
-/// nothing that assumes a UI is watching. Every consumer sits on the same runtime: the session panel
-/// subscribes to <see cref="EventAppended"/> and marshals to the UI thread itself, a delegated task (#67)
-/// polls <see cref="EventsSince"/>. That is the whole point of the split — one session implementation, two
-/// kinds of watcher, rather than a headless copy of the interactive one.
-/// </summary>
+// Owns one session's driver and pumps its events on a plain task — no Dispatcher, no ObservableCollection,
+// nothing that assumes a UI is watching. Every consumer sits on the same runtime: the session panel
+// subscribes to `EventAppended` and marshals to the UI thread itself, a delegated task (#67)
+// polls `EventsSince`. That is the whole point of the split — one session implementation, two
+// kinds of watcher, rather than a headless copy of the interactive one.
 internal sealed class SessionRuntime : ISessionRuntime
 {
-    /// <summary>
-    /// How many events the log keeps. A long-running session would otherwise grow without bound, since every
-    /// text delta is an event. Dropping the oldest costs a late consumer some early detail; status,
-    /// capabilities and <see cref="LastAssistantText"/> are folded as events arrive and stay correct.
-    /// </summary>
+    // How many events the log keeps. A long-running session would otherwise grow without bound, since every
+    // text delta is an event. Dropping the oldest costs a late consumer some early detail; status,
+    // capabilities and `LastAssistantText` are folded as events arrive and stay correct.
     private const int MaxLoggedEvents = 5_000;
 
     private readonly ISessionDriverFactory _driverFactory;
@@ -46,7 +42,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public SessionCapabilities? Capabilities => _driver?.Capabilities;
 
-    /// <summary>The process this session runs in, once its driver started one (#78) — null for a provider that is an HTTP call rather than a process.</summary>
+    // The process this session runs in, once its driver started one (#78) — null for a provider that is an HTTP call rather than a process.
     public int? ProcessId => _driver?.ProcessId;
 
     public SessionStatusFeed? CurrentStatus => _driver?.CurrentStatus;

@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Verify;
 
-/// <summary>
-/// Persists the verify-runner registry under the <c>verifyRunners</c> section of <c>cockpit.json</c>, going through
-/// <see cref="CockpitConfigFileAccess"/> so each mutation is a gated read-modify-write that never clobbers a sibling
-/// section — the same seam the worktree registry and the profile store use.
-/// </summary>
+// Persists the verify-runner registry under the `verifyRunners` section of `cockpit.json`, going through
+// `CockpitConfigFileAccess` so each mutation is a gated read-modify-write that never clobbers a sibling
+// section — the same seam the worktree registry and the profile store use.
 internal sealed class VerifyRunnerRegistryStore : IVerifyRunnerRegistry, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class VerifyRunnerRegistryStore : IVerifyRunnerRegistry, ISingle
     {
     }
 
-    /// <summary>Test seam: point the registry at an arbitrary config file path.</summary>
+    // Test seam: point the registry at an arbitrary config file path.
     internal VerifyRunnerRegistryStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

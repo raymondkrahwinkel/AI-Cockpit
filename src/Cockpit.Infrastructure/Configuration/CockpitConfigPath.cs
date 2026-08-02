@@ -2,24 +2,21 @@ using Cockpit.Core.Configuration;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// Resolves where the cockpit keeps its state (<c>%APPDATA%\Cockpit</c> on Windows, <c>~/.config/Cockpit</c>
-/// elsewhere — a development build keeps its own, see <see cref="CockpitBuild"/>) and owns the file permissions
-/// that go with it.
-/// <para>
-/// The permissions live here rather than at each call site because the files hold credentials — API keys, MCP
-/// bearer headers, plugin tokens — and a default <c>File.Create</c> leaves them at whatever the umask says,
-/// which is world-readable on a stock Fedora. Every writer of a credential-bearing file goes through
-/// <see cref="WriteAllTextPrivate"/> or <see cref="CreatePrivateFile"/>, so "who may read this" is one
-/// decision in one place instead of one that each new writer has to remember.
-/// </para>
-/// </summary>
+// Resolves where the cockpit keeps its state (`%APPDATA%\Cockpit` on Windows, `~/.config/Cockpit`
+// elsewhere — a development build keeps its own, see `CockpitBuild`) and owns the file permissions
+// that go with it.
+//
+// The permissions live here rather than at each call site because the files hold credentials — API keys, MCP
+// bearer headers, plugin tokens — and a default `File.Create` leaves them at whatever the umask says,
+// which is world-readable on a stock Fedora. Every writer of a credential-bearing file goes through
+// `WriteAllTextPrivate` or `CreatePrivateFile`, so "who may read this" is one
+// decision in one place instead of one that each new writer has to remember.
 internal static class CockpitConfigPath
 {
-    /// <summary>Owner read/write. No group, no other — these files hold credentials.</summary>
+    // Owner read/write. No group, no other — these files hold credentials.
     private const UnixFileMode PrivateFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
-    /// <summary>Owner read/write/traverse. Without the execute bit the owner cannot enter their own directory.</summary>
+    // Owner read/write/traverse. Without the execute bit the owner cannot enter their own directory.
     private const UnixFileMode PrivateDirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
@@ -27,58 +24,46 @@ internal static class CockpitConfigPath
 
     public static string Default => Path.Combine(Root, "cockpit.json");
 
-    /// <summary>The plugins root — a <c>plugins/</c> folder next to <c>cockpit.json</c>, stable across app updates. Each plugin lives in its own subfolder here.</summary>
+    // The plugins root — a `plugins/` folder next to `cockpit.json`, stable across app updates. Each plugin lives in its own subfolder here.
     public static string PluginsRoot => Path.Combine(Root, "plugins");
 
-    /// <summary>
-    /// Where project logos live (AC-162): a <c>project-logos/</c> folder next to <c>cockpit.json</c>. The picked
-    /// file or downloaded image is copied here and the project keeps the copy's path, so a logo survives the
-    /// original being moved, renamed or unplugged — a card that quietly loses its picture is worse than one that
-    /// never had it.
-    /// </summary>
+    // Where project logos live (AC-162): a `project-logos/` folder next to `cockpit.json`. The picked
+    // file or downloaded image is copied here and the project keeps the copy's path, so a logo survives the
+    // original being moved, renamed or unplugged — a card that quietly loses its picture is worse than one that
+    // never had it.
     public static string ProjectLogosRoot => Path.Combine(Root, "project-logos");
 
-    /// <summary>
-    /// Where session-isolation worktrees live (AC-85): a <c>worktrees/</c> folder next to <c>cockpit.json</c>,
-    /// grouped per repository. Under the app state root, so a development build keeps its own (<see cref="CockpitBuild"/>)
-    /// and a worktree is never checked out inside the repository being worked on.
-    /// </summary>
+    // Where session-isolation worktrees live (AC-85): a `worktrees/` folder next to `cockpit.json`,
+    // grouped per repository. Under the app state root, so a development build keeps its own (`CockpitBuild`)
+    // and a worktree is never checked out inside the repository being worked on.
     public static string WorktreesRoot => Path.Combine(Root, "worktrees");
 
-    /// <summary>
-    /// Where repositories cloned from a URL live (AC-90): a <c>clones/</c> folder next to <c>cockpit.json</c>,
-    /// one directory per repository under a <c>host/org/repo</c> slug. Under the app state root, so a development
-    /// build keeps its own (<see cref="CockpitBuild"/>) rather than cloning into the production cockpit's area.
-    /// </summary>
+    // Where repositories cloned from a URL live (AC-90): a `clones/` folder next to `cockpit.json`,
+    // one directory per repository under a `host/org/repo` slug. Under the app state root, so a development
+    // build keeps its own (`CockpitBuild`) rather than cloning into the production cockpit's area.
     public static string ClonesRoot => Path.Combine(Root, "clones");
 
-    /// <summary>
-    /// The voice assistant's own memory (AC-595): a markdown file next to <c>cockpit.json</c>, holding what the
-    /// operator told it to keep. Plain markdown on purpose — there is no UI for it, so opening it is the way to
-    /// prune it.
-    /// </summary>
+    // The voice assistant's own memory (AC-595): a markdown file next to `cockpit.json`, holding what the
+    // operator told it to keep. Plain markdown on purpose — there is no UI for it, so opening it is the way to
+    // prune it.
     public static string AssistantMemory => Path.Combine(Root, "assistant-memory.md");
 
-    /// <summary>
-    /// Where the assistant leaves the conversation before restarting itself (AC-596). Its own file rather than a
-    /// section of the memory: one is appended to and the other overwritten, and separate files need no parser and
-    /// no lock between them.
-    /// </summary>
+    // Where the assistant leaves the conversation before restarting itself (AC-596). Its own file rather than a
+    // section of the memory: one is appended to and the other overwritten, and separate files need no parser and
+    // no lock between them.
     public static string AssistantCurrentState => Path.Combine(Root, "assistant-state.md");
 
-    /// <summary>Creates <paramref name="directory"/> if needed and restricts it to its owner. Idempotent.</summary>
+    // Creates `directory` if needed and restricts it to its owner. Idempotent.
     public static void EnsurePrivateDirectory(string directory)
     {
         Directory.CreateDirectory(directory);
         Restrict(directory, PrivateDirectoryMode);
     }
 
-    /// <summary>
-    /// Opens <paramref name="path"/> for writing, truncating it, created owner-only. The mode is set as part of
-    /// the create call, so there is no window in which the file exists at the umask's permissions with content
-    /// already in it — and an <em>existing</em> file (one written by a version of the cockpit that did not do
-    /// this) is restricted on the way past, which is what migrates the operator's current world-readable config.
-    /// </summary>
+    // Opens `path` for writing, truncating it, created owner-only. The mode is set as part of
+    // the create call, so there is no window in which the file exists at the umask's permissions with content
+    // already in it — and an *existing* file (one written by a version of the cockpit that did not do
+    // this) is restricted on the way past, which is what migrates the operator's current world-readable config.
     public static FileStream CreatePrivateFile(string path)
     {
         var directory = Path.GetDirectoryName(path);
@@ -104,10 +89,8 @@ internal static class CockpitConfigPath
         return stream;
     }
 
-    /// <summary>
-    /// Restricts a file the cockpit wrote before it knew better. This is what migrates an operator's existing
-    /// world-readable <c>cockpit.json</c> without asking them to run <c>chmod</c> on our behalf.
-    /// </summary>
+    // Restricts a file the cockpit wrote before it knew better. This is what migrates an operator's existing
+    // world-readable `cockpit.json` without asking them to run `chmod` on our behalf.
     public static void RestrictExistingFile(string path)
     {
         if (File.Exists(path))
@@ -116,7 +99,7 @@ internal static class CockpitConfigPath
         }
     }
 
-    /// <summary>Writes <paramref name="contents"/> to an owner-only file. See <see cref="CreatePrivateFile"/>.</summary>
+    // Writes `contents` to an owner-only file. See `CreatePrivateFile`.
     public static void WriteAllTextPrivate(string path, string contents, bool flushToDisk = false)
     {
         using var stream = CreatePrivateFile(path);
@@ -134,13 +117,11 @@ internal static class CockpitConfigPath
         }
     }
 
-    /// <summary>
-    /// Replaces <paramref name="path"/> with <paramref name="contents"/> in one step, keeping a <c>.bak</c> of what
-    /// was there. Used by the encryption migration, which rewrites every credential in the file at once: a crash
-    /// halfway through a plain write leaves a truncated config, and a truncated config is the operator's
-    /// credentials gone. Writing a sibling file and renaming it means the file is either entirely the old one or
-    /// entirely the new one — a rename is atomic — and the backup is the way back if the new one is wrong.
-    /// </summary>
+    // Replaces `path` with `contents` in one step, keeping a `.bak` of what
+    // was there. Used by the encryption migration, which rewrites every credential in the file at once: a crash
+    // halfway through a plain write leaves a truncated config, and a truncated config is the operator's
+    // credentials gone. Writing a sibling file and renaming it means the file is either entirely the old one or
+    // entirely the new one — a rename is atomic — and the backup is the way back if the new one is wrong.
     public static void ReplaceAtomicallyPrivate(string path, string contents)
     {
         // A sidecar of its own, never a shared name. Two writers on one fixed "<path>.new" is how the operator's
@@ -185,10 +166,8 @@ internal static class CockpitConfigPath
         }
     }
 
-    /// <summary>
-    /// Removes the sidecars a killed or crashed write left behind. Called once at startup: they are dead weight,
-    /// they hold the same secrets as the config, and nothing reads them.
-    /// </summary>
+    // Removes the sidecars a killed or crashed write left behind. Called once at startup: they are dead weight,
+    // they hold the same secrets as the config, and nothing reads them.
     public static void SweepStaleSidecars(string path)
     {
         var directory = Path.GetDirectoryName(path);
@@ -210,11 +189,9 @@ internal static class CockpitConfigPath
         }
     }
 
-    /// <summary>
-    /// Applies <paramref name="mode"/> to an existing file or directory. A no-op on Windows, which has no Unix
-    /// mode bits — there the equivalent protection is the per-user profile directory itself, and pretending
-    /// otherwise by throwing would break the platform that does not need this.
-    /// </summary>
+    // Applies `mode` to an existing file or directory. A no-op on Windows, which has no Unix
+    // mode bits — there the equivalent protection is the per-user profile directory itself, and pretending
+    // otherwise by throwing would break the platform that does not need this.
     private static void Restrict(string path, UnixFileMode mode)
     {
         if (OperatingSystem.IsWindows())

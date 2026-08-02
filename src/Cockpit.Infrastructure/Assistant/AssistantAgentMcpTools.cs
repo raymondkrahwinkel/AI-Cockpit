@@ -11,58 +11,48 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-/// <summary>
-/// The <c>cockpit-assistant-agents</c> MCP tools (AC-545): the voice assistant's acting path — starting a session on
-/// a named desk and stopping one again. The read half is <see cref="AssistantReadMcpTools"/>, and the two are
-/// deliberately not one server; <see cref="AssistantIdentity.ActMcpServerName"/> says why.
-/// </summary>
-/// <remarks>
-/// <b>The mount rule is copied, not re-invented.</b> Both gates are the ones AC-544 already has, and both are here
-/// for the same reasons written out on the read server:
-/// <para>
-/// <b>1. It is not handed out.</b> The endpoint is registered <c>Internal</c> (AC-204), so it is in no picker and in
-/// no fan-out, and reaches only a launch that names it — <c>AssistantSessionHost.McpSelection</c> being the one
-/// place in the codebase that does.
-/// </para>
-/// <para>
-/// <b>2. It is not answered.</b> <see cref="_RefuseIfNotTheAssistant"/> runs first in every tool and returns
-/// <em>before</em> the gateway is touched. That is the gate that holds: the mount is a fact about configuration and
-/// configuration widens later by accident — an endpoint made non-internal, a profile that names the server, a spawn
-/// path that copies a selection it did not read. When that happens these tools sit in a session's context and still
-/// answer nobody, because what is checked is the pane <see cref="McpAuthMiddleware"/> stamped from the request's own
-/// per-session bearer, and no argument on any tool here can move it.
-/// </para>
-/// <para>
-/// <b>Why the stakes are higher here than on the read server.</b> These tools spend money and start processes. The
-/// second gate is therefore not the last one: on the defaults, a call raises the SDK permission prompt, which the
-/// chat window renders as an Allow/Deny row showing the literal profile, desk and folder. Nothing in this file is
-/// that gate and nothing here may become it — a spoken "yes" is a sentence in a transcript, and the only thing that
-/// resolves a permission is a click.
-/// </para>
-/// <para>
-/// <b>"On the defaults" carries that whole sentence, and the tool descriptions have to say so.</b> The assistant
-/// starts on <c>SessionOptionCatalog.DefaultPermissionMode</c> only as a floor: the Assistant Profile's own
-/// permission mode overrides it (<c>AssistantSessionHost._LaunchOptions</c>), so an operator who put
-/// <c>bypassPermissions</c> on that profile gets no row at all — and for the two tools that raise a cockpit card of
-/// their own, AC-575's per-source switch does the same one layer down, before the card is ever built
-/// (<c>ConsentService.RequestConsentAsync</c>). A description that promises a click unconditionally has the
-/// assistant announcing a card nobody will ever see, which is the same defect as promising no click, pointing the
-/// other way. <see cref="AskingCanBeSwitchedOff"/> is the one sentence that says it, written once because five
-/// copies of it are five places for it to stop being true.
-/// </para>
-/// <para>
-/// <b>This server scopes nothing.</b> The workspace is a required parameter rather than something derived, because
-/// the assistant sits on no desk to derive one from — see <see cref="SpawnTarget"/>, whose two factories are the two
-/// scoping rules, and whose remarks explain why a coordinator's stricter rule must not be built as a check bolted
-/// onto this one.
-/// </para>
-/// <para>
-/// <b>Two of these ask on their own account.</b> <c>send_message</c> and <c>send_prompt</c> reach into a session the
-/// assistant did not start, so they raise a cockpit consent card as well — under two separate sources
-/// (<see cref="ConsentSourceCatalog.AssistantMessage"/> and <see cref="ConsentSourceCatalog.AssistantPrompt"/>), so
-/// that an operator who lets the assistant leave notes unasked has not thereby let it start work unasked.
-/// </para>
-/// </remarks>
+// The `cockpit-assistant-agents` MCP tools (AC-545): the voice assistant's acting path — starting a session on
+// a named desk and stopping one again. The read half is `AssistantReadMcpTools`, and the two are
+// deliberately not one server; `AssistantIdentity.ActMcpServerName` says why.
+// *The mount rule is copied, not re-invented.* Both gates are the ones AC-544 already has, and both are here
+// for the same reasons written out on the read server:
+//
+// *1. It is not handed out.* The endpoint is registered `Internal` (AC-204), so it is in no picker and in
+// no fan-out, and reaches only a launch that names it — `AssistantSessionHost.McpSelection` being the one
+// place in the codebase that does.
+//
+// *2. It is not answered.* `_RefuseIfNotTheAssistant` runs first in every tool and returns
+// *before* the gateway is touched. That is the gate that holds: the mount is a fact about configuration and
+// configuration widens later by accident — an endpoint made non-internal, a profile that names the server, a spawn
+// path that copies a selection it did not read. When that happens these tools sit in a session's context and still
+// answer nobody, because what is checked is the pane `McpAuthMiddleware` stamped from the request's own
+// per-session bearer, and no argument on any tool here can move it.
+//
+// *Why the stakes are higher here than on the read server.* These tools spend money and start processes. The
+// second gate is therefore not the last one: on the defaults, a call raises the SDK permission prompt, which the
+// chat window renders as an Allow/Deny row showing the literal profile, desk and folder. Nothing in this file is
+// that gate and nothing here may become it — a spoken "yes" is a sentence in a transcript, and the only thing that
+// resolves a permission is a click.
+//
+// *"On the defaults" carries that whole sentence, and the tool descriptions have to say so.* The assistant
+// starts on `SessionOptionCatalog.DefaultPermissionMode` only as a floor: the Assistant Profile's own
+// permission mode overrides it (`AssistantSessionHost._LaunchOptions`), so an operator who put
+// `bypassPermissions` on that profile gets no row at all — and for the two tools that raise a cockpit card of
+// their own, AC-575's per-source switch does the same one layer down, before the card is ever built
+// (`ConsentService.RequestConsentAsync`). A description that promises a click unconditionally has the
+// assistant announcing a card nobody will ever see, which is the same defect as promising no click, pointing the
+// other way. `AskingCanBeSwitchedOff` is the one sentence that says it, written once because five
+// copies of it are five places for it to stop being true.
+//
+// *This server scopes nothing.* The workspace is a required parameter rather than something derived, because
+// the assistant sits on no desk to derive one from — see `SpawnTarget`, whose two factories are the two
+// scoping rules, and whose remarks explain why a coordinator's stricter rule must not be built as a check bolted
+// onto this one.
+//
+// *Two of these ask on their own account.* `send_message` and `send_prompt` reach into a session the
+// assistant did not start, so they raise a cockpit consent card as well — under two separate sources
+// (`ConsentSourceCatalog.AssistantMessage` and `ConsentSourceCatalog.AssistantPrompt`), so
+// that an operator who lets the assistant leave notes unasked has not thereby let it start work unasked.
 internal sealed class AssistantAgentMcpTools(
     IAssistantAgentGateway gateway,
     IAssistantMemory memory,
@@ -70,18 +60,14 @@ internal sealed class AssistantAgentMcpTools(
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
-    /// <summary>
-    /// What a caller that is not the assistant is told. One sentence, and no detail about what it would have got —
-    /// the same wording the read server uses, so a session that reaches either one learns the same nothing.
-    /// </summary>
+    // What a caller that is not the assistant is told. One sentence, and no detail about what it would have got —
+    // the same wording the read server uses, so a session that reaches either one learns the same nothing.
     private const string NotTheAssistant =
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
-    /// <summary>
-    /// The caveat every "it needs their click" sentence on this server carries, spliced into each description rather
-    /// than retyped in it. See the class remarks for why it exists: the click is the default, not a guarantee, and
-    /// the operator can switch the asking off ahead of time by two separate levers.
-    /// </summary>
+    // The caveat every "it needs their click" sentence on this server carries, spliced into each description rather
+    // than retyped in it. See the class remarks for why it exists: the click is the default, not a guarantee, and
+    // the operator can switch the asking off ahead of time by two separate levers.
     private const string AskingCanBeSwitchedOff =
         " THE CLICK IS THE DEFAULT AND NOT A PROMISE: the operator can switch the asking off ahead of time — for this"
         + " kind of request in Options → Voice, or by giving the Assistant Profile a permission mode that bypasses"
@@ -436,23 +422,18 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
-    /// <summary>
-    /// Asks the operator, and returns the tool result to hand back when they said no — or null when they said yes.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="action"/> is passed straight through to <see cref="ConsentRequest.Action"/>, which is rendered
-    /// verbatim, and is composed at each call site out of the literal arguments rather than out of a sentence about
-    /// them. That is the rule the type states and the reason it states it: the assistant's words are supplied by a
-    /// model that can be argued into supplying different ones, so a card showing a friendly description of a hostile
-    /// message is a card that approves the message. The pane id is shown rather than the session's name for the same
-    /// reason — the id is what the cockpit will act on, and a name would be the assistant's rendering of it.
-    /// <para>
-    /// No broker means no operator to ask, and these two tools deliver into someone else's session, so the answer is
-    /// no. <c>AllowRemember</c> is deliberately left off both: the operator's lever for "stop asking me about this"
-    /// is the per-source bypass in Options (AC-575), which is per source and switchable back off, rather than a
-    /// per-call promise made on a row that was about one particular message.
-    /// </para>
-    /// </remarks>
+    // Asks the operator, and returns the tool result to hand back when they said no — or null when they said yes.
+    // `action` is passed straight through to `ConsentRequest.Action`, which is rendered
+    // verbatim, and is composed at each call site out of the literal arguments rather than out of a sentence about
+    // them. That is the rule the type states and the reason it states it: the assistant's words are supplied by a
+    // model that can be argued into supplying different ones, so a card showing a friendly description of a hostile
+    // message is a card that approves the message. The pane id is shown rather than the session's name for the same
+    // reason — the id is what the cockpit will act on, and a name would be the assistant's rendering of it.
+    //
+    // No broker means no operator to ask, and these two tools deliver into someone else's session, so the answer is
+    // no. `AllowRemember` is deliberately left off both: the operator's lever for "stop asking me about this"
+    // is the per-source bypass in Options (AC-575), which is per source and switchable back off, rather than a
+    // per-call promise made on a row that was about one particular message.
     private async Task<string?> _ApprovedAsync(string title, string action, string sourceLabel, string scope, ConsentRisk risk)
     {
         if (consent is null)
@@ -469,22 +450,17 @@ internal sealed class AssistantAgentMcpTools(
             : _Serialize(new { ok = false, error = "The operator did not approve this." });
     }
 
-    /// <summary>
-    /// The gate, in one place so every tool on this server is covered by the same sentence rather than by its own
-    /// copy of it. Returns the refusal to hand straight back, or null when the caller really is the assistant.
-    /// </summary>
-    /// <remarks>
-    /// A request with no verified pane is refused too, and not because it might be an impostor: it is the shared
-    /// app-lifetime key path (the in-process tool loop), which cannot be attributed to any session at all. There is
-    /// no identity to check, so there is no way to establish this one — and the safe answer to "I cannot tell who
-    /// this is" on a tool that starts processes in any workspace is no.
-    /// <para>
-    /// Deliberately a second copy of <c>AssistantReadMcpTools._RefuseIfNotTheAssistant</c> rather than a shared
-    /// helper the two servers call. What would be shared is four lines; what would be gained is one place to weaken.
-    /// Both copies compare against the same <see cref="AssistantIdentity.PaneId"/>, which is the constant that must
-    /// not drift — and it already lives in Core for exactly that reason.
-    /// </para>
-    /// </remarks>
+    // The gate, in one place so every tool on this server is covered by the same sentence rather than by its own
+    // copy of it. Returns the refusal to hand straight back, or null when the caller really is the assistant.
+    // A request with no verified pane is refused too, and not because it might be an impostor: it is the shared
+    // app-lifetime key path (the in-process tool loop), which cannot be attributed to any session at all. There is
+    // no identity to check, so there is no way to establish this one — and the safe answer to "I cannot tell who
+    // this is" on a tool that starts processes in any workspace is no.
+    //
+    // Deliberately a second copy of `AssistantReadMcpTools._RefuseIfNotTheAssistant` rather than a shared
+    // helper the two servers call. What would be shared is four lines; what would be gained is one place to weaken.
+    // Both copies compare against the same `AssistantIdentity.PaneId`, which is the constant that must
+    // not drift — and it already lives in Core for exactly that reason.
     private static string? _RefuseIfNotTheAssistant() =>
         string.Equals(McpRequestContext.CurrentPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
             ? null

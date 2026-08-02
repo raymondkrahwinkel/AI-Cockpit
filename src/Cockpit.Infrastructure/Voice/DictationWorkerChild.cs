@@ -6,18 +6,15 @@ using Whisper.net;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// The protocol between the desktop process and a dictation transcription child (AC-174, Raymond 2026-07-22). Whisper.net
-/// loads a native runtime that can <c>abort()</c> on a bad model/backend — a native crash no managed handler can catch,
-/// which took the whole app down (a ggml_abort in whisper_model_load). So transcription runs in a child process, the same
-/// way calibration already does: the desktop spawns this exe with <see cref="TranscribeArgument"/> plus the backend, model
-/// and language, streams 16 kHz mono float32 clips to it over stdin, and reads text (and progress) back as prefixed lines
-/// on stdout. If the child aborts, only the child dies; the desktop sees the pipe close and carries on.
-/// <para>
-/// Wire format: stdin is binary — each request is an Int32 little-endian sample count followed by that many little-endian
-/// float32 samples; a count of 0 or stdin EOF asks the child to exit. stdout is the line protocol below.
-/// </para>
-/// </summary>
+// The protocol between the desktop process and a dictation transcription child (AC-174, Raymond 2026-07-22). Whisper.net
+// loads a native runtime that can `abort()` on a bad model/backend — a native crash no managed handler can catch,
+// which took the whole app down (a ggml_abort in whisper_model_load). So transcription runs in a child process, the same
+// way calibration already does: the desktop spawns this exe with `TranscribeArgument` plus the backend, model
+// and language, streams 16 kHz mono float32 clips to it over stdin, and reads text (and progress) back as prefixed lines
+// on stdout. If the child aborts, only the child dies; the desktop sees the pipe close and carries on.
+//
+// Wire format: stdin is binary — each request is an Int32 little-endian sample count followed by that many little-endian
+// float32 samples; a count of 0 or stdin EOF asks the child to exit. stdout is the line protocol below.
 internal static class DictationWorkerProtocol
 {
     public const string TranscribeArgument = "--transcribe-dictation";
@@ -35,7 +32,7 @@ internal static class DictationWorkerProtocol
             ? JsonSerializer.Deserialize<DictationChildMessage>(line[LinePrefix.Length..], Json)
             : null;
 
-    /// <summary>Reads the backend/model/language out of the process arguments, or false when this is not a dictation child.</summary>
+    // Reads the backend/model/language out of the process arguments, or false when this is not a dictation child.
     public static bool TryReadRequest(string[] args, out VoiceBackendPreference backend, out string model, out string language)
     {
         backend = VoiceBackendPreference.Cpu;
@@ -68,7 +65,7 @@ internal static class DictationWorkerProtocol
     }
 }
 
-/// <summary>One line from a dictation child: a preparation step, a transcription result, a ready signal, or an error.</summary>
+// One line from a dictation child: a preparation step, a transcription result, a ready signal, or an error.
 internal sealed record DictationChildMessage(string Kind, string? Message = null, double? Fraction = null, string? Text = null)
 {
     public const string KindProgress = "progress";
@@ -77,17 +74,15 @@ internal sealed record DictationChildMessage(string Kind, string? Message = null
     public const string KindError = "error";
 }
 
-/// <summary>
-/// The public seam <c>Program.Main</c> uses to run a dictation child (AC-174), mirroring <see cref="HeadlessCalibration"/>:
-/// kept tiny and public so Main can branch into headless transcription before the single-instance guard, Avalonia, or DI —
-/// none of which a transcription worker should pay for or contend with.
-/// </summary>
+// The public seam `Program.Main` uses to run a dictation child (AC-174), mirroring `HeadlessCalibration`:
+// kept tiny and public so Main can branch into headless transcription before the single-instance guard, Avalonia, or DI —
+// none of which a transcription worker should pay for or contend with.
 public static class HeadlessDictation
 {
-    /// <summary>Whether these process arguments ask for a headless dictation worker rather than a normal launch.</summary>
+    // Whether these process arguments ask for a headless dictation worker rather than a normal launch.
     public static bool IsRequested(string[] args) => DictationWorkerProtocol.TryReadRequest(args, out _, out _, out _);
 
-    /// <summary>Runs the dictation worker loop for the backend/model/language named in the arguments; returns the exit code.</summary>
+    // Runs the dictation worker loop for the backend/model/language named in the arguments; returns the exit code.
     public static Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
         DictationWorkerProtocol.TryReadRequest(args, out var backend, out var model, out var language);
@@ -95,13 +90,11 @@ public static class HeadlessDictation
     }
 }
 
-/// <summary>
-/// The transcription worker, run headless in a child process (AC-174). It forces the chosen backend onto Whisper.net,
-/// loads the model once, and then loops: read one clip's samples off stdin, transcribe it, write the text back. Because it
-/// is its own process, a native <c>abort()</c> in the model load or in inference takes only this worker down — the desktop
-/// respawns it and the app stays up. Mirrors <see cref="TranscriptionCalibrationProbe"/>'s native setup, but warm and
-/// request-driven rather than one-shot.
-/// </summary>
+// The transcription worker, run headless in a child process (AC-174). It forces the chosen backend onto Whisper.net,
+// loads the model once, and then loops: read one clip's samples off stdin, transcribe it, write the text back. Because it
+// is its own process, a native `abort()` in the model load or in inference takes only this worker down — the desktop
+// respawns it and the app stays up. Mirrors `TranscriptionCalibrationProbe`'s native setup, but warm and
+// request-driven rather than one-shot.
 internal static class DictationWorker
 {
     public static async Task<int> RunAsync(VoiceBackendPreference backend, string model, string language, CancellationToken cancellationToken)

@@ -12,13 +12,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// Wraps a plugin's narrow <see cref="IPluginSessionDriver"/> to satisfy the app's real <see cref="ISessionDriver"/>
-/// contract (#45) — the seam that lets <see cref="SessionDriverFactory"/> hand a plugin-backed session to the
-/// rest of the app unchanged. The Claude-CLI-only live-control members (permission mode / model / thinking-budget
-/// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
-/// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
-/// </summary>
+// Wraps a plugin's narrow `IPluginSessionDriver` to satisfy the app's real `ISessionDriver`
+// contract (#45) — the seam that lets `SessionDriverFactory` hand a plugin-backed session to the
+// rest of the app unchanged. The Claude-CLI-only live-control members (permission mode / model / thinking-budget
+// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
+// here, gated off in the UI by `Capabilities` reporting them unsupported.
 internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
@@ -168,19 +166,16 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// The environment the plugin driver receives: this run's MCP auth key (AC-40) so a cockpit-hosted server's
-    /// config can reference it instead of embedding a literal, plus the profile's own variables (AC-22) scrubbed
-    /// host-side — a variable on a host-controlled key (an <c>ANTHROPIC_*</c> credential, a nested-agent marker) is
-    /// dropped here, the same rule the TTY route applies, so no plugin has to be trusted to apply it. Dropping is
-    /// logged by name, never by value.
-    /// <para>
-    /// What the plugins contribute for this session (AC-165) goes on last, so a project's answer beats the
-    /// profile's default — the precedence the rest of the app already follows where a project and a profile answer
-    /// the same question. It cannot reach the key above: that one is host-controlled, and a contribution's
-    /// host-controlled keys are gone before they arrive here.
-    /// </para>
-    /// </summary>
+    // The environment the plugin driver receives: this run's MCP auth key (AC-40) so a cockpit-hosted server's
+    // config can reference it instead of embedding a literal, plus the profile's own variables (AC-22) scrubbed
+    // host-side — a variable on a host-controlled key (an `ANTHROPIC_*` credential, a nested-agent marker) is
+    // dropped here, the same rule the TTY route applies, so no plugin has to be trusted to apply it. Dropping is
+    // logged by name, never by value.
+    //
+    // What the plugins contribute for this session (AC-165) goes on last, so a project's answer beats the
+    // profile's default — the precedence the rest of the app already follows where a project and a profile answer
+    // the same question. It cannot reach the key above: that one is host-controlled, and a contribution's
+    // host-controlled keys are gone before they arrive here.
     private IReadOnlyDictionary<string, string> _SpawnEnvironment(
         SessionProfile? profile,
         IReadOnlyDictionary<string, string>? launchOptions,
@@ -280,19 +275,16 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return merged;
     }
 
-    /// <summary>
-    /// Says out loud, on every launch, whether an operator is watching this session (AC-378). Only the caller that
-    /// created the session knows — <c>DelegationService</c> and a self-driving embedded run write <c>"true"</c>; every
-    /// other launch is a pane someone opened, and gets an explicit <c>"false"</c> here rather than silence.
-    /// <para>
-    /// Explicit, because a driver reading nothing has to assume the safe answer — unattended, so its tool narrowing
-    /// binds — and a driver that assumed the other way would hand a delegated agent the operator's own account
-    /// connectors the moment it ran on a host too old to state this (<c>PluginLoadPolicy</c> only enforces
-    /// <c>minHostVersion</c> from host major 1, so the manifest gate cannot be relied on to keep that pairing apart).
-    /// Stating it here makes the newer host's answer the one that travels, and leaves the older host's silence
-    /// meaning exactly what it meant before this split existed.
-    /// </para>
-    /// </summary>
+    // Says out loud, on every launch, whether an operator is watching this session (AC-378). Only the caller that
+    // created the session knows — `DelegationService` and a self-driving embedded run write `"true"`; every
+    // other launch is a pane someone opened, and gets an explicit `"false"` here rather than silence.
+    //
+    // Explicit, because a driver reading nothing has to assume the safe answer — unattended, so its tool narrowing
+    // binds — and a driver that assumed the other way would hand a delegated agent the operator's own account
+    // connectors the moment it ran on a host too old to state this (`PluginLoadPolicy` only enforces
+    // `minHostVersion` from host major 1, so the manifest gate cannot be relied on to keep that pairing apart).
+    // Stating it here makes the newer host's answer the one that travels, and leaves the older host's silence
+    // meaning exactly what it meant before this split existed.
     private static IReadOnlyDictionary<string, string>? _StateAttendance(IReadOnlyDictionary<string, string>? options)
     {
         if (options is not null && options.ContainsKey(WellKnownPluginSessionOptions.Unattended))
@@ -307,17 +299,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return stated;
     }
 
-    /// <summary>
-    /// Turns the operator's per-session MCP selection into the concrete endpoints the plugin driver exposes:
-    /// the shared per-session narrowing (<see cref="McpServerRegistryFilter.ApplySessionSelection"/>, the same
-    /// one <c>ClaudeCliProcess</c> and the local-model tool-loop apply) intersected with the agent-eligible
-    /// servers (<see cref="McpConfigFile.IsAgentEligible"/>). The registry lives host-side (plugin isolation
-    /// keeps it out of the driver), so the adapter resolves names to definitions here. No store (a unit test
-    /// that does not wire one) means no fan-out. Best-effort — a transient <c>cockpit.json</c> read failure
-    /// launches the session without the shared servers rather than failing the whole start, matching how the
-    /// Claude fan-out treats the same read. <paramref name="projectId"/> (AC-218) scopes the registry read to that
-    /// project's own view, so a project's servers and by-name overrides are seen here too.
-    /// </summary>
+    // Turns the operator's per-session MCP selection into the concrete endpoints the plugin driver exposes:
+    // the shared per-session narrowing (`McpServerRegistryFilter.ApplySessionSelection`, the same
+    // one `ClaudeCliProcess` and the local-model tool-loop apply) intersected with the agent-eligible
+    // servers (`McpConfigFile.IsAgentEligible`). The registry lives host-side (plugin isolation
+    // keeps it out of the driver), so the adapter resolves names to definitions here. No store (a unit test
+    // that does not wire one) means no fan-out. Best-effort — a transient `cockpit.json` read failure
+    // launches the session without the shared servers rather than failing the whole start, matching how the
+    // Claude fan-out treats the same read. `projectId` (AC-218) scopes the registry read to that
+    // project's own view, so a project's servers and by-name overrides are seen here too.
     private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, string? projectId, CancellationToken cancellationToken)
     {
         if (mcpServerCatalog is null)
@@ -403,18 +393,16 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
     }
 
-    /// <summary>
-    /// The credential this session presents to <paramref name="server"/>, resolved before the config is written
-    /// (AC-353). Asked for non-interactively: starting a session is not the moment to make a browser window appear,
-    /// so a token that cannot be renewed silently leaves the server unauthorized — and says so, because the whole
-    /// point is that this is known before the first tool call rather than surfacing as a 401 from the depths.
-    /// </summary>
-    /// <param name="theSessionWillHoldIt">
-    /// Whether the credential goes into the config and stays there. It does when nothing stands in front of the
-    /// server, and then it has to outlast the session — a token with minutes left is a session that loses this
-    /// server minutes in, which is the defect this ticket was opened for. Behind the loopback endpoint the answer is
-    /// only ever used to establish that a sign-in exists, because the endpoint asks again on every call.
-    /// </param>
+    // The credential this session presents to `server`, resolved before the config is written
+    // (AC-353). Asked for non-interactively: starting a session is not the moment to make a browser window appear,
+    // so a token that cannot be renewed silently leaves the server unauthorized — and says so, because the whole
+    // point is that this is known before the first tool call rather than surfacing as a 401 from the depths.
+    //
+    // `theSessionWillHoldIt`:
+    // Whether the credential goes into the config and stays there. It does when nothing stands in front of the
+    // server, and then it has to outlast the session — a token with minutes left is a session that loses this
+    // server minutes in, which is the defect this ticket was opened for. Behind the loopback endpoint the answer is
+    // only ever used to establish that a sign-in exists, because the endpoint asks again on every call.
     private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, bool theSessionWillHoldIt, CancellationToken cancellationToken)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
@@ -439,11 +427,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return access;
     }
 
-    /// <summary>
-    /// The loopback address that stands in for an OAuth server (AC-524), or <see langword="null"/> to keep the old
-    /// behaviour. Null covers three things on purpose — no proxy wired (a unit test), a server this does not apply
-    /// to, and a listener that would not bind — because all three mean the same thing here: write the token.
-    /// </summary>
+    // The loopback address that stands in for an OAuth server (AC-524), or `null` to keep the old
+    // behaviour. Null covers three things on purpose — no proxy wired (a unit test), a server this does not apply
+    // to, and a listener that would not bind — because all three mean the same thing here: write the token.
     private async Task<string?> _ProxyUrlAsync(McpServerConfig server, CancellationToken cancellationToken) =>
         oauthProxy is null ? null : await oauthProxy.MountAsync(server, cancellationToken).ConfigureAwait(false);
 
