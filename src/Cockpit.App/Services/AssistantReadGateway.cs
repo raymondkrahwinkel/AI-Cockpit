@@ -5,29 +5,23 @@ using Cockpit.Core.Abstractions.Assistant;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// The app-level half of <see cref="IAssistantReadGateway"/> (AC-544): the running session panels, read across
-/// every workspace at once.
-/// </summary>
-/// <remarks>
-/// Deliberately close in shape to <see cref="WorkspaceAgentGateway"/> and deliberately not the same class. That one
-/// answers "who shares this caller's desk" and derives the desk from the caller; this one answers "what is running
-/// anywhere" and has no caller to derive anything from — the assistant sits on no desk. Folding the second question
-/// into the first would have meant giving that gateway a mode in which it does not scope, and a scoping rule with
-/// an off switch is the thing AC-544 exists to avoid handing out.
-/// <para>
-/// The UI-thread marshalling is the same and for the same reason: <c>CockpitViewModel.Sessions</c> only ever mutates
-/// on the UI thread and an MCP tool call arrives on a Kestrel request thread. Inline when already there, so a unit
-/// test on the UI thread pays for no redundant dispatch, and the awaitable is handed back rather than blocked on.
-/// </para>
-/// <para>
-/// <b>Every session, including the ones the grid does not show.</b> <see cref="CockpitViewModel.AllSessions"/> holds
-/// embedded panes (an Autopilot step, a plugin run) as well as the ones in the layout — they are full agent sessions
-/// with their own MCP tokens, and a status question that skipped them would be answered confidently and wrongly.
-/// Plain terminal panes are left out: they carry a pane id but there is no agent on the other end to have a status.
-/// The assistant's own session is left out too — it is the one asking.
-/// </para>
-/// </remarks>
+// The app-level half of `IAssistantReadGateway` (AC-544): the running session panels, read across
+// every workspace at once.
+// Deliberately close in shape to `WorkspaceAgentGateway` and deliberately not the same class. That one
+// answers "who shares this caller's desk" and derives the desk from the caller; this one answers "what is running
+// anywhere" and has no caller to derive anything from — the assistant sits on no desk. Folding the second question
+// into the first would have meant giving that gateway a mode in which it does not scope, and a scoping rule with
+// an off switch is the thing AC-544 exists to avoid handing out.
+//
+// The UI-thread marshalling is the same and for the same reason: `CockpitViewModel.Sessions` only ever mutates
+// on the UI thread and an MCP tool call arrives on a Kestrel request thread. Inline when already there, so a unit
+// test on the UI thread pays for no redundant dispatch, and the awaitable is handed back rather than blocked on.
+//
+// *Every session, including the ones the grid does not show.* `CockpitViewModel.AllSessions` holds
+// embedded panes (an Autopilot step, a plugin run) as well as the ones in the layout — they are full agent sessions
+// with their own MCP tokens, and a status question that skipped them would be answered confidently and wrongly.
+// Plain terminal panes are left out: they carry a pane id but there is no agent on the other end to have a status.
+// The assistant's own session is left out too — it is the one asking.
 internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistantReadGateway, ISingletonService
 {
     public Task<IReadOnlyList<AssistantSessionRow>> ListSessionsAsync() =>
@@ -45,23 +39,18 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
             ? Task.FromResult(_ReadTranscript(paneId, count))
             : Dispatcher.UIThread.InvokeAsync(() => _ReadTranscript(paneId, count)).GetTask();
 
-    /// <summary>
-    /// The last <paramref name="count"/> rows of a session's transcript, or null when that pane is not an AI session.
-    /// </summary>
-    /// <remarks>
-    /// <b>The type test is the lookup.</b> <see cref="CockpitViewModel.FindSession"/> answers in
-    /// <see cref="SessionPanelViewModel"/>, which is the shared base of an SDK session and a plain terminal — and only
-    /// the former, <see cref="SessionViewModel"/>, has a transcript at all. So a pane id naming a terminal falls out
-    /// here as "no AI session", which is true of it rather than a convenient approximation. Embedded panes are
-    /// reachable for the same reason <c>FindSession</c> exists: an Autopilot step is a full session with a real
-    /// transcript, and a reader that only walked the grid would answer confidently and wrongly about it.
-    /// <para>
-    /// The slice is taken here, on the UI thread, so a session with ten thousand rows costs a <c>Skip</c> rather than
-    /// a copy. Nothing is filtered on the way out — a thinking row and a folded tool call are in the transcript and
-    /// are therefore in the answer, whether or not the operator's current reading level draws them. What the
-    /// assistant is being asked is what the session <em>did</em>, not what a particular panel is showing.
-    /// </para>
-    /// </remarks>
+    // The last `count` rows of a session's transcript, or null when that pane is not an AI session.
+    // *The type test is the lookup.* `CockpitViewModel.FindSession` answers in
+    // `SessionPanelViewModel`, which is the shared base of an SDK session and a plain terminal — and only
+    // the former, `SessionViewModel`, has a transcript at all. So a pane id naming a terminal falls out
+    // here as "no AI session", which is true of it rather than a convenient approximation. Embedded panes are
+    // reachable for the same reason `FindSession` exists: an Autopilot step is a full session with a real
+    // transcript, and a reader that only walked the grid would answer confidently and wrongly about it.
+    //
+    // The slice is taken here, on the UI thread, so a session with ten thousand rows costs a `Skip` rather than
+    // a copy. Nothing is filtered on the way out — a thinking row and a folded tool call are in the transcript and
+    // are therefore in the answer, whether or not the operator's current reading level draws them. What the
+    // assistant is being asked is what the session *did*, not what a particular panel is showing.
     private AssistantTranscript? _ReadTranscript(string paneId, int count)
     {
         if (cockpit.FindSession(paneId) is not SessionViewModel session)
@@ -81,11 +70,9 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
             ]);
     }
 
-    /// <summary>
-    /// The operator's own project list, in the order the manager holds it. All of them, including the ones with no
-    /// folder: an administrative project is a project, and a reader that quietly dropped those would answer "which
-    /// projects do we have" with a subset and no sign that it had.
-    /// </summary>
+    // The operator's own project list, in the order the manager holds it. All of them, including the ones with no
+    // folder: an administrative project is a project, and a reader that quietly dropped those would answer "which
+    // projects do we have" with a subset and no sign that it had.
     private IReadOnlyList<AssistantProjectRow> _ListProjects() =>
     [
         .. cockpit.Projects.Projects.Select(project => new AssistantProjectRow(

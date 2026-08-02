@@ -3,35 +3,29 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Opens the windows an operator works *in* — projects, MCP servers, the plugin store, a plugin's own
-/// dialog — beside the cockpit instead of on top of it (AC-367). Every session and pane lives in the one
-/// main window, so a modal owned by it stops the whole cockpit: an agent asking for consent cannot be
-/// answered until the window in front is closed, because the answer is a banner in a pane behind it.
-/// <para>
-/// The caller still awaits — but how a surface hands its answer back does change, and that is the sharp edge
-/// here. Avalonia's <c>Close(result)</c> is not readable off a window shown this way (the field behind it is
-/// private and only <c>ShowDialog</c> returns it), so a surface that answers something reads it from its view
-/// model at the moment the window closes. <c>Close()</c> raises <c>Closed</c> synchronously, so an answer
-/// written by anything that runs later than the handler which closed the window is never seen: the caller
-/// gets a cancel. See <see cref="SessionDialogService.ShowNewSessionDialogAsync"/> for the ordering that
-/// depends on it, and the tests that hold it there.
-/// </para>
-/// <para>
-/// Owned by the window it is shown over, so Avalonia closes it along with its owner and shutting the
-/// cockpit down needs nothing here. Everything runs on the UI thread — a <see cref="Window"/> cannot be
-/// built off it — so the registry needs no lock.
-/// </para>
-/// </summary>
+// Opens the windows an operator works *in* — projects, MCP servers, the plugin store, a plugin's own
+// dialog — beside the cockpit instead of on top of it (AC-367). Every session and pane lives in the one
+// main window, so a modal owned by it stops the whole cockpit: an agent asking for consent cannot be
+// answered until the window in front is closed, because the answer is a banner in a pane behind it.
+//
+// The caller still awaits — but how a surface hands its answer back does change, and that is the sharp edge
+// here. Avalonia's `Close(result)` is not readable off a window shown this way (the field behind it is
+// private and only `ShowDialog` returns it), so a surface that answers something reads it from its view
+// model at the moment the window closes. `Close()` raises `Closed` synchronously, so an answer
+// written by anything that runs later than the handler which closed the window is never seen: the caller
+// gets a cancel. See `SessionDialogService.ShowNewSessionDialogAsync` for the ordering that
+// depends on it, and the tests that hold it there.
+//
+// Owned by the window it is shown over, so Avalonia closes it along with its owner and shutting the
+// cockpit down needs nothing here. Everything runs on the UI thread — a `Window` cannot be
+// built off it — so the registry needs no lock.
 public sealed class SurfaceWindows : ISingletonService
 {
     private readonly Dictionary<object, Surface> _open = [];
 
-    /// <summary>
-    /// Brings an already-open surface forward and hands back the task its first caller is waiting on, or
-    /// null when there is none. Callers ask before building a view model: most surfaces read a store to
-    /// populate themselves, and doing that for a window that will not be shown is work for nothing.
-    /// </summary>
+    // Brings an already-open surface forward and hands back the task its first caller is waiting on, or
+    // null when there is none. Callers ask before building a view model: most surfaces read a store to
+    // populate themselves, and doing that for a window that will not be shown is work for nothing.
     public Task? TryActivateAsync(object key)
     {
         if (!_open.TryGetValue(key, out var surface))
@@ -44,12 +38,10 @@ public sealed class SurfaceWindows : ISingletonService
         return surface.Pending;
     }
 
-    /// <summary>
-    /// Takes every open surface off the screen until the returned handle is disposed. The screen lock (AC-5) is
-    /// modal over the main window, and modality holds an owner — not that owner's siblings. Every surface is a
-    /// sibling, so options, MCP servers, the plugin store and each plugin's window stayed usable behind a locked
-    /// cockpit. Hidden rather than closed, so what the operator was filling in is still there afterwards.
-    /// </summary>
+    // Takes every open surface off the screen until the returned handle is disposed. The screen lock (AC-5) is
+    // modal over the main window, and modality holds an owner — not that owner's siblings. Every surface is a
+    // sibling, so options, MCP servers, the plugin store and each plugin's window stayed usable behind a locked
+    // cockpit. Hidden rather than closed, so what the operator was filling in is still there afterwards.
     public IDisposable HideAll()
     {
         var hidden = _open.Keys.ToList();
@@ -69,7 +61,7 @@ public sealed class SurfaceWindows : ISingletonService
         });
     }
 
-    /// <summary>Shows a surface that answers nothing; the task completes when it closes.</summary>
+    // Shows a surface that answers nothing; the task completes when it closes.
     public Task ShowAsync(object key, Window surface, Window owner)
     {
         if (TryActivateAsync(key) is { } already)
@@ -84,10 +76,8 @@ public sealed class SurfaceWindows : ISingletonService
         return completion.Task;
     }
 
-    /// <summary>
-    /// Shows a surface that answers something. <paramref name="readResult"/> runs once the window has
-    /// closed and reads the answer off wherever the surface left it — its view model, in practice.
-    /// </summary>
+    // Shows a surface that answers something. `readResult` runs once the window has
+    // closed and reads the answer off wherever the surface left it — its view model, in practice.
     public Task<TResult?> ShowAsync<TResult>(object key, Window surface, Window owner, Func<TResult?> readResult)
     {
         if (TryActivateAsync(key) is Task<TResult?> already)

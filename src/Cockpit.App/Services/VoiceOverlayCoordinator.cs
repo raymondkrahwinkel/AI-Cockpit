@@ -3,24 +3,19 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// The one thing that decides what the voice overlay says. Three sources report into it — a push-to-talk hold,
-/// open-mic dictation, and read-aloud — and none of them may write the pill directly: they each know their own
-/// half and nothing about the others, so left to themselves they overwrite each other. The pill vanishing
-/// mid-transcription because an unrelated source went idle is the failure this exists to make impossible.
-/// </summary>
-/// <remarks>
-/// The rule, in one line: <b>speech-to-text owns the pill, and a hold owns it over open-mic.</b>
-/// <list type="bullet">
-/// <item><b>STT before TTS</b> (Raymond, 2026-07-15). What you are saying outranks what the cockpit is saying:
-/// dictation is a thing you are doing right now and read-aloud is a thing you can hear anyway. In practice they
-/// rarely collide — open-mic pauses itself while playback runs (barge-in) — but a hold during read-aloud is
-/// exactly the barge-in case, and there the hold has to win.</item>
-/// <item><b>A hold before open-mic.</b> Both are dictation, but one of them you asked for by holding a key.</item>
-/// </list>
-/// Sources report their own state and nothing else. Whether that state is the one on screen is not their
-/// business, which is what keeps this rule in one place instead of spread across three coordinators.
-/// </remarks>
+// The one thing that decides what the voice overlay says. Three sources report into it — a push-to-talk hold,
+// open-mic dictation, and read-aloud — and none of them may write the pill directly: they each know their own
+// half and nothing about the others, so left to themselves they overwrite each other. The pill vanishing
+// mid-transcription because an unrelated source went idle is the failure this exists to make impossible.
+// The rule, in one line: *speech-to-text owns the pill, and a hold owns it over open-mic.*
+//   - *STT before TTS* (Raymond, 2026-07-15). What you are saying outranks what the cockpit is saying:
+//     dictation is a thing you are doing right now and read-aloud is a thing you can hear anyway. In practice they
+//     rarely collide — open-mic pauses itself while playback runs (barge-in) — but a hold during read-aloud is
+//     exactly the barge-in case, and there the hold has to win.
+//   - *A hold before open-mic.* Both are dictation, but one of them you asked for by holding a key.
+//
+// Sources report their own state and nothing else. Whether that state is the one on screen is not their
+// business, which is what keeps this rule in one place instead of spread across three coordinators.
 public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoiceOverlayPresenter presenter) : ISingletonService
 {
     private VoiceOverlayState? _pushToTalk;
@@ -29,10 +24,10 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     private string _status = string.Empty;
     private double? _progress;
 
-    /// <summary>The pill's view model — the overlay window binds to this.</summary>
+    // The pill's view model — the overlay window binds to this.
     public VoiceOverlayViewModel Overlay => overlay;
 
-    /// <summary>What the push-to-talk hold has to say, or null once the hold is over.</summary>
+    // What the push-to-talk hold has to say, or null once the hold is over.
     public void SetPushToTalk(VoiceOverlayState? state, string? status = null, double? progress = null)
     {
         _pushToTalk = state;
@@ -40,12 +35,10 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
         _Apply();
     }
 
-    /// <summary>What open-mic dictation has to say, or null while it is listening to nothing in particular.</summary>
-    /// <remarks>
-    /// Null is the resting state, not "off": open-mic listens continuously, and a pill that sat there the whole
-    /// time would say nothing except that the feature is on. It appears when the VAD hears speech start, which is
-    /// the moment it has something to report.
-    /// </remarks>
+    // What open-mic dictation has to say, or null while it is listening to nothing in particular.
+    // Null is the resting state, not "off": open-mic listens continuously, and a pill that sat there the whole
+    // time would say nothing except that the feature is on. It appears when the VAD hears speech start, which is
+    // the moment it has something to report.
     public void SetOpenMic(VoiceOverlayState? state)
     {
         _openMic = state;
@@ -53,11 +46,9 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
         _Apply();
     }
 
-    /// <summary>
-    /// What read-aloud has to say, or null when it is idle: <see cref="VoiceOverlayState.Preparing"/> while it is
-    /// synthesizing (text-to-sound, before any audio — with a status word), <see cref="VoiceOverlayState.Speaking"/>
-    /// once audio is actually playing. Shown only when no dictation is in progress — see the class remarks.
-    /// </summary>
+    // What read-aloud has to say, or null when it is idle: `VoiceOverlayState.Preparing` while it is
+    // synthesizing (text-to-sound, before any audio — with a status word), `VoiceOverlayState.Speaking`
+    // once audio is actually playing. Shown only when no dictation is in progress — see the class remarks.
     public void SetReadAloud(VoiceOverlayState? state, string? status = null)
     {
         _readAloud = state;
@@ -65,11 +56,9 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
         _Apply();
     }
 
-    /// <summary>
-    /// A microphone level for the waveform. Both dictation sources feed the same microphone, so whichever owns
-    /// the pill is the one being drawn — the view model already drops a level that arrives while the pill is not
-    /// listening, which is what keeps a late frame from a finished hold out of the next one.
-    /// </summary>
+    // A microphone level for the waveform. Both dictation sources feed the same microphone, so whichever owns
+    // the pill is the one being drawn — the view model already drops a level that arrives while the pill is not
+    // listening, which is what keeps a late frame from a finished hold out of the next one.
     public void PushLevel(double level) => overlay.PushLevel(level);
 
     // Preparing and Unavailable carry words; the view model drops them the moment the state moves on, so they

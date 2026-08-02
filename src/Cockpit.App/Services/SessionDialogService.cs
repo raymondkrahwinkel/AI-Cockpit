@@ -24,18 +24,15 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Hosts the cockpit's dialogs. Constructs each dialog's view model with the profile store/login checker
-/// it injects, so the dialogs get their data without a service locator, then shows it and relays the
-/// typed result back to the caller.
-/// <para>
-/// Two kinds, and the difference is deliberate (AC-367). A <b>surface</b> — projects, MCP servers, the
-/// plugin store, options — is something the operator works in for minutes, so it opens beside the cockpit
-/// through <see cref="SurfaceWindows"/> and leaves every running session reachable. A <b>question</b> —
-/// confirm a removal, type a password, trust a plugin — is answered in seconds and nothing may carry on
-/// half-answered, so it stays a modal <c>ShowDialog</c>. Either way the caller awaits the same task.
-/// </para>
-/// </summary>
+// Hosts the cockpit's dialogs. Constructs each dialog's view model with the profile store/login checker
+// it injects, so the dialogs get their data without a service locator, then shows it and relays the
+// typed result back to the caller.
+//
+// Two kinds, and the difference is deliberate (AC-367). A *surface* — projects, MCP servers, the
+// plugin store, options — is something the operator works in for minutes, so it opens beside the cockpit
+// through `SurfaceWindows` and leaves every running session reachable. A *question* —
+// confirm a removal, type a password, trust a plugin — is answered in seconds and nothing may carry on
+// half-answered, so it stays a modal `ShowDialog`. Either way the caller awaits the same task.
 public sealed class SessionDialogService : ISessionDialogService, ISingletonService
 {
     private readonly ISessionProfileStore _profileStore;
@@ -60,7 +57,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProjectMemorySourceRegistry _memorySources;
     private readonly SurfaceWindows _surfaces;
 
-    /// <summary>The assistant's own profile slot (AC-543) — its own section of the config, not an entry in <see cref="_profileStore"/>.</summary>
+    // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
     private readonly IAssistantProfileStore _assistantProfileStore;
 
     public SessionDialogService(

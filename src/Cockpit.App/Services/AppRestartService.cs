@@ -5,27 +5,21 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Real <see cref="IAppRestartService"/> (#53): launches an independent copy of the running process — same
-/// executable, same args, same working directory (<see cref="Environment.ProcessPath"/> /
-/// <see cref="Environment.GetCommandLineArgs"/>), which on Windows keeps running once this process exits, no
-/// job-object/parent-tracking involved — then reuses the app's existing clean-exit path (bug #32) via
-/// <see cref="App.RequestQuit"/>: that sets <see cref="App.IsQuitting"/> and calls the desktop lifetime's
-/// <c>Shutdown()</c>, which <c>Program.Main</c>'s <c>finally</c> picks up to dispose the running sessions and
-/// hard-exit. Restarting therefore needs no teardown logic of its own.
-/// </summary>
-/// <remarks>
-/// Both steps are constructor-injected as plain delegates (see the internal test constructor) so a test can
-/// substitute fakes for the real process spawn and the real app shutdown — neither should actually run in a
-/// unit test.
-/// </remarks>
+// Real `IAppRestartService` (#53): launches an independent copy of the running process — same
+// executable, same args, same working directory (`Environment.ProcessPath` /
+// `Environment.GetCommandLineArgs`), which on Windows keeps running once this process exits, no
+// job-object/parent-tracking involved — then reuses the app's existing clean-exit path (bug #32) via
+// `App.RequestQuit`: that sets `App.IsQuitting` and calls the desktop lifetime's
+// `Shutdown()`, which `Program.Main`'s `finally` picks up to dispose the running sessions and
+// hard-exit. Restarting therefore needs no teardown logic of its own.
+// Both steps are constructor-injected as plain delegates (see the internal test constructor) so a test can
+// substitute fakes for the real process spawn and the real app shutdown — neither should actually run in a
+// unit test.
 internal sealed class AppRestartService : IAppRestartService, ISingletonService
 {
-    /// <summary>
-    /// Marks the launched process as a restart handoff rather than a fresh double-launch. The new instance reads
-    /// it (in <c>Program.Main</c>) and waits for this one to release the single-instance claim, instead of finding
-    /// it still held and refusing to start with the "already running" notice.
-    /// </summary>
+    // Marks the launched process as a restart handoff rather than a fresh double-launch. The new instance reads
+    // it (in `Program.Main`) and waits for this one to release the single-instance claim, instead of finding
+    // it still held and refusing to start with the "already running" notice.
     internal const string RestartArgument = "--restarting";
 
     private readonly Action _launchNewInstance;
@@ -71,17 +65,13 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
         Process.Start(startInfo);
     }
 
-    /// <summary>
-    /// The arguments for the relaunched process: the current ones, plus the <see cref="RestartArgument"/> marker.
-    /// Any marker already there (this instance was itself started by a restart) is dropped first, so restart after
-    /// restart carries exactly one and the argument list cannot grow without bound.
-    /// </summary>
-    /// <remarks>
-    /// AC-478: also drops <see cref="PluginManager.SafeModeArgument"/> if present — safe mode is a one-shot
-    /// recovery flag for the process that carried it, not a state the operator has to remember to clear by hand.
-    /// Every restart, whichever button asked for it, is therefore the way back to a normal, fully-plugged-in
-    /// launch; nothing re-derives the safe-mode banner's "Restart" action separately from this one.
-    /// </remarks>
+    // The arguments for the relaunched process: the current ones, plus the `RestartArgument` marker.
+    // Any marker already there (this instance was itself started by a restart) is dropped first, so restart after
+    // restart carries exactly one and the argument list cannot grow without bound.
+    // AC-478: also drops `PluginManager.SafeModeArgument` if present — safe mode is a one-shot
+    // recovery flag for the process that carried it, not a state the operator has to remember to clear by hand.
+    // Every restart, whichever button asked for it, is therefore the way back to a normal, fully-plugged-in
+    // launch; nothing re-derives the safe-mode banner's "Restart" action separately from this one.
     internal static IReadOnlyList<string> BuildLaunchArguments(IReadOnlyList<string> currentArguments) =>
         [.. currentArguments.Where(argument => argument != RestartArgument && argument != PluginManager.SafeModeArgument), RestartArgument];
 

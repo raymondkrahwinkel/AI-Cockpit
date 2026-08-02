@@ -10,14 +10,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Keeps the pending resumes (AC-234) and sends each one when its moment arrives: the prompt a session picks up
-/// with after an allowance rolls over, or whenever the operator said to.
-/// <para>
-/// One prompt per schedule, deliberately — no chaining, no conditions, no follow-up steps. That is Autopilot's
-/// job and it has its own approval flow; a resume that starts needing "and then" belongs there instead.
-/// </para>
-/// </summary>
+// Keeps the pending resumes (AC-234) and sends each one when its moment arrives: the prompt a session picks up
+// with after an allowance rolls over, or whenever the operator said to.
+//
+// One prompt per schedule, deliberately — no chaining, no conditions, no follow-up steps. That is Autopilot's
+// job and it has its own approval flow; a resume that starts needing "and then" belongs there instead.
 public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
 {
     // How far past its moment a resume may still fire. Covers the app being open and merely between ticks; beyond
@@ -35,34 +32,28 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
     private bool _started;
     private bool _disposed;
 
-    /// <summary>Resolves a pane id to the live session panel, or null when that pane is gone. Set by the cockpit, which owns the session list.</summary>
+    // Resolves a pane id to the live session panel, or null when that pane is gone. Set by the cockpit, which owns the session list.
     public Func<string, SessionPanelViewModel?>? ResolveSession { get; set; }
 
-    /// <summary>
-    /// Tries to reopen a pane that is gone, or merely restored and not yet started, and send the prompt into it —
-    /// AC-290. Returns whether that landed. Set by the cockpit, which alone knows how to reopen a session's earlier
-    /// conversation (AC-410's restore machinery); null when it cannot (unit tests, the designer), in which case a
-    /// resume whose pane cannot be sent into always falls straight through to the lapsed/undelivered report below,
-    /// exactly as it did before this existed. Deliberately silent and unattended — a resume was scheduled ahead of
-    /// time precisely to run while nobody is at the desk, so this never asks first.
-    /// </summary>
+    // Tries to reopen a pane that is gone, or merely restored and not yet started, and send the prompt into it —
+    // AC-290. Returns whether that landed. Set by the cockpit, which alone knows how to reopen a session's earlier
+    // conversation (AC-410's restore machinery); null when it cannot (unit tests, the designer), in which case a
+    // resume whose pane cannot be sent into always falls straight through to the lapsed/undelivered report below,
+    // exactly as it did before this existed. Deliberately silent and unattended — a resume was scheduled ahead of
+    // time precisely to run while nobody is at the desk, so this never asks first.
     public Func<string, string, Task<bool>>? ReopenAndSend { get; set; }
 
-    /// <summary>
-    /// Raised when the set of pending resumes changes, so a session can show or drop its "resuming at …" line.
-    /// <para>
-    /// Raised on whichever thread called in, which in this app is always the UI thread: schedule and cancel come
-    /// from commands, firing comes from the timer, and the load comes from startup. That is why nothing in this
-    /// file uses <c>ConfigureAwait(false)</c> any more — it is what took the continuation off the UI thread, and a
-    /// handler that touches bound state has to stay on it (AC-368).
-    /// </para>
-    /// </summary>
+    // Raised when the set of pending resumes changes, so a session can show or drop its "resuming at …" line.
+    //
+    // Raised on whichever thread called in, which in this app is always the UI thread: schedule and cancel come
+    // from commands, firing comes from the timer, and the load comes from startup. That is why nothing in this
+    // file uses `ConfigureAwait(false)` any more — it is what took the continuation off the UI thread, and a
+    // handler that touches bound state has to stay on it (AC-368).
     public event EventHandler? PendingChanged;
 
-    /// <param name="tickInterval">
-    /// How often the clock is looked at. Overridden only by the tests, which cannot wait half a minute to watch a
-    /// timer that is supposed to tick — and watching it tick is the whole point after AC-368, where it never did.
-    /// </param>
+    // `tickInterval`:
+    // How often the clock is looked at. Overridden only by the tests, which cannot wait half a minute to watch a
+    // timer that is supposed to tick — and watching it tick is the whole point after AC-368, where it never did.
     public ScheduledResumeCoordinator(
         IScheduledResumeStore store,
         IToastService? toast = null,
@@ -75,23 +66,20 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         _tickInterval = tickInterval ?? DefaultTickInterval;
     }
 
-    /// <summary>Every resume still waiting, soonest first.</summary>
+    // Every resume still waiting, soonest first.
     public IReadOnlyList<ScheduledResume> Pending => _pending;
 
-    /// <summary>The resume waiting on <paramref name="paneId"/>, or null when that session has none.</summary>
+    // The resume waiting on `paneId`, or null when that session has none.
     public ScheduledResume? PendingFor(string paneId) =>
         _pending.FirstOrDefault(resume => resume.PaneId == paneId);
 
-    /// <summary>
-    /// Loads what was scheduled before and reports whatever lapsed while the cockpit was closed, then starts
-    /// watching the clock. Idempotent: a second call is ignored rather than starting a second timer.
-    /// <para>
-    /// Await it — never <c>.GetAwaiter().GetResult()</c> from the UI thread. It posts the timer's construction to
-    /// the dispatcher, so a caller that blocks the UI thread waiting for this is waiting for itself. That rules it
-    /// out as an <c>IHostedService</c>, whose signature it otherwise matches, because
-    /// <see cref="Program.StartHostedServices"/> starts those synchronously.
-    /// </para>
-    /// </summary>
+    // Loads what was scheduled before and reports whatever lapsed while the cockpit was closed, then starts
+    // watching the clock. Idempotent: a second call is ignored rather than starting a second timer.
+    //
+    // Await it — never `.GetAwaiter().GetResult()` from the UI thread. It posts the timer's construction to
+    // the dispatcher, so a caller that blocks the UI thread waiting for this is waiting for itself. That rules it
+    // out as an `IHostedService`, whose signature it otherwise matches, because
+    // `Program.StartHostedServices` starts those synchronously.
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         // Claimed before the first await, not after: the old guard read a field that is only set once the load is
@@ -141,11 +129,9 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
             _pending.Count);
     }
 
-    /// <summary>
-    /// Takes up what was scheduled before this run and reports whatever lapsed while the cockpit was closed,
-    /// without starting the clock. Split from <see cref="StartAsync"/> so this half — which is where the judgement
-    /// lives — can be exercised without a timer, and a timer is never left running behind a test.
-    /// </summary>
+    // Takes up what was scheduled before this run and reports whatever lapsed while the cockpit was closed,
+    // without starting the clock. Split from `StartAsync` so this half — which is where the judgement
+    // lives — can be exercised without a timer, and a timer is never left running behind a test.
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         var stored = await _store.LoadAsync(cancellationToken);
@@ -180,7 +166,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         PendingChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Schedules <paramref name="resume"/>, replacing whatever that session had pending — one resume per session.</summary>
+    // Schedules `resume`, replacing whatever that session had pending — one resume per session.
     public async Task ScheduleAsync(ScheduledResume resume, CancellationToken cancellationToken = default)
     {
         _pending.RemoveAll(existing => existing.PaneId == resume.PaneId);
@@ -197,7 +183,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         PendingChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Cancels the resume waiting on <paramref name="paneId"/>, removing it from storage rather than only from view.</summary>
+    // Cancels the resume waiting on `paneId`, removing it from storage rather than only from view.
     public async Task CancelAsync(string paneId, CancellationToken cancellationToken = default)
     {
         if (_pending.RemoveAll(resume => resume.PaneId == paneId) == 0)
@@ -214,10 +200,8 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         PendingChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// Sends every resume whose moment has come. Exposed for the tests, which drive the clock rather than waiting
-    /// half a minute for a timer tick.
-    /// </summary>
+    // Sends every resume whose moment has come. Exposed for the tests, which drive the clock rather than waiting
+    // half a minute for a timer tick.
     public async Task RunDueAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         var due = _pending.Where(resume => resume.IsDue(now)).ToList();
@@ -261,12 +245,10 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         PendingChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// AC-290's other half: before reporting a resume as undelivered, gives <see cref="ReopenAndSend"/> a chance to
-    /// bring the session back and send into it. False for every reason that cannot happen — nothing set, nothing
-    /// to reopen with, the reopen itself failed or threw — which is deliberately indistinguishable to the caller:
-    /// each of those is the same honest fallback, not a new failure mode of its own.
-    /// </summary>
+    // AC-290's other half: before reporting a resume as undelivered, gives `ReopenAndSend` a chance to
+    // bring the session back and send into it. False for every reason that cannot happen — nothing set, nothing
+    // to reopen with, the reopen itself failed or threw — which is deliberately indistinguishable to the caller:
+    // each of those is the same honest fallback, not a new failure mode of its own.
     private async Task<bool> _TryReopenAsync(ScheduledResume resume)
     {
         if (ReopenAndSend is null)

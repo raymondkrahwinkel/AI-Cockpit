@@ -5,38 +5,30 @@ using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// The one implementation of <see cref="IConsentBypassPolicy"/> (#AC-575): the only place that knows both which
-/// pane id is the assistant's and which sources the operator switched the consent card off for.
-/// </summary>
-/// <remarks>
-/// <b>Four conditions, all four required.</b> A request is bypassed only when the transport-verified pane is the
-/// assistant's, the assistant is switched on at all, the source is in the operator's list, and — for a dangerous
-/// action — in the second list as well. Any one of them failing shows the card exactly as before. They are checked
-/// in that order because the first is the cheapest and the one an attacker would have to beat first.
-/// <para>
-/// <b>The settings are a snapshot, not a read per request.</b> <see cref="IConsentBypassPolicy.ShouldBypass"/> is
-/// synchronous — the broker calls it in the middle of deciding — and the store reads a file. The snapshot is loaded
-/// at construction and replaced whenever Options saves (the shell wires <see cref="ApplySettingsAsync"/> to the
-/// same <c>Saved</c> event the hotkey and the chip already follow), so switching a source off takes effect on the
-/// next request rather than at the next restart. It starts empty, so the window before the first load has finished
-/// bypasses nothing.
-/// </para>
-/// <para>
-/// <b>Case.</b> Sources are compared ordinally and case-sensitively. They are not typed by a human — the list in
-/// Options is filled from host-stamped names — so a case-insensitive match would only ever widen the set of things
-/// that count as the same source, and widening is the direction that costs something here.
-/// </para>
-/// </remarks>
+// The one implementation of `IConsentBypassPolicy` (#AC-575): the only place that knows both which
+// pane id is the assistant's and which sources the operator switched the consent card off for.
+// *Four conditions, all four required.* A request is bypassed only when the transport-verified pane is the
+// assistant's, the assistant is switched on at all, the source is in the operator's list, and — for a dangerous
+// action — in the second list as well. Any one of them failing shows the card exactly as before. They are checked
+// in that order because the first is the cheapest and the one an attacker would have to beat first.
+//
+// *The settings are a snapshot, not a read per request.* `IConsentBypassPolicy.ShouldBypass` is
+// synchronous — the broker calls it in the middle of deciding — and the store reads a file. The snapshot is loaded
+// at construction and replaced whenever Options saves (the shell wires `ApplySettingsAsync` to the
+// same `Saved` event the hotkey and the chip already follow), so switching a source off takes effect on the
+// next request rather than at the next restart. It starts empty, so the window before the first load has finished
+// bypasses nothing.
+//
+// *Case.* Sources are compared ordinally and case-sensitively. They are not typed by a human — the list in
+// Options is filled from host-stamped names — so a case-insensitive match would only ever widen the set of things
+// that count as the same source, and widening is the direction that costs something here.
 public sealed class AssistantConsentBypassPolicy : IConsentBypassPolicy, ISingletonService
 {
     private readonly IAssistantSettingsStore _settings;
 
-    /// <summary>
-    /// The switches as last read. One immutable object replaced wholesale rather than two fields written in turn:
-    /// the broker reads this off whatever thread the MCP request arrived on, and a half-applied update is a moment
-    /// in which the dangerous list belongs to a different save than the low-risk one.
-    /// </summary>
+    // The switches as last read. One immutable object replaced wholesale rather than two fields written in turn:
+    // the broker reads this off whatever thread the MCP request arrived on, and a half-applied update is a moment
+    // in which the dangerous list belongs to a different save than the low-risk one.
     private volatile _Switches _current = _Switches.Empty;
 
     public AssistantConsentBypassPolicy(IAssistantSettingsStore settings)
@@ -49,7 +41,7 @@ public sealed class AssistantConsentBypassPolicy : IConsentBypassPolicy, ISingle
         _ = ApplySettingsAsync();
     }
 
-    /// <summary>Re-reads the switches. Called at construction and whenever Options saves.</summary>
+    // Re-reads the switches. Called at construction and whenever Options saves.
     public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
     {
         try

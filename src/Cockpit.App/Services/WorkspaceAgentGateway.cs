@@ -3,38 +3,33 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
-using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Host-side <see cref="IWorkspaceAgentGateway"/> (AC-391) over the running session panels: there is no existing
-/// "find the workspace for this pane id" helper, so this is it — the same seam <see cref="SessionVerifyGateway"/>
-/// (AC-86) is for a session's working directory. It resolves the caller's pane via <see cref="CockpitViewModel.FindSession"/>,
-/// reads which workspace it is stamped with, and reports every other AI-session pane sharing that same workspace —
-/// including an embedded one (<see cref="CockpitViewModel.Embed"/>), which is a full agent session with its own MCP
-/// token even though the grid never lists it.
-/// <para>
-/// A Sessions workspace does persist its AI panes in <see cref="Workspace.Panes"/> now (AC-410), the same as a
-/// Dashboard's widgets — but that record is the operator's saved <em>intention</em>, read back only to restore a
-/// pane after a restart. Which live panel is on which desk right now is still read off the running
-/// <see cref="SessionPanelViewModel.WorkspaceId"/> instead, the same live source <c>CockpitViewModel</c> itself
-/// decides against — through <see cref="SessionWorkspacePlacement"/>, which is where that rule lives for every
-/// consumer of it. A pane it places nowhere (the assistant, or an unassigned session at a moment when no
-/// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk.
-/// </para>
-/// <para>
-/// <see cref="CockpitViewModel.Sessions"/> is an <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/>
-/// that only ever mutates on the UI thread, but an MCP tool call lands on the endpoint's own request thread — the
-/// same hazard <see cref="Plugins.PluginSessionObserver.GetCurrentTurnImages"/> guards against, and the same
-/// destination (marshal onto the UI thread; inline when already on it, so a caller that is already there — a unit
-/// test, say — never pays for a redundant dispatch), but not the same mechanism: like <see cref="SessionLabelSink"/>,
-/// this hands back the awaitable from <c>Dispatcher.UIThread.InvokeAsync</c> for the caller to await, rather than
-/// blocking on <c>Dispatcher.UIThread.Invoke</c> —
-/// the caller here is a Kestrel request thread, and blocking it with no timeout is the wrong shape for a seam later
-/// tickets (notify/inbox, claims, delivery, wake, budget, inspector) all land on top of.
-/// </para>
-/// </summary>
+// Host-side `IWorkspaceAgentGateway` (AC-391) over the running session panels: there is no existing
+// "find the workspace for this pane id" helper, so this is it — the same seam `SessionVerifyGateway`
+// (AC-86) is for a session's working directory. It resolves the caller's pane via `CockpitViewModel.FindSession`,
+// reads which workspace it is stamped with, and reports every other AI-session pane sharing that same workspace —
+// including an embedded one (`CockpitViewModel.Embed`), which is a full agent session with its own MCP
+// token even though the grid never lists it.
+//
+// A Sessions workspace does persist its AI panes in `Workspace.Panes` now (AC-410), the same as a
+// Dashboard's widgets — but that record is the operator's saved *intention*, read back only to restore a
+// pane after a restart. Which live panel is on which desk right now is still read off the running
+// `SessionPanelViewModel.WorkspaceId` instead, the same live source `CockpitViewModel` itself
+// decides against — through `SessionWorkspacePlacement`, which is where that rule lives for every
+// consumer of it. A pane it places nowhere (the assistant, or an unassigned session at a moment when no
+// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk.
+//
+// `CockpitViewModel.Sessions` is an `System.Collections.ObjectModel.ObservableCollection{T}`
+// that only ever mutates on the UI thread, but an MCP tool call lands on the endpoint's own request thread — the
+// same hazard `Plugins.PluginSessionObserver.GetCurrentTurnImages` guards against, and the same
+// destination (marshal onto the UI thread; inline when already on it, so a caller that is already there — a unit
+// test, say — never pays for a redundant dispatch), but not the same mechanism: like `SessionLabelSink`,
+// this hands back the awaitable from `Dispatcher.UIThread.InvokeAsync` for the caller to await, rather than
+// blocking on `Dispatcher.UIThread.Invoke` —
+// the caller here is a Kestrel request thread, and blocking it with no timeout is the wrong shape for a seam later
+// tickets (notify/inbox, claims, delivery, wake, budget, inspector) all land on top of.
 internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit, ILogger<WorkspaceAgentGateway> logger)
     : IWorkspaceAgentGateway, ISingletonService
 {

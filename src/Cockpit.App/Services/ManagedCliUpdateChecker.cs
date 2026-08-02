@@ -6,16 +6,12 @@ using Cockpit.Infrastructure.ManagedCli;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Periodically checks each installed managed CLI (AC-20) against the latest version its provider offers and toasts
-/// once when a newer one appears — the background half of the config view's on-demand update check. Generic: it
-/// iterates the CLI names plugins registered and asks <see cref="IManagedCliService.GetStatusAsync"/>; how a version
-/// is discovered stays in the provider's descriptor, never here.
-/// </summary>
-/// <remarks>
-/// Never nags: a given (cli, version) is announced once per run, an uninstalled or up-to-date CLI says nothing, and an
-/// offline/edge failure is swallowed so the timer loop survives — mirroring <see cref="PluginUpdateChecker"/>.
-/// </remarks>
+// Periodically checks each installed managed CLI (AC-20) against the latest version its provider offers and toasts
+// once when a newer one appears — the background half of the config view's on-demand update check. Generic: it
+// iterates the CLI names plugins registered and asks `IManagedCliService.GetStatusAsync`; how a version
+// is discovered stays in the provider's descriptor, never here.
+// Never nags: a given (cli, version) is announced once per run, an uninstalled or up-to-date CLI says nothing, and an
+// offline/edge failure is swallowed so the timer loop survives — mirroring `PluginUpdateChecker`.
 public sealed class ManagedCliUpdateChecker(
     IManagedCliService managedCli,
     IToastService toastService,

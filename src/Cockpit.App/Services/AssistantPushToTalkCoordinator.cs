@@ -9,29 +9,23 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Routes the assistant hotkey (F10) to the assistant instance (AC-543) — the twin of
-/// <see cref="VoicePushToTalkCoordinator"/>, which routes F9 to the selected session and is left untouched.
-/// </summary>
-/// <remarks>
-/// <b>Why not one coordinator with a flag.</b> The two paths differ in every step that matters: F9 puts text in a
-/// session's composer for you to read before you send it, F10 hands it straight to the assistant. Folding them
-/// together would mean a branch at each of those steps, and the failure mode of getting one branch wrong is the
-/// exact thing the indicator exists to prevent — words landing in the wrong place.
-/// <para>
-/// <b>Straight through, no cleanup.</b> What Whisper heard is what the assistant gets (decision 10): this
-/// coordinator hands <see cref="IVoicePushToTalkService.EndHoldAsync"/>'s transcript to
-/// <see cref="IAssistantSessionHost.SendAsync"/> unaltered. Tidying it is the system prompt's job, and a pass here
-/// would be a second copy of it — running on every utterance, for a model that reads through filler words on its
-/// own.
-/// </para>
-/// <para>
-/// Threading matches <see cref="VoicePushToTalkCoordinator"/>'s: the hotkey events arrive on the backend's own
-/// thread and everything touching the view models is marshalled onto the UI thread first. The
-/// <c>Handle…</c> methods are the UI-thread logic and the seam the tests drive, since pumping a real Avalonia
-/// dispatcher loop from a unit test is not practical.
-/// </para>
-/// </remarks>
+// Routes the assistant hotkey (F10) to the assistant instance (AC-543) — the twin of
+// `VoicePushToTalkCoordinator`, which routes F9 to the selected session and is left untouched.
+// *Why not one coordinator with a flag.* The two paths differ in every step that matters: F9 puts text in a
+// session's composer for you to read before you send it, F10 hands it straight to the assistant. Folding them
+// together would mean a branch at each of those steps, and the failure mode of getting one branch wrong is the
+// exact thing the indicator exists to prevent — words landing in the wrong place.
+//
+// *Straight through, no cleanup.* What Whisper heard is what the assistant gets (decision 10): this
+// coordinator hands `IVoicePushToTalkService.EndHoldAsync`'s transcript to
+// `IAssistantSessionHost.SendAsync` unaltered. Tidying it is the system prompt's job, and a pass here
+// would be a second copy of it — running on every utterance, for a model that reads through filler words on its
+// own.
+//
+// Threading matches `VoicePushToTalkCoordinator`'s: the hotkey events arrive on the backend's own
+// thread and everything touching the view models is marshalled onto the UI thread first. The
+// `Handle…` methods are the UI-thread logic and the seam the tests drive, since pumping a real Avalonia
+// dispatcher loop from a unit test is not practical.
 public sealed class AssistantPushToTalkCoordinator : ISingletonService
 {
     private readonly GlobalHotkeyCoordinator _hotkeys;
@@ -42,28 +36,23 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     private readonly IOpenMicState? _openMicState;
     private readonly ILogger<AssistantPushToTalkCoordinator> _logger;
 
-    /// <summary>Whether the hold in progress actually opened a microphone — nothing to transcribe if it did not.</summary>
+    // Whether the hold in progress actually opened a microphone — nothing to transcribe if it did not.
     private bool _isRecording;
 
     private static readonly TimeSpan DefaultMessageLinger = TimeSpan.FromSeconds(4);
 
-    /// <summary>
-    /// How long a failed hold's own explanation stays on the pill before making way for whatever wants it next.
-    /// Long enough to read a sentence; short enough that a read-aloud starting in the meantime is not left hidden
-    /// behind it for good — see <see cref="_ShowThenClear"/>.
-    /// </summary>
+    // How long a failed hold's own explanation stays on the pill before making way for whatever wants it next.
+    // Long enough to read a sentence; short enough that a read-aloud starting in the meantime is not left hidden
+    // behind it for good — see `_ShowThenClear`.
     private readonly TimeSpan _messageLinger;
 
-    /// <summary>
-    /// Bumped at the start of every hold (<see cref="HandleHoldStarted"/>), so a linger from an earlier, unrelated
-    /// hold can tell it is stale and skip clearing a pill a newer hold now owns.
-    /// </summary>
+    // Bumped at the start of every hold (`HandleHoldStarted`), so a linger from an earlier, unrelated
+    // hold can tell it is stale and skip clearing a pill a newer hold now owns.
     private int _pushToTalkGeneration;
 
-    /// <param name="messageLinger">
-    /// Overridden only by the tests, which cannot wait four seconds to watch a linger clear — same reasoning as
-    /// <see cref="ScheduledResumeCoordinator"/>'s tick interval.
-    /// </param>
+    // `messageLinger`:
+    // Overridden only by the tests, which cannot wait four seconds to watch a linger clear — same reasoning as
+    // `ScheduledResumeCoordinator`'s tick interval.
     public AssistantPushToTalkCoordinator(
         GlobalHotkeyCoordinator hotkeys,
         IAssistantSessionHost assistant,
@@ -90,11 +79,9 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _hotkeys.Released += (_, id) => { if (id == GlobalHotkeys.AssistantPushToTalk) { _OnHoldEnded(); } };
     }
 
-    /// <summary>
-    /// Wires the Options page to the two things a saved change has to reach: the desktop registration (a rebound
-    /// key, or the feature going off, has to re-arm) and the assistant itself (switched off mid-sentence, it stops
-    /// there). Called by the shell once the view models exist.
-    /// </summary>
+    // Wires the Options page to the two things a saved change has to reach: the desktop registration (a rebound
+    // key, or the feature going off, has to re-arm) and the assistant itself (switched off mid-sentence, it stops
+    // there). Called by the shell once the view models exist.
     public void FollowSettings(AssistantOptionsViewModel options, AssistantIndicatorCoordinator indicator)
     {
         _indicator = indicator;
@@ -129,7 +116,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     private void _OnAudioLevelSampled(object? sender, double level) =>
         Dispatcher.UIThread.Post(() => _overlay.PushLevel(level));
 
-    /// <summary>Test seam: the UI-thread logic for a hold starting.</summary>
+    // Test seam: the UI-thread logic for a hold starting.
     internal void HandleHoldStarted()
     {
         // Invalidates any linger still pending from an earlier hold's failure message (see _ShowThenClearAsync):
@@ -184,7 +171,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _logger.LogInformation("Assistant push-to-talk hold started: capturing={Capturing}", _isRecording);
     }
 
-    /// <summary>Test seam: the UI-thread logic for a hold ending — transcribe, then hand the words to the assistant.</summary>
+    // Test seam: the UI-thread logic for a hold ending — transcribe, then hand the words to the assistant.
     internal async Task HandleHoldEndedAsync()
     {
         _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
@@ -247,13 +234,11 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _overlay.SetPushToTalk(null);
     }
 
-    /// <summary>
-    /// Puts a failed hold's explanation on the pill and, after <see cref="MessageLinger"/>, clears it — unless a
-    /// newer hold has since taken the pill over (see <see cref="_pushToTalkGeneration"/>). Without the clear this
-    /// message never went away on its own: read-aloud starting afterwards is masked (<see
-    /// cref="VoiceOverlayCoordinator"/> puts a hold's own report ahead of read-aloud's) and stayed that way for
-    /// good, since nothing else in this file writes to the pill until the next hold.
-    /// </summary>
+    // Puts a failed hold's explanation on the pill and, after `MessageLinger`, clears it — unless a
+    // newer hold has since taken the pill over (see `_pushToTalkGeneration`). Without the clear this
+    // message never went away on its own: read-aloud starting afterwards is masked
+    // (`VoiceOverlayCoordinator` puts a hold's own report ahead of read-aloud's) and stayed that way for
+    // good, since nothing else in this file writes to the pill until the next hold.
     private void _ShowThenClear(string message)
     {
         var generation = _pushToTalkGeneration;
@@ -261,11 +246,9 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         PendingLingerClear = _ClearAfterLingerAsync(generation);
     }
 
-    /// <summary>
-    /// Test seam: the linger started by the last failed hold, so a test can await the clear itself instead of
-    /// sleeping for longer than it hopes the linger takes. Completed when there is none — the resting state, and
-    /// what a test that never triggered a failure message awaits.
-    /// </summary>
+    // Test seam: the linger started by the last failed hold, so a test can await the clear itself instead of
+    // sleeping for longer than it hopes the linger takes. Completed when there is none — the resting state, and
+    // what a test that never triggered a failure message awaits.
     internal Task PendingLingerClear { get; private set; } = Task.CompletedTask;
 
     private async Task _ClearAfterLingerAsync(int generation)

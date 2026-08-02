@@ -10,26 +10,20 @@ using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Keeps the microphone open for the assistant and exposes the on/off behind the indicator's listening mode: while
-/// listening, the continuous <see cref="IOpenMicListener"/> hands each finished utterance to
-/// <see cref="AssistantSessionHost"/>, and the mic pauses while read-aloud is playing so it never transcribes the
-/// cockpit's own speech. The on/off state is persisted, so it resumes next launch.
-/// </summary>
-/// <remarks>
-/// <b>It used to dictate.</b> Until AC-543 this injected into whichever session happened to be selected, which
-/// made "leave the microphone open" mean something different depending on where you last clicked. It now always
-/// means the assistant; <c>F9</c> is the only path into a session and is unchanged. What follows from that, and is
-/// worth saying out loud: with this on, everything you say reaches the assistant — an aside to a colleague, a
-/// phone call, thinking out loud — and each of those costs a turn. A wake word is the filter for that, and it is
-/// not built yet, so the indicator says so at the moment it is switched on.
-/// </remarks>
-/// <remarks>
-/// Threading mirrors <see cref="VoicePushToTalkCoordinator"/>: <see cref="IOpenMicListener.UtteranceTranscribed"/>
-/// fires on the capture thread, so injection is marshaled onto the UI thread via
-/// <see cref="Dispatcher.UIThread"/>. <see cref="InjectUtteranceAsync"/> is the (UI-thread) logic the tests
-/// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
-/// </remarks>
+// Keeps the microphone open for the assistant and exposes the on/off behind the indicator's listening mode: while
+// listening, the continuous `IOpenMicListener` hands each finished utterance to
+// `AssistantSessionHost`, and the mic pauses while read-aloud is playing so it never transcribes the
+// cockpit's own speech. The on/off state is persisted, so it resumes next launch.
+// *It used to dictate.* Until AC-543 this injected into whichever session happened to be selected, which
+// made "leave the microphone open" mean something different depending on where you last clicked. It now always
+// means the assistant; `F9` is the only path into a session and is unchanged. What follows from that, and is
+// worth saying out loud: with this on, everything you say reaches the assistant — an aside to a colleague, a
+// phone call, thinking out loud — and each of those costs a turn. A wake word is the filter for that, and it is
+// not built yet, so the indicator says so at the moment it is switched on.
+// Threading mirrors `VoicePushToTalkCoordinator`: `IOpenMicListener.UtteranceTranscribed`
+// fires on the capture thread, so injection is marshaled onto the UI thread via
+// `Dispatcher.UIThread`. `InjectUtteranceAsync` is the (UI-thread) logic the tests
+// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
 public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonService, IOpenMicState
 {
     private readonly IOpenMicListener _listener;
@@ -42,7 +36,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     private bool _wired;
 
-    /// <summary>What the overlay shows while read-aloud is synthesizing (text-to-sound) but not yet playing a word.</summary>
+    // What the overlay shows while read-aloud is synthesizing (text-to-sound) but not yet playing a word.
     private const string PreparingStatus = "Preparing…";
 
     // Finished utterances wait here to be injected one at a time, in the order they were spoken. Without this,
@@ -51,7 +45,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private readonly Channel<string> _injections =
         Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
 
-    /// <summary>Whether read-aloud is playing right now — the only time a loud microphone means anything to this coordinator.</summary>
+    // Whether read-aloud is playing right now — the only time a loud microphone means anything to this coordinator.
     private bool _isPlaying;
 
     // Read when listening starts rather than per frame: a level fires many times a second, and the silence
@@ -90,28 +84,23 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _ = _ConsumeInjectionsAsync();
     }
 
-    /// <summary>True once voice is enabled — open-mic needs the mic pipeline, so the toggle is disabled until then.</summary>
+    // True once voice is enabled — open-mic needs the mic pipeline, so the toggle is disabled until then.
     [ObservableProperty]
     private bool _isAvailable;
 
-    /// <summary>True while the mic is actively listening; drives the toggle button's on/off state.</summary>
+    // True while the mic is actively listening; drives the toggle button's on/off state.
     [ObservableProperty]
     private bool _isListening;
 
-    /// <summary>
-    /// Reads settings at startup and resumes listening if it was left on; runtime toggling is via
-    /// <see cref="ToggleOpenMicCommand"/>. No-op unless both voice and the assistant are switched on.
-    /// </summary>
-    /// <remarks>
-    /// Never throws, for the reason <see cref="VoicePushToTalkCoordinator.StartAsync"/> does not: its one caller
-    /// discards the task, so anything thrown here lands on a task nobody observes. It still cannot start when the
-    /// settings will not read or the microphone will not open — it says which now.
-    /// <para>
-    /// Gated on <em>both</em> switches since AC-543. Voice, because that is the microphone pipeline; and the
-    /// assistant, because it is now the only destination — leaving the microphone open for a feature that is
-    /// switched off would record the room and send it nowhere.
-    /// </para>
-    /// </remarks>
+    // Reads settings at startup and resumes listening if it was left on; runtime toggling is via
+    // `ToggleOpenMicCommand`. No-op unless both voice and the assistant are switched on.
+    // Never throws, for the reason `VoicePushToTalkCoordinator.StartAsync` does not: its one caller
+    // discards the task, so anything thrown here lands on a task nobody observes. It still cannot start when the
+    // settings will not read or the microphone will not open — it says which now.
+    //
+    // Gated on *both* switches since AC-543. Voice, because that is the microphone pipeline; and the
+    // assistant, because it is now the only destination — leaving the microphone open for a feature that is
+    // switched off would record the room and send it nowhere.
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -135,16 +124,12 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         }
     }
 
-    /// <summary>
-    /// Re-reads both switches and closes the microphone if the assistant was just turned off. Called when the
-    /// Options page saves.
-    /// </summary>
-    /// <remarks>
-    /// The gate in <see cref="StartAsync"/> only runs at launch, so switching the assistant off while open-mic
-    /// was listening left the microphone open with nowhere to send what it heard — every utterance was
-    /// transcribed and then silently dropped by a host that is off. An open microphone recording a room for no
-    /// reason is the one failure here worth closing without being asked to.
-    /// </remarks>
+    // Re-reads both switches and closes the microphone if the assistant was just turned off. Called when the
+    // Options page saves.
+    // The gate in `StartAsync` only runs at launch, so switching the assistant off while open-mic
+    // was listening left the microphone open with nowhere to send what it heard — every utterance was
+    // transcribed and then silently dropped by a host that is off. An open microphone recording a room for no
+    // reason is the one failure here worth closing without being asked to.
     public async Task ApplyAssistantSettingsAsync(CancellationToken cancellationToken = default)
     {
         var voice = await _voiceSettingsStore.LoadAsync(cancellationToken);
@@ -157,7 +142,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         }
     }
 
-    /// <summary>Runtime on/off, gated on voice being enabled; persists the state so it is remembered next launch.</summary>
+    // Runtime on/off, gated on voice being enabled; persists the state so it is remembered next launch.
     [RelayCommand(CanExecute = nameof(IsAvailable))]
     private async Task ToggleOpenMic()
     {
@@ -254,11 +239,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     private void _OnAudioLevelSampled(object? sender, double level) => Dispatcher.UIThread.Post(() => HandleAudioLevel(level));
 
-    /// <summary>
-    /// Test seam: the VAD heard speech start. Open-mic listens the whole time it is on, so this — not
-    /// <see cref="StartAsync"/> — is the moment there is something to show: a pill that appeared when you
-    /// switched open-mic on and sat there would only be saying the feature is on.
-    /// </summary>
+    // Test seam: the VAD heard speech start. Open-mic listens the whole time it is on, so this — not
+    // `StartAsync` — is the moment there is something to show: a pill that appeared when you
+    // switched open-mic on and sat there would only be saying the feature is on.
     internal void HandleSpeechStarted()
     {
         // Barge-in (AC-9): real speech — the VAD said so, not just any noise — over read-aloud, loud enough to mean
@@ -272,24 +255,22 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _overlay.SetOpenMic(VoiceOverlayState.Listening);
     }
 
-    /// <summary>Test seam: the utterance is over and about to be transcribed — the part worth a spinner.</summary>
+    // Test seam: the utterance is over and about to be transcribed — the part worth a spinner.
     internal void HandleSpeechEnded() => _overlay.SetOpenMic(VoiceOverlayState.Transcribing);
 
-    /// <summary>Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — <see cref="HandleSpeakingStarted"/> flips it to speaking once audio actually plays.</summary>
+    // Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — `HandleSpeakingStarted` flips it to speaking once audio actually plays.
     internal void HandlePlaybackActiveChanged(bool active)
     {
         _isPlaying = active;
         _overlay.SetReadAloud(active ? VoiceOverlayState.Preparing : null, active ? PreparingStatus : null);
     }
 
-    /// <summary>Test seam: the first synthesized clip started playing, so the overlay moves from "preparing" to "reading aloud".</summary>
+    // Test seam: the first synthesized clip started playing, so the overlay moves from "preparing" to "reading aloud".
     internal void HandleSpeakingStarted() => _overlay.SetReadAloud(VoiceOverlayState.Speaking);
 
-    /// <summary>
-    /// Test seam: one microphone level. Feeds the pill's waveform and remembers the latest level, which
-    /// <see cref="HandleSpeechStarted"/> checks against the threshold — the barge-in stop fires on detected speech,
-    /// not on this raw level, so a loud noise that is not speech no longer interrupts read-aloud (AC-9).
-    /// </summary>
+    // Test seam: one microphone level. Feeds the pill's waveform and remembers the latest level, which
+    // `HandleSpeechStarted` checks against the threshold — the barge-in stop fires on detected speech,
+    // not on this raw level, so a loud noise that is not speech no longer interrupts read-aloud (AC-9).
     internal void HandleAudioLevel(double level)
     {
         _lastLevel = level;
@@ -327,13 +308,11 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         }
     }
 
-    /// <summary>Test seam: the UI-thread logic that hands one finished utterance to the assistant.</summary>
-    /// <remarks>
-    /// The pill is released here rather than on <c>SpeechEnded</c>: sending runs between the two, and a spinner
-    /// that stops before the text lands would be a spinner that lied about the last part of the wait. Released
-    /// in a finally — an utterance that fails to send still ends, and the alternative is a pill spinning over a
-    /// sentence that is never coming.
-    /// </remarks>
+    // Test seam: the UI-thread logic that hands one finished utterance to the assistant.
+    // The pill is released here rather than on `SpeechEnded`: sending runs between the two, and a spinner
+    // that stops before the text lands would be a spinner that lied about the last part of the wait. Released
+    // in a finally — an utterance that fails to send still ends, and the alternative is a pill spinning over a
+    // sentence that is never coming.
     internal async Task InjectUtteranceAsync(string rawText)
     {
         try

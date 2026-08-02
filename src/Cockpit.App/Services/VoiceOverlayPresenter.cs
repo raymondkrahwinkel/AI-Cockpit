@@ -4,12 +4,10 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Real <see cref="IVoiceOverlayPresenter"/>: lazily creates the single shared
-/// <see cref="VoiceOverlayWindow"/> on first show (Avalonia must be fully initialized before a Window
-/// can be constructed, which it is by the time <c>VoicePushToTalkCoordinator.StartAsync</c> runs from
-/// <c>App.axaml.cs</c>) and reuses it for every subsequent hold.
-/// </summary>
+// Real `IVoiceOverlayPresenter`: lazily creates the single shared
+// `VoiceOverlayWindow` on first show (Avalonia must be fully initialized before a Window
+// can be constructed, which it is by the time `VoicePushToTalkCoordinator.StartAsync` runs from
+// `App.axaml.cs`) and reuses it for every subsequent hold.
 internal sealed class VoiceOverlayPresenter(VoiceOverlayViewModel overlay) : IVoiceOverlayPresenter, ISingletonService
 {
     private VoiceOverlayWindow? _window;

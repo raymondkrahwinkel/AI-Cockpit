@@ -5,20 +5,16 @@ using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// What a saved AI-session pane can be restored with (AC-410) — the answers <c>CockpitViewModel.RestoreSessionPanesAsync</c>
-/// needs before it materializes a panel, reached without starting anything. Modelled on <see cref="ProjectQuickStart"/>:
-/// this only answers "with what"; the cockpit's own launch path still owns actually starting a session.
-/// </summary>
+// What a saved AI-session pane can be restored with (AC-410) — the answers `CockpitViewModel.RestoreSessionPanesAsync`
+// needs before it materializes a panel, reached without starting anything. Modelled on `ProjectQuickStart`:
+// this only answers "with what"; the cockpit's own launch path still owns actually starting a session.
 public sealed class SessionRestorePlanner(ISessionProfileStore profiles) : ISingletonService
 {
-    /// <summary>
-    /// Builds the plan for one saved pane. <paramref name="state"/> is the latest <c>SessionStateRecord</c> for
-    /// this pane's id, or null when none was ever written — a pane persisted right before a crash, before its
-    /// session got far enough to report anything. A profile that no longer exists degrades the plan rather than
-    /// throwing (matches <see cref="ProjectQuickStart.ComposeAsync"/>: a config a pane can no longer resolve is
-    /// not a crash).
-    /// </summary>
+    // Builds the plan for one saved pane. `state` is the latest `SessionStateRecord` for
+    // this pane's id, or null when none was ever written — a pane persisted right before a crash, before its
+    // session got far enough to report anything. A profile that no longer exists degrades the plan rather than
+    // throwing (matches `ProjectQuickStart.ComposeAsync`: a config a pane can no longer resolve is
+    // not a crash).
     public async Task<SessionRestorePlan> ComposeAsync(WorkspacePane pane, SessionStateRecord? state, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pane.ProfileId))

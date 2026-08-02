@@ -3,17 +3,14 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Describes the graphics backend the cockpit draws with, for the diagnostics panel (AC-58) — the line AC-57 kept
-/// asking for ("is macOS on Metal?"). Avalonia exposes no public API for the <em>live</em> backend, so this reports
-/// the configured preference honestly rather than claiming an active backend it cannot observe: the app configures
-/// nothing beyond <c>UsePlatformDetect()</c> today, so the mode is the platform default, and the detail says which
-/// backend that default resolves to per OS.
-/// <para>
-/// This is the hook AC-57's deferred render-backend override will use: when an explicit rendering mode is set, this
-/// is where it becomes visible, so the tester can confirm the override took effect.
-/// </para>
-/// </summary>
+// Describes the graphics backend the cockpit draws with, for the diagnostics panel (AC-58) — the line AC-57 kept
+// asking for ("is macOS on Metal?"). Avalonia exposes no public API for the *live* backend, so this reports
+// the configured preference honestly rather than claiming an active backend it cannot observe: the app configures
+// nothing beyond `UsePlatformDetect()` today, so the mode is the platform default, and the detail says which
+// backend that default resolves to per OS.
+//
+// This is the hook AC-57's deferred render-backend override will use: when an explicit rendering mode is set, this
+// is where it becomes visible, so the tester can confirm the override took effect.
 public static class RenderBackend
 {
     public static RenderingInfo Describe()

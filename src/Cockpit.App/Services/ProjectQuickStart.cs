@@ -11,27 +11,21 @@ using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// What a session started straight from a project opens with (AC-162/AC-164) — the answers the New-session dialog
-/// would have arrived at, reached without showing it. The launcher's Start button and the sidebar's ▶ both come
-/// through here, so the two cannot drift into starting subtly different sessions from the same project.
-/// </summary>
-/// <remarks>
-/// Deliberately composes a <see cref="NewSessionResult"/> and nothing more: starting it stays the cockpit's single
-/// launch path, which owns worktree isolation, the pane and the session's lifetime. This only answers "with what".
-/// </remarks>
+// What a session started straight from a project opens with (AC-162/AC-164) — the answers the New-session dialog
+// would have arrived at, reached without showing it. The launcher's Start button and the sidebar's ▶ both come
+// through here, so the two cannot drift into starting subtly different sessions from the same project.
+// Deliberately composes a `NewSessionResult` and nothing more: starting it stays the cockpit's single
+// launch path, which owns worktree isolation, the pane and the session's lifetime. This only answers "with what".
 public sealed class ProjectQuickStart(
     ISessionProfileStore profiles,
     IMcpServerCatalog mcpServers,
     ITtySessionProviderResolver ttyProviders,
     IProjectMemorySourceRegistry memorySources) : ISingletonService
 {
-    /// <summary>
-    /// The session <paramref name="project"/> starts, or <see langword="null"/> when it names no profile that still
-    /// exists. Null is not a failure to report but a fall-back signal: a session needs a profile to run at all, and
-    /// picking an arbitrary one would silently start the wrong provider, so the caller opens the dialog instead and
-    /// lets the operator say which.
-    /// </summary>
+    // The session `project` starts, or `null` when it names no profile that still
+    // exists. Null is not a failure to report but a fall-back signal: a session needs a profile to run at all, and
+    // picking an arbitrary one would silently start the wrong provider, so the caller opens the dialog instead and
+    // lets the operator say which.
     public async Task<NewSessionResult?> ComposeAsync(Project project, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(project.DefaultProfileLabel))
@@ -95,16 +89,12 @@ public sealed class ProjectQuickStart(
         };
     }
 
-    /// <summary>
-    /// The servers this session opens with ticked: everything the checklist would have offered, minus the ones the
-    /// project switched off. The project's choice, not the profile's — a project says which servers it works with,
-    /// and that is the answer wherever it has one (Raymond, 2026-07-24).
-    /// </summary>
-    /// <remarks>
-    /// Always an explicit set, empty included, and never <see langword="null"/> — which downstream reads as "this
-    /// launch made no selection" and answers by falling back to the profile's saved one. That would quietly put the
-    /// profile back in charge of a session started from a project.
-    /// </remarks>
+    // The servers this session opens with ticked: everything the checklist would have offered, minus the ones the
+    // project switched off. The project's choice, not the profile's — a project says which servers it works with,
+    // and that is the answer wherever it has one (Raymond, 2026-07-24).
+    // Always an explicit set, empty included, and never `null` — which downstream reads as "this
+    // launch made no selection" and answers by falling back to the profile's saved one. That would quietly put the
+    // profile back in charge of a session started from a project.
     private async Task<IReadOnlySet<string>> _TickedServerNamesAsync(Project project, CancellationToken cancellationToken)
     {
         var catalog = await mcpServers.GetServersForProjectAsync(project.Id, cancellationToken).ConfigureAwait(true);

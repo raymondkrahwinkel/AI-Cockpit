@@ -4,25 +4,20 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// Samples what the cockpit and its sessions are using (#78), on a timer, and hands back both the total and the
-/// per-session breakdown. One read of the process table per tick serves every session on screen — walking it once
-/// per session would re-read the whole table for each pane.
-/// <para>
-/// A session is measured as a <em>tree</em>: the <c>claude</c> process plus everything it spawned. That is the
-/// whole point — the CPU an operator wants to see is the build the agent just started, not the idle parent.
-/// </para>
-/// </summary>
+// Samples what the cockpit and its sessions are using (#78), on a timer, and hands back both the total and the
+// per-session breakdown. One read of the process table per tick serves every session on screen — walking it once
+// per session would re-read the whole table for each pane.
+//
+// A session is measured as a *tree*: the `claude` process plus everything it spawned. That is the
+// whole point — the CPU an operator wants to see is the build the agent just started, not the idle parent.
 public sealed class ResourceMonitor(IProcessTableReader reader) : ISingletonService
 {
     private readonly Dictionary<int, ResourceSample> _previous = [];
     private DateTimeOffset _sampledAt = DateTimeOffset.MinValue;
 
-    /// <summary>
-    /// Reads the machine once and reports what the cockpit itself and each of <paramref name="sessionProcessIds"/>
-    /// (with their children) is using. The first call has nothing to compare against, so it reports memory and a
-    /// CPU of zero — a percentage only exists between two samples.
-    /// </summary>
+    // Reads the machine once and reports what the cockpit itself and each of `sessionProcessIds`
+    // (with their children) is using. The first call has nothing to compare against, so it reports memory and a
+    // CPU of zero — a percentage only exists between two samples.
     public ResourceUsage Sample(IReadOnlyDictionary<string, int> sessionProcessIds)
     {
         var rows = reader.Read();
@@ -64,12 +59,10 @@ public sealed class ResourceMonitor(IProcessTableReader reader) : ISingletonServ
     }
 }
 
-/// <summary>
-/// What the cockpit is using right now, how that breaks down per session, and what the local model servers beside it
-/// are holding (#78). The servers are apart from the total on purpose: they are not the cockpit's children and they
-/// outlive its sessions, so folding them into "what this app costs" would be wrong — but leaving them out of the
-/// panel entirely meant the app had nothing to say about the heaviest thing on the machine.
-/// </summary>
+// What the cockpit is using right now, how that breaks down per session, and what the local model servers beside it
+// are holding (#78). The servers are apart from the total on purpose: they are not the cockpit's children and they
+// outlive its sessions, so folding them into "what this app costs" would be wrong — but leaving them out of the
+// panel entirely meant the app had nothing to say about the heaviest thing on the machine.
 public sealed record ResourceUsage(
     double CpuPercent,
     long MemoryBytes,
@@ -80,5 +73,5 @@ public sealed record ResourceUsage(
     public static readonly ResourceUsage None = new(0, 0, [], [], CockpitParts.None);
 }
 
-/// <summary>One session's share, measured across its whole process tree.</summary>
+// One session's share, measured across its whole process tree.
 public sealed record SessionResourceUsage(string Title, double CpuPercent, long MemoryBytes);

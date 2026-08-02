@@ -9,35 +9,28 @@ using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.Services;
 
-/// <summary>
-/// The app-level half of <see cref="IAssistantAgentGateway"/> (AC-545): the one place a session is started or
-/// stopped on an agent's behalf, and the place every such request is written down.
-/// </summary>
-/// <remarks>
-/// Sibling of <see cref="AssistantReadGateway"/> and shaped like it on purpose — same UI-thread marshalling, for the
-/// same reason: <c>CockpitViewModel.Sessions</c> and the workspace settings only ever mutate on the UI thread, and an
-/// MCP tool call arrives on a Kestrel request thread.
-/// <para>
-/// <b>This class refuses; it does not scope.</b> The distinction matters and it is not word-play. Which desk a spawn
-/// may land on was decided before this is reached, by whichever of <see cref="SpawnTarget"/>'s two doors the caller
-/// came through — that is the guardrail. What happens here is the far duller check that the named desk exists and can
-/// hold a session at all, which is true of every caller and protects nobody from anything. Do not let the second grow
-/// into the first: a coordinator (AC-436) must arrive with a target derived from its own pane, never with one this
-/// class validated on its behalf.
-/// </para>
-/// <para>
-/// <b>Every outcome is recorded, including the refusals.</b> Criterion 5 asks for the trail; a trail that only holds
-/// what got through would show the gate's successes and hide it working. A failure to write the trail never fails the
-/// operator's approved action — see <see cref="IAssistantSpawnAuditLog"/>.
-/// </para>
-/// <para>
-/// <b>What this is not.</b> It is not the consent gate. Nothing here decides whether the operator agreed: the
-/// assistant's session runs in "Ask permissions", so the tool call that reaches this class has already raised an
-/// Allow/Deny row in the chat window and been clicked. If a future caller could reach these methods without that,
-/// this class would still start the session — which is why the gate belongs where it is and must not be re-implemented
-/// here as a second, weaker copy.
-/// </para>
-/// </remarks>
+// The app-level half of `IAssistantAgentGateway` (AC-545): the one place a session is started or
+// stopped on an agent's behalf, and the place every such request is written down.
+// Sibling of `AssistantReadGateway` and shaped like it on purpose — same UI-thread marshalling, for the
+// same reason: `CockpitViewModel.Sessions` and the workspace settings only ever mutate on the UI thread, and an
+// MCP tool call arrives on a Kestrel request thread.
+//
+// *This class refuses; it does not scope.* The distinction matters and it is not word-play. Which desk a spawn
+// may land on was decided before this is reached, by whichever of `SpawnTarget`'s two doors the caller
+// came through — that is the guardrail. What happens here is the far duller check that the named desk exists and can
+// hold a session at all, which is true of every caller and protects nobody from anything. Do not let the second grow
+// into the first: a coordinator (AC-436) must arrive with a target derived from its own pane, never with one this
+// class validated on its behalf.
+//
+// *Every outcome is recorded, including the refusals.* Criterion 5 asks for the trail; a trail that only holds
+// what got through would show the gate's successes and hide it working. A failure to write the trail never fails the
+// operator's approved action — see `IAssistantSpawnAuditLog`.
+//
+// *What this is not.* It is not the consent gate. Nothing here decides whether the operator agreed: the
+// assistant's session runs in "Ask permissions", so the tool call that reaches this class has already raised an
+// Allow/Deny row in the chat window and been clicked. If a future caller could reach these methods without that,
+// this class would still start the session — which is why the gate belongs where it is and must not be re-implemented
+// here as a second, weaker copy.
 internal sealed class AssistantAgentGateway(
     CockpitViewModel cockpit,
     ISessionProfileStore profiles,
@@ -210,7 +203,6 @@ internal sealed class AssistantAgentGateway(
             return AgentStopResult.Stopped(paneId, name);
         });
 
-    /// <inheritdoc/>
     public async Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
     {
         try
@@ -261,7 +253,7 @@ internal sealed class AssistantAgentGateway(
         }
     }
 
-    /// <summary>Records the refusal on the same trail an agent's own refused <c>notify</c> lands on, then reports it.</summary>
+    // Records the refusal on the same trail an agent's own refused `notify` lands on, then reports it.
     private async Task<AgentMessageResult> _RefuseMessageAsync(
         string paneId, string kind, string body, AgentNotifyOutcome outcome, string reason)
     {
@@ -270,7 +262,6 @@ internal sealed class AssistantAgentGateway(
         return AgentMessageResult.Refused(reason);
     }
 
-    /// <inheritdoc/>
     public Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(async () =>
         {
@@ -348,9 +339,7 @@ internal sealed class AssistantAgentGateway(
     public Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(() => Task.FromResult(_ListWorkspaces()));
 
-    /// <summary>
-    /// The profiles, straight off the store. No UI thread: this reads a file, not the cockpit's collections.
-    /// </summary>
+    // The profiles, straight off the store. No UI thread: this reads a file, not the cockpit's collections.
     public async Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
     {
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -379,28 +368,23 @@ internal sealed class AssistantAgentGateway(
         }).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Closes an empty sessions desk. Narrower than the tab's ✕, deliberately: it refuses that button's three
-    /// reasons, refuses every desk that is not a sessions desk, and does the confirmation dialog's job by refusing
-    /// rather than by asking.
-    /// </summary>
-    /// <remarks>
-    /// <b>Why the emptiness check is here and not left to <see cref="CockpitViewModel.CloseWorkspaceAsync"/>.</b>
-    /// That method closes the desk <em>and everything on it</em>, which is right behind a dialog that first names
-    /// what is about to be stopped. There is no dialog on this route: what the operator approves is an Allow row
-    /// naming a desk, and taking three running sessions with it is work nobody asked for and nothing showed them.
-    /// So the sessions go first, through <c>stop_agent</c> and its own approval each, and this refuses until there
-    /// are none — at which point, on a sessions desk, the two paths do the same thing to the same desk.
-    /// <para>
-    /// <b>Only a sessions desk, and this is where the two paths part.</b> A dashboard's occupants are widgets and a
-    /// plugin desk's are whatever that plugin holds; neither is counted below, so both read as empty and were
-    /// closed on the spot, taking an arrangement nobody was shown and nothing can rebuild. The ✕ path names what
-    /// goes ("It holds N widgets… this cannot be undone") because it has a dialog to name it in; a consent card
-    /// cannot enumerate what is about to be lost, so the honest answer here is not a better warning but a smaller
-    /// tool. Whole categories are refused rather than emptiness being redefined per type: what "empty" means on a
-    /// desk type this tool has never seen is not something it can be written to know.
-    /// </para>
-    /// </remarks>
+    // Closes an empty sessions desk. Narrower than the tab's ✕, deliberately: it refuses that button's three
+    // reasons, refuses every desk that is not a sessions desk, and does the confirmation dialog's job by refusing
+    // rather than by asking.
+    // *Why the emptiness check is here and not left to `CockpitViewModel.CloseWorkspaceAsync`.*
+    // That method closes the desk *and everything on it*, which is right behind a dialog that first names
+    // what is about to be stopped. There is no dialog on this route: what the operator approves is an Allow row
+    // naming a desk, and taking three running sessions with it is work nobody asked for and nothing showed them.
+    // So the sessions go first, through `stop_agent` and its own approval each, and this refuses until there
+    // are none — at which point, on a sessions desk, the two paths do the same thing to the same desk.
+    //
+    // *Only a sessions desk, and this is where the two paths part.* A dashboard's occupants are widgets and a
+    // plugin desk's are whatever that plugin holds; neither is counted below, so both read as empty and were
+    // closed on the spot, taking an arrangement nobody was shown and nothing can rebuild. The ✕ path names what
+    // goes ("It holds N widgets… this cannot be undone") because it has a dialog to name it in; a consent card
+    // cannot enumerate what is about to be lost, so the honest answer here is not a better warning but a smaller
+    // tool. Whole categories are refused rather than emptiness being redefined per type: what "empty" means on a
+    // desk type this tool has never seen is not something it can be written to know.
     public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(async () =>
         {
@@ -439,16 +423,12 @@ internal sealed class AssistantAgentGateway(
             return WorkspaceRemovalResult.Removed(workspace.Name);
         });
 
-    /// <summary>
-    /// How many sessions closing this desk would take with it, by the same placement rule the roster reports —
-    /// so the number the operator just heard from <c>list_workspaces</c> is the number this refuses on.
-    /// </summary>
-    /// <remarks>
-    /// Wider than that roster in one way, deliberately: it does not filter on <c>ShowPluginHeaderItems</c>. A plain
-    /// terminal is not an agent session and so is not counted there, but the close would end it just the same, and a
-    /// pty killed by a call about a desk is the loss this refusal exists to prevent. The assistant's own pane is
-    /// excluded by <c>SessionWorkspacePlacement</c> itself, which resolves it to no desk at all.
-    /// </remarks>
+    // How many sessions closing this desk would take with it, by the same placement rule the roster reports —
+    // so the number the operator just heard from `list_workspaces` is the number this refuses on.
+    // Wider than that roster in one way, deliberately: it does not filter on `ShowPluginHeaderItems`. A plain
+    // terminal is not an agent session and so is not counted there, but the close would end it just the same, and a
+    // pty killed by a call about a desk is the loss this refusal exists to prevent. The assistant's own pane is
+    // excluded by `SessionWorkspacePlacement` itself, which resolves it to no desk at all.
     private int _CountEverythingOn(string workspaceId)
     {
         var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(cockpit.Workspaces.Settings);
@@ -488,11 +468,9 @@ internal sealed class AssistantAgentGateway(
         ];
     }
 
-    /// <summary>
-    /// The route asked for, or null for "whatever the profile is set to". A word that is neither is refused rather
-    /// than read as the default: the operator said a route out loud, and starting the other one would look like it
-    /// worked. "cli" and "terminal" are accepted for tty because those are the words people actually say.
-    /// </summary>
+    // The route asked for, or null for "whatever the profile is set to". A word that is neither is refused rather
+    // than read as the default: the operator said a route out loud, and starting the other one would look like it
+    // worked. "cli" and "terminal" are accepted for tty because those are the words people actually say.
     private static (SessionKind? Kind, string? Refusal) _ParseKind(string? kind) =>
         kind?.Trim().ToLowerInvariant() switch
         {
@@ -548,10 +526,8 @@ internal sealed class AssistantAgentGateway(
     private Task _RecordAsync(AssistantSpawnAuditEntry entry, CancellationToken cancellationToken) =>
         auditLog.RecordAsync(entry, cancellationToken);
 
-    /// <summary>
-    /// Runs <paramref name="work"/> on the UI thread — inline when already there, so a test on the UI thread pays for
-    /// no redundant dispatch. Same rule as <see cref="AssistantReadGateway"/>, awaited rather than blocked on.
-    /// </summary>
+    // Runs `work` on the UI thread — inline when already there, so a test on the UI thread pays for
+    // no redundant dispatch. Same rule as `AssistantReadGateway`, awaited rather than blocked on.
     private static Task<T> _OnUiThreadAsync<T>(Func<Task<T>> work) =>
         Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
 }
