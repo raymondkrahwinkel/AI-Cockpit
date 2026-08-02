@@ -15,10 +15,12 @@ namespace Cockpit.App.ViewModels;
 /// assumed.
 /// </para>
 /// <para>
-/// Following the newest figure is the whole story because a meter only ever sees one CLI process:
-/// <c>SessionViewModel.StartConfiguredAsync</c> returns early while a runtime exists, and the runtime is
-/// only cleared when the panel is disposed. There is therefore no earlier process whose spend could need
-/// carrying over, and no attempt is made to invent one from the numbers.
+/// Following the newest figure is the whole story because a meter only ever counts one conversation:
+/// <c>SessionViewModel.StartConfiguredAsync</c> returns early while a runtime exists, so the only way one
+/// panel reaches a second CLI process is <c>ClearContextAsync</c> (AC-564) — which calls <see cref="Reset"/>
+/// on the way, since the new process starts its own <c>total_cost_usd</c> back at zero. There is therefore
+/// no earlier process whose spend could need carrying over, and no attempt is made to invent one from the
+/// numbers.
 /// </para>
 /// </summary>
 internal sealed class SessionUsageMeter
@@ -56,6 +58,17 @@ internal sealed class SessionUsageMeter
         }
 
         Turns++;
+    }
+
+    /// <summary>Back to zero for a conversation that starts over in the same pane (AC-564's context clear).</summary>
+    public void Reset()
+    {
+        InputTokens = 0;
+        OutputTokens = 0;
+        CacheReadInputTokens = 0;
+        CacheCreationInputTokens = 0;
+        TotalCostUsd = 0;
+        Turns = 0;
     }
 
     /// <summary>Compact one-line meter, e.g. <c>45.2k tok · $0.0123</c> — the cost is dropped when the provider reports none (local models).</summary>
