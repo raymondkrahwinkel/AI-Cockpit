@@ -134,6 +134,51 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         await Assert.ThrowsAsync<IOException>(act);
     }
 
+    /// <summary>
+    /// AC-591 removed <c>MemoryLimitMb</c> from the profile entry — a setting the dialog offered and no start path
+    /// ever read. Every operator's <c>cockpit.json</c> still has the key, so a load that choked on it (or a save that
+    /// dropped the profile's remaining settings while rewriting the entry) would cost real configuration for a value
+    /// that never did anything.
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_OnAProfileStillCarryingTheRemovedMemoryLimit_KeepsEveryFieldThatStayed()
+    {
+        Directory.CreateDirectory(_directory);
+        await File.WriteAllTextAsync(
+            ConfigPath,
+            """
+            {
+              "Profiles": [
+                {
+                  "Label": "work",
+                  "ConfigDir": "/home/raymond/.claude-work",
+                  "Purpose": "the day job",
+                  "MemoryLimitMb": 2048,
+                  "DefaultWorkingDirectory": "/home/raymond/RiderProjects/App",
+                  "SystemPrompt": "You are Olaf.",
+                  "DefaultKind": "Sdk"
+                }
+              ]
+            }
+            """);
+        var access = new CockpitConfigFileAccess(ConfigPath);
+
+        var read = await access.ReadAsync(CancellationToken.None);
+        // A save rewrites the whole document from what was read, so re-reading afterwards is what proves the fields
+        // survived the round trip and not merely the parse.
+        await access.UpdateAsync(file => file.Layout = new LayoutSettingsEntry(), CancellationToken.None);
+        var resaved = await access.ReadAsync(CancellationToken.None);
+
+        Assert.NotNull(read);
+        var profile = Assert.Single(resaved!.Profiles);
+        Assert.Equal("work", profile.Label);
+        Assert.Equal("/home/raymond/.claude-work", profile.ConfigDir);
+        Assert.Equal("the day job", profile.Purpose);
+        Assert.Equal("/home/raymond/RiderProjects/App", profile.DefaultWorkingDirectory);
+        Assert.Equal("You are Olaf.", profile.SystemPrompt);
+        Assert.Equal("Sdk", profile.DefaultKind);
+    }
+
     /// <summary>Each writer still only touches its own section — the gate serialises them, it does not merge them.</summary>
     [Fact]
     public async Task UpdateAsync_DifferentSections_KeepEachOther()

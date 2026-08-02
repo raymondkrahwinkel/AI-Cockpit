@@ -5,7 +5,6 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -60,15 +59,6 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     private bool _restrictMcpServers;
-
-    /// <summary>
-    /// A ceiling on the session CLI's memory, in MB — 0 means none, which is what it is unless someone types a
-    /// number. The Claude CLI is Node, and a long conversation grows its heap past half a gigabyte; this makes it
-    /// collect harder instead. It is also the one setting here that can kill a session mid-turn, which is why it is
-    /// off by default and says so in the dialog.
-    /// </summary>
-    [ObservableProperty]
-    private int _memoryLimitMb;
 
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode;
@@ -489,7 +479,6 @@ public partial class EditableProfileViewModel : ViewModelBase
         _purpose = profile.Purpose ?? string.Empty;
         _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
         _profileSystemPrompt = profile.SystemPrompt ?? string.Empty;
-        _memoryLimitMb = profile.MemoryLimitMb ?? 0;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
         _selectedDefaultKind = profile.DefaultKind == ProfileSessionKind.Sdk ? SessionKind.Sdk : SessionKind.Tty;
@@ -595,8 +584,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             _ToProviderConfig(),
             string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
             defaults,
-            _ToDelegationPolicy(),
-            MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null)
+            _ToDelegationPolicy())
         {
             EnvironmentVariables = EnvironmentVariables.Count > 0
                 ? [.. EnvironmentVariables.Select(row => row.ToDomain())]

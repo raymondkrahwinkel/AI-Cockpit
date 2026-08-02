@@ -23,8 +23,7 @@ public sealed record SessionProfile(
     ProviderConfig ProviderConfig,
     string? Purpose = null,
     ProfileDefaults? Defaults = null,
-    DelegationPolicy? Delegation = null,
-    int? MemoryLimitMb = null)
+    DelegationPolicy? Delegation = null)
 {
     /// <summary>What this profile allows when another session delegates work to it (#67); no policy means it is not a target.</summary>
     public DelegationPolicy DelegationPolicy => Delegation ?? DelegationPolicy.None;

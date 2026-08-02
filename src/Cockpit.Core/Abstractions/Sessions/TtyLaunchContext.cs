@@ -21,8 +21,7 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </param>
 /// <param name="BaseEnvironment">
 /// The host's environment for the child, already scrubbed. A provider reads it to compose an overlay that
-/// depends on an inherited value (Claude's heap cap extends any inherited <c>NODE_OPTIONS</c> rather than
-/// replacing it); it never returns this map, only what it adds to it.
+/// extends an inherited value rather than replacing it; it never returns this map, only what it adds to it.
 /// </param>
 public sealed record TtyLaunchContext(
     SessionProfile? Profile,
