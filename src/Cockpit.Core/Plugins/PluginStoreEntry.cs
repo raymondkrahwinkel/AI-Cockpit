@@ -27,4 +27,15 @@ public sealed record PluginStoreEntry(
     string? Published = null,
     // AC-511: a free string, not the domain's own enum — an unrecognised value would otherwise fail the whole
     // index (see PluginWorkKinds' own remarks), and the placeholder set is not settled yet either way.
-    string? WorkKind = null);
+    string? WorkKind = null)
+{
+    /// <summary>
+    /// The <see cref="Category"/> value that marks a plugin as an AI provider (AC-510[b] criterion 5). Measured
+    /// against the default store's live <c>index.json</c> (raymondkrahwinkel/AI-Cockpit-Plugins, 2026-08-02):
+    /// exactly <c>claude-provider</c>, <c>cli-agent-provider</c>, <c>gemini-provider</c>,
+    /// <c>github-models-provider</c> and <c>kimi-provider</c> carry this category, and nothing else in the index
+    /// does — so, unlike <see cref="WorkKind"/> (which needed its own additive field for AC-511), "is this a
+    /// provider" is carried by the existing technique-shaped <see cref="Category"/> axis without adding one.
+    /// </summary>
+    public const string ProviderCategory = "AI providers";
+}

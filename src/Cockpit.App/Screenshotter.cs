@@ -308,6 +308,19 @@ internal static class Screenshotter
         {
             DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(),
         },
+
+        // AC-510[b] criterion 6: the provider step's own catalogue, staged straight into the view model's
+        // collection rather than through a real store fetch (the plugin store dialog's own pattern) — a found CLI
+        // provider and a not-found one side by side (criterion 1's contrast), plus the two states the plugin
+        // store's own StorePluginRowViewModel already carries, reused rather than re-verified here: incompatible
+        // and already-installed (criterion 2, shown proactively, before any Install click).
+        ["provider-step-catalogue"] = (_, _) => _AsWindow(_ProviderStepCatalogue(), 640, 560),
+        // Criterion 3: offline is a plain statement, not styled as an error — the local-providers note above it
+        // is unaffected either way.
+        ["provider-step-offline"] = (_, _) => _AsWindow(_ProviderStepOffline(), 640, 480),
+        // Criterion 2's remaining two shapes — a fresh install and a batch failure — plus the "half succeeded"
+        // summary line, all only reachable in the real app after InstallSelectedCommand actually runs.
+        ["provider-step-install-outcomes"] = (_, _) => _AsWindow(_ProviderStepInstallOutcomes(), 640, 560),
     };
 
     /// <summary>
@@ -1083,6 +1096,88 @@ internal static class Screenshotter
         cockpit.Plugins.SetUpdateBadgeCount(3);
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // Wraps a plain UserControl (a wizard step has no Window of its own) in a Window carrying the same
+    // DataContext, so a test can reach the view model straight off window.DataContext the way every other scene
+    // here already lets it — rather than reaching through window.Content each time.
+    private static Window _AsWindow(UserControl content, int width, int height) =>
+        new() { Width = width, Height = height, Content = content, DataContext = content.DataContext };
+
+    // AC-510[b]: one provider row per state the step distinguishes, staged directly the way _PluginStoreViewModel
+    // stages its own catalogue — no store fetch, no PATH probe (Detection is passed in explicitly, so this scene
+    // never depends on what happens to be installed on the machine that renders it).
+    private static ViewModels.Onboarding.ProviderPickerRowViewModel _ProviderRow(
+        string id, string name, string description, ViewModels.Onboarding.ProviderDetectionState detection,
+        string? installedVersion = null, int hostAbstractionsMajor = Cockpit.Plugins.Abstractions.AbstractionsContract.Version)
+    {
+        var entry = new PluginStoreEntry(
+            id, name, description, "Cockpit", "1.0.0",
+            [new PluginStoreVersion("1.0.0", $"{id}-1.0.0.zip", 1, null, null, null)],
+            Category: PluginStoreEntry.ProviderCategory);
+        var store = PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit-Plugins/main/index.json");
+        var row = new StorePluginRowViewModel(entry, store, installedVersion, hostAbstractionsMajor: hostAbstractionsMajor);
+
+        return new ViewModels.Onboarding.ProviderPickerRowViewModel(row, detection);
+    }
+
+    private static Views.Onboarding.ProviderStepView _ProviderStepCatalogue()
+    {
+        var viewModel = new ViewModels.Onboarding.ProviderStepViewModel();
+        viewModel.Providers.Add(_ProviderRow(
+            "claude-provider", "Claude Code", "Requires the claude CLI installed and logged in on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.Found));
+        viewModel.Providers.Add(_ProviderRow(
+            "cli-agent-provider", "CLI Agent Provider (Codex)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.NotFound));
+        viewModel.Providers.Add(_ProviderRow(
+            "gemini-provider", "Gemini / OpenAI Provider", "Configure an API key and model per profile in Manage profiles.",
+            ViewModels.Onboarding.ProviderDetectionState.NotApplicable));
+        viewModel.Providers.Add(_ProviderRow(
+            "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
+            ViewModels.Onboarding.ProviderDetectionState.Found, installedVersion: "0.2.0"));
+        viewModel.Providers.Add(_ProviderRow(
+            "github-models-provider", "GitHub Models", "Configure a GitHub personal access token (models:read scope) and model per profile.",
+            ViewModels.Onboarding.ProviderDetectionState.NotApplicable, hostAbstractionsMajor: 999));
+
+        return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
+    }
+
+    private static Views.Onboarding.ProviderStepView _ProviderStepOffline()
+    {
+        var viewModel = new ViewModels.Onboarding.ProviderStepViewModel
+        {
+            IsOffline = true,
+            OfflineMessage = "Could not fetch the store index: No such host is known.",
+        };
+
+        return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
+    }
+
+    private static Views.Onboarding.ProviderStepView _ProviderStepInstallOutcomes()
+    {
+        var viewModel = new ViewModels.Onboarding.ProviderStepViewModel { SummaryMessage = "Installed 2 of 3 provider(s); Kimi Code Provider (ACP) didn't make it — see the reasons below." };
+
+        var installed = _ProviderRow(
+            "claude-provider", "Claude Code", "Requires the claude CLI installed and logged in on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.Found);
+        installed.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Installed, "claude-provider", "Claude Code", null, null, "claude-provider", "sha"));
+
+        var staged = _ProviderRow(
+            "cli-agent-provider", "CLI Agent Provider (Codex)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
+            ViewModels.Onboarding.ProviderDetectionState.NotFound, installedVersion: "0.5.2");
+        staged.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Staged, "cli-agent-provider", "CLI Agent Provider (Codex)", null, null, "cli-agent-provider", "sha"));
+
+        var failed = _ProviderRow(
+            "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
+            ViewModels.Onboarding.ProviderDetectionState.Found);
+        failed.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Failed, "kimi-provider", "Kimi Code Provider (ACP)", "Could not download the plugin: the connection was reset.", null, null, null));
+
+        viewModel.Providers.Add(installed);
+        viewModel.Providers.Add(staged);
+        viewModel.Providers.Add(failed);
+
+        return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
     }
 
     // Renders the plugin store (#62) with a sample catalogue seeded straight into the manager's collections

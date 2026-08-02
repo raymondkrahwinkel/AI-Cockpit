@@ -30,10 +30,13 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly IPluginStoreClient? _storeClient;
 
     /// <summary>
-    /// The provisioning seam (AC-510[b]) every store install/update/rollback below now goes through, wrapping the
-    /// same <see cref="_storeClient"/>/<see cref="_installer"/> this view model already receives — built here
-    /// rather than threaded in as its own constructor parameter, so the dozens of existing tests that stub
-    /// <see cref="IPluginStoreClient"/>/<see cref="IPluginInstaller"/> directly still observe every call.
+    /// The provisioning seam (AC-510[b]) every store install/update/rollback below now goes through. Optionally
+    /// injected through the constructor below: the composition root (<c>CockpitViewModel</c>) resolves it from
+    /// DI and hands it in — the exact same singleton the first-run wizard's provider step (AC-510[b]) receives, so
+    /// there is one install path, not two. Falls back to wrapping <see cref="_storeClient"/>/<see cref="_installer"/>
+    /// itself only when nothing was handed in, so the dozens of existing tests that construct this view model by
+    /// hand and stub <see cref="IPluginStoreClient"/>/<see cref="IPluginInstaller"/> directly keep observing every
+    /// call without also having to stub this interface.
     /// </summary>
     private readonly IPluginProvisioningService? _provisioningService;
 
@@ -287,7 +290,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         PluginDiagnostics diagnostics,
         IPluginContributionSink? contributionSink = null,
         IAppRestartService? restartService = null,
-        IWorkflowTemplateLibrary? templateLibrary = null)
+        IWorkflowTemplateLibrary? templateLibrary = null,
+        IPluginProvisioningService? provisioningService = null)
     {
         _registrationStore = registrationStore;
         _installer = installer;
@@ -295,7 +299,9 @@ public partial class PluginManagerViewModel : ViewModelBase
         _dialogService = dialogService;
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
-        _provisioningService = new PluginProvisioningService(storeClient, installer);
+        // Prefer the DI-resolved singleton (AC-510[b]: one install path, not two); only build a private one when
+        // nothing was handed in, which is every existing test that constructs this view model directly.
+        _provisioningService = provisioningService ?? new PluginProvisioningService(storeClient, installer);
         _settingsRegistry = settingsRegistry;
         _diagnostics = diagnostics;
         _contributionSink = contributionSink;

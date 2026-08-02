@@ -2372,6 +2372,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PluginBootstrap? pluginBootstrap = null,
         IPluginStoreConfigStore? pluginStoreConfigStore = null,
         IPluginStoreClient? pluginStoreClient = null,
+        // AC-510[b]: DI's own singleton, handed straight to PluginManagerViewModel below so the plugin store
+        // dialog and the first-run wizard's provider step share exactly one install path.
+        IPluginProvisioningService? pluginProvisioningService = null,
         IPluginDialogHost? pluginDialogHost = null,
         PluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null,
@@ -2537,7 +2540,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDiagnostics, this, appRestartService, workflowTemplateLibrary)
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDiagnostics, this, appRestartService, workflowTemplateLibrary, pluginProvisioningService)
             : new PluginManagerViewModel();
         // #184: a contribution can fail after the phase-2 pass that first calls RefreshPluginFailures (e.g. a
         // plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the
