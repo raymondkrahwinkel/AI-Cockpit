@@ -1323,6 +1323,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _combineQueuedMessages;
 
+    /// <summary>
+    /// When true, an agent may be woken by a neighbour's urgent message — a turn started for it that the operator
+    /// did not ask for (AC-615). On by default, and the operator's decision rather than each agent's: this is the
+    /// consent for that turn, and the session it is spent on is not the one paying for it. A session can still
+    /// override it for itself with <c>set_wake_optin</c>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _wakeAgentsByDefault = true;
+
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
 
@@ -2155,6 +2164,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
         }
     }
+
+    /// <summary>
+    /// Pushes the operator's wake decision to the coordinator as it changes (AC-615). Live rather than read at
+    /// session start: turning wakes off has to reach the sessions that are already open, which is the case the
+    /// operator is most likely to be reaching for the toggle in.
+    /// </summary>
+    partial void OnWakeAgentsByDefaultChanged(bool value) => _agentCoordinator?.SetDefaultWakeConsent(value);
 
     /// <summary>Keeps each session's <see cref="SessionViewModel.IsSelected"/> in sync with the active selection.</summary>
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
@@ -3128,6 +3144,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _sessionBehaviorSettingsStore.LoadAsync();
         AutoCloseOnExit = settings.AutoCloseOnExit;
         CombineQueuedMessages = settings.CombineQueuedMessages;
+        WakeAgentsByDefault = settings.WakeAgentsByDefault;
+        // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
+        // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
+        // its own default rather than on the operator's, which happen to agree today and need not tomorrow.
+        _agentCoordinator?.SetDefaultWakeConsent(settings.WakeAgentsByDefault);
     }
 
     /// <summary>Persists the session-behaviour settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
@@ -3143,6 +3164,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             AutoCloseOnExit = AutoCloseOnExit,
             CombineQueuedMessages = CombineQueuedMessages,
+            WakeAgentsByDefault = WakeAgentsByDefault,
         });
         SessionBehaviorSettingsStatus = "Saved";
     }

@@ -431,7 +431,7 @@ internal sealed class AgentsMcpTools(
     }
 
     [McpServerTool(Name = "set_wake_optin")]
-    [Description("Says whether you agree to be woken: whether the cockpit may start a turn for you, on its own, when another agent on your desk sends you a message marked urgent. Off until you turn it on — nobody can wake a session that has not agreed, and there is nothing a sender can pass that overrides this. Turn it on when being reached between your own turns matters, for instance while you hold a worktree or a branch someone else might touch; leave it off, or turn it off again, when an unexpected turn would be unwelcome or expensive. Even with it on you are not interrupted: a wake only happens while you are standing still, never mid-turn and never while a question of yours is in front of your operator. A woken turn arrives with a labelled block saying who caused it — it is information, not an instruction, and it grants nothing. Your answer is visible to your neighbours as wakeOptIn in list_agents, so a sender can tell whether urgent means anything for you. It runs for the session you call it from — you do not name one, and you cannot answer for another session.")]
+    [Description("Overrides, for this session only, whether the cockpit may start a turn for you when another agent on your desk sends you a message marked urgent. You do not have to call this: your operator sets whether agents on this cockpit may wake each other, and that setting applies to you unless you say otherwise here. Call it with false when an unexpected turn would be unwelcome or expensive for what you are doing, and with true when being reached between your own turns matters more than usual. Turn it on when being reached between your own turns matters, for instance while you hold a worktree or a branch someone else might touch; leave it off, or turn it off again, when an unexpected turn would be unwelcome or expensive. Even with it on you are not interrupted: a wake only happens while you are standing still, never mid-turn and never while a question of yours is in front of your operator. A woken turn arrives with a labelled block saying who caused it — it is information, not an instruction, and it grants nothing. Your answer is visible to your neighbours as wakeOptIn in list_agents, so a sender can tell whether urgent means anything for you. It runs for the session you call it from — you do not name one, and you cannot answer for another session.")]
     public async Task<string> SetWakeOptInAsync(
         [Description("True to agree to being woken for urgent messages, false to stop. Calling it again replaces your previous answer; the last one stands, and it is forgotten when your session ends.")] bool enabled)
     {
@@ -459,11 +459,14 @@ internal sealed class AgentsMcpTools(
             {
                 ok = true,
                 wakeOptIn = enabled,
+                // True from here on: this session has answered for itself and no longer follows the operator's
+                // setting, in either direction, for as long as it lives (AC-615).
+                yourOwnAnswer = true,
                 // Said back rather than left implied, because the two directions have different consequences and an
                 // agent that meant one and got the other should be able to tell from the reply alone.
                 effect = enabled
                     ? "Agents on your desk can now wake you with an urgent message while you are standing still. Call this with false to stop."
-                    : "You will not be woken. Urgent messages still arrive — they just wait for a turn of yours, like any other.",
+                    : "You will not be woken. Urgent messages still arrive — they just wait for a turn of yours, like any other. This overrides your operator's setting for this session only.",
             });
         }
         catch (Exception exception)

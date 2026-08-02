@@ -19,7 +19,12 @@ internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, IS
     /// end up present in one and forgotten in another — <see cref="Forget"/> has to be able to take everything with
     /// it in a single call, and that is the property the wake consent was put here for in the first place.
     /// </summary>
-    private sealed record Entry(bool WakeConsent, DateTimeOffset? LastContactUtc, DateTimeOffset? LastInboxReadUtc);
+    /// <param name="WakeConsent">
+    /// This session's own answer, or null when it has not given one and the operator's default applies (AC-615).
+    /// Nullable rather than defaulted, because "has not said" and "said no" have to stay apart: the first follows
+    /// the operator's setting as it changes, the second does not.
+    /// </param>
+    private sealed record Entry(bool? WakeConsent, DateTimeOffset? LastContactUtc, DateTimeOffset? LastInboxReadUtc);
 
     /// <summary>
     /// How many departed panes are remembered (AC-614). Enough to cover a sender working from a listing it took a
@@ -40,7 +45,7 @@ internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, IS
     // call an agent makes — so assigning would quietly revoke an opt-in and erase a contact time on the pane's very
     // next list_agents or notify, leaving an agent that had said yes never woken and nothing anywhere saying why.
     public void Enroll(string paneId) =>
-        _roster.TryAdd(paneId, new Entry(WakeConsent: false, LastContactUtc: null, LastInboxReadUtc: null));
+        _roster.TryAdd(paneId, new Entry(WakeConsent: null, LastContactUtc: null, LastInboxReadUtc: null));
 
     public bool IsEnrolled(string paneId) => _roster.ContainsKey(paneId);
 
@@ -52,7 +57,7 @@ internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, IS
         var now = DateTimeOffset.UtcNow;
         _roster.AddOrUpdate(
             paneId,
-            _ => new Entry(WakeConsent: false, LastContactUtc: now, LastInboxReadUtc: null),
+            _ => new Entry(WakeConsent: null, LastContactUtc: now, LastInboxReadUtc: null),
             (_, existing) => existing with { LastContactUtc = now });
     }
 
@@ -67,7 +72,7 @@ internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, IS
         var now = DateTimeOffset.UtcNow;
         _roster.AddOrUpdate(
             paneId,
-            _ => new Entry(WakeConsent: false, LastContactUtc: now, LastInboxReadUtc: now),
+            _ => new Entry(WakeConsent: null, LastContactUtc: now, LastInboxReadUtc: now),
             (_, existing) => existing with { LastContactUtc = now, LastInboxReadUtc = now });
     }
 
@@ -80,7 +85,18 @@ internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, IS
             _ => new Entry(consents, LastContactUtc: null, LastInboxReadUtc: null),
             (_, existing) => existing with { WakeConsent = consents });
 
-    public bool HasWakeConsent(string paneId) => _roster.TryGetValue(paneId, out var entry) && entry.WakeConsent;
+    // Read live rather than copied into each entry when a pane enrolls: the operator turning wakes off has to reach
+    // the panes that are already running, and an entry holding its own copy of the default would leave every session
+    // started before the change still wakeable.
+    private volatile bool _defaultWakeConsent = true;
+
+    public void SetDefaultWakeConsent(bool consents) => _defaultWakeConsent = consents;
+
+    public bool HasWakeConsent(string paneId) =>
+        _roster.TryGetValue(paneId, out var entry) && (entry.WakeConsent ?? _defaultWakeConsent);
+
+    public bool HasOwnWakeConsent(string paneId) =>
+        _roster.TryGetValue(paneId, out var entry) && entry.WakeConsent is not null;
 
     public void Forget(string paneId)
     {

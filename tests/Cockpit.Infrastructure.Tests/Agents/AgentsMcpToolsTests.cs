@@ -364,6 +364,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
+        // Since AC-615 the operator's setting is what an unanswered pane follows, and it ships on. Stated here so
+        // this row reports "this session said nothing and the operator said no" rather than the shipped default
+        // showing through a test that is about the empty shape of the fields.
+        _coordinator.SetDefaultWakeConsent(false);
         McpRequestContext.Set("pane-1");
 
         var json = JsonNode.Parse(await _Tools().ListAgentsAsync());

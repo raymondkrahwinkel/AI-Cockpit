@@ -95,23 +95,40 @@ public interface IWorkspaceAgentCoordinator
     DateTimeOffset? DepartedAtUtc(string paneId);
 
     /// <summary>
-    /// Records whether <paramref name="paneId"/> agrees to be woken — to have a turn started for it, by the host,
-    /// on a peer's urgent message (AC-395). Enrolls the pane as any other <c>cockpit-agents</c> call does, and
-    /// leaves its contact time alone.
+    /// Records this session's own answer about being woken (AC-395), overriding the operator's default for as long
+    /// as the session lives. Enrolls the pane as any other <c>cockpit-agents</c> call does, and leaves its contact
+    /// time alone.
     /// <para>
-    /// The opt-in <em>is</em> the consent, so it is only ever set by the pane it is about: a session says this
-    /// about itself and about nothing else. Off until said otherwise — a pane that has never called this is a
-    /// pane that has not agreed, and silence must never read as agreement for something that spends the
-    /// operator's money on a turn they did not ask for.
+    /// This is no longer where the consent lives (AC-615). It used to be: a pane was unwakeable until it said
+    /// otherwise, on the reasoning that a wake spends the operator's turn and only the pane could speak for that.
+    /// The reasoning was right and the placement was wrong — an agent will not spend its operator's money on its
+    /// own say-so, so no pane ever opted in, and the wake route was built and never used. The consent moved to a
+    /// setting the operator sets (<see cref="SetDefaultWakeConsent"/>); this stayed, as the per-session deviation
+    /// from it, in either direction.
     /// </para>
     /// </summary>
     void SetWakeConsent(string paneId, bool consents);
 
     /// <summary>
-    /// Whether <paramref name="paneId"/> has agreed to be woken. False for a pane that never said, and false for
-    /// one that has been forgotten — consent does not outlive the session that gave it.
+    /// Sets what a session that has not answered for itself is taken to have agreed to — the operator's setting
+    /// (AC-615). Applies to every pane that has not called <see cref="SetWakeConsent"/>, at once and live, so
+    /// turning it off stops wakes for panes that are already running rather than only for ones started afterwards.
+    /// </summary>
+    void SetDefaultWakeConsent(bool consents);
+
+    /// <summary>
+    /// Whether <paramref name="paneId"/> may be woken: its own answer if it gave one, and the operator's default
+    /// otherwise. False for a pane that has been forgotten — a session that has ended is not a session anything can
+    /// start a turn on.
     /// </summary>
     bool HasWakeConsent(string paneId);
+
+    /// <summary>
+    /// Whether <paramref name="paneId"/>'s answer is its own rather than the operator's default — what
+    /// <c>set_wake_optin</c> tells a caller back, so an agent can see whether it is looking at its own decision or
+    /// at one made for it.
+    /// </summary>
+    bool HasOwnWakeConsent(string paneId);
 
     /// <summary>
     /// Drops <paramref name="paneId"/> from the roster — wake consent and contact time with it — the closing half

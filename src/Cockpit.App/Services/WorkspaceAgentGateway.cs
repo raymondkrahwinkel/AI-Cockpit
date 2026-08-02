@@ -77,10 +77,17 @@ internal sealed class WorkspaceAgentGateway(
         // Written as the list of states that may be woken, not the list that may not. A status added later then
         // arrives as "not woken" and has to be argued into the set deliberately — where a deny-list would have made
         // it wakeable the day it was declared, silently, by whoever was thinking about something else entirely.
+        //
+        // WaitingForInput was in the wakeable set until AC-615 and is not any more. It reads as standing still, and
+        // it is not: it means a tool-use permission decision is pending, or the CLI asked for something — a question
+        // in front of the operator, exactly like NeedsAttention, which the enum's own docs call the same signal. It
+        // was survivable while wake was opt-in, because only a session that had chosen it could be interrupted that
+        // way. Now that the operator's setting makes wake the default, it would reach every session on the desk, and
+        // the first thing an agent would do with it is talk over the decision its operator is standing at.
         if (target.SessionStatus switch
             {
-                SessionStatus.Idle or SessionStatus.Done or SessionStatus.WaitingForInput => (AgentWakeOutcome?)null,
-                SessionStatus.NeedsAttention => AgentWakeOutcome.AwaitingOperator,
+                SessionStatus.Idle or SessionStatus.Done => (AgentWakeOutcome?)null,
+                SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => AgentWakeOutcome.AwaitingOperator,
                 SessionStatus.Busy or SessionStatus.WorkingBackground => AgentWakeOutcome.Busy,
                 _ => AgentWakeOutcome.Busy,
             } is { } refusal)
