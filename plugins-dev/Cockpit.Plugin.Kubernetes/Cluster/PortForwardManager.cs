@@ -6,13 +6,11 @@ using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.Plugin.Kubernetes.Cluster;
 
-/// <summary>
-/// Owns the active port-forward tunnels (AC-80) and surfaces them to the cockpit status bar as supervised activities
-/// (<see cref="ISupervisedActivitySource"/>, AC-82): each tunnel shows source/target/cluster and an operator-only
-/// Kill. A tunnel is opened only after the danger-gate approved it. Each accepted local connection gets its own
-/// WebSocket to the pod (the way kubectl multiplexes), so several clients can use one tunnel; a bounded lifetime
-/// closes it as a backstop.
-/// </summary>
+// Owns the active port-forward tunnels (AC-80) and surfaces them to the cockpit status bar as supervised activities
+// (`ISupervisedActivitySource`, AC-82): each tunnel shows source/target/cluster and an operator-only
+// Kill. A tunnel is opened only after the danger-gate approved it. Each accepted local connection gets its own
+// WebSocket to the pod (the way kubectl multiplexes), so several clients can use one tunnel; a bounded lifetime
+// closes it as a backstop.
 internal sealed class PortForwardManager : ISupervisedActivitySource
 {
     private const string PortForwardSubProtocol = "v4.channel.k8s.io";
@@ -38,11 +36,9 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
                 () => StopAsync(tunnel.Id)))
             .ToList();
 
-    /// <summary>
-    /// Opens a tunnel from a loopback port to <paramref name="remotePort"/> on the pod. A <paramref name="requestedLocalPort"/>
-    /// of 0 lets the OS pick a free port. Returns the tunnel (with its bound local port); it runs until it is killed
-    /// or <paramref name="maxLifetime"/> elapses.
-    /// </summary>
+    // Opens a tunnel from a loopback port to `remotePort` on the pod. A `requestedLocalPort`
+    // of 0 lets the OS pick a free port. Returns the tunnel (with its bound local port); it runs until it is killed
+    // or `maxLifetime` elapses.
     public PortForwardTunnel Start(IKubernetes client, string clusterLabel, string @namespace, string pod, int remotePort, int requestedLocalPort, TimeSpan maxLifetime)
     {
         var cancellation = new CancellationTokenSource();

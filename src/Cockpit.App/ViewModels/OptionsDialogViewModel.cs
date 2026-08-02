@@ -4,31 +4,25 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Consent;
-using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The Options → Voice "Assistant" block (AC-543): the master on/off switch, the name of the assistant's own
-/// profile (edited in <see cref="AssistantProfileDialogViewModel"/>, opened from here), the push-to-talk hotkey,
-/// and the independent read-replies-aloud switch. Self-contained the same way
-/// <see cref="SecurityOptionsViewModel"/> is — every constructor argument is optional so it also constructs for
-/// design-time preview and for a unit test that only cares about a couple of them, without needing the whole
-/// <c>CockpitViewModel</c> dependency graph in scope.
-/// </summary>
-/// <remarks>
-/// <b>Off does not touch the profile.</b> <see cref="IsEnabled"/> persists through <see cref="_settingsStore"/>,
-/// which owns the <c>assistant</c> section; the Assistant Profile slot lives in its own <c>assistantProfile</c>
-/// section behind <see cref="_profileStore"/> (AC-543's slot design) and is never written by this switch. Turning
-/// the feature off and back on always finds the same profile still pointed at — that is the whole reason the two
-/// are separate stores rather than one flag next to the profile.
-/// <para>
-/// <b>Speaking and being enabled are two decisions, not one.</b> <see cref="SpeakReplies"/> persists on its own
-/// and is read back independently of <see cref="IsEnabled"/> — someone using the assistant as a text-only
-/// assistant in a shared room needs the assistant on and speech off at the same time, which a derived flag could
-/// never express (criterion 9).
-/// </para>
-/// </remarks>
+// The Options → Voice "Assistant" block (AC-543): the master on/off switch, the name of the assistant's own
+// profile (edited in `AssistantProfileDialogViewModel`, opened from here), the push-to-talk hotkey,
+// and the independent read-replies-aloud switch. Self-contained the same way
+// `SecurityOptionsViewModel` is — every constructor argument is optional so it also constructs for
+// design-time preview and for a unit test that only cares about a couple of them, without needing the whole
+// `CockpitViewModel` dependency graph in scope.
+// *Off does not touch the profile.* `IsEnabled` persists through `_settingsStore`,
+// which owns the `assistant` section; the Assistant Profile slot lives in its own `assistantProfile`
+// section behind `_profileStore` (AC-543's slot design) and is never written by this switch. Turning
+// the feature off and back on always finds the same profile still pointed at — that is the whole reason the two
+// are separate stores rather than one flag next to the profile.
+//
+// *Speaking and being enabled are two decisions, not one.* `SpeakReplies` persists on its own
+// and is read back independently of `IsEnabled` — someone using the assistant as a text-only
+// assistant in a shared room needs the assistant on and speech off at the same time, which a derived flag could
+// never express (criterion 9).
 public sealed partial class AssistantOptionsViewModel(
     IAssistantSettingsStore? settingsStore = null,
     IAssistantProfileStore? profileStore = null,
@@ -38,15 +32,13 @@ public sealed partial class AssistantOptionsViewModel(
     private readonly IAssistantProfileStore? _profileStore = profileStore;
     private readonly IConsentAuditLog? _consentAuditLog = consentAuditLog;
 
-    /// <summary>True only while <see cref="RefreshAsync"/> is seeding properties from disk, so the change handlers below do not write the same value straight back out.</summary>
+    // True only while `RefreshAsync` is seeding properties from disk, so the change handlers below do not write the same value straight back out.
     private bool _loading;
 
-    /// <summary>
-    /// The settings as last loaded (or saved), kept around so a save from this view model only overwrites the
-    /// three fields it owns. <see cref="AssistantSettings.AlwaysOnCostAcknowledged"/> lives in the same record but
-    /// is the indicator's to set (AC-543 comment 5), and constructing a bare <c>new AssistantSettings()</c> on
-    /// every save would silently reset it to its default underneath it.
-    /// </summary>
+    // The settings as last loaded (or saved), kept around so a save from this view model only overwrites the
+    // three fields it owns. `AssistantSettings.AlwaysOnCostAcknowledged` lives in the same record but
+    // is the indicator's to set (AC-543 comment 5), and constructing a bare `new AssistantSettings()` on
+    // every save would silently reset it to its default underneath it.
     private AssistantSettings _lastLoadedSettings = new();
 
     [ObservableProperty]
@@ -58,40 +50,34 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private string _pushToTalkKeyName = "F10";
 
-    /// <summary>The three reading levels the chat window can render at (AC-138) — the same list an SDK session's own header dropdown offers.</summary>
+    // The three reading levels the chat window can render at (AC-138) — the same list an SDK session's own header dropdown offers.
     public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
 
     [ObservableProperty]
     private ReadingLevelOption _selectedReadingLevel = SessionOptionCatalog.DefaultReadingLevel;
 
-    /// <summary>
-    /// What the assistant's own profile is called and what it runs on — <c>ProfileDisplay.Format</c>'s wording, the
-    /// same convention the chip and every other profile surface uses. <see langword="null"/> while the slot has no
-    /// record, where <see cref="ProfileUnsetReason"/> is what the page shows instead.
-    /// </summary>
-    /// <remarks>
-    /// A line rather than a picker. The slot holds a whole <see cref="SessionProfile"/> of its own — it always did —
-    /// and this page used to present it as a selection from the profile list, which is what made an operator believe
-    /// their edits to that list reached the assistant. Naming it as the assistant's own profile, editable in its own
-    /// dialog, is what removes the belief rather than annotating it.
-    /// </remarks>
+    // What the assistant's own profile is called and what it runs on — `ProfileDisplay.Format`'s wording, the
+    // same convention the chip and every other profile surface uses. `null` while the slot has no
+    // record, where `ProfileUnsetReason` is what the page shows instead.
+    // A line rather than a picker. The slot holds a whole `SessionProfile` of its own — it always did —
+    // and this page used to present it as a selection from the profile list, which is what made an operator believe
+    // their edits to that list reached the assistant. Naming it as the assistant's own profile, editable in its own
+    // dialog, is what removes the belief rather than annotating it.
     [ObservableProperty]
     private string? _profileLabel;
 
-    /// <summary>Why the slot has no record right now. Empty while <see cref="ProfileLabel"/> is set — the UI shows one or the other, never both.</summary>
+    // Why the slot has no record right now. Empty while `ProfileLabel` is set — the UI shows one or the other, never both.
     [ObservableProperty]
     private string? _profileUnsetReason;
 
-    /// <summary>
-    /// The consent-bypass switches, one row per source (#AC-575). Filled by <see cref="RefreshAsync"/> from names
-    /// the host stamps — never from anything the operator types — see <see cref="_RebuildConsentBypassRowsAsync"/>.
-    /// </summary>
+    // The consent-bypass switches, one row per source (#AC-575). Filled by `RefreshAsync` from names
+    // the host stamps — never from anything the operator types — see `_RebuildConsentBypassRowsAsync`.
     public ObservableCollection<ConsentBypassSourceViewModel> ConsentBypassSources { get; } = [];
 
-    /// <summary>Whether any source is switched on — the one-line summary above the list, so the page says so before the rows are read.</summary>
+    // Whether any source is switched on — the one-line summary above the list, so the page says so before the rows are read.
     public bool HasConsentBypass => ConsentBypassSources.Any(row => row.BypassLowRisk || row.BypassDangerous);
 
-    /// <summary>Loads the settings and the assistant's own profile. Safe to call with no stores wired (design-time/tests) — it then simply leaves the defaults in place.</summary>
+    // Loads the settings and the assistant's own profile. Safe to call with no stores wired (design-time/tests) — it then simply leaves the defaults in place.
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
         _loading = true;
@@ -122,20 +108,16 @@ public sealed partial class AssistantOptionsViewModel(
         }
     }
 
-    /// <summary>
-    /// Rebuilds the bypass rows (#AC-575). Three sources, all host-stamped, none of them free text:
-    /// <list type="number">
-    /// <item>the cockpit's own consent callers, from <see cref="ConsentSourceCatalog"/> — the same constants those
-    /// gates build their <c>ConsentSource</c> from, so a renamed label moves the switch with it;</item>
-    /// <item>every source that has actually asked, read off the consent trail. This is what puts plugins on the
-    /// list: a plugin asks through <c>ICockpitHost</c>, which stamps its plugin id host-side, and there is no
-    /// compile-time list of installed plugins to enumerate instead. The trail's label is only ever <em>shown</em> —
-    /// the switch is keyed on the stamped id, so a plugin that labels itself "Terminal MCP" gets a row of its own
-    /// under its own id rather than a share of the terminal's;</item>
-    /// <item>anything already switched on, so a source whose plugin is currently uninstalled still has a row to be
-    /// switched off from, instead of a permission that is set and invisible.</item>
-    /// </list>
-    /// </summary>
+    // Rebuilds the bypass rows (#AC-575). Three sources, all host-stamped, none of them free text:
+    // - the cockpit's own consent callers, from `ConsentSourceCatalog` — the same constants those
+    // gates build their `ConsentSource` from, so a renamed label moves the switch with it;
+    // - every source that has actually asked, read off the consent trail. This is what puts plugins on the
+    // list: a plugin asks through `ICockpitHost`, which stamps its plugin id host-side, and there is no
+    // compile-time list of installed plugins to enumerate instead. The trail's label is only ever *shown* —
+    // the switch is keyed on the stamped id, so a plugin that labels itself "Terminal MCP" gets a row of its own
+    // under its own id rather than a share of the terminal's;
+    // - anything already switched on, so a source whose plugin is currently uninstalled still has a row to be
+    // switched off from, instead of a permission that is set and invisible.
     private async Task _RebuildConsentBypassRowsAsync(CancellationToken cancellationToken)
     {
         var lowRisk = _lastLoadedSettings.ConsentBypassSources.ToHashSet(StringComparer.Ordinal);
@@ -200,12 +182,10 @@ public sealed partial class AssistantOptionsViewModel(
 
     partial void OnSelectedReadingLevelChanged(ReadingLevelOption value) => _SaveSettings();
 
-    /// <summary>
-    /// Raised once a change here is actually on disk. The key and the on/off flag are read when the hotkey is
-    /// armed and when the assistant is asked for, so without this a setting would be a field that remembers what
-    /// you typed and changes nothing until the next restart — the failure <c>GlobalHotkeyCoordinator</c> already
-    /// re-arms on <c>VoiceSettingsSaved</c> to avoid for F9.
-    /// </summary>
+    // Raised once a change here is actually on disk. The key and the on/off flag are read when the hotkey is
+    // armed and when the assistant is asked for, so without this a setting would be a field that remembers what
+    // you typed and changes nothing until the next restart — the failure `GlobalHotkeyCoordinator` already
+    // re-arms on `VoiceSettingsSaved` to avoid for F9.
     public event EventHandler? Saved;
 
     private void _SaveSettings()
@@ -241,24 +221,20 @@ public sealed partial class AssistantOptionsViewModel(
     }
 }
 
-/// <summary>
-/// One source on the assistant's consent-bypass list (#AC-575): who asks, and the two switches for it.
-/// </summary>
-/// <remarks>
-/// <b>Two checkboxes, not a three-state picker.</b> <see cref="BypassDangerous"/> covers shell commands, session
-/// hand-offs with the operator's rights and arbitrary egress; <see cref="BypassLowRisk"/> covers the idempotent
-/// rest. A dropdown with "nothing / harmless / everything" would put the second one mouse movement away from the
-/// first, and they are not the same decision — so they are not the same control. Neither implies the other: the
-/// broker asks for exactly the one that matches the request's risk.
-/// </remarks>
-/// <param name="key">The host-stamped identity the switch is stored under — a plugin id, or a host source's label. Never shown as the primary name, and never editable.</param>
-/// <param name="label">What to call it on screen.</param>
-/// <param name="isOrphan">
-/// Whether this row's key is neither in <see cref="ConsentSourceCatalog.HostSources"/> nor was ever seen asking
-/// in the consent trail — a switched-on source this build no longer recognises, most often because its key
-/// changed underneath it (a plugin id, say). The row still works — it can still be switched off — it is only
-/// marked so the operator does not mistake it for a second, live source.
-/// </param>
+// One source on the assistant's consent-bypass list (#AC-575): who asks, and the two switches for it.
+// *Two checkboxes, not a three-state picker.* `BypassDangerous` covers shell commands, session
+// hand-offs with the operator's rights and arbitrary egress; `BypassLowRisk` covers the idempotent
+// rest. A dropdown with "nothing / harmless / everything" would put the second one mouse movement away from the
+// first, and they are not the same decision — so they are not the same control. Neither implies the other: the
+// broker asks for exactly the one that matches the request's risk.
+//
+// `key`: The host-stamped identity the switch is stored under — a plugin id, or a host source's label. Never shown as the primary name, and never editable.
+// `label`: What to call it on screen.
+// `isOrphan`:
+// Whether this row's key is neither in `ConsentSourceCatalog.HostSources` nor was ever seen asking
+// in the consent trail — a switched-on source this build no longer recognises, most often because its key
+// changed underneath it (a plugin id, say). The row still works — it can still be switched off — it is only
+// marked so the operator does not mistake it for a second, live source.
 public sealed partial class ConsentBypassSourceViewModel(string key, string label, bool isOrphan = false) : ObservableObject
 {
     public string Key { get; } = key;
@@ -267,24 +243,22 @@ public sealed partial class ConsentBypassSourceViewModel(string key, string labe
 
     public bool IsOrphan { get; } = isOrphan;
 
-    /// <summary>
-    /// The stamped key, shown under the label when the two differ — which is exactly when the label came from a
-    /// plugin. A plugin that names itself after a cockpit source then reads as its own id on this list rather than
-    /// borrowing the other's name; the switch was already keyed on the id, this is so the operator can see that.
-    /// Never set alongside <see cref="IsOrphan"/> — an orphan's label is its own key (see the rebuild that
-    /// constructs it), so the two are never both non-null.
-    /// </summary>
+    // The stamped key, shown under the label when the two differ — which is exactly when the label came from a
+    // plugin. A plugin that names itself after a cockpit source then reads as its own id on this list rather than
+    // borrowing the other's name; the switch was already keyed on the id, this is so the operator can see that.
+    // Never set alongside `IsOrphan` — an orphan's label is its own key (see the rebuild that
+    // constructs it), so the two are never both non-null.
     public string? KeyDetail => string.Equals(Key, Label, StringComparison.Ordinal) ? null : Key;
 
-    /// <summary>Skip the card for this source's low-risk, idempotent actions.</summary>
+    // Skip the card for this source's low-risk, idempotent actions.
     [ObservableProperty]
     private bool _bypassLowRisk;
 
-    /// <summary>Skip it for this source's dangerous actions too. Off by default, and never turned on by the switch above.</summary>
+    // Skip it for this source's dangerous actions too. Off by default, and never turned on by the switch above.
     [ObservableProperty]
     private bool _bypassDangerous;
 
-    /// <summary>Set by the page that owns the row, so a tick persists straight away like every other switch on this dialog.</summary>
+    // Set by the page that owns the row, so a tick persists straight away like every other switch on this dialog.
     internal Action? Changed { get; set; }
 
     partial void OnBypassLowRiskChanged(bool value) => Changed?.Invoke();

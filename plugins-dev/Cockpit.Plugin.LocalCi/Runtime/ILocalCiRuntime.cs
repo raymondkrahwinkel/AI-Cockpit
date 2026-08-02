@@ -16,9 +16,9 @@ internal interface ILocalCiRuntime
     void Invalidate();
 }
 
-/// <summary>Both halves of the answer: the engine that runs the work, and the runtime that drives it.</summary>
+// Both halves of the answer: the engine that runs the work, and the runtime that drives it.
 internal sealed record LocalCiRuntimeStatus(DockerRuntimeStatus Docker, ActRuntimeStatus Act)
 {
-    /// <summary>True when a workflow job could actually be attempted here.</summary>
+    // True when a workflow job could actually be attempted here.
     public bool CanRunJobs => Docker.IsReady && Act.IsInstalled;
 }

@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Projects;
 
-/// <summary>
-/// Persists <see cref="ProjectSettings"/> under the <c>projects</c> section of <c>cockpit.json</c> (same
-/// file/pattern as <c>WorkspaceSettingsStore</c>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched. Nothing saved yet means no
-/// projects — the cockpit then starts sessions exactly as it did before projects existed.
-/// </summary>
+// Persists `ProjectSettings` under the `projects` section of `cockpit.json` (same
+// file/pattern as `WorkspaceSettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched. Nothing saved yet means no
+// projects — the cockpit then starts sessions exactly as it did before projects existed.
 internal sealed class ProjectStore : IProjectStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class ProjectStore : IProjectStore, ISingletonService
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal ProjectStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

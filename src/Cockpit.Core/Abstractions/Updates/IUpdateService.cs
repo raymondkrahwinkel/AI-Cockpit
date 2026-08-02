@@ -58,11 +58,10 @@ public interface IUpdateSettingsStore
     Task SaveAsync(UpdateSettings settings, CancellationToken cancellationToken = default);
 }
 
-/// <param name="CheckOnStartup">Look once when the cockpit starts. On by default: an update nobody is told about is an update nobody installs.</param>
-/// <param name="Channel">
-/// The channel the operator chose, or null when nobody has chosen one — then the build's own stream decides
-/// (<see cref="BuildChannel"/>). Nullable rather than defaulting to <see cref="UpdateChannel.Stable"/>, because a
-/// default is indistinguishable from a choice: a nightly started without a configuration file would land on stable
-/// and be offered a downgrade as its first update.
-/// </param>
+// `CheckOnStartup`: Look once when the cockpit starts. On by default: an update nobody is told about is an update nobody installs.
+// `Channel`:
+// The channel the operator chose, or null when nobody has chosen one — then the build's own stream decides
+// (`BuildChannel`). Nullable rather than defaulting to `UpdateChannel.Stable`, because a
+// default is indistinguishable from a choice: a nightly started without a configuration file would land on stable
+// and be offered a downgrade as its first update.
 public sealed record UpdateSettings(bool CheckOnStartup = true, UpdateChannel? Channel = null);

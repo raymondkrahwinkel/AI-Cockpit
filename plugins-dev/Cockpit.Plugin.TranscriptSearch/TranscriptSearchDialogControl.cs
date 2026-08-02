@@ -10,18 +10,16 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
-/// <summary>
-/// The "Search transcripts" dialog: a query box over the on-disk <c>claude</c> transcripts, showing the matching
-/// user/assistant lines with a snippet, which session and project they came from and when. Each hit can have its
-/// session id copied (to resume it with <c>claude --resume</c>) or its transcript revealed in the file explorer.
-/// Search runs on Enter or the button rather than as-you-type, so a broad history is not re-scanned on every
-/// keystroke. Built in code; the colours come from the host's theme resources.
-/// </summary>
+// The "Search transcripts" dialog: a query box over the on-disk `claude` transcripts, showing the matching
+// user/assistant lines with a snippet, which session and project they came from and when. Each hit can have its
+// session id copied (to resume it with `claude --resume`) or its transcript revealed in the file explorer.
+// Search runs on Enter or the button rather than as-you-type, so a broad history is not re-scanned on every
+// keystroke. Built in code; the colours come from the host's theme resources.
 internal sealed class TranscriptSearchDialogControl : UserControl
 {
     private const int MinQueryLength = 2;
 
-    /// <summary>How many recent conversations the dialog opens on — enough to recognise the one you want, few enough to read at a glance.</summary>
+    // How many recent conversations the dialog opens on — enough to recognise the one you want, few enough to read at a glance.
     private const int RecentSessionCount = 10;
 
     private readonly TranscriptSearchService _search;
@@ -311,7 +309,7 @@ internal sealed class TranscriptSearchDialogControl : UserControl
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

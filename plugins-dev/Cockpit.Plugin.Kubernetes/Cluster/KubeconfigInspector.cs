@@ -3,15 +3,13 @@ using k8s;
 
 namespace Cockpit.Plugin.Kubernetes.Cluster;
 
-/// <summary>
-/// Reads a kubeconfig without connecting, to tell the operator one security-relevant thing at registration time:
-/// does the chosen context authenticate through an <c>exec</c> credential plugin? Such a context runs an external
-/// process (e.g. <c>aws eks get-token</c>, <c>gke-gcloud-auth-plugin</c>) the first time it connects, so a tampered
-/// kubeconfig is a code-execution vector — the operator should opt into it knowing that.
-/// </summary>
+// Reads a kubeconfig without connecting, to tell the operator one security-relevant thing at registration time:
+// does the chosen context authenticate through an `exec` credential plugin? Such a context runs an external
+// process (e.g. `aws eks get-token`, `gke-gcloud-auth-plugin`) the first time it connects, so a tampered
+// kubeconfig is a code-execution vector — the operator should opt into it knowing that.
 internal static class KubeconfigInspector
 {
-    /// <summary>Expands a leading <c>~</c> to the user's home directory; otherwise returns the trimmed path unchanged.</summary>
+    // Expands a leading `~` to the user's home directory; otherwise returns the trimmed path unchanged.
     public static string ExpandPath(string path)
     {
         var trimmed = path.Trim();
@@ -24,7 +22,7 @@ internal static class KubeconfigInspector
         return trimmed;
     }
 
-    /// <summary>The effective kubeconfig YAML: the file at <paramref name="path"/> (read live, <c>~</c> expanded) if a path is set, otherwise the pasted <paramref name="content"/>. Null when neither yields anything.</summary>
+    // The effective kubeconfig YAML: the file at `path` (read live, `~` expanded) if a path is set, otherwise the pasted `content`. Null when neither yields anything.
     public static string? ReadYaml(string? path, string? content)
     {
         if (!string.IsNullOrWhiteSpace(path))
@@ -43,7 +41,7 @@ internal static class KubeconfigInspector
         return string.IsNullOrWhiteSpace(content) ? null : content;
     }
 
-    /// <summary>The contexts declared in a kubeconfig, and its current-context. Empty on unparseable input (never throws).</summary>
+    // The contexts declared in a kubeconfig, and its current-context. Empty on unparseable input (never throws).
     public static KubeconfigContexts ListContexts(string kubeconfigYaml)
     {
         try

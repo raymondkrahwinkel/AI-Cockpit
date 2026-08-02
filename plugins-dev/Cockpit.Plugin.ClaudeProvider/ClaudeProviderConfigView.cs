@@ -7,12 +7,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// The "add/edit profile" config panel for the Claude provider (Fase 4, SDK route): the two fields the host's in-tree
-/// <c>ClaudeConfig</c> carried — an optional config directory (which login/config this profile reads) and an optional
-/// executable path. Both blank means a default session against the machine's own <c>claude</c> login, which is the
-/// common case, so nothing is required.
-/// </summary>
+// The "add/edit profile" config panel for the Claude provider (Fase 4, SDK route): the two fields the host's in-tree
+// `ClaudeConfig` carried — an optional config directory (which login/config this profile reads) and an optional
+// executable path. Both blank means a default session against the machine's own `claude` login, which is the
+// common case, so nothing is required.
 internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _configDir;
@@ -66,7 +64,7 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         _UpdateExecutableStatus();
     }
 
-    /// <summary>Flags a non-empty config directory that does not exist (the one field that blocks saving); blank is fine (the machine's own ~/.claude login).</summary>
+    // Flags a non-empty config directory that does not exist (the one field that blocks saving); blank is fine (the machine's own ~/.claude login).
     private void _UpdateConfigDirStatus()
     {
         var configDir = _configDir.Text?.Trim() ?? string.Empty;
@@ -87,10 +85,8 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         }
     }
 
-    /// <summary>
-    /// Resolves the claude executable exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one
-    /// line, what will run and whether it is a cockpit-managed copy — so this never contradicts the managed panel below.
-    /// </summary>
+    // Resolves the claude executable exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one
+    // line, what will run and whether it is a cockpit-managed copy — so this never contradicts the managed panel below.
     private void _UpdateExecutableStatus()
     {
         var command = _executablePath.Text?.Trim() is { Length: > 0 } path ? path : "claude";

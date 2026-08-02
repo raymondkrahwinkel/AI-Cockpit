@@ -5,10 +5,8 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Layout;
 
-/// <summary>
-/// Persists the main window's <see cref="WindowBounds"/> under the <c>windowBounds</c> section of
-/// <c>cockpit.json</c> (same file/pattern as the other settings stores). Returns null when nothing was saved.
-/// </summary>
+// Persists the main window's `WindowBounds` under the `windowBounds` section of
+// `cockpit.json` (same file/pattern as the other settings stores). Returns null when nothing was saved.
 internal sealed class WindowBoundsStore : IWindowBoundsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -18,7 +16,7 @@ internal sealed class WindowBoundsStore : IWindowBoundsStore, ISingletonService
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal WindowBoundsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

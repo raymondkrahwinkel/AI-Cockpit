@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The real <see cref="IAutopilotEvidenceSource"/> (AC-255): reads the run's own git worktree to find out what a step
-/// changed. It only ever reads — no <c>add</c>, no <c>commit</c>, no <c>stash push</c> — because an observation that
-/// mutates what it observes is not evidence, and because the coordinator's own safety commit is the one place work is
-/// staged. Every git fault degrades to null (no evidence, so the CEO keeps inspecting) rather than failing the step.
-/// </summary>
+// The real `IAutopilotEvidenceSource` (AC-255): reads the run's own git worktree to find out what a step
+// changed. It only ever reads — no `add`, no `commit`, no `stash push` — because an observation that
+// mutates what it observes is not evidence, and because the coordinator's own safety commit is the one place work is
+// staged. Every git fault degrades to null (no evidence, so the CEO keeps inspecting) rather than failing the step.
 internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
 {
     // The validation turn is a prompt, not a report: a large refactor's full patch would crowd out the acceptance it is

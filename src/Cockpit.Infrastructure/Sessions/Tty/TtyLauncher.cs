@@ -9,16 +9,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-/// <summary>
-/// Default <see cref="ITtyLauncher"/>: builds the host environment, asks the provider how its CLI starts, and
-/// spawns it in a pseudo console. Platform-agnostic — the pty host itself (ConPTY on Windows, Porta.Pty on
-/// Linux/macOS) is <see cref="IPtyHostFactory"/>.
-/// </summary>
-/// <remarks>
-/// Nothing here knows which agent is running. That is the point of the split: the pieces that were provider-
-/// specific (executable, flags, config directory, status relay) moved into <see cref="ITtySessionProvider"/>,
-/// and what is left is the part every TUI needs identically.
-/// </remarks>
+// Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and
+// spawns it in a pseudo console. Platform-agnostic — the pty host itself (ConPTY on Windows, Porta.Pty on
+// Linux/macOS) is `IPtyHostFactory`.
+// Nothing here knows which agent is running. That is the point of the split: the pieces that were provider-
+// specific (executable, flags, config directory, status relay) moved into `ITtySessionProvider`,
+// and what is left is the part every TUI needs identically.
 internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
@@ -138,11 +134,9 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
             : new TtyProcessOwningSessionFiles(process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken);
     }
 
-    /// <summary>
-    /// Snapshots the cockpit process's own environment as the base the pty child inherits from — a ConPTY child
-    /// gets no environment unless we hand it one (HOME/USERPROFILE, PATH, APPDATA, ...); Porta.Pty inherits
-    /// automatically but the base stays explicit here so both platforms compose identically.
-    /// </summary>
+    // Snapshots the cockpit process's own environment as the base the pty child inherits from — a ConPTY child
+    // gets no environment unless we hand it one (HOME/USERPROFILE, PATH, APPDATA, ...); Porta.Pty inherits
+    // automatically but the base stays explicit here so both platforms compose identically.
     private static Dictionary<string, string> CurrentProcessEnvironment()
     {
         var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

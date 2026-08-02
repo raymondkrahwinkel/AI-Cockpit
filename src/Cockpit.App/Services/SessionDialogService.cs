@@ -652,6 +652,21 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await _ShowSurfaceAsync(typeof(DelegatedTasksDialog), owner, () => new DelegatedTasksDialog { DataContext = _delegatedTasks });
     }
 
+    public async Task ShowAgentLineInspectorDialogAsync(AgentLineInspectorViewModel inspector)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        // Read once on opening, so the window is never blank on the way in; the Refresh button is how it is brought
+        // up to date after that. Not a live subscription: this is a read-only look at an append-only trail, and a
+        // window that redrew itself under the operator's eyes while they were reading a line is harder to read, not
+        // easier.
+        await inspector.RefreshAsync();
+        await _ShowSurfaceAsync(typeof(AgentLineInspectorDialog), owner, () => new AgentLineInspectorDialog { DataContext = inspector });
+    }
+
     public async Task ShowWorktreesDialogAsync(WorktreesViewModel worktrees)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })

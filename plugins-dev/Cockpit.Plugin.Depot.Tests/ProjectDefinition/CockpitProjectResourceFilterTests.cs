@@ -57,7 +57,7 @@ public class CockpitProjectResourceFilterTests
         Assert.Empty(result.Dropped);
     }
 
-    /// <summary>AC-605: reverses the AC-244-era divergence this test used to pin — the host editor and this filter now agree that a "~/..." reference travels, so it is carried, not dropped.</summary>
+    // AC-605: reverses the AC-244-era divergence this test used to pin — the host editor and this filter now agree that a "~/..." reference travels, so it is carried, not dropped.
     [Fact]
     public void Apply_AnchorRelativeReference_IsPortableNotDropped()
     {
@@ -95,12 +95,10 @@ public class CockpitProjectResourceFilterTests
         Assert.Null(dropped.Portability);
     }
 
-    /// <summary>
-    /// AC-612 (criterion 3, "Delen"): a secret-shaped row is dropped through the same mechanism AC-244 already
-    /// built for an unportable row — no new reporting path. The reference is anchor-relative in shape, so
-    /// <see cref="CockpitProjectResourceDropped.Portability"/> still reads <c>AnchorRelative</c> here: what this
-    /// row's own shape classifies as, distinct from why <see cref="CockpitProjectResourceEntry.Create"/> refused it.
-    /// </summary>
+    // AC-612 (criterion 3, "Delen"): a secret-shaped row is dropped through the same mechanism AC-244 already
+    // built for an unportable row — no new reporting path. The reference is anchor-relative in shape, so
+    // `CockpitProjectResourceDropped.Portability` still reads `AnchorRelative` here: what this
+    // row's own shape classifies as, distinct from why `CockpitProjectResourceEntry.Create` refused it.
     [Fact]
     public void Apply_SecretPathReference_IsDroppedAlongsideTheAbsoluteRow()
     {

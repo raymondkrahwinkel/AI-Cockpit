@@ -5,10 +5,8 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// Persists the operator's usage thresholds under the <c>usageThresholds</c> section of <c>cockpit.json</c>
-/// (AC-233), read-modify-write like every other section so it leaves the rest of the file untouched.
-/// </summary>
+// Persists the operator's usage thresholds under the `usageThresholds` section of `cockpit.json`
+// (AC-233), read-modify-write like every other section so it leaves the rest of the file untouched.
 internal sealed class UsageThresholdStore : IUsageThresholdStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -18,7 +16,7 @@ internal sealed class UsageThresholdStore : IUsageThresholdStore, ISingletonServ
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal UsageThresholdStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

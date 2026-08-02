@@ -7,21 +7,19 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The in-process MCP tool (<c>mcp__cockpit-autopilot-plan__autopilot_plan</c>) the CEO uses during the planning round
-/// (AC-174) to emit and revise the plan. Pane-scoped like the run's report tools (<see cref="AutopilotRunTools"/>): only
-/// the planning session bound to this controller (<see cref="AutopilotPlanController.SessionPaneId"/>) may set the plan,
-/// so another session cannot rewrite it. The operator approves the plan through the host UI to freeze it and start the run.
-/// </summary>
+// The in-process MCP tool (`mcp__cockpit-autopilot-plan__autopilot_plan`) the CEO uses during the planning round
+// (AC-174) to emit and revise the plan. Pane-scoped like the run's report tools (`AutopilotRunTools`): only
+// the planning session bound to this controller (`AutopilotPlanController.SessionPaneId`) may set the plan,
+// so another session cannot rewrite it. The operator approves the plan through the host UI to freeze it and start the run.
 internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanController plan, AutopilotSettings settings)
 {
-    /// <summary>The in-process MCP server name the plugin mounts this tool under — the plan-flow's own, dark outside planning.</summary>
+    // The in-process MCP server name the plugin mounts this tool under — the plan-flow's own, dark outside planning.
     internal const string EndpointName = "cockpit-autopilot-plan";
 
-    /// <summary>The tool's own name; combined with <see cref="EndpointName"/> into the qualified name the CEO calls.</summary>
+    // The tool's own name; combined with `EndpointName` into the qualified name the CEO calls.
     internal const string ToolName = "autopilot_plan";
 
-    /// <summary>The fully-qualified tool name the CEO is briefed to call — one source of truth for the endpoint and the brief.</summary>
+    // The fully-qualified tool name the CEO is briefed to call — one source of truth for the endpoint and the brief.
     internal static string QualifiedToolName => $"mcp__{EndpointName}__{ToolName}";
 
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };
@@ -151,13 +149,11 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         return true;
     }
 
-    /// <summary>
-    /// AC-210: validate every step's profile/model against the host's real roster (<see cref="ICockpitHost.GetProfilesAsync"/>) —
-    /// the single source of truth, the same one the CEO-model picker filters on. Returns the first violation as a clear
-    /// message for the CEO to fix, or null when every step is runnable. Kept static so it is tested without a live endpoint,
-    /// and reused by the coordinator's embed-time safety net. With no roster (a host that supplies none, a bare test graph)
-    /// it validates nothing rather than reject every plan — the roster is the only thing it can check against.
-    /// </summary>
+    // AC-210: validate every step's profile/model against the host's real roster (`ICockpitHost.GetProfilesAsync`) —
+    // the single source of truth, the same one the CEO-model picker filters on. Returns the first violation as a clear
+    // message for the CEO to fix, or null when every step is runnable. Kept static so it is tested without a live endpoint,
+    // and reused by the coordinator's embed-time safety net. With no roster (a host that supplies none, a bare test graph)
+    // it validates nothing rather than reject every plan — the roster is the only thing it can check against.
     internal static string? ValidateStepProfiles(IReadOnlyList<AutopilotStep> steps, IReadOnlyList<PluginProfileInfo> profiles)
     {
         if (profiles is not { Count: > 0 })
@@ -176,12 +172,10 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         return null;
     }
 
-    /// <summary>
-    /// AC-210: validate one step's (profile, model). The profile must exist by label; a choice-provider profile (Claude —
-    /// <see cref="PluginProfileInfo.ModelSuggestions"/> non-empty) must carry a model from that list; a local profile that
-    /// pins its own model (empty suggestions) must carry no model. Returns the violation message, or null when the step is
-    /// runnable. Assumes a non-empty roster (the caller guards the empty case).
-    /// </summary>
+    // AC-210: validate one step's (profile, model). The profile must exist by label; a choice-provider profile (Claude —
+    // `PluginProfileInfo.ModelSuggestions` non-empty) must carry a model from that list; a local profile that
+    // pins its own model (empty suggestions) must carry no model. Returns the violation message, or null when the step is
+    // runnable. Assumes a non-empty roster (the caller guards the empty case).
     internal static string? ValidateStepProfile(AutopilotStep step, IReadOnlyList<PluginProfileInfo> profiles)
     {
         var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
@@ -209,16 +203,14 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
             : $"Step \"{step.Id}\" runs on the local profile \"{profile.Label}\", which pins its own model, so leave 'model' empty; it has \"{step.Model}\".";
     }
 
-    /// <summary>
-    /// AC-411: the code half of the child-stage gate. A step with no <see cref="AutopilotStep.SourceIssueId"/>, or one
-    /// that names the run's own source issue (already checked before this planning round opened), is not re-checked.
-    /// Every other named issue is a child the CEO folded in during planning, so its title and stage are read straight
-    /// from the tracker — never the step's own title or description, which the CEO writes and this gate exists not to
-    /// trust — and run through <see cref="AutopilotReadyGate"/>: the same gate, the same bar, evaluated in code. No
-    /// source (a CEO-first run), no configured executable stage for this tracker (the operator turned the gate off),
-    /// or no matching registered provider all mean nothing to check against, so the plan is accepted as-is. Fetched
-    /// once per distinct issue id, since the same child can back more than one step.
-    /// </summary>
+    // AC-411: the code half of the child-stage gate. A step with no `AutopilotStep.SourceIssueId`, or one
+    // that names the run's own source issue (already checked before this planning round opened), is not re-checked.
+    // Every other named issue is a child the CEO folded in during planning, so its title and stage are read straight
+    // from the tracker — never the step's own title or description, which the CEO writes and this gate exists not to
+    // trust — and run through `AutopilotReadyGate`: the same gate, the same bar, evaluated in code. No
+    // source (a CEO-first run), no configured executable stage for this tracker (the operator turned the gate off),
+    // or no matching registered provider all mean nothing to check against, so the plan is accepted as-is. Fetched
+    // once per distinct issue id, since the same child can back more than one step.
     private async Task<string?> _ValidateChildStagesAsync(IReadOnlyList<AutopilotStep> steps)
     {
         if (plan.Plan?.Source is not { } source)

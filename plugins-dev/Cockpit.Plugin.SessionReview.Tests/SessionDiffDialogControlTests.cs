@@ -10,12 +10,10 @@ using Path = System.IO.Path;
 
 namespace Cockpit.Plugin.SessionReview.Tests;
 
-/// <summary>
-/// The review panel end to end against a real repository in a temp directory: git is actually run, its output is
-/// actually parsed, and the tree and the diff pane are actually built. The parser has its own tests; what only a
-/// running control can show is whether the <see cref="TreeView"/>'s code-built template produces rows at all —
-/// exactly the wiring that compiles perfectly while rendering nothing.
-/// </summary>
+// The review panel end to end against a real repository in a temp directory: git is actually run, its output is
+// actually parsed, and the tree and the diff pane are actually built. The parser has its own tests; what only a
+// running control can show is whether the `TreeView`'s code-built template produces rows at all —
+// exactly the wiring that compiles perfectly while rendering nothing.
 [Collection("avalonia")]
 public class SessionDiffDialogControlTests : IDisposable
 {
@@ -144,7 +142,7 @@ public class SessionDiffDialogControlTests : IDisposable
         process.WaitForExit();
     }
 
-    /// <summary>A shown window holding the panel, with the reads the tests make of it.</summary>
+    // A shown window holding the panel, with the reads the tests make of it.
     private sealed class _Panel(Window window, SessionDiffDialogControl control) : IDisposable
     {
         public static _Panel Attach(string repository)
@@ -163,15 +161,13 @@ public class SessionDiffDialogControlTests : IDisposable
 
         public IReadOnlyList<FileDiff> TreeFiles() => [.. _Flatten(TreeNodes()).Where(n => n.File is not null).Select(n => n.File!)];
 
-        /// <summary>
-        /// Every string the panel actually put on screen — the only honest evidence that it rendered. A line the
-        /// panel highlighted word-by-word carries its text in <c>Inlines</c> and leaves <c>Text</c> empty, so both
-        /// have to be read or exactly the interesting lines go missing.
-        /// </summary>
+        // Every string the panel actually put on screen — the only honest evidence that it rendered. A line the
+        // panel highlighted word-by-word carries its text in `Inlines` and leaves `Text` empty, so both
+        // have to be read or exactly the interesting lines go missing.
         public IReadOnlyList<string> Texts() => HeadlessAvalonia.Run(
             () => control.GetLogicalDescendants().OfType<TextBlock>().Select(_TextOf).Where(t => t.Length > 0).ToList());
 
-        /// <summary>The text of every run the panel gave its own background — what the word-level highlight covers.</summary>
+        // The text of every run the panel gave its own background — what the word-level highlight covers.
         public IReadOnlyList<string> HighlightedRuns() => HeadlessAvalonia.Run(
             () => control.GetLogicalDescendants().OfType<TextBlock>()
                 .SelectMany(t => t.Inlines?.OfType<Run>() ?? [])
@@ -196,10 +192,8 @@ public class SessionDiffDialogControlTests : IDisposable
         private static IEnumerable<TreeNode> _Flatten(IEnumerable<TreeNode> nodes) =>
             nodes.SelectMany(n => new[] { n }.Concat(_Flatten(n.Children)));
 
-        /// <summary>
-        /// The control loads on a task started from its constructor, so the tests have to wait for git rather than
-        /// assume it. Polls in short slices, from the calling thread, so the UI thread stays free to run the load.
-        /// </summary>
+        // The control loads on a task started from its constructor, so the tests have to wait for git rather than
+        // assume it. Polls in short slices, from the calling thread, so the UI thread stays free to run the load.
         public void WaitUntilLoaded()
         {
             var deadline = DateTime.UtcNow.AddSeconds(30);

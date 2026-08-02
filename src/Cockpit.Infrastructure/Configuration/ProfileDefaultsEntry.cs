@@ -3,7 +3,7 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of a profile's <see cref="ProfileDefaults"/> nested in a <see cref="SessionProfileEntry"/>.</summary>
+// On-disk shape of a profile's `ProfileDefaults` nested in a `SessionProfileEntry`.
 internal sealed class ProfileDefaultsEntry
 {
     public string PermissionMode { get; set; } = string.Empty;
@@ -14,10 +14,10 @@ internal sealed class ProfileDefaultsEntry
 
     public bool AutoApproveTools { get; set; }
 
-    /// <summary>Per-profile defaults for the provider plugin's declared launch options, keyed by option key; absent means none.</summary>
+    // Per-profile defaults for the provider plugin's declared launch options, keyed by option key; absent means none.
     public Dictionary<string, string>? OptionDefaults { get; set; }
 
-    /// <summary>The default SDK reading level (AC-138) — "Developer"/"Focus"/"Simple"; absent falls back to the app default.</summary>
+    // The default SDK reading level (AC-138) — "Developer"/"Focus"/"Simple"; absent falls back to the app default.
     public string? DefaultReadingLevel { get; set; }
 
     // Reads the obsolete legacy typed fields on purpose — this is the persistence half of the one-time migration, one

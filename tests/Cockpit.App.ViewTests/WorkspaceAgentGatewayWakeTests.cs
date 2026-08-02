@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Infrastructure.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -70,7 +71,7 @@ public class WorkspaceAgentGatewayWakeTests
     }
 
     private static WorkspaceAgentGateway _Gateway(CockpitViewModel cockpit) =>
-        new(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
+        new(cockpit, new WorkspaceAgentCoordinator(), NullLogger<WorkspaceAgentGateway>.Instance);
 
     [Fact]
     public async Task Wake_OnAPaneStandingStill_StartsATurnCarryingTheLabelledNotice()
@@ -142,18 +143,23 @@ public class WorkspaceAgentGatewayWakeTests
     }
 
     [Fact]
-    public async Task Wake_OnAPaneWaitingForInput_IsAllowed()
+    public async Task Wake_OnAPaneWaitingForInput_IsRefusedAsAwaitingOperator()
     {
         var (cockpit, sender, target, sent) = _Desk(SessionStatus.WaitingForInput);
 
         var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
-        // The operator's decision on this ticket, held here so it survives: a session waiting for input is standing
-        // still, and standing still is when a message should be able to reach it. Nothing in the shipping code puts
-        // a pane into this state today — NeedsAttention is what a pending permission actually sets — so this test is
-        // what keeps the decision true on the day something does.
-        Assert.Equal(AgentWakeOutcome.Woken, outcome);
-        Assert.Single(sent);
+        // Reversed by AC-615, deliberately and not quietly. AC-395 put this status in the wakeable set on the
+        // reading that a session waiting for input is standing still, and that was defensible while wake was
+        // something each session had to opt into: only a pane that had chosen it could be reached this way.
+        //
+        // Raymond's decision of 2026-07-31 moves the consent to the operator and turns it on by default, and that
+        // changes what this status costs. WaitingForInput means a tool-use permission decision is pending or the CLI
+        // asked for something — a question in front of a human, the same signal NeedsAttention carries. Under
+        // default-on it would reach every session on the desk, so the first thing an agent could do with the wake
+        // route is talk over the decision its operator is standing at.
+        Assert.Equal(AgentWakeOutcome.AwaitingOperator, outcome);
+        Assert.Empty(sent);
     }
 
     [Fact]
@@ -300,7 +306,7 @@ public class WorkspaceAgentGatewayWakeTests
 
         // The send is deliberately not awaited by the gateway, so a throw on that path has no caller to surface it:
         // discarded, it becomes an unobserved exception at some later garbage collection, attributed to nothing.
-        var outcome = await new WorkspaceAgentGateway(cockpit, logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await new WorkspaceAgentGateway(cockpit, new WorkspaceAgentCoordinator(), logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var entry = Assert.Single(logger.Entries);

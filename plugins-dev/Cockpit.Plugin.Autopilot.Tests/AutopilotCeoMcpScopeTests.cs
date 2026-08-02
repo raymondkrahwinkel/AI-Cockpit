@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The MCP surface each CEO embed is scoped to (AC-197). Left on the request's default empty list a CEO inherits the
-/// host's whole selection (161 tools observed) — every tool definition in its context. The scoped lists pin exactly the
-/// endpoints each CEO needs, and are asserted here without a live embed so the minimal set does not drift.
-/// </summary>
+// The MCP surface each CEO embed is scoped to (AC-197). Left on the request's default empty list a CEO inherits the
+// host's whole selection (161 tools observed) — every tool definition in its context. The scoped lists pin exactly the
+// endpoints each CEO needs, and are asserted here without a live embed so the minimal set does not drift.
 public class AutopilotCeoMcpScopeTests
 {
     [Fact]

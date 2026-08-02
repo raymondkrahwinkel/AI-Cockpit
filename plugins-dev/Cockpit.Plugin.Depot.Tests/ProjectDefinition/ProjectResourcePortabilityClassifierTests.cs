@@ -22,11 +22,9 @@ public class ProjectResourcePortabilityClassifierTests
         Assert.Equal(ProjectResourcePortability.AnchorRelative, ProjectResourcePortabilityClassifier.Classify(reference));
     }
 
-    /// <summary>
-    /// Raymond's decision (AC-605): "~user/" is not a supported anchor form — a POSIX shell's "someone else's home"
-    /// expansion .NET's own path APIs know nothing about. Reads as an ordinary repo-relative-shaped reference
-    /// instead, the same as any other text this classifier does not recognise a shape for.
-    /// </summary>
+    // Raymond's decision (AC-605): "~user/" is not a supported anchor form — a POSIX shell's "someone else's home"
+    // expansion .NET's own path APIs know nothing about. Reads as an ordinary repo-relative-shaped reference
+    // instead, the same as any other text this classifier does not recognise a shape for.
     [Theory]
     [InlineData("~henk/x")]
     [InlineData("~x")]

@@ -3,18 +3,14 @@ using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// Codex's managed-CLI install recipe (AC-20) — the one place the Codex download channel is named. The host's
-/// generic installer consumes this <see cref="ManagedCliDescriptor"/>; the core never knows what "codex" is.
-/// </summary>
-/// <remarks>
-/// Route (verified against the live GitHub release <c>openai/codex@rust-v0.144.5</c>, 2026-07): releases are tagged
-/// <c>rust-v&lt;version&gt;</c>; the per-target asset is <c>codex-&lt;triple&gt;.tar.gz</c> (Linux/macOS) or
-/// <c>codex-&lt;triple&gt;.exe.tar.gz</c> (Windows), a single-file tarball whose entry is the binary named after the
-/// triple. Codex ships only a musl Linux build (a static binary that also runs on glibc). Integrity comes from the
-/// GitHub API asset <c>digest</c> (<c>sha256:…</c>) — a second channel over TLS, since the release's
-/// <c>SHA256SUMS</c> asset covers only the <c>codex-package-*</c> bundles, not the bare tarball.
-/// </remarks>
+// Codex's managed-CLI install recipe (AC-20) — the one place the Codex download channel is named. The host's
+// generic installer consumes this `ManagedCliDescriptor`; the core never knows what "codex" is.
+// Route (verified against the live GitHub release `openai/codex@rust-v0.144.5`, 2026-07): releases are tagged
+// `rust-v&lt;version&gt;`; the per-target asset is `codex-&lt;triple&gt;.tar.gz` (Linux/macOS) or
+// `codex-&lt;triple&gt;.exe.tar.gz` (Windows), a single-file tarball whose entry is the binary named after the
+// triple. Codex ships only a musl Linux build (a static binary that also runs on glibc). Integrity comes from the
+// GitHub API asset `digest` (`sha256:…`) — a second channel over TLS, since the release's
+// `SHA256SUMS` asset covers only the `codex-package-*` bundles, not the bare tarball.
 internal static class CodexManagedCli
 {
     public const string CliName = "codex";
@@ -59,14 +55,14 @@ internal static class CodexManagedCli
         },
     };
 
-    /// <summary><c>rust-v0.144.5</c> → <c>0.144.5</c>. Internal for testing.</summary>
+    // `rust-v0.144.5` → `0.144.5`. Internal for testing.
     internal static string ParseVersion(string tagName)
     {
         const string prefix = "rust-v";
         return tagName.StartsWith(prefix, StringComparison.Ordinal) ? tagName[prefix.Length..] : tagName;
     }
 
-    /// <summary>The Rust target-triple for a platform (Linux is always musl). Internal for testing.</summary>
+    // The Rust target-triple for a platform (Linux is always musl). Internal for testing.
     internal static string TargetTriple(ManagedCliPlatform platform)
     {
         var arch = platform.Arch switch
@@ -85,21 +81,21 @@ internal static class CodexManagedCli
         };
     }
 
-    /// <summary>The release asset name for a platform — Windows adds a <c>.exe</c> before <c>.tar.gz</c>. Internal for testing.</summary>
+    // The release asset name for a platform — Windows adds a `.exe` before `.tar.gz`. Internal for testing.
     internal static string AssetName(ManagedCliPlatform platform)
     {
         var triple = TargetTriple(platform);
         return platform.Os == "win32" ? $"codex-{triple}.exe.tar.gz" : $"codex-{triple}.tar.gz";
     }
 
-    /// <summary>The single tarball entry that is the binary — named after the triple (<c>.exe</c> on Windows). Internal for testing.</summary>
+    // The single tarball entry that is the binary — named after the triple (`.exe` on Windows). Internal for testing.
     internal static string EntryName(ManagedCliPlatform platform)
     {
         var triple = TargetTriple(platform);
         return platform.Os == "win32" ? $"codex-{triple}.exe" : $"codex-{triple}";
     }
 
-    /// <summary>Builds the download plan from a target platform and a fetched GitHub release JSON. Internal (no network) for testing.</summary>
+    // Builds the download plan from a target platform and a fetched GitHub release JSON. Internal (no network) for testing.
     internal static ManagedCliDownloadPlan BuildPlan(ManagedCliPlatform platform, string releaseJson)
     {
         var assetName = AssetName(platform);

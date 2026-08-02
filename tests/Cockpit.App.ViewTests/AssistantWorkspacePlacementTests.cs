@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Threading;
 using Cockpit.App.Services;
+using Cockpit.Infrastructure.Agents;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
 
@@ -36,7 +37,7 @@ public class AssistantWorkspacePlacementTests
             cockpit.Sessions.Add(session);
             cockpit.Sessions.Add(assistantSession);
 
-            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), session, assistantSession);
+            return (new WorkspaceAgentGateway(cockpit, new WorkspaceAgentCoordinator(), NullLogger<WorkspaceAgentGateway>.Instance), session, assistantSession);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(desk.PaneId).GetAwaiter().GetResult());
@@ -60,7 +61,7 @@ public class AssistantWorkspacePlacementTests
             var session = new SessionViewModel { BelongsToNoWorkspace = true };
             cockpit.Sessions.Add(session);
 
-            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), session);
+            return (new WorkspaceAgentGateway(cockpit, new WorkspaceAgentCoordinator(), NullLogger<WorkspaceAgentGateway>.Instance), session);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(assistant.PaneId).GetAwaiter().GetResult());

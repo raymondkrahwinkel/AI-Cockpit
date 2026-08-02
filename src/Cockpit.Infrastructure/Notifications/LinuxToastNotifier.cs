@@ -6,20 +6,16 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Notifications;
 
-/// <summary>
-/// A desktop notification on Linux (#76), through <c>notify-send</c> — the one interface every desktop here actually
-/// implements, and the one that does not put a D-Bus dependency in an app that has no other use for one.
-/// <para>
-/// Until now this platform got <see cref="NoOpToastNotifier"/>, which means the "you are at the machine" half of the
-/// notification router delivered nothing at all on the machine this cockpit is mostly used from. Only the away half
-/// (Discord) ever arrived.
-/// </para>
-/// <para>
-/// A notification that cannot be delivered is logged and dropped. A cockpit that dies because a desktop has no
-/// notification daemon would be a worse failure than the missed toast — and the operator is, by definition, sitting
-/// right there and will see the session anyway.
-/// </para>
-/// </summary>
+// A desktop notification on Linux (#76), through `notify-send` — the one interface every desktop here actually
+// implements, and the one that does not put a D-Bus dependency in an app that has no other use for one.
+//
+// Until now this platform got `NoOpToastNotifier`, which means the "you are at the machine" half of the
+// notification router delivered nothing at all on the machine this cockpit is mostly used from. Only the away half
+// (Discord) ever arrived.
+//
+// A notification that cannot be delivered is logged and dropped. A cockpit that dies because a desktop has no
+// notification daemon would be a worse failure than the missed toast — and the operator is, by definition, sitting
+// right there and will see the session anyway.
 internal sealed class LinuxToastNotifier(ILogger<LinuxToastNotifier> logger) : IToastNotifier
 {
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(5);

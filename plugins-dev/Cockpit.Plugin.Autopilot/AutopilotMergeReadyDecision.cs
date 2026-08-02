@@ -1,43 +1,37 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// What a merge-ready run does about its pull request (AC-216) — the template-driven outcome, decided from the run's
-/// PR expectation and what the environment can actually do (a git run, a remote to push to, the <c>gh</c> CLI to open a
-/// PR with). Ordered from "nothing to do" to "everything is in place".
-/// </summary>
+// What a merge-ready run does about its pull request (AC-216) — the template-driven outcome, decided from the run's
+// PR expectation and what the environment can actually do (a git run, a remote to push to, the `gh` CLI to open a
+// PR with). Ordered from "nothing to do" to "everything is in place".
 internal enum AutopilotPrDelivery
 {
-    /// <summary>An administrative run (the template did not ask for a PR): the run settles merge-ready with no PR and no error for the missing one.</summary>
+    // An administrative run (the template did not ask for a PR): the run settles merge-ready with no PR and no error for the missing one.
     NotExpected,
 
-    /// <summary>A code run that ran in a plain folder (no git repository, so no run branch): a PR was expected but cannot be delivered — the work is left where it is.</summary>
+    // A code run that ran in a plain folder (no git repository, so no run branch): a PR was expected but cannot be delivered — the work is left where it is.
     NoGitRun,
 
-    /// <summary>A code run on a git branch with no remote to push to: a PR cannot be delivered — the branch (and its worktree) is left for the operator to publish by hand.</summary>
+    // A code run on a git branch with no remote to push to: a PR cannot be delivered — the branch (and its worktree) is left for the operator to publish by hand.
     NoRemote,
 
-    /// <summary>A code run on a git branch with a remote but no <c>gh</c> CLI: the branch can be pushed, but the operator opens the pull request themselves.</summary>
+    // A code run on a git branch with a remote but no `gh` CLI: the branch can be pushed, but the operator opens the pull request themselves.
     PushOnly,
 
-    /// <summary>A code run on a git branch with a remote and <c>gh</c>: the finalizer pushes the branch and opens the pull request.</summary>
+    // A code run on a git branch with a remote and `gh`: the finalizer pushes the branch and opens the pull request.
     CanCreatePr,
 }
 
-/// <summary>
-/// The pure decision (and its operator-facing message) for a merge-ready run's pull request (AC-216) — kept static and
-/// side-effect-free so the outcome/fallback is exhaustively unit-testable without a live run, a git repo or the network,
-/// and so the exact same rule decides the pre-run preflight (AC-215) and the post-run finalization. It only decides
-/// <em>what</em> to do; the coordinator's <see cref="IAutopilotPrPublisher"/> does it.
-/// </summary>
+// The pure decision (and its operator-facing message) for a merge-ready run's pull request (AC-216) — kept static and
+// side-effect-free so the outcome/fallback is exhaustively unit-testable without a live run, a git repo or the network,
+// and so the exact same rule decides the pre-run preflight (AC-215) and the post-run finalization. It only decides
+// *what* to do; the coordinator's `IAutopilotPrPublisher` does it.
 internal static class AutopilotMergeReadyDecision
 {
-    /// <summary>
-    /// Decides the delivery for a run. <paramref name="deliversPullRequest"/> is the template signal (a code run);
-    /// <paramref name="isGitRun"/> is whether the run has a git branch at all (a git-repo run, not a plain folder);
-    /// <paramref name="hasRemote"/> and <paramref name="ghAvailable"/> are what the environment probed. A run that expects
-    /// no PR is always <see cref="AutopilotPrDelivery.NotExpected"/>, whatever the environment — so an administrative run
-    /// never reports a missing-PR fault. The rest degrade fail-soft: no git run &gt; no remote &gt; no gh &gt; ready.
-    /// </summary>
+    // Decides the delivery for a run. `deliversPullRequest` is the template signal (a code run);
+    // `isGitRun` is whether the run has a git branch at all (a git-repo run, not a plain folder);
+    // `hasRemote` and `ghAvailable` are what the environment probed. A run that expects
+    // no PR is always `AutopilotPrDelivery.NotExpected`, whatever the environment — so an administrative run
+    // never reports a missing-PR fault. The rest degrade fail-soft: no git run &gt; no remote &gt; no gh &gt; ready.
     public static AutopilotPrDelivery Decide(bool deliversPullRequest, bool isGitRun, bool hasRemote, bool ghAvailable)
     {
         if (!deliversPullRequest)
@@ -58,12 +52,10 @@ internal static class AutopilotMergeReadyDecision
         return ghAvailable ? AutopilotPrDelivery.CanCreatePr : AutopilotPrDelivery.PushOnly;
     }
 
-    /// <summary>
-    /// The operator-facing line for a <em>preflight</em> warning (AC-215), told before the run starts so a code run that
-    /// cannot deliver its PR is flagged up front rather than discovered at the end. Null when there is nothing to warn
-    /// about — the PR can be created, or none was expected. <paramref name="worktreePath"/> is not known yet at preflight,
-    /// so the message names only what is missing.
-    /// </summary>
+    // The operator-facing line for a *preflight* warning (AC-215), told before the run starts so a code run that
+    // cannot deliver its PR is flagged up front rather than discovered at the end. Null when there is nothing to warn
+    // about — the PR can be created, or none was expected. `worktreePath` is not known yet at preflight,
+    // so the message names only what is missing.
     public static string? PreflightWarning(AutopilotPrDelivery delivery) => delivery switch
     {
         AutopilotPrDelivery.NoGitRun => "This run works in a plain folder (not a git repository), so it cannot open the pull request the template expects — it will run, but you will get no PR.",
@@ -72,12 +64,10 @@ internal static class AutopilotMergeReadyDecision
         _ => null,
     };
 
-    /// <summary>
-    /// The operator-facing line describing the <em>final</em> outcome (AC-216), shown on the run once it settled
-    /// merge-ready — never a silent "done" for a code run that could not produce its PR. <paramref name="branch"/> and
-    /// <paramref name="worktreePath"/> tell the operator where the work is so it does not evaporate;
-    /// <paramref name="prUrl"/> is the PR that was opened (for <see cref="AutopilotPrDelivery.CanCreatePr"/>).
-    /// </summary>
+    // The operator-facing line describing the *final* outcome (AC-216), shown on the run once it settled
+    // merge-ready — never a silent "done" for a code run that could not produce its PR. `branch` and
+    // `worktreePath` tell the operator where the work is so it does not evaporate;
+    // `prUrl` is the PR that was opened (for `AutopilotPrDelivery.CanCreatePr`).
     public static string Outcome(AutopilotPrDelivery delivery, string? branch, string? worktreePath, string? prUrl)
     {
         var where = _Where(branch, worktreePath);

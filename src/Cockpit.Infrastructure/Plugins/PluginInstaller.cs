@@ -7,20 +7,18 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// Installs a plugin from a <c>.zip</c> and schedules removals (#14). The archive is unpacked entry by
-/// entry through the <see cref="PluginInstallPath"/> zip-slip guard into a staging folder on the same
-/// volume as the plugins root, its root <c>plugin.json</c> is parsed and its abstractions major checked,
-/// and only then is it moved into its final <c>plugins/&lt;id&gt;/</c> folder. Removal drops a
-/// <c>.remove</c> marker that <see cref="SweepRemovalsAsync"/> acts on at the next startup, and an update
-/// over an existing install is staged under <see cref="PendingUpdatesFolder"/> for
-/// <see cref="SweepPendingUpdatesAsync"/> to apply at the next startup — both deferred because a loaded
-/// plugin's assembly file stays locked (on Windows) until the process exits, so replacing it in place
-/// throws an access-denied.
-/// </summary>
+// Installs a plugin from a `.zip` and schedules removals (#14). The archive is unpacked entry by
+// entry through the `PluginInstallPath` zip-slip guard into a staging folder on the same
+// volume as the plugins root, its root `plugin.json` is parsed and its abstractions major checked,
+// and only then is it moved into its final `plugins/&lt;id&gt;/` folder. Removal drops a
+// `.remove` marker that `SweepRemovalsAsync` acts on at the next startup, and an update
+// over an existing install is staged under `PendingUpdatesFolder` for
+// `SweepPendingUpdatesAsync` to apply at the next startup — both deferred because a loaded
+// plugin's assembly file stays locked (on Windows) until the process exits, so replacing it in place
+// throws an access-denied.
 internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 {
-    /// <summary>The file dropped into a plugin's folder to have it deleted at the next start. Discovery reads it too, so a plugin the operator removed is out of the list from that moment rather than at the restart.</summary>
+    // The file dropped into a plugin's folder to have it deleted at the next start. Discovery reads it too, so a plugin the operator removed is out of the list from that moment rather than at the restart.
     internal const string RemovalMarker = ".remove";
 
     // A reserved (dot-prefixed, so discovery skips it) folder under the plugins root holding staged updates as
@@ -35,7 +33,7 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     {
     }
 
-    /// <summary>Test seam: point the installer at an arbitrary plugins root.</summary>
+    // Test seam: point the installer at an arbitrary plugins root.
     internal PluginInstaller(string pluginsRoot)
     {
         _pluginsRoot = pluginsRoot;

@@ -16,6 +16,14 @@
          satisfy the widened interface shape) plus the new types SharedProjectBinding/SharedProjectBindingResource/
          SharedProjectBindingResult it returns. A plugin that implements ISharedProjectSource sets minHostVersion
          0.19.0. Minor because it is additive; still 0.x.
+         0.18.0: a provider plugin can now be told which session a transcript read is for, and can be asked to read
+         one back (AC-609) — IPluginTranscriptReader gains a statusFile-carrying ReadActivityAsync overload and
+         ReadEntries, with the PluginTranscriptEntry / PluginTranscriptEntryKind / PluginTranscriptSlice types those
+         answer in. Both members are default-implemented, so an already-compiled plugin loads and behaves exactly as
+         before; the bump is for the other direction. A plugin that implements either binds against the host's own
+         copy of Cockpit.Plugins.Abstractions (ProjectReference with Private=false / ExcludeAssets=runtime), so on an
+         older host the slice type it returns is simply not there to load — hence minHostVersion 0.18.0 on a plugin
+         that does. Minor because it is additive; still 0.x.
          0.17.0: a plugin's left-menu launcher button can now carry a live counter/badge (AC-516) — new host-provided
          functionality a plugin contributes to: ICockpitHost.AddSideMenuButtonWithBadge, returning a
          SideMenuButtonBadge the plugin updates (Primary, and optionally a second Secondary count — "3 / 2") after

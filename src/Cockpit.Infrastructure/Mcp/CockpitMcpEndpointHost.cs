@@ -7,23 +7,20 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-/// <summary>
-/// Hosts every cockpit MCP endpoint (#AC-13, #AC-12): one lightweight loopback MCP server per endpoint. Endpoints
-/// come from two places — the <see cref="CockpitMcpEndpoint"/>s registered up front (mounted at startup), and ones a
-/// plugin mounts at runtime through <see cref="MountAsync"/> (it loads after the host has started). Either way it is
-/// "a tools class and a name" with no Kestrel wiring of its own.
-/// </summary>
-/// <remarks>
-/// These are the cockpit's own servers, not the operator's, so they are <em>not</em> written into the user-managed
-/// registry (AC-40). The host answers them live as an <see cref="ICockpitInternalMcpProvider"/> — the session
-/// fan-out merges them in, while the MCP-servers manager (which reads only the store) never lists them. One HTTP
-/// listener per endpoint, loopback on an OS-assigned port, guarded by this run's auth key.
-/// </remarks>
+// Hosts every cockpit MCP endpoint (#AC-13, #AC-12): one lightweight loopback MCP server per endpoint. Endpoints
+// come from two places — the `CockpitMcpEndpoint`s registered up front (mounted at startup), and ones a
+// plugin mounts at runtime through `MountAsync` (it loads after the host has started). Either way it is
+// "a tools class and a name" with no Kestrel wiring of its own.
+// These are the cockpit's own servers, not the operator's, so they are *not* written into the user-managed
+// registry (AC-40). The host answers them live as an `ICockpitInternalMcpProvider` — the session
+// fan-out merges them in, while the MCP-servers manager (which reads only the store) never lists them. One HTTP
+// listener per endpoint, loopback on an OS-assigned port, guarded by this run's auth key.
 internal sealed class CockpitMcpEndpointHost
     : IHostedService, ICockpitMcpEndpointHost, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
 {
@@ -95,6 +92,20 @@ internal sealed class CockpitMcpEndpointHost
             var mcpBuilder = builder.Services.AddMcpServer().WithHttpTransport();
             _WithToolsInstance(mcpBuilder, tools);
 
+            // AC-527: one registration, and every endpoint this host mounts carries the agent line's mail out on its
+            // tool results — the ones registered up front and the ones a plugin mounts later, without any of them
+            // knowing the inbox exists. Deliberately not narrowed to the cockpit-agents server: the value of this
+            // route is that *any* tool call an agent makes is a chance to reach it, and a pane that spends its day in
+            // cockpit-session or a plugin's tools is exactly the pane the old routes could not reach.
+            //
+            // The delivery service is resolved from the application's services, not this endpoint's slim container —
+            // the same reason WithTools takes a pre-built instance here rather than a type.
+            mcpBuilder.WithRequestFilters(filters => filters.AddCallToolFilter(next => async (context, cancellationToken) =>
+                McpInboxPiggyback.Attach(
+                    await next(context, cancellationToken).ConfigureAwait(false),
+                    _services.GetService<IAgentTurnInboxDelivery>(),
+                    _logger)));
+
             builder.WebHost.UseKestrel();
             // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second cockpit.
             builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -126,11 +137,9 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    /// <summary>
-    /// The cockpit-hosted endpoints as the session fan-out sees them (AC-40): each with its live loopback URL, this
-    /// run's auth flag, and its current enabled state (a plugin's toggle, or always on). Never touches the store, so
-    /// the operator's MCP-servers manager never lists them.
-    /// </summary>
+    // The cockpit-hosted endpoints as the session fan-out sees them (AC-40): each with its live loopback URL, this
+    // run's auth flag, and its current enabled state (a plugin's toggle, or always on). Never touches the store, so
+    // the operator's MCP-servers manager never lists them.
     public IReadOnlyList<McpServerConfig> GetServers()
     {
         lock (_mountedLock)

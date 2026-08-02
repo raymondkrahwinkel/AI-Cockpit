@@ -11,13 +11,11 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-/// <summary>
-/// The MCP tools an agent uses to manage its own git worktrees (AC-104, on AC-85), exposed as
-/// <c>mcp__cockpit-worktrees__*</c>. Lets a session quickly isolate a subtask on its own branch and clean it up when
-/// done, without the operator. Thin over <see cref="IWorktreeManager"/> — the same engine the New-session dialog and
-/// the managed-worktrees panel use — so a worktree an agent makes is one the operator also sees, and one the session
-/// teardown (AC-85 F3) cleans up if the agent forgets.
-/// </summary>
+// The MCP tools an agent uses to manage its own git worktrees (AC-104, on AC-85), exposed as
+// `mcp__cockpit-worktrees__*`. Lets a session quickly isolate a subtask on its own branch and clean it up when
+// done, without the operator. Thin over `IWorktreeManager` — the same engine the New-session dialog and
+// the managed-worktrees panel use — so a worktree an agent makes is one the operator also sees, and one the session
+// teardown (AC-85 F3) cleans up if the agent forgets.
 internal sealed class WorktreeTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };

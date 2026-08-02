@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The AC-174 plan controller: the planning round (living plan + single approval), the run driving its steps, and the
-/// settle that reads the per-step hard/skip policy — the plan-based counterpart of AutopilotRunControllerTests.
-/// </summary>
+// The AC-174 plan controller: the planning round (living plan + single approval), the run driving its steps, and the
+// settle that reads the per-step hard/skip policy — the plan-based counterpart of AutopilotRunControllerTests.
 public class AutopilotPlanControllerTests
 {
     private static AutopilotStep Step(string id, GateMode mode = GateMode.Skip, AutopilotStepStatus status = AutopilotStepStatus.Pending) =>

@@ -2,16 +2,15 @@ using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.Plugin.LocalCi.Execution;
 
-/// <summary>One finished run, kept so the things that ask about it later cannot disagree about what happened.</summary>
-/// <param name="Commit">The checkout's HEAD when the run started, or null when it could not be read. What makes
-/// "this ran" answerable as "this ran on the code you are about to push" rather than on something older.</param>
+// One finished run, kept so the things that ask about it later cannot disagree about what happened.
+//
+// `Commit`: The checkout's HEAD when the run started, or null when it could not be read. What makes
+// "this ran" answerable as "this ran on the code you are about to push" rather than on something older.
 internal sealed record LocalRunRecord(string ProjectRoot, LocalRunResult Result, string? Commit, DateTimeOffset FinishedAt);
 
-/// <summary>
-/// What is running now and what happened last in each checkout. Doubles as the status-bar source, so a run started
-/// by an agent is visible to the operator with a Kill the operator alone can press — an agent that can start a
-/// container on this machine and cannot be stopped by hand is the thing AC-82 exists to prevent.
-/// </summary>
+// What is running now and what happened last in each checkout. Doubles as the status-bar source, so a run started
+// by an agent is visible to the operator with a Kill the operator alone can press — an agent that can start a
+// container on this machine and cannot be stopped by hand is the thing AC-82 exists to prevent.
 internal sealed class LocalRunTracker : ISupervisedActivitySource
 {
     private readonly object _gate = new();
@@ -76,11 +75,9 @@ internal sealed class LocalRunTracker : ISupervisedActivitySource
             ];
     }
 
-    /// <summary>
-    /// One checkout, one key. Paths reach this from a session's working directory, a workflow's folder and an
-    /// intent's payload, and those spell the same directory differently often enough that comparing them raw
-    /// would file two runs of the same repository under two names.
-    /// </summary>
+    // One checkout, one key. Paths reach this from a session's working directory, a workflow's folder and an
+    // intent's payload, and those spell the same directory differently often enough that comparing them raw
+    // would file two runs of the same repository under two names.
     public static string Key(string projectRoot) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(projectRoot));
 

@@ -3,13 +3,11 @@ using PluginHeuristic = Cockpit.Plugin.Depot.ProjectDefinition.ProjectResourceSe
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-/// <summary>
-/// AC-612: the host (<see cref="HostHeuristic"/>) and this plugin's own mirrored copy
-/// (<see cref="PluginHeuristic"/>) must agree on every reference — they cannot share code (a plugin must not
-/// reference <c>Cockpit.Core</c>, AC-244), the same constraint <c>ProjectResourceScopeParityTests</c> already
-/// works around for AC-605's scope classifier. Change either copy's list or logic and this test goes red, whichever
-/// side changed.
-/// </summary>
+// AC-612: the host (`HostHeuristic`) and this plugin's own mirrored copy
+// (`PluginHeuristic`) must agree on every reference — they cannot share code (a plugin must not
+// reference `Cockpit.Core`, AC-244), the same constraint `ProjectResourceScopeParityTests` already
+// works around for AC-605's scope classifier. Change either copy's list or logic and this test goes red, whichever
+// side changed.
 public class ProjectResourceSecretPathParityTests
 {
     public static IEnumerable<object[]> References()

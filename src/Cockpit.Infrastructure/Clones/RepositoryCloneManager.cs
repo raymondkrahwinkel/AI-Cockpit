@@ -6,7 +6,6 @@ using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Infrastructure.Clones;
 
-/// <inheritdoc cref="IRepositoryCloneManager" />
 internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISingletonService
 {
     private readonly IRepositoryCloneRegistry _registry;
@@ -26,7 +25,7 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
         };
     }
 
-    /// <summary>Test seam: place the clones under an arbitrary fixed root instead of resolving the operator's setting.</summary>
+    // Test seam: place the clones under an arbitrary fixed root instead of resolving the operator's setting.
     internal RepositoryCloneManager(IRepositoryCloneRegistry registry, string clonesRoot)
     {
         _registry = registry;

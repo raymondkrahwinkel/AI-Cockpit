@@ -18,7 +18,7 @@ public interface ISessionWorkspaces
     string? WorkingDirectoryForPane(string paneId);
 }
 
-/// <summary>No sessions, so nothing is granted on their account — what a consumer without a cockpit (tests, headless tools) sees.</summary>
+// No sessions, so nothing is granted on their account — what a consumer without a cockpit (tests, headless tools) sees.
 public sealed class NoSessionWorkspaces : ISessionWorkspaces
 {
     public static readonly NoSessionWorkspaces Instance = new();

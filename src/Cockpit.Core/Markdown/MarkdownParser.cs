@@ -3,12 +3,10 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Core.Markdown;
 
-/// <summary>
-/// A small, pragmatic markdown parser for the subset Claude produces in a transcript: headings,
-/// paragraphs, fenced code blocks, bullet/ordered lists, pipe tables, and inline bold/italic/code/links.
-/// It is deliberately not a full CommonMark implementation — it turns the common shapes into a flat
-/// block list the cockpit renders into themed controls, so the look and clickable links are fully ours.
-/// </summary>
+// A small, pragmatic markdown parser for the subset Claude produces in a transcript: headings,
+// paragraphs, fenced code blocks, bullet/ordered lists, pipe tables, and inline bold/italic/code/links.
+// It is deliberately not a full CommonMark implementation — it turns the common shapes into a flat
+// block list the cockpit renders into themed controls, so the look and clickable links are fully ours.
 public static partial class MarkdownParser
 {
     public static IReadOnlyList<MarkdownBlock> Parse(string markdown)
@@ -183,11 +181,9 @@ public static partial class MarkdownParser
         return i;
     }
 
-    /// <summary>
-    /// Splits a run of text into inline runs: `code`, [text](url), **bold**, *italic*/_italic_, and bare
-    /// http(s) URLs. Emphasis nests — the runs inside it keep their own kind and carry the surrounding
-    /// bold/italic as a flag, so the list stays flat (see <see cref="MarkdownInline"/> on why that matters).
-    /// </summary>
+    // Splits a run of text into inline runs: `code`, [text](url), **bold**, *italic*/_italic_, and bare
+    // http(s) URLs. Emphasis nests — the runs inside it keep their own kind and carry the surrounding
+    // bold/italic as a flag, so the list stays flat (see `MarkdownInline` on why that matters).
     public static IReadOnlyList<MarkdownInline> ParseInlines(string text)
         => _ParseInlines(text ?? string.Empty, autolink: true);
 
@@ -290,12 +286,10 @@ public static partial class MarkdownParser
         return runs;
     }
 
-    /// <summary>
-    /// Applies an enclosing <c>**</c>/<c>*</c> to the runs it wraps. Plain text simply becomes that kind;
-    /// anything with a kind of its own (a link, a code span, the other emphasis) keeps it and takes the
-    /// surrounding emphasis as a flag. Either way one run in yields one run out, so the concatenated text —
-    /// and with it the renderer's link offsets — is exactly what the reader sees.
-    /// </summary>
+    // Applies an enclosing `**`/`*` to the runs it wraps. Plain text simply becomes that kind;
+    // anything with a kind of its own (a link, a code span, the other emphasis) keeps it and takes the
+    // surrounding emphasis as a flag. Either way one run in yields one run out, so the concatenated text —
+    // and with it the renderer's link offsets — is exactly what the reader sees.
     private static IEnumerable<MarkdownInline> _Emphasise(List<MarkdownInline> runs, MarkdownInlineKind emphasis)
         => runs.Select(run => run.Kind == MarkdownInlineKind.Text
             ? run with { Kind = emphasis }
@@ -305,11 +299,9 @@ public static partial class MarkdownParser
                 OuterItalic = run.IsItalic || emphasis == MarkdownInlineKind.Italic,
             });
 
-    /// <summary>
-    /// The bare http(s) URL starting at <paramref name="start"/>, or null if none does. It runs to the next
-    /// whitespace minus the punctuation a sentence leaves behind — one character too many still renders fine
-    /// and then 404s, which is why the trailing trim exists at all.
-    /// </summary>
+    // The bare http(s) URL starting at `start`, or null if none does. It runs to the next
+    // whitespace minus the punctuation a sentence leaves behind — one character too many still renders fine
+    // and then 404s, which is why the trailing trim exists at all.
     private static string? _BareUrlAt(string text, int start)
     {
         var rest = text.AsSpan(start);

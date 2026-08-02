@@ -13,18 +13,16 @@ using DepotSaveResult = (bool Success, string? DuplicateName);
 
 namespace Cockpit.Plugin.Depot.Ui;
 
-/// <summary>
-/// The plugin's settings view (opened from the gear in the plugin manager): a manageable list of Depot connection
-/// rows (AC-243). Implements <see cref="IPluginSettingsView"/>, so the host renders the Save/Close footer and
-/// <see cref="Save"/> persists on Save — the connection metadata to storage, and (AC-501) each connection's own
-/// memory-source registration. Since AC-504 a connection's MCP server is offered per-project by
-/// <see cref="DepotPlugin.GetMcpServers(string?, IReadOnlyList{string})"/> rather than pushed into the shared
-/// registry here, so Save only has to reclaim a removed or renamed connection's <em>old</em> "Depot: &lt;old
-/// name&gt;" registry entry — left behind by an install that ran before AC-504, or by
-/// <see cref="DepotPlugin.Initialize"/>'s own reclaim missing a rename that happened after the app started — never
-/// to add a new one. A connection removed or renamed here also has its old memory-source scheme reclaimed the same
-/// save, so neither a stale MCP entry nor a stale picker row lingers until a restart.
-/// </summary>
+// The plugin's settings view (opened from the gear in the plugin manager): a manageable list of Depot connection
+// rows (AC-243). Implements `IPluginSettingsView`, so the host renders the Save/Close footer and
+// `Save` persists on Save — the connection metadata to storage, and (AC-501) each connection's own
+// memory-source registration. Since AC-504 a connection's MCP server is offered per-project by
+// `DepotPlugin.GetMcpServers(string?, IReadOnlyList{string})` rather than pushed into the shared
+// registry here, so Save only has to reclaim a removed or renamed connection's *old* "Depot: &lt;old
+// name&gt;" registry entry — left behind by an install that ran before AC-504, or by
+// `DepotPlugin.Initialize`'s own reclaim missing a rename that happened after the app started — never
+// to add a new one. A connection removed or renamed here also has its old memory-source scheme reclaimed the same
+// save, so neither a stale MCP entry nor a stale picker row lingers until a restart.
 internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly ICockpitHost _host;
@@ -106,11 +104,9 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
     public bool Save() => _SaveDetailed().Success;
 
-    /// <summary>
-    /// The real implementation behind <see cref="Save"/>, returning the duplicate name a collision was refused on
-    /// (if any) so <see cref="DepotConnectionRowControl.SignInAsync"/> can say what went wrong instead of just that
-    /// something did.
-    /// </summary>
+    // The real implementation behind `Save`, returning the duplicate name a collision was refused on
+    // (if any) so `DepotConnectionRowControl.SignInAsync` can say what went wrong instead of just that
+    // something did.
     private DepotSaveResult _SaveDetailed()
     {
         var candidates = _rows

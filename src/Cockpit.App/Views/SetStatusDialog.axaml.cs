@@ -6,11 +6,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Sets a session's status line by hand (AC-32). Returns the new value from <c>ShowDialog&lt;string?&gt;</c> —
-/// an empty string when the operator clears it — and <see langword="null"/> when they cancel, so an unchanged
-/// status is left alone.
-/// </summary>
+// Sets a session's status line by hand (AC-32). Returns the new value from `ShowDialog&lt;string?&gt;` —
+// an empty string when the operator clears it — and `null` when they cancel, so an unchanged
+// status is left alone.
 public partial class SetStatusDialog : Window
 {
     public SetStatusDialog()

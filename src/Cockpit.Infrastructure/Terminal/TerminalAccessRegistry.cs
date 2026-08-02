@@ -4,26 +4,22 @@ using Cockpit.Core.Abstractions.Terminal;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-/// <summary>
-/// The live coupling state behind the terminal-access MCP (AC-34). Producer calls come from the UI thread (a pane
-/// opens, output flushes); consumer calls come from MCP request threads (list, couple, read). All of it is behind one
-/// lock — the state is small and the calls are short, so a lock is simpler and safer here than a lock-free scheme.
-/// <para>
-/// Read-scope starts at the coupling: <see cref="CaptureOutput"/> is a no-op until a pane is coupled, so nothing that
-/// scrolled by before an agent connected — an earlier secret echo included — is ever in the buffer it can read. The
-/// buffer is capped so a long-lived coupling on a chatty pane cannot grow without bound.
-/// </para>
-/// <para>
-/// What an agent may reach is narrowed on the way out, not on the way in: every pane registers, but only the
-/// plain-shell ones are listed or resolvable, so the agent-session panes stay out of reach of both.
-/// </para>
-/// </summary>
+// The live coupling state behind the terminal-access MCP (AC-34). Producer calls come from the UI thread (a pane
+// opens, output flushes); consumer calls come from MCP request threads (list, couple, read). All of it is behind one
+// lock — the state is small and the calls are short, so a lock is simpler and safer here than a lock-free scheme.
+//
+// Read-scope starts at the coupling: `CaptureOutput` is a no-op until a pane is coupled, so nothing that
+// scrolled by before an agent connected — an earlier secret echo included — is ever in the buffer it can read. The
+// buffer is capped so a long-lived coupling on a chatty pane cannot grow without bound.
+//
+// What an agent may reach is narrowed on the way out, not on the way in: every pane registers, but only the
+// plain-shell ones are listed or resolvable, so the agent-session panes stay out of reach of both.
 internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISingletonService
 {
-    /// <summary>Cap on a coupling's captured text — enough to be useful, bounded so a streaming pane cannot exhaust memory. Oldest output is dropped first.</summary>
+    // Cap on a coupling's captured text — enough to be useful, bounded so a streaming pane cannot exhaust memory. Oldest output is dropped first.
     private const int MaxCaptureChars = 256 * 1024;
 
-    /// <summary>The interrupt a Disconnect sends before breaking the coupling, so a running command stops at once (ETX / Ctrl-C).</summary>
+    // The interrupt a Disconnect sends before breaking the coupling, so a running command stops at once (ETX / Ctrl-C).
     private static readonly byte[] Interrupt = [0x03];
 
     private readonly object _lock = new();

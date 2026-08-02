@@ -10,14 +10,12 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotConnectionRowControl"/>'s Sign-in action (AC-243/AC-355, reworked AC-499): a token is filed
-/// under a server's registered name, so the row must never sign in under a name it merely typed — it saves first
-/// (through the delegate it is constructed with, the same route <see cref="Ui.DepotSettingsControl.Save"/> exposes
-/// to its own Save button) and then re-reads what actually landed in storage before calling the host. The
-/// read-availability guard <see cref="DepotConnectionRowControl.RefreshAuthStateAsync"/> uses is exercised
-/// separately below; it is unrelated to whether Sign-in itself is offered since AC-499.
-/// </summary>
+// `DepotConnectionRowControl`'s Sign-in action (AC-243/AC-355, reworked AC-499): a token is filed
+// under a server's registered name, so the row must never sign in under a name it merely typed — it saves first
+// (through the delegate it is constructed with, the same route `Ui.DepotSettingsControl.Save` exposes
+// to its own Save button) and then re-reads what actually landed in storage before calling the host. The
+// read-availability guard `DepotConnectionRowControl.RefreshAuthStateAsync` uses is exercised
+// separately below; it is unrelated to whether Sign-in itself is offered since AC-499.
 [Collection("avalonia")]
 public class DepotConnectionRowControlTests
 {

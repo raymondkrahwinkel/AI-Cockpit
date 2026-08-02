@@ -6,14 +6,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The usage-threshold settings for one provider (AC-233): every signal it declared, with the number the operator
-/// put in place of its default, or nothing where they left it following.
-/// <para>
-/// A provider that declares no signals produces no rows, and its section is not shown at all — better than a frame
-/// around controls that would do nothing.
-/// </para>
-/// </summary>
+// The usage-threshold settings for one provider (AC-233): every signal it declared, with the number the operator
+// put in place of its default, or nothing where they left it following.
+//
+// A provider that declares no signals produces no rows, and its section is not shown at all — better than a frame
+// around controls that would do nothing.
 public sealed partial class UsageThresholdsViewModel : ObservableObject
 {
     private readonly IUsageThresholdStore _store;
@@ -24,16 +21,14 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         _store = store;
     }
 
-    /// <summary>One group per provider that reports anything, each with its own signals.</summary>
+    // One group per provider that reports anything, each with its own signals.
     public ObservableCollection<UsageThresholdProviderViewModel> Providers { get; } = [];
 
-    /// <summary>Whether there is anything to show — false when no provider declares a usage signal.</summary>
+    // Whether there is anything to show — false when no provider declares a usage signal.
     public bool HasProviders => Providers.Count > 0;
 
-    /// <summary>
-    /// Builds the rows from what the providers declared and what the operator has saved. Called when the settings
-    /// screen opens, so a newly installed provider appears without a restart.
-    /// </summary>
+    // Builds the rows from what the providers declared and what the operator has saved. Called when the settings
+    // screen opens, so a newly installed provider appears without a restart.
     public async Task LoadAsync(IReadOnlyList<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)> providers, CancellationToken cancellationToken = default)
     {
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -54,7 +49,7 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasProviders));
     }
 
-    /// <summary>Persists every row: a number becomes an override, an empty field clears one so the provider's own default applies again.</summary>
+    // Persists every row: a number becomes an override, an empty field clears one so the provider's own default applies again.
     public async Task SaveAsync(CancellationToken cancellationToken = default)
     {
         foreach (var provider in Providers)
@@ -68,7 +63,7 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         await _store.SaveAsync(_settings, cancellationToken).ConfigureAwait(true);
     }
 
-    /// <summary>The settings as they now stand, for handing to sessions started after the dialog closed.</summary>
+    // The settings as they now stand, for handing to sessions started after the dialog closed.
     public async Task<UsageThresholdSettings> ReloadAsync(CancellationToken cancellationToken = default)
     {
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -76,7 +71,7 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         return _settings;
     }
 
-    /// <summary>What the operator saved for this provider's signal, or null where they left it following.</summary>
+    // What the operator saved for this provider's signal, or null where they left it following.
     private double? _Stored(string providerId, string signalKey) =>
         _settings.ByProvider.TryGetValue(providerId, out var signals) && signals.TryGetValue(signalKey, out var stored)
             ? stored

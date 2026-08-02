@@ -3,11 +3,9 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// What of a step's data is kept in the run history. A run is stored, and a command that printed a megabyte would
-/// otherwise put that megabyte in the settings file — twenty runs of it. So values are cut at a length a human can
-/// still read, and the cut is visible: a value ending in an ellipsis is a value that was longer.
-/// </summary>
+// What of a step's data is kept in the run history. A run is stored, and a command that printed a megabyte would
+// otherwise put that megabyte in the settings file — twenty runs of it. So values are cut at a length a human can
+// still read, and the cut is visible: a value ending in an ellipsis is a value that was longer.
 internal static class RunItems
 {
     private const int MaxValue = 2000;

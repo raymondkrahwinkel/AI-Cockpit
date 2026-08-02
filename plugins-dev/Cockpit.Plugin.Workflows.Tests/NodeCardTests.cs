@@ -6,12 +6,10 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// Opening a step's settings (#69). The gesture is a double-click, and this test exists because the obvious way to
-/// implement it does not work here: the first click starts a drag and captures the pointer, and a captured pointer
-/// never delivers Avalonia's <c>DoubleTapped</c>. So the second click is read from the press itself. The settings
-/// panel was there for a whole release, and unreachable.
-/// </summary>
+// Opening a step's settings (#69). The gesture is a double-click, and this test exists because the obvious way to
+// implement it does not work here: the first click starts a drag and captures the pointer, and a captured pointer
+// never delivers Avalonia's `DoubleTapped`. So the second click is read from the press itself. The settings
+// panel was there for a whole release, and unreachable.
 [Collection("avalonia")]
 public class NodeCardTests
 {

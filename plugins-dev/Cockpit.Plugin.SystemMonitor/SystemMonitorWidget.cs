@@ -5,18 +5,16 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.SystemMonitor;
 
-/// <summary>
-/// CPU, memory and disk, whichever of the three this instance is configured to show. The widget with a
-/// settings form, so the ⚙ path is proven rather than assumed: opening it, saving it and seeing this pane
-/// change is the end-to-end test of per-instance config.
-/// </summary>
+// CPU, memory and disk, whichever of the three this instance is configured to show. The widget with a
+// settings form, so the ⚙ path is proven rather than assumed: opening it, saving it and seeing this pane
+// change is the end-to-end test of per-instance config.
 internal sealed class SystemMonitorWidget : UserControl
 {
     private readonly IWidgetContext _context;
     private readonly StackPanel _rows = new() { Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
     private readonly DispatcherTimer _timer;
 
-    /// <summary>This pane's own readings. Shared, the CPU sample point of two monitors cancelled each other out.</summary>
+    // This pane's own readings. Shared, the CPU sample point of two monitors cancelled each other out.
     private readonly SystemUsage _usage = new();
 
     public SystemMonitorWidget(IWidgetContext context)

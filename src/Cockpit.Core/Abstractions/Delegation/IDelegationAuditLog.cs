@@ -18,40 +18,41 @@ public interface IDelegationAuditLog
     Task<IReadOnlyList<DelegationAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What happened to a delegated task (#67).</summary>
+// What happened to a delegated task (#67).
 public enum DelegationAuditAction
 {
-    /// <summary>A task was accepted and started, or queued for a free slot.</summary>
+    // A task was accepted and started, or queued for a free slot.
     Delegated,
 
-    /// <summary>The engine refused: not a target, wrong task type, a working directory it does not allow, recursion, or the profile was at its cap.</summary>
+    // The engine refused: not a target, wrong task type, a working directory it does not allow, recursion, or the profile was at its cap.
     Refused,
 
-    /// <summary>The task produced its answer.</summary>
+    // The task produced its answer.
     Completed,
 
-    /// <summary>The session failed, or could not start at all.</summary>
+    // The session failed, or could not start at all.
     Failed,
 
-    /// <summary>Stopped on request — by the operator, or by the agent that delegated it.</summary>
+    // Stopped on request — by the operator, or by the agent that delegated it.
     Stopped,
 
-    /// <summary>Stopped because it outlived the time the profile allows it.</summary>
+    // Stopped because it outlived the time the profile allows it.
     TimedOut,
 
-    /// <summary>Another turn was sent to a task that had already answered.</summary>
+    // Another turn was sent to a task that had already answered.
     FollowUp,
 
-    /// <summary>The operator approved a per-task request to run above the profile's permission ceiling (AC-117).</summary>
+    // The operator approved a per-task request to run above the profile's permission ceiling (AC-117).
     PermissionElevated,
 
-    /// <summary>The operator was asked to approve a per-task request above the profile's ceiling and declined; the task ran clamped to the ceiling instead (AC-117). Not recorded when there was nobody to ask — that case clamps silently, as it always has.</summary>
+    // The operator was asked to approve a per-task request above the profile's ceiling and declined; the task ran clamped to the ceiling instead (AC-117). Not recorded when there was nobody to ask — that case clamps silently, as it always has.
     PermissionElevationDenied,
 }
 
-/// <summary>One line of the delegation audit trail (#67).</summary>
-/// <param name="Prompt">The prompt, trimmed: enough to recognise the task later without turning the log into a transcript.</param>
-/// <param name="Reason">Why a task was refused, or how it failed. Empty for the ordinary path.</param>
+// One line of the delegation audit trail (#67).
+//
+// `Prompt`: The prompt, trimmed: enough to recognise the task later without turning the log into a transcript.
+// `Reason`: Why a task was refused, or how it failed. Empty for the ordinary path.
 public sealed record DelegationAuditEntry(
     DateTimeOffset At,
     DelegationAuditAction Action,

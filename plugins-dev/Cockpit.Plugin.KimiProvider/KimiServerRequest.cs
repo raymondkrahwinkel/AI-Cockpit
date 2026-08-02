@@ -2,13 +2,12 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// An agent-to-client JSON-RPC request from <c>kimi acp</c> (a message with both an <c>id</c> and a
-/// <c>method</c>) — the blocking <c>session/request_permission</c> approval, or an unmodelled kind such as
-/// <c>fs/read_text_file</c>/<c>fs/write_text_file</c> (never sent, since this driver advertises
-/// <c>clientCapabilities.fs.*</c> as <see langword="false"/>). The driver must answer it with
-/// <see cref="KimiAcpConnection.RespondAsync"/> echoing <see cref="Id"/>, or the agent stalls.
-/// </summary>
-/// <param name="Id">The request id, cloned verbatim (number or string) so it can be echoed back in the response.</param>
-/// <param name="Params">The request's <c>params</c>, cloned; <see cref="JsonValueKind.Undefined"/> when it carried none.</param>
+// An agent-to-client JSON-RPC request from `kimi acp` (a message with both an `id` and a
+// `method`) — the blocking `session/request_permission` approval, or an unmodelled kind such as
+// `fs/read_text_file`/`fs/write_text_file` (never sent, since this driver advertises
+// `clientCapabilities.fs.*` as `false`). The driver must answer it with
+// `KimiAcpConnection.RespondAsync` echoing `Id`, or the agent stalls.
+//
+// `Id`: The request id, cloned verbatim (number or string) so it can be echoed back in the response.
+// `Params`: The request's `params`, cloned; `JsonValueKind.Undefined` when it carried none.
 internal sealed record KimiServerRequest(JsonElement Id, string Method, JsonElement Params);

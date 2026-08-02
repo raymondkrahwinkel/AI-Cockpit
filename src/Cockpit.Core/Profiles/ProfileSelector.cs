@@ -1,23 +1,19 @@
 namespace Cockpit.Core.Profiles;
 
-/// <summary>
-/// Pure new-session profile-choice logic (no UI, no I/O), per the C-cockpit UX rule:
-/// more than one usable profile requires an explicit choice; exactly one is used silently;
-/// none logged in signals that <c>claude /login</c> is needed first.
-/// </summary>
+// Pure new-session profile-choice logic (no UI, no I/O), per the C-cockpit UX rule:
+// more than one usable profile requires an explicit choice; exactly one is used silently;
+// none logged in signals that `claude /login` is needed first.
 public static class ProfileSelector
 {
-    /// <summary>
-    /// Decides what a "new session" UI should do given the known profiles and their login
-    /// state. Only logged-in profiles are eligible — an unauthenticated profile cannot spawn
-    /// a usable session, so it is excluded from the choice/silent-use candidates.
-    /// </summary>
-    /// <param name="statuses">Every known profile with its current login state.</param>
-    /// <param name="lastUsedLabel">
-    /// Label of the last-used profile, if any. When it is among the logged-in candidates and
-    /// there is more than one, it is moved to the front of <see cref="ProfileSelectionOutcome.Candidates"/>
-    /// as the suggested default — the caller still asks, per the UX rule for >1 profile.
-    /// </param>
+    // Decides what a "new session" UI should do given the known profiles and their login
+    // state. Only logged-in profiles are eligible — an unauthenticated profile cannot spawn
+    // a usable session, so it is excluded from the choice/silent-use candidates.
+    //
+    // `statuses`: Every known profile with its current login state.
+    // `lastUsedLabel`:
+    // Label of the last-used profile, if any. When it is among the logged-in candidates and
+    // there is more than one, it is moved to the front of `ProfileSelectionOutcome.Candidates`
+    // as the suggested default — the caller still asks, per the UX rule for >1 profile.
     public static ProfileSelectionOutcome Select(IReadOnlyList<SessionProfileStatus> statuses, string? lastUsedLabel = null)
     {
         var loggedIn = statuses.Where(s => s.IsLoggedIn).Select(s => s.Profile).ToList();

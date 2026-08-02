@@ -2,7 +2,7 @@ using Cockpit.Core.Clones;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="CloneSettings"/> in the <c>cloneSettings</c> section of <c>cockpit.json</c> (AC-90). Separate from the <c>clones</c> registry section, which lists the clones themselves.</summary>
+// On-disk shape of `CloneSettings` in the `cloneSettings` section of `cockpit.json` (AC-90). Separate from the `clones` registry section, which lists the clones themselves.
 internal sealed class CloneSettingsEntry
 {
     public string? Root { get; set; }

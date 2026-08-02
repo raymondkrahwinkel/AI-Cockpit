@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.FanOut.Tests;
 
-/// <summary>A stand-in for a host-owned embedded session: a placeable view and nothing running behind it.</summary>
+// A stand-in for a host-owned embedded session: a placeable view and nothing running behind it.
 internal sealed class FakeEmbeddedSession : IEmbeddedSession
 {
     public FakeEmbeddedSession(string paneId) => PaneId = paneId;

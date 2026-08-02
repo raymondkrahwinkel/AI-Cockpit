@@ -10,12 +10,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-/// <summary>
-/// The tools are the wiring between the agent and the gate — these prove that wiring holds: an unknown cluster is a
-/// clean error, a denied consent stops before the cluster is ever reached, a capability that is off is a policy
-/// block with a hint (no prompt), and an approved call does get as far as the connection. The cluster call itself
-/// (against a live apiserver) is the operator's to verify.
-/// </summary>
+// The tools are the wiring between the agent and the gate — these prove that wiring holds: an unknown cluster is a
+// clean error, a denied consent stops before the cluster is ever reached, a capability that is off is a policy
+// block with a hint (no prompt), and an approved call does get as far as the connection. The cluster call itself
+// (against a live apiserver) is the operator's to verify.
 public class KubernetesMcpToolsTests
 {
     private const string Session = "pane-1";

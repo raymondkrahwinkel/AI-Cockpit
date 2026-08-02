@@ -11,7 +11,7 @@ public class AgentTurnInboxDeliveryTests
     [Fact]
     public void TakeForTurn_ReturnsNothingAtAll_WhenNoMailIsWaiting()
     {
-        var delivery = new AgentTurnInboxDelivery(new AgentMessageInbox());
+        var delivery = new AgentTurnInboxDelivery(new AgentMessageInbox(), new WorkspaceAgentCoordinator());
 
         // Null, not an empty notice. An empty notice would still be rendered onto every turn of every session that
         // never gets mail, which is the entire cost this design promises not to charge.
@@ -23,7 +23,7 @@ public class AgentTurnInboxDeliveryTests
     {
         var inbox = new AgentMessageInbox();
         inbox.Deliver("pane-a", "pane-b", "question", "are you on this?");
-        var delivery = new AgentTurnInboxDelivery(inbox);
+        var delivery = new AgentTurnInboxDelivery(inbox, new WorkspaceAgentCoordinator());
 
         var notice = delivery.TakeForTurn("pane-b");
 
@@ -46,7 +46,7 @@ public class AgentTurnInboxDeliveryTests
             inbox.Deliver("pane-a", "pane-b", "question", $"message {index}");
         }
 
-        var notice = new AgentTurnInboxDelivery(inbox).TakeForTurn("pane-b");
+        var notice = new AgentTurnInboxDelivery(inbox, new WorkspaceAgentCoordinator()).TakeForTurn("pane-b");
 
         Assert.NotNull(notice);
         Assert.Equal(5, notice.Messages.Count);
@@ -75,7 +75,7 @@ public class AgentTurnInboxDeliveryTests
             inbox.Deliver("pane-a", "pane-b", "question", new string('&', 1_999) + (char)('a' + index));
         }
 
-        var notice = new AgentTurnInboxDelivery(inbox).TakeForTurn("pane-b");
+        var notice = new AgentTurnInboxDelivery(inbox, new WorkspaceAgentCoordinator()).TakeForTurn("pane-b");
 
         Assert.NotNull(notice);
         Assert.True(
@@ -107,7 +107,7 @@ public class AgentTurnInboxDeliveryTests
         inbox.Deliver("pane-a", "pane-b", "question", new string('x', AgentTurnInboxDelivery.MaxRenderedCharsPerTurn + 1_000));
         inbox.Deliver("pane-a", "pane-b", "question", "and a short one behind it");
 
-        var notice = new AgentTurnInboxDelivery(inbox).TakeForTurn("pane-b");
+        var notice = new AgentTurnInboxDelivery(inbox, new WorkspaceAgentCoordinator()).TakeForTurn("pane-b");
 
         Assert.NotNull(notice);
         Assert.Single(notice.Messages);
@@ -122,7 +122,7 @@ public class AgentTurnInboxDeliveryTests
     {
         var inbox = new AgentMessageInbox();
         inbox.Deliver("pane-a", "pane-b", "question", "are you on this?");
-        var delivery = new AgentTurnInboxDelivery(inbox);
+        var delivery = new AgentTurnInboxDelivery(inbox, new WorkspaceAgentCoordinator());
         var notice = delivery.TakeForTurn("pane-b");
 
         Assert.NotNull(notice);
@@ -136,7 +136,7 @@ public class AgentTurnInboxDeliveryTests
     {
         var inbox = new AgentMessageInbox();
         inbox.Deliver("pane-a", "pane-b", "question", "are you on this?");
-        var delivery = new AgentTurnInboxDelivery(inbox);
+        var delivery = new AgentTurnInboxDelivery(inbox, new WorkspaceAgentCoordinator());
         var notice = delivery.TakeForTurn("pane-b");
 
         Assert.NotNull(notice);

@@ -6,18 +6,15 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Plugin.Depot;
 
-/// <summary>
-/// One Depot connection's own <see cref="ISharedProjectSource"/> (AC-245): lists this connection's projects through
-/// <c>list_projects</c> (the same call <see cref="DepotMemorySource"/> already makes for its picker), then reads
-/// each one's <c>.cockpit/project.json</c> (<see cref="CockpitProjectDefinitionStore.ReadAsync"/>, AC-244) to learn
-/// its portable name and description — a Depot project without one is not offered here at all: not every project on
-/// a connection has opted into being shared this way.
-/// <para>
-/// ponytail: one MCP round trip per listed project on top of the initial <c>list_projects</c> call, every time the
-/// Projects workspace loads — no caching. Acceptable for the handful of projects a connection realistically carries
-/// today; batch or cache here first if a connection with hundreds of shared projects makes this the slow part.
-/// </para>
-/// </summary>
+// One Depot connection's own `ISharedProjectSource` (AC-245): lists this connection's projects through
+// `list_projects` (the same call `DepotMemorySource` already makes for its picker), then reads
+// each one's `.cockpit/project.json` (`CockpitProjectDefinitionStore.ReadAsync`, AC-244) to learn
+// its portable name and description — a Depot project without one is not offered here at all: not every project on
+// a connection has opted into being shared this way.
+//
+// ponytail: one MCP round trip per listed project on top of the initial `list_projects` call, every time the
+// Projects workspace loads — no caching. Acceptable for the handful of projects a connection realistically carries
+// today; batch or cache here first if a connection with hundreds of shared projects makes this the slow part.
 internal sealed class DepotSharedProjectSource(DepotConnectionRegistration connection, string scheme, ICockpitHost host)
     : ISharedProjectSource
 {
@@ -105,17 +102,15 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
         return SharedProjectListResult.Success(shared) with { VisibleButUnreadable = unreadable };
     }
 
-    /// <summary>
-    /// Reads <c>.cockpit/project.json</c> a second time (AC-246), for the one project the operator is binding right
-    /// now rather than every project on this connection — <see cref="ListAsync"/>'s own read only ever kept
-    /// <see cref="CockpitProjectDefinition.Name"/>/<c>Description</c>, so a bind step needs its own call for the
-    /// rest (<c>GitUrl</c>, <c>BehaviorPrompt</c>, the worktree switch, the MCP overlay, the resource rows).
-    /// <see cref="id"/> is expected in this source's own shape (<c>"{scheme}:{slug}"</c>), so parsing it back is a
-    /// prefix check against <paramref name="id"/>'s own scheme rather than a general <c>ProjectMemoryRef</c>-style
-    /// parse — this plugin cannot reference <c>Cockpit.Core</c> (see this class's own remarks on
-    /// <see cref="ProjectResourcePortabilityClassifier"/>), and it does not need to: it only ever has to recognise
-    /// its own scheme, never anyone else's.
-    /// </summary>
+    // Reads `.cockpit/project.json` a second time (AC-246), for the one project the operator is binding right
+    // now rather than every project on this connection — `ListAsync`'s own read only ever kept
+    // `CockpitProjectDefinition.Name`/`Description`, so a bind step needs its own call for the
+    // rest (`GitUrl`, `BehaviorPrompt`, the worktree switch, the MCP overlay, the resource rows).
+    // `id` is expected in this source's own shape (`"{scheme}:{slug}"`), so parsing it back is a
+    // prefix check against `id`'s own scheme rather than a general `ProjectMemoryRef`-style
+    // parse — this plugin cannot reference `Cockpit.Core` (see this class's own remarks on
+    // `ProjectResourcePortabilityClassifier`), and it does not need to: it only ever has to recognise
+    // its own scheme, never anyone else's.
     public async Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken)
     {
         var prefix = $"{scheme}:";

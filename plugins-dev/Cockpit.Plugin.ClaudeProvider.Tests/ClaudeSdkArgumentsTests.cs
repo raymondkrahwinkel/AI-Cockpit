@@ -2,11 +2,9 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeSdkArguments.BuildArguments"/> (Fase 4, SDK route) — the headless stream-json invocation, and the
-/// one thing it deliberately does NOT do that the host's in-tree spawn did: wire a <c>--permission-prompt-tool</c>/MCP
-/// permission server. Approvals ride the control protocol instead, so that flag must never appear.
-/// </summary>
+// `ClaudeSdkArguments.BuildArguments` (Fase 4, SDK route) — the headless stream-json invocation, and the
+// one thing it deliberately does NOT do that the host's in-tree spawn did: wire a `--permission-prompt-tool`/MCP
+// permission server. Approvals ride the control protocol instead, so that flag must never appear.
 public class ClaudeSdkArgumentsTests
 {
     [Fact]

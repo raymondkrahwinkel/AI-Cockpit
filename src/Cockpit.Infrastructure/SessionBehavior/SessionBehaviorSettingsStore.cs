@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.SessionBehavior;
 
-/// <summary>
-/// Persists <see cref="SessionBehaviorSettings"/> under the <c>sessionBehavior</c> section of
-/// <c>cockpit.json</c> (same file/pattern as <c>TranscriptDisplaySettingsStore</c>). Reads-modifies-
-/// writes the whole file via <see cref="CockpitConfigFileAccess"/> so it leaves the other sections
-/// untouched. When no settings were ever saved, <see cref="LoadAsync"/> returns the defaults.
-/// </summary>
+// Persists `SessionBehaviorSettings` under the `sessionBehavior` section of
+// `cockpit.json` (same file/pattern as `TranscriptDisplaySettingsStore`). Reads-modifies-
+// writes the whole file via `CockpitConfigFileAccess` so it leaves the other sections
+// untouched. When no settings were ever saved, `LoadAsync` returns the defaults.
 internal sealed class SessionBehaviorSettingsStore : ISessionBehaviorSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class SessionBehaviorSettingsStore : ISessionBehaviorSettingsSto
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal SessionBehaviorSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

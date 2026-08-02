@@ -44,7 +44,13 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
     private AgentNotifyAuditLog _Audit() => new(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance);
 
-    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims);
+    // The rate limit (AC-396) set far out of the way, and shared across every _Tools() call so it behaves like the
+    // one the running app holds. Every test in this suite is about something else — the drain cap alone sends 28
+    // messages from one pane — and the real limit would make them fail on the twenty-first message rather than on
+    // what they assert. The cap itself is held by AgentLineBudgetTests and AgentsMcpToolsRateLimitTests.
+    private readonly AgentLineBudget _budget = new(TimeProvider.System, TimeSpan.FromMinutes(1), 10_000, 10_000);
+
+    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims, _budget);
 
     /// <summary>Puts the named panes on one desk, each resolving to the same snapshot — a sender, an addressee, one workspace.</summary>
     private void _DeskWith(params string[] paneIds)
@@ -228,14 +234,66 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         var agents = json!["agents"]!.AsArray();
-        // The caller enrolls itself just by calling.
+        // The caller has demonstrably reached this server — it is the one calling.
         var self = agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-1")!;
-        Assert.True(self["enrolled"]!.GetValue<bool>());
+        Assert.NotNull(self["lastContactUtc"]);
         Assert.Null(self["gap"]);
         // The pane that never called in is still listed — as a gap, not omitted.
         var silent = agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-2")!;
-        Assert.False(silent["enrolled"]!.GetValue<bool>());
+        Assert.Null(silent["lastContactUtc"]);
         Assert.False(string.IsNullOrEmpty(silent["gap"]!.GetValue<string>()));
+    }
+
+    /// <summary>
+    /// AC-613. The host puts the panes it knows about on the roster (the real gateway does that while building the
+    /// snapshot; here the coordinator is driven directly, because this suite substitutes the gateway). What has to
+    /// hold at this layer: enrollment stops being evidence of tool use, and the gap survives it — a pane the cockpit
+    /// can see but has never heard from still says so.
+    /// <para>
+    /// Before this split the two were one flag, and a pane that worked all night without calling a cockpit-agents
+    /// tool was reported to its neighbours as if it were not there.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ListAgents_APaneTheHostEnrolled_IsEnrolledAndStillShowsAGapUntilItCallsIn()
+    {
+        var snapshot = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-2", "Silent", null, string.Empty, true),
+        ]);
+        _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
+        // What the host does for every pane it places on a desk.
+        _coordinator.Enroll("pane-1");
+        _coordinator.Enroll("pane-2");
+        McpRequestContext.Set("pane-1");
+
+        var silent = JsonNode.Parse(await _Tools().ListAgentsAsync())!["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.True(silent["enrolled"]!.GetValue<bool>());
+        Assert.Null(silent["lastContactUtc"]);
+        Assert.Contains("never called a cockpit-agents tool", silent["gap"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    /// <summary>The other half: once a pane does call in, the gap closes and the moment is reported.</summary>
+    [Fact]
+    public async Task ListAgents_APaneThatHasCalledIn_ClosesItsGapAndCarriesTheContactTime()
+    {
+        _DeskWith("pane-1", "pane-2");
+        var before = DateTimeOffset.UtcNow;
+
+        // pane-2 reaches the server under its own steam — any cockpit-agents tool will do.
+        McpRequestContext.Set("pane-2");
+        await _Tools().ListAgentsAsync();
+
+        McpRequestContext.Set("pane-1");
+        var seen = JsonNode.Parse(await _Tools().ListAgentsAsync())!["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.Null(seen["gap"]);
+        Assert.True(seen["lastContactUtc"]!.GetValue<DateTimeOffset>() >= before);
     }
 
     [Fact]
@@ -306,6 +364,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
+        // Since AC-615 the operator's setting is what an unanswered pane follows, and it ships on. Stated here so
+        // this row reports "this session said nothing and the operator said no" rather than the shipped default
+        // showing through a test that is about the empty shape of the fields.
+        _coordinator.SetDefaultWakeConsent(false);
         McpRequestContext.Set("pane-1");
 
         var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
@@ -1399,11 +1461,11 @@ public sealed class AgentsMcpToolsTests : IDisposable
         try
         {
             McpRequestContext.Set("pane-y");
-            await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+            await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget())
                 .ClaimAsync("/repo/worktree-a");
 
             McpRequestContext.Set("pane-x");
-            var result = await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+            var result = await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget())
                 .ClaimAsync("/repo/worktree-a");
 
             // The Claimed shape (ok:true, alreadyHeld:false, no heldBy) — not HeldByAnother's ok:false/heldBy, which
@@ -1445,12 +1507,12 @@ public sealed class AgentsMcpToolsTests : IDisposable
                 // matches character for character, exactly the case AC-393's own exact-match refuses to see across
                 // desks. Whether these two spellings would canonicalize to one physical resource is irrelevant to
                 // this test — the point is that pane-x cannot tell either way.
-                await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+                await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget())
                     .ClaimAsync("/repo/worktree-a/");
             }
 
             McpRequestContext.Set("pane-x");
-            var tools = new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims);
+            var tools = new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims, new AgentLineBudget());
             var claimJson = _Json(await tools.ClaimAsync("/repo/worktree-a"));
             var listJson = _Json(await tools.ListClaimsAsync());
 

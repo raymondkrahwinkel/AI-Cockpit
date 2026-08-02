@@ -2,11 +2,9 @@ using System.Threading.Channels;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// A hand-written <see cref="IClaudeSdkSubprocess"/> test double (Fase 4): records every <see cref="Start"/>/
-/// <see cref="WriteLineAsync"/> call and lets a test push stdout/stderr lines on demand, standing in for a real spawned
-/// <c>claude</c> process in <see cref="ClaudeSdkSessionDriverTests"/> — the plugin has no logged-in CLI to run against.
-/// </summary>
+// A hand-written `IClaudeSdkSubprocess` test double (Fase 4): records every `Start`/
+// `WriteLineAsync` call and lets a test push stdout/stderr lines on demand, standing in for a real spawned
+// `claude` process in `ClaudeSdkSessionDriverTests` — the plugin has no logged-in CLI to run against.
 internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 {
     private readonly Channel<string> _stdout = Channel.CreateUnbounded<string>();
@@ -16,7 +14,7 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public IReadOnlyDictionary<string, string?>? EnvironmentVariables { get; private set; }
 
-    /// <summary>The argument list the driver actually spawned with — what AC-378's --strict-mcp-config tests assert on.</summary>
+    // The argument list the driver actually spawned with — what AC-378's --strict-mcp-config tests assert on.
     public IReadOnlyList<string>? Arguments { get; private set; }
 
     public bool Disposed { get; private set; }

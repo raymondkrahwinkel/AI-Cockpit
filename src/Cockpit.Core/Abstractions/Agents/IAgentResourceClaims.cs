@@ -1,57 +1,58 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
-/// <summary>One agent session's standing claim on a piece of work (AC-393).</summary>
-/// <param name="Resource">What was claimed, in the claiming agent's own words — a worktree path, a branch, a file. The host never interprets it.</param>
-/// <param name="OwnerPaneId">The pane holding it. Stamped from the transport-verified caller, never from anything the claimer declared.</param>
-/// <param name="ClaimedAtUtc">When the claim was taken. Reported back so an old claim — the shape a crashed agent leaves behind — is recognisable as old.</param>
+// One agent session's standing claim on a piece of work (AC-393).
+//
+// `Resource`: What was claimed, in the claiming agent's own words — a worktree path, a branch, a file. The host never interprets it.
+// `OwnerPaneId`: The pane holding it. Stamped from the transport-verified caller, never from anything the claimer declared.
+// `ClaimedAtUtc`: When the claim was taken. Reported back so an old claim — the shape a crashed agent leaves behind — is recognisable as old.
 public sealed record AgentResourceClaim(string Resource, string OwnerPaneId, DateTimeOffset ClaimedAtUtc);
 
-/// <summary>What became of one <see cref="IAgentResourceClaims.Claim"/> call.</summary>
+// What became of one `IAgentResourceClaims.Claim` call.
 public enum AgentClaimOutcome
 {
-    /// <summary>Nobody on the caller's desk held it, and now the caller does.</summary>
+    // Nobody on the caller's desk held it, and now the caller does.
     Claimed,
 
-    /// <summary>The caller already held it, so nothing changed and the original claim stands — re-claiming is not an error.</summary>
+    // The caller already held it, so nothing changed and the original claim stands — re-claiming is not an error.
     AlreadyHeldByYou,
 
-    /// <summary>Another agent on the caller's desk holds it. The claim was not taken.</summary>
+    // Another agent on the caller's desk holds it. The claim was not taken.
     HeldByAnother,
 
-    /// <summary>The caller already holds the most claims one pane may hold, so this one was not taken.</summary>
+    // The caller already holds the most claims one pane may hold, so this one was not taken.
     TooManyClaims,
 }
 
-/// <summary>The result of a claim attempt: what happened, and the claim that now stands on the resource.</summary>
-/// <param name="Outcome">Taken, already the caller's, held by a neighbour, or refused because the caller holds too many.</param>
-/// <param name="Claim">
-/// The claim standing on the resource — the new one on <see cref="AgentClaimOutcome.Claimed"/>, the caller's original on
-/// <see cref="AgentClaimOutcome.AlreadyHeldByYou"/>, and the neighbour's on <see cref="AgentClaimOutcome.HeldByAnother"/>,
-/// which is what lets the second claimer be told <em>who</em> holds it and since when. Null only when nothing stands and
-/// nothing was taken (<see cref="AgentClaimOutcome.TooManyClaims"/>).
-/// </param>
+// The result of a claim attempt: what happened, and the claim that now stands on the resource.
+//
+// `Outcome`: Taken, already the caller's, held by a neighbour, or refused because the caller holds too many.
+// `Claim`:
+// The claim standing on the resource — the new one on `AgentClaimOutcome.Claimed`, the caller's original on
+// `AgentClaimOutcome.AlreadyHeldByYou`, and the neighbour's on `AgentClaimOutcome.HeldByAnother`,
+// which is what lets the second claimer be told *who* holds it and since when. Null only when nothing stands and
+// nothing was taken (`AgentClaimOutcome.TooManyClaims`).
 public sealed record AgentClaimResult(AgentClaimOutcome Outcome, AgentResourceClaim? Claim);
 
-/// <summary>What became of one <see cref="IAgentResourceClaims.Release"/> call.</summary>
+// What became of one `IAgentResourceClaims.Release` call.
 public enum AgentReleaseOutcome
 {
-    /// <summary>The caller held it and no longer does.</summary>
+    // The caller held it and no longer does.
     Released,
 
-    /// <summary>Nothing on the caller's desk holds that resource, so there was nothing to give up.</summary>
+    // Nothing on the caller's desk holds that resource, so there was nothing to give up.
     NotClaimed,
 
-    /// <summary>Another agent holds it. A claim is only the holder's to give up.</summary>
+    // Another agent holds it. A claim is only the holder's to give up.
     HeldByAnother,
 }
 
-/// <summary>The result of a release attempt: what happened, and which claim it happened to.</summary>
-/// <param name="Outcome">Released, nothing there to release, or held by a neighbour.</param>
-/// <param name="Claim">
-/// The claim the outcome is about — the one just given up on <see cref="AgentReleaseOutcome.Released"/> (so the caller
-/// can be told how long it had held it), and the neighbour's on <see cref="AgentReleaseOutcome.HeldByAnother"/> (so it
-/// can be told who to ask). Null only on <see cref="AgentReleaseOutcome.NotClaimed"/>, where there is no claim to name.
-/// </param>
+// The result of a release attempt: what happened, and which claim it happened to.
+//
+// `Outcome`: Released, nothing there to release, or held by a neighbour.
+// `Claim`:
+// The claim the outcome is about — the one just given up on `AgentReleaseOutcome.Released` (so the caller
+// can be told how long it had held it), and the neighbour's on `AgentReleaseOutcome.HeldByAnother` (so it
+// can be told who to ask). Null only on `AgentReleaseOutcome.NotClaimed`, where there is no claim to name.
 public sealed record AgentReleaseResult(AgentReleaseOutcome Outcome, AgentResourceClaim? Claim);
 
 /// <summary>

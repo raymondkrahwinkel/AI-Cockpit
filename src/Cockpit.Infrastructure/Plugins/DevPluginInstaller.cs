@@ -3,19 +3,16 @@ using Cockpit.Core.Abstractions.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// A developer-machine convenience (DEBUG only): refreshes already-installed first-party plugins from their
-/// freshly built output, so a rebuild of a plugin lands in the running sandbox without a hand copy. It closes,
-/// for the inner loop, the same "installed copy does not move with source" gap the bundled installer closes for
-/// the plugins this build ships — but for the ones installed from the store, which a normal build never touches.
-/// <para>
-/// It only <em>refreshes</em>: a plugin that is not installed is not silently installed just because the repo
-/// can build it (<c>installNew: false</c>), and a disabled or operator-newer plugin is left alone — the looseness
-/// is the point, a build must never decide what a cockpit carries. It finds <c>plugins-dev</c> by walking up from
-/// the running app and matching the app's own build config and target framework; off a dev checkout it finds
-/// nothing and does nothing, which is exactly right in a release.
-/// </para>
-/// </summary>
+// A developer-machine convenience (DEBUG only): refreshes already-installed first-party plugins from their
+// freshly built output, so a rebuild of a plugin lands in the running sandbox without a hand copy. It closes,
+// for the inner loop, the same "installed copy does not move with source" gap the bundled installer closes for
+// the plugins this build ships — but for the ones installed from the store, which a normal build never touches.
+//
+// It only *refreshes*: a plugin that is not installed is not silently installed just because the repo
+// can build it (`installNew: false`), and a disabled or operator-newer plugin is left alone — the looseness
+// is the point, a build must never decide what a cockpit carries. It finds `plugins-dev` by walking up from
+// the running app and matching the app's own build config and target framework; off a dev checkout it finds
+// nothing and does nothing, which is exactly right in a release.
 public sealed class DevPluginInstaller(ILogger? logger = null)
 {
     private const string PluginsDevFolderName = "plugins-dev";
@@ -23,7 +20,7 @@ public sealed class DevPluginInstaller(ILogger? logger = null)
 
     private readonly IPluginRegistrationStore _registrations = new PluginRegistrationStore();
 
-    /// <returns>The ids refreshed, for logging; empty when not on a dev checkout or nothing changed.</returns>
+    // The ids refreshed, for logging; empty when not on a dev checkout or nothing changed.
     public async Task<IReadOnlyList<string>> InstallAsync(string pluginsRoot, CancellationToken cancellationToken = default)
     {
         if (_ResolveSourceFolders() is not { Count: > 0 } sourceFolders)
@@ -36,11 +33,9 @@ public sealed class DevPluginInstaller(ILogger? logger = null)
             .ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// The <c>plugins-dev</c> folder for the running app's own checkout, or null off a dev checkout — the same
-    /// walk <see cref="InstallAsync"/> uses to decide there is nothing to sync. Exposed so a watcher (AC-185) can
-    /// find what to watch without duplicating that walk.
-    /// </summary>
+    // The `plugins-dev` folder for the running app's own checkout, or null off a dev checkout — the same
+    // walk `InstallAsync` uses to decide there is nothing to sync. Exposed so a watcher (AC-185) can
+    // find what to watch without duplicating that walk.
     public static string? FindPluginsDevRoot() =>
         _FindPluginsDev(new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
 

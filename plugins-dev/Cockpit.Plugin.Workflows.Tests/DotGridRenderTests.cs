@@ -7,22 +7,18 @@ using Cockpit.Plugin.Workflows.Canvas;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// <see cref="DotGrid"/> paints its dots out of a <see cref="DrawingBrush"/> handed to
-/// <c>WorkflowCanvas.Background</c>. The AC-338 palette harness reads brushes off properties, and a
-/// <see cref="DrawingBrush"/> is one property holding a whole nested drawing rather than a colour — so the grid's
-/// own doc comment calls it "the one part of the canvas that never followed the repaint at all", and that fault
-/// would still be invisible to every baseline in the repository (AC-413). Rendering it and reading the frame back
-/// is the only way to know what colour actually reached the screen.
-/// </summary>
+// `DotGrid` paints its dots out of a `DrawingBrush` handed to
+// `WorkflowCanvas.Background`. The AC-338 palette harness reads brushes off properties, and a
+// `DrawingBrush` is one property holding a whole nested drawing rather than a colour — so the grid's
+// own doc comment calls it "the one part of the canvas that never followed the repaint at all", and that fault
+// would still be invisible to every baseline in the repository (AC-413). Rendering it and reading the frame back
+// is the only way to know what colour actually reached the screen.
 [Collection("avalonia")]
 public class DotGridRenderTests
 {
-    /// <summary>
-    /// A dot is <see cref="DotGrid"/>'s 1.6px across, which antialiasing leaves fully opaque nowhere — unscaled, no
-    /// pixel carries the token itself and the assertion below could only be a "close enough" against a hand-picked
-    /// tolerance. Magnified, the dot's middle is covered outright, which is what lets it be an equality instead.
-    /// </summary>
+    // A dot is `DotGrid`'s 1.6px across, which antialiasing leaves fully opaque nowhere — unscaled, no
+    // pixel carries the token itself and the assertion below could only be a "close enough" against a hand-picked
+    // tolerance. Magnified, the dot's middle is covered outright, which is what lets it be an equality instead.
     private const int Magnification = 8;
 
     private const int SurfaceSize = 64;
@@ -48,7 +44,7 @@ public class DotGridRenderTests
         Assert.True(painted.Count > 1, "a surface carrying a dot grid has more than the backdrop's one colour on it");
     }
 
-    /// <summary>The dot-grid brush on a bare surface, magnified, shown and laid out.</summary>
+    // The dot-grid brush on a bare surface, magnified, shown and laid out.
     private static Host _Rendered()
     {
         var surface = new Border
@@ -72,18 +68,15 @@ public class DotGridRenderTests
         return new Host(window);
     }
 
-    /// <summary>
-    /// Every distinct colour in the frame. Scanning rather than sampling a computed dot centre: a
-    /// <see cref="DrawingBrush"/> aligns its tiles to the destination rect, so where in the surface a dot lands is
-    /// the brush's business, not something a test should have to predict.
-    /// <para>
-    /// The host's <c>RenderedScene</c> reads a frame the same way and the two are not shared, which
-    /// <c>Cockpit.TestSupport</c> would normally be the answer to. It is not here: capturing a frame needs
-    /// <c>Avalonia.Headless</c>, that project deliberately carries no rendering runtime ("each caller brings the
-    /// runtime it shows it with"), and putting one there would hand it to all eight of its consumers — six of which
-    /// render nothing — to spare six lines.
-    /// </para>
-    /// </summary>
+    // Every distinct colour in the frame. Scanning rather than sampling a computed dot centre: a
+    // `DrawingBrush` aligns its tiles to the destination rect, so where in the surface a dot lands is
+    // the brush's business, not something a test should have to predict.
+    //
+    // The host's `RenderedScene` reads a frame the same way and the two are not shared, which
+    // `Cockpit.TestSupport` would normally be the answer to. It is not here: capturing a frame needs
+    // `Avalonia.Headless`, that project deliberately carries no rendering runtime ("each caller brings the
+    // runtime it shows it with"), and putting one there would hand it to all eight of its consumers — six of which
+    // render nothing — to spare six lines.
     private static HashSet<IReadOnlyList<byte>> _PaintedColours(Window window)
     {
         using var frame = window.CaptureRenderedFrame()
@@ -113,13 +106,11 @@ public class DotGridRenderTests
             (left, right) => left is not null && right is not null && left.SequenceEqual(right),
             channels => HashCode.Combine(channels[0], channels[1], channels[2]));
 
-    /// <summary>
-    /// What the token looks like once it has been through the same renderer: a plain fill of it, read back off a
-    /// frame. Comparing rendered bytes against rendered bytes rather than against the token's own R/G/B sidesteps
-    /// the frame buffer's channel order being the platform's business (BGRA on one machine, RGBA on another)
-    /// without having to sort the channels — and sorting would make a colour indistinguishable from its own
-    /// permutations, so a dot that came out <c>#392f2a</c> instead of <c>#2a2f39</c> would still pass.
-    /// </summary>
+    // What the token looks like once it has been through the same renderer: a plain fill of it, read back off a
+    // frame. Comparing rendered bytes against rendered bytes rather than against the token's own R/G/B sidesteps
+    // the frame buffer's channel order being the platform's business (BGRA on one machine, RGBA on another)
+    // without having to sort the channels — and sorting would make a colour indistinguishable from its own
+    // permutations, so a dot that came out `#392f2a` instead of `#2a2f39` would still pass.
     private static IReadOnlyList<byte> _AsRendered(IBrush brush)
     {
         var window = new Window { Width = 16, Height = 16, Content = new Border { Background = brush } };

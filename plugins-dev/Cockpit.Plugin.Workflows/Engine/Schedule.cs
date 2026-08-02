@@ -2,21 +2,16 @@ using System.Globalization;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// When a scheduled flow is due (#69). Two forms, both of them things a person would actually write:
-/// <list type="bullet">
-///   <item><c>09:00</c> — every day at that time.</item>
-///   <item><c>every 15m</c>, <c>every 2h</c> — on the interval, counted from midnight so it lands on round numbers.</item>
-/// </list>
-/// <para>
-/// Not cron. Cron is a language for a machine that must express "the third Tuesday", and this cockpit is one person's
-/// day: a time or an interval covers it, and anything it does not cover is better served by a shell command on a
-/// timer than by teaching everyone five asterisks.
-/// </para>
-/// </summary>
+// When a scheduled flow is due (#69). Two forms, both of them things a person would actually write:
+//   - `09:00` — every day at that time.
+//   - `every 15m`, `every 2h` — on the interval, counted from midnight so it lands on round numbers.
+//
+// Not cron. Cron is a language for a machine that must express "the third Tuesday", and this cockpit is one person's
+// day: a time or an interval covers it, and anything it does not cover is better served by a shell command on a
+// timer than by teaching everyone five asterisks.
 internal static class Schedule
 {
-    /// <summary>Whether a flow written as <paramref name="when"/> should fire in the minute <paramref name="now"/> falls in. False for anything unreadable — a schedule nobody can parse must never fire, least of all every minute.</summary>
+    // Whether a flow written as `when` should fire in the minute `now` falls in. False for anything unreadable — a schedule nobody can parse must never fire, least of all every minute.
     public static bool IsDue(string when, DateTimeOffset now)
     {
         var text = when.Trim();

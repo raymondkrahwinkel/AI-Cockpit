@@ -4,32 +4,27 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-/// <summary>
-/// The windows on a macOS desktop (AC-330), through <c>CGWindowListCopyWindowInfo</c> — which reports bounds and
-/// layer for every on-screen window, front to back, and needs no Screen Recording permission to do it: geometry
-/// is not pixels.
-/// </summary>
-/// <remarks>
-/// Bounds are in points, the same space <c>CGDisplayBounds</c> speaks and the same the capture's
-/// <see cref="CapturedDisplay.DesktopBounds"/> carries on this platform, so nothing is converted here.
-/// <para>
-/// Unverified: there is no Mac. Kept thin for that reason, with the picking itself in
-/// <c>ScreenshotSelectionViewModel</c> where it is tested. The window list is read through Core Foundation's own
-/// accessors rather than by laying a struct over the dictionaries, because their layout is not public.
-/// </para>
-/// </remarks>
+// The windows on a macOS desktop (AC-330), through `CGWindowListCopyWindowInfo` — which reports bounds and
+// layer for every on-screen window, front to back, and needs no Screen Recording permission to do it: geometry
+// is not pixels.
+// Bounds are in points, the same space `CGDisplayBounds` speaks and the same the capture's
+// `CapturedDisplay.DesktopBounds` carries on this platform, so nothing is converted here.
+//
+// Unverified: there is no Mac. Kept thin for that reason, with the picking itself in
+// `ScreenshotSelectionViewModel` where it is tested. The window list is read through Core Foundation's own
+// accessors rather than by laying a struct over the dictionaries, because their layout is not public.
 [SupportedOSPlatform("macos")]
 internal sealed class MacDesktopWindows : IDesktopWindows
 {
     private const string CoreFoundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
     private const string CoreGraphics = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
 
-    /// <summary><c>kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements</c> — what the operator can actually see and point at.</summary>
+    // `kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements` — what the operator can actually see and point at.
     private const uint OnScreenWindows = 1 | 16;
 
     private const uint NullWindow = 0;
 
-    /// <summary>The layer ordinary application windows live on. Menu bars, docks and shielding windows sit above it and are not things to screenshot.</summary>
+    // The layer ordinary application windows live on. Menu bars, docks and shielding windows sit above it and are not things to screenshot.
     private const int NormalLayer = 0;
 
     private const int Float64 = 6;
@@ -93,10 +88,8 @@ internal sealed class MacDesktopWindows : IDesktopWindows
         return value != IntPtr.Zero && CFNumberGetValue(value, Float64, out double number) ? number : null;
     }
 
-    /// <summary>
-    /// A window's name is optional — an application that has not granted the cockpit accessibility rights
-    /// reports none — so the owner's name stands in, which is the more useful label anyway.
-    /// </summary>
+    // A window's name is optional — an application that has not granted the cockpit accessibility rights
+    // reports none — so the owner's name stands in, which is the more useful label anyway.
     private static string? _StringOf(IntPtr dictionary, string key)
     {
         var value = _ValueOf(dictionary, key);
@@ -117,11 +110,9 @@ internal sealed class MacDesktopWindows : IDesktopWindows
             : null;
     }
 
-    /// <summary>
-    /// One entry out of a window's dictionary. The key has to be a Core Foundation string, which is created here
-    /// and released again — Create owns what it returns, and a key made per lookup and left behind leaks once per
-    /// field per window per capture. What comes back is the dictionary's own and is not released.
-    /// </summary>
+    // One entry out of a window's dictionary. The key has to be a Core Foundation string, which is created here
+    // and released again — Create owns what it returns, and a key made per lookup and left behind leaks once per
+    // field per window per capture. What comes back is the dictionary's own and is not released.
     private static IntPtr _ValueOf(IntPtr dictionary, string key)
     {
         var name = CFStringCreateWithCString(IntPtr.Zero, key, Utf8);

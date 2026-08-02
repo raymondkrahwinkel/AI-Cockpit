@@ -25,11 +25,9 @@ internal interface ILocalJobRunner
         CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// The order a local run is decided in: is this machine able, is this job allowed, is the machine free — and only
-/// then act. Each question is answered before the next is asked, so a refusal always names the first thing wrong
-/// rather than whichever check happened to run last.
-/// </summary>
+// The order a local run is decided in: is this machine able, is this job allowed, is the machine free — and only
+// then act. Each question is answered before the next is asked, so a refusal always names the first thing wrong
+// rather than whichever check happened to run last.
 internal sealed class LocalJobRunner(
     ILocalCiRuntime runtime,
     IStreamingCliRunner cli,
@@ -97,7 +95,7 @@ internal sealed class LocalJobRunner(
 
         try
         {
-            return await _RunApprovedAsync(request, runnerLabel, onLine, approve, cancellationToken);
+            return await _RunApprovedAsync(request, runnerLabel, approval.SetupActions, onLine, approve, cancellationToken);
         }
         finally
         {
@@ -110,6 +108,7 @@ internal sealed class LocalJobRunner(
     private async Task<LocalRunResult> _RunApprovedAsync(
         LocalRunRequest request,
         string runnerLabel,
+        IReadOnlyList<string> setupActions,
         Action<string> onLine,
         Func<string, Task<bool>>? approve,
         CancellationToken cancellationToken)
@@ -148,13 +147,25 @@ internal sealed class LocalJobRunner(
                     "act answered when this machine was checked but could not be started now. Check that it is still on PATH.");
             }
 
+            if (run.Succeeded)
+            {
+                return new LocalRunResult(
+                    request.WorkflowPath, request.JobId, LocalRunOutcome.Passed, elapsed.Elapsed, run.ExitCode,
+                    Reason: null, tail.Text());
+            }
+
+            // A failure is only a verdict on the code once the code was reached (AC-617). One that happened while
+            // act was still setting the job up says something about this machine instead, and reporting it as
+            // "failed" sends the operator hunting through a diff that was never compiled.
+            var setupFailure = SetupFailure.Reason(tail.Lines(), setupActions);
+
             return new LocalRunResult(
                 request.WorkflowPath,
                 request.JobId,
-                run.Succeeded ? LocalRunOutcome.Passed : LocalRunOutcome.Failed,
+                setupFailure is null ? LocalRunOutcome.Failed : LocalRunOutcome.CouldNotRun,
                 elapsed.Elapsed,
                 run.ExitCode,
-                Reason: null,
+                setupFailure,
                 tail.Text());
         }
         catch (OperationCanceledException)
@@ -174,7 +185,7 @@ internal sealed class LocalJobRunner(
         }
     }
 
-    /// <summary>The half that is not ready speaks for itself — those sentences are what the detection is for.</summary>
+    // The half that is not ready speaks for itself — those sentences are what the detection is for.
     private static string _WhyTheMachineCannot(LocalCiRuntimeStatus status) =>
         status.Docker.IsReady ? status.Act.Message : status.Docker.Message;
 }

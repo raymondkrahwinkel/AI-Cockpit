@@ -6,21 +6,17 @@ using Cockpit.Plugin.Kubernetes.Settings;
 
 namespace Cockpit.Plugin.Kubernetes.Cluster;
 
-/// <summary>
-/// Builds and caches the <see cref="IKubernetes"/> client for a registered cluster from its stored kubeconfig and
-/// chosen context (AC-80). The plugin holds the credentials here and hands the client only to the gated tools —
-/// nothing else in the process, and never an agent, sees the kubeconfig. One client per cluster, kept for reuse; a
-/// settings change to a cluster invalidates its cached client so the next call rebuilds from the new config.
-/// </summary>
+// Builds and caches the `IKubernetes` client for a registered cluster from its stored kubeconfig and
+// chosen context (AC-80). The plugin holds the credentials here and hands the client only to the gated tools —
+// nothing else in the process, and never an agent, sees the kubeconfig. One client per cluster, kept for reuse; a
+// settings change to a cluster invalidates its cached client so the next call rebuilds from the new config.
 internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : IDisposable
 {
     private readonly ConcurrentDictionary<string, IKubernetes> _clients = new(StringComparer.Ordinal);
 
-    /// <summary>
-    /// A connected client for the cluster, or an error string when no kubeconfig is stored or the config will not
-    /// build. Building does not itself reach the cluster (an exec-auth context runs its plugin on the first call,
-    /// not here), so a returned client is ready but unproven until it is used.
-    /// </summary>
+    // A connected client for the cluster, or an error string when no kubeconfig is stored or the config will not
+    // build. Building does not itself reach the cluster (an exec-auth context runs its plugin on the first call,
+    // not here), so a returned client is ready but unproven until it is used.
     public (IKubernetes? Client, string? Error) Connect(ClusterRegistration cluster)
     {
         if (_clients.TryGetValue(cluster.Id, out var cached))
@@ -45,10 +41,8 @@ internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : ID
         return (winner, null);
     }
 
-    /// <summary>
-    /// A fresh client the caller owns and must dispose — deliberately NOT cached. A long-lived holder (a port-forward
-    /// tunnel) needs a client that <see cref="InvalidateAll"/> cannot dispose out from under it on a settings save.
-    /// </summary>
+    // A fresh client the caller owns and must dispose — deliberately NOT cached. A long-lived holder (a port-forward
+    // tunnel) needs a client that `InvalidateAll` cannot dispose out from under it on a settings save.
     public (IKubernetes? Client, string? Error) ConnectDedicated(ClusterRegistration cluster) => _BuildClient(cluster);
 
     private (IKubernetes? Client, string? Error) _BuildClient(ClusterRegistration cluster)
@@ -93,7 +87,7 @@ internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : ID
         }
     }
 
-    /// <summary>Drops a cluster's cached client (e.g. after its settings changed), so the next call rebuilds it.</summary>
+    // Drops a cluster's cached client (e.g. after its settings changed), so the next call rebuilds it.
     public void Invalidate(string clusterId)
     {
         if (_clients.TryRemove(clusterId, out var client))
@@ -102,7 +96,7 @@ internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : ID
         }
     }
 
-    /// <summary>Drops every cached client — used after a settings save, since a cluster's kubeconfig or context may have changed.</summary>
+    // Drops every cached client — used after a settings save, since a cluster's kubeconfig or context may have changed.
     public void InvalidateAll()
     {
         foreach (var clusterId in _clients.Keys.ToArray())

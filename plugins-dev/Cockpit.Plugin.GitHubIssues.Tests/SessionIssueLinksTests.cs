@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// Linking an issue to a session is also what makes that session recognisable (#AC-310). Before this, only the
-/// route that started a <em>new</em> session labelled anything — an issue tied to a session already running left
-/// its sidebar row reading "default - 3", which is the one case where you most want to tell four panes apart.
-/// </summary>
+// Linking an issue to a session is also what makes that session recognisable (#AC-310). Before this, only the
+// route that started a *new* session labelled anything — an issue tied to a session already running left
+// its sidebar row reading "default - 3", which is the one case where you most want to tell four panes apart.
 public class SessionIssueLinksTests
 {
     private static readonly GitHubIssue Issue =

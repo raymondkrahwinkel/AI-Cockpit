@@ -4,11 +4,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Persists the STT calibration under the <c>transcriptionCalibrations</c> section of <c>cockpit.json</c>,
-/// keyed by machine name (AC-68 slice 3). Read-modify-writes the whole file via <see cref="CockpitConfigFileAccess"/>
-/// so a save touches only this machine's entry — a synced config keeps every other machine's measurement.
-/// </summary>
+// Persists the STT calibration under the `transcriptionCalibrations` section of `cockpit.json`,
+// keyed by machine name (AC-68 slice 3). Read-modify-writes the whole file via `CockpitConfigFileAccess`
+// so a save touches only this machine's entry — a synced config keeps every other machine's measurement.
 internal sealed class TranscriptionCalibrationStore : ITranscriptionCalibrationStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class TranscriptionCalibrationStore : ITranscriptionCalibrationS
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path and machine key.</summary>
+    // Test seam: point the store at an arbitrary config file path and machine key.
     internal TranscriptionCalibrationStore(string configFilePath, string machineKey)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

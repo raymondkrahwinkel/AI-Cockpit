@@ -4,13 +4,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>
-/// <see cref="KimiAcpSessionDriver"/> against a <see cref="FakeCliSubprocess"/> (AC-269/270/271/272) — proves the
-/// full session lifecycle without a live <c>kimi acp</c>: session/new with an absolute cwd and the MCP stdio
-/// no-type trap, session/resume (never session/load), a non-blocking prompt whose content streams through
-/// session/update, permission prompts (including the tunnelled AskUserQuestion) and cancel, live config options,
-/// and the D12 crash signal.
-/// </summary>
+// `KimiAcpSessionDriver` against a `FakeCliSubprocess` (AC-269/270/271/272) — proves the
+// full session lifecycle without a live `kimi acp`: session/new with an absolute cwd and the MCP stdio
+// no-type trap, session/resume (never session/load), a non-blocking prompt whose content streams through
+// session/update, permission prompts (including the tunnelled AskUserQuestion) and cancel, live config options,
+// and the D12 crash signal.
 public class KimiAcpSessionDriverTests
 {
     private static KimiConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());

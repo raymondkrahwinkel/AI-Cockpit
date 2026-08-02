@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-/// <summary>
-/// Persists <see cref="DelegationSettings"/> under the <c>delegation</c> section of <c>cockpit.json</c> (same
-/// file/pattern as <see cref="Debugging.DebugSettingsStore"/>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched.
-/// </summary>
+// Persists `DelegationSettings` under the `delegation` section of `cockpit.json` (same
+// file/pattern as `Debugging.DebugSettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched.
 internal sealed class DelegationSettingsStore : IDelegationSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class DelegationSettingsStore : IDelegationSettingsStore, ISingl
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal DelegationSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

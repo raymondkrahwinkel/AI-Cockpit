@@ -7,14 +7,12 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// <see cref="ITextToSpeechService"/> backed by sherpa-onnx running the multilingual, multi-speaker
-/// SupertonicTTS model. Registered as a singleton — in this single-user desktop cockpit the model is loaded
-/// once and reused across every session and language, so no utterance pays the (real) load cost again. The
-/// model is downloaded and cached on first use via <see cref="SupertonicModelCache"/>, mirroring the Whisper
-/// model's lazy download. One voice covers every language: the speaker (timbre) is a fixed sid and the
-/// language is passed per utterance as generation data, so a mixed Dutch/English reply never switches voice.
-/// </summary>
+// `ITextToSpeechService` backed by sherpa-onnx running the multilingual, multi-speaker
+// SupertonicTTS model. Registered as a singleton — in this single-user desktop cockpit the model is loaded
+// once and reused across every session and language, so no utterance pays the (real) load cost again. The
+// model is downloaded and cached on first use via `SupertonicModelCache`, mirroring the Whisper
+// model's lazy download. One voice covers every language: the speaker (timbre) is a fixed sid and the
+// language is passed per utterance as generation data, so a mixed Dutch/English reply never switches voice.
 internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpeechService> logger)
     : ITextToSpeechService, ISingletonService
 {
@@ -47,7 +45,7 @@ internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpee
         return new TtsAudio(audio.Samples, audio.SampleRate);
     }
 
-    /// <summary>Loads the voice ahead of the reply that is coming (AC-603), and says nothing when it cannot.</summary>
+    // Loads the voice ahead of the reply that is coming (AC-603), and says nothing when it cannot.
     public async Task WarmUpAsync(CancellationToken cancellationToken = default)
     {
         try

@@ -6,10 +6,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The managed-worktrees dialog (AC-85): the git worktrees the cockpit created, each one's git state and whether its
-/// session is still alive, with reattach for a gone one and a remove that asks before it can lose unsaved work.
-/// </summary>
+// The managed-worktrees dialog (AC-85): the git worktrees the cockpit created, each one's git state and whether its
+// session is still alive, with reattach for a gone one and a remove that asks before it can lose unsaved work.
 public partial class WorktreesDialog : Window
 {
     public WorktreesDialog()

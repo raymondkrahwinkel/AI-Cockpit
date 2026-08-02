@@ -3,14 +3,12 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-/// <summary>
-/// AC-605 criterion 4: the host (<see cref="ProjectResourcePathPortability.ClassifyScope"/>) and this plugin
-/// (<see cref="ProjectResourcePortabilityClassifier.Classify"/>) must agree on every reference shape — they cannot
-/// share code (a plugin must not reference <c>Cockpit.Core</c>, AC-244), so this is the one place both are run
-/// against the same table and compared. Change either side's rule for a shape here and this test goes red, whichever
-/// side changed — that is the whole point: it is not two separate tests that could drift out of sync with each
-/// other, only with reality.
-/// </summary>
+// AC-605 criterion 4: the host (`ProjectResourcePathPortability.ClassifyScope`) and this plugin
+// (`ProjectResourcePortabilityClassifier.Classify`) must agree on every reference shape — they cannot
+// share code (a plugin must not reference `Cockpit.Core`, AC-244), so this is the one place both are run
+// against the same table and compared. Change either side's rule for a shape here and this test goes red, whichever
+// side changed — that is the whole point: it is not two separate tests that could drift out of sync with each
+// other, only with reality.
 public class ProjectResourceScopeParityTests
 {
     // Maps the plugin's own four-shape vocabulary onto the host's — see ProjectResourceScope's own remarks on why
@@ -82,7 +80,7 @@ public class ProjectResourceScopeParityTests
             hostScope);
     }
 
-    /// <summary>Every <see cref="ProjectResourceScope"/> a real reference can produce must also be portable-or-not identically on both sides — the other half of criterion 4, since Classify's <c>IsPortable</c>/wire vocabulary has no direct host equivalent to compare Scope against otherwise.</summary>
+    // Every `ProjectResourceScope` a real reference can produce must also be portable-or-not identically on both sides — the other half of criterion 4, since Classify's `IsPortable`/wire vocabulary has no direct host equivalent to compare Scope against otherwise.
     [Theory]
     [InlineData(ProjectResourceScope.Repo, true)]
     [InlineData(ProjectResourceScope.Home, true)]

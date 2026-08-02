@@ -1,27 +1,23 @@
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// A bounded tail of a child process's stderr (AC-534): the last <see cref="MaxLines"/> lines, capped at
-/// <see cref="MaxChars"/> characters in total, so a chatty native runtime (whisper.cpp, CUDA) can never grow this
-/// unbounded. A line longer than the whole budget is cut to fit rather than dropped.
-/// Feed it from a <c>Process.ErrorDataReceived</c> handler registered after <c>BeginErrorReadLine</c> — that
-/// combination is what keeps the OS pipe buffer (~64 KB on Linux) draining continuously, since an unread
-/// redirected stream blocks the writing child once its buffer fills. This type only remembers; it never logs,
-/// so routine stderr chatter never floods the log the way the idle-reaper noise did (AC-533) — a caller reads
-/// <see cref="Snapshot"/> only once there is an actual failure to explain.
-/// </summary>
+// A bounded tail of a child process's stderr (AC-534): the last `MaxLines` lines, capped at
+// `MaxChars` characters in total, so a chatty native runtime (whisper.cpp, CUDA) can never grow this
+// unbounded. A line longer than the whole budget is cut to fit rather than dropped.
+// Feed it from a `Process.ErrorDataReceived` handler registered after `BeginErrorReadLine` — that
+// combination is what keeps the OS pipe buffer (~64 KB on Linux) draining continuously, since an unread
+// redirected stream blocks the writing child once its buffer fills. This type only remembers; it never logs,
+// so routine stderr chatter never floods the log the way the idle-reaper noise did (AC-533) — a caller reads
+// `Snapshot` only once there is an actual failure to explain.
 internal sealed class ProcessStderrTail
 {
     internal const int MaxLines = 20;
 
-    /// <summary>
-    /// The cap is counted in characters, not bytes: a non-ASCII line therefore occupies more room on disk than
-    /// this number suggests. That is deliberate — the point is a bound, and counting UTF-8 bytes per line would
-    /// cost an encode on a path that runs for every line a chatty runtime writes.
-    /// </summary>
+    // The cap is counted in characters, not bytes: a non-ASCII line therefore occupies more room on disk than
+    // this number suggests. That is deliberate — the point is a bound, and counting UTF-8 bytes per line would
+    // cost an encode on a path that runs for every line a chatty runtime writes.
     internal const int MaxChars = 4096;
 
-    /// <summary>Marks a line that was longer than the whole budget and had to be cut to fit.</summary>
+    // Marks a line that was longer than the whole budget and had to be cut to fit.
     internal const string TruncationMarker = "… (truncated)";
 
     private readonly object _gate = new();
@@ -57,7 +53,7 @@ internal sealed class ProcessStderrTail
         }
     }
 
-    /// <summary>The remembered lines, oldest first, newline-joined — or empty if the process said nothing (yet).</summary>
+    // The remembered lines, oldest first, newline-joined — or empty if the process said nothing (yet).
     public string Snapshot()
     {
         lock (_gate)

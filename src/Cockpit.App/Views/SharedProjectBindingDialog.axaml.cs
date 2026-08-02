@@ -6,11 +6,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The "Finish setting up…" bind step (AC-246). Closes with the new <see cref="Core.Projects.Project"/>, or null
-/// when the operator cancelled. Cloning is raised as an event for the host to answer, the same split
-/// <see cref="ProjectDialog"/> already uses — the clone flow owns a dialog of its own.
-/// </summary>
+// The "Finish setting up…" bind step (AC-246). Closes with the new `Core.Projects.Project`, or null
+// when the operator cancelled. Cloning is raised as an event for the host to answer, the same split
+// `ProjectDialog` already uses — the clone flow owns a dialog of its own.
 public partial class SharedProjectBindingDialog : Window
 {
     public SharedProjectBindingDialog()

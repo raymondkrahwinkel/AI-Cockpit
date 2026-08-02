@@ -5,13 +5,11 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.UsageTrend;
 
-/// <summary>
-/// The usage-trend widget's plugin (AC-54): its only contribution is one dashboard widget that charts the
-/// context / 5h / weekly usage of your sessions over time, per profile. Bundled like the clock so the trend is
-/// there out of the box, and it is what proves the AC-54 read surface end to end from outside the host — a widget
-/// reads a session's live usage through <c>ICockpitSessionObserver.ActiveSessionUsage</c> and keeps its own
-/// history, with no core knowledge of what it shows.
-/// </summary>
+// The usage-trend widget's plugin (AC-54): its only contribution is one dashboard widget that charts the
+// context / 5h / weekly usage of your sessions over time, per profile. Bundled like the clock so the trend is
+// there out of the box, and it is what proves the AC-54 read surface end to end from outside the host — a widget
+// reads a session's live usage through `ICockpitSessionObserver.ActiveSessionUsage` and keeps its own
+// history, with no core knowledge of what it shows.
 public sealed class UsageTrendPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

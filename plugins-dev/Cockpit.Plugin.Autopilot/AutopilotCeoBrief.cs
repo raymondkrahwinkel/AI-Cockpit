@@ -4,28 +4,22 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The briefing the CEO planning session is handed when the planning round opens (AC-174): who it is (its own profile,
-/// so it plans in a consistent identity), the goal (and the source item when the run was triggered from one, else that
-/// it is a CEO-first run), the profiles it can route work to and what each costs, and how to emit the plan through
-/// <see cref="AutopilotPlanTools"/> so the operator sees it and approves it. Kept a pure builder off the workspace body
-/// so the exact wording — the tool name, the step shape, the cost guidance — is tested without a live session.
-/// </summary>
+// The briefing the CEO planning session is handed when the planning round opens (AC-174): who it is (its own profile,
+// so it plans in a consistent identity), the goal (and the source item when the run was triggered from one, else that
+// it is a CEO-first run), the profiles it can route work to and what each costs, and how to emit the plan through
+// `AutopilotPlanTools` so the operator sees it and approves it. Kept a pure builder off the workspace body
+// so the exact wording — the tool name, the step shape, the cost guidance — is tested without a live session.
 internal static class AutopilotCeoBrief
 {
-    /// <summary>
-    /// Builds the CEO's planning brief. <paramref name="profiles"/> are the profiles the run can route steps to (the
-    /// host supplies them, with each one's local/paid nature) so the CEO can pick the cheapest-adequate model per step;
-    /// <paramref name="ceoIdentity"/> is the CEO's own profile label so it plans in one consistent identity. Both are
-    /// optional: with none, the brief simply omits the roster and the identity line.
-    /// </summary>
-    /// <summary>
-    /// The opening turn a tracker-triggered planning round submits to the CEO: it names the source
-    /// issue (tracker, id and title) so the visible prompt says which ticket is being planned — not a generic "the issue
-    /// in your brief" — and tells the CEO to draft and emit the plan now. Without any opening turn a system prompt alone
-    /// leaves the model idle ("the prompt stays empty"); a CEO-first run has no source and sends no kickoff, so the CEO
-    /// asks the operator what the run should achieve instead.
-    /// </summary>
+    // Builds the CEO's planning brief. `profiles` are the profiles the run can route steps to (the
+    // host supplies them, with each one's local/paid nature) so the CEO can pick the cheapest-adequate model per step;
+    // `ceoIdentity` is the CEO's own profile label so it plans in one consistent identity. Both are
+    // optional: with none, the brief simply omits the roster and the identity line.
+    // The opening turn a tracker-triggered planning round submits to the CEO: it names the source
+    // issue (tracker, id and title) so the visible prompt says which ticket is being planned — not a generic "the issue
+    // in your brief" — and tells the CEO to draft and emit the plan now. Without any opening turn a system prompt alone
+    // leaves the model idle ("the prompt stays empty"); a CEO-first run has no source and sends no kickoff, so the CEO
+    // asks the operator what the run should achieve instead.
     public static string SourceKickoff(AutopilotPlanSource source)
     {
         var title = string.IsNullOrWhiteSpace(source.Title) ? string.Empty : $": \"{source.Title.Trim()}\"";

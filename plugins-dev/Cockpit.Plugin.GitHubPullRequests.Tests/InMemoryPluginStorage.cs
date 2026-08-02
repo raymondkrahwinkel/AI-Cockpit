@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>An in-memory <see cref="IPluginStorage"/> for exercising settings and the refresh source without the host's real per-plugin store.</summary>
+// An in-memory `IPluginStorage` for exercising settings and the refresh source without the host's real per-plugin store.
 internal sealed class InMemoryPluginStorage : IPluginStorage
 {
     private readonly Dictionary<string, object?> _store = new(StringComparer.Ordinal);

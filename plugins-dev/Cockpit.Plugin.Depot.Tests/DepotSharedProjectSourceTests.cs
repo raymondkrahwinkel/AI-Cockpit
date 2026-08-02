@@ -6,14 +6,12 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotSharedProjectSource"/> (AC-245): what the Projects workspace's "Shared via Depot — …" group is
-/// built from. Every fixture below is the actual JSON text a Depot server would send — parsed by the real
-/// <c>list_projects</c> parser and the real <see cref="Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectDefinitionJson"/>
-/// deserializer, not a fake that hands back an already-built <see cref="SharedProject"/> — the exact naad AC-604's
-/// own comment on this ticket named as the one worth measuring against a real-looking response rather than trusting
-/// a shortcut fake.
-/// </summary>
+// `DepotSharedProjectSource` (AC-245): what the Projects workspace's "Shared via Depot — …" group is
+// built from. Every fixture below is the actual JSON text a Depot server would send — parsed by the real
+// `list_projects` parser and the real `Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectDefinitionJson`
+// deserializer, not a fake that hands back an already-built `SharedProject` — the exact naad AC-604's
+// own comment on this ticket named as the one worth measuring against a real-looking response rather than trusting
+// a shortcut fake.
 public class DepotSharedProjectSourceTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");

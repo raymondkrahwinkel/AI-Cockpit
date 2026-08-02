@@ -6,12 +6,10 @@ using Cockpit.App.Views.Onboarding;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
-/// <summary>
-/// Drives the first-run wizard shell (AC-509): the step bar, and Back/Next/Skip across whatever steps are handed
-/// in. A step whose <see cref="IFirstRunWizardStep.IsSkipped"/> is true stays in the bar, struck through, but
-/// Back/Next step over it — shown, not silently dropped, the same way a step that was never registered at all
-/// (the Depot step, AC-540) is silently absent rather than shown broken.
-/// </summary>
+// Drives the first-run wizard shell (AC-509): the step bar, and Back/Next/Skip across whatever steps are handed
+// in. A step whose `IFirstRunWizardStep.IsSkipped` is true stays in the bar, struck through, but
+// Back/Next step over it — shown, not silently dropped, the same way a step that was never registered at all
+// (the Depot step, AC-540) is silently absent rather than shown broken.
 public sealed partial class FirstRunWizardViewModel : ObservableObject
 {
     private readonly IReadOnlyList<Control> _stepContents;
@@ -45,7 +43,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         _ApplyPosition();
     }
 
-    /// <summary>Design-time constructor for the previewer.</summary>
+    // Design-time constructor for the previewer.
     public FirstRunWizardViewModel()
         : this([new WelcomeStep()])
     {
@@ -63,7 +61,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     [ObservableProperty]
     private bool _isLastStep;
 
-    /// <summary>Raised when the operator is done with the wizard — Skip, or Next on the last step. The window closes on this.</summary>
+    // Raised when the operator is done with the wizard — Skip, or Next on the last step. The window closes on this.
     public event EventHandler? RequestClose;
 
     [RelayCommand(CanExecute = nameof(CanGoBack))]

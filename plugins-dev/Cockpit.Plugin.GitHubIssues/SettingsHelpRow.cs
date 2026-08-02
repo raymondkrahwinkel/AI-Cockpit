@@ -6,12 +6,10 @@ using Avalonia.Media;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// Wraps a settings input in a row with a small "?" help affordance to its right, showing a hover tooltip
-/// that explains what to fill in and how to obtain it. Centralizes the input+tooltip layout so every field
-/// in <see cref="GitHubIssuesSettingsControl"/> builds it the same way instead of repeating the tooltip
-/// wiring per field.
-/// </summary>
+// Wraps a settings input in a row with a small "?" help affordance to its right, showing a hover tooltip
+// that explains what to fill in and how to obtain it. Centralizes the input+tooltip layout so every field
+// in `GitHubIssuesSettingsControl` builds it the same way instead of repeating the tooltip
+// wiring per field.
 internal static class SettingsHelpRow
 {
     public static Control Build(Control input, string helpText)

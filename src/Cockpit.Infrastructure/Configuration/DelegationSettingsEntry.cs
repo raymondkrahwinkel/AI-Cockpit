@@ -2,7 +2,7 @@ using Cockpit.Core.Delegation;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="DelegationSettings"/> in the <c>delegation</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of `DelegationSettings` in the `delegation` section of `cockpit.json`.
 internal sealed class DelegationSettingsEntry
 {
     public bool McpEnabled { get; set; } = true;

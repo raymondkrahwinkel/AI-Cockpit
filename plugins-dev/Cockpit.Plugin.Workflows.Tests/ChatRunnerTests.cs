@@ -3,12 +3,10 @@ using Cockpit.Plugin.Workflows.Engine;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// What Slack and Discord are actually sent (#69). They differ in one thing — Slack takes <c>text</c>, Discord takes
-/// <c>content</c> — and in one limit, which is the one that bites: Discord refuses a message over two thousand
-/// characters outright, and two thousand characters is exactly the size a command's output reaches on the day the flow
-/// matters.
-/// </summary>
+// What Slack and Discord are actually sent (#69). They differ in one thing — Slack takes `text`, Discord takes
+// `content` — and in one limit, which is the one that bites: Discord refuses a message over two thousand
+// characters outright, and two thousand characters is exactly the size a command's output reaches on the day the flow
+// matters.
 public class ChatRunnerTests
 {
     [Fact]

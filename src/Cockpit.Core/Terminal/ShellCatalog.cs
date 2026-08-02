@@ -1,39 +1,31 @@
 namespace Cockpit.Core.Terminal;
 
-/// <summary>
-/// Finds the shells a plain terminal pane can open on this machine (#AC-25). The cockpit already runs an agent CLI in
-/// a pty; a terminal is the same pty pointed at a shell instead, so all this has to answer is <em>which shells are
-/// actually here, and by what absolute path</em> — the same cross-platform trap as
-/// <see cref="Cockpit.Core.Abstractions.Sessions.ITtySessionProvider"/>'s executables: a bare <c>pwsh</c>/<c>bash</c>
-/// is not spawnable directly (no <c>PATHEXT</c>/PATH lookup by <see cref="System.Diagnostics.Process"/>), so a shell
-/// is only offered once it resolves to a real file.
-/// </summary>
-/// <remarks>
-/// Detection is best-effort and ordered by preference: the first entry is the sensible default. On Windows that is
-/// PowerShell 7 (<c>pwsh</c>) if installed, else Windows PowerShell, then <c>cmd</c>, then <c>wsl</c> when present. On
-/// Linux/macOS the login shell (<c>$SHELL</c>) leads, then <c>bash</c>/<c>zsh</c>/<c>sh</c>. It resolves against the
-/// real filesystem and this OS — <see cref="Build"/> is a seam that takes the environment values so a test can point
-/// it at a temp directory of real shell files, but it deliberately does not simulate a foreign OS: <see cref="Detect"/>
-/// only ever runs on the OS it describes, so leaning on <see cref="Path"/> here is correct, not a shortcut.
-/// </remarks>
+// Finds the shells a plain terminal pane can open on this machine (#AC-25). The cockpit already runs an agent CLI in
+// a pty; a terminal is the same pty pointed at a shell instead, so all this has to answer is *which shells are
+// actually here, and by what absolute path* — the same cross-platform trap as
+// `Cockpit.Core.Abstractions.Sessions.ITtySessionProvider`'s executables: a bare `pwsh`/`bash`
+// is not spawnable directly (no `PATHEXT`/PATH lookup by `System.Diagnostics.Process`), so a shell
+// is only offered once it resolves to a real file.
+// Detection is best-effort and ordered by preference: the first entry is the sensible default. On Windows that is
+// PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, then `cmd`, then `wsl` when present. On
+// Linux/macOS the login shell (`$SHELL`) leads, then `bash`/`zsh`/`sh`. It resolves against the
+// real filesystem and this OS — `Build` is a seam that takes the environment values so a test can point
+// it at a temp directory of real shell files, but it deliberately does not simulate a foreign OS: `Detect`
+// only ever runs on the OS it describes, so leaning on `Path` here is correct, not a shortcut.
 public static class ShellCatalog
 {
-    /// <summary>
-    /// The shells present on this machine, most-preferred first, each with an absolute path. Reads the real
-    /// environment and filesystem; empty only on a machine with no resolvable shell at all (which should not happen).
-    /// </summary>
+    // The shells present on this machine, most-preferred first, each with an absolute path. Reads the real
+    // environment and filesystem; empty only on a machine with no resolvable shell at all (which should not happen).
     public static IReadOnlyList<ShellDescriptor> Detect() =>
         Build(
             Environment.GetEnvironmentVariable("PATH") ?? string.Empty,
             Environment.GetEnvironmentVariable("SHELL"),
             Environment.GetEnvironmentVariable("COMSPEC"));
 
-    /// <summary>
-    /// The detection over an explicit environment (this OS, the real filesystem), so a test can drive it with a PATH
-    /// pointing at a temp directory of real shell files. Each candidate is resolved via <see cref="_Resolve"/>;
-    /// unresolved candidates are dropped rather than offered as a path that fails to spawn, and the same binary is
-    /// never listed twice. Internal for unit tests.
-    /// </summary>
+    // The detection over an explicit environment (this OS, the real filesystem), so a test can drive it with a PATH
+    // pointing at a temp directory of real shell files. Each candidate is resolved via `_Resolve`;
+    // unresolved candidates are dropped rather than offered as a path that fails to spawn, and the same binary is
+    // never listed twice. Internal for unit tests.
     internal static IReadOnlyList<ShellDescriptor> Build(string pathVariable, string? shellEnvironmentVariable, string? comSpec)
     {
         var candidates = OperatingSystem.IsWindows()
@@ -61,13 +53,11 @@ public static class ShellCatalog
         return shells;
     }
 
-    /// <summary>
-    /// A descriptor for an operator-specified custom shell (#AC-25) — any path or command, including a third-party
-    /// shell not in <see cref="Detect"/> (fish, nushell, xonsh, a login wrapper), which is common on Linux/macOS. The
-    /// command is resolved to an absolute path when it can be (a bare name via PATH, Windows extensions probed); when
-    /// it cannot, it is passed through unchanged so the pty surfaces a real "not found" the operator can fix, rather
-    /// than being silently swapped for another shell. Returns null only for a blank command.
-    /// </summary>
+    // A descriptor for an operator-specified custom shell (#AC-25) — any path or command, including a third-party
+    // shell not in `Detect` (fish, nushell, xonsh, a login wrapper), which is common on Linux/macOS. The
+    // command is resolved to an absolute path when it can be (a bare name via PATH, Windows extensions probed); when
+    // it cannot, it is passed through unchanged so the pty surfaces a real "not found" the operator can fix, rather
+    // than being silently swapped for another shell. Returns null only for a blank command.
     public static ShellDescriptor? ForCommand(string command)
     {
         var trimmed = command?.Trim() ?? string.Empty;
@@ -114,10 +104,8 @@ public static class ShellCatalog
         return string.IsNullOrEmpty(name) ? path : name;
     }
 
-    /// <summary>
-    /// Resolves a shell command to an absolute path on this machine, or null when it is not here. A rooted path is
-    /// taken as given (subject to the file probe); a bare name is looked up via <see cref="HostExecutableProbe"/>,
-    /// the shared PATH/<c>PATHEXT</c> probe. Host-native by design: it only ever runs for the OS it is on.
-    /// </summary>
+    // Resolves a shell command to an absolute path on this machine, or null when it is not here. A rooted path is
+    // taken as given (subject to the file probe); a bare name is looked up via `HostExecutableProbe`,
+    // the shared PATH/`PATHEXT` probe. Host-native by design: it only ever runs for the OS it is on.
     private static string? _Resolve(string command, string pathVariable) => HostExecutableProbe.Resolve(command, pathVariable);
 }

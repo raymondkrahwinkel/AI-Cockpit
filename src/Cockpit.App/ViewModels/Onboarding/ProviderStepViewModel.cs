@@ -10,14 +10,12 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
-/// <summary>
-/// Drives the first-run wizard's provider step (AC-510[b]): what the operator already has (observed where
-/// possible — criterion 1), the four ways an install can land (criterion 2), the offline path (criterion 3) and
-/// the fact that Skip/Next never install anything on their own (criterion 4). Installs go through
-/// <see cref="IPluginProvisioningService"/> — the same DI-registered instance the plugin store dialog now
-/// receives (<see cref="Cockpit.App.ViewModels.PluginManagerViewModel"/>'s own constructor), so there is exactly
-/// one install path, not a second one for onboarding.
-/// </summary>
+// Drives the first-run wizard's provider step (AC-510[b]): what the operator already has (observed where
+// possible — criterion 1), the four ways an install can land (criterion 2), the offline path (criterion 3) and
+// the fact that Skip/Next never install anything on their own (criterion 4). Installs go through
+// `IPluginProvisioningService` — the same DI-registered instance the plugin store dialog now
+// receives (`Cockpit.App.ViewModels.PluginManagerViewModel`'s own constructor), so there is exactly
+// one install path, not a second one for onboarding.
 public sealed partial class ProviderStepViewModel : ObservableObject
 {
     private readonly IPluginStoreConfigStore? _storeConfigStore;
@@ -27,12 +25,10 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
     public ObservableCollection<ProviderPickerRowViewModel> Providers { get; } = [];
 
-    /// <summary>
-    /// The two providers that need neither internet nor an install (AC-510[b] criterion 3), joined for direct
-    /// display — core, not a plugin (see <c>SessionProviderCatalog</c>), so this is always accurate regardless of
-    /// what the store says or whether it could even be reached. Always shown, not only while offline: a fair
-    /// alternative on any network.
-    /// </summary>
+    // The two providers that need neither internet nor an install (AC-510[b] criterion 3), joined for direct
+    // display — core, not a plugin (see `SessionProviderCatalog`), so this is always accurate regardless of
+    // what the store says or whether it could even be reached. Always shown, not only while offline: a fair
+    // alternative on any network.
     public string LocalProvidersText { get; } = string.Join(" and ",
         SessionProviderCatalog.Providers
             .Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio)
@@ -41,7 +37,7 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     [ObservableProperty]
     private bool _isLoading = true;
 
-    /// <summary>True once every configured store failed to fetch (AC-510[b] criterion 3) — a plain statement of fact, not an error: <see cref="LocalProviderNames"/> still work.</summary>
+    // True once every configured store failed to fetch (AC-510[b] criterion 3) — a plain statement of fact, not an error: `LocalProviderNames` still work.
     [ObservableProperty]
     private bool _isOffline;
 
@@ -51,7 +47,7 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     [ObservableProperty]
     private bool _isInstalling;
 
-    /// <summary>The batch's own summary line once <see cref="InstallSelectedCommand"/> finishes — a half-succeeded batch names it plainly (criterion 2) instead of leaving the operator to read every row.</summary>
+    // The batch's own summary line once `InstallSelectedCommand` finishes — a half-succeeded batch names it plainly (criterion 2) instead of leaving the operator to read every row.
     [ObservableProperty]
     private string _summaryMessage = string.Empty;
 
@@ -59,11 +55,9 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
     public bool CanInstallSelected => !IsInstalling && !IsLoading && Providers.Any(row => row.IsSelected);
 
-    /// <summary>
-    /// Design-time/previewer constructor: an inert catalogue with nothing to fetch. Also what the Screenshotter
-    /// stages scenes from, seeding <see cref="Providers"/> directly (the plugin store dialog's own pattern) — so
-    /// the checkbox-to-command wiring below has to be live here too, not only when the real DI constructor runs.
-    /// </summary>
+    // Design-time/previewer constructor: an inert catalogue with nothing to fetch. Also what the Screenshotter
+    // stages scenes from, seeding `Providers` directly (the plugin store dialog's own pattern) — so
+    // the checkbox-to-command wiring below has to be live here too, not only when the real DI constructor runs.
     public ProviderStepViewModel()
     {
         IsLoading = false;
@@ -118,13 +112,11 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     // also awaits LoadAsync directly must not end up with two runs both adding rows into the same collection).
     private int _loadGeneration;
 
-    /// <summary>
-    /// Fetches every configured store's index, keeps only the AI-provider entries (AC-510[b] criterion 5:
-    /// <see cref="PluginStoreEntry.ProviderCategory"/>), and marks each one found/not-found/cloud. Offline when
-    /// every store fails — never when the list of providers merely comes back empty, which is a different, honest
-    /// state of its own (a store that carries no providers today). The latest call always wins over an older one
-    /// still in flight.
-    /// </summary>
+    // Fetches every configured store's index, keeps only the AI-provider entries (AC-510[b] criterion 5:
+    // `PluginStoreEntry.ProviderCategory`), and marks each one found/not-found/cloud. Offline when
+    // every store fails — never when the list of providers merely comes back empty, which is a different, honest
+    // state of its own (a store that carries no providers today). The latest call always wins over an older one
+    // still in flight.
     public async Task LoadAsync()
     {
         if (_storeConfigStore is null || _storeClient is null)
@@ -218,12 +210,10 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
     partial void OnIsLoadingChanged(bool value) => InstallSelectedCommand.NotifyCanExecuteChanged();
 
-    /// <summary>
-    /// Installs every checked row through the provisioning seam's batch call — one plugin failing isolated from
-    /// the rest (AC-510[b] criterion 2's "half-succeeded" shape), each row's own outcome applied once the batch
-    /// returns. Never runs on its own: Skip and Next (the wizard shell) never call this, so a pre-filled
-    /// selection nobody acted on installs nothing (criterion 4).
-    /// </summary>
+    // Installs every checked row through the provisioning seam's batch call — one plugin failing isolated from
+    // the rest (AC-510[b] criterion 2's "half-succeeded" shape), each row's own outcome applied once the batch
+    // returns. Never runs on its own: Skip and Next (the wizard shell) never call this, so a pre-filled
+    // selection nobody acted on installs nothing (criterion 4).
     [RelayCommand(CanExecute = nameof(CanInstallSelected))]
     private async Task InstallSelectedAsync()
     {

@@ -5,12 +5,10 @@ using Cockpit.App.Theming;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// A thin horizontal level meter for calibrating the barge-in threshold (AC-9): a track, a fill whose width is the
-/// live microphone <see cref="Level"/> (0..1), and a marker line at <see cref="Threshold"/>. The fill turns
-/// accent-coloured once the level reaches the threshold, so while talking the operator can see exactly how loud
-/// "…when the microphone is louder than X" really is and set it by eye.
-/// </summary>
+// A thin horizontal level meter for calibrating the barge-in threshold (AC-9): a track, a fill whose width is the
+// live microphone `Level` (0..1), and a marker line at `Threshold`. The fill turns
+// accent-coloured once the level reaches the threshold, so while talking the operator can see exactly how loud
+// "…when the microphone is louder than X" really is and set it by eye.
 public sealed class MicLevelMeter : Control
 {
     public static readonly StyledProperty<double> LevelProperty =

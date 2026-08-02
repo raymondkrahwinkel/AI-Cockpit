@@ -6,12 +6,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// Picks a GitHub issue for one session (#77). Opened from that session's own header, so the issue lands on the pane
-/// you opened it from. A list of the open issues for the owner you configured, and a box to narrow it — the question
-/// is "which of these am I working on here", and nothing else belongs on screen. Scoped to the repository the
-/// session's project is linked to when one is (AC-548), the same as the full issues dialog.
-/// </summary>
+// Picks a GitHub issue for one session (#77). Opened from that session's own header, so the issue lands on the pane
+// you opened it from. A list of the open issues for the owner you configured, and a box to narrow it — the question
+// is "which of these am I working on here", and nothing else belongs on screen. Scoped to the repository the
+// session's project is linked to when one is (AC-548), the same as the full issues dialog.
 internal sealed class GitHubIssuePickerControl : UserControl
 {
     private readonly GitHubIssuesSettings _settings;

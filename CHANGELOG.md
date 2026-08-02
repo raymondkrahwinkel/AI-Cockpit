@@ -65,6 +65,21 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session running the Claude terminal no longer sits on "Idle" while it is plainly working. The cockpit
+  worked out which conversation file such a session was writing by taking whichever one appeared on disk after the
+  launch — and every other Claude on the machine writes one too, several of which are written once and never again.
+  Pick one of those and the session goes quiet for the rest of its life: nothing arrives, so nothing ever corrects
+  the status, and the dot stays on the value it had before it started. The session now says which file is its own
+  and the cockpit reads that one, including after a `/clear` starts a fresh conversation in the same pane.
+- fixed: the voice assistant can read the transcript of a session running in a terminal. It could only ever read the
+  headless kind, so asking about any other session got "no AI session is running on that pane" — for a pane it had
+  just listed as live, with a status line of its own. Two answers that cannot both be true, and no way to tell from
+  the outside which one was wrong. A shell pane, which has no agent behind it, still answers that it has nothing.
+- fixed: a local CI run that falls over before your code is reached no longer reports itself as a failed build. When
+  the container engine or the network cannot hand over one of the actions a job sets itself up with, every job on the
+  machine goes red in seconds without compiling a line — and "build failed" sends you looking through a change that
+  was never built. Such a run now comes back as one that reached no verdict, says so in a sentence, and brings the
+  engine's own message along. A step of your own that fails is still a plain failure.
 - fixed: a keyboard shortcut you set to a combination another action already uses now actually fires. Nothing
   stopped two actions holding the same keys, and the one that ran was decided by where it happened to sit in the
   list — so the shortcut you had just set did nothing, with no sign anywhere that it had lost. A combination now

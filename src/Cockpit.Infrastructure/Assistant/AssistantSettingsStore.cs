@@ -5,13 +5,11 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-/// <summary>
-/// Persists <see cref="AssistantSettings"/> under the <c>assistant</c> section of <c>cockpit.json</c> — same
-/// read-modify-write pattern as <see cref="Cockpit.Infrastructure.Voice.VoiceSettingsStore"/>, so saving these
-/// settings never touches the assistant's own profile section (<c>assistantProfile</c>, owned by
-/// <see cref="AssistantProfileStore"/>) or any other sibling. When no settings were ever saved,
-/// <see cref="LoadAsync"/> returns the defaults (assistant disabled).
-/// </summary>
+// Persists `AssistantSettings` under the `assistant` section of `cockpit.json` — same
+// read-modify-write pattern as `Cockpit.Infrastructure.Voice.VoiceSettingsStore`, so saving these
+// settings never touches the assistant's own profile section (`assistantProfile`, owned by
+// `AssistantProfileStore`) or any other sibling. When no settings were ever saved,
+// `LoadAsync` returns the defaults (assistant disabled).
 internal sealed class AssistantSettingsStore : IAssistantSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -21,7 +19,7 @@ internal sealed class AssistantSettingsStore : IAssistantSettingsStore, ISinglet
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal AssistantSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

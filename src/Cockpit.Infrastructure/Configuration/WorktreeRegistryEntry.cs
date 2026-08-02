@@ -2,11 +2,9 @@ using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a <see cref="WorktreeRecord"/> under the <c>worktrees</c> section of <c>cockpit.json</c>. A
-/// plain DTO kept apart from the domain record so the persisted shape can evolve on its own, mirroring how
-/// <see cref="SessionProfileEntry"/> shadows the profile record.
-/// </summary>
+// On-disk shape of a `WorktreeRecord` under the `worktrees` section of `cockpit.json`. A
+// plain DTO kept apart from the domain record so the persisted shape can evolve on its own, mirroring how
+// `SessionProfileEntry` shadows the profile record.
 internal sealed class WorktreeRegistryEntry
 {
     public string SessionId { get; set; } = string.Empty;
@@ -19,7 +17,7 @@ internal sealed class WorktreeRegistryEntry
 
     public string BaseCommit { get; set; } = string.Empty;
 
-    /// <summary>The branch the worktree forked from, when known; absent on entries written before this was tracked (they deserialize to null and the status check falls back to detecting the default branch).</summary>
+    // The branch the worktree forked from, when known; absent on entries written before this was tracked (they deserialize to null and the status check falls back to detecting the default branch).
     public string? BaseBranch { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
@@ -28,7 +26,7 @@ internal sealed class WorktreeRegistryEntry
 
     public bool IsRetained { get; set; }
 
-    /// <summary>Whether an agent made this worktree through the MCP tool (AC-520 fix 5); absent on entries written before this was tracked, which deserialize to false — read as "session-own, protected", the safe default.</summary>
+    // Whether an agent made this worktree through the MCP tool (AC-520 fix 5); absent on entries written before this was tracked, which deserialize to false — read as "session-own, protected", the safe default.
     public bool IsAgentCreated { get; set; }
 
     public static WorktreeRegistryEntry FromDomain(WorktreeRecord record) => new()

@@ -2,31 +2,24 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-/// <summary>
-/// Places displays into one image that covers the whole desktop at a single scale (AC-326), and refuses when the
-/// image is not the size those displays imply.
-/// </summary>
-/// <remarks>
-/// Two callers, for opposite reasons. Linux is <em>given</em> such an image — KWin renders every output into one
-/// buffer — and has to check the desktop's own display list accounts for it, because the portal says nothing
-/// about what went into what it hands back; a layout that does not add up is a wrong crop waiting to happen and
-/// is turned down instead. macOS captures each display separately and <em>builds</em> one, so it asks this where
-/// to draw each of them (AC-328). Windows needs neither: its blit already produces the virtual screen, monitors
-/// laid into it at their own pixels.
-/// <para>
-/// The consequence worth stating on the Linux side: with one display this always works, whatever the scale,
-/// because one display is trivially its own bounding box. With several it holds as long as the compositor really
-/// does use one scale for the lot — measured on Plasma 6.7 for the single-display case only. A multi-monitor
-/// desktop that composes some other way ends as a refusal naming both sizes, which is an answer that can be
-/// acted on; guessing is not.
-/// </para>
-/// </remarks>
+// Places displays into one image that covers the whole desktop at a single scale (AC-326), and refuses when the
+// image is not the size those displays imply.
+// Two callers, for opposite reasons. Linux is *given* such an image — KWin renders every output into one
+// buffer — and has to check the desktop's own display list accounts for it, because the portal says nothing
+// about what went into what it hands back; a layout that does not add up is a wrong crop waiting to happen and
+// is turned down instead. macOS captures each display separately and *builds* one, so it asks this where
+// to draw each of them (AC-328). Windows needs neither: its blit already produces the virtual screen, monitors
+// laid into it at their own pixels.
+//
+// The consequence worth stating on the Linux side: with one display this always works, whatever the scale,
+// because one display is trivially its own bounding box. With several it holds as long as the compositor really
+// does use one scale for the lot — measured on Plasma 6.7 for the single-display case only. A multi-monitor
+// desktop that composes some other way ends as a refusal naming both sizes, which is an answer that can be
+// acted on; guessing is not.
 internal static class ComposedCaptureLayout
 {
-    /// <summary>
-    /// The displays placed into the image, or <see langword="null"/> when the image is not the size those
-    /// displays imply.
-    /// </summary>
+    // The displays placed into the image, or `null` when the image is not the size those
+    // displays imply.
     public static IReadOnlyList<CapturedDisplay>? TryCompose(IReadOnlyList<DesktopDisplay> displays, int imageWidth, int imageHeight)
     {
         if (displays.Count == 0 || displays.Any(display => display.Bounds is not { Width: > 0, Height: > 0 }))

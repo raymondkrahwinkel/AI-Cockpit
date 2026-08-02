@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>The shared upload loop (AC-116): every image in a message is attached, and one that fails does not stop the rest — the outcome counts both.</summary>
+// The shared upload loop (AC-116): every image in a message is attached, and one that fails does not stop the rest — the outcome counts both.
 public class YouTrackAttachUploadTests : IAsyncLifetime
 {
     private LoopbackHttpServer? _server;

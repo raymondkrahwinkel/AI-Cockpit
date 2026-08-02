@@ -2,13 +2,11 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of an <see cref="McpServerConfig"/> in the <c>mcpServers</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of an `McpServerConfig` in the `mcpServers` section of `cockpit.json`.
 internal sealed class McpServerEntry
 {
-    /// <summary>
-    /// The server's stable id (AC-403), under which its OAuth token is filed. Empty for a row written before this
-    /// field existed — see <see cref="ToDomain"/> for the id such a row answers to instead.
-    /// </summary>
+    // The server's stable id (AC-403), under which its OAuth token is filed. Empty for a row written before this
+    // field existed — see `ToDomain` for the id such a row answers to instead.
     public string Id { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
@@ -33,11 +31,9 @@ internal sealed class McpServerEntry
 
     public string? OAuthScopes { get; set; }
 
-    /// <summary>
-    /// Nullable and left out when there are none, the way <c>ProjectEntry.AdditionalInfo</c> is: most servers carry no
-    /// custom headers, and writing <c>"Headers": []</c> into every entry is noise in a file the operator reads and
-    /// hand-edits. Nullable also because a hand-edited config can put null here and the deserializer will assign it.
-    /// </summary>
+    // Nullable and left out when there are none, the way `ProjectEntry.AdditionalInfo` is: most servers carry no
+    // custom headers, and writing `"Headers": []` into every entry is noise in a file the operator reads and
+    // hand-edits. Nullable also because a hand-edited config can put null here and the deserializer will assign it.
     public List<McpHeaderEntry>? Headers { get; set; }
 
     public bool Enabled { get; set; } = true;

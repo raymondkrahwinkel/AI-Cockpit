@@ -3,10 +3,8 @@ using Cockpit.Plugin.LocalCi.Runtime;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
 
-/// <summary>
-/// Stands in for act. The endings that matter — a tool that is not there, a job that fails, a run that is stopped
-/// halfway — are exactly the ones a real act on a real Docker will not produce on request.
-/// </summary>
+// Stands in for act. The endings that matter — a tool that is not there, a job that fails, a run that is stopped
+// halfway — are exactly the ones a real act on a real Docker will not produce on request.
 internal sealed class FakeStreamingCliRunner(Func<Action<string>, CancellationToken, Task<StreamedRun>> behaviour)
     : IStreamingCliRunner
 {
@@ -26,7 +24,7 @@ internal sealed class FakeStreamingCliRunner(Func<Action<string>, CancellationTo
     public static FakeStreamingCliRunner NeverStarts() =>
         new((_, _) => Task.FromResult(StreamedRun.NotStarted));
 
-    /// <summary>Runs until cancelled, signalling <paramref name="running"/> once it is under way.</summary>
+    // Runs until cancelled, signalling `running` once it is under way.
     public static FakeStreamingCliRunner Blocking(TaskCompletionSource running) =>
         new(async (_, cancellationToken) =>
         {
@@ -81,7 +79,7 @@ internal sealed class FakeLocalCiRuntime(LocalCiRuntimeStatus status) : ILocalCi
     }
 }
 
-/// <summary>A checkout on disk with workflows in it — what the approval reads, so it cannot be faked away.</summary>
+// A checkout on disk with workflows in it — what the approval reads, so it cannot be faked away.
 internal sealed class TemporaryProject : IDisposable
 {
     public const string OneLinuxJob = """
@@ -92,6 +90,20 @@ internal sealed class TemporaryProject : IDisposable
             runs-on: ubuntu-latest
             steps:
               - run: echo building
+        """;
+
+    // A job whose steps include the two actions the classifier allows — the setup half of a real run (AC-617).
+    public const string JobWithSetupActions = """
+        name: CI
+        on: push
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v7
+              - uses: actions/setup-dotnet@v6
+              - name: Build
+                run: dotnet build
         """;
 
     public const string MatrixJob = """

@@ -9,17 +9,14 @@ using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-/// <summary>
-/// <see cref="IMcpToolProvider"/> that connects to each enabled server in the shared registry via the MCP
-/// client (stdio or streamable-HTTP) and collects their tools (#26). A server that fails to start or is
-/// unreachable is logged and skipped, so the session runs with whatever connected rather than failing.
-/// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
-/// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
-/// <para>
-/// Also the app's own <see cref="IMcpToolInvoker"/> (AC-502): the same connect path, called for one tool on one
-/// server, on the app's behalf rather than a session's.
-/// </para>
-/// </summary>
+// `IMcpToolProvider` that connects to each enabled server in the shared registry via the MCP
+// client (stdio or streamable-HTTP) and collects their tools (#26). A server that fails to start or is
+// unreachable is logged and skipped, so the session runs with whatever connected rather than failing.
+// OAuth-protected HTTP servers go through `IMcpOAuthAuthorizer` (loopback + system browser), so
+// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
+//
+// Also the app's own `IMcpToolInvoker` (AC-502): the same connect path, called for one tool on one
+// server, on the app's behalf rather than a session's.
 internal sealed class McpToolProvider(
     IMcpServerCatalog catalog,
     IMcpOAuthAuthorizer oauthAuthorizer,
@@ -263,7 +260,7 @@ internal sealed class McpToolProvider(
         }
     }
 
-    /// <summary>One server's successful connect result: the live client (kept for disposal), its tools, their permission classes, and its name.</summary>
+    // One server's successful connect result: the live client (kept for disposal), its tools, their permission classes, and its name.
     private sealed record ServerConnection(McpClient Client, IReadOnlyList<AIFunction> Tools, string Name, IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses);
 
     // Built-in local defaults, overlaid with the registry: a registry server (that is not Claude-only)

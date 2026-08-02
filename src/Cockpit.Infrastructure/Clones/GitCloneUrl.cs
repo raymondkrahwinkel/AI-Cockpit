@@ -2,20 +2,16 @@ using System.Text;
 
 namespace Cockpit.Infrastructure.Clones;
 
-/// <summary>
-/// Parses a git remote URL into the pieces the clone manager needs (AC-90): the URL git is actually handed, the
-/// managed slug/folder <c>host/org/repo</c> the clone lives under, and a normalized identity two URLs are compared
-/// by for de-duplication. A pure value with no I/O, so the fiddly parsing — scp-style SSH, nested groups, a trailing
-/// <c>.git</c>, credentials in an HTTPS URL — is testable on its own.
-/// </summary>
-/// <remarks>
-/// Security (a binding project rule): for an <c>http</c>/<c>https</c> URL any <c>user:password@</c> credentials are
-/// stripped from <see cref="RemoteUrl"/> before it ever reaches git, the registry, or a log. A token in the URL
-/// would otherwise land in <c>.git/config</c>, the process arguments and the logs — the exact leak the design
-/// forbids — and dropping it forces git down the host credential-helper path instead, which is v1's whole auth
-/// model. An SSH URL keeps its <c>git@</c> user — that is the SSH login the clone needs, not a secret — but any
-/// password after it (<c>user:secret@host</c>) is stripped just the same, so no scheme smuggles a credential through.
-/// </remarks>
+// Parses a git remote URL into the pieces the clone manager needs (AC-90): the URL git is actually handed, the
+// managed slug/folder `host/org/repo` the clone lives under, and a normalized identity two URLs are compared
+// by for de-duplication. A pure value with no I/O, so the fiddly parsing — scp-style SSH, nested groups, a trailing
+// `.git`, credentials in an HTTPS URL — is testable on its own.
+// Security (a binding project rule): for an `http`/`https` URL any `user:password@` credentials are
+// stripped from `RemoteUrl` before it ever reaches git, the registry, or a log. A token in the URL
+// would otherwise land in `.git/config`, the process arguments and the logs — the exact leak the design
+// forbids — and dropping it forces git down the host credential-helper path instead, which is v1's whole auth
+// model. An SSH URL keeps its `git@` user — that is the SSH login the clone needs, not a secret — but any
+// password after it (`user:secret@host`) is stripped just the same, so no scheme smuggles a credential through.
 internal sealed class GitCloneUrl
 {
     private GitCloneUrl(string remoteUrl, string host, IReadOnlyList<string> segments)
@@ -25,32 +21,28 @@ internal sealed class GitCloneUrl
         Segments = segments;
     }
 
-    /// <summary>The URL git is handed — credentials stripped for HTTPS, so no secret reaches argv or <c>.git/config</c>.</summary>
+    // The URL git is handed — credentials stripped for HTTPS, so no secret reaches argv or `.git/config`.
     public string RemoteUrl { get; }
 
-    /// <summary>The host the repository lives on, lowercased (<c>github.com</c>), the first slug segment.</summary>
+    // The host the repository lives on, lowercased (`github.com`), the first slug segment.
     public string Host { get; }
 
-    /// <summary>The path segments under the host — <c>[org, repo]</c>, or more for a nested group — sanitized and lowercased.</summary>
+    // The path segments under the host — `[org, repo]`, or more for a nested group — sanitized and lowercased.
     public IReadOnlyList<string> Segments { get; }
 
-    /// <summary>The stable slug <c>host/org/repo</c> used for the managed folder and to name the clone.</summary>
+    // The stable slug `host/org/repo` used for the managed folder and to name the clone.
     public string Slug => string.Join('/', new[] { Host }.Concat(Segments));
 
-    /// <summary>The slug as an OS-native relative path (<c>host/org/repo</c> under the clones root).</summary>
+    // The slug as an OS-native relative path (`host/org/repo` under the clones root).
     public string RelativePath => System.IO.Path.Combine(new[] { Host }.Concat(Segments).ToArray());
 
-    /// <summary>
-    /// The identity two remotes are the same repository by: host plus path, lowercased, scheme/credentials/port and
-    /// a trailing <c>.git</c> ignored — so <c>https://github.com/o/r.git</c> and <c>git@github.com:o/r</c> match.
-    /// </summary>
+    // The identity two remotes are the same repository by: host plus path, lowercased, scheme/credentials/port and
+    // a trailing `.git` ignored — so `https://github.com/o/r.git` and `git@github.com:o/r` match.
     public string NormalizedKey => Slug;
 
-    /// <summary>
-    /// Parses <paramref name="url"/>, or throws when it is not a git URL a clone could be built from — an empty
-    /// string, no host, or no repository name. The message is safe to surface: it never echoes the raw URL, which
-    /// could carry a token.
-    /// </summary>
+    // Parses `url`, or throws when it is not a git URL a clone could be built from — an empty
+    // string, no host, or no repository name. The message is safe to surface: it never echoes the raw URL, which
+    // could carry a token.
     public static GitCloneUrl Parse(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
@@ -65,7 +57,7 @@ internal sealed class GitCloneUrl
             : _ParseSchemeUrl(trimmed);
     }
 
-    /// <summary>Whether <paramref name="otherRemoteUrl"/> (an existing checkout's <c>origin</c>) is the same repository as this one — the de-dup test. A remote that will not parse is treated as "not the same", the safe direction.</summary>
+    // Whether `otherRemoteUrl` (an existing checkout's `origin`) is the same repository as this one — the de-dup test. A remote that will not parse is treated as "not the same", the safe direction.
     public bool SameRepositoryAs(string otherRemoteUrl)
     {
         try

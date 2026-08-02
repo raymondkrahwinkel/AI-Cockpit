@@ -107,10 +107,8 @@ public interface IDelegationService
     Task<DelegatedTaskView?> StopAsync(string taskId, string? callerPaneId = null);
 }
 
-/// <summary>
-/// A profile a caller just scaffolded (#67, AC-6): added and usable to start a session under, but not yet a
-/// delegation target — enrolling it, and setting what a delegated task under it may do, is the operator's call.
-/// </summary>
+// A profile a caller just scaffolded (#67, AC-6): added and usable to start a session under, but not yet a
+// delegation target — enrolling it, and setting what a delegated task under it may do, is the operator's call.
 public sealed record ScaffoldedProfileView(
     string Label,
     string Provider,
@@ -119,22 +117,18 @@ public sealed record ScaffoldedProfileView(
     string? Purpose,
     IReadOnlyList<string> Tags);
 
-/// <summary>
-/// A provider a session can run under, as a calling agent sees it (AC-6). <paramref name="Name"/> is the value to
-/// pass where a provider is named (e.g. <c>add_profile</c>'s <c>provider</c> for the local ones);
-/// <paramref name="AddableWithAddProfile"/> is false for a plugin/login provider the operator alone may set up.
-/// </summary>
+// A provider a session can run under, as a calling agent sees it (AC-6). `Name` is the value to
+// pass where a provider is named (e.g. `add_profile`'s `provider` for the local ones);
+// `AddableWithAddProfile` is false for a plugin/login provider the operator alone may set up.
 public sealed record AvailableProviderView(
     string Name,
     string DisplayName,
     string Kind,
     bool AddableWithAddProfile);
 
-/// <summary>
-/// A profile a task may be handed to, as a calling agent sees it (#67). <paramref name="McpServers"/> is the set
-/// of MCP servers a task delegated to this profile would actually receive — the caller reads it to pass a valid
-/// narrowing subset on <c>delegate_task</c> (AC-136) rather than guessing at server names.
-/// </summary>
+// A profile a task may be handed to, as a calling agent sees it (#67). `McpServers` is the set
+// of MCP servers a task delegated to this profile would actually receive — the caller reads it to pass a valid
+// narrowing subset on `delegate_task` (AC-136) rather than guessing at server names.
 public sealed record DelegationTargetView(
     string ProfileLabel,
     string Provider,
@@ -145,12 +139,10 @@ public sealed record DelegationTargetView(
     int RunningTasks,
     IReadOnlyList<string> McpServers);
 
-/// <summary>
-/// What a caller asks for when delegating (#67). Everything else — driver, credentials, environment — comes from
-/// the profile, never from the call. <paramref name="McpServers"/> (AC-136) optionally narrows the task to a subset
-/// of the servers the profile allows; null leaves the profile's full set, and a name outside the allowed set is
-/// refused, never honoured — the per-task choice can only restrict, never grant.
-/// </summary>
+// What a caller asks for when delegating (#67). Everything else — driver, credentials, environment — comes from
+// the profile, never from the call. `McpServers` (AC-136) optionally narrows the task to a subset
+// of the servers the profile allows; null leaves the profile's full set, and a name outside the allowed set is
+// refused, never honoured — the per-task choice can only restrict, never grant.
 public sealed record DelegationRequest(
     string ProfileLabel,
     string Prompt,

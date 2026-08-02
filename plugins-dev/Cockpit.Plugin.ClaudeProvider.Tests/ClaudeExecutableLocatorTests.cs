@@ -1,12 +1,10 @@
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeExecutableLocator"/> (Fase 4) — resolving the <c>claude</c> command to a spawnable path so a bare
-/// name finds the Windows <c>.cmd</c> npm shim that <see cref="System.Diagnostics.Process"/> would not. Only the
-/// OS-independent contract is asserted here (a real PATH probe is environment-specific); the Windows shim probing
-/// mirrors the proven Codex locator.
-/// </summary>
+// `ClaudeExecutableLocator` (Fase 4) — resolving the `claude` command to a spawnable path so a bare
+// name finds the Windows `.cmd` npm shim that `System.Diagnostics.Process` would not. Only the
+// OS-independent contract is asserted here (a real PATH probe is environment-specific); the Windows shim probing
+// mirrors the proven Codex locator.
 public class ClaudeExecutableLocatorTests
 {
     [Fact]

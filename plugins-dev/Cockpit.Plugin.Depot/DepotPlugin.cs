@@ -7,17 +7,15 @@ using Cockpit.Plugin.Depot.Ui;
 
 namespace Cockpit.Plugin.Depot;
 
-/// <summary>
-/// Depot as a project memory source (AC-165/166) plus, since AC-243, a settings view where an operator connects one
-/// or more Depot instances. Since AC-501, each connection also registers its own memory source (see
-/// <see cref="DepotMemorySource"/>) rather than one fixed registration shared by every instance. Since AC-504, each
-/// connection's MCP server (an OAuth <see cref="McpServerContribution"/> — Depot has a single auth path, so the
-/// plugin never holds a credential of its own; the host drives the sign-in and keeps the token) is offered
-/// per-project (<see cref="GetMcpServers(string?, IReadOnlyList{string})"/>) rather than pushed into the shared
-/// registry for every session to see: a session on a project whose memory lives in one connection is offered that
-/// connection's server, not every configured instance. Reading and writing project memory still happens through the
-/// Depot MCP inside the session itself.
-/// </summary>
+// Depot as a project memory source (AC-165/166) plus, since AC-243, a settings view where an operator connects one
+// or more Depot instances. Since AC-501, each connection also registers its own memory source (see
+// `DepotMemorySource`) rather than one fixed registration shared by every instance. Since AC-504, each
+// connection's MCP server (an OAuth `McpServerContribution` — Depot has a single auth path, so the
+// plugin never holds a credential of its own; the host drives the sign-in and keeps the token) is offered
+// per-project (`GetMcpServers(string?, IReadOnlyList{string})`) rather than pushed into the shared
+// registry for every session to see: a session on a project whose memory lives in one connection is offered that
+// connection's server, not every configured instance. Reading and writing project memory still happens through the
+// Depot MCP inside the session itself.
 public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 {
     // Kept from Initialize so GetMcpServers can read the current connection list each time the host asks, rather
@@ -95,22 +93,18 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         }
     }
 
-    /// <summary>
-    /// Every connection this plugin has configured (AC-504), unscoped by project. Session delivery itself never
-    /// reaches this overload — the catalog always calls <see cref="GetMcpServers(string?, IReadOnlyList{string})"/>,
-    /// which this plugin overrides directly — but the host falls back to it when resolving an OAuth sign-in for a
-    /// name the shared registry no longer carries: signing in happens from this plugin's own settings view, which
-    /// has no project of its own to scope a call to the overload below by.
-    /// </summary>
+    // Every connection this plugin has configured (AC-504), unscoped by project. Session delivery itself never
+    // reaches this overload — the catalog always calls `GetMcpServers(string?, IReadOnlyList{string})`,
+    // which this plugin overrides directly — but the host falls back to it when resolving an OAuth sign-in for a
+    // name the shared registry no longer carries: signing in happens from this plugin's own settings view, which
+    // has no project of its own to scope a call to the overload below by.
     public IReadOnlyList<McpServerContribution> GetMcpServers() =>
         _settings is null ? [] : _settings.Connections.Select(_ContributionFor).ToList();
 
-    /// <summary>
-    /// The connection whose own memory-source scheme is among <paramref name="projectMemorySchemes"/> (AC-504) —
-    /// zero, one, or (a project with more than one Memory row pointing at Depot) several. <paramref name="projectId"/>
-    /// itself is unused: the schemes already say everything this plugin needs to know about which of its own
-    /// connections the calling project actually points at.
-    /// </summary>
+    // The connection whose own memory-source scheme is among `projectMemorySchemes` (AC-504) —
+    // zero, one, or (a project with more than one Memory row pointing at Depot) several. `projectId`
+    // itself is unused: the schemes already say everything this plugin needs to know about which of its own
+    // connections the calling project actually points at.
     public IReadOnlyList<McpServerContribution> GetMcpServers(string? projectId, IReadOnlyList<string> projectMemorySchemes)
     {
         if (_settings is null || _host is null || projectMemorySchemes.Count == 0)

@@ -3,18 +3,17 @@ using System.Runtime.InteropServices;
 
 namespace Cockpit.Core.Diagnostics;
 
-/// <summary>
-/// The cockpit process's own memory, split into the figure that matters and the figure that misleads (AC-57/AC-58).
-/// <see cref="ResidentBytes"/> is what the process actually occupies; <see cref="VirtualBytes"/> is the address
-/// space it reserved, which the .NET region GC inflates to tens of gigabytes on 64-bit Linux/Windows without using
-/// any of it. AC-57 started as a "62 GB" panic that was this reservation — so the panel shows resident first and
-/// labels virtual for what it is.
-/// </summary>
-/// <param name="ResidentBytes">Working set — physical memory in use now.</param>
-/// <param name="PeakResidentBytes">The highest the working set has reached this run.</param>
-/// <param name="VirtualBytes">Reserved address space. Large is normal; it is not memory in use.</param>
-/// <param name="PrivateBytes">Committed private memory — closer to the real cost than virtual, minus shared mappings.</param>
-/// <param name="SwapBytes">Swapped-out pages, when the platform reports them (Linux); null elsewhere.</param>
+// The cockpit process's own memory, split into the figure that matters and the figure that misleads (AC-57/AC-58).
+// `ResidentBytes` is what the process actually occupies; `VirtualBytes` is the address
+// space it reserved, which the .NET region GC inflates to tens of gigabytes on 64-bit Linux/Windows without using
+// any of it. AC-57 started as a "62 GB" panic that was this reservation — so the panel shows resident first and
+// labels virtual for what it is.
+//
+// `ResidentBytes`: Working set — physical memory in use now.
+// `PeakResidentBytes`: The highest the working set has reached this run.
+// `VirtualBytes`: Reserved address space. Large is normal; it is not memory in use.
+// `PrivateBytes`: Committed private memory — closer to the real cost than virtual, minus shared mappings.
+// `SwapBytes`: Swapped-out pages, when the platform reports them (Linux); null elsewhere.
 public sealed record ProcessMemoryInfo(
     long ResidentBytes,
     long PeakResidentBytes,

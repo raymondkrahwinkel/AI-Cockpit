@@ -3,17 +3,14 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// Git status (#1): a per-session header indicator (<see cref="GitStatusHeaderControl"/>) showing the branch /
-/// uncommitted / unpushed / ahead-behind status of the repo that session is working in, and dropping a status
-/// summary into that session on click. Everything it needs lives in the host's services already, so
-/// <see cref="ConfigureServices"/> is empty.
-/// <para>
-/// AC-522 removed the plugin's other half — a left-menu button opening a dialog over a manually configured
-/// repository list, for watching a repo with no session open. Raymond judged that overbuilt for what the
-/// per-session indicator already covers; the workflow steps below are unrelated and stayed.
-/// </para>
-/// </summary>
+// Git status (#1): a per-session header indicator (`GitStatusHeaderControl`) showing the branch /
+// uncommitted / unpushed / ahead-behind status of the repo that session is working in, and dropping a status
+// summary into that session on click. Everything it needs lives in the host's services already, so
+// `ConfigureServices` is empty.
+//
+// AC-522 removed the plugin's other half — a left-menu button opening a dialog over a manually configured
+// repository list, for watching a repo with no session open. Raymond judged that overbuilt for what the
+// per-session indicator already covers; the workflow steps below are unrelated and stayed.
 public sealed class GitStatusPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

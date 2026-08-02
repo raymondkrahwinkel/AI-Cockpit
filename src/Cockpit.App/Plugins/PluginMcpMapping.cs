@@ -3,13 +3,11 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// Maps a plugin's <see cref="McpServerContribution"/> (a plugin-ALC-safe DTO, no <c>Cockpit.Core</c> types) to
-/// the host's own <see cref="McpServerConfig"/> (#60, AC-11). The two sit either side of the plugin isolation
-/// boundary and are declared independently, so the mapping lives here — the one place that sees both — and is
-/// shared by the pull path (<see cref="McpServerCatalog"/>) and the legacy push path
-/// (<see cref="CockpitHost.AddMcpServer"/>).
-/// </summary>
+// Maps a plugin's `McpServerContribution` (a plugin-ALC-safe DTO, no `Cockpit.Core` types) to
+// the host's own `McpServerConfig` (#60, AC-11). The two sit either side of the plugin isolation
+// boundary and are declared independently, so the mapping lives here — the one place that sees both — and is
+// shared by the pull path (`McpServerCatalog`) and the legacy push path
+// (`CockpitHost.AddMcpServer`).
 internal static class PluginMcpMapping
 {
     public static McpServerConfig ToServerConfig(McpServerContribution contribution)

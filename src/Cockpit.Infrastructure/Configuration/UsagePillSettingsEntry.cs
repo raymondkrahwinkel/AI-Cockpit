@@ -2,10 +2,8 @@ using Cockpit.Core.UsagePill;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of <see cref="UsagePillSettings"/> in the <c>usagePill</c> section of <c>cockpit.json</c>.
-/// Fields are stored by name so the file stays readable and survives the enum being reordered.
-/// </summary>
+// On-disk shape of `UsagePillSettings` in the `usagePill` section of `cockpit.json`.
+// Fields are stored by name so the file stays readable and survives the enum being reordered.
 internal sealed class UsagePillSettingsEntry
 {
     public List<string> VisibleFields { get; set; } = [];

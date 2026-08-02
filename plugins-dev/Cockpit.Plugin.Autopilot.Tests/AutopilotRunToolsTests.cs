@@ -3,12 +3,10 @@ using System.Reflection;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The step agent's MCP tools (AC-193, AC-201): the wording of the <c>autopilot_blocked</c> tool description, which the
-/// model reads to decide when to stop. It is asserted here rather than through a live session so the reframing — prefer
-/// a documented assumption, and when you cannot, consult your MANAGER (the CEO), not the operator directly — is pinned
-/// without a running run.
-/// </summary>
+// The step agent's MCP tools (AC-193, AC-201): the wording of the `autopilot_blocked` tool description, which the
+// model reads to decide when to stop. It is asserted here rather than through a live session so the reframing — prefer
+// a documented assumption, and when you cannot, consult your MANAGER (the CEO), not the operator directly — is pinned
+// without a running run.
 public class AutopilotRunToolsTests
 {
     private static string BlockedDescription()

@@ -6,11 +6,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The CEO plan-emit tool's parsing (AC-174): a well-formed steps array builds the plan; a malformed or half-formed one
-/// is turned down with a clear error rather than producing an unrunnable plan. The pane-scoping half is covered where
-/// the tool is wired (it uses the same CurrentMcpCallerPaneId gate as AutopilotMcpTools).
-/// </summary>
+// The CEO plan-emit tool's parsing (AC-174): a well-formed steps array builds the plan; a malformed or half-formed one
+// is turned down with a clear error rather than producing an unrunnable plan. The pane-scoping half is covered where
+// the tool is wired (it uses the same CurrentMcpCallerPaneId gate as AutopilotMcpTools).
 public class AutopilotPlanToolsTests
 {
     [Fact]

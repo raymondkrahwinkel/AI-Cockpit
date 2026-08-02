@@ -1,12 +1,10 @@
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>
-/// <see cref="KimiUsageParser"/> (AC-274) — the free-text <c>Context:</c> line is the only wire-level source of
-/// token/context data in Kimi's ACP surface (protocol §11); these tests pin the exact format and its pitfalls
-/// (thousands-comma counts, an above-100% percentage, the conditional Total/Current-turn rows) plus the
-/// "never guess at a number" fallback to <see langword="null"/> on anything unexpected.
-/// </summary>
+// `KimiUsageParser` (AC-274) — the free-text `Context:` line is the only wire-level source of
+// token/context data in Kimi's ACP surface (protocol §11); these tests pin the exact format and its pitfalls
+// (thousands-comma counts, an above-100% percentage, the conditional Total/Current-turn rows) plus the
+// "never guess at a number" fallback to `null` on anything unexpected.
 public class KimiUsageParserTests
 {
     [Fact]

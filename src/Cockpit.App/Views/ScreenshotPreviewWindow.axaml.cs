@@ -5,11 +5,9 @@ using Cockpit.App.Controls;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The gate behind <c>ScreenshotSelectionViewModel.Confirm()</c> (AC-566): shows exactly the bytes that would be
-/// injected, and asks before they are. Whatever is passed in is drawn as-is — nothing here re-encodes or crops
-/// it, so what is approved is what gets sent.
-/// </summary>
+// The gate behind `ScreenshotSelectionViewModel.Confirm()` (AC-566): shows exactly the bytes that would be
+// injected, and asks before they are. Whatever is passed in is drawn as-is — nothing here re-encodes or crops
+// it, so what is approved is what gets sent.
 public partial class ScreenshotPreviewWindow : Window
 {
     private Bitmap? _bitmap;
@@ -21,17 +19,13 @@ public partial class ScreenshotPreviewWindow : Window
         CockpitWindowChrome.Apply(this, "Preview");
     }
 
-    /// <summary>
-    /// Shows the preview and waits for the operator: true to send exactly these bytes, false to go back to the
-    /// selection window — whose region and marks this never touches.
-    /// </summary>
+    // Shows the preview and waits for the operator: true to send exactly these bytes, false to go back to the
+    // selection window — whose region and marks this never touches.
     public static async Task<bool> ShowAsync(byte[] png, string destination, Window owner) =>
         await Build(png, destination).ShowDialog<bool>(owner);
 
-    /// <summary>
-    /// The window built and wired, without being put on screen — the render harness's own step, the same split
-    /// <see cref="ScreenshotSelectionWindow.Build"/> already makes for the surface this one gates.
-    /// </summary>
+    // The window built and wired, without being put on screen — the render harness's own step, the same split
+    // `ScreenshotSelectionWindow.Build` already makes for the surface this one gates.
     internal static ScreenshotPreviewWindow Build(byte[] png, string destination)
     {
         using var stream = new MemoryStream(png);

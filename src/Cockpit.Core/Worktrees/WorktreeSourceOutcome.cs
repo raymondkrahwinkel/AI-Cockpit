@@ -1,42 +1,40 @@
 namespace Cockpit.Core.Worktrees;
 
-/// <summary>
-/// What happened to the source branch when a worktree was forked from it (AC-349). A session must start on the
-/// latest state of the branch it isolates, so the create path fetches first and fast-forwards the source when it
-/// safely can; these are the states that attempt can end in.
-/// </summary>
+// What happened to the source branch when a worktree was forked from it (AC-349). A session must start on the
+// latest state of the branch it isolates, so the create path fetches first and fast-forwards the source when it
+// safely can; these are the states that attempt can end in.
 public enum WorktreeSourceOutcome
 {
-    /// <summary>The source was already on its upstream tip — nothing to bring across, nothing to say.</summary>
+    // The source was already on its upstream tip — nothing to bring across, nothing to say.
     UpToDate,
 
-    /// <summary>The source was behind and clean, so it was fast-forwarded and the worktree forked from the new tip.</summary>
+    // The source was behind and clean, so it was fast-forwarded and the worktree forked from the new tip.
     FastForwarded,
 
-    /// <summary>The source was behind and could have been updated, but this creation may not write to it — so the worktree forked from the upstream tip and the branch stayed where it was (AC-376).</summary>
+    // The source was behind and could have been updated, but this creation may not write to it — so the worktree forked from the upstream tip and the branch stayed where it was (AC-376).
     ForkedFromUpstream,
 
-    /// <summary>The source was behind but its working tree held changes, so it was left alone and the fork came from the local HEAD.</summary>
+    // The source was behind but its working tree held changes, so it was left alone and the fork came from the local HEAD.
     KeptLocalChanges,
 
-    /// <summary>The source held commits of its own that the upstream does not, so it was left alone — a fast-forward would not have been one.</summary>
+    // The source held commits of its own that the upstream does not, so it was left alone — a fast-forward would not have been one.
     Diverged,
 
-    /// <summary>The update would have written over a file git is not tracking — an ignored <c>.env</c> and its kind, which git overwrites without a word — so the source was left alone.</summary>
+    // The update would have written over a file git is not tracking — an ignored `.env` and its kind, which git overwrites without a word — so the source was left alone.
     UntrackedFilesInTheWay,
 
-    /// <summary>The source was behind and clean, but git refused the fast-forward anyway (a lock, a hook that said no).</summary>
+    // The source was behind and clean, but git refused the fast-forward anyway (a lock, a hook that said no).
     FastForwardFailed,
 
-    /// <summary>Whether the source was current could not be established at all — git errored or timed out — so the fork base is the local HEAD and that is said out loud rather than assumed to be fine.</summary>
+    // Whether the source was current could not be established at all — git errored or timed out — so the fork base is the local HEAD and that is said out loud rather than assumed to be fine.
     CheckFailed,
 
-    /// <summary>The remote could not be reached, so how far the source lags is only as fresh as the last fetch.</summary>
+    // The remote could not be reached, so how far the source lags is only as fresh as the last fetch.
     FetchFailed,
 
-    /// <summary>The branch tracks nothing, so there is no upstream to be behind — a local-only repository, or a branch never pushed.</summary>
+    // The branch tracks nothing, so there is no upstream to be behind — a local-only repository, or a branch never pushed.
     NoUpstream,
 
-    /// <summary>HEAD was detached, so there is no source branch to update; the fork commit is the one HEAD points at.</summary>
+    // HEAD was detached, so there is no source branch to update; the fork commit is the one HEAD points at.
     DetachedHead,
 }

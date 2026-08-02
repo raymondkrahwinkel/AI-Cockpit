@@ -1,6 +1,6 @@
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>How a run, or one step of it, ended (#69).</summary>
+// How a run, or one step of it, ended (#69).
 public enum RunStatus
 {
     Running,
@@ -9,6 +9,6 @@ public enum RunStatus
 
     Failed,
 
-    /// <summary>Passed by: the step was switched off, or this build has no way to execute its type — said out loud rather than counted as a success.</summary>
+    // Passed by: the step was switched off, or this build has no way to execute its type — said out loud rather than counted as a success.
     Skipped,
 }

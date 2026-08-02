@@ -2,13 +2,11 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// The Autopilot goal/brief templates this plugin contributes (AC-189): starting points for the two kinds of work a
-/// GitHub issue most often is — a bug fix and a feature — so the operator picks one in the plan flow instead of writing
-/// the brief from scratch. Each carries <c>{{issue.*}}</c> placeholders Autopilot fills from the triggering issue at run
-/// time. Registered on every start through <see cref="ICockpitHost.RegisterAutopilotTemplate"/>; the host stamps this
-/// plugin as their owner (Origin=Plugin), which makes them editable-as-override but never deletable.
-/// </summary>
+// The Autopilot goal/brief templates this plugin contributes (AC-189): starting points for the two kinds of work a
+// GitHub issue most often is — a bug fix and a feature — so the operator picks one in the plan flow instead of writing
+// the brief from scratch. Each carries `{{issue.*}}` placeholders Autopilot fills from the triggering issue at run
+// time. Registered on every start through `ICockpitHost.RegisterAutopilotTemplate`; the host stamps this
+// plugin as their owner (Origin=Plugin), which makes them editable-as-override but never deletable.
 internal static class GitHubAutopilotTemplates
 {
     public static IReadOnlyList<PluginAutopilotTemplate> All { get; } =

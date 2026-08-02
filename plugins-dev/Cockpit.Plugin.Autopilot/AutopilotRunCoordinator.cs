@@ -6,24 +6,21 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// Drives an approved CEO plan to completion (AC-174) — the integration adapter behind <see cref="AutopilotRunDriver"/>'s
-/// executeStep seam. Per step it embeds a session on the step's profile/model/minimal-MCP with the step brief as its
-/// opening turn, shows it on the surface, waits for the agent to report done (<c>autopilot_step_done</c>), asks the
-/// still-live CEO to validate the result against the step's acceptance (<c>autopilot_validate</c>), and returns the
-/// <see cref="AutopilotStepOutcome"/> the driver reworks or advances on: <see cref="AutopilotStepOutcome.Passed"/> or
-/// <see cref="AutopilotStepOutcome.Rejected"/> only from the path that actually reaches the CEO's verdict —
-/// <see cref="AutopilotStepOutcome.Faulted"/> from every other path (a refused embed, a crashed or stalled session, a
-/// dead CEO, a cancellation), so a run restart is never mistaken for a review finding (AC-347). Parallel agents
-/// (<see cref="AutopilotStep.AgentCount"/> &gt; 1) run as isolated sessions; the step passes only when every agent
-/// reports and the CEO validates the combined result.
-/// <para>
-/// The MCP tools (<see cref="AutopilotRunTools"/>) call <see cref="ReportStepDone"/>/<see cref="ReportValidation"/> on
-/// background MCP-call threads while a step awaits; the state that couples them is guarded by <see cref="_lock"/>. UI
-/// work (embedding a session, showing it, closing it) is marshalled onto the UI thread through the <c>runOnUi</c>
-/// delegate the caller supplies, since the driver loop does not run on the UI thread.
-/// </para>
-/// </summary>
+// Drives an approved CEO plan to completion (AC-174) — the integration adapter behind `AutopilotRunDriver`'s
+// executeStep seam. Per step it embeds a session on the step's profile/model/minimal-MCP with the step brief as its
+// opening turn, shows it on the surface, waits for the agent to report done (`autopilot_step_done`), asks the
+// still-live CEO to validate the result against the step's acceptance (`autopilot_validate`), and returns the
+// `AutopilotStepOutcome` the driver reworks or advances on: `AutopilotStepOutcome.Passed` or
+// `AutopilotStepOutcome.Rejected` only from the path that actually reaches the CEO's verdict —
+// `AutopilotStepOutcome.Faulted` from every other path (a refused embed, a crashed or stalled session, a
+// dead CEO, a cancellation), so a run restart is never mistaken for a review finding (AC-347). Parallel agents
+// (`AutopilotStep.AgentCount` &gt; 1) run as isolated sessions; the step passes only when every agent
+// reports and the CEO validates the combined result.
+//
+// The MCP tools (`AutopilotRunTools`) call `ReportStepDone`/`ReportValidation` on
+// background MCP-call threads while a step awaits; the state that couples them is guarded by `_lock`. UI
+// work (embedding a session, showing it, closing it) is marshalled onto the UI thread through the `runOnUi`
+// delegate the caller supplies, since the driver loop does not run on the UI thread.
 internal sealed class AutopilotRunCoordinator(
     ICockpitHost host,
     AutopilotPlanController plan,
@@ -34,9 +31,9 @@ internal sealed class AutopilotRunCoordinator(
 {
     private readonly Lock _lock = new();
 
-    /// <summary>The plan this run is driving, or null before one is bound (AC-346) — how a caller outside this run
-    /// (the "plan" intent handler's duplicate-run guard) can tell which issue an already-active run is working on
-    /// without reaching into the private controller it wraps.</summary>
+    // The plan this run is driving, or null before one is bound (AC-346) — how a caller outside this run
+    // (the "plan" intent handler's duplicate-run guard) can tell which issue an already-active run is working on
+    // without reaching into the private controller it wraps.
     public AutopilotPlan? Plan => plan.Plan;
 
     // Publishes a merge-ready code run's branch and opens its PR (AC-216); null in a bare test graph, where finalization
@@ -89,13 +86,12 @@ internal sealed class AutopilotRunCoordinator(
     // mid-run stage/notes, so it is a safety net that never immediately reverts a stage the CEO set by hand.
     private TrackerWorkStage? _lastAutoStage;
 
-    /// <summary>
-    /// Runs the approved plan to a settled end. Builds the bounded run-driver on the run's rework cap and feeds it the
-    /// executeStep adapter; returns when the run settles (merge-ready or blocked) or <paramref name="cancellationToken"/>
-    /// cancels it (the surface closed).
-    /// </summary>
-    /// <param name="showStepSession">Places a started step session's view on the surface; invoked inside <paramref name="runOnUi"/>.</param>
-    /// <param name="runOnUi">Runs an action on the UI thread — session embedding and teardown touch Avalonia controls.</param>
+    // Runs the approved plan to a settled end. Builds the bounded run-driver on the run's rework cap and feeds it the
+    // executeStep adapter; returns when the run settles (merge-ready or blocked) or `cancellationToken`
+    // cancels it (the surface closed).
+    //
+    // `showStepSession`: Places a started step session's view on the surface; invoked inside `runOnUi`.
+    // `runOnUi`: Runs an action on the UI thread — session embedding and teardown touch Avalonia controls.
     public async Task RunAsync(
         IWorkspaceContext context,
         IEmbeddedSession ceo,
@@ -262,7 +258,7 @@ internal sealed class AutopilotRunCoordinator(
         return string.IsNullOrWhiteSpace(url) ? body : $"{body}\n\n{url.Trim()}";
     }
 
-    /// <summary>Called on an MCP thread: a step agent's pane reports its work done. False when the pane is not a live step agent.</summary>
+    // Called on an MCP thread: a step agent's pane reports its work done. False when the pane is not a live step agent.
     public bool ReportStepDone(string paneId, string summary)
     {
         lock (_lock)
@@ -271,9 +267,9 @@ internal sealed class AutopilotRunCoordinator(
         }
     }
 
-    /// <summary>Called on an MCP thread: the CEO pane reports its verdict. Gated to the run's CEO session, to a validation
-    /// actually pending, and to a running phase — so a CEO that in one turn both blocks and validates cannot resolve the
-    /// validation after the blockade has moved the run to AwaitingOperator.</summary>
+    // Called on an MCP thread: the CEO pane reports its verdict. Gated to the run's CEO session, to a validation
+    // actually pending, and to a running phase — so a CEO that in one turn both blocks and validates cannot resolve the
+    // validation after the blockade has moved the run to AwaitingOperator.
     public bool ReportValidation(string paneId, bool passed, string? reason)
     {
         lock (_lock)
@@ -291,15 +287,13 @@ internal sealed class AutopilotRunCoordinator(
         }
     }
 
-    /// <summary>
-    /// Called on an MCP thread (AC-201, spoor 2): a live step worker consults the run's CEO before it continues instead
-    /// of going straight to the operator. The worker's question is relayed as a turn into the CEO's own session, which
-    /// answers it (<see cref="AnswerWorkerAsync"/>) or escalates it (<see cref="EscalateToOperator"/>). Two guarded
-    /// fallbacks send it straight to the operator instead: <em>fail-closed</em> when there is no live CEO to consult, and
-    /// the <em>loop-cap</em> when this step has already spent its consult budget (a worker stuck asking in circles).
-    /// Gated to a live step worker of a running run with no other consult or blockade already open. False when the gate
-    /// turns it down; true whether it went to the CEO or fell back to the operator.
-    /// </summary>
+    // Called on an MCP thread (AC-201, spoor 2): a live step worker consults the run's CEO before it continues instead
+    // of going straight to the operator. The worker's question is relayed as a turn into the CEO's own session, which
+    // answers it (`AnswerWorkerAsync`) or escalates it (`EscalateToOperator`). Two guarded
+    // fallbacks send it straight to the operator instead: *fail-closed* when there is no live CEO to consult, and
+    // the *loop-cap* when this step has already spent its consult budget (a worker stuck asking in circles).
+    // Gated to a live step worker of a running run with no other consult or blockade already open. False when the gate
+    // turns it down; true whether it went to the CEO or fell back to the operator.
     public async Task<bool> ReportConsultAsync(string workerPane, string question)
     {
         bool toCeo;
@@ -354,12 +348,10 @@ internal sealed class AutopilotRunCoordinator(
         return true;
     }
 
-    /// <summary>
-    /// Called on an MCP thread (AC-201): the CEO answers a worker's consult. Relays the answer as a turn into the
-    /// worker's session — it carries on there and eventually reports done as usual — and clears the pending consult. The
-    /// phase never changed (a consult keeps the run Running), so nothing here moves it. Gated to the run's CEO session
-    /// with a consult actually pending; false otherwise. A blank answer just clears the consult without relaying.
-    /// </summary>
+    // Called on an MCP thread (AC-201): the CEO answers a worker's consult. Relays the answer as a turn into the
+    // worker's session — it carries on there and eventually reports done as usual — and clears the pending consult. The
+    // phase never changed (a consult keeps the run Running), so nothing here moves it. Gated to the run's CEO session
+    // with a consult actually pending; false otherwise. A blank answer just clears the consult without relaying.
     public async Task<bool> AnswerWorkerAsync(string ceoPane, string answer)
     {
         string? workerPane;
@@ -382,12 +374,10 @@ internal sealed class AutopilotRunCoordinator(
         return true;
     }
 
-    /// <summary>
-    /// Called on an MCP thread (AC-201, spoor 3): the CEO decides a worker's consult is genuinely an operator call and
-    /// escalates it. The worker (not the CEO) becomes the blocked pane, so the operator's answer is later relayed to the
-    /// worker through the unchanged <see cref="AnswerBlockadeAsync"/>. Gated to the run's CEO session with a consult
-    /// pending; false otherwise.
-    /// </summary>
+    // Called on an MCP thread (AC-201, spoor 3): the CEO decides a worker's consult is genuinely an operator call and
+    // escalates it. The worker (not the CEO) becomes the blocked pane, so the operator's answer is later relayed to the
+    // worker through the unchanged `AnswerBlockadeAsync`. Gated to the run's CEO session with a consult
+    // pending; false otherwise.
     public bool EscalateToOperator(string ceoPane, string question)
     {
         lock (_lock)
@@ -416,10 +406,8 @@ internal sealed class AutopilotRunCoordinator(
         return count;
     }
 
-    /// <summary>
-    /// The operator answered the blockade (AC-155): relay their reply to the blocked session as a turn — it carries on
-    /// in that same session and eventually reports done as usual — and resume the run.
-    /// </summary>
+    // The operator answered the blockade (AC-155): relay their reply to the blocked session as a turn — it carries on
+    // in that same session and eventually reports done as usual — and resume the run.
     public async Task AnswerBlockadeAsync(string answer)
     {
         string? pane;
@@ -450,19 +438,15 @@ internal sealed class AutopilotRunCoordinator(
         plan.ResumeRunning();
     }
 
-    /// <summary>
-    /// The CEO moves the source issue this run came from to a tracker stage (AC-177) — its own stage name, so the CEO
-    /// picks the vocabulary. Only from the run's CEO session and only for a source-triggered run (a CEO-first run has no
-    /// issue): the plugin is the sole tracker writer, step agents never touch it. False when the caller is not the CEO,
-    /// the run has no source, or no tracker plugin backs its tracker id.
-    /// </summary>
+    // The CEO moves the source issue this run came from to a tracker stage (AC-177) — its own stage name, so the CEO
+    // picks the vocabulary. Only from the run's CEO session and only for a source-triggered run (a CEO-first run has no
+    // issue): the plugin is the sole tracker writer, step agents never touch it. False when the caller is not the CEO,
+    // the run has no source, or no tracker plugin backs its tracker id.
     public Task<bool> ReportTrackerStageAsync(string paneId, string stage, CancellationToken cancellationToken = default) =>
         _WithSourceTrackerAsync(paneId, (provider, source) => provider.SetStageAsync(source.IssueId, stage, cancellationToken));
 
-    /// <summary>
-    /// The CEO posts a comment (evidence, a status note) on the source issue this run came from (AC-177). Same gates as
-    /// <see cref="ReportTrackerStageAsync"/>: CEO session only, source-run only, the plugin the sole writer.
-    /// </summary>
+    // The CEO posts a comment (evidence, a status note) on the source issue this run came from (AC-177). Same gates as
+    // `ReportTrackerStageAsync`: CEO session only, source-run only, the plugin the sole writer.
     public Task<bool> ReportTrackerNoteAsync(string paneId, string note, CancellationToken cancellationToken = default) =>
         _WithSourceTrackerAsync(paneId, (provider, source) => provider.PostCommentAsync(source.IssueId, note, cancellationToken));
 
@@ -504,16 +488,14 @@ internal sealed class AutopilotRunCoordinator(
         return provider is null ? null : (provider, source);
     }
 
-    /// <summary>
-    /// AC-202: automatically move the run's source issue to <paramref name="stage"/> as the run crosses a lifecycle edge
-    /// (started, merge-ready). Only for a source-triggered run — a CEO-first run has no issue; <em>idempotent</em> — it
-    /// never sets the same stage twice; and <em>fail-soft</em> — a tracker error (API down, no permission, cancellation)
-    /// never breaks the run. The neutral stage is mapped to the tracker's own vocabulary through
-    /// <see cref="ITrackerProvider.SuggestStageName"/>, so no tracker-specific stage name is hardcoded here; a tracker
-    /// that maps the stage to null is left untouched. Internal (not private) so a focused test can exercise the
-    /// idempotency guard directly. This is a safety net beside the CEO's manual autopilot_tracker_stage, not a
-    /// replacement — see <see cref="_lastAutoStage"/> on why it does not fight the CEO's own mid-run stage.
-    /// </summary>
+    // AC-202: automatically move the run's source issue to `stage` as the run crosses a lifecycle edge
+    // (started, merge-ready). Only for a source-triggered run — a CEO-first run has no issue; *idempotent* — it
+    // never sets the same stage twice; and *fail-soft* — a tracker error (API down, no permission, cancellation)
+    // never breaks the run. The neutral stage is mapped to the tracker's own vocabulary through
+    // `ITrackerProvider.SuggestStageName`, so no tracker-specific stage name is hardcoded here; a tracker
+    // that maps the stage to null is left untouched. Internal (not private) so a focused test can exercise the
+    // idempotency guard directly. This is a safety net beside the CEO's manual autopilot_tracker_stage, not a
+    // replacement — see `_lastAutoStage` on why it does not fight the CEO's own mid-run stage.
     internal async Task AutoAdvanceTrackerStageAsync(TrackerWorkStage stage, CancellationToken cancellationToken = default)
     {
         lock (_lock)
@@ -558,10 +540,8 @@ internal sealed class AutopilotRunCoordinator(
         }
     }
 
-    /// <summary>
-    /// The operator chose to intervene in the running step (AC-174): hand them the keyboard by enabling the composer on
-    /// the live step session(s). A no-op between steps, when nothing is running.
-    /// </summary>
+    // The operator chose to intervene in the running step (AC-174): hand them the keyboard by enabling the composer on
+    // the live step session(s). A no-op between steps, when nothing is running.
     public void EnableCurrentStepInput()
     {
         IReadOnlyList<IEmbeddedSession> live;

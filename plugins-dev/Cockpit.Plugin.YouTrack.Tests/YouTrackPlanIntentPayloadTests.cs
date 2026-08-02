@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// What "Plan in Autopilot" hands over. The stage field is the one Autopilot's start gate refuses on (AC-345), so
-/// dropping it here would silently turn the gate into "refuse everything" — which is why it is asserted rather than
-/// left to the dialog. Asserted with xunit's own Assert rather than the FluentAssertions the older files in this
-/// project use: that package is commercially licensed from v8 on.
-/// </summary>
+// What "Plan in Autopilot" hands over. The stage field is the one Autopilot's start gate refuses on (AC-345), so
+// dropping it here would silently turn the gate into "refuse everything" — which is why it is asserted rather than
+// left to the dialog. Asserted with xunit's own Assert rather than the FluentAssertions the older files in this
+// project use: that package is commercially licensed from v8 on.
 public class YouTrackPlanIntentPayloadTests
 {
     private static YouTrackIssue Issue(string? state) =>

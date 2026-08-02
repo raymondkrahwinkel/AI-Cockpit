@@ -6,7 +6,7 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>Picks a moment and a prompt for a resume scheduled by hand (AC-231).</summary>
+// Picks a moment and a prompt for a resume scheduled by hand (AC-231).
 public partial class ScheduleResumeDialog : Window
 {
     public ScheduleResumeDialog()

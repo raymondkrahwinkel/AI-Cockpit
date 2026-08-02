@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Shortcuts;
 
-/// <summary>
-/// Persists the app-action shortcuts under the <c>shortcuts</c> section of <c>cockpit.json</c> (same
-/// file/pattern as the other settings stores), reading-modifying-writing the whole file so sibling sections
-/// stay intact. When nothing was ever saved, <see cref="LoadAsync"/> returns
-/// <see cref="ShortcutSettings.Default"/>.
-/// </summary>
+// Persists the app-action shortcuts under the `shortcuts` section of `cockpit.json` (same
+// file/pattern as the other settings stores), reading-modifying-writing the whole file so sibling sections
+// stay intact. When nothing was ever saved, `LoadAsync` returns
+// `ShortcutSettings.Default`.
 internal sealed class ShortcutSettingsStore : IShortcutSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class ShortcutSettingsStore : IShortcutSettingsStore, ISingleton
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal ShortcutSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);
@@ -51,31 +49,26 @@ internal sealed class ShortcutSettingsStore : IShortcutSettingsStore, ISingleton
         return _MigrateZoomOffCtrlB(_MigrateSessionSwitchOffArrowKeys(settings));
     }
 
-    /// <summary>
-    /// Toggle zoom used to default to Ctrl+B. One modifier is not enough to survive a focused terminal — and a
-    /// zoomed pane is exactly when the terminal has focus — so the default moved to a two-modifier chord that
-    /// passes the gate (AC-401). Any other saved gesture is left alone.
-    /// <para>
-    /// It matches on the value, not on when it was written, and it runs on every load — so it cannot tell the old
-    /// default apart from a Ctrl+B the operator deliberately chose, and will take that one too, every start. That
-    /// is the same shape as <see cref="_MigrateSessionSwitchOffArrowKeys"/> and accepted here for the same
-    /// practical reason: a one-shot would need a marker in the config, and Ctrl+B for zoom is a gesture that does
-    /// not work where zoom is used. Anyone who wants the old key back has every other free gesture.
-    /// </para>
-    /// </summary>
+    // Toggle zoom used to default to Ctrl+B. One modifier is not enough to survive a focused terminal — and a
+    // zoomed pane is exactly when the terminal has focus — so the default moved to a two-modifier chord that
+    // passes the gate (AC-401). Any other saved gesture is left alone.
+    //
+    // It matches on the value, not on when it was written, and it runs on every load — so it cannot tell the old
+    // default apart from a Ctrl+B the operator deliberately chose, and will take that one too, every start. That
+    // is the same shape as `_MigrateSessionSwitchOffArrowKeys` and accepted here for the same
+    // practical reason: a one-shot would need a marker in the config, and Ctrl+B for zoom is a gesture that does
+    // not work where zoom is used. Anyone who wants the old key back has every other free gesture.
     private static ShortcutSettings _MigrateZoomOffCtrlB(ShortcutSettings settings) =>
         settings.Gestures.TryGetValue(ShortcutAction.ToggleZoom, out var zoom) && zoom == "Ctrl+B"
             ? settings.With(ShortcutAction.ToggleZoom, ShortcutCatalog.DefaultGesture(ShortcutAction.ToggleZoom))
             : settings;
 
-    /// <summary>
-    /// The session switch used to default to Ctrl+Up / Ctrl+Down; those are now the spatial pane-focus gestures
-    /// and the session switch has moved to Ctrl+Shift+Up/Down (AC-31). A config that saved the old defaults
-    /// explicitly would otherwise double-bind Ctrl+Up/Down with the new "focus pane up/down", so migrate exactly
-    /// those two values to the new gesture. A gesture the operator changed to anything else is left alone, and a
-    /// config that never saved them keeps taking the (now Shift+) catalog default. Idempotent: after the operator
-    /// next saves, the shortcuts section holds the new gesture and this matches nothing.
-    /// </summary>
+    // The session switch used to default to Ctrl+Up / Ctrl+Down; those are now the spatial pane-focus gestures
+    // and the session switch has moved to Ctrl+Shift+Up/Down (AC-31). A config that saved the old defaults
+    // explicitly would otherwise double-bind Ctrl+Up/Down with the new "focus pane up/down", so migrate exactly
+    // those two values to the new gesture. A gesture the operator changed to anything else is left alone, and a
+    // config that never saved them keeps taking the (now Shift+) catalog default. Idempotent: after the operator
+    // next saves, the shortcuts section holds the new gesture and this matches nothing.
     private static ShortcutSettings _MigrateSessionSwitchOffArrowKeys(ShortcutSettings settings)
     {
         var migrated = settings;
@@ -92,12 +85,10 @@ internal sealed class ShortcutSettingsStore : IShortcutSettingsStore, ISingleton
         return migrated;
     }
 
-    /// <summary>
-    /// The session switch used to be its own setting (a master on/off plus a modifier, arrowed by a hard-coded
-    /// handler); it is now two ordinary shortcuts. A config written by an older build still carries that section,
-    /// so translate it into gestures rather than silently resetting someone's choice to Ctrl. The first save
-    /// writes the result into the shortcuts section, after which this is a no-op.
-    /// </summary>
+    // The session switch used to be its own setting (a master on/off plus a modifier, arrowed by a hard-coded
+    // handler); it is now two ordinary shortcuts. A config written by an older build still carries that section,
+    // so translate it into gestures rather than silently resetting someone's choice to Ctrl. The first save
+    // writes the result into the shortcuts section, after which this is a no-op.
     private static ShortcutSettings _CarryOverLegacySessionSwitch(ShortcutSettings settings, SessionSwitchSettingsEntry legacy)
     {
         if (!legacy.IsEnabled)

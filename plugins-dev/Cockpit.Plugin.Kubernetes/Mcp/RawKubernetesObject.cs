@@ -4,12 +4,10 @@ using k8s;
 
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-/// <summary>
-/// A schema-less Kubernetes object: enough of <see cref="IKubernetesObject"/> for the generic client to (de)serialize
-/// any resource kind, with every other field captured by <see cref="Data"/>. This lets one code path read, patch or
-/// delete any resource without a typed model per kind — the plugin never needs to know a resource's shape, only its
-/// group/version/plural. Serializing it back yields the original JSON (the extension data flattens out).
-/// </summary>
+// A schema-less Kubernetes object: enough of `IKubernetesObject` for the generic client to (de)serialize
+// any resource kind, with every other field captured by `Data`. This lets one code path read, patch or
+// delete any resource without a typed model per kind — the plugin never needs to know a resource's shape, only its
+// group/version/plural. Serializing it back yields the original JSON (the extension data flattens out).
 internal sealed class RawKubernetesObject : IKubernetesObject
 {
     [JsonPropertyName("apiVersion")]

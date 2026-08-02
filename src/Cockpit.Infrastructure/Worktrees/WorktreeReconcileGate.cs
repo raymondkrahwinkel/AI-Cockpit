@@ -4,7 +4,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-/// <summary>See <see cref="IWorktreeReconcileGate"/>. Holds the reconcile task in a volatile field: <c>Program.cs</c> assigns it once, synchronously, before the window can open, and every reader afterwards only ever awaits it.</summary>
+// See `IWorktreeReconcileGate`. Holds the reconcile task in a volatile field: `Program.cs` assigns it once, synchronously, before the window can open, and every reader afterwards only ever awaits it.
 internal sealed class WorktreeReconcileGate(ILogger<WorktreeReconcileGate> logger) : IWorktreeReconcileGate, ISingletonService
 {
     private volatile Task _reconcileTask = Task.CompletedTask;

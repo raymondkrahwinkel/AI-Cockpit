@@ -2,10 +2,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// An <see cref="ICockpitActions"/> whose "is there a session?" answer the test sets, and which records what was
-/// injected instead of pushing it anywhere — what "Add to prompt" needs to be exercised without a live session.
-/// </summary>
+// An `ICockpitActions` whose "is there a session?" answer the test sets, and which records what was
+// injected instead of pushing it anywhere — what "Add to prompt" needs to be exercised without a live session.
 internal sealed class FakeCockpitActions : ICockpitActions
 {
     public bool HasActiveSession { get; set; }

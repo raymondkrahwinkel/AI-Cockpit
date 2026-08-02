@@ -2,13 +2,11 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-/// <summary>
-/// AC-612: pins this plugin's own mirrored <see cref="ProjectResourceSecretPathHeuristic"/> in isolation — the same
-/// table <c>Cockpit.Core.Tests.Projects.ProjectResourceSecretPathHeuristicTests</c> pins on the host side.
-/// <see cref="ProjectResourceSecretPathParityTests"/> is what actually guarantees the two agree; this file exists so
-/// a change made only here (this plugin cannot reference <c>Cockpit.Core</c>, so the two copies can never share one
-/// test file) still has its own red-without-fix coverage.
-/// </summary>
+// AC-612: pins this plugin's own mirrored `ProjectResourceSecretPathHeuristic` in isolation — the same
+// table `Cockpit.Core.Tests.Projects.ProjectResourceSecretPathHeuristicTests` pins on the host side.
+// `ProjectResourceSecretPathParityTests` is what actually guarantees the two agree; this file exists so
+// a change made only here (this plugin cannot reference `Cockpit.Core`, so the two copies can never share one
+// test file) still has its own red-without-fix coverage.
 public class ProjectResourceSecretPathHeuristicTests
 {
     [Theory]

@@ -24,21 +24,17 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Backs the New-session dialog (#31/#17/#15/#32/#44): pick the session kind (SDK vs TTY), a profile, and
-/// its start mode/model/effort. Choosing a profile loads its saved defaults (<see cref="ProfileDefaults"/>),
-/// which the operator can still override before starting. Mode here offers all four modes including
-/// bypass, since bypass is launch-only and this dialog is the one place it can be chosen. Also lets the
-/// operator uncheck individual MCP servers from the shared registry for just this session (#44) via
-/// <see cref="McpServers"/>. The view closes via <see cref="CloseRequested"/>, carrying the choices on
-/// confirm or null on cancel.
-/// </summary>
-/// <remarks>
-/// <see cref="SelectedKind"/> plus the <see cref="IsSdk"/>/<see cref="IsTty"/> computed pair is the
-/// mechanism for showing/hiding kind-specific fields: today only the hint text differs (see
-/// <c>NewSessionDialog.axaml</c>), but a later kind-specific field just adds another
-/// <c>IsVisible="{Binding IsSdk}"</c>/<c>IsTty</c> binding without touching the rest of the dialog.
-/// </remarks>
+// Backs the New-session dialog (#31/#17/#15/#32/#44): pick the session kind (SDK vs TTY), a profile, and
+// its start mode/model/effort. Choosing a profile loads its saved defaults (`ProfileDefaults`),
+// which the operator can still override before starting. Mode here offers all four modes including
+// bypass, since bypass is launch-only and this dialog is the one place it can be chosen. Also lets the
+// operator uncheck individual MCP servers from the shared registry for just this session (#44) via
+// `McpServers`. The view closes via `CloseRequested`, carrying the choices on
+// confirm or null on cancel.
+// `SelectedKind` plus the `IsSdk`/`IsTty` computed pair is the
+// mechanism for showing/hiding kind-specific fields: today only the hint text differs (see
+// `NewSessionDialog.axaml`), but a later kind-specific field just adds another
+// `IsVisible="{Binding IsSdk}"`/`IsTty` binding without touching the rest of the dialog.
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IProfileLoginChecker? _loginChecker;
@@ -55,76 +51,68 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IWorktreeManager? _worktreeManager;
     private readonly IProjectStore? _projectStore;
 
-    /// <summary>
-    /// The registered memory sources (AC-165/166), mapped once at construction to the plain Core type
-    /// <see cref="SessionStartDefaults.Resolve"/> reads, rather than per call — the registry's contents do not
-    /// change over the dialog's lifetime, and three call sites below would otherwise each repeat the mapping.
-    /// </summary>
+    // The registered memory sources (AC-165/166), mapped once at construction to the plain Core type
+    // `SessionStartDefaults.Resolve` reads, rather than per call — the registry's contents do not
+    // change over the dialog's lifetime, and three call sites below would otherwise each repeat the mapping.
     private readonly IReadOnlyList<ProjectMemorySource>? _memorySources;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
     private CancellationTokenSource? _launchOptionsRefreshCts;
     private CancellationTokenSource? _repoDetectCts;
 
-    /// <summary>
-    /// Whether the operator has set the working directory themselves (typed, browsed, cloned, resumed, or prefilled) —
-    /// after which a profile's default folder no longer replaces it (AC-130). Sticky defaults: switching profiles keeps
-    /// filling the folder from the new profile's default until the operator touches it, then their choice stands, so a
-    /// profile re-select (including the Manage-profiles round-trip that reloads the dialog) never silently wipes it.
-    /// </summary>
+    // Whether the operator has set the working directory themselves (typed, browsed, cloned, resumed, or prefilled) —
+    // after which a profile's default folder no longer replaces it (AC-130). Sticky defaults: switching profiles keeps
+    // filling the folder from the new profile's default until the operator touches it, then their choice stands, so a
+    // profile re-select (including the Manage-profiles round-trip that reloads the dialog) never silently wipes it.
     private bool _workingDirectoryTouched;
 
-    /// <summary>Set while a profile's default folder is being applied, so that programmatic set is not mistaken for the operator touching the field.</summary>
+    // Set while a profile's default folder is being applied, so that programmatic set is not mistaken for the operator touching the field.
     private bool _applyingProfileWorkingDirectory;
 
-    /// <summary>Whether the operator has typed a session name themselves — after which picking a project no longer fills it with the project's name.</summary>
+    // Whether the operator has typed a session name themselves — after which picking a project no longer fills it with the project's name.
     private bool _sessionNameTouched;
 
-    /// <summary>Set while a project's name is being applied, so that programmatic set is not mistaken for the operator typing one.</summary>
+    // Set while a project's name is being applied, so that programmatic set is not mistaken for the operator typing one.
     private bool _applyingProjectSessionName;
 
-    /// <summary>Whether the operator has changed the MCP checklist themselves — after which a profile switch no longer re-applies the profile's pre-selection over their ticks (AC-130).</summary>
+    // Whether the operator has changed the MCP checklist themselves — after which a profile switch no longer re-applies the profile's pre-selection over their ticks (AC-130).
     private bool _mcpSelectionTouched;
 
-    /// <summary>Set while a profile's MCP pre-selection is being applied, so re-ticking the checklist is not mistaken for the operator toggling it.</summary>
+    // Set while a profile's MCP pre-selection is being applied, so re-ticking the checklist is not mistaken for the operator toggling it.
     private bool _applyingMcpSelection;
 
-    /// <summary>True while the checklist is being rebuilt for a newly chosen project — Start waits for it (<see cref="CanStart"/>).</summary>
+    // True while the checklist is being rebuilt for a newly chosen project — Start waits for it (`CanStart`).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanStart))]
     private bool _isRebuildingMcpChecklist;
 
-    /// <summary>
-    /// Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
-    /// dynamic-options refresh — the profile switch fires exactly one refresh at its end, for whatever kind won.
-    /// </summary>
+    // Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
+    // dynamic-options refresh — the profile switch fires exactly one refresh at its end, for whatever kind won.
     private bool _suppressDynamicOptionsRefresh;
 
-    /// <summary>How long the background model/list refresh may run before the dialog gives up and keeps the declared options.</summary>
+    // How long the background model/list refresh may run before the dialog gives up and keeps the declared options.
     private static readonly TimeSpan _LaunchOptionsRefreshTimeout = TimeSpan.FromSeconds(8);
 
-    /// <summary>The in-flight background refresh of the active kind's launch options (Codex's model/list), so a test can await it. Completed when none is running.</summary>
+    // The in-flight background refresh of the active kind's launch options (Codex's model/list), so a test can await it. Completed when none is running.
     internal Task LaunchOptionsRefresh { get; private set; } = Task.CompletedTask;
 
-    /// <summary>
-    /// The in-flight rebuild of the MCP checklist after a project switch. Exposed so a caller that selects a project
-    /// before showing the dialog can wait for it — otherwise the dialog can be on screen, and startable, while the
-    /// checklist still shows the servers of the project it was not opened on.
-    /// </summary>
+    // The in-flight rebuild of the MCP checklist after a project switch. Exposed so a caller that selects a project
+    // before showing the dialog can wait for it — otherwise the dialog can be on screen, and startable, while the
+    // checklist still shows the servers of the project it was not opened on.
     internal Task McpChecklistRefresh { get; private set; } = Task.CompletedTask;
 
-    /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
+    // Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.
     public event Action<NewSessionResult?>? CloseRequested;
 
-    /// <summary>Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.</summary>
+    // Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.
     public event Action? ManageProfilesRequested;
 
-    /// <summary>Raised when the operator picks "Clone from a Git URL…" (AC-90); the host opens the clone dialog and, on success, sets <see cref="WorkingDirectory"/> to the local clone path.</summary>
+    // Raised when the operator picks "Clone from a Git URL…" (AC-90); the host opens the clone dialog and, on success, sets `WorkingDirectory` to the local clone path.
     public event Action? CloneFromUrlRequested;
 
-    /// <summary>The label of the special quick-pick entry that opens the clone-from-URL flow instead of choosing a folder (AC-90).</summary>
+    // The label of the special quick-pick entry that opens the clone-from-URL flow instead of choosing a folder (AC-90).
     public const string CloneFromUrlLabel = "Clone from a Git URL…";
 
-    /// <summary>Which kind of session to create; chosen in the dialog itself (#32), defaulting to TTY (Raymond's preferred default).</summary>
+    // Which kind of session to create; chosen in the dialog itself (#32), defaulting to TTY (Raymond's preferred default).
     [ObservableProperty]
     private SessionKind _selectedKind = SessionKind.Tty;
 
@@ -132,59 +120,51 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public bool IsTty => SelectedKind == SessionKind.Tty;
 
-    /// <summary>Window title, tracking the chosen kind.</summary>
+    // Window title, tracking the chosen kind.
     public string HeaderText => IsSdk ? "New session" : "New session (TTY)";
 
-    /// <summary>
-    /// The mode/model/effort options are Claude-CLI concepts, shown only for a Claude profile — TTY passes
-    /// them as launch-only CLI flags, SDK keeps them live-switchable. A local provider has none of these,
-    /// so the whole block is hidden for it (#26).
-    /// </summary>
+    // The mode/model/effort options are Claude-CLI concepts, shown only for a Claude profile — TTY passes
+    // them as launch-only CLI flags, SDK keeps them live-switchable. A local provider has none of these,
+    // so the whole block is hidden for it (#26).
     // The legacy typed permission/model/effort block is retired: Claude renders its options through the generic
     // plugin-option rows now, like every provider. Kept false until that block and SessionOptionCatalog are removed.
     public bool ShowSessionOptions => false;
 
-    /// <summary>The SDK "stays live-switchable" hint, shown only for a Claude SDK session (a local session has no such dropdowns).</summary>
+    // The SDK "stays live-switchable" hint, shown only for a Claude SDK session (a local session has no such dropdowns).
     public bool ShowSdkStartHint => IsSdk && IsClaudeProfile;
 
-    /// <summary>The TTY "start defaults only" hint, shown only for a Claude TTY session.</summary>
+    // The TTY "start defaults only" hint, shown only for a Claude TTY session.
     public bool ShowTtyStartHint => IsTty && IsClaudeProfile;
 
     public ObservableCollection<SessionProfile> Profiles { get; } = [];
 
-    /// <summary>The projects to start under (AC-163); empty for an operator who has made none, which hides the picker.</summary>
+    // The projects to start under (AC-163); empty for an operator who has made none, which hides the picker.
     public ObservableCollection<Project> Projects { get; } = [];
 
     public bool HasProjects => Projects.Count > 0;
 
-    /// <summary>
-    /// The project this session works on, or null for a session belonging to none — how the cockpit has always
-    /// started one. Picking one pre-fills the folder, profile, worktree choice and MCP checklist through
-    /// <see cref="SessionStartDefaults"/>; every one of them stays editable below.
-    /// </summary>
+    // The project this session works on, or null for a session belonging to none — how the cockpit has always
+    // started one. Picking one pre-fills the folder, profile, worktree choice and MCP checklist through
+    // `SessionStartDefaults`; every one of them stays editable below.
     [ObservableProperty]
     private Project? _selectedProject;
 
-    /// <summary>
-    /// The shared registry's enabled MCP servers (#44), each with its own checkbox so the operator can opt
-    /// individual ones out of just this session. Defaults to all checked, matching the pre-#44 behaviour.
-    /// </summary>
+    // The shared registry's enabled MCP servers (#44), each with its own checkbox so the operator can opt
+    // individual ones out of just this session. Defaults to all checked, matching the pre-#44 behaviour.
     public ObservableCollection<McpServerSelectionItemViewModel> McpServers { get; } = [];
 
-    /// <summary>Whether the MCP checklist is shown at all — hidden when the registry has no enabled servers.</summary>
+    // Whether the MCP checklist is shown at all — hidden when the registry has no enabled servers.
     public bool HasMcpServers => McpServers.Count > 0;
 
-    /// <summary>
-    /// Whether a <em>selected</em> server needs a sign-in it does not have (AC-355) — the dialog says so, but it
-    /// never blocks Start over it: the operator may well know it and mean to proceed without that server's tools, or
-    /// sign in from a session that is already running. Follows the same non-blocking inline-hint pattern as
-    /// <see cref="ShowLoginHint"/> rather than a confirmation dialog of its own, so it is visible well before Start
-    /// is ever pressed — an unticked server (its tools already opted out of this session) says nothing here.
-    /// </summary>
+    // Whether a *selected* server needs a sign-in it does not have (AC-355) — the dialog says so, but it
+    // never blocks Start over it: the operator may well know it and mean to proceed without that server's tools, or
+    // sign in from a session that is already running. Follows the same non-blocking inline-hint pattern as
+    // `ShowLoginHint` rather than a confirmation dialog of its own, so it is visible well before Start
+    // is ever pressed — an unticked server (its tools already opted out of this session) says nothing here.
     public bool ShowMcpAuthorizationHint =>
         McpServers.Any(server => server.IsEnabledForSession && server.AuthState == McpAuthState.AuthorizationRequired);
 
-    /// <summary>The AC-355 hint text, naming every ticked server that still needs a sign-in.</summary>
+    // The AC-355 hint text, naming every ticked server that still needs a sign-in.
     public string McpAuthorizationHintText
     {
         get
@@ -206,55 +186,49 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>All four modes — including the launch-only bypass — since this dialog is the one place bypass can be chosen.</summary>
+    // All four modes — including the launch-only bypass — since this dialog is the one place bypass can be chosen.
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
 
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
-    /// <summary>The three SDK reading levels (AC-138) offered by the override picker, shown only for an SDK session (<see cref="IsSdk"/>).</summary>
+    // The three SDK reading levels (AC-138) offered by the override picker, shown only for an SDK session (`IsSdk`).
     public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
 
-    /// <summary>
-    /// The reading level this SDK session will open with (AC-138). Seeded from the selected profile's default view
-    /// (<see cref="OnSelectedProfileChanged"/>) and overridable here; only meaningful for an SDK session, so the
-    /// picker is hidden for a TTY one. Carried into <see cref="NewSessionResult"/> on confirm.
-    /// </summary>
+    // The reading level this SDK session will open with (AC-138). Seeded from the selected profile's default view
+    // (`OnSelectedProfileChanged`) and overridable here; only meaningful for an SDK session, so the
+    // picker is hidden for a TTY one. Carried into `NewSessionResult` on confirm.
     [ObservableProperty]
     private ReadingLevelOption _selectedReadingLevel = SessionOptionCatalog.DefaultReadingLevel;
 
-    /// <summary>Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "&lt;profile&gt; - N".</summary>
+    // Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "&lt;profile&gt; - N".
     [ObservableProperty]
     private string _sessionName = string.Empty;
 
-    /// <summary>
-    /// The first prompt a plugin pre-filled the dialog with (<c>NewSessionPrefill.InitialPrompt</c>), shown read-only
-    /// so the operator reads the text before it reaches an agent. The dialog is the confirmation gate for a prefill,
-    /// and this is the one field whose contents can come from outside the cockpit entirely — an issue body written by
-    /// a stranger — so it is the last field that should be invisible on it. Blank for an operator-opened dialog.
-    /// </summary>
+    // The first prompt a plugin pre-filled the dialog with (`NewSessionPrefill.InitialPrompt`), shown read-only
+    // so the operator reads the text before it reaches an agent. The dialog is the confirmation gate for a prefill,
+    // and this is the one field whose contents can come from outside the cockpit entirely — an issue body written by
+    // a stranger — so it is the last field that should be invisible on it. Blank for an operator-opened dialog.
     [ObservableProperty]
     private string _initialPrompt = string.Empty;
 
-    /// <summary>Only a pre-filled prompt has anything to show; an operator who opened the dialog themselves has no prompt yet.</summary>
+    // Only a pre-filled prompt has anything to show; an operator who opened the dialog themselves has no prompt yet.
     public bool HasInitialPrompt => !string.IsNullOrWhiteSpace(InitialPrompt);
 
     partial void OnInitialPromptChanged(string value) => OnPropertyChanged(nameof(HasInitialPrompt));
 
-    /// <summary>
-    /// Whether this session picks up an earlier conversation instead of starting fresh — the answer to "the app
-    /// crashed and I want to go on where I was". Only the Claude CLI keeps a history to resume from, so the
-    /// controls are hidden for a local provider rather than offered and then ignored.
-    /// </summary>
+    // Whether this session picks up an earlier conversation instead of starting fresh — the answer to "the app
+    // crashed and I want to go on where I was". Only the Claude CLI keeps a history to resume from, so the
+    // controls are hidden for a local provider rather than offered and then ignored.
     [ObservableProperty]
     private SessionResumeMode _resumeMode = SessionResumeMode.New;
 
-    /// <summary>The conversation to resume when <see cref="ResumeMode"/> is <see cref="SessionResumeMode.BySessionId"/> — the id shown in a session's header, or copied from the transcript-search plugin.</summary>
+    // The conversation to resume when `ResumeMode` is `SessionResumeMode.BySessionId` — the id shown in a session's header, or copied from the transcript-search plugin.
     [ObservableProperty]
     private string _resumeSessionId = string.Empty;
 
-    /// <summary>Resuming is a Claude-CLI capability; a local provider keeps no conversation history of its own.</summary>
+    // Resuming is a Claude-CLI capability; a local provider keeps no conversation history of its own.
     public bool ShowResumeOptions => IsClaudeProfile;
 
     public bool IsStartingFresh => ResumeMode == SessionResumeMode.New;
@@ -282,13 +256,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [RelayCommand]
     private void ResumeConversationById() => ResumeMode = SessionResumeMode.BySessionId;
 
-    /// <summary>Whether a plugin offers a way to browse the provider's conversation history — no picker, no search button (and the id can still be typed).</summary>
+    // Whether a plugin offers a way to browse the provider's conversation history — no picker, no search button (and the id can still be typed).
     public bool HasConversationPicker => _conversationPicker is not null;
 
-    /// <summary>Tooltip for the search button: whatever the picker calls itself, e.g. "Search transcripts".</summary>
+    // Tooltip for the search button: whatever the picker calls itself, e.g. "Search transcripts".
     public string ConversationPickerTitle => _conversationPicker?.Title ?? string.Empty;
 
-    /// <summary>Runs the plugin's picker and fills in whatever conversation the operator chose. Cancelling leaves the field as it was.</summary>
+    // Runs the plugin's picker and fills in whatever conversation the operator chose. Cancelling leaves the field as it was.
     [RelayCommand]
     private async Task PickConversationAsync()
     {
@@ -325,7 +299,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             : null;
     }
 
-    /// <summary>The choice as the session layer consumes it; a blank id falls back to a fresh conversation rather than a broken resume.</summary>
+    // The choice as the session layer consumes it; a blank id falls back to a fresh conversation rather than a broken resume.
     private SessionResume _Resume() => ResumeMode switch
     {
         SessionResumeMode.MostRecent => SessionResume.MostRecent,
@@ -333,58 +307,54 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _ => SessionResume.New,
     };
 
-    /// <summary>
-    /// Optional per-session working directory (#: project-folder launch): the directory <c>claude</c> is
-    /// started in for this session, overriding the global option. Blank keeps the global default. Pre-fillable
-    /// from <see cref="RecentPaths"/>/<see cref="FavoritePaths"/> so a previously-used folder is one click away.
-    /// </summary>
+    // Optional per-session working directory (#: project-folder launch): the directory `claude` is
+    // started in for this session, overriding the global option. Blank keeps the global default. Pre-fillable
+    // from `RecentPaths`/`FavoritePaths` so a previously-used folder is one click away.
     [ObservableProperty]
     private string _workingDirectory = string.Empty;
 
-    /// <summary>Remembered working directories for the quick-pick — favorites first (★), then recents — so a folder used before is one selection away.</summary>
+    // Remembered working directories for the quick-pick — favorites first (★), then recents — so a folder used before is one selection away.
     public ObservableCollection<RememberedPathOption> RememberedPaths { get; } = [];
 
-    /// <summary>Bound to the quick-pick ComboBox; selecting an entry fills <see cref="WorkingDirectory"/> and resets to null so it behaves as a picker, not a persistent selection.</summary>
+    // Bound to the quick-pick ComboBox; selecting an entry fills `WorkingDirectory` and resets to null so it behaves as a picker, not a persistent selection.
     [ObservableProperty]
     private RememberedPathOption? _selectedRememberedPath;
 
-    /// <summary>Whether there is anything to offer in the folder quick-pick.</summary>
+    // Whether there is anything to offer in the folder quick-pick.
     public bool HasRememberedPaths => RememberedPaths.Count > 0;
 
-    /// <summary>Whether the currently-typed working directory is pinned — drives the favorite toggle's icon.</summary>
+    // Whether the currently-typed working directory is pinned — drives the favorite toggle's icon.
     public bool IsWorkingDirectoryFavorite => _history.IsFavorite(WorkingDirectory);
 
-    /// <summary>Filled star when the current folder is a favorite, outline otherwise — the toggle button's icon.</summary>
+    // Filled star when the current folder is a favorite, outline otherwise — the toggle button's icon.
     public MaterialIconKind FavoriteToggleGlyph => IsWorkingDirectoryFavorite ? MaterialIconKind.Star : MaterialIconKind.StarOutline;
 
-    /// <summary>Whether the favorite toggle is actionable (there is a path to pin).</summary>
+    // Whether the favorite toggle is actionable (there is a path to pin).
     public bool CanFavoriteWorkingDirectory => !string.IsNullOrWhiteSpace(WorkingDirectory);
 
-    /// <summary>Whether this session runs in its own git worktree on a dedicated branch (AC-85) — a per-session choice made here, next to the folder, not a profile setting. Only actionable when the folder is a git repository; forced off otherwise so it is never a silent no-op.</summary>
+    // Whether this session runs in its own git worktree on a dedicated branch (AC-85) — a per-session choice made here, next to the folder, not a profile setting. Only actionable when the folder is a git repository; forced off otherwise so it is never a silent no-op.
     [ObservableProperty]
     private bool _isolateInWorktree;
 
-    /// <summary>Whether the current working directory is a git repository — the reactive gate (§4) for offering worktree isolation.</summary>
+    // Whether the current working directory is a git repository — the reactive gate (§4) for offering worktree isolation.
     [ObservableProperty]
     private bool _isWorkingDirectoryGitRepo;
 
-    /// <summary>The branch the current working directory is on, when it is a git repository — the base a worktree would branch from, shown in the isolation status line.</summary>
+    // The branch the current working directory is on, when it is a git repository — the base a worktree would branch from, shown in the isolation status line.
     [ObservableProperty]
     private string? _workingDirectoryBaseBranch;
 
-    /// <summary>Whether the isolation checkbox is actionable (the folder is a git repository).</summary>
+    // Whether the isolation checkbox is actionable (the folder is a git repository).
     public bool CanIsolateInWorktree => IsWorkingDirectoryGitRepo;
 
-    /// <summary>The status line under the isolation checkbox: a repo shows the base branch it would fork from, a non-repo says why the option is disabled (§4).</summary>
+    // The status line under the isolation checkbox: a repo shows the base branch it would fork from, a non-repo says why the option is disabled (§4).
     public string WorktreeStatusText => IsWorkingDirectoryGitRepo
         ? $"✓ Git repo{(string.IsNullOrEmpty(WorkingDirectoryBaseBranch) ? string.Empty : $" · base {WorkingDirectoryBaseBranch}")} → runs on a new cockpit/… branch"
         : "Pick a Git repository to enable isolation";
 
-    /// <summary>
-    /// Whether to show the isolation control — only once the chosen folder is actually a git repository (Raymond
-    /// 2026-07-19: appear when it applies, not greyed-out beforehand). Also gated to a process-spawning provider: a
-    /// local HTTP provider (Ollama/LM Studio) spawns no process and so has no working tree to isolate.
-    /// </summary>
+    // Whether to show the isolation control — only once the chosen folder is actually a git repository (Raymond
+    // 2026-07-19: appear when it applies, not greyed-out beforehand). Also gated to a process-spawning provider: a
+    // local HTTP provider (Ollama/LM Studio) spawns no process and so has no working tree to isolate.
     public bool ShowWorktreeIsolation => SelectedProfile is not null && !IsLocalProfile && IsWorkingDirectoryGitRepo;
 
     // Each working-directory change supersedes the last detection. A manager-less design-time VM reports no repo, so
@@ -441,7 +411,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
 
-    /// <summary>The Claude model for this session, as free text with suggestions — an alias, or a pinned model/snapshot.</summary>
+    // The Claude model for this session, as free text with suggestions — an alias, or a pinned model/snapshot.
     [ObservableProperty]
     private string _selectedClaudeModel = SessionOptionCatalog.DefaultModel.Value;
 
@@ -451,64 +421,58 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSelectedProfileLoggedIn;
 
-    /// <summary>Config directory of the selected profile, shown under the picker so it is clear where its login lives.</summary>
+    // Config directory of the selected profile, shown under the picker so it is clear where its login lives.
     public string? SelectedProfileConfigDir => SelectedProfile?.Claude?.ConfigDir;
 
-    /// <summary>
-    /// Whether the selected profile runs on Claude (login gating, resume, the login hint apply) — true whether it
-    /// still carries a legacy <see cref="ClaudeConfig"/> or, after Fase 4, the bundled Claude provider plugin's
-    /// config. A profile's <see cref="SessionProfile.Claude"/> is non-null in both cases.
-    /// </summary>
+    // Whether the selected profile runs on Claude (login gating, resume, the login hint apply) — true whether it
+    // still carries a legacy `ClaudeConfig` or, after Fase 4, the bundled Claude provider plugin's
+    // config. A profile's `SessionProfile.Claude` is non-null in both cases.
     public bool IsClaudeProfile => SelectedProfile?.Claude is not null;
 
-    /// <summary>A local OpenAI-compatible provider (Ollama/LM Studio) — no login, no TUI, no resume.</summary>
+    // A local OpenAI-compatible provider (Ollama/LM Studio) — no login, no TUI, no resume.
     public bool IsLocalProfile => SelectedProfile?.Provider is SessionProvider.Ollama or SessionProvider.LmStudio;
 
-    /// <summary>
-    /// Whether the selected profile has a TUI to run at all — the gate for offering the Kind picker and for
-    /// what TTY actually launches. Claude always does (its own <c>claude</c> TTY provider); a plugin profile
-    /// does only when it registered one via <c>ICockpitHost.AddTtyProvider</c> under the same provider id its
-    /// session provider uses (#45 fase B2) — resolved the same way <c>TtyViewModel</c> resolves it at
-    /// launch, so the dialog never offers a kind the launch would then refuse. A local HTTP provider (Ollama/
-    /// LM Studio) is never a program a terminal can host, so it has none either way.
-    /// </summary>
+    // Whether the selected profile has a TUI to run at all — the gate for offering the Kind picker and for
+    // what TTY actually launches. Claude always does (its own `claude` TTY provider); a plugin profile
+    // does only when it registered one via `ICockpitHost.AddTtyProvider` under the same provider id its
+    // session provider uses (#45 fase B2) — resolved the same way `TtyViewModel` resolves it at
+    // launch, so the dialog never offers a kind the launch would then refuse. A local HTTP provider (Ollama/
+    // LM Studio) is never a program a terminal can host, so it has none either way.
     public bool HasTtyProvider => SessionKindDefaults.HasTtyRoute(SelectedProfile, _ttyProviderResolver);
 
-    /// <summary>The declared start defaults for the selected profile's plugin TTY provider (Codex's sandbox policy, say) — empty for Claude/local profiles or a plugin with none declared.</summary>
+    // The declared start defaults for the selected profile's plugin TTY provider (Codex's sandbox policy, say) — empty for Claude/local profiles or a plugin with none declared.
     public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginTtyOptions { get; } = [];
 
     public bool HasPluginTtyOptions => PluginTtyOptions.Count > 0;
 
-    /// <summary>Shown when TTY is chosen for a plugin profile (Claude or Codex) that declared its own start defaults.</summary>
+    // Shown when TTY is chosen for a plugin profile (Claude or Codex) that declared its own start defaults.
     public bool ShowPluginTtyOptions => IsTty && HasPluginTtyOptions;
 
-    /// <summary>The declared per-session start defaults for the selected profile's SDK session provider (Codex's sandbox/model) — empty for Claude/local profiles or a provider with none declared. Reuses the same generic option row as the TTY route.</summary>
+    // The declared per-session start defaults for the selected profile's SDK session provider (Codex's sandbox/model) — empty for Claude/local profiles or a provider with none declared. Reuses the same generic option row as the TTY route.
     public ObservableCollection<PluginTtyOptionSelectionViewModel> SdkLaunchOptions { get; } = [];
 
     public bool HasSdkLaunchOptions => SdkLaunchOptions.Count > 0;
 
-    /// <summary>Shown when SDK is chosen for a plugin profile (Claude or Codex) that declared its own start defaults — the SDK mirror of <see cref="ShowPluginTtyOptions"/>.</summary>
+    // Shown when SDK is chosen for a plugin profile (Claude or Codex) that declared its own start defaults — the SDK mirror of `ShowPluginTtyOptions`.
     public bool ShowSdkLaunchOptions => IsSdk && HasSdkLaunchOptions;
 
-    /// <summary>Provider label shown next to the picker; empty for Claude, which needs no badge.</summary>
+    // Provider label shown next to the picker; empty for Claude, which needs no badge.
     public string SelectedProviderLabel => IsLocalProfile ? SessionProviderCatalog.Resolve(SelectedProfile!.Provider).Label : string.Empty;
 
     public string LoginStatusLabel => IsSelectedProfileLoggedIn ? "logged in" : "not logged in";
 
-    /// <summary>Guidance shown (in the body) only when a Claude SDK session isn't logged in — a TTY session logs in via its own TUI, and a local provider has no login.</summary>
+    // Guidance shown (in the body) only when a Claude SDK session isn't logged in — a TTY session logs in via its own TUI, and a local provider has no login.
     public bool ShowLoginHint => IsClaudeProfile && IsSdk && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
 
     public string LoginStatusBrushKey => IsSelectedProfileLoggedIn
         ? "CockpitStatusDoneBrush"
         : "CockpitStatusWaitingBrush";
 
-    /// <summary>
-    /// A selected profile is startable, except a Claude <em>SDK</em> session, which is gated on login: an
-    /// SDK spawn talks to the CLI headlessly and would just fail unauthenticated. A TTY session hosts the
-    /// real interactive TUI, which runs its own <c>/login</c>, so it needs no pre-check; a local profile
-    /// has no login at all.
-    /// </summary>
-    /// <summary>Resuming by id with no id typed is not a session anyone asked for, so Start stays disabled until it is filled in.</summary>
+    // A selected profile is startable, except a Claude *SDK* session, which is gated on login: an
+    // SDK spawn talks to the CLI headlessly and would just fail unauthenticated. A TTY session hosts the
+    // real interactive TUI, which runs its own `/login`, so it needs no pre-check; a local profile
+    // has no login at all.
+    // Resuming by id with no id typed is not a session anyone asked for, so Start stays disabled until it is filled in.
     public bool CanStart =>
         SelectedProfile is not null
         && (IsLocalProfile || IsTty || IsSelectedProfileLoggedIn)
@@ -558,11 +522,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _oauthCoordinator = oauthCoordinator;
     }
 
-    /// <summary>
-    /// Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the enabled MCP
-    /// servers (#44) into the checklist, all pre-checked — from the catalog, so a plugin's own servers (AC-11) are
-    /// offered and uncheckable here alongside the registry's.
-    /// </summary>
+    // Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the enabled MCP
+    // servers (#44) into the checklist, all pre-checked — from the catalog, so a plugin's own servers (AC-11) are
+    // offered and uncheckable here alongside the registry's.
     public async Task LoadAsync()
     {
         if (_profileStore is null)
@@ -602,11 +564,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// (Re)builds the MCP checklist for the selected project (AC-163). Rebuilt rather than merely re-ticked,
-    /// because a project can bring servers of its own — but it never takes one away: every server the registry
-    /// offers stays listed whichever project is picked, and the project's choice shows as the ticks.
-    /// </summary>
+    // (Re)builds the MCP checklist for the selected project (AC-163). Rebuilt rather than merely re-ticked,
+    // because a project can bring servers of its own — but it never takes one away: every server the registry
+    // offers stays listed whichever project is picked, and the project's choice shows as the ticks.
     private async Task _PopulateMcpServersAsync()
     {
         if (_mcpServerCatalog is null)
@@ -683,11 +643,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Reads each offered server's OAuth standing (AC-355) and writes it onto the checklist row in the same position
-    /// — a no-op without a coordinator (design-time/no service) so the checklist behaves exactly as before AC-355
-    /// when nobody asked for status.
-    /// </summary>
+    // Reads each offered server's OAuth standing (AC-355) and writes it onto the checklist row in the same position
+    // — a no-op without a coordinator (design-time/no service) so the checklist behaves exactly as before AC-355
+    // when nobody asked for status.
     private async Task _RefreshMcpAuthStatesAsync(IReadOnlyList<McpServerConfig> offered)
     {
         if (_oauthCoordinator is null)
@@ -727,18 +685,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(McpAuthorizationHintText));
     }
 
-    /// <summary>
-    /// Applies a chosen project to the dialog (AC-163). The profile is selected first so its own defaults land, then
-    /// the project's values are written over them — that ordering <em>is</em> the precedence rule
-    /// (<see cref="SessionStartDefaults"/>): the project overrides, the profile falls back, and a field the operator
-    /// already touched is left alone either way.
-    /// </summary>
-    /// <summary>
-    /// The chosen project's description, as a flat value rather than a path through <see cref="SelectedProject"/>.
-    /// A binding that walks into a null object yields no value at all, and an <c>IsVisible</c> left with no value
-    /// falls back to visible — which is how the hint under the picker held an empty line open, spacing the Project
-    /// row away from the Profile row whenever no project was chosen.
-    /// </summary>
+    // Applies a chosen project to the dialog (AC-163). The profile is selected first so its own defaults land, then
+    // the project's values are written over them — that ordering *is* the precedence rule
+    // (`SessionStartDefaults`): the project overrides, the profile falls back, and a field the operator
+    // already touched is left alone either way.
+    // The chosen project's description, as a flat value rather than a path through `SelectedProject`.
+    // A binding that walks into a null object yields no value at all, and an `IsVisible` left with no value
+    // falls back to visible — which is how the hint under the picker held an empty line open, spacing the Project
+    // row away from the Profile row whenever no project was chosen.
     public string? SelectedProjectDescription => SelectedProject?.Description;
 
     partial void OnSelectedProjectChanged(Project? value)
@@ -818,10 +772,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _ApplyMcpSelection(server => restriction?.Contains(server.Name) ?? true);
     }
 
-    /// <summary>
-    /// Ticks the checklist by <paramref name="isSelected"/>, guarded so the re-ticking is not mistaken for the
-    /// operator editing it — which would freeze the checklist against the next project or profile switch.
-    /// </summary>
+    // Ticks the checklist by `isSelected`, guarded so the re-ticking is not mistaken for the
+    // operator editing it — which would freeze the checklist against the next project or profile switch.
     private void _ApplyMcpSelection(Func<McpServerSelectionItemViewModel, bool> isSelected)
     {
         _applyingMcpSelection = true;
@@ -865,13 +817,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>The AC-134 pre-flight summary line for the ticked MCP servers; shown only once there are servers and an estimator to compute it.</summary>
+    // The AC-134 pre-flight summary line for the ticked MCP servers; shown only once there are servers and an estimator to compute it.
     public bool HasMcpTokenSummary => _tokenEstimator is not null && McpServers.Count > 0;
 
-    /// <summary>The rolled-up tool-token estimate for the ticked MCP servers (AC-134), labelled as a tools-only estimate.</summary>
+    // The rolled-up tool-token estimate for the ticked MCP servers (AC-134), labelled as a tools-only estimate.
     public string McpToolTokenSummary => McpTokenEstimation.SummaryLabel(McpServers);
 
-    /// <summary>Re-enumerates every MCP server's tools and refreshes the estimate (AC-134) — for when a server's toolset has changed since it was last counted.</summary>
+    // Re-enumerates every MCP server's tools and refreshes the estimate (AC-134) — for when a server's toolset has changed since it was last counted.
     [RelayCommand]
     private Task RefreshMcpTokens() => _EstimateMcpTokensAsync(refresh: true);
 
@@ -988,15 +940,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         Dispatcher.UIThread.Post(() => SelectedRememberedPath = null);
     }
 
-    /// <summary>Clears the working directory back to the global default for this session.</summary>
+    // Clears the working directory back to the global default for this session.
     [RelayCommand]
     private void ClearWorkingDirectory() => WorkingDirectory = string.Empty;
 
-    /// <summary>
-    /// Forgets a remembered folder from the quick-pick (AC-131): removes it from the recent and favorite lists,
-    /// persists, and rebuilds the list. The ✕ button that invokes this handles its own pointer press, so the row is
-    /// never selected (and the folder field never filled) by the same click. Ignores the clone action / separator.
-    /// </summary>
+    // Forgets a remembered folder from the quick-pick (AC-131): removes it from the recent and favorite lists,
+    // persists, and rebuilds the list. The ✕ button that invokes this handles its own pointer press, so the row is
+    // never selected (and the folder field never filled) by the same click. Ignores the clone action / separator.
     [RelayCommand]
     private async Task RemoveRememberedPathAsync(RememberedPathOption? option)
     {
@@ -1009,7 +959,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _RefreshRememberedPaths();
     }
 
-    /// <summary>Pins or unpins the current working directory as a favorite, persisting immediately.</summary>
+    // Pins or unpins the current working directory as a favorite, persisting immediately.
     [RelayCommand]
     private async Task ToggleWorkingDirectoryFavoriteAsync()
     {
@@ -1102,11 +1052,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _RefreshDynamicLaunchOptions(value);
     }
 
-    /// <summary>
-    /// Rebuilds <see cref="PluginTtyOptions"/> from the selected profile's own plugin TTY provider (if any) —
-    /// the start defaults it declared via <c>TtyProviderRegistration.Options</c>, rendered generically here
-    /// since the host does not (and must not) know what any of them mean, only their key/label/choices.
-    /// </summary>
+    // Rebuilds `PluginTtyOptions` from the selected profile's own plugin TTY provider (if any) —
+    // the start defaults it declared via `TtyProviderRegistration.Options`, rendered generically here
+    // since the host does not (and must not) know what any of them mean, only their key/label/choices.
     private void _RefreshPluginTtyOptions(SessionProfile? profile)
     {
         PluginTtyOptions.Clear();
@@ -1127,12 +1075,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowPluginTtyOptions));
     }
 
-    /// <summary>
-    /// Rebuilds <see cref="SdkLaunchOptions"/> from the selected profile's SDK session provider (if any) — the
-    /// start defaults it declared via <c>SessionProviderRegistration.Options</c>, rendered generically here the
-    /// same way as the TTY route, since the host must not know what any of them mean. Static only; the live
-    /// upgrade (Codex's model/list) runs from <see cref="_RefreshDynamicLaunchOptions"/> for the active kind.
-    /// </summary>
+    // Rebuilds `SdkLaunchOptions` from the selected profile's SDK session provider (if any) — the
+    // start defaults it declared via `SessionProviderRegistration.Options`, rendered generically here the
+    // same way as the TTY route, since the host must not know what any of them mean. Static only; the live
+    // upgrade (Codex's model/list) runs from `_RefreshDynamicLaunchOptions` for the active kind.
     private void _RefreshSdkLaunchOptions(SessionProfile? profile)
     {
         SdkLaunchOptions.Clear();
@@ -1153,13 +1099,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowSdkLaunchOptions));
     }
 
-    /// <summary>
-    /// Upgrades the <em>active</em> kind's launch options with the provider's live values (Codex's model/list) in
-    /// the background — only the visible kind, so a Codex profile (which registers both a TTY and an SDK provider)
-    /// never runs the query twice, and only when that kind's provider offers a resolver. The declared options are
-    /// already rendered; this replaces their rows when the resolve lands. Runs on a profile change and on a kind
-    /// switch, since the newly active kind may not have been resolved yet.
-    /// </summary>
+    // Upgrades the *active* kind's launch options with the provider's live values (Codex's model/list) in
+    // the background — only the visible kind, so a Codex profile (which registers both a TTY and an SDK provider)
+    // never runs the query twice, and only when that kind's provider offers a resolver. The declared options are
+    // already rendered; this replaces their rows when the resolve lands. Runs on a profile change and on a kind
+    // switch, since the newly active kind may not have been resolved yet.
     private void _RefreshDynamicLaunchOptions(SessionProfile? profile)
     {
         // A profile or kind switch supersedes any refresh still running.
@@ -1226,12 +1170,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Swaps the declared option rows in <paramref name="target"/> for the provider's refreshed ones, carrying
-    /// over any value the operator already picked (so a Sandbox choice or a typed model survives the model/list
-    /// arriving) and otherwise taking the refreshed default. <see cref="PluginTtyOptionSelectionViewModel.Choices"/>
-    /// is fixed per row, so turning a free-text field into a dropdown means replacing the row, not mutating it.
-    /// </summary>
+    // Swaps the declared option rows in `target` for the provider's refreshed ones, carrying
+    // over any value the operator already picked (so a Sandbox choice or a typed model survives the model/list
+    // arriving) and otherwise taking the refreshed default. `PluginTtyOptionSelectionViewModel.Choices`
+    // is fixed per row, so turning a free-text field into a dropdown means replacing the row, not mutating it.
     private void _ApplyResolvedLaunchOptions(ObservableCollection<PluginTtyOptionSelectionViewModel> target, IReadOnlyList<LaunchOptionSpec> resolved)
     {
         var pickedByKey = target.ToDictionary(option => option.Key, option => option.Value);
@@ -1254,7 +1196,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     private static LaunchOptionSpec _ToSpec(PluginTtyLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels);
 
-    /// <summary>The provider-neutral shape both a TTY and an SDK launch option project to, so one refresh path serves both.</summary>
+    // The provider-neutral shape both a TTY and an SDK launch option project to, so one refresh path serves both.
     private readonly record struct LaunchOptionSpec(string Key, string Label, IReadOnlyList<string> Choices, string? DefaultValue, IReadOnlyDictionary<string, string>? ChoiceLabels);
 
     partial void OnIsSelectedProfileLoggedInChanged(bool value)
@@ -1378,31 +1320,27 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private void ManageProfiles() => ManageProfilesRequested?.Invoke();
 }
 
-/// <summary>
-/// One entry in the New-session dialog's working-directory quick-pick: the remembered <see cref="Path"/> and whether
-/// it is a pinned favorite (shown with a star icon, and listed first). <see cref="IsCloneAction"/> marks the special
-/// "Clone from a Git URL…" entry (AC-90) rather than a folder — selecting it opens the clone flow instead of filling
-/// the folder field. <see cref="IsSeparator"/> marks the non-selectable ruler between the favorites and the recents
-/// (AC-131). A real folder row (neither action nor separator) carries a ✕ to forget it.
-/// </summary>
+// One entry in the New-session dialog's working-directory quick-pick: the remembered `Path` and whether
+// it is a pinned favorite (shown with a star icon, and listed first). `IsCloneAction` marks the special
+// "Clone from a Git URL…" entry (AC-90) rather than a folder — selecting it opens the clone flow instead of filling
+// the folder field. `IsSeparator` marks the non-selectable ruler between the favorites and the recents
+// (AC-131). A real folder row (neither action nor separator) carries a ✕ to forget it.
 public sealed record RememberedPathOption(string Path, bool IsFavorite, bool IsCloneAction = false, bool IsSeparator = false)
 {
-    /// <summary>Whether picking this entry does something — a folder or the clone action. The separator is inert, so its container is disabled and it never fills the field.</summary>
+    // Whether picking this entry does something — a folder or the clone action. The separator is inert, so its container is disabled and it never fills the field.
     public bool IsSelectable => !IsSeparator;
 
-    /// <summary>Whether this entry can be forgotten via the ✕ — a real remembered folder, not the clone action or the separator (AC-131).</summary>
+    // Whether this entry can be forgotten via the ✕ — a real remembered folder, not the clone action or the separator (AC-131).
     public bool IsRemovable => !IsCloneAction && !IsSeparator;
 }
 
-/// <summary>
-/// One start default a plugin TTY provider declared (<c>PluginTtyLaunchOption</c>) — <see cref="Key"/>/
-/// <see cref="Label"/>/<see cref="Choices"/> straight from the registration, plus the operator's pick so
-/// far. <see cref="Value"/> starts blank rather than defaulting to the first choice when the provider left
-/// <c>DefaultValue</c> null: "no choice made" and "the first choice" are different things, and only the
-/// provider's own default counts as the second one (mirrors <c>TtyViewModel._LaunchOptions</c>'s same
-/// rule for a blank knob). A blank <see cref="Value"/> for a provider with <see cref="Choices"/> renders as
-/// no selection — the CLI's own default then applies, same as leaving Claude's mode/model/effort untouched.
-/// </summary>
+// One start default a plugin TTY provider declared (`PluginTtyLaunchOption`) — `Key`/
+// `Label`/`Choices` straight from the registration, plus the operator's pick so
+// far. `Value` starts blank rather than defaulting to the first choice when the provider left
+// `DefaultValue` null: "no choice made" and "the first choice" are different things, and only the
+// provider's own default counts as the second one (mirrors `TtyViewModel._LaunchOptions`'s same
+// rule for a blank knob). A blank `Value` for a provider with `Choices` renders as
+// no selection — the CLI's own default then applies, same as leaving Claude's mode/model/effort untouched.
 public sealed partial class PluginTtyOptionSelectionViewModel : ObservableObject
 {
     public string Key { get; }
@@ -1411,10 +1349,10 @@ public sealed partial class PluginTtyOptionSelectionViewModel : ObservableObject
 
     public IReadOnlyList<string> Choices { get; }
 
-    /// <summary>The choices as label/value pairs for the combo, so a provider that supplied friendly labels (Claude's "Ask permissions" for <c>default</c>) shows them while <see cref="Value"/> still round-trips the raw value.</summary>
+    // The choices as label/value pairs for the combo, so a provider that supplied friendly labels (Claude's "Ask permissions" for `default`) shows them while `Value` still round-trips the raw value.
     public IReadOnlyList<SelectableChoice> ChoiceItems { get; }
 
-    /// <summary>No declared choices means free text — the New-session dialog renders a text box instead of a combo.</summary>
+    // No declared choices means free text — the New-session dialog renders a text box instead of a combo.
     public bool IsFreeText => Choices.Count == 0;
 
     [ObservableProperty]

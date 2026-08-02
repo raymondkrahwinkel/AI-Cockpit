@@ -3,17 +3,13 @@ using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Claude's managed-CLI install recipe (AC-20) — the one place the Claude download channel is named. The host's
-/// generic installer consumes this <see cref="ManagedCliDescriptor"/>; the core never knows what "claude" is.
-/// </summary>
-/// <remarks>
-/// Route (verified against Anthropic's own install.sh, 2026-07): the latest version is a plain string at
-/// <c>.../claude-code-releases/latest</c>; each version has a <c>manifest.json</c> keyed by platform
-/// (<c>linux-x64</c>, <c>darwin-arm64</c>, <c>win32-x64</c>, …, plus <c>-musl</c> variants) with the binary's name
-/// and its SHA-256; the binary itself is <c>.../&lt;version&gt;/&lt;platform&gt;/&lt;binary&gt;</c>. The endpoint is
-/// not a published API contract but is the de-facto production channel Anthropic's own installer depends on.
-/// </remarks>
+// Claude's managed-CLI install recipe (AC-20) — the one place the Claude download channel is named. The host's
+// generic installer consumes this `ManagedCliDescriptor`; the core never knows what "claude" is.
+// Route (verified against Anthropic's own install.sh, 2026-07): the latest version is a plain string at
+// `.../claude-code-releases/latest`; each version has a `manifest.json` keyed by platform
+// (`linux-x64`, `darwin-arm64`, `win32-x64`, …, plus `-musl` variants) with the binary's name
+// and its SHA-256; the binary itself is `.../&lt;version&gt;/&lt;platform&gt;/&lt;binary&gt;`. The endpoint is
+// not a published API contract but is the de-facto production channel Anthropic's own installer depends on.
 internal static class ClaudeManagedCli
 {
     public const string CliName = "claude";
@@ -34,11 +30,11 @@ internal static class ClaudeManagedCli
         },
     };
 
-    /// <summary>The manifest platform key for a target — <c>&lt;os&gt;-&lt;arch&gt;</c>, with a <c>-musl</c> suffix on musl Linux. Internal for testing.</summary>
+    // The manifest platform key for a target — `&lt;os&gt;-&lt;arch&gt;`, with a `-musl` suffix on musl Linux. Internal for testing.
     internal static string PlatformKey(ManagedCliPlatform platform) =>
         $"{platform.Os}-{platform.Arch}" + (platform is { Os: "linux", IsMusl: true } ? "-musl" : string.Empty);
 
-    /// <summary>Builds the download plan from a resolved version, a target platform and the fetched manifest JSON. Internal (no network) for testing.</summary>
+    // Builds the download plan from a resolved version, a target platform and the fetched manifest JSON. Internal (no network) for testing.
     internal static ManagedCliDownloadPlan BuildPlan(string version, ManagedCliPlatform platform, string manifestJson)
     {
         var key = PlatformKey(platform);

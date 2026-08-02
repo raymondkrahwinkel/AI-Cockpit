@@ -6,11 +6,9 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One consent request waiting on a session (#AC-47), bound to the inline banner in the pane. Renders the request
-/// as it is — the literal action verbatim, never a summary — and answers the broker when the operator chooses.
-/// Approve carries <see cref="Remember"/>, which the broker honours only for a low-risk, rememberable prompt.
-/// </summary>
+// One consent request waiting on a session (#AC-47), bound to the inline banner in the pane. Renders the request
+// as it is — the literal action verbatim, never a summary — and answers the broker when the operator chooses.
+// Approve carries `Remember`, which the broker honours only for a low-risk, rememberable prompt.
 public sealed partial class ConsentPromptViewModel : ViewModelBase
 {
     private readonly IConsentBroker _broker;
@@ -26,29 +24,29 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
         IsDangerous = prompt.Request.Risk == ConsentRisk.Dangerous;
     }
 
-    /// <summary>Matches the broker's prompt, so the cockpit can clear this banner when the prompt is resolved elsewhere.</summary>
+    // Matches the broker's prompt, so the cockpit can clear this banner when the prompt is resolved elsewhere.
     public Guid Id { get; }
 
     public string Title { get; }
 
-    /// <summary>The literal action, shown verbatim in a read-only monospace block — the ground truth (see <see cref="ConsentRequest.Action"/>).</summary>
+    // The literal action, shown verbatim in a read-only monospace block — the ground truth (see `ConsentRequest.Action`).
     public string Action { get; }
 
     public string SourceLabel { get; }
 
-    /// <summary>Whether to offer the "remember for this session" checkbox — true only for a rememberable low-risk prompt.</summary>
+    // Whether to offer the "remember for this session" checkbox — true only for a rememberable low-risk prompt.
     public bool CanRemember { get; }
 
-    /// <summary>Whether this is a dangerous action — drives the amber (vs accent) edge and the warning glyph.</summary>
+    // Whether this is a dangerous action — drives the amber (vs accent) edge and the warning glyph.
     public bool IsDangerous { get; }
 
-    /// <summary>Theme brush key for the banner's left edge (resolved by <c>StatusBrushConverter</c>): amber for dangerous, accent for low-risk.</summary>
+    // Theme brush key for the banner's left edge (resolved by `StatusBrushConverter`): amber for dangerous, accent for low-risk.
     public string EdgeBrushKey => IsDangerous ? "CockpitStatusWaitingBrush" : "CockpitAccentBrush";
 
-    /// <summary>Icon next to the title, mirroring the sidebar's status markers.</summary>
+    // Icon next to the title, mirroring the sidebar's status markers.
     public MaterialIconKind Glyph => IsDangerous ? MaterialIconKind.AlertOutline : MaterialIconKind.RhombusOutline;
 
-    /// <summary>Two-way for the "remember for this session" checkbox; only shown/honoured when <see cref="CanRemember"/>.</summary>
+    // Two-way for the "remember for this session" checkbox; only shown/honoured when `CanRemember`.
     [ObservableProperty]
     private bool _remember;
 

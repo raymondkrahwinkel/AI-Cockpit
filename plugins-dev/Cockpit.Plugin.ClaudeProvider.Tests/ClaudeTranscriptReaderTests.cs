@@ -3,14 +3,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeTranscriptReader"/> (#39, weg A): locates the session's live JSONL transcript as the
-/// new <c>configDir/projects/*/*.jsonl</c> file that appears after launch (not matched by a forced session id —
-/// undocumented for interactive sessions), waiting for it if the launch has not written it yet, tails it from
-/// its current end so history is never replayed, and buffers a partial line across polls so a write caught
-/// mid-line never surfaces as a corrupt/truncated read. Ported from the host's former in-tree reader test; the
-/// only difference is the reader is keyed by the plugin's own config JSON rather than a host-supplied path.
-/// </summary>
+// `ClaudeTranscriptReader` (#39, weg A): locates the session's live JSONL transcript as the
+// new `configDir/projects/*/*.jsonl` file that appears after launch (not matched by a forced session id —
+// undocumented for interactive sessions), waiting for it if the launch has not written it yet, tails it from
+// its current end so history is never replayed, and buffers a partial line across polls so a write caught
+// mid-line never surfaces as a corrupt/truncated read. Ported from the host's former in-tree reader test; the
+// only difference is the reader is keyed by the plugin's own config JSON rather than a host-supplied path.
 public class ClaudeTranscriptReaderTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-transcript-reader-tests-").FullName;

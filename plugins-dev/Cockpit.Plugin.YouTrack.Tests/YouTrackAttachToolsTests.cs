@@ -6,11 +6,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// AC-128: attach_message_images_to_issue keys on the transport-verified caller pane, not the agent-declared
-/// <c>session</c>, so an agent cannot read another session's current-turn images by naming its id (confused deputy)
-/// and upload them to an issue.
-/// </summary>
+// AC-128: attach_message_images_to_issue keys on the transport-verified caller pane, not the agent-declared
+// `session`, so an agent cannot read another session's current-turn images by naming its id (confused deputy)
+// and upload them to an issue.
 public class YouTrackAttachToolsTests
 {
     [Fact]
@@ -43,11 +41,9 @@ public class YouTrackAttachToolsTests
     }
 }
 
-/// <summary>
-/// AC-170: the path argument is a genuine outbound channel, so it is checked against an explicit allow-list (the
-/// terminal-paste folder and the calling session's own working directory), by canonical containment rather than a
-/// raw-string prefix, and its content — never its extension — decides whether it is really an image.
-/// </summary>
+// AC-170: the path argument is a genuine outbound channel, so it is checked against an explicit allow-list (the
+// terminal-paste folder and the calling session's own working directory), by canonical containment rather than a
+// raw-string prefix, and its content — never its extension — decides whether it is really an image.
 public class YouTrackAttachToolsPathTests : IAsyncLifetime
 {
     // Real PNG signature bytes (see ImageContentSniffer) — enough for the sniffer, does not need to be a decodable image.

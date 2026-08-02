@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// Custom headers (AC-354) on the Codex route. Codex offers two ways to spell them and only one of them is safe
-/// here: <c>http_headers</c> takes the value literally, which would put a credential in a <c>-c</c> argument, and a
-/// process argument is readable by every local account. <c>env_http_headers</c> maps the header to the *name* of an
-/// environment variable instead — the same rule the bearer token already follows.
-/// </summary>
+// Custom headers (AC-354) on the Codex route. Codex offers two ways to spell them and only one of them is safe
+// here: `http_headers` takes the value literally, which would put a credential in a `-c` argument, and a
+// process argument is readable by every local account. `env_http_headers` maps the header to the *name* of an
+// environment variable instead — the same rule the bearer token already follows.
 public class CodexCustomHeaderTests
 {
     private static PluginMcpServer _ServerWithHeader(string name, string value) => new()

@@ -7,14 +7,12 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-/// <summary>
-/// <see cref="IMcpToolTokenEstimator"/> over the shared MCP tool provider (AC-134): to estimate a server's tool
-/// tokens it connects that one server, reads the tools it exposes, serialises each (name + description + JSON
-/// schema), and counts characters at <see cref="McpToolTokenMath"/>'s ratio. Connecting is the expensive part
-/// (a stdio server spawns a process), so each server's estimate is cached and only recomputed on an explicit
-/// refresh. A server that cannot be connected — unreachable, or it needs an auth this pre-flight does not do —
-/// caches as <see cref="McpServerToolEstimate.Unavailable"/> so the UI shows "unknown" rather than a false zero.
-/// </summary>
+// `IMcpToolTokenEstimator` over the shared MCP tool provider (AC-134): to estimate a server's tool
+// tokens it connects that one server, reads the tools it exposes, serialises each (name + description + JSON
+// schema), and counts characters at `McpToolTokenMath`'s ratio. Connecting is the expensive part
+// (a stdio server spawns a process), so each server's estimate is cached and only recomputed on an explicit
+// refresh. A server that cannot be connected — unreachable, or it needs an auth this pre-flight does not do —
+// caches as `McpServerToolEstimate.Unavailable` so the UI shows "unknown" rather than a false zero.
 internal sealed class McpToolTokenEstimator(IMcpToolProvider toolProvider, ILogger<McpToolTokenEstimator> logger)
     : IMcpToolTokenEstimator, ISingletonService
 {
@@ -62,7 +60,7 @@ internal sealed class McpToolTokenEstimator(IMcpToolProvider toolProvider, ILogg
         }
     }
 
-    /// <summary>A tool as the model sees it in the prompt: its name, its description, and its JSON input schema.</summary>
+    // A tool as the model sees it in the prompt: its name, its description, and its JSON input schema.
     private static string _Serialise(AIFunction tool) =>
         $"{tool.Name}\n{tool.Description}\n{tool.JsonSchema.GetRawText()}";
 }

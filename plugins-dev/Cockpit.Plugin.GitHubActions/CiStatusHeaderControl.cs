@@ -10,13 +10,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubActions;
 
-/// <summary>
-/// The GitHub Actions status of the branch a session is working in, in that session's header (AC-52): a coloured icon
-/// for the latest workflow run on the current branch — green pass, red fail, amber running — with the run's details on
-/// hover, click to open it on GitHub. Mirrors the git-status header's per-session lifecycle: it re-reads when the
-/// session's working directory becomes known and on a modest timer (a run's state changes on GitHub, not locally), and
-/// stays out of the header entirely when there is no repo, no run, or no gh.
-/// </summary>
+// The GitHub Actions status of the branch a session is working in, in that session's header (AC-52): a coloured icon
+// for the latest workflow run on the current branch — green pass, red fail, amber running — with the run's details on
+// hover, click to open it on GitHub. Mirrors the git-status header's per-session lifecycle: it re-reads when the
+// session's working directory becomes known and on a modest timer (a run's state changes on GitHub, not locally), and
+// stays out of the header entirely when there is no repo, no run, or no gh.
 internal sealed class CiStatusHeaderControl : UserControl
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
@@ -173,12 +171,10 @@ internal sealed class CiStatusHeaderControl : UserControl
         }
     }
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time so a repaint of the token is followed rather than frozen. The
-    /// fallback hex is only reached with no <see cref="Application"/> (designer, headless test) and is held equal to
-    /// the token it stands in for by the repository's theme guard — a fallback that quietly disagrees is worse than
-    /// none, because it is the value nobody looks at.
-    /// </summary>
+    // The host's theme brush, resolved at call time so a repaint of the token is followed rather than frozen. The
+    // fallback hex is only reached with no `Application` (designer, headless test) and is held equal to
+    // the token it stands in for by the repository's theme guard — a fallback that quietly disagrees is worse than
+    // none, because it is the value nobody looks at.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush

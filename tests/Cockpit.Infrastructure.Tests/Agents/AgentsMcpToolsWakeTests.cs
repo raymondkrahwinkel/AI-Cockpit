@@ -29,7 +29,11 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
 
     private AgentNotifyAuditLog _Audit() => new(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance);
 
-    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims);
+    // As in AgentsMcpToolsTests: the AC-396 rate limit put out of the way so these tests keep asserting what they are
+    // about. The wake cap is five a minute by default, and several tests here wake more than that in a burst.
+    private readonly AgentLineBudget _budget = new(TimeProvider.System, TimeSpan.FromMinutes(1), 10_000, 10_000);
+
+    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims, _budget);
 
     private void _DeskWith(params string[] paneIds)
     {
@@ -272,15 +276,43 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     }
 
     [Fact]
-    public async Task SetWakeOptIn_IsOffUntilTheSessionSaysOtherwise()
+    public async Task SetWakeOptIn_FollowsTheOperatorsSettingUntilTheSessionSaysOtherwise()
     {
         _DeskWith("me");
         McpRequestContext.Set("me");
+        _coordinator.SetDefaultWakeConsent(false);
 
-        // Enrolled by a tool call, and still not consenting: being on the roster is not agreeing to be woken.
+        // Enrolled by a tool call, and following the operator's answer because it has not given one of its own.
         _ = await _Tools().ListAgentsAsync();
-
         Assert.False(_coordinator.HasWakeConsent("me"));
+
+        // AC-615: the operator's setting reaches a session that is already running, without it calling anything.
+        _coordinator.SetDefaultWakeConsent(true);
+        Assert.True(_coordinator.HasWakeConsent("me"));
+        Assert.False(_coordinator.HasOwnWakeConsent("me"));
+    }
+
+    /// <summary>
+    /// The override, in the direction that matters most: a session that says no stays no, whatever the operator's
+    /// setting does afterwards. "Has not said" and "said no" are different states, and collapsing them would let a
+    /// setting change quietly overrule a session that had opted out on purpose.
+    /// </summary>
+    [Fact]
+    public async Task SetWakeOptIn_False_SurvivesTheOperatorTurningWakesOnAgain()
+    {
+        _DeskWith("me");
+        McpRequestContext.Set("me");
+        _coordinator.SetDefaultWakeConsent(true);
+
+        var json = _Json(await _Tools().SetWakeOptInAsync(enabled: false));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.True(json["yourOwnAnswer"]!.GetValue<bool>());
+        Assert.False(_coordinator.HasWakeConsent("me"));
+
+        _coordinator.SetDefaultWakeConsent(true);
+        Assert.False(_coordinator.HasWakeConsent("me"));
+        Assert.True(_coordinator.HasOwnWakeConsent("me"));
     }
 
     [Fact]
@@ -330,6 +362,9 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     public async Task ListAgents_ReportsEachPanesOwnWakeOptIn()
     {
         _DeskWith("me", "opted-in", "not-opted-in");
+        // The operator's setting off, so what the roster reports per pane is each pane's own answer and not one
+        // default showing through three rows (AC-615).
+        _coordinator.SetDefaultWakeConsent(false);
         _coordinator.SetWakeConsent("opted-in", true);
         McpRequestContext.Set("me");
 
@@ -351,14 +386,17 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     public async Task Forget_DropsWakeConsentWithTheRoster()
     {
         _DeskWith("target");
+        _coordinator.SetDefaultWakeConsent(false);
         _coordinator.SetWakeConsent("target", true);
 
         _coordinator.Forget("target");
 
         Assert.False(_coordinator.HasWakeConsent("target"));
 
-        // And it stays off through a later enrollment, so a pane id that comes back does not come back consenting.
+        // And a pane id that comes back comes back with no answer of its own — following the operator's setting like
+        // any fresh session, not carrying the previous session's yes.
         _coordinator.Enroll("target");
+        Assert.False(_coordinator.HasOwnWakeConsent("target"));
         Assert.False(_coordinator.HasWakeConsent("target"));
 
         await Task.CompletedTask;

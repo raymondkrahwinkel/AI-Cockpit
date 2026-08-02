@@ -5,11 +5,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The start-session step, and the name it may open a session under (#AC-312). The name is a template like every other
-/// parameter here, so a flow triggered by a ticket can open its session already called after that ticket instead of
-/// renaming it a step later.
-/// </summary>
+// The start-session step, and the name it may open a session under (#AC-312). The name is a template like every other
+// parameter here, so a flow triggered by a ticket can open its session already called after that ticket instead of
+// renaming it a step later.
 public class StartSessionRunnerTests
 {
     [Fact]

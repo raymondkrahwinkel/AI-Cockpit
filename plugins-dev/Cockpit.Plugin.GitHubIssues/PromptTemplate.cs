@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// The prompt dropped into the active session when an issue is clicked. English by default (the cockpit's
-/// UI language) and editable in the plugin's Options tab; placeholders are substituted per issue:
-/// <c>{number}</c>, <c>{title}</c>, <c>{url}</c>, <c>{owner}</c>, <c>{repo}</c>, <c>{body}</c>.
-/// </summary>
+// The prompt dropped into the active session when an issue is clicked. English by default (the cockpit's
+// UI language) and editable in the plugin's Options tab; placeholders are substituted per issue:
+// `{number}`, `{title}`, `{url}`, `{owner}`, `{repo}`, `{body}`.
 internal static class PromptTemplate
 {
     public const string Default =

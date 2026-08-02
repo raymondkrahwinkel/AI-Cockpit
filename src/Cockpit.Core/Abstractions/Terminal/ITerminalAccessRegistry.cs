@@ -1,41 +1,38 @@
 namespace Cockpit.Core.Abstractions.Terminal;
 
-/// <summary>An open terminal pane the agent could ask to drive: its stable pane id and the name the operator sees (e.g. <c>zsh-5</c>).</summary>
+// An open terminal pane the agent could ask to drive: its stable pane id and the name the operator sees (e.g. `zsh-5`).
 public sealed record TerminalPane(string PaneId, string Name);
 
-/// <summary>
-/// How much of a pane an agent was granted. The operator approves the narrower thing the agent actually asked for:
-/// reading a pane and typing into it are separate questions, so watching a build finish never quietly comes with the
-/// keyboard. An agent that then wants to type asks again, and the coupling widens to <see cref="Drive"/>.
-/// </summary>
+// How much of a pane an agent was granted. The operator approves the narrower thing the agent actually asked for:
+// reading a pane and typing into it are separate questions, so watching a build finish never quietly comes with the
+// keyboard. An agent that then wants to type asks again, and the coupling widens to `Drive`.
 public enum TerminalCouplingMode
 {
-    /// <summary>Read the pane's output only — <c>send_terminal</c> is refused until the operator widens it.</summary>
+    // Read the pane's output only — `send_terminal` is refused until the operator widens it.
     Watch,
 
-    /// <summary>Read and type, including Ctrl-C.</summary>
+    // Read and type, including Ctrl-C.
     Drive,
 }
 
-/// <summary>A pane as <c>list_terminals</c> reports it to one agent session — the pane plus what that session already holds on it, or null when it holds nothing.</summary>
+// A pane as `list_terminals` reports it to one agent session — the pane plus what that session already holds on it, or null when it holds nothing.
 public sealed record TerminalPaneView(string PaneId, string Name, TerminalCouplingMode? Coupling);
 
-/// <summary>
-/// What a coupled pane's shell is telling us about itself through its shell-integration marks (OSC 133/633), which
-/// is what lets <c>run_in_terminal</c> know a command finished instead of guessing at a quiet stream.
-/// </summary>
-/// <param name="ShellIntegrationSeen">Whether any mark has arrived. Without one there is no way to tell a finished command from a slow one, and the tool says so rather than guessing.</param>
-/// <param name="AtPrompt">Whether the shell is idle at a prompt. False while a command runs — which is also true while a full-screen program like <c>vim</c> is open, so this is what keeps a command from being typed into one.</param>
-/// <param name="CommandsStarted">How many commands have begun. Paired with <paramref name="CommandsFinished"/> so a caller can tell that the finish it sees belongs to a command that started after it sent, not to one already in flight.</param>
-/// <param name="CommandsFinished">A counter a caller snapshots before sending, then waits to move.</param>
-/// <param name="LastExitCode">What the last finished command exited with, or null when the shell reported no code.</param>
-/// <param name="CapturedSoFar">Everything captured up to now, counted across the whole coupling, so a caller can read back only what its own command produced. Not a buffer position: the buffer is capped and drops its oldest text.</param>
+// What a coupled pane's shell is telling us about itself through its shell-integration marks (OSC 133/633), which
+// is what lets `run_in_terminal` know a command finished instead of guessing at a quiet stream.
+//
+// `ShellIntegrationSeen`: Whether any mark has arrived. Without one there is no way to tell a finished command from a slow one, and the tool says so rather than guessing.
+// `AtPrompt`: Whether the shell is idle at a prompt. False while a command runs — which is also true while a full-screen program like `vim` is open, so this is what keeps a command from being typed into one.
+// `CommandsStarted`: How many commands have begun. Paired with `CommandsFinished` so a caller can tell that the finish it sees belongs to a command that started after it sent, not to one already in flight.
+// `CommandsFinished`: A counter a caller snapshots before sending, then waits to move.
+// `LastExitCode`: What the last finished command exited with, or null when the shell reported no code.
+// `CapturedSoFar`: Everything captured up to now, counted across the whole coupling, so a caller can read back only what its own command produced. Not a buffer position: the buffer is capped and drops its oldest text.
 public sealed record TerminalShellState(bool ShellIntegrationSeen, bool AtPrompt, int CommandsStarted, int CommandsFinished, int? LastExitCode, long CapturedSoFar);
 
-/// <summary>Captured pane output, and whether the buffer cap dropped part of what was asked for — worth passing on, since an agent must not read a build as clean when the errors scrolled out of reach.</summary>
+// Captured pane output, and whether the buffer cap dropped part of what was asked for — worth passing on, since an agent must not read a build as clean when the errors scrolled out of reach.
 public sealed record TerminalCapturedOutput(string Text, bool Truncated);
 
-/// <summary>Raised when a pane's coupling changes, so the pane's UI can show, reword or hide its "agent connected" bar. <paramref name="Coupling"/> is null when it just decoupled.</summary>
+// Raised when a pane's coupling changes, so the pane's UI can show, reword or hide its "agent connected" bar. `Coupling` is null when it just decoupled.
 public sealed record TerminalCouplingChange(string PaneId, TerminalCouplingMode? Coupling, string? AgentSession);
 
 /// <summary>

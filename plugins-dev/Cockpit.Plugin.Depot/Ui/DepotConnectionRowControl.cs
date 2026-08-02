@@ -12,24 +12,21 @@ using DepotSaveResult = (bool Success, string? DuplicateName);
 
 namespace Cockpit.Plugin.Depot.Ui;
 
-/// <summary>
-/// One Depot connection's row in the settings view (AC-243): a name, the instance's base URL, and a Sign-in action
-/// that drives the host's own OAuth flow for the MCP server this row contributes. No auth fields — Depot has one
-/// auth path (OpenIddict OAuth 2.1 + PKCE) and the plugin never holds a credential; see
-/// <see cref="DepotConnectionRegistration"/>.
-/// <para>
-/// AC-499: Sign-in no longer requires the operator to save, close and reopen this dialog first. It is offered as
-/// soon as the row's own content is usable (<see cref="_ContentValidationReason"/>) and, on click, saves through
-/// <see cref="DepotSettingsControl"/>'s save route (the delegate this row is constructed with) before signing in —
-/// the same route Save's own button uses, so the MCP-registry and memory-source sync that live there run every
-/// time, not just on an explicit Save. A token is filed under the server's registered name against the URL it was
-/// saved with, so the row never signs in under the name it typed: it re-reads <see cref="_settings"/> by this
-/// connection's stable <see cref="DepotConnectionRegistration.Id"/> after the save completes and uses whatever
-/// name actually made it to storage. Two rows saved under a colliding name never both reach that re-read: the save
-/// refuses the whole batch rather than keep one and drop the other (see <see cref="SignInAsync"/>), so a collision
-/// is reported before either row's stored state changes.
-/// </para>
-/// </summary>
+// One Depot connection's row in the settings view (AC-243): a name, the instance's base URL, and a Sign-in action
+// that drives the host's own OAuth flow for the MCP server this row contributes. No auth fields — Depot has one
+// auth path (OpenIddict OAuth 2.1 + PKCE) and the plugin never holds a credential; see
+// `DepotConnectionRegistration`.
+//
+// AC-499: Sign-in no longer requires the operator to save, close and reopen this dialog first. It is offered as
+// soon as the row's own content is usable (`_ContentValidationReason`) and, on click, saves through
+// `DepotSettingsControl`'s save route (the delegate this row is constructed with) before signing in —
+// the same route Save's own button uses, so the MCP-registry and memory-source sync that live there run every
+// time, not just on an explicit Save. A token is filed under the server's registered name against the URL it was
+// saved with, so the row never signs in under the name it typed: it re-reads `_settings` by this
+// connection's stable `DepotConnectionRegistration.Id` after the save completes and uses whatever
+// name actually made it to storage. Two rows saved under a colliding name never both reach that re-read: the save
+// refuses the whole batch rather than keep one and drop the other (see `SignInAsync`), so a collision
+// is reported before either row's stored state changes.
 internal sealed class DepotConnectionRowControl : UserControl
 {
     // AC-499 UX pass: the operator has to know a click opens a browser before they click it, without a second
@@ -117,7 +114,7 @@ internal sealed class DepotConnectionRowControl : UserControl
 
     public string Id => _id;
 
-    /// <summary>A row is blank — and dropped on Save — only when nothing was entered and nothing is already stored for it.</summary>
+    // A row is blank — and dropped on Save — only when nothing was entered and nothing is already stored for it.
     public bool IsBlank =>
         string.IsNullOrWhiteSpace(_name.Text)
         && string.IsNullOrWhiteSpace(_url.Text)
@@ -131,11 +128,9 @@ internal sealed class DepotConnectionRowControl : UserControl
         // Stripping it here means storage always holds the bare base URL DepotConnectionRegistration.Url promises.
         Url: DepotUrlNormalizer.Normalize(_url.Text));
 
-    /// <summary>
-    /// Reads the stored auth state for this row (AC-243/AC-355) — no network, no browser, cheap enough to run for
-    /// every row when the dialog opens. A no-op for a row with nothing stored yet, or once the row's name has
-    /// drifted from what is stored (see <see cref="_IsUnderStoredIdentity"/>).
-    /// </summary>
+    // Reads the stored auth state for this row (AC-243/AC-355) — no network, no browser, cheap enough to run for
+    // every row when the dialog opens. A no-op for a row with nothing stored yet, or once the row's name has
+    // drifted from what is stored (see `_IsUnderStoredIdentity`).
     public async Task RefreshAuthStateAsync(CancellationToken cancellationToken = default)
     {
         if (!_IsUnderStoredIdentity() || _storedName is not { } storedName)
@@ -166,13 +161,11 @@ internal sealed class DepotConnectionRowControl : UserControl
         }
     }
 
-    /// <summary>
-    /// The Sign-in action (AC-499): validates this row's own content, saves the whole list through
-    /// <see cref="_saveAll"/>, re-reads what actually landed in storage for this connection's
-    /// <see cref="DepotConnectionRegistration.Id"/>, and only then signs in under that name — never under the name
-    /// this row's text boxes currently show. Public (like <see cref="RefreshAuthStateAsync"/>) so a test can drive
-    /// and await it directly instead of needing a dispatcher-pumped Click.
-    /// </summary>
+    // The Sign-in action (AC-499): validates this row's own content, saves the whole list through
+    // `_saveAll`, re-reads what actually landed in storage for this connection's
+    // `DepotConnectionRegistration.Id`, and only then signs in under that name — never under the name
+    // this row's text boxes currently show. Public (like `RefreshAuthStateAsync`) so a test can drive
+    // and await it directly instead of needing a dispatcher-pumped Click.
     public async Task SignInAsync()
     {
         if (_isBusy)
@@ -253,12 +246,10 @@ internal sealed class DepotConnectionRowControl : UserControl
         }
     }
 
-    /// <summary>
-    /// Why Sign-in is unavailable, or <see langword="null"/> when the row has enough to save and sign in with — a
-    /// disabled control with no reason is a puzzle. Content-only (name present, URL a usable absolute http(s)
-    /// address): since AC-499, whether the row already matches what is stored no longer gates the button, because
-    /// clicking it saves first.
-    /// </summary>
+    // Why Sign-in is unavailable, or `null` when the row has enough to save and sign in with — a
+    // disabled control with no reason is a puzzle. Content-only (name present, URL a usable absolute http(s)
+    // address): since AC-499, whether the row already matches what is stored no longer gates the button, because
+    // clicking it saves first.
     private string? _ContentValidationReason()
     {
         if (string.IsNullOrWhiteSpace(_name.Text))
@@ -278,12 +269,10 @@ internal sealed class DepotConnectionRowControl : UserControl
         Uri.TryCreate((text ?? string.Empty).Trim(), UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
-    /// <summary>
-    /// Whether this row still stands for the connection the store knows by <see cref="_storedName"/> and
-    /// <see cref="_storedUrl"/> — used only by <see cref="RefreshAuthStateAsync"/>'s passive status read now (AC-499
-    /// moved Sign-in's own gate to <see cref="_ContentValidationReason"/>), so asking the host about auth state
-    /// under a name that has since drifted in the text boxes cannot report a stale "signed in".
-    /// </summary>
+    // Whether this row still stands for the connection the store knows by `_storedName` and
+    // `_storedUrl` — used only by `RefreshAuthStateAsync`'s passive status read now (AC-499
+    // moved Sign-in's own gate to `_ContentValidationReason`), so asking the host about auth state
+    // under a name that has since drifted in the text boxes cannot report a stale "signed in".
     private bool _IsUnderStoredIdentity() =>
         _storedName is not null
         && _storedUrl is not null

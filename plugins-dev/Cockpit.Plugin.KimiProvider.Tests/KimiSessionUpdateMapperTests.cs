@@ -3,15 +3,13 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>
-/// <see cref="KimiSessionUpdateMapper"/> (AC-270 sub [c], P1-3) against literal <c>session/update</c>
-/// notification <c>params</c> — proves the translation without a driver or a fake process: text/thinking
-/// deltas, the lazy tool_call/tool_call_update refinement sequence producing exactly one
-/// <see cref="PluginToolUseRequested"/> at the earliest of its three triggers, tool_call_update's terminal-only
-/// result mapping, and that malformed/unknown input never throws. Each test gets its own mapper instance — the
-/// class is stateful per toolCallId across the whole session's notification stream, so tests exercising a
-/// specific arrival order call <see cref="KimiSessionUpdateMapper.Map"/> more than once on the same instance.
-/// </summary>
+// `KimiSessionUpdateMapper` (AC-270 sub [c], P1-3) against literal `session/update`
+// notification `params` — proves the translation without a driver or a fake process: text/thinking
+// deltas, the lazy tool_call/tool_call_update refinement sequence producing exactly one
+// `PluginToolUseRequested` at the earliest of its three triggers, tool_call_update's terminal-only
+// result mapping, and that malformed/unknown input never throws. Each test gets its own mapper instance — the
+// class is stateful per toolCallId across the whole session's notification stream, so tests exercising a
+// specific arrival order call `KimiSessionUpdateMapper.Map` more than once on the same instance.
 public class KimiSessionUpdateMapperTests
 {
     [Fact]

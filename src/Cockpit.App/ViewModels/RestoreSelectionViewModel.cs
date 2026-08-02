@@ -5,11 +5,9 @@ using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The choice a restore asks for (#70): the cockpit's own settings, and which of the plugins the archive carries. Read
-/// from the manifest, so what is on offer is what is actually in the file — not what this cockpit happens to have
-/// installed.
-/// </summary>
+// The choice a restore asks for (#70): the cockpit's own settings, and which of the plugins the archive carries. Read
+// from the manifest, so what is on offer is what is actually in the file — not what this cockpit happens to have
+// installed.
 public sealed partial class RestoreSelectionViewModel : ViewModelBase
 {
     public RestoreSelectionViewModel(BackupManifest manifest, IReadOnlyCollection<string> installed)
@@ -40,7 +38,7 @@ public sealed partial class RestoreSelectionViewModel : ViewModelBase
 
     public bool HasPlugins => Plugins.Count > 0;
 
-    /// <summary>Nothing ticked means nothing to do, and a Restore button that does nothing is worse than one that is disabled.</summary>
+    // Nothing ticked means nothing to do, and a Restore button that does nothing is worse than one that is disabled.
     public bool HasSelection => RestoreSettings || Plugins.Any(plugin => plugin.Selected);
 
     [ObservableProperty]
@@ -55,7 +53,7 @@ public sealed partial class RestoreSelectionViewModel : ViewModelBase
     partial void OnRestoreSettingsChanged(bool value) => SelectionChanged();
 }
 
-/// <summary>One plugin the archive carries.</summary>
+// One plugin the archive carries.
 public sealed partial class RestorePluginViewModel(string id, string detail, RestoreSelectionViewModel owner) : ViewModelBase
 {
     public string Id => id;

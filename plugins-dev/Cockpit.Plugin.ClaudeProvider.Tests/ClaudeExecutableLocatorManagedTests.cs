@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// The managed-CLI resolution seam (AC-20) on <see cref="ClaudeExecutableLocator"/>: a cockpit-managed install sits
-/// between a pinned absolute path and PATH. Order is what these assert — a pin still wins, a managed copy beats PATH,
-/// and no managed copy (offline, uninstalled) falls through to PATH untouched.
-/// </summary>
+// The managed-CLI resolution seam (AC-20) on `ClaudeExecutableLocator`: a cockpit-managed install sits
+// between a pinned absolute path and PATH. Order is what these assert — a pin still wins, a managed copy beats PATH,
+// and no managed copy (offline, uninstalled) falls through to PATH untouched.
 public class ClaudeExecutableLocatorManagedTests
 {
     private static readonly string ManagedPath = Path.Combine(Path.GetTempPath(), "managed", "claude");

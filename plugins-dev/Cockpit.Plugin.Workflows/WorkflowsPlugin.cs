@@ -4,18 +4,15 @@ using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Workflows;
 
-/// <summary>
-/// Workflows (#69): a canvas where flows are drawn — triggers, actions and decisions, wired together — and an engine
-/// that runs them, handing each step the data the one before it produced.
-/// <para>
-/// What a flow can <em>do</em> is not fixed here. Any plugin may contribute a step
-/// (<see cref="ICockpitHost.AddWorkflowStep"/>): YouTrack knows how to move a ticket and this plugin never has to.
-/// The contributed steps are read when the editor opens rather than at startup, because plugins initialise in an
-/// order nobody controls and a step registered after us would otherwise be invisible until the next run of the app.
-/// </para>
-/// The canvas is written on plain Avalonia: every node-editor library depends on Avalonia.Xaml.Behaviors, which
-/// has no Avalonia 12 release — see the spike under <c>spikes/spike-node-editor</c>.
-/// </summary>
+// Workflows (#69): a canvas where flows are drawn — triggers, actions and decisions, wired together — and an engine
+// that runs them, handing each step the data the one before it produced.
+//
+// What a flow can *do* is not fixed here. Any plugin may contribute a step
+// (`ICockpitHost.AddWorkflowStep`): YouTrack knows how to move a ticket and this plugin never has to.
+// The contributed steps are read when the editor opens rather than at startup, because plugins initialise in an
+// order nobody controls and a step registered after us would otherwise be invisible until the next run of the app.
+// The canvas is written on plain Avalonia: every node-editor library depends on Avalonia.Xaml.Behaviors, which
+// has no Avalonia 12 release — see the spike under `spikes/spike-node-editor`.
 public sealed class WorkflowsPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

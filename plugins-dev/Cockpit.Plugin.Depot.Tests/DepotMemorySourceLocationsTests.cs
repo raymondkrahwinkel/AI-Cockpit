@@ -6,12 +6,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// AC-502: <see cref="ProjectMemorySourceRegistration.ListLocationsAsync"/>/<see cref="ProjectMemorySourceRegistration.SignInAsync"/>
-/// as this plugin builds them — calling the connection's own contributed MCP server through
-/// <see cref="ICockpitHost.CallMcpToolAsync"/> rather than a fixture, since that call is the whole point of these
-/// two delegates existing.
-/// </summary>
+// AC-502: `ProjectMemorySourceRegistration.ListLocationsAsync`/`ProjectMemorySourceRegistration.SignInAsync`
+// as this plugin builds them — calling the connection's own contributed MCP server through
+// `ICockpitHost.CallMcpToolAsync` rather than a fixture, since that call is the whole point of these
+// two delegates existing.
 public class DepotMemorySourceLocationsTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Acme", "https://depot.example.com");

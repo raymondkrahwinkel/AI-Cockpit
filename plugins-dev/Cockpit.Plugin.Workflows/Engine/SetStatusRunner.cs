@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Sets the active session's statusline — what it is working on — and optionally renames it (#AC-13). The workflow
-/// half of the agent-statusline feature: a flow that starts a session on a ticket then labels it with the ticket
-/// number, or a ticket-picked trigger that writes the ticket into the session's status and clears it when done.
-/// Acts on the active (selected) session, which is the one a preceding start-session step just opened.
-/// </summary>
+// Sets the active session's statusline — what it is working on — and optionally renames it (#AC-13). The workflow
+// half of the agent-statusline feature: a flow that starts a session on a ticket then labels it with the ticket
+// number, or a ticket-picked trigger that writes the ticket into the session's status and clears it when done.
+// Acts on the active (selected) session, which is the one a preceding start-session step just opened.
 internal sealed class SetStatusRunner(ICockpitHost host) : IStepRunner
 {
     public string TypeId => "cockpit.set-status";

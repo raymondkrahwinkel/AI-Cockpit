@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>What came of reading <c>.cockpit/project.json</c> from a Depot project (AC-244) — reuses <see cref="PluginMcpToolCallOutcome"/> rather than inventing a parallel enum.</summary>
+// What came of reading `.cockpit/project.json` from a Depot project (AC-244) — reuses `PluginMcpToolCallOutcome` rather than inventing a parallel enum.
 public sealed record CockpitProjectDefinitionReadResult(
     PluginMcpToolCallOutcome Outcome, CockpitProjectDefinition? Definition, string? Checksum, string? Error)
 {

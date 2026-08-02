@@ -1,28 +1,24 @@
 namespace Cockpit.Plugin.LocalCi.Runtime;
 
-/// <summary>
-/// How far this machine gets towards a usable Docker. Three states, not two: "installed but the engine is not
-/// answering" is the common one — Docker Desktop shut down — and it deserves its own answer, because what the
-/// operator has to do about it is nothing like what they do about a missing install.
-/// </summary>
+// How far this machine gets towards a usable Docker. Three states, not two: "installed but the engine is not
+// answering" is the common one — Docker Desktop shut down — and it deserves its own answer, because what the
+// operator has to do about it is nothing like what they do about a missing install.
 internal enum DockerRuntimeState
 {
-    /// <summary>No <c>docker</c> executable — nothing to talk to.</summary>
+    // No `docker` executable — nothing to talk to.
     NotInstalled,
 
-    /// <summary>The CLI is there, the engine behind it is not answering.</summary>
+    // The CLI is there, the engine behind it is not answering.
     EngineNotRunning,
 
-    /// <summary>The engine answered.</summary>
+    // The engine answered.
     Usable,
 }
 
-/// <summary>
-/// The outcome of the Docker probe, plus the sentence the operator reads. Whether the engine runs Linux containers
-/// is a property rather than a fourth state: the states are about reaching the engine, this is about the engine
-/// being the right kind. A Windows-container engine is reachable and healthy — it simply cannot run the images a
-/// workflow job needs.
-/// </summary>
+// The outcome of the Docker probe, plus the sentence the operator reads. Whether the engine runs Linux containers
+// is a property rather than a fourth state: the states are about reaching the engine, this is about the engine
+// being the right kind. A Windows-container engine is reachable and healthy — it simply cannot run the images a
+// workflow job needs.
 internal sealed record DockerRuntimeStatus(DockerRuntimeState State, string? ContainerOs, string? ServerVersion)
 {
     private const string LinuxContainerOs = "linux";
@@ -34,7 +30,7 @@ internal sealed record DockerRuntimeStatus(DockerRuntimeState State, string? Con
     public bool RunsLinuxContainers =>
         State == DockerRuntimeState.Usable && string.Equals(ContainerOs, LinuxContainerOs, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Everything a workflow job needs from Docker is in place.</summary>
+    // Everything a workflow job needs from Docker is in place.
     public bool IsReady => RunsLinuxContainers;
 
     public string Message => State switch

@@ -10,51 +10,42 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The projects manager behind Options → Projects (AC-161): the saved projects, and add/edit/remove over them.
-/// Owns the persisting that <see cref="ProjectDialogViewModel"/> deliberately does not, so the editor stays a
-/// value editor and this is the only thing that writes the list.
-/// <para>
-/// Since AC-245, also the Projects workspace's read side for what a plugin shares elsewhere but this machine has
-/// not bound yet — see <see cref="SharedProjectGroups"/> and <see cref="LoadSharedProjectsAsync"/>.
-/// </para>
-/// </summary>
+// The projects manager behind Options → Projects (AC-161): the saved projects, and add/edit/remove over them.
+// Owns the persisting that `ProjectDialogViewModel` deliberately does not, so the editor stays a
+// value editor and this is the only thing that writes the list.
+//
+// Since AC-245, also the Projects workspace's read side for what a plugin shares elsewhere but this machine has
+// not bound yet — see `SharedProjectGroups` and `LoadSharedProjectsAsync`.
 public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 {
     private readonly IProjectStore _store;
 
-    /// <summary>Takes the cockpit's own copy of a picked or downloaded logo. Null under the previewer, where a project keeps whatever path it was given.</summary>
+    // Takes the cockpit's own copy of a picked or downloaded logo. Null under the previewer, where a project keeps whatever path it was given.
     private readonly IProjectLogoStore? _logos;
 
-    /// <summary>Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.</summary>
+    // Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.
     private readonly ISessionDialogService? _dialogs;
 
-    /// <summary>
-    /// Where a shared project's origin is claimed for a local project already bound to it (AC-604/AC-245's own
-    /// consumption of it — see <see cref="LoadSharedProjectsAsync"/>). Null under the previewer.
-    /// </summary>
+    // Where a shared project's origin is claimed for a local project already bound to it (AC-604/AC-245's own
+    // consumption of it — see `LoadSharedProjectsAsync`). Null under the previewer.
     private readonly IProjectOwnershipRegistry? _ownership;
 
-    /// <summary>What every registered plugin shares elsewhere (AC-245). Null under the previewer, where <see cref="SharedProjectGroups"/> simply stays empty.</summary>
+    // What every registered plugin shares elsewhere (AC-245). Null under the previewer, where `SharedProjectGroups` simply stays empty.
     private readonly ISharedProjectSourceRegistry? _sharedSources;
 
     private ProjectSettings _settings = ProjectSettings.Empty;
 
-    /// <summary>Cancels a still-running <see cref="LoadSharedProjectsAsync"/> when a newer one starts (the workspace reopened, say), so a slow connection cannot overwrite a fresher answer with a stale one.</summary>
+    // Cancels a still-running `LoadSharedProjectsAsync` when a newer one starts (the workspace reopened, say), so a slow connection cannot overwrite a fresher answer with a stale one.
     private CancellationTokenSource? _sharedProjectsLoadCts;
 
-    /// <summary>
-    /// The background <see cref="LoadSharedProjectsAsync"/> call <see cref="LoadAsync"/> most recently started
-    /// (never awaited by it — see that method's own remarks). Internal test seam only: it lets a test await the
-    /// same run <see cref="LoadAsync"/> kicked off instead of racing it with a second, independent call.
-    /// </summary>
+    // The background `LoadSharedProjectsAsync` call `LoadAsync` most recently started
+    // (never awaited by it — see that method's own remarks). Internal test seam only: it lets a test await the
+    // same run `LoadAsync` kicked off instead of racing it with a second, independent call.
     internal Task SharedProjectsLoadTask { get; private set; } = Task.CompletedTask;
 
-    /// <summary>
-    /// Design-time constructor for the Avalonia previewer: an empty store and no dialog service, so a rendered
-    /// surface can reach neither the operator's config nor a window that does not exist there. The commands are
-    /// inert in that context — see <see cref="_dialogs"/>.
-    /// </summary>
+    // Design-time constructor for the Avalonia previewer: an empty store and no dialog service, so a rendered
+    // surface can reach neither the operator's config nor a window that does not exist there. The commands are
+    // inert in that context — see `_dialogs`.
     public ProjectsViewModel()
         : this(new DesignTimeProjectStore(), dialogs: null)
     {
@@ -74,66 +65,54 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _sharedSources = sharedSources;
     }
 
-    /// <summary>The saved projects in the order they are stored — what the manager lists and edits.</summary>
+    // The saved projects in the order they are stored — what the manager lists and edits.
     public ObservableCollection<Project> Projects { get; } = [];
 
-    /// <summary>
-    /// The same projects, most recently opened first and never-opened ones after them by name — what the overview
-    /// leads with. A separate list rather than a re-sorted <see cref="Projects"/>: the manager's order is the
-    /// operator's own, and re-ordering it under them every time a session starts would be its own small chaos.
-    /// </summary>
+    // The same projects, most recently opened first and never-opened ones after them by name — what the overview
+    // leads with. A separate list rather than a re-sorted `Projects`: the manager's order is the
+    // operator's own, and re-ordering it under them every time a session starts would be its own small chaos.
     public ObservableCollection<Project> RecentProjects { get; } = [];
 
-    /// <summary>
-    /// The few most recently worked on, for the sidebar (Raymond, 2026-07-24): that strip is for reaching what you
-    /// are busy with, and a list that grows with every project turns it back into a menu. The rest stay one click
-    /// away in the overview.
-    /// </summary>
+    // The few most recently worked on, for the sidebar (Raymond, 2026-07-24): that strip is for reaching what you
+    // are busy with, and a list that grows with every project turns it back into a menu. The rest stay one click
+    // away in the overview.
     public ObservableCollection<Project> SidebarProjects { get; } = [];
 
-    /// <summary>How many of them the sidebar shows.</summary>
+    // How many of them the sidebar shows.
     private const int SidebarLimit = 5;
 
-    /// <summary>
-    /// How long <see cref="LoadSharedProjectsAsync"/> waits on one source before treating it as failed — one slow
-    /// or hung connection must not hold up every other source's rows, let alone the whole workspace. Internal and
-    /// mutable (rather than a private constant) purely as a test seam: a real 10s wait has no place in a unit test
-    /// that wants to prove the timeout path itself.
-    /// </summary>
+    // How long `LoadSharedProjectsAsync` waits on one source before treating it as failed — one slow
+    // or hung connection must not hold up every other source's rows, let alone the whole workspace. Internal and
+    // mutable (rather than a private constant) purely as a test seam: a real 10s wait has no place in a unit test
+    // that wants to prove the timeout path itself.
     internal static TimeSpan SharedProjectSourceTimeout = TimeSpan.FromSeconds(10);
 
-    /// <summary>
-    /// Shared projects (AC-245), one group per registered <see cref="ISharedProjectSource"/> — "Shared via Depot —
-    /// Work" — already bound projects and this machine's own hidden ones filtered out. Empty until
-    /// <see cref="LoadSharedProjectsAsync"/> has run at least once; <see cref="LoadAsync"/> starts it in the
-    /// background rather than waiting on it, so opening the workspace never blocks on a slow or unreachable
-    /// connection — see that method's own remarks.
-    /// </summary>
+    // Shared projects (AC-245), one group per registered `ISharedProjectSource` — "Shared via Depot —
+    // Work" — already bound projects and this machine's own hidden ones filtered out. Empty until
+    // `LoadSharedProjectsAsync` has run at least once; `LoadAsync` starts it in the
+    // background rather than waiting on it, so opening the workspace never blocks on a slow or unreachable
+    // connection — see that method's own remarks.
     public ObservableCollection<SharedProjectGroupViewModel> SharedProjectGroups { get; } = [];
 
-    /// <summary>Whether there is anything to show under a "Shared" heading right now — lets the workspace leave the whole section out rather than draw an empty one.</summary>
+    // Whether there is anything to show under a "Shared" heading right now — lets the workspace leave the whole section out rather than draw an empty one.
     public bool HasSharedProjects => SharedProjectGroups.Count > 0;
 
-    /// <summary>
-    /// <see cref="Projects"/> grouped by category for the list (AC-618), rebuilt by <see cref="_Republish"/> —
-    /// replaces AC-245's "On this machine" heading with a per-card origin badge instead
-    /// (<see cref="ProjectCardViewModel.OriginBadge"/>). No project with a category anywhere means exactly one
-    /// group with a null <see cref="ProjectCategoryGroupViewModel.CategoryName"/>, which the workspace draws with
-    /// no heading at all — see that type's own remarks.
-    /// </summary>
+    // `Projects` grouped by category for the list (AC-618), rebuilt by `_Republish` —
+    // replaces AC-245's "On this machine" heading with a per-card origin badge instead
+    // (`ProjectCardViewModel.OriginBadge`). No project with a category anywhere means exactly one
+    // group with a null `ProjectCategoryGroupViewModel.CategoryName`, which the workspace draws with
+    // no heading at all — see that type's own remarks.
     public ObservableCollection<ProjectCategoryGroupViewModel> ProjectCategoryGroups { get; } = [];
 
-    /// <summary>The always-present, never-disappearing catch-all category group's heading (AC-618).</summary>
+    // The always-present, never-disappearing catch-all category group's heading (AC-618).
     private const string _UncategorizedLabel = "Uncategorized";
 
-    /// <summary>
-    /// Whether the workspace has nothing at all to show — what the "No projects yet" empty state is gated on
-    /// instead of <c>!HasProjects</c> alone, so that text does not sit above a populated "Shared via …" section
-    /// once one arrives a moment after the window opens (<see cref="LoadSharedProjectsAsync"/> runs in the background).
-    /// </summary>
+    // Whether the workspace has nothing at all to show — what the "No projects yet" empty state is gated on
+    // instead of `!HasProjects` alone, so that text does not sit above a populated "Shared via …" section
+    // once one arrives a moment after the window opens (`LoadSharedProjectsAsync` runs in the background).
     public bool HasNothingToShow => !HasProjects && !HasSharedProjects;
 
-    /// <summary>True when there are more projects than the sidebar shows, so it can say where the others are.</summary>
+    // True when there are more projects than the sidebar shows, so it can say where the others are.
     public bool HasMoreThanSidebarShows => Projects.Count > SidebarLimit;
 
     [ObservableProperty]
@@ -144,20 +123,18 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     public bool HasProjects => Projects.Count > 0;
 
-    /// <summary>How many projects there are, for the overview's summary line.</summary>
+    // How many projects there are, for the overview's summary line.
     public int ProjectCount => Projects.Count;
 
-    /// <summary>How many have ever been opened — the rest are set up but never started, which is worth seeing at a glance.</summary>
+    // How many have ever been opened — the rest are set up but never started, which is worth seeing at a glance.
     public int OpenedProjectCount => Projects.Count(project => project.LastOpenedAt is not null);
 
-    /// <summary>The project a session was last started on, or null when none ever was.</summary>
+    // The project a session was last started on, or null when none ever was.
     public Project? MostRecentProject => RecentProjects.FirstOrDefault(project => project.LastOpenedAt is not null);
 
-    /// <summary>
-    /// Records that a session just started on <paramref name="project"/>, so the overview can lead with what is
-    /// actually worked on. Persists like every other change here; a project removed in the meantime is left alone
-    /// rather than written back.
-    /// </summary>
+    // Records that a session just started on `project`, so the overview can lead with what is
+    // actually worked on. Persists like every other change here; a project removed in the meantime is left alone
+    // rather than written back.
     public async Task MarkOpenedAsync(Project project, DateTimeOffset openedAt)
     {
         if (_settings.Projects.FirstOrDefault(candidate => candidate.Id == project.Id) is not { } stored)
@@ -168,11 +145,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         await _PersistAsync(_settings.WithUpdated(stored with { LastOpenedAt = openedAt }));
     }
 
-    /// <summary>
-    /// A manager holding one sample project, for a headless render of a surface that shows projects — the
-    /// parameterless constructor is deliberately empty, and an empty list renders the "no projects yet" state
-    /// instead of the rows under test. Mirrors <c>TtyViewModel.DesignTerminal</c>.
-    /// </summary>
+    // A manager holding one sample project, for a headless render of a surface that shows projects — the
+    // parameterless constructor is deliberately empty, and an empty list renders the "no projects yet" state
+    // instead of the rows under test. Mirrors `TtyViewModel.DesignTerminal`.
     internal static ProjectsViewModel DesignSample()
     {
         var viewModel = new ProjectsViewModel();
@@ -193,13 +168,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         return viewModel;
     }
 
-    /// <summary>
-    /// <see cref="DesignSample"/> plus shared-project groups (AC-245), staged directly rather than through
-    /// <see cref="LoadSharedProjectsAsync"/> — there is no <see cref="ISharedProjectSource"/> or host in a headless
-    /// render, the same reason <c>_ProjectEditorWithMemorySourceReachability</c> (Screenshotter) stages its own
-    /// state directly instead of going through a real check delegate. One group with two rows (a name/description/
-    /// role each), one group carrying an error instead — the two states the workspace actually draws differently.
-    /// </summary>
+    // `DesignSample` plus shared-project groups (AC-245), staged directly rather than through
+    // `LoadSharedProjectsAsync` — there is no `ISharedProjectSource` or host in a headless
+    // render, the same reason `_ProjectEditorWithMemorySourceReachability` (Screenshotter) stages its own
+    // state directly instead of going through a real check delegate. One group with two rows (a name/description/
+    // role each), one group carrying an error instead — the two states the workspace actually draws differently.
     internal static ProjectsViewModel DesignSampleWithSharedProjects()
     {
         var viewModel = DesignSample();
@@ -220,13 +193,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         return viewModel;
     }
 
-    /// <summary>
-    /// Categories (AC-618) as the list's main grouping — "Werk" before "Privé", not alphabetical, from an explicit
-    /// <see cref="ProjectSettings.CategoryOrder"/> rather than either name's own spelling — with "Uncategorized"
-    /// always last, shown even though nothing is in it here, and every card's own origin badge instead of AC-245's
-    /// retired "On this machine" heading: "Onboarding flow" carries a real <see cref="ProjectOwnershipRegistry"/>
-    /// claim, the same seam AC-604/AC-245 use, so it draws "◆ Depot — Work" rather than "● This machine".
-    /// </summary>
+    // Categories (AC-618) as the list's main grouping — "Werk" before "Privé", not alphabetical, from an explicit
+    // `ProjectSettings.CategoryOrder` rather than either name's own spelling — with "Uncategorized"
+    // always last, shown even though nothing is in it here, and every card's own origin badge instead of AC-245's
+    // retired "On this machine" heading: "Onboarding flow" carries a real `ProjectOwnershipRegistry`
+    // claim, the same seam AC-604/AC-245 use, so it draws "◆ Depot — Work" rather than "● This machine".
     internal static ProjectsViewModel DesignSampleWithCategories()
     {
         var cockpit = Project.Create("Cockpit") with
@@ -264,13 +235,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         return viewModel;
     }
 
-    /// <summary>
-    /// Reads the saved projects. Called when Options opens, so an edit made elsewhere is reflected rather than
-    /// overwritten. Deliberately does not wait on <see cref="LoadSharedProjectsAsync"/> — it only starts it: the
-    /// caller (<c>SessionDialogService.ShowProjectsDialogAsync</c>) awaits this before the workspace window is
-    /// even constructed, and a Depot connection that is slow or unreachable must not hold that window closed while
-    /// the local projects it already has sit ready.
-    /// </summary>
+    // Reads the saved projects. Called when Options opens, so an edit made elsewhere is reflected rather than
+    // overwritten. Deliberately does not wait on `LoadSharedProjectsAsync` — it only starts it: the
+    // caller (`SessionDialogService.ShowProjectsDialogAsync`) awaits this before the workspace window is
+    // even constructed, and a Depot connection that is slow or unreachable must not hold that window closed while
+    // the local projects it already has sit ready.
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -282,24 +251,21 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         SharedProjectsLoadTask = LoadSharedProjectsAsync(cts.Token);
     }
 
-    /// <summary>
-    /// Fills <see cref="SharedProjectGroups"/> from every registered <see cref="ISharedProjectSource"/> (AC-245).
-    /// Public (rather than folded into <see cref="LoadAsync"/>) so a test can await it directly instead of racing
-    /// the fire-and-forget call <see cref="LoadAsync"/> makes.
-    /// <para>
-    /// A shared project already bound to a local one (its <see cref="SharedProject.Id"/> matches a
-    /// <see cref="ProjectResourceRole.Memory"/> row somewhere in <see cref="ProjectSettings.Projects"/>) is left out
-    /// — it already shows under "On this machine" — and, for that local project, has its origin claimed through
-    /// <see cref="IProjectOwnershipRegistry"/> (AC-604's own seam) so the editor can draw the ◆ Shared badge on it.
-    /// This runs from here rather than from the plugin that contributed the source: a plugin never sees the local
-    /// project list (it would have to reference <c>Cockpit.Core</c>, which no plugin project does), while this view
-    /// model already loaded both lists a moment ago.
-    /// </para>
-    /// A shared project hidden on this machine (<see cref="ProjectSettings.HiddenSharedProjectIds"/>) is left out
-    /// the same way. One source failing (not signed in, unreachable, timed out) only empties its own group — every
-    /// other source's rows are unaffected — and an empty, error-free group is left out entirely rather than shown
-    /// as a heading over nothing.
-    /// </summary>
+    // Fills `SharedProjectGroups` from every registered `ISharedProjectSource` (AC-245).
+    // Public (rather than folded into `LoadAsync`) so a test can await it directly instead of racing
+    // the fire-and-forget call `LoadAsync` makes.
+    //
+    // A shared project already bound to a local one (its `SharedProject.Id` matches a
+    // `ProjectResourceRole.Memory` row somewhere in `ProjectSettings.Projects`) is left out
+    // — it already shows under "On this machine" — and, for that local project, has its origin claimed through
+    // `IProjectOwnershipRegistry` (AC-604's own seam) so the editor can draw the ◆ Shared badge on it.
+    // This runs from here rather than from the plugin that contributed the source: a plugin never sees the local
+    // project list (it would have to reference `Cockpit.Core`, which no plugin project does), while this view
+    // model already loaded both lists a moment ago.
+    // A shared project hidden on this machine (`ProjectSettings.HiddenSharedProjectIds`) is left out
+    // the same way. One source failing (not signed in, unreachable, timed out) only empties its own group — every
+    // other source's rows are unaffected — and an empty, error-free group is left out entirely rather than shown
+    // as a heading over nothing.
     public async Task LoadSharedProjectsAsync(CancellationToken cancellationToken = default)
     {
         if (_sharedSources is null)
@@ -370,13 +336,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _RepublishCategoryGroups();
     }
 
-    /// <summary>
-    /// The "Finish setting up…" bind step (AC-246) for <paramref name="sharedProject"/>, one of <see cref="SharedProjectGroups"/>'s
-    /// own rows. Finds the <see cref="ISharedProjectSource"/> it came from by its own <see cref="SharedProject.Id"/>
-    /// prefix (the same <c>"{scheme}:{slug}"</c> shape <see cref="ISharedProjectSource.Key"/>'s own doc comment
-    /// describes) rather than carrying the source alongside the row — <see cref="SharedProjectGroupViewModel"/> is
-    /// AC-245's own type and this ticket does not widen it.
-    /// </summary>
+    // The "Finish setting up…" bind step (AC-246) for `sharedProject`, one of `SharedProjectGroups`'s
+    // own rows. Finds the `ISharedProjectSource` it came from by its own `SharedProject.Id`
+    // prefix (the same `"{scheme}:{slug}"` shape `ISharedProjectSource.Key`'s own doc comment
+    // describes) rather than carrying the source alongside the row — `SharedProjectGroupViewModel` is
+    // AC-245's own type and this ticket does not widen it.
     [RelayCommand]
     private async Task FinishSettingUpAsync(SharedProject sharedProject)
     {
@@ -406,7 +370,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    /// <summary>Claims every local project bound to one of <paramref name="sharedProjects"/> as owned by <paramref name="sourceName"/> — see <see cref="LoadSharedProjectsAsync"/>'s own remarks.</summary>
+    // Claims every local project bound to one of `sharedProjects` as owned by `sourceName` — see `LoadSharedProjectsAsync`'s own remarks.
     private void _ClaimBoundProjects(IReadOnlyList<SharedProject> sharedProjects, string sourceName)
     {
         if (sharedProjects.Count == 0)
@@ -428,14 +392,12 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    /// <summary>
-    /// One source's projects, or a timeout failure if it does not answer within <see cref="_SharedProjectSourceTimeout"/>
-    /// — and, defensively, a failure if the source throws instead of reporting one through
-    /// <see cref="SharedProjectListResult.Failed"/> as its own contract asks. Never throws: a call superseded by a
-    /// newer <see cref="LoadSharedProjectsAsync"/> (its <paramref name="cancellationToken"/> cancelled) also lands
-    /// here as an (ignored — see that method's own stale-result check) failure rather than an unobserved exception
-    /// on this fire-and-forget call.
-    /// </summary>
+    // One source's projects, or a timeout failure if it does not answer within `_SharedProjectSourceTimeout`
+    // — and, defensively, a failure if the source throws instead of reporting one through
+    // `SharedProjectListResult.Failed` as its own contract asks. Never throws: a call superseded by a
+    // newer `LoadSharedProjectsAsync` (its `cancellationToken` cancelled) also lands
+    // here as an (ignored — see that method's own stale-result check) failure rather than an unobserved exception
+    // on this fire-and-forget call.
     private static async Task<SharedProjectListResult> _ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -477,11 +439,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private Task EditProjectAsync() =>
         SelectedProject is { } project ? EditAsync(project) : Task.CompletedTask;
 
-    /// <summary>
-    /// Opens the editor for <paramref name="project"/> and saves what comes back. Public because the sidebar
-    /// (AC-164) edits the project under the pointer rather than a selection — one editing path either way, so a
-    /// project edited from the sidebar and one edited from Options are written the same.
-    /// </summary>
+    // Opens the editor for `project` and saves what comes back. Public because the sidebar
+    // (AC-164) edits the project under the pointer rather than a selection — one editing path either way, so a
+    // project edited from the sidebar and one edited from Options are written the same.
     public async Task EditAsync(Project project)
     {
         if (_dialogs is null)
@@ -497,10 +457,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    /// <summary>
-    /// Removes a project after confirming. Sessions already running under it keep running — a project is what a
-    /// session started with, not something it holds open, so removing one is not a reason to stop work in flight.
-    /// </summary>
+    // Removes a project after confirming. Sessions already running under it keep running — a project is what a
+    // session started with, not something it holds open, so removing one is not a reason to stop work in flight.
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task RemoveProjectAsync()
     {
@@ -520,12 +478,10 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    /// <summary>
-    /// <paramref name="project"/> with its logo as a copy the cockpit owns. The editor hands back whatever the
-    /// operator pointed at — a file, a URL, or the path of the copy already stored; this turns the first two into
-    /// a copy, leaves the third alone, and drops the stored one when the field was cleared. A source that cannot be
-    /// read costs the picture and not the save: a project is not worth less for a logo that would not load.
-    /// </summary>
+    // `project` with its logo as a copy the cockpit owns. The editor hands back whatever the
+    // operator pointed at — a file, a URL, or the path of the copy already stored; this turns the first two into
+    // a copy, leaves the third alone, and drops the stored one when the field was cleared. A source that cannot be
+    // read costs the picture and not the save: a project is not worth less for a logo that would not load.
     private async Task<Project> _WithStoredLogoAsync(Project project)
     {
         if (_logos is null)
@@ -590,14 +546,12 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _RepublishCategoryGroups();
     }
 
-    /// <summary>
-    /// Rebuilds <see cref="ProjectCategoryGroups"/> (AC-618) from a locally normalized view of <see cref="_settings"/>
-    /// — <see cref="ProjectSettings.Normalized"/> is read here rather than trusted to already be reflected in
-    /// <see cref="_settings"/> itself (<see cref="_PersistAsync"/> assigns the settings it was handed, not what
-    /// <see cref="IProjectStore.SaveAsync"/> actually normalized and wrote), so a category typed for the first time
-    /// this save shows its heading immediately instead of one republish cycle late. Reading it this way changes
-    /// nothing about <see cref="_settings"/> itself or what gets persisted.
-    /// </summary>
+    // Rebuilds `ProjectCategoryGroups` (AC-618) from a locally normalized view of `_settings`
+    // — `ProjectSettings.Normalized` is read here rather than trusted to already be reflected in
+    // `_settings` itself (`_PersistAsync` assigns the settings it was handed, not what
+    // `IProjectStore.SaveAsync` actually normalized and wrote), so a category typed for the first time
+    // this save shows its heading immediately instead of one republish cycle late. Reading it this way changes
+    // nothing about `_settings` itself or what gets persisted.
     private void _RepublishCategoryGroups()
     {
         ProjectCategoryGroups.Clear();
@@ -627,11 +581,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     private ProjectCardViewModel _ToCard(Project project) => new(project, _OriginBadge(project));
 
-    /// <summary>
-    /// "● This machine", or "◆ &lt;connection&gt;" once <see cref="_ownership"/> has a claim on
-    /// <paramref name="project"/> (AC-604's own seam, claimed for a bound project by
-    /// <see cref="_ClaimBoundProjects"/>) — the per-card replacement for AC-245's "On this machine" heading.
-    /// </summary>
+    // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on
+    // `project` (AC-604's own seam, claimed for a bound project by
+    // `_ClaimBoundProjects`) — the per-card replacement for AC-245's "On this machine" heading.
     private string _OriginBadge(Project project) =>
         _ownership?.Resolve(project.Id)?.Values.FirstOrDefault(ownership => ownership is not null) is { } claim
             ? $"◆ {claim.SourceName}"

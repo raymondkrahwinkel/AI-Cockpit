@@ -5,13 +5,11 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Drives the floating voice-input pill (#34): one shared instance for the whole cockpit (single-user,
-/// one hold at a time), whose <see cref="State"/> the pill's XAML binds its two rows'
-/// (Listening/Transcribing) visibility to. While listening, <see cref="PushLevel"/> feeds captured
-/// microphone levels into the scrolling <see cref="Bars"/> waveform so the pill shows that sound is
-/// actually coming in (#34b). <c>VoicePushToTalkCoordinator</c> owns the transitions and the level feed.
-/// </summary>
+// Drives the floating voice-input pill (#34): one shared instance for the whole cockpit (single-user,
+// one hold at a time), whose `State` the pill's XAML binds its two rows'
+// (Listening/Transcribing) visibility to. While listening, `PushLevel` feeds captured
+// microphone levels into the scrolling `Bars` waveform so the pill shows that sound is
+// actually coming in (#34b). `VoicePushToTalkCoordinator` owns the transitions and the level feed.
 public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
 {
     private const int BarCount = 13;
@@ -23,14 +21,12 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
     [ObservableProperty]
     private VoiceOverlayState _state = VoiceOverlayState.Hidden;
 
-    /// <summary>What voice is waiting on, shown on the preparing row ("Downloading speech model — 412 MB").</summary>
+    // What voice is waiting on, shown on the preparing row ("Downloading speech model — 412 MB").
     [ObservableProperty]
     private string _statusText = string.Empty;
 
-    /// <summary>
-    /// 0..1 for the preparing row's bar, or null when the step has no total to measure against. The bar hides
-    /// rather than guess: one that sits at an invented percentage is worse than a number that only counts up.
-    /// </summary>
+    // 0..1 for the preparing row's bar, or null when the step has no total to measure against. The bar hides
+    // rather than guess: one that sits at an invented percentage is worse than a number that only counts up.
     [ObservableProperty]
     private double? _progress;
 
@@ -43,28 +39,28 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    /// <summary>The waveform bars, oldest-to-newest left-to-right; the "Listening" row binds an ItemsControl to this.</summary>
+    // The waveform bars, oldest-to-newest left-to-right; the "Listening" row binds an ItemsControl to this.
     public ObservableCollection<VoiceOverlayBarViewModel> Bars { get; }
 
     public bool IsListening => State == VoiceOverlayState.Listening;
 
-    /// <summary>Read-aloud is playing — the pill says so instead of showing a waveform it has no levels for.</summary>
+    // Read-aloud is playing — the pill says so instead of showing a waveform it has no levels for.
     public bool IsSpeaking => State == VoiceOverlayState.Speaking;
 
-    /// <summary>The hold is not recording, and <see cref="StatusText"/> says why.</summary>
+    // The hold is not recording, and `StatusText` says why.
     public bool IsUnavailable => State == VoiceOverlayState.Unavailable;
 
     public bool IsPreparing => State == VoiceOverlayState.Preparing;
 
     public bool IsTranscribing => State == VoiceOverlayState.Transcribing;
 
-    /// <summary>Whether the preparing row can show a bar at all — see <see cref="Progress"/>.</summary>
+    // Whether the preparing row can show a bar at all — see `Progress`.
     public bool HasProgress => Progress is not null;
 
-    /// <summary>The bar's width fraction as a plain double, since a XAML bar cannot bind a nullable.</summary>
+    // The bar's width fraction as a plain double, since a XAML bar cannot bind a nullable.
     public double ProgressValue => Progress ?? 0;
 
-    /// <summary>Feeds one captured microphone level (0..1) into the scrolling waveform. Call on the UI thread.</summary>
+    // Feeds one captured microphone level (0..1) into the scrolling waveform. Call on the UI thread.
     public void PushLevel(double level)
     {
         // Ignore a level that lands after the hold already ended: the capture event fires on another

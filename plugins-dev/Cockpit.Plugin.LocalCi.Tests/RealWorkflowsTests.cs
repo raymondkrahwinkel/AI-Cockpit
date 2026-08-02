@@ -2,11 +2,9 @@ using Cockpit.Plugin.LocalCi.Workflows;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
 
-/// <summary>
-/// The classification run against this repository's own workflows. Hand-written YAML proves each rule in isolation;
-/// this proves the rules together say something true about a real project — and it is the check that fails when a
-/// workflow here grows a construct the classifier has never seen.
-/// </summary>
+// The classification run against this repository's own workflows. Hand-written YAML proves each rule in isolation;
+// this proves the rules together say something true about a real project — and it is the check that fails when a
+// workflow here grows a construct the classifier has never seen.
 public class RealWorkflowsTests
 {
     private static readonly IReadOnlyList<WorkflowParseResult> Workflows = WorkflowCatalog.ReadProject(_RepositoryRoot());
@@ -19,12 +17,12 @@ public class RealWorkflowsTests
     }
 
     [Fact]
-    public void CiHasExactlyThreeLocallyRunnableJobs()
+    public void CiHasExactlyFourLocallyRunnableJobs()
     {
         var verdicts = _VerdictsFor("ci.yml");
 
-        Assert.Equal(3, verdicts.Count(verdict => verdict.CanRunLocally));
-        Assert.Equal(["build", "plugins", "plugin-versions"], verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
+        Assert.Equal(4, verdicts.Count(verdict => verdict.CanRunLocally));
+        Assert.Equal(["build", "plugins", "plugin-versions", "xmldoc-scope"], verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
     }
 
     [Theory]
@@ -53,11 +51,9 @@ public class RealWorkflowsTests
         Assert.True(verdict.CanRunLocally, verdict.Reason);
     }
 
-    /// <summary>
-    /// The first job in this repository that calls another workflow instead of carrying steps of its own. It is
-    /// pinned here because a job with no <c>steps:</c> is the shape a classifier is most likely to wave through by
-    /// accident — reading "nothing here refuses it" as "it can run" — and act cannot run one at all.
-    /// </summary>
+    // The first job in this repository that calls another workflow instead of carrying steps of its own. It is
+    // pinned here because a job with no `steps:` is the shape a classifier is most likely to wave through by
+    // accident — reading "nothing here refuses it" as "it can run" — and act cannot run one at all.
     [Fact]
     public void AJobThatCallsAnotherWorkflowIsRefused()
     {
@@ -73,10 +69,8 @@ public class RealWorkflowsTests
         return LocalRunClassifier.Classify(workflow.Document!);
     }
 
-    /// <summary>
-    /// Walks up from the test binary until it finds the checkout. The test project sits at a known depth, but the
-    /// build output does not, and CI and a local run put it in different places.
-    /// </summary>
+    // Walks up from the test binary until it finds the checkout. The test project sits at a known depth, but the
+    // build output does not, and CI and a local run put it in different places.
     private static string _RepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

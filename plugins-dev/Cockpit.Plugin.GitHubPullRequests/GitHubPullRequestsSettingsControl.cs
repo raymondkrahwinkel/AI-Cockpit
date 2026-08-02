@@ -5,12 +5,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// The plugin's settings view (opened from the gear in the plugin manager), built in code. Toggles between
-/// the GitHub CLI mode (an owner whose repos to search) and the single-repository HTTP mode (owner/name +
-/// optional token), and edits the prompt template. It implements <see cref="IPluginSettingsView"/>, so the
-/// host renders the Save/Close footer and <see cref="Save"/> persists on Save (the host then closes the dialog).
-/// </summary>
+// The plugin's settings view (opened from the gear in the plugin manager), built in code. Toggles between
+// the GitHub CLI mode (an owner whose repos to search) and the single-repository HTTP mode (owner/name +
+// optional token), and edits the prompt template. It implements `IPluginSettingsView`, so the
+// host renders the Save/Close footer and `Save` persists on Save (the host then closes the dialog).
 internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly GitHubPullRequestsSettings _settings;
@@ -146,7 +144,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         };
     }
 
-    /// <summary>Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.</summary>
+    // Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.
     public bool Save()
     {
         _settings.UseGitHubCli = _useGh.IsChecked == true;

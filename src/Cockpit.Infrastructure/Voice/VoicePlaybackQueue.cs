@@ -9,13 +9,11 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// <see cref="IVoicePlaybackQueue"/>: a single background consumer synthesizes and plays queued
-/// utterances one sentence at a time via <see cref="ITextToSpeechService"/> and
-/// <see cref="IAudioPlaybackService"/>, so nothing ever overlaps. Registered as a singleton — one
-/// shared queue for the whole (single-user) cockpit, so a push-to-talk hold on any session can
-/// interrupt whichever session is currently talking (#35).
-/// </summary>
+// `IVoicePlaybackQueue`: a single background consumer synthesizes and plays queued
+// utterances one sentence at a time via `ITextToSpeechService` and
+// `IAudioPlaybackService`, so nothing ever overlaps. Registered as a singleton — one
+// shared queue for the whole (single-user) cockpit, so a push-to-talk hold on any session can
+// interrupt whichever session is currently talking (#35).
 // A classic constructor rather than the usual primary-constructor style (Code.md §12): the consumer
 // loop must be started once, from real constructor logic, not just capture dependencies.
 internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonService
@@ -24,7 +22,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private readonly IAudioPlaybackService _audioPlayback;
     private readonly ILogger<VoicePlaybackQueue> _logger;
 
-    /// <summary>One queued read-aloud batch: language-tagged segments plus the single speaker (sid) that voices them all.</summary>
+    // One queued read-aloud batch: language-tagged segments plus the single speaker (sid) that voices them all.
     private sealed record QueuedUtterance(IReadOnlyList<SpeechSegment> Segments, int SpeakerId);
 
     private readonly Channel<QueuedUtterance> _channel = Channel.CreateUnbounded<QueuedUtterance>();
@@ -216,7 +214,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
-    /// <summary>Synthesizes one sentence, swallowing a failure to null so a single bad sentence neither kills the utterance nor faults the prefetch task waiting behind it.</summary>
+    // Synthesizes one sentence, swallowing a failure to null so a single bad sentence neither kills the utterance nor faults the prefetch task waiting behind it.
     private async Task<TtsAudio?> _TrySynthesizeAsync(string text, int speakerId, string language, CancellationToken cancellationToken)
     {
         try

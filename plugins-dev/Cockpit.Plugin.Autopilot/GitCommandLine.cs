@@ -3,20 +3,18 @@ using System.Text;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// Runs one <c>git</c>/<c>gh</c> command in a worktree and hands back what it printed — the single place this plugin
-/// shells out, shared by <see cref="GitCliPrPublisher"/> (AC-216) and <see cref="GitCliEvidenceSource"/> (AC-255) so
-/// the process plumbing is not written twice. Every command runs in the given directory under a bounded timeout, and
-/// never throws: a missing CLI, a non-zero exit or a timeout all come back as a not-ok result, because neither
-/// publishing a run nor observing one may crash it.
-/// </summary>
+// Runs one `git`/`gh` command in a worktree and hands back what it printed — the single place this plugin
+// shells out, shared by `GitCliPrPublisher` (AC-216) and `GitCliEvidenceSource` (AC-255) so
+// the process plumbing is not written twice. Every command runs in the given directory under a bounded timeout, and
+// never throws: a missing CLI, a non-zero exit or a timeout all come back as a not-ok result, because neither
+// publishing a run nor observing one may crash it.
 internal static class GitCommandLine
 {
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(2);
 
-    /// <param name="Ok">The process ran and exited zero.</param>
-    /// <param name="StdOut">Everything it wrote to stdout, whether or not it succeeded.</param>
-    /// <param name="Error">Why it failed — its stderr, or the exit code when stderr was silent.</param>
+    // `Ok`: The process ran and exited zero.
+    // `StdOut`: Everything it wrote to stdout, whether or not it succeeded.
+    // `Error`: Why it failed — its stderr, or the exit code when stderr was silent.
     internal sealed record CommandResult(bool Ok, string StdOut, string Error);
 
     public static async Task<CommandResult> RunAsync(

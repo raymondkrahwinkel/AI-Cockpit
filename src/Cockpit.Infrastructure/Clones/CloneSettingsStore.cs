@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Clones;
 
-/// <summary>
-/// Persists <see cref="CloneSettings"/> under the <c>cloneSettings</c> section of <c>cockpit.json</c>, going through
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections — including the clones registry — untouched
-/// (same pattern as <c>WorktreeSettingsStore</c>).
-/// </summary>
+// Persists `CloneSettings` under the `cloneSettings` section of `cockpit.json`, going through
+// `CockpitConfigFileAccess` so it leaves the other sections — including the clones registry — untouched
+// (same pattern as `WorktreeSettingsStore`).
 internal sealed class CloneSettingsStore : ICloneSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class CloneSettingsStore : ICloneSettingsStore, ISingletonServic
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal CloneSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

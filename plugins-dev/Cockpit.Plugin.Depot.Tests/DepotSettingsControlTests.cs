@@ -10,14 +10,12 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotSettingsControl.Save"/> (AC-243, reworked AC-504): persists the connection list, and reclaims a
-/// removed or renamed connection's <em>old</em> "Depot: &lt;name&gt;" MCP-registry entry — left over from an install
-/// that predates AC-504's move to offering a connection's server per-project instead of pushing it into the shared
-/// registry (the orphan-cleanup KubernetesSettingsControl.Save does for a cluster's secret, applied to the registry
-/// instead). Save never adds to that registry any more: a kept or new connection's server is what
-/// <see cref="DepotPlugin.GetMcpServers(string?, IReadOnlyList{string})"/> answers with, not a registry row.
-/// </summary>
+// `DepotSettingsControl.Save` (AC-243, reworked AC-504): persists the connection list, and reclaims a
+// removed or renamed connection's *old* "Depot: &lt;name&gt;" MCP-registry entry — left over from an install
+// that predates AC-504's move to offering a connection's server per-project instead of pushing it into the shared
+// registry (the orphan-cleanup KubernetesSettingsControl.Save does for a cluster's secret, applied to the registry
+// instead). Save never adds to that registry any more: a kept or new connection's server is what
+// `DepotPlugin.GetMcpServers(string?, IReadOnlyList{string})` answers with, not a registry row.
 [Collection("avalonia")]
 public class DepotSettingsControlTests
 {
@@ -288,18 +286,16 @@ public class DepotSettingsControlTests
         host.DidNotReceive().RemoveSharedProjectSource(Arg.Any<string>());
     }
 
-    /// <summary>
-    /// AC-502/AC-503, explicitly: <see cref="DepotSettingsControl._SyncMemorySources"/> (private) calls
-    /// <see cref="DepotMemorySource.BuildRegistrationPairs"/> twice for the same connection content — once for
-    /// <c>_originalConnections</c>, once for the freshly-saved list — and each call wires brand-new
-    /// <see cref="ProjectMemorySourceRegistration.ListLocationsAsync"/>/<see cref="ProjectMemorySourceRegistration.SignInAsync"/>/
-    /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/> closures over that call's own connection
-    /// instance. Two such closures are never delegate-equal, but <see cref="ProjectMemorySourceRegistration"/>'s own
-    /// equality override (AC-502) deliberately ignores all three, comparing only Scheme/Title/Instruction — so the
-    /// record's own <c>==</c> correctly reads two independently-built registrations for the same connection as
-    /// equal, which is exactly what lets <see cref="DepotSettingsControl._SyncMemorySources"/>'s plain <c>==</c>
-    /// diff (no hand-rolled comparison needed) skip an unchanged connection.
-    /// </summary>
+    // AC-502/AC-503, explicitly: `DepotSettingsControl._SyncMemorySources` (private) calls
+    // `DepotMemorySource.BuildRegistrationPairs` twice for the same connection content — once for
+    // `_originalConnections`, once for the freshly-saved list — and each call wires brand-new
+    // `ProjectMemorySourceRegistration.ListLocationsAsync`/`ProjectMemorySourceRegistration.SignInAsync`/
+    // `ProjectMemorySourceRegistration.CheckReachability` closures over that call's own connection
+    // instance. Two such closures are never delegate-equal, but `ProjectMemorySourceRegistration`'s own
+    // equality override (AC-502) deliberately ignores all three, comparing only Scheme/Title/Instruction — so the
+    // record's own `==` correctly reads two independently-built registrations for the same connection as
+    // equal, which is exactly what lets `DepotSettingsControl._SyncMemorySources`'s plain `==`
+    // diff (no hand-rolled comparison needed) skip an unchanged connection.
     [Fact]
     public void Save_UnchangedConnection_IsNotReRegistered_DespiteEachBuildRegistrationPairsCallWiringItsOwnClosures()
     {
@@ -750,13 +746,11 @@ public class DepotSettingsControlTests
         remove.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
     }
 
-    /// <summary>
-    /// A minimal stand-in for <c>ProjectMemorySourceRegistry</c> (internal to Cockpit.App, not referenced from this
-    /// project) with the same first-one-wins-by-scheme rule, wired to the host substitute's
-    /// <see cref="ICockpitHost.AddProjectMemorySource"/>/<see cref="ICockpitHost.RemoveProjectMemorySource"/> calls.
-    /// Exists because a substitute that only counts calls cannot see an ordering bug where a later Add silently
-    /// loses to an earlier connection's not-yet-retired scheme — only the registry's actual end state can.
-    /// </summary>
+    // A minimal stand-in for `ProjectMemorySourceRegistry` (internal to Cockpit.App, not referenced from this
+    // project) with the same first-one-wins-by-scheme rule, wired to the host substitute's
+    // `ICockpitHost.AddProjectMemorySource`/`ICockpitHost.RemoveProjectMemorySource` calls.
+    // Exists because a substitute that only counts calls cannot see an ordering bug where a later Add silently
+    // loses to an earlier connection's not-yet-retired scheme — only the registry's actual end state can.
     private sealed class FakeMemorySourceRegistry
     {
         private readonly Dictionary<string, ProjectMemorySourceRegistration> _sources = new(StringComparer.OrdinalIgnoreCase);

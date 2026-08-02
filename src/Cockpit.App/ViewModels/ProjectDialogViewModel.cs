@@ -11,44 +11,38 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Creating or editing one project (AC-160): its name, folder, the profile it starts under, how that profile
-/// should behave here, whether its sessions isolate, and which MCP servers they see. Edits a copy and hands the
-/// result back on Save — the caller owns the list and the persisting, the way the profile editor works.
-/// </summary>
+// Creating or editing one project (AC-160): its name, folder, the profile it starts under, how that profile
+// should behave here, whether its sessions isolate, and which MCP servers they see. Edits a copy and hands the
+// result back on Save — the caller owns the list and the persisting, the way the profile editor works.
 public partial class ProjectDialogViewModel : ViewModelBase
 {
     private readonly string? _projectId;
 
-    /// <summary>
-    /// The project exactly as it was loaded, kept only so <see cref="ToProject"/> can carry forward a claimed
-    /// field's value untouched (AC-604 acceptance criterion 3) — an edit to a field this project's ownership
-    /// claims must never reach <c>cockpit.json</c>, whether or not the control is locked. Null for a new project,
-    /// which cannot yet be claimed (a claim is keyed by an id nothing has assigned).
-    /// </summary>
+    // The project exactly as it was loaded, kept only so `ToProject` can carry forward a claimed
+    // field's value untouched (AC-604 acceptance criterion 3) — an edit to a field this project's ownership
+    // claims must never reach `cockpit.json`, whether or not the control is locked. Null for a new project,
+    // which cannot yet be claimed (a claim is keyed by an id nothing has assigned).
     private readonly Project? _originalProject;
 
-    /// <summary>Raised when the dialog is done: the saved project, or null when the operator cancelled.</summary>
+    // Raised when the dialog is done: the saved project, or null when the operator cancelled.
     public event Action<Project?>? CloseRequested;
 
-    /// <summary>Raised when the operator picks "Choose…"; the view opens the folder picker and assigns <see cref="SourceDirectory"/>.</summary>
+    // Raised when the operator picks "Choose…"; the view opens the folder picker and assigns `SourceDirectory`.
     public event Action? BrowseRequested;
 
-    /// <summary>Raised when the operator picks "Clone…" (AC-90); the host clones and assigns <see cref="SourceDirectory"/>.</summary>
+    // Raised when the operator picks "Clone…" (AC-90); the host clones and assigns `SourceDirectory`.
     public event Action? CloneRequested;
 
-    /// <summary>Raised when the operator wants to pick the logo from a file; the view opens the picker and assigns <see cref="LogoSource"/>.</summary>
+    // Raised when the operator wants to pick the logo from a file; the view opens the picker and assigns `LogoSource`.
     public event Action? PickLogoRequested;
 
-    /// <summary>
-    /// Raised when the operator picks "Choose…" on a resource row (AC-485); the view opens a folder picker for a
-    /// Memory row or a file picker for any other role, and assigns the result back onto that row's own
-    /// <see cref="ProjectResourceRowViewModel.Reference"/> — carrying the row rather than a single dialog-wide value,
-    /// since AC-485 lets more than one row need a picker of its own.
-    /// </summary>
+    // Raised when the operator picks "Choose…" on a resource row (AC-485); the view opens a folder picker for a
+    // Memory row or a file picker for any other role, and assigns the result back onto that row's own
+    // `ProjectResourceRowViewModel.Reference` — carrying the row rather than a single dialog-wide value,
+    // since AC-485 lets more than one row need a picker of its own.
     public event Action<ProjectResourceRowViewModel>? PickResourceRequested;
 
-    /// <summary>Design-time constructor for the Avalonia previewer.</summary>
+    // Design-time constructor for the Avalonia previewer.
     public ProjectDialogViewModel()
     {
         Profiles.Add("personal");
@@ -89,11 +83,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// A view model for <paramref name="project"/>, or for a new project when it is null, with the profile picker
-    /// and MCP checklist filled from the stores. An async factory rather than loading in the constructor, because
-    /// both lists come off disk and a half-populated dialog is worse than one that opens a moment later.
-    /// </summary>
+    // A view model for `project`, or for a new project when it is null, with the profile picker
+    // and MCP checklist filled from the stores. An async factory rather than loading in the constructor, because
+    // both lists come off disk and a half-populated dialog is worse than one that opens a moment later.
     public static async Task<ProjectDialogViewModel> CreateAsync(
         Project? project,
         ISessionProfileStore profileStore,
@@ -270,38 +262,34 @@ public partial class ProjectDialogViewModel : ViewModelBase
         return viewModel;
     }
 
-    /// <summary>The project's own servers, carried through untouched: v1 edits which servers are on, not the servers themselves (see <see cref="ToProject"/>).</summary>
+    // The project's own servers, carried through untouched: v1 edits which servers are on, not the servers themselves (see `ToProject`).
     private readonly IReadOnlyList<McpServerConfig> _additionalServers = [];
 
-    /// <summary>
-    /// The project's resources exactly as the store loaded them, held only until <see cref="ResourceRows"/> can be
-    /// built from them (AC-485) — matching a Memory row's reference against a registered source has to wait for
-    /// <c>CreateAsync</c> to populate <see cref="MemorySourceChoices"/> first, the same ordering constraint the
-    /// single Memory row used to have. Empty once <c>CreateAsync</c> has consumed it; nothing reads it afterwards.
-    /// </summary>
+    // The project's resources exactly as the store loaded them, held only until `ResourceRows` can be
+    // built from them (AC-485) — matching a Memory row's reference against a registered source has to wait for
+    // `CreateAsync` to populate `MemorySourceChoices` first, the same ordering constraint the
+    // single Memory row used to have. Empty once `CreateAsync` has consumed it; nothing reads it afterwards.
     private readonly IReadOnlyList<ProjectResource> _pendingResources = [];
 
-    /// <summary>The names this project switched on that the checklist has no row for, carried through so saving cannot switch them off.</summary>
+    // The names this project switched on that the checklist has no row for, carried through so saving cannot switch them off.
     private IReadOnlyList<string> _carriedEnabledServerNames = [];
 
-    /// <summary>The names this project switched off that the checklist has no row for — kept only so saving still counts the project as one that narrowed its servers.</summary>
+    // The names this project switched off that the checklist has no row for — kept only so saving still counts the project as one that narrowed its servers.
     private IReadOnlyList<string> _carriedDisabledServerNames = [];
 
-    /// <summary>The links this project holds under keys no installed plugin registered, carried through so saving cannot drop them.</summary>
+    // The links this project holds under keys no installed plugin registered, carried through so saving cannot drop them.
     private IReadOnlyDictionary<string, string> _carriedPluginFields = ReadOnlyDictionary<string, string>.Empty;
 
-    /// <summary>Whether this is an existing project rather than a new one — drives the title and the confirm button.</summary>
+    // Whether this is an existing project rather than a new one — drives the title and the confirm button.
     public bool IsEditing { get; }
 
     public string DialogTitle => IsEditing ? "Edit project" : "New project";
 
     public string ConfirmLabel => IsEditing ? "Save" : "Create project";
 
-    /// <summary>
-    /// Whether anything ever claimed this project's ownership (AC-604) — gates every origin badge below. False
-    /// (the default, and the only possibility for a new project) means the dialog draws exactly as it always has:
-    /// no badge, no locked field, matching AC-166's own "an unclaimed project is unchanged" bar.
-    /// </summary>
+    // Whether anything ever claimed this project's ownership (AC-604) — gates every origin badge below. False
+    // (the default, and the only possibility for a new project) means the dialog draws exactly as it always has:
+    // no badge, no locked field, matching AC-166's own "an unclaimed project is unchanged" bar.
     public bool HasFieldOwnership { get; private init; }
 
     public ProjectFieldOriginViewModel NameOrigin { get; private init; } = ProjectFieldOriginViewModel.Local;
@@ -326,20 +314,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _name = string.Empty;
 
-    /// <summary>
-    /// Which category this project sits under in the manager's list (AC-618). Always local — never one of the six
-    /// claimable <see cref="HostProjectField"/>s, so unlike Name/Description above there is no origin badge and no
-    /// <see cref="_Carry{T}"/> here: nothing a shared project's definition claims can ever own this field.
-    /// </summary>
+    // Which category this project sits under in the manager's list (AC-618). Always local — never one of the six
+    // claimable `HostProjectField`s, so unlike Name/Description above there is no origin badge and no
+    // `_Carry{T}` here: nothing a shared project's definition claims can ever own this field.
     [ObservableProperty]
     private string _category = string.Empty;
 
-    /// <summary>
-    /// The categories already in use elsewhere (AC-618), as clickable chips under the field — built once, in
-    /// <see cref="CreateAsync"/>, from <see cref="Cockpit.Core.Projects.ProjectSettings.CategoryOrder"/>. Empty for
-    /// the design-time constructor and for a build with no categories in use yet, in which case
-    /// <see cref="HasCategoryChips"/> is false and the row stays off screen rather than showing an empty bar.
-    /// </summary>
+    // The categories already in use elsewhere (AC-618), as clickable chips under the field — built once, in
+    // `CreateAsync`, from `Cockpit.Core.Projects.ProjectSettings.CategoryOrder`. Empty for
+    // the design-time constructor and for a build with no categories in use yet, in which case
+    // `HasCategoryChips` is false and the row stays off screen rather than showing an empty bar.
     public ObservableCollection<ProjectCategoryChipViewModel> CategoryChips { get; } = [];
 
     public bool HasCategoryChips => CategoryChips.Count > 0;
@@ -347,10 +331,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _description = string.Empty;
 
-    /// <summary>
-    /// The project's logo as the operator gave it: a file path, an <c>http(s)</c> URL, or the stored copy's path for
-    /// one already set. Blank means none — and, on save, means removing the one it had.
-    /// </summary>
+    // The project's logo as the operator gave it: a file path, an `http(s)` URL, or the stored copy's path for
+    // one already set. Blank means none — and, on save, means removing the one it had.
     [ObservableProperty]
     private string _logoSource = string.Empty;
 
@@ -366,89 +348,75 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string? _selectedProfileLabel;
 
-    /// <summary>Where <see cref="SourceDirectory"/> was cloned from, kept so an edit does not lose it. Set by the clone flow, never typed.</summary>
+    // Where `SourceDirectory` was cloned from, kept so an edit does not lose it. Set by the clone flow, never typed.
     public string? GitUrl { get; private set; }
 
-    /// <summary>
-    /// The memory-source picker's choices, shared by every <see cref="ProjectResourceRowViewModel"/> whose
-    /// <see cref="ProjectResourceRowViewModel.Role"/> is Memory: "Folder", then one entry per declared family, then
-    /// every ungrouped source, in registration order (AC-165/166, AC-499). Always at least "Folder" — the picker no
-    /// longer disappears (<see cref="ProjectResourceRowViewModel.ShowsMemorySourcePicker"/> is true for every Memory
-    /// row) just because no plugin registered a source.
-    /// </summary>
+    // The memory-source picker's choices, shared by every `ProjectResourceRowViewModel` whose
+    // `ProjectResourceRowViewModel.Role` is Memory: "Folder", then one entry per declared family, then
+    // every ungrouped source, in registration order (AC-165/166, AC-499). Always at least "Folder" — the picker no
+    // longer disappears (`ProjectResourceRowViewModel.ShowsMemorySourcePicker` is true for every Memory
+    // row) just because no plugin registered a source.
     public ObservableCollection<MemorySourceChoice> MemorySourceChoices { get; } = [];
 
-    /// <summary>
-    /// Every declared family's own instances (AC-499), keyed by <see cref="ProjectMemorySourceFamily.Key"/>
-    /// case-insensitively — what a row's own <see cref="ProjectResourceRowViewModel.FamilyInstanceChoices"/> reads
-    /// once its top choice names a family. Built in <see cref="CreateAsync"/> and shared by every row in the dialog,
-    /// the same way <see cref="MemorySourceChoices"/> is — but, unlike that collection, rebuilt (AC-523, not merely
-    /// "once") by <see cref="ConfigureMemorySourceAsync"/> once its own "Servers…" call returns, and pushed back onto
-    /// every row via <see cref="ProjectResourceRowViewModel.UpdateFamilyInstanceChoices"/> so the dropdown updates
-    /// without the operator closing and reopening this dialog.
-    /// </summary>
+    // Every declared family's own instances (AC-499), keyed by `ProjectMemorySourceFamily.Key`
+    // case-insensitively — what a row's own `ProjectResourceRowViewModel.FamilyInstanceChoices` reads
+    // once its top choice names a family. Built in `CreateAsync` and shared by every row in the dialog,
+    // the same way `MemorySourceChoices` is — but, unlike that collection, rebuilt (AC-523, not merely
+    // "once") by `ConfigureMemorySourceAsync` once its own "Servers…" call returns, and pushed back onto
+    // every row via `ProjectResourceRowViewModel.UpdateFamilyInstanceChoices` so the dropdown updates
+    // without the operator closing and reopening this dialog.
     public IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> MemorySourceFamilyInstances { get; private set; } =
         new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Re-reads the live memory-source registry (AC-523) — the same source <see cref="CreateAsync"/>'s own
-    /// <c>memorySources</c>/<c>memorySourceFamilies</c> parameters were read from, reused rather than a new
-    /// dependency injected here — so <see cref="ConfigureMemorySourceAsync"/> can rebuild <see cref="MemorySourceFamilyInstances"/>
-    /// after its "Servers…" call returns. Set once by <see cref="CreateAsync"/>; never null afterwards.
-    /// </summary>
+    // Re-reads the live memory-source registry (AC-523) — the same source `CreateAsync`'s own
+    // `memorySources`/`memorySourceFamilies` parameters were read from, reused rather than a new
+    // dependency injected here — so `ConfigureMemorySourceAsync` can rebuild `MemorySourceFamilyInstances`
+    // after its "Servers…" call returns. Set once by `CreateAsync`; never null afterwards.
     private Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)> _refreshMemorySources =
         () => ([], []);
 
-    /// <summary>The configured profiles, by label — a project points at one, it does not own one.</summary>
+    // The configured profiles, by label — a project points at one, it does not own one.
     public ObservableCollection<string> Profiles { get; } = [];
 
-    /// <summary>Every offered MCP server with whether this project's sessions get it. Unticking one is what fills the overlay's disabled list.</summary>
+    // Every offered MCP server with whether this project's sessions get it. Unticking one is what fills the overlay's disabled list.
     public ObservableCollection<McpServerSelectionItemViewModel> McpServers { get; } = [];
 
-    /// <summary>
-    /// The project's extra information, in the order the operator put it in (AC-295). Rows they add and leave empty
-    /// cost them nothing: <see cref="ToProject"/> drops them.
-    /// </summary>
+    // The project's extra information, in the order the operator put it in (AC-295). Rows they add and leave empty
+    // cost them nothing: `ToProject` drops them.
     public ObservableCollection<ProjectInfoFieldViewModel> AdditionalInfo { get; } = [];
 
-    /// <summary>
-    /// The project's resources (AC-483/485), in the order the operator put them in — a memory location, standing
-    /// instructions, something to look up. Replaces the dialog's old standalone Memory row: that row is now simply
-    /// one of these with <see cref="ProjectResourceRowViewModel.Role"/> set to <see cref="ProjectResourceRole.Memory"/>,
-    /// and every other role that a project could already carry (but this dialog had no box for) is edited here too.
-    /// A row the operator adds and leaves alone costs them nothing: <see cref="ToProject"/> drops it.
-    /// </summary>
+    // The project's resources (AC-483/485), in the order the operator put them in — a memory location, standing
+    // instructions, something to look up. Replaces the dialog's old standalone Memory row: that row is now simply
+    // one of these with `ProjectResourceRowViewModel.Role` set to `ProjectResourceRole.Memory`,
+    // and every other role that a project could already carry (but this dialog had no box for) is edited here too.
+    // A row the operator adds and leaves alone costs them nothing: `ToProject` drops it.
     public ObservableCollection<ProjectResourceRowViewModel> ResourceRows { get; } = [];
 
-    /// <summary>
-    /// The fields plugins contributed (AC-317), in registration order — what this project is called in a tracker or
-    /// on a forge. Empty when no plugin that links projects is installed, and the section stays out of the dialog.
-    /// </summary>
+    // The fields plugins contributed (AC-317), in registration order — what this project is called in a tracker or
+    // on a forge. Empty when no plugin that links projects is installed, and the section stays out of the dialog.
     public ObservableCollection<ProjectPluginFieldViewModel> PluginFields { get; } = [];
 
     public bool HasPluginFields => PluginFields.Count > 0;
 
     public bool HasMcpServers => McpServers.Count > 0;
 
-    /// <summary>
-    /// Fetches every contributed field's choices, all at once and after the dialog is already on screen — both
-    /// sources are a network call or a shelled-out CLI, and neither is worth making the operator wait on before
-    /// they can start typing a name.
-    /// </summary>
+    // Fetches every contributed field's choices, all at once and after the dialog is already on screen — both
+    // sources are a network call or a shelled-out CLI, and neither is worth making the operator wait on before
+    // they can start typing a name.
     public Task LoadPluginFieldOptionsAsync(CancellationToken cancellationToken = default) =>
         Task.WhenAll(PluginFields.Select(field => field.LoadOptionsAsync(cancellationToken)));
 
-    /// <summary>A project needs a name — it is what every other surface shows it by.</summary>
+    // A project needs a name — it is what every other surface shows it by.
     public bool CanSave => !string.IsNullOrWhiteSpace(Name);
 
-    /// <summary>Assigns a folder chosen by the picker, dropping a stale clone URL when the operator points the project somewhere else.</summary>
+    // Assigns a folder chosen by the picker, dropping a stale clone URL when the operator points the project somewhere else.
     public void ApplyPickedDirectory(string directory, string? gitUrl = null)
     {
         SourceDirectory = directory;
         GitUrl = gitUrl;
     }
 
-    /// <summary>The edited values as a project, reusing the id when editing so the sessions and settings that reference it keep pointing at the same one.</summary>
+    // The edited values as a project, reusing the id when editing so the sessions and settings that reference it keep pointing at the same one.
     public Project ToProject()
     {
         var editedOverlay = new ProjectMcpOverlay
@@ -504,21 +472,17 @@ public partial class ProjectDialogViewModel : ViewModelBase
         };
     }
 
-    /// <summary>
-    /// <paramref name="edited"/> unless <paramref name="origin"/> says this field is claimed (AC-604 acceptance
-    /// criterion 3), in which case the value <see cref="_originalProject"/> already had wins instead — an edit to a
-    /// field this project's ownership claims must never reach <c>cockpit.json</c>, whether or not the control was
-    /// locked while the operator had it open. <see cref="_originalProject"/> is null only for a new project, which
-    /// cannot yet be claimed, so falling back to <paramref name="edited"/> there changes nothing.
-    /// </summary>
+    // `edited` unless `origin` says this field is claimed (AC-604 acceptance
+    // criterion 3), in which case the value `_originalProject` already had wins instead — an edit to a
+    // field this project's ownership claims must never reach `cockpit.json`, whether or not the control was
+    // locked while the operator had it open. `_originalProject` is null only for a new project, which
+    // cannot yet be claimed, so falling back to `edited` there changes nothing.
     private T _Carry<T>(ProjectFieldOriginViewModel origin, T edited, Func<Project, T> original) =>
         origin.IsClaimed && _originalProject is not null ? original(_originalProject) : edited;
 
-    /// <summary>
-    /// What this project is linked to: the rows the operator filled in, plus the keys carried through from plugins
-    /// that are not installed. A row left empty is not written — clearing the box is how a link is removed, and an
-    /// empty string under a key would read as "linked to nothing in particular".
-    /// </summary>
+    // What this project is linked to: the rows the operator filled in, plus the keys carried through from plugins
+    // that are not installed. A row left empty is not written — clearing the box is how a link is removed, and an
+    // empty string under a key would read as "linked to nothing in particular".
     private IReadOnlyDictionary<string, string> _LinkedProjectFields()
     {
         var links = new Dictionary<string, string>(_carriedPluginFields, StringComparer.Ordinal);
@@ -536,11 +500,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void PickLogo() => PickLogoRequested?.Invoke();
 
-    /// <summary>Drops the logo. The stored copy goes when the project is saved, not here — cancelling must leave it as it was.</summary>
+    // Drops the logo. The stored copy goes when the project is saved, not here — cancelling must leave it as it was.
     [RelayCommand]
     private void ClearLogo() => LogoSource = string.Empty;
 
-    /// <summary>A category chip's click (AC-618): fills the field exactly as if the operator had typed it — no second, chip-only path onto the saved project.</summary>
+    // A category chip's click (AC-618): fills the field exactly as if the operator had typed it — no second, chip-only path onto the saved project.
     [RelayCommand]
     private void SelectCategory(string category) => Category = category;
 
@@ -550,20 +514,17 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void RemoveInfoField(ProjectInfoFieldViewModel field) => AdditionalInfo.Remove(field);
 
-    /// <summary>
-    /// Appends a blank resource row (AC-485), the same shape <see cref="AddInfoField"/> already has — Folder
-    /// pre-selected for it, matching what <c>CreateAsync</c> does for a loaded row.
-    /// <para>
-    /// AC-499 review, defect found by <c>Cockpit.App.ViewTests.ProjectDialogMemorySourceTests</c> (which builds a
-    /// <see cref="ProjectDialogViewModel"/> directly rather than through <see cref="CreateAsync"/>, exactly the same
-    /// shape the XAML designer's own <c>&lt;Design.DataContext&gt;</c> instance uses): <c>MemorySourceChoices[0]</c>
-    /// is only guaranteed to exist once <c>CreateAsync</c> has run — it is the one place "Folder" gets added. A
-    /// <see cref="ProjectDialogViewModel"/> built any other way still starts with zero choices, and this used to
-    /// index into it unconditionally, throwing <see cref="ArgumentOutOfRangeException"/> the instant "+ Add row" was
-    /// clicked on such an instance. Guarded the same way <c>CreateAsync</c>'s own per-loaded-row selection already
-    /// is, immediately above.
-    /// </para>
-    /// </summary>
+    // Appends a blank resource row (AC-485), the same shape `AddInfoField` already has — Folder
+    // pre-selected for it, matching what `CreateAsync` does for a loaded row.
+    //
+    // AC-499 review, defect found by `Cockpit.App.ViewTests.ProjectDialogMemorySourceTests` (which builds a
+    // `ProjectDialogViewModel` directly rather than through `CreateAsync`, exactly the same
+    // shape the XAML designer's own `&lt;Design.DataContext&gt;` instance uses): `MemorySourceChoices[0]`
+    // is only guaranteed to exist once `CreateAsync` has run — it is the one place "Folder" gets added. A
+    // `ProjectDialogViewModel` built any other way still starts with zero choices, and this used to
+    // index into it unconditionally, throwing `ArgumentOutOfRangeException` the instant "+ Add row" was
+    // clicked on such an instance. Guarded the same way `CreateAsync`'s own per-loaded-row selection already
+    // is, immediately above.
     [RelayCommand]
     private void AddResourceRow()
     {
@@ -587,31 +548,27 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void PickResource(ProjectResourceRowViewModel row) => PickResourceRequested?.Invoke(row);
 
-    /// <summary>
-    /// "Servers…" on a Memory row's server row (AC-499): opens wherever the picked family's own instances are
-    /// configured. A no-op when the picked choice offers none — the button that would call this is not shown at all
-    /// in that case (<see cref="ProjectResourceRowViewModel.CanConfigureMemorySource"/>), but a command guards the
-    /// same way in case it is ever invoked another way. Also a no-op while a previous call for the same row is still
-    /// running (<see cref="ProjectResourceRowViewModel.IsConfiguringMemorySource"/>) — an impatient second click
-    /// must not start a second, overlapping call to the same plugin.
-    /// <para>
-    /// A plugin's own <c>ConfigureAsync</c> throwing costs this row a message (<see cref="ProjectResourceRowViewModel.MemorySourceConfigureError"/>),
-    /// the same "never let a plugin's own failure escape unhandled" rule <see cref="ProjectPluginFieldViewModel.LoadOptionsAsync"/>
-    /// already follows for a field's own option list — left uncaught, the exception would fault this command's own
-    /// <see cref="Task"/> with nobody awaiting it, silently doing nothing from the operator's point of view rather
-    /// than saying what went wrong.
-    /// </para>
-    /// <para>
-    /// AC-523: once <c>ConfigureAsync</c> returns, <see cref="MemorySourceFamilyInstances"/> is rebuilt from
-    /// <see cref="_refreshMemorySources"/> — the same registry <c>CreateAsync</c> itself read <c>memorySources</c>/
-    /// <c>memorySourceFamilies</c> from — and pushed onto every row via
-    /// <see cref="ProjectResourceRowViewModel.UpdateFamilyInstanceChoices"/>. A plugin's settings screen is very
-    /// often where a connection gets added or removed, so the instance this call was meant to unlock (or the one it
-    /// just removed) shows up here without the operator closing and reopening this dialog. Every row is refreshed,
-    /// not only <paramref name="row"/>: a settings screen for one family's connections is reachable from any row
-    /// that picked it, and every other row sharing that same family must see the same answer.
-    /// </para>
-    /// </summary>
+    // "Servers…" on a Memory row's server row (AC-499): opens wherever the picked family's own instances are
+    // configured. A no-op when the picked choice offers none — the button that would call this is not shown at all
+    // in that case (`ProjectResourceRowViewModel.CanConfigureMemorySource`), but a command guards the
+    // same way in case it is ever invoked another way. Also a no-op while a previous call for the same row is still
+    // running (`ProjectResourceRowViewModel.IsConfiguringMemorySource`) — an impatient second click
+    // must not start a second, overlapping call to the same plugin.
+    //
+    // A plugin's own `ConfigureAsync` throwing costs this row a message (`ProjectResourceRowViewModel.MemorySourceConfigureError`),
+    // the same "never let a plugin's own failure escape unhandled" rule `ProjectPluginFieldViewModel.LoadOptionsAsync`
+    // already follows for a field's own option list — left uncaught, the exception would fault this command's own
+    // `Task` with nobody awaiting it, silently doing nothing from the operator's point of view rather
+    // than saying what went wrong.
+    //
+    // AC-523: once `ConfigureAsync` returns, `MemorySourceFamilyInstances` is rebuilt from
+    // `_refreshMemorySources` — the same registry `CreateAsync` itself read `memorySources`/
+    // `memorySourceFamilies` from — and pushed onto every row via
+    // `ProjectResourceRowViewModel.UpdateFamilyInstanceChoices`. A plugin's settings screen is very
+    // often where a connection gets added or removed, so the instance this call was meant to unlock (or the one it
+    // just removed) shows up here without the operator closing and reopening this dialog. Every row is refreshed,
+    // not only `row`: a settings screen for one family's connections is reachable from any row
+    // that picked it, and every other row sharing that same family must see the same answer.
     [RelayCommand]
     private async Task ConfigureMemorySourceAsync(ProjectResourceRowViewModel row)
     {
@@ -655,7 +612,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     partial void OnNameChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
 
-    /// <summary>Keeps each chip's <see cref="ProjectCategoryChipViewModel.IsActive"/> matching the field as the operator types or clicks a chip — case-insensitively, the same comparison <see cref="ProjectSettings.CategoryOrder"/> itself groups by.</summary>
+    // Keeps each chip's `ProjectCategoryChipViewModel.IsActive` matching the field as the operator types or clicks a chip — case-insensitively, the same comparison `ProjectSettings.CategoryOrder` itself groups by.
     partial void OnCategoryChanged(string value)
     {
         foreach (var chip in CategoryChips)
@@ -664,7 +621,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Re-running the repo-relative-fix check whenever the folder itself changes (AC-605 criterion 5) — a row already offering "make repo-relative" may no longer once the operator points the project at a folder that no longer contains it, or the reverse.</summary>
+    // Re-running the repo-relative-fix check whenever the folder itself changes (AC-605 criterion 5) — a row already offering "make repo-relative" may no longer once the operator points the project at a folder that no longer contains it, or the reverse.
     partial void OnSourceDirectoryChanged(string value) => _RefreshResourceDiagnostics();
 
     private void _AddResourceRow(ProjectResourceRowViewModel row)
@@ -683,10 +640,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         row.PropertyChanged += _OnResourceRowChanged;
     }
 
-    /// <summary>
-    /// Sets <see cref="ProjectResourceRowViewModel.IsLastRow"/> on every row (AC-485 review, FIX 8) — called
-    /// whenever <see cref="ResourceRows"/> gains or loses a row, since which one is last can only change then.
-    /// </summary>
+    // Sets `ProjectResourceRowViewModel.IsLastRow` on every row (AC-485 review, FIX 8) — called
+    // whenever `ResourceRows` gains or loses a row, since which one is last can only change then.
     private void _UpdateLastRowFlags()
     {
         for (var i = 0; i < ResourceRows.Count; i++)
@@ -695,11 +650,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// One family member as the picker offers it — shared by <see cref="CreateAsync"/>'s own first build and
-    /// <see cref="_BuildFamilyInstances"/>'s later rebuilds (AC-523), so both ever construct a
-    /// <see cref="MemorySourceChoice"/> for a <see cref="ProjectMemorySourceRegistration"/> the same way.
-    /// </summary>
+    // One family member as the picker offers it — shared by `CreateAsync`'s own first build and
+    // `_BuildFamilyInstances`'s later rebuilds (AC-523), so both ever construct a
+    // `MemorySourceChoice` for a `ProjectMemorySourceRegistration` the same way.
     private static MemorySourceChoice _BuildInstanceChoice(ProjectMemorySourceRegistration registration) =>
         new(string.IsNullOrWhiteSpace(registration.InstanceTitle) ? registration.Title : registration.InstanceTitle, registration.Scheme)
         {
@@ -708,14 +661,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
             CheckReachability = registration.CheckReachability,
         };
 
-    /// <summary>
-    /// Rebuilds <see cref="MemorySourceFamilyInstances"/>'s shape from <paramref name="sources"/>/<paramref name="families"/>
-    /// (AC-523) — every declared family gets an entry (possibly empty), and every source whose
-    /// <see cref="ProjectMemorySourceRegistration.FamilyKey"/> names one of them becomes an instance under it, the
-    /// same rule <see cref="CreateAsync"/>'s own first build follows. Ungrouped sources are not represented here —
-    /// this ticket's scope is a family's own instances (AC-523's "Servers…" flow only ever adds or removes those),
-    /// not <see cref="MemorySourceChoices"/>'s own top-level rows.
-    /// </summary>
+    // Rebuilds `MemorySourceFamilyInstances`'s shape from `sources`/`families`
+    // (AC-523) — every declared family gets an entry (possibly empty), and every source whose
+    // `ProjectMemorySourceRegistration.FamilyKey` names one of them becomes an instance under it, the
+    // same rule `CreateAsync`'s own first build follows. Ungrouped sources are not represented here —
+    // this ticket's scope is a family's own instances (AC-523's "Servers…" flow only ever adds or removes those),
+    // not `MemorySourceChoices`'s own top-level rows.
     private static IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> _BuildFamilyInstances(
         IReadOnlyList<ProjectMemorySourceRegistration>? sources,
         IReadOnlyList<ProjectMemorySourceFamily>? families)
@@ -749,79 +700,68 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Completes once the most recently scheduled <see cref="_RefreshResourceDiagnostics"/> call has written its
-    /// answer onto every row, or been superseded by a later one (AC-485 review, MUST-FIX 2) — a hook a test can
-    /// await deterministically instead of sleeping for a computation whose entire point is to run off the UI
-    /// thread. Production code never awaits this itself: what the operator sees update is each row's own bound
-    /// <see cref="ProjectResourceRowViewModel.IsBroken"/>/<see cref="ProjectResourceRowViewModel.Scope"/>,
-    /// whenever the background work gets there.
-    /// </summary>
+    // Completes once the most recently scheduled `_RefreshResourceDiagnostics` call has written its
+    // answer onto every row, or been superseded by a later one (AC-485 review, MUST-FIX 2) — a hook a test can
+    // await deterministically instead of sleeping for a computation whose entire point is to run off the UI
+    // thread. Production code never awaits this itself: what the operator sees update is each row's own bound
+    // `ProjectResourceRowViewModel.IsBroken`/`ProjectResourceRowViewModel.Scope`,
+    // whenever the background work gets there.
     internal Task ResourceDiagnosticsRefreshCompleted { get; private set; } = Task.CompletedTask;
 
-    /// <summary>Bumped by every call to <see cref="_RefreshResourceDiagnostics"/> — see that method's remarks on why a stale answer must be told apart from the current one.</summary>
+    // Bumped by every call to `_RefreshResourceDiagnostics` — see that method's remarks on why a stale answer must be told apart from the current one.
     private int _resourceDiagnosticsRefreshVersion;
 
-    /// <summary>
-    /// Schedules a re-run of <see cref="ProjectResourceProbe"/> and <see cref="ProjectResourcePathPortability"/>
-    /// over every row without waiting for it, so the row-level property change that triggered this call (a
-    /// keystroke in the Reference box, a role switch, adding or removing a row, the folder changing) returns to the
-    /// UI immediately.
-    /// <para>
-    /// AC-485 review (MUST-FIX 2): this used to run the probe's I/O synchronously, on whatever thread called it —
-    /// the UI thread for every trigger above. The <c>Reference</c> box binds with Avalonia's default per-keystroke
-    /// trigger, so a row whose path check does not answer quickly — a disconnected mapped drive, say, which the
-    /// probe's own UNC guard does not catch since a drive letter is not a UNC path — cost up to the probe's own
-    /// 200 ms time budget on <em>every character typed</em>: measured at 204 ms/call, so 35 keystrokes cost roughly
-    /// 7 seconds of a frozen window, for every row in the dialog at once. The actual I/O now runs on a pool thread
-    /// (see <see cref="_RunResourceDiagnosticsAsync"/>) and only its answer is marshalled back.
-    /// </para>
-    /// </summary>
+    // Schedules a re-run of `ProjectResourceProbe` and `ProjectResourcePathPortability`
+    // over every row without waiting for it, so the row-level property change that triggered this call (a
+    // keystroke in the Reference box, a role switch, adding or removing a row, the folder changing) returns to the
+    // UI immediately.
+    //
+    // AC-485 review (MUST-FIX 2): this used to run the probe's I/O synchronously, on whatever thread called it —
+    // the UI thread for every trigger above. The `Reference` box binds with Avalonia's default per-keystroke
+    // trigger, so a row whose path check does not answer quickly — a disconnected mapped drive, say, which the
+    // probe's own UNC guard does not catch since a drive letter is not a UNC path — cost up to the probe's own
+    // 200 ms time budget on *every character typed*: measured at 204 ms/call, so 35 keystrokes cost roughly
+    // 7 seconds of a frozen window, for every row in the dialog at once. The actual I/O now runs on a pool thread
+    // (see `_RunResourceDiagnosticsAsync`) and only its answer is marshalled back.
     private void _RefreshResourceDiagnostics(bool immediately = false) =>
         ResourceDiagnosticsRefreshCompleted = _RunResourceDiagnosticsAsync(
             immediately ? TimeSpan.Zero : ResourceDiagnosticsQuietPeriod);
 
-    /// <summary>
-    /// How long the typing has to stop before a row is judged. Long enough that writing a path straight through
-    /// never triggers a check, short enough that the answer feels like it belongs to what was just typed. Opening
-    /// the dialog passes <c>immediately</c> instead: there is nothing to wait for, and a row stored as broken should
-    /// say so the moment it is on screen.
-    /// </summary>
+    // How long the typing has to stop before a row is judged. Long enough that writing a path straight through
+    // never triggers a check, short enough that the answer feels like it belongs to what was just typed. Opening
+    // the dialog passes `immediately` instead: there is nothing to wait for, and a row stored as broken should
+    // say so the moment it is on screen.
     private static readonly TimeSpan ResourceDiagnosticsQuietPeriod = TimeSpan.FromMilliseconds(400);
 
-    /// <summary>
-    /// The actual work <see cref="_RefreshResourceDiagnostics"/> schedules (AC-485 review, MUST-FIX 2). Row objects
-    /// are read only on the calling (UI) thread, into a plain snapshot — touching a
-    /// <see cref="ProjectResourceRowViewModel"/> off the UI thread is not safe — and the snapshot alone, plain data
-    /// with no UI affinity, is handed to <see cref="Task.Run{TResult}(Func{TResult})"/> for the part that can
-    /// actually take a while: <see cref="ProjectResourceProbe.FindUnresolved"/>,
-    /// <see cref="ProjectResourcePathPortability.ClassifyScope"/> and
-    /// <see cref="ProjectResourcePathPortability.SuggestRepoRelativeFix"/> over every row. Once that finishes, the answer is
-    /// written back onto each row — but only if no newer call has started in the meantime: <c>version</c> is
-    /// compared against <see cref="_resourceDiagnosticsRefreshVersion"/>'s current value, and a stale answer
-    /// (a slow, earlier call finishing after a faster, later one already has) is simply dropped rather than
-    /// overwriting the fresher one — a race that was not possible back when every call ran to completion
-    /// synchronously, in the order it was made.
-    /// <para>
-    /// AC-485 review (FIX 3): <see cref="ProjectResourceProbe.FindUnresolved"/> itself never looks at
-    /// <see cref="ProjectResource.ReachesSessions"/> for a row that is not switched off elsewhere — it filters the
-    /// whole input by that flag before doing any I/O, then answers with the bare <em>text</em> of every reference it
-    /// found missing. Matching that text back onto every row sharing it — including a row this probe was never
-    /// asked about, because its own <c>ReachesSessions</c> was false — would call a row "broken" that was simply
-    /// never judged. Gating the assignment itself on the row's own <c>ReachesSessions</c> (not only on the string
-    /// being in the result) keeps "not judged" and "judged and broken" apart, which the doc comment on
-    /// <see cref="ProjectResourceRowViewModel.IsBroken"/> already promises and the assignment below did not
-    /// previously keep.
-    /// </para>
-    /// </summary>
-    /// <summary>
-    /// Cancelled and replaced at the start of every <see cref="_RunResourceDiagnosticsAsync"/> call (AC-503
-    /// acceptance criterion 5) — a Reachability check is a network call that can run long enough to still be in
-    /// flight when a newer edit supersedes it, unlike the filesystem probe's own version-guard (which only ever
-    /// discards a stale <em>answer</em>, since a filesystem check finishes fast enough that letting it run to
-    /// completion costs nothing). Cancelling the token itself, not merely discarding the result, is what actually
-    /// stops an older in-flight tool call rather than leaving it to complete unread in the background.
-    /// </summary>
+    // The actual work `_RefreshResourceDiagnostics` schedules (AC-485 review, MUST-FIX 2). Row objects
+    // are read only on the calling (UI) thread, into a plain snapshot — touching a
+    // `ProjectResourceRowViewModel` off the UI thread is not safe — and the snapshot alone, plain data
+    // with no UI affinity, is handed to `Task.Run{TResult}(Func{TResult})` for the part that can
+    // actually take a while: `ProjectResourceProbe.FindUnresolved`,
+    // `ProjectResourcePathPortability.ClassifyScope` and
+    // `ProjectResourcePathPortability.SuggestRepoRelativeFix` over every row. Once that finishes, the answer is
+    // written back onto each row — but only if no newer call has started in the meantime: `version` is
+    // compared against `_resourceDiagnosticsRefreshVersion`'s current value, and a stale answer
+    // (a slow, earlier call finishing after a faster, later one already has) is simply dropped rather than
+    // overwriting the fresher one — a race that was not possible back when every call ran to completion
+    // synchronously, in the order it was made.
+    //
+    // AC-485 review (FIX 3): `ProjectResourceProbe.FindUnresolved` itself never looks at
+    // `ProjectResource.ReachesSessions` for a row that is not switched off elsewhere — it filters the
+    // whole input by that flag before doing any I/O, then answers with the bare *text* of every reference it
+    // found missing. Matching that text back onto every row sharing it — including a row this probe was never
+    // asked about, because its own `ReachesSessions` was false — would call a row "broken" that was simply
+    // never judged. Gating the assignment itself on the row's own `ReachesSessions` (not only on the string
+    // being in the result) keeps "not judged" and "judged and broken" apart, which the doc comment on
+    // `ProjectResourceRowViewModel.IsBroken` already promises and the assignment below did not
+    // previously keep.
+    //
+    // Cancelled and replaced at the start of every `_RunResourceDiagnosticsAsync` call (AC-503
+    // acceptance criterion 5) — a Reachability check is a network call that can run long enough to still be in
+    // flight when a newer edit supersedes it, unlike the filesystem probe's own version-guard (which only ever
+    // discards a stale *answer*, since a filesystem check finishes fast enough that letting it run to
+    // completion costs nothing). Cancelling the token itself, not merely discarding the result, is what actually
+    // stops an older in-flight tool call rather than leaving it to complete unread in the background.
     private CancellationTokenSource? _reachabilityCancellation;
 
     private async Task _RunResourceDiagnosticsAsync(TimeSpan quietPeriod)
@@ -906,16 +846,15 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Runs one Memory row's own <see cref="ProjectMemorySourceRegistration.CheckReachability"/> (AC-503) and writes
-    /// the answer back onto <paramref name="row"/> — but only if <paramref name="version"/> still matches
-    /// <see cref="_resourceDiagnosticsRefreshVersion"/> once the check completes, the same stale-answer guard
-    /// <see cref="_RunResourceDiagnosticsAsync"/> already applies to the filesystem probe's own result.
-    /// </summary>
-    /// <param name="value">The bare value the operator typed — never the folded <c>"{scheme}:{value}"</c> form <see cref="ProjectResourceRowViewModel.ToDomain"/> saves, which the plugin's own check never asked to see.</param>
-    /// <param name="check">The row's picked source's own check delegate.</param>
-    /// <param name="version">The refresh version this call belongs to.</param>
-    /// <param name="cancellationToken">Cancelled by a newer <see cref="_RunResourceDiagnosticsAsync"/> call starting (see <see cref="_reachabilityCancellation"/>) — never awaited past that point.</param>
+    // Runs one Memory row's own `ProjectMemorySourceRegistration.CheckReachability` (AC-503) and writes
+    // the answer back onto `row` — but only if `version` still matches
+    // `_resourceDiagnosticsRefreshVersion` once the check completes, the same stale-answer guard
+    // `_RunResourceDiagnosticsAsync` already applies to the filesystem probe's own result.
+    //
+    // `value`: The bare value the operator typed — never the folded `"{scheme}:{value}"` form `ProjectResourceRowViewModel.ToDomain` saves, which the plugin's own check never asked to see.
+    // `check`: The row's picked source's own check delegate.
+    // `version`: The refresh version this call belongs to.
+    // `cancellationToken`: Cancelled by a newer `_RunResourceDiagnosticsAsync` call starting (see `_reachabilityCancellation`) — never awaited past that point.
     private async Task _RunReachabilityCheckAsync(
         ProjectResourceRowViewModel row,
         string value,

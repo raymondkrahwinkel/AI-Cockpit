@@ -4,16 +4,13 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// The writing half of the GitHub CLI (#77) — assigning, labelling, commenting, closing. The reading half
-/// (<see cref="GitHubGhClient"/>) searches; this one changes things, which is why nothing here is cached and every
-/// failure is raised rather than swallowed: a flow that reports "assigned" for an assignment GitHub refused is worse
-/// than one that stops.
-/// <para>
-/// It goes through <c>gh</c>, like the rest of this plugin, so it reuses the login the operator already has. No token
-/// to paste, and no scope this cockpit has to ask for.
-/// </para>
-/// </summary>
+// The writing half of the GitHub CLI (#77) — assigning, labelling, commenting, closing. The reading half
+// (`GitHubGhClient`) searches; this one changes things, which is why nothing here is cached and every
+// failure is raised rather than swallowed: a flow that reports "assigned" for an assignment GitHub refused is worse
+// than one that stops.
+//
+// It goes through `gh`, like the rest of this plugin, so it reuses the login the operator already has. No token
+// to paste, and no scope this cockpit has to ask for.
 internal sealed class GitHubWorkflowClient
 {
     public async Task<GitHubIssue> GetIssueAsync(GitHubIssueReference issue, CancellationToken cancellationToken)
@@ -33,7 +30,7 @@ internal sealed class GitHubWorkflowClient
             issue.Repository);
     }
 
-    /// <summary>Reads an issue's comments (<c>gh issue view --json comments</c>), normalized to <see cref="TrackerComment"/> (GitHub's <c>createdAt</c> is an ISO-8601 string).</summary>
+    // Reads an issue's comments (`gh issue view --json comments`), normalized to `TrackerComment` (GitHub's `createdAt` is an ISO-8601 string).
     public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(GitHubIssueReference issue, CancellationToken cancellationToken)
     {
         var json = await _RunAsync(
@@ -67,7 +64,7 @@ internal sealed class GitHubWorkflowClient
             ["issue", "edit", issue.Number.ToString(), "--repo", issue.Repository, "--add-assignee", "@me"],
             cancellationToken);
 
-    /// <summary>Puts a label on the issue. A label the repo does not have fails here, and says which ones it does have — an automation that invents a label is how a repo ends up with three that mean the same thing.</summary>
+    // Puts a label on the issue. A label the repo does not have fails here, and says which ones it does have — an automation that invents a label is how a repo ends up with three that mean the same thing.
     public async Task AddLabelAsync(GitHubIssueReference issue, string label, CancellationToken cancellationToken)
     {
         try

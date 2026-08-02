@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The turns the autonomous run hands its sessions (AC-174): a step agent's visible opening instruction (its work plus
-/// how to report done) and the CEO's validation turn. Kept pure builders off the coordinator so the wording — the tool
-/// to call, what to include — is tested without a live session.
-/// </summary>
+// The turns the autonomous run hands its sessions (AC-174): a step agent's visible opening instruction (its work plus
+// how to report done) and the CEO's validation turn. Kept pure builders off the coordinator so the wording — the tool
+// to call, what to include — is tested without a live session.
 public class AutopilotStepBriefTests
 {
     [Fact]

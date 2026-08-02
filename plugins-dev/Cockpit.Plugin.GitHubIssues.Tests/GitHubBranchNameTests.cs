@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The branch name an issue hands to the rest of the flow (#77). It ends up in a git command, so anything that a ref
-/// or a shell would argue with has to be gone before it leaves here — and a title is written by a human, which means
-/// it will contain a colon, a slash and an emoji sooner or later.
-/// </summary>
+// The branch name an issue hands to the rest of the flow (#77). It ends up in a git command, so anything that a ref
+// or a shell would argue with has to be gone before it leaves here — and a title is written by a human, which means
+// it will contain a colon, a slash and an emoji sooner or later.
 public class GitHubBranchNameTests
 {
     [Fact]

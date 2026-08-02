@@ -4,12 +4,10 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-/// <summary>
-/// Runs git for the worktree manager (AC-85). A thin wrapper over the git CLI rather than a library binding: the
-/// same binary the operator's own shell uses, so git's refusals — "a branch named 'x' already exists", "contains
-/// modified or untracked files" — are the ones the cockpit surfaces, and there is no second copy of git's rules
-/// to keep in step with it.
-/// </summary>
+// Runs git for the worktree manager (AC-85). A thin wrapper over the git CLI rather than a library binding: the
+// same binary the operator's own shell uses, so git's refusals — "a branch named 'x' already exists", "contains
+// modified or untracked files" — are the ones the cockpit surfaces, and there is no second copy of git's rules
+// to keep in step with it.
 internal static class GitCli
 {
     // Not a network timeout — a worktree add copies a full checkout, which is slow but bounded. It is a hang guard:
@@ -123,7 +121,7 @@ internal static class GitCli
         }
     }
 
-    /// <summary>Runs git and returns its trimmed output, throwing what git said on a non-zero exit.</summary>
+    // Runs git and returns its trimmed output, throwing what git said on a non-zero exit.
     public static async Task<string> RunCheckedAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
@@ -139,30 +137,25 @@ internal static class GitCli
         return result.StandardOutput.Trim();
     }
 
-    /// <summary>
-    /// What git refused with, in the words it used. git says why in terms a person can act on ("a branch named 'x'
-    /// already exists"); that is what a caller surfaces, not "git exited with 128" — but with the checkout progress
-    /// ("Updating files: 42% …", written to stderr and carriage-returned over itself) stripped out first, so a failed
-    /// worktree add shows the actual error instead of a hundred percent-lines.
-    /// <para>
-    /// git echoes the remote URL in its own failures ("fatal: unable to access 'https://user:token@host/…'"), so any
-    /// URL userinfo is redacted before this reaches a dialog or a log — the same binding rule the display of the
-    /// arguments follows. Belt and suspenders with GitCloneUrl stripping credentials up front.
-    /// </para>
-    /// </summary>
+    // What git refused with, in the words it used. git says why in terms a person can act on ("a branch named 'x'
+    // already exists"); that is what a caller surfaces, not "git exited with 128" — but with the checkout progress
+    // ("Updating files: 42% …", written to stderr and carriage-returned over itself) stripped out first, so a failed
+    // worktree add shows the actual error instead of a hundred percent-lines.
+    //
+    // git echoes the remote URL in its own failures ("fatal: unable to access 'https://user:token@host/…'"), so any
+    // URL userinfo is redacted before this reaches a dialog or a log — the same binding rule the display of the
+    // arguments follows. Belt and suspenders with GitCloneUrl stripping credentials up front.
     internal static string DescribeFailure(GitResult result)
     {
         var said = RedactUrlCredentials(StripProgress(result.StandardError));
         return said.Length > 0 ? said : $"git exited with {result.ExitCode}.";
     }
 
-    /// <summary>
-    /// Drops git's transfer/checkout progress chatter ("Updating files:", "Receiving objects:", …) from
-    /// <paramref name="standardError"/>, so an error surfaced to the operator is the diagnosis, not the progress bar
-    /// that ran up to it. Splits on both line terminators because git overwrites progress in place with a carriage
-    /// return. Falls back to the raw text if stripping would leave nothing, so a git that reports only via progress
-    /// is never reduced to an empty message.
-    /// </summary>
+    // Drops git's transfer/checkout progress chatter ("Updating files:", "Receiving objects:", …) from
+    // `standardError`, so an error surfaced to the operator is the diagnosis, not the progress bar
+    // that ran up to it. Splits on both line terminators because git overwrites progress in place with a carriage
+    // return. Falls back to the raw text if stripping would leave nothing, so a git that reports only via progress
+    // is never reduced to an empty message.
     internal static string StripProgress(string standardError)
     {
         var kept = standardError
@@ -179,12 +172,10 @@ internal static class GitCli
     // userinfo before the arguments are joined for display. A binding rule: secret values never in argv/config/logs.
     private static readonly Regex _UrlUserInfo = new(@"://[^/@\s]+@", RegexOptions.Compiled);
 
-    /// <summary>
-    /// Blanks any URL userinfo (<c>https://user:token@host</c>) in <paramref name="text"/> bound for an exception
-    /// message or a log. The same binding rule as <see cref="_RedactArguments"/>, applied to arbitrary text — git's
-    /// own stderr echoes the remote URL in its failures, so a pasted token would otherwise ride a clone/fetch error
-    /// straight into the dialog and the log.
-    /// </summary>
+    // Blanks any URL userinfo (`https://user:token@host`) in `text` bound for an exception
+    // message or a log. The same binding rule as `_RedactArguments`, applied to arbitrary text — git's
+    // own stderr echoes the remote URL in its failures, so a pasted token would otherwise ride a clone/fetch error
+    // straight into the dialog and the log.
     internal static string RedactUrlCredentials(string text) => _UrlUserInfo.Replace(text, "://***@");
 
     private static string _RedactArguments(IReadOnlyList<string> arguments) =>

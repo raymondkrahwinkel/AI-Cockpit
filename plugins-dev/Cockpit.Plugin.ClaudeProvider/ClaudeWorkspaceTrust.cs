@@ -3,31 +3,26 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Marks a working directory trusted in the <c>.claude.json</c> the CLI reads for a spawn, so the TUI does not
-/// block on its interactive trust dialog on first render — a copy of the host's <c>WorkspaceTrustWriter</c>
-/// (weg A). Read-merge-write: preserves every other key and project entry, creates what is absent, idempotent.
-/// <para>
-/// <c>~/.claude.json</c> is a single file shared with any <c>claude</c> the cockpit already has running (a live
-/// interactive TTY rewrites it continuously), so both ends of this read-merge-write are hardened against that
-/// concurrency:
-/// <list type="bullet">
-/// <item>The write is <b>atomic</b> (temp file + rename), never a <c>File.Create</c> truncate-in-place. The old
-/// truncate left a zero-length window in which a concurrent <c>claude</c> read a half-written config, backed it up
-/// (<c>.claude.json.backup.*</c>) and reset to defaults — dropping the just-started session's
-/// <c>hasTrustDialogAccepted</c>, and with it every <c>--mcp-config</c> server (MCP is trust-gated), silently.</item>
-/// <item>The write is <b>skipped when the directory is already trusted</b> — the common case — so it does not race
-/// the live TTY at all.</item>
-/// <item>The read <b>never downgrades an existing file to an empty root</b>: an existing file that will not parse as
-/// an object is a torn/locked read, retried and then thrown, rather than silently replaced with <c>{}</c> — writing
-/// that back would wipe every project and trust entry, the exact data loss this type guards against.</item>
-/// <item>The atomic replace is <b>retried</b>: a concurrent reader holding the file open makes the OS rename fail
-/// with a sharing violation, and surviving a concurrently-active <c>claude</c> is the whole point.</item>
-/// </list>
-/// Cross-process merging is still best-effort: two cockpit spawns that read, add different entries and write can lose
-/// one of the two entries (last writer wins) — acceptable, since each re-marks its own directory on its next launch.
-/// </para>
-/// </summary>
+// Marks a working directory trusted in the `.claude.json` the CLI reads for a spawn, so the TUI does not
+// block on its interactive trust dialog on first render — a copy of the host's `WorkspaceTrustWriter`
+// (weg A). Read-merge-write: preserves every other key and project entry, creates what is absent, idempotent.
+//
+// `~/.claude.json` is a single file shared with any `claude` the cockpit already has running (a live
+// interactive TTY rewrites it continuously), so both ends of this read-merge-write are hardened against that
+// concurrency:
+// - The write is *atomic* (temp file + rename), never a `File.Create` truncate-in-place. The old
+// truncate left a zero-length window in which a concurrent `claude` read a half-written config, backed it up
+// (`.claude.json.backup.*`) and reset to defaults — dropping the just-started session's
+// `hasTrustDialogAccepted`, and with it every `--mcp-config` server (MCP is trust-gated), silently.
+// - The write is *skipped when the directory is already trusted* — the common case — so it does not race
+// the live TTY at all.
+// - The read *never downgrades an existing file to an empty root*: an existing file that will not parse as
+// an object is a torn/locked read, retried and then thrown, rather than silently replaced with `{}` — writing
+// that back would wipe every project and trust entry, the exact data loss this type guards against.
+// - The atomic replace is *retried*: a concurrent reader holding the file open makes the OS rename fail
+// with a sharing violation, and surviving a concurrently-active `claude` is the whole point.
+// Cross-process merging is still best-effort: two cockpit spawns that read, add different entries and write can lose
+// one of the two entries (last writer wins) — acceptable, since each re-marks its own directory on its next launch.
 internal static class ClaudeWorkspaceTrust
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
@@ -67,12 +62,10 @@ internal static class ClaudeWorkspaceTrust
         WriteAtomically(claudeJsonPath, root);
     }
 
-    /// <summary>
-    /// The existing config as an object, or a fresh empty root only when the file genuinely does not exist. An
-    /// existing file that cannot be read as an object is treated as a transient torn/locked read (the live claude
-    /// writing it non-atomically), retried, and — if it never becomes readable — <b>thrown</b>. It is deliberately
-    /// never downgraded to an empty root: writing that back over a real file would wipe every project and trust entry.
-    /// </summary>
+    // The existing config as an object, or a fresh empty root only when the file genuinely does not exist. An
+    // existing file that cannot be read as an object is treated as a transient torn/locked read (the live claude
+    // writing it non-atomically), retried, and — if it never becomes readable — *thrown*. It is deliberately
+    // never downgraded to an empty root: writing that back over a real file would wipe every project and trust entry.
     private static JsonObject ReadRootOrThrow(string claudeJsonPath)
     {
         if (!File.Exists(claudeJsonPath))
@@ -109,11 +102,9 @@ internal static class ClaudeWorkspaceTrust
         }
     }
 
-    /// <summary>
-    /// Serialises <paramref name="root"/> to a sibling temp file and renames it over the target, so a concurrent
-    /// reader sees either the whole old file or the whole new one — never a zero-length middle state. The rename is
-    /// retried past the sharing violation a concurrently-open reader can cause; the temp file is always cleaned up.
-    /// </summary>
+    // Serialises `root` to a sibling temp file and renames it over the target, so a concurrent
+    // reader sees either the whole old file or the whole new one — never a zero-length middle state. The rename is
+    // retried past the sharing violation a concurrently-open reader can cause; the temp file is always cleaned up.
     private static void WriteAtomically(string claudeJsonPath, JsonObject root)
     {
         var tempPath = claudeJsonPath + ".cockpit-" + Guid.NewGuid().ToString("N") + ".tmp";

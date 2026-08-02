@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The start gate (AC-345). Asserted with xunit's own Assert rather than the FluentAssertions the older files in this
-/// project use: that package is commercially licensed from v8 on.
-/// </summary>
+// The start gate (AC-345). Asserted with xunit's own Assert rather than the FluentAssertions the older files in this
+// project use: that package is commercially licensed from v8 on.
 public class AutopilotReadyGateTests
 {
     [Fact]

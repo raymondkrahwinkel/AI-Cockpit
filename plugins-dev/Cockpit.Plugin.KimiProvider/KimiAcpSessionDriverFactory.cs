@@ -3,13 +3,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// <see cref="IPluginSessionDriverFactory"/> for the Kimi ACP provider (AC-268): deserializes the profile's
-/// opaque config JSON into a <see cref="KimiConfig"/>, resolves its <see cref="KimiConfig.Command"/> to a
-/// spawnable path via <see cref="KimiExecutableLocator"/>, and builds a <see cref="KimiAcpSessionDriver"/>
-/// backed by the real <see cref="ProcessCliSubprocess"/> — mirrors
-/// <c>Cockpit.Plugin.CliAgentProvider.CodexAppServerPluginSessionDriverFactory</c>.
-/// </summary>
+// `IPluginSessionDriverFactory` for the Kimi ACP provider (AC-268): deserializes the profile's
+// opaque config JSON into a `KimiConfig`, resolves its `KimiConfig.Command` to a
+// spawnable path via `KimiExecutableLocator`, and builds a `KimiAcpSessionDriver`
+// backed by the real `ProcessCliSubprocess` — mirrors
+// `Cockpit.Plugin.CliAgentProvider.CodexAppServerPluginSessionDriverFactory`.
 internal sealed class KimiAcpSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)

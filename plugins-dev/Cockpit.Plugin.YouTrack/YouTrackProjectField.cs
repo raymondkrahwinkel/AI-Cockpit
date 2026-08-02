@@ -3,22 +3,18 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The field this plugin puts on a cockpit project (AC-317): which YouTrack project it is tracked in. The stored
-/// value is the short name — <c>AC</c> — because that is what every query this plugin makes is written in; the
-/// operator picks it by the full name, which is the only half they know by heart.
-/// </summary>
+// The field this plugin puts on a cockpit project (AC-317): which YouTrack project it is tracked in. The stored
+// value is the short name — `AC` — because that is what every query this plugin makes is written in; the
+// operator picks it by the full name, which is the only half they know by heart.
 internal static class YouTrackProjectField
 {
-    /// <summary>What the link is stored under on the project. Never change it: already-linked projects are keyed by it.</summary>
+    // What the link is stored under on the project. Never change it: already-linked projects are keyed by it.
     public const string Key = "youtrack.project";
 
-    /// <summary>
-    /// AC-317's rule, in the one place both surfaces that need "which project" call: the session's own linked
-    /// project wins over the instance-wide default (AC-548 — the issues dialog and the session picker used to
-    /// answer this differently because the picker never asked the project field at all). Null when neither the
-    /// session's project nor the instance carries a tag.
-    /// </summary>
+    // AC-317's rule, in the one place both surfaces that need "which project" call: the session's own linked
+    // project wins over the instance-wide default (AC-548 — the issues dialog and the session picker used to
+    // answer this differently because the picker never asked the project field at all). Null when neither the
+    // session's project nor the instance carries a tag.
     public static async Task<string?> ResolvePreferredTagAsync(
         ICockpitHost host, string? paneId, string? defaultProjectTag, CancellationToken cancellationToken) =>
         await host.GetProjectFieldValueAsync(Key, paneId, cancellationToken) ?? defaultProjectTag;
@@ -36,14 +32,11 @@ internal static class YouTrackProjectField
             Placeholder = "AC",
         };
 
-    /// <summary>
-    /// Every project on every configured instance. Prefixed with the instance label only when there is more than one
-    /// configured — the prefix answers "which YouTrack", a question a single-instance cockpit never asks.
-    /// <para>
-    /// Takes the fetch as an argument rather than the client, so what this decides — which instances count, how a
-    /// choice reads, what an empty answer means — is testable without a YouTrack to answer.
-    /// </para>
-    /// </summary>
+    // Every project on every configured instance. Prefixed with the instance label only when there is more than one
+    // configured — the prefix answers "which YouTrack", a question a single-instance cockpit never asks.
+    //
+    // Takes the fetch as an argument rather than the client, so what this decides — which instances count, how a
+    // choice reads, what an empty answer means — is testable without a YouTrack to answer.
     internal static async Task<IReadOnlyList<ProjectFieldOption>> BuildOptionsAsync(
         IReadOnlyList<YouTrackInstance> instances,
         Func<YouTrackInstance, CancellationToken, Task<IReadOnlyList<YouTrackProject>>> loadProjects,

@@ -9,15 +9,11 @@ using Cockpit.Plugin.LocalCi.Workflows;
 
 namespace Cockpit.Plugin.LocalCi.Ui;
 
-/// <summary>
-/// One checkout's workflow jobs: which of them can run on this machine, and the log of the one that is running.
-/// Opened for a session, so the checkout it shows is the one that session is working in.
-/// </summary>
-/// <remarks>
-/// The log is redrawn on a timer rather than per line. A workflow job produces thousands of lines in bursts, and
-/// touching a text control on each one turns the run into a slideshow — the very cockpit-is-unusable problem the
-/// core limit exists to avoid, moved from the CPU to the UI thread.
-/// </remarks>
+// One checkout's workflow jobs: which of them can run on this machine, and the log of the one that is running.
+// Opened for a session, so the checkout it shows is the one that session is working in.
+// The log is redrawn on a timer rather than per line. A workflow job produces thousands of lines in bursts, and
+// touching a text control on each one turns the run into a slideshow — the very cockpit-is-unusable problem the
+// core limit exists to avoid, moved from the CPU to the UI thread.
 internal sealed class LocalCiRunView : UserControl
 {
     private static readonly TimeSpan RedrawInterval = TimeSpan.FromMilliseconds(200);
@@ -216,10 +212,8 @@ internal sealed class LocalCiRunView : UserControl
         _headline.Text = result.Headline;
     }
 
-    /// <summary>
-    /// The status bar's Kill, and the window's own Stop. Tolerant of a token source already disposed: completing a
-    /// run drops this callback, but the operator can be pressing Kill at that exact moment.
-    /// </summary>
+    // The status bar's Kill, and the window's own Stop. Tolerant of a token source already disposed: completing a
+    // run drops this callback, but the operator can be pressing Kill at that exact moment.
     private static Task _StopAsync(CancellationTokenSource cancellation)
     {
         try
@@ -239,7 +233,7 @@ internal sealed class LocalCiRunView : UserControl
             ? record.Result.Headline
             : "Nothing has been run here yet.";
 
-    /// <summary>Called from the runner's thread — the queue is what makes that safe.</summary>
+    // Called from the runner's thread — the queue is what makes that safe.
     private void _Queue(string line)
     {
         lock (_pending)

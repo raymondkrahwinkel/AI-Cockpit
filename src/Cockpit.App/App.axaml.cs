@@ -38,10 +38,8 @@ public partial class App : Application
     private UnlockWindow? _screenLockWindow;
     private DispatcherTimer? _pluginUpdateTimer;
 
-    /// <summary>
-    /// True once a real quit was requested (tray "Quit"), so <see cref="MainWindow"/> lets the close
-    /// through instead of hiding to tray (#33). Distinguishes a genuine quit from a close-to-tray.
-    /// </summary>
+    // True once a real quit was requested (tray "Quit"), so `MainWindow` lets the close
+    // through instead of hiding to tray (#33). Distinguishes a genuine quit from a close-to-tray.
     public bool IsQuitting { get; private set; }
 
     public override void Initialize()
@@ -79,10 +77,8 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>
-    /// AC-509 criterion 4: unlock first, onboarding after. Every route that ends in the main window being shown
-    /// goes through this — see the Show()-inventory in the App.axaml.cs class doc and the two callers below.
-    /// </summary>
+    // AC-509 criterion 4: unlock first, onboarding after. Every route that ends in the main window being shown
+    // goes through this — see the Show()-inventory in the App.axaml.cs class doc and the two callers below.
     private void _StartCockpitAndOnboard(IClassicDesktopStyleApplicationLifetime desktop)
     {
         // Read before either window exists, the same way _IsLockedAtStartup reads its own decision: this picks
@@ -113,20 +109,16 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// The wizard stands in for the main window the same way <see cref="_ShowUnlockWindow"/>'s own unlock window
-    /// does: it is the app's only window until it is done, and the real cockpit is built and shown before this one
-    /// closes — never the other way round — so the desktop lifetime never sees zero windows open.
-    /// </summary>
-    /// <remarks>
-    /// Built directly here rather than through <c>IFirstRunWizard</c>: that interface's contract is "show, wait for
-    /// the operator, and only then return" — which for the Help menu's "Run setup again" (AC-512, cockpit already
-    /// running) is exactly right, but here would close the wizard window before this method ever got a chance to
-    /// build the cockpit's, reopening the same zero-window gap one step later. Hooked on <c>Closing</c> rather
-    /// than the view model's <c>RequestClose</c> so every way of leaving reaches it uniformly — Skip, Next on the
-    /// last step, and the operator's own close button all end up closing the window, and <c>Closing</c> fires
-    /// before any of them actually do.
-    /// </remarks>
+    // The wizard stands in for the main window the same way `_ShowUnlockWindow`'s own unlock window
+    // does: it is the app's only window until it is done, and the real cockpit is built and shown before this one
+    // closes — never the other way round — so the desktop lifetime never sees zero windows open.
+    // Built directly here rather than through `IFirstRunWizard`: that interface's contract is "show, wait for
+    // the operator, and only then return" — which for the Help menu's "Run setup again" (AC-512, cockpit already
+    // running) is exactly right, but here would close the wizard window before this method ever got a chance to
+    // build the cockpit's, reopening the same zero-window gap one step later. Hooked on `Closing` rather
+    // than the view model's `RequestClose` so every way of leaving reaches it uniformly — Skip, Next on the
+    // last step, and the operator's own close button all end up closing the window, and `Closing` fires
+    // before any of them actually do.
     private void _ShowOnboardingWizard(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
@@ -165,11 +157,9 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// The unlock window is the app's only window until the password is right. It is the lifetime's MainWindow so
-    /// the framework shows it; the real one replaces it, and is shown before this one closes — a moment with no
-    /// window at all is a moment the desktop lifetime reads as "the app is done".
-    /// </summary>
+    // The unlock window is the app's only window until the password is right. It is the lifetime's MainWindow so
+    // the framework shows it; the real one replaces it, and is shown before this one closes — a moment with no
+    // window at all is a moment the desktop lifetime reads as "the app is done".
     private void _ShowUnlockWindow(IClassicDesktopStyleApplicationLifetime desktop, ISecretProtectionService protection)
     {
         var viewModel = new UnlockViewModel(protection);
@@ -186,15 +176,13 @@ public partial class App : Application
         desktop.MainWindow = window;
     }
 
-    /// <summary>
-    /// Locks the running cockpit's UI (AC-5): shows the unlock window over the main window, so the app behind it cannot
-    /// be touched until the encryption password is entered again — the running-app twin of the startup unlock window
-    /// being the only window. This is a pure UI lock: the encryption key stays in memory, so agents already running
-    /// keep working (a background config write is not blocked) while the screen re-asks for the password. The returned
-    /// task completes when the operator has unlocked, which is what lets a later OS lock lock again. Runs on the UI
-    /// thread (the coordinator marshals here), and is idempotent through that coordinator, not on its own — a second
-    /// call while the dialog is up would try to own a second modal, which the guard prevents.
-    /// </summary>
+    // Locks the running cockpit's UI (AC-5): shows the unlock window over the main window, so the app behind it cannot
+    // be touched until the encryption password is entered again — the running-app twin of the startup unlock window
+    // being the only window. This is a pure UI lock: the encryption key stays in memory, so agents already running
+    // keep working (a background config write is not blocked) while the screen re-asks for the password. The returned
+    // task completes when the operator has unlocked, which is what lets a later OS lock lock again. Runs on the UI
+    // thread (the coordinator marshals here), and is idempotent through that coordinator, not on its own — a second
+    // call while the dialog is up would try to own a second modal, which the guard prevents.
     private async Task _LockToUnlockScreen()
     {
         if (_mainWindow is null)
@@ -541,12 +529,10 @@ public partial class App : Application
             });
     }
 
-    /// <summary>
-    /// Restores and focuses the main window (tray left-click / the tray menu's "Show …" entry).
-    /// AC-509 Show()-inventory (3 of 3): reachable only once <see cref="_mainWindow"/> is non-null, i.e. after
-    /// <see cref="_StartCockpitAndOnboard"/> already ran this session — same reasoning as <see cref="_LockToUnlockScreen"/>,
-    /// no gate needed here.
-    /// </summary>
+    // Restores and focuses the main window (tray left-click / the tray menu's "Show …" entry).
+    // AC-509 Show()-inventory (3 of 3): reachable only once `_mainWindow` is non-null, i.e. after
+    // `_StartCockpitAndOnboard` already ran this session — same reasoning as `_LockToUnlockScreen`,
+    // no gate needed here.
     public void ShowMainWindow()
     {
         if (_mainWindow is null)
@@ -559,7 +545,7 @@ public partial class App : Application
         _mainWindow.Activate();
     }
 
-    /// <summary>Really quits the app (tray "Quit") — lets MainWindow's close through, then the normal teardown runs.</summary>
+    // Really quits the app (tray "Quit") — lets MainWindow's close through, then the normal teardown runs.
     public void RequestQuit()
     {
         LifecycleLog.Write("Quit requested from inside the app (tray Quit or a restart handoff).");
@@ -589,23 +575,19 @@ public partial class App : Application
         TrayIcon.SetIcons(this, [tray]);
     }
 
-    /// <summary>
-    /// Loads the saved workspaces and then brings back the AI-session panes they name (AC-410), in that order:
-    /// <see cref="WorkspacesViewModel.InitializeAsync"/> never throws (its own doc says so), so this continuation
-    /// always runs — including after a failed load, where <c>Settings</c> stays the in-memory default and there is
-    /// simply nothing saved to restore.
-    /// </summary>
+    // Loads the saved workspaces and then brings back the AI-session panes they name (AC-410), in that order:
+    // `WorkspacesViewModel.InitializeAsync` never throws (its own doc says so), so this continuation
+    // always runs — including after a failed load, where `Settings` stays the in-memory default and there is
+    // simply nothing saved to restore.
     private static async Task _RestoreCockpitAsync(CockpitViewModel cockpit)
     {
         await cockpit.Workspaces.InitializeAsync();
         await cockpit.RestoreSessionPanesAsync();
     }
 
-    /// <summary>
-    /// Starts the scheduled resumes (AC-234) and, unlike the bare fire-and-forget this replaces, watches how that
-    /// goes. A scheduler that failed to start is the one failure nobody notices by itself: nothing is on screen to
-    /// look wrong, and the first sign would be a resume that quietly never arrives, hours later (AC-368).
-    /// </summary>
+    // Starts the scheduled resumes (AC-234) and, unlike the bare fire-and-forget this replaces, watches how that
+    // goes. A scheduler that failed to start is the one failure nobody notices by itself: nothing is on screen to
+    // look wrong, and the first sign would be a resume that quietly never arrives, hours later (AC-368).
     private static async Task _StartScheduledResumesAsync(CockpitViewModel cockpit)
     {
         try
@@ -626,11 +608,9 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// Builds the usage-threshold settings (AC-233) from what every registered provider declares — TTY and SDK
-    /// alike, since a provider can offer either route and declares the same signals for both — and hands the saved
-    /// values to the cockpit so sessions started from here judge their figures by them.
-    /// </summary>
+    // Builds the usage-threshold settings (AC-233) from what every registered provider declares — TTY and SDK
+    // alike, since a provider can offer either route and declares the same signals for both — and hands the saved
+    // values to the cockpit so sessions started from here judge their figures by them.
     private static async Task _LoadUsageThresholdsAsync(CockpitViewModel cockpit, IUsageThresholdStore store)
     {
         var providers = new List<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)>();

@@ -20,12 +20,12 @@ internal interface IToolApprovalGate
     void ReportToolResult(string toolUseId, string content, bool isError);
 }
 
-/// <summary>The outcome of a gate decision: run the tool, or refuse it with a reason for the model's tool result.</summary>
+// The outcome of a gate decision: run the tool, or refuse it with a reason for the model's tool result.
 internal readonly record struct ToolApprovalResult(bool Approved, string? DenyReason)
 {
-    /// <summary>Allow the call to run.</summary>
+    // Allow the call to run.
     public static ToolApprovalResult Allow { get; } = new(true, null);
 
-    /// <summary>Refuse the call; <paramref name="reason"/> becomes the tool-result error the model sees (null falls back to a generic message).</summary>
+    // Refuse the call; `reason` becomes the tool-result error the model sees (null falls back to a generic message).
     public static ToolApprovalResult Deny(string? reason) => new(false, reason);
 }

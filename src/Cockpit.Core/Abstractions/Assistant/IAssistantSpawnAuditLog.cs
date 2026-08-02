@@ -23,22 +23,21 @@ public interface IAssistantSpawnAuditLog
     Task<IReadOnlyList<AssistantSpawnAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// One line of the trail. Criterion 5 names four things it must carry — caller, target workspace, profile and
-/// working directory — and each is here as its own field rather than folded into a sentence, so the trail stays
-/// something you can grep and the window can lay out in columns.
-/// </summary>
-/// <param name="At">When it happened.</param>
-/// <param name="Action">What was asked for: <see cref="AssistantSpawnAction.Start"/> or <see cref="AssistantSpawnAction.Stop"/>.</param>
-/// <param name="Caller">Which authority asked — the assistant, or a coordinator (AC-436). See <see cref="SpawnTarget"/>.</param>
-/// <param name="CallerPaneId">The verified pane of a host-derived caller; null for the assistant, which has none.</param>
-/// <param name="WorkspaceId">The desk it landed on (or would have).</param>
-/// <param name="WorkspaceName">That desk's label at the time, kept because a workspace can be renamed or closed and the id then names nothing a reader recognises.</param>
-/// <param name="Profile">The profile the session runs under — the field that says what it costs.</param>
-/// <param name="WorkingDirectory">The folder it was started in, or null when the profile's default was used.</param>
-/// <param name="PaneId">The pane that resulted, or null for a refusal.</param>
-/// <param name="SessionName">What the pane is called, so the trail is readable without cross-referencing pane ids.</param>
-/// <param name="Refusal">Why it did not happen, or null when it did. A trail without its refusals hides the gate working.</param>
+// One line of the trail. Criterion 5 names four things it must carry — caller, target workspace, profile and
+// working directory — and each is here as its own field rather than folded into a sentence, so the trail stays
+// something you can grep and the window can lay out in columns.
+//
+// `At`: When it happened.
+// `Action`: What was asked for: `AssistantSpawnAction.Start` or `AssistantSpawnAction.Stop`.
+// `Caller`: Which authority asked — the assistant, or a coordinator (AC-436). See `SpawnTarget`.
+// `CallerPaneId`: The verified pane of a host-derived caller; null for the assistant, which has none.
+// `WorkspaceId`: The desk it landed on (or would have).
+// `WorkspaceName`: That desk's label at the time, kept because a workspace can be renamed or closed and the id then names nothing a reader recognises.
+// `Profile`: The profile the session runs under — the field that says what it costs.
+// `WorkingDirectory`: The folder it was started in, or null when the profile's default was used.
+// `PaneId`: The pane that resulted, or null for a refusal.
+// `SessionName`: What the pane is called, so the trail is readable without cross-referencing pane ids.
+// `Refusal`: Why it did not happen, or null when it did. A trail without its refusals hides the gate working.
 public sealed record AssistantSpawnAuditEntry(
     DateTimeOffset At,
     AssistantSpawnAction Action,
@@ -52,12 +51,12 @@ public sealed record AssistantSpawnAuditEntry(
     string? SessionName,
     string? Refusal);
 
-/// <summary>What a trail entry records having been asked for.</summary>
+// What a trail entry records having been asked for.
 public enum AssistantSpawnAction
 {
     Start,
     Stop,
 
-    /// <summary>A turn submitted into a session the assistant did not start — the hand-off <c>send_prompt</c> makes.</summary>
+    // A turn submitted into a session the assistant did not start — the hand-off `send_prompt` makes.
     Prompt,
 }

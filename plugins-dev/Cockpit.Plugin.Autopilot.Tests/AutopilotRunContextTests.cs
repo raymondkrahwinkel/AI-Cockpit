@@ -2,12 +2,10 @@ using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The pure decision logic a run context carries: the edge guard that fires the "needs you" toast exactly once when a
-/// run enters the AwaitingOperator wait (AC-194), and the settled-outcome classification that decides a run is recorded
-/// in history rather than silently dropped — including a run the operator stopped (AC-196). Both are extracted as pure
-/// statics precisely so they can be exercised here without a host or a UI thread.
-/// </summary>
+// The pure decision logic a run context carries: the edge guard that fires the "needs you" toast exactly once when a
+// run enters the AwaitingOperator wait (AC-194), and the settled-outcome classification that decides a run is recorded
+// in history rather than silently dropped — including a run the operator stopped (AC-196). Both are extracted as pure
+// statics precisely so they can be exercised here without a host or a UI thread.
 public class AutopilotRunContextTests
 {
     [Fact]
@@ -153,7 +151,7 @@ public class AutopilotRunContextTests
         Assert.Equal(0, AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 1, currentIndex: -1));
     }
 
-    /// <summary>Round-trips through JSON the way the host's real storage does, so an unset key reads back as "not set".</summary>
+    // Round-trips through JSON the way the host's real storage does, so an unset key reads back as "not set".
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);

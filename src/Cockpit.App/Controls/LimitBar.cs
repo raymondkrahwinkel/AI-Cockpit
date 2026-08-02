@@ -4,19 +4,15 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// One limit in a session's header: a name, a short bar, and the percentage — <c>ctx ▓░░░░ 5%</c>.
-/// <para>
-/// A bar rather than a number alone because the number is not what the operator is after: they want to know
-/// whether something is running out, and a filled strip answers that without being read. The colour carries the
-/// same message twice (a bar that is nearly full is also amber, then red), since a length is hard to judge at
-/// four pixels and colour alone is no good to anyone who cannot see it.
-/// </para>
-/// <para>
-/// Hidden entirely when there is nothing to report: Claude says nothing about the rate limits before the first
-/// response, and an empty bar reading "0%" would be a claim rather than a silence.
-/// </para>
-/// </summary>
+// One limit in a session's header: a name, a short bar, and the percentage — `ctx ▓░░░░ 5%`.
+//
+// A bar rather than a number alone because the number is not what the operator is after: they want to know
+// whether something is running out, and a filled strip answers that without being read. The colour carries the
+// same message twice (a bar that is nearly full is also amber, then red), since a length is hard to judge at
+// four pixels and colour alone is no good to anyone who cannot see it.
+//
+// Hidden entirely when there is nothing to report: Claude says nothing about the rate limits before the first
+// response, and an empty bar reading "0%" would be a claim rather than a silence.
 public sealed class LimitBar : TemplatedControl
 {
     private const double TrackWidth = 34;
@@ -29,25 +25,24 @@ public sealed class LimitBar : TemplatedControl
     public static readonly StyledProperty<double?> PercentProperty =
         AvaloniaProperty.Register<LimitBar, double?>(nameof(Percent));
 
-    /// <summary>The short name shown before the bar: <c>ctx</c>, <c>5h</c>, <c>wk</c>.</summary>
+    // The short name shown before the bar: `ctx`, `5h`, `wk`.
     public string Label
     {
         get => GetValue(LabelProperty);
         set => SetValue(LabelProperty, value);
     }
 
-    /// <summary>How much of this limit is used, 0-100 — or null when Claude has not reported it, in which case nothing is drawn.</summary>
+    // How much of this limit is used, 0-100 — or null when Claude has not reported it, in which case nothing is drawn.
     public double? Percent
     {
         get => GetValue(PercentProperty);
         set => SetValue(PercentProperty, value);
     }
 
-    /// <summary>How full this figure has to be before it colours, as its provider declared it; null falls back to <see cref="UsageSeverity.FallbackThreshold"/>.</summary>
+    // How full this figure has to be before it colours, as its provider declared it; null falls back to `UsageSeverity.FallbackThreshold`.
     public static readonly StyledProperty<double?> ThresholdProperty =
         AvaloniaProperty.Register<LimitBar, double?>(nameof(Threshold));
 
-    /// <inheritdoc cref="ThresholdProperty"/>
     public double? Threshold
     {
         get => GetValue(ThresholdProperty);
@@ -57,11 +52,9 @@ public sealed class LimitBar : TemplatedControl
     public static readonly StyledProperty<bool> StretchTrackProperty =
         AvaloniaProperty.Register<LimitBar, bool>(nameof(StretchTrack));
 
-    /// <summary>
-    /// When true the track fills the control's width and the percentage right-aligns, instead of the fixed 34px
-    /// track — for the roomy usage flyout (AC-37), where three short bars in a wide panel looked lost. The compact
-    /// header strip leaves it false.
-    /// </summary>
+    // When true the track fills the control's width and the percentage right-aligns, instead of the fixed 34px
+    // track — for the roomy usage flyout (AC-37), where three short bars in a wide panel looked lost. The compact
+    // header strip leaves it false.
     public bool StretchTrack
     {
         get => GetValue(StretchTrackProperty);
@@ -80,7 +73,7 @@ public sealed class LimitBar : TemplatedControl
 
     public LimitBar() => IsVisible = false;
 
-    /// <summary>The width is decided here, in the measure pass — a control that sets its own Width while drawing invites a layout loop.</summary>
+    // The width is decided here, in the measure pass — a control that sets its own Width while drawing invites a layout loop.
     protected override Size MeasureOverride(Size availableSize)
     {
         if (Percent is not { } percent)

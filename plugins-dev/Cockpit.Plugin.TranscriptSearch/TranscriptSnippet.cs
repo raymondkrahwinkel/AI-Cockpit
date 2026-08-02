@@ -1,12 +1,10 @@
 namespace Cockpit.Plugin.TranscriptSearch;
 
-/// <summary>
-/// Builds the one-line snippet shown for a transcript search hit (#9): the matched text collapsed to a single
-/// line, windowed around the first match with ellipses when it is trimmed. Pure so the windowing is testable.
-/// </summary>
+// Builds the one-line snippet shown for a transcript search hit (#9): the matched text collapsed to a single
+// line, windowed around the first match with ellipses when it is trimmed. Pure so the windowing is testable.
 public static class TranscriptSnippet
 {
-    /// <summary>Characters of context to keep on each side of the match before adding an ellipsis.</summary>
+    // Characters of context to keep on each side of the match before adding an ellipsis.
     public const int Radius = 60;
 
     public static string Build(string text, string query, int radius = Radius)

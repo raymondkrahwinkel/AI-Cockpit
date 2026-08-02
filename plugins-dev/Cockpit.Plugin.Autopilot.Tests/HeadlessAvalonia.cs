@@ -3,21 +3,17 @@ using Avalonia.Headless;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// An Avalonia runtime without a screen (#69). A control cannot be built or attached without a platform, so this gives
-/// the tests one, once, letting the workspace body's render path be observed by a test rather than only by the operator.
-/// <para>
-/// It runs the real <see cref="Cockpit.App.App"/> (not a bare <see cref="Application"/>) so the workspace body resolves
-/// the actual Cockpit theme brushes and fonts — the render tests then observe the surface as an operator sees it, and
-/// the screenshot render (<see cref="AutopilotScreenshotTests"/>) captures real, themed pixels. <c>SetupWithoutStarting</c>
-/// runs only <c>App.Initialize</c> (the XAML/theme load), never <c>OnFrameworkInitializationCompleted</c>, so
-/// none of the app's real startup (secrets, cockpit, plugins) fires. Skia with headless drawing on is what lets a
-/// frame be captured; the text-only render tests do not need it but share the process-global platform.
-/// </para>
-/// <para>
-/// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
-/// </para>
-/// </summary>
+// An Avalonia runtime without a screen (#69). A control cannot be built or attached without a platform, so this gives
+// the tests one, once, letting the workspace body's render path be observed by a test rather than only by the operator.
+//
+// It runs the real `Cockpit.App.App` (not a bare `Application`) so the workspace body resolves
+// the actual Cockpit theme brushes and fonts — the render tests then observe the surface as an operator sees it, and
+// the screenshot render (`AutopilotScreenshotTests`) captures real, themed pixels. `SetupWithoutStarting`
+// runs only `App.Initialize` (the XAML/theme load), never `OnFrameworkInitializationCompleted`, so
+// none of the app's real startup (secrets, cockpit, plugins) fires. Skia with headless drawing on is what lets a
+// frame be captured; the text-only render tests do not need it but share the process-global platform.
+//
+// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
 public sealed class HeadlessAvalonia
 {
     private static readonly Lock Gate = new();
@@ -48,6 +44,6 @@ public sealed class HeadlessAvalonia
     }
 }
 
-/// <summary>Marks the tests that need a platform; xunit builds the fixture once for the whole collection.</summary>
+// Marks the tests that need a platform; xunit builds the fixture once for the whole collection.
 [CollectionDefinition("avalonia")]
 public sealed class AvaloniaCollection : ICollectionFixture<HeadlessAvalonia>;

@@ -3,12 +3,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// <see cref="IPluginProviderRegistry"/> backed by a plain dictionary guarded by a lock — registrations only
-/// ever happen during plugin phase-2 <c>Initialize</c> (a handful of calls at startup), and lookups happen
-/// per session-start, so a simple lock beats a lock-free structure's complexity here. A singleton (#45): one
-/// registry shared by every <c>CockpitHost</c> (registration) and <see cref="SessionDriverFactory"/> (resolution).
-/// </summary>
+// `IPluginProviderRegistry` backed by a plain dictionary guarded by a lock — registrations only
+// ever happen during plugin phase-2 `Initialize` (a handful of calls at startup), and lookups happen
+// per session-start, so a simple lock beats a lock-free structure's complexity here. A singleton (#45): one
+// registry shared by every `CockpitHost` (registration) and `SessionDriverFactory` (resolution).
 internal sealed class PluginProviderRegistry : IPluginProviderRegistry, ISingletonService
 {
     private readonly object _gate = new();

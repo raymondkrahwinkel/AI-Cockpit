@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-/// <summary>
-/// Persists the terminal-access master switch under the <c>terminalAccess</c> section of <c>cockpit.json</c> (AC-34),
-/// going through <see cref="CockpitConfigFileAccess"/> so it leaves every other section untouched — the same pattern
-/// as the worktree/layout settings stores.
-/// </summary>
+// Persists the terminal-access master switch under the `terminalAccess` section of `cockpit.json` (AC-34),
+// going through `CockpitConfigFileAccess` so it leaves every other section untouched — the same pattern
+// as the worktree/layout settings stores.
 internal sealed class TerminalAccessSettingsStore : ITerminalAccessSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class TerminalAccessSettingsStore : ITerminalAccessSettingsStore
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal TerminalAccessSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

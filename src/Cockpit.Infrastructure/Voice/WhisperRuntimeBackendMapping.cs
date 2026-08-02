@@ -3,7 +3,7 @@ using Whisper.net.LibraryLoader;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>Maps between Cockpit.Core's OS-agnostic <see cref="WhisperRuntimeBackend"/> and Whisper.net's own <see cref="RuntimeLibrary"/>.</summary>
+// Maps between Cockpit.Core's OS-agnostic `WhisperRuntimeBackend` and Whisper.net's own `RuntimeLibrary`.
 internal static class WhisperRuntimeBackendMapping
 {
     public static RuntimeLibrary ToNative(WhisperRuntimeBackend backend) => backend switch
@@ -16,7 +16,7 @@ internal static class WhisperRuntimeBackendMapping
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, "Unmapped Whisper runtime backend."),
     };
 
-    /// <summary>Null when the loaded library is a family Cockpit never offers (CoreML/OpenVino) — those cannot be selected via <see cref="WhisperBackendPlanner"/>, so nothing maps back to them.</summary>
+    // Null when the loaded library is a family Cockpit never offers (CoreML/OpenVino) — those cannot be selected via `WhisperBackendPlanner`, so nothing maps back to them.
     public static WhisperRuntimeBackend? FromNative(RuntimeLibrary library) => library switch
     {
         RuntimeLibrary.Cuda => WhisperRuntimeBackend.Cuda,

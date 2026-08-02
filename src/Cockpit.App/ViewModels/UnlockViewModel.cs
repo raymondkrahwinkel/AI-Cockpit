@@ -3,13 +3,11 @@ using Cockpit.Core.Abstractions.Secrets;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Backs the window that stands in front of the cockpit when the operator encrypted their credentials: the
-/// password is the key, so nothing that reads a setting can run until it has been typed.
-/// </summary>
+// Backs the window that stands in front of the cockpit when the operator encrypted their credentials: the
+// password is the key, so nothing that reads a setting can run until it has been typed.
 public sealed partial class UnlockViewModel(ISecretProtectionService protection) : ObservableObject
 {
-    /// <summary>Design-time constructor for the previewer.</summary>
+    // Design-time constructor for the previewer.
     public UnlockViewModel()
         : this(new UnprotectedSecrets())
     {
@@ -24,10 +22,10 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
     [ObservableProperty]
     private bool _isBusy;
 
-    /// <summary>Raised once the password was right and the settings can be read. The app starts from here.</summary>
+    // Raised once the password was right and the settings can be read. The app starts from here.
     public event EventHandler? Unlocked;
 
-    /// <summary>The operator asked for the way out of a forgotten password. The window confirms before doing it.</summary>
+    // The operator asked for the way out of a forgotten password. The window confirms before doing it.
     public event EventHandler? ResetRequested;
 
     public async Task UnlockAsync()

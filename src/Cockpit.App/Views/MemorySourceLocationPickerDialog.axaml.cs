@@ -8,10 +8,8 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The "Choose…" picker for a Memory row whose source can enumerate its own locations (AC-502). Returns the picked
-/// location's bare value from <c>ShowDialog&lt;string?&gt;</c>, or null when the operator cancelled.
-/// </summary>
+// The "Choose…" picker for a Memory row whose source can enumerate its own locations (AC-502). Returns the picked
+// location's bare value from `ShowDialog&lt;string?&gt;`, or null when the operator cancelled.
 public partial class MemorySourceLocationPickerDialog : Window
 {
     // Review fix: DataContextChanged can in principle fire more than once (Screenshotter builds the view model,
@@ -82,16 +80,14 @@ public partial class MemorySourceLocationPickerDialog : Window
         _ScrollToWholeRows(viewModel, current);
     }
 
-    /// <summary>
-    /// Review fix (AC-499): the built-in <see cref="ListBox.ScrollIntoView"/> scrolls the minimum distance needed
-    /// to bring the target row fully into view — which, whenever the list's own visible height is not an exact
-    /// multiple of a row's height, stops with the row *before* it sliced in half at the opposite edge. That read
-    /// as a data defect (a Detail line with no Name above it) rather than a scroll position. Rows are a uniform
-    /// height now (see the item <c>DataTemplate</c>'s own remarks on <c>TargetNullValue</c>), so once that height
-    /// is known the fix is arithmetic: cap the list's own visible area to a whole multiple of it, then only ever
-    /// scroll in whole-row steps — which keeps both edges clean at any position, not only whichever edge the
-    /// built-in method happened to land the target row against.
-    /// </summary>
+    // Review fix (AC-499): the built-in `ListBox.ScrollIntoView` scrolls the minimum distance needed
+    // to bring the target row fully into view — which, whenever the list's own visible height is not an exact
+    // multiple of a row's height, stops with the row *before* it sliced in half at the opposite edge. That read
+    // as a data defect (a Detail line with no Name above it) rather than a scroll position. Rows are a uniform
+    // height now (see the item `DataTemplate`'s own remarks on `TargetNullValue`), so once that height
+    // is known the fix is arithmetic: cap the list's own visible area to a whole multiple of it, then only ever
+    // scroll in whole-row steps — which keeps both edges clean at any position, not only whichever edge the
+    // built-in method happened to land the target row against.
     private void _ScrollToWholeRows(MemorySourceLocationPickerViewModel viewModel, ProjectMemorySourceLocation current)
     {
         UpdateLayout();

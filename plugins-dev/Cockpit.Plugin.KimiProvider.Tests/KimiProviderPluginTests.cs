@@ -1,13 +1,9 @@
-using Cockpit.Plugins.Abstractions.Sessions;
-
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>
-/// <see cref="KimiProviderPlugin"/>'s <see cref="SessionProviderRegistration"/> (P1-4): the host builds its
-/// <c>PluginSessionDriverAdapter</c> from <see cref="SessionProviderRegistration.Capabilities"/>, never from the
-/// driver instance's own <see cref="IPluginSessionDriver.Capabilities"/> — a capability the driver supports but
-/// this registration does not declare is invisible to the host regardless of what the driver itself reports.
-/// </summary>
+// `KimiProviderPlugin`'s `SessionProviderRegistration` (P1-4): the host builds its
+// `PluginSessionDriverAdapter` from `SessionProviderRegistration.Capabilities`, never from the
+// driver instance's own `IPluginSessionDriver.Capabilities` — a capability the driver supports but
+// this registration does not declare is invisible to the host regardless of what the driver itself reports.
 public class KimiProviderPluginTests
 {
     [Fact]

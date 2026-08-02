@@ -4,10 +4,8 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// Where a run works (AC-174): the operator's chosen folder wins, else the active session's directory, else the
-/// cockpit's own — so a run planned from a tracker issue (no session in view) still resolves a folder to work in.
-/// </summary>
+// Where a run works (AC-174): the operator's chosen folder wins, else the active session's directory, else the
+// cockpit's own — so a run planned from a tracker issue (no session in view) still resolves a folder to work in.
 public class AutopilotWorkingDirectoryTests
 {
     // Resolve ends in Path.GetFullPath, so a bare "/chosen" comes back drive-rooted on Windows and the test read

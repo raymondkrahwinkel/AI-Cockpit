@@ -3,16 +3,13 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// Watches for a pull request of yours going from not-merged to merged, and fires the workflow trigger when one does
-/// (#69). GitHub will not tell us; there is no webhook a desktop app can receive, so it is asked — every few minutes,
-/// with the answer compared against the last one.
-/// <para>
-/// The comparison is the whole thing (<see cref="MergedPullRequests"/>): a poll sees the world, not the change. And
-/// the first look fires nothing, because every pull request you have ever merged is new to a process that just
-/// started, and a flow that ran forty times the moment the cockpit opened would be the last time you armed it.
-/// </para>
-/// </summary>
+// Watches for a pull request of yours going from not-merged to merged, and fires the workflow trigger when one does
+// (#69). GitHub will not tell us; there is no webhook a desktop app can receive, so it is asked — every few minutes,
+// with the answer compared against the last one.
+//
+// The comparison is the whole thing (`MergedPullRequests`): a poll sees the world, not the change. And
+// the first look fires nothing, because every pull request you have ever merged is new to a process that just
+// started, and a flow that ran forty times the moment the cockpit opened would be the last time you armed it.
 internal sealed class MergedPullRequestWatcher : IDisposable
 {
     // Merges are not urgent and gh's search is not free. Five minutes is soon enough to be useful and rare enough that

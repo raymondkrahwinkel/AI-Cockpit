@@ -9,18 +9,15 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
-/// <summary>
-/// The steps you can add (#69), standing open beside the canvas: every category with its steps under it, each with
-/// a line saying what it does. Nothing is hidden behind a click — "what can this thing even do" is a question you
-/// have while looking at the canvas, not one you go and ask.
-/// <para>
-/// A step is added by dragging it onto the canvas, where it lands, or by clicking it, in which case it goes where
-/// there is room. Dragging is what people reach for, and where you drop it <em>is</em> where you meant it to go.
-/// </para>
-/// </summary>
+// The steps you can add (#69), standing open beside the canvas: every category with its steps under it, each with
+// a line saying what it does. Nothing is hidden behind a click — "what can this thing even do" is a question you
+// have while looking at the canvas, not one you go and ask.
+//
+// A step is added by dragging it onto the canvas, where it lands, or by clicking it, in which case it goes where
+// there is room. Dragging is what people reach for, and where you drop it *is* where you meant it to go.
 internal sealed class NodePicker : Border
 {
-    /// <summary>The drag payload: the id of the type being dragged onto the canvas. In-process, because it never leaves the app.</summary>
+    // The drag payload: the id of the type being dragged onto the canvas. In-process, because it never leaves the app.
     public static readonly DataFormat<string> DragFormat = DataFormat.CreateInProcessFormat<string>("cockpit/workflow-node-type");
 
     private const string HintLoose = "Drag one onto the canvas, or click to drop it in.";
@@ -86,10 +83,10 @@ internal sealed class NodePicker : Border
         _Render(null);
     }
 
-    /// <summary>The chosen type, and the way out it should be wired to (null when the step is simply being added).</summary>
+    // The chosen type, and the way out it should be wired to (null when the step is simply being added).
     public event EventHandler<NodePicked>? Picked;
 
-    /// <summary>Points the picker at a step's unconnected way out: what you choose next is added <em>and wired</em> there.</summary>
+    // Points the picker at a step's unconnected way out: what you choose next is added *and wired* there.
     public void AimAt(string fromNodeId, int output)
     {
         _from = (fromNodeId, output);
@@ -255,22 +252,20 @@ internal sealed class NodePicker : Border
         ? new MaterialIcon { Kind = kind, Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center }
         : new TextBlock { Text = type.Icon, FontSize = 18, VerticalAlignment = VerticalAlignment.Center };
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius
             : new CornerRadius(fallback);
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 }
 
-/// <summary>What the picker produced: the chosen type, and the way out it should be wired to (when a + was clicked first).</summary>
+// What the picker produced: the chosen type, and the way out it should be wired to (when a + was clicked first).
 internal sealed record NodePicked(NodeTypeDescriptor Type, string? FromNodeId, int FromOutput);

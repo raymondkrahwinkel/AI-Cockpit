@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.UsagePill;
 
-/// <summary>
-/// Persists <see cref="UsagePillSettings"/> under the <c>usagePill</c> section of <c>cockpit.json</c>
-/// (same file/pattern as <c>TranscriptDisplaySettingsStore</c>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched. When no settings were
-/// ever saved, <see cref="LoadAsync"/> returns the defaults.
-/// </summary>
+// Persists `UsagePillSettings` under the `usagePill` section of `cockpit.json`
+// (same file/pattern as `TranscriptDisplaySettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched. When no settings were
+// ever saved, `LoadAsync` returns the defaults.
 internal sealed class UsagePillSettingsStore : IUsagePillSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class UsagePillSettingsStore : IUsagePillSettingsStore, ISinglet
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal UsagePillSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

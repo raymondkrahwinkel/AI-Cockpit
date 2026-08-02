@@ -2,11 +2,9 @@ using Cockpit.Plugin.Workflows.Engine;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// Making an untrusted value inert when it is spliced into a command (AC-39). Only the substituted step data is
-/// quoted, not the operator's template, so a value carrying shell metacharacters becomes one literal argument
-/// instead of a second command.
-/// </summary>
+// Making an untrusted value inert when it is spliced into a command (AC-39). Only the substituted step data is
+// quoted, not the operator's template, so a value carrying shell metacharacters becomes one literal argument
+// instead of a second command.
 public class ShellQuotingTests
 {
     [Theory]

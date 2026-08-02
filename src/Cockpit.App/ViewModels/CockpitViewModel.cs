@@ -74,17 +74,13 @@ using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Multi-instance cockpit shell: owns the collection of running <see cref="SessionViewModel"/>
-/// panels, which one is selected, and the grid/zoom view mode. Reuses the existing
-/// <see cref="SessionViewModel"/>/<c>SessionView</c> per panel — this view model only
-/// adds the manager layer around it. See <c>Memory/Cockpit/Plan.md</c> §Vision-uitbreiding + §UX-eisen.
-/// </summary>
-/// <remarks>
-/// Also carries the F0 audio record/play commands so the sidebar's secondary "Tools" footer (see
-/// <c>CockpitView.axaml</c>) can bind to them without reaching into a sibling view model — the
-/// cockpit is the single root VM behind the window; audio is a small, secondary tool hanging off it.
-/// </remarks>
+// Multi-instance cockpit shell: owns the collection of running `SessionViewModel`
+// panels, which one is selected, and the grid/zoom view mode. Reuses the existing
+// `SessionViewModel`/`SessionView` per panel — this view model only
+// adds the manager layer around it. See `Memory/Cockpit/Plan.md` §Vision-uitbreiding + §UX-eisen.
+// Also carries the F0 audio record/play commands so the sidebar's secondary "Tools" footer (see
+// `CockpitView.axaml`) can bind to them without reaching into a sibling view model — the
+// cockpit is the single root VM behind the window; audio is a small, secondary tool hanging off it.
 // Singleton: it is the single root view model behind the window, and the shutdown path resolves it
 // back to dispose the live sessions (bug #32) — that must be the same instance the window holds.
 public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsyncDisposable, IPluginContributionSink, IEmbeddedSessionHost
@@ -100,6 +96,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
     private readonly IAgentMessageInbox? _agentMessages;
     private readonly IAgentResourceClaims? _agentClaims;
+    private readonly IAgentLineBudget? _agentLineBudget;
     private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
@@ -115,7 +112,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
 
-    /// <summary>Composes what a session started from a project opens with (AC-164). Null in the design-time/unit-test graph, where a quick start falls back to the dialog.</summary>
+    // Composes what a session started from a project opens with (AC-164). Null in the design-time/unit-test graph, where a quick start falls back to the dialog.
     private readonly ProjectQuickStart? _projectQuickStart;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
@@ -171,35 +168,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
-    /// <summary>
-    /// Holds the prompts waiting to be sent to a session at a future moment (AC-234). Handed in by the app at
-    /// startup rather than taken through the constructor, so the unit-test and design-time graphs — which build
-    /// this view-model from the container — never construct a scheduler, never touch the config file, and never
-    /// leave one running behind a test.
-    /// </summary>
+    // Holds the prompts waiting to be sent to a session at a future moment (AC-234). Handed in by the app at
+    // startup rather than taken through the constructor, so the unit-test and design-time graphs — which build
+    // this view-model from the container — never construct a scheduler, never touch the config file, and never
+    // leave one running behind a test.
     public ScheduledResumeCoordinator? ScheduledResumes { get; set; }
 
-    /// <summary>
-    /// The operator's own usage thresholds (AC-233), loaded once and handed to each session as it is created.
-    /// Null in the graphs that never load them, and every signal then warns where its provider said.
-    /// </summary>
+    // The operator's own usage thresholds (AC-233), loaded once and handed to each session as it is created.
+    // Null in the graphs that never load them, and every signal then warns where its provider said.
     public UsageThresholdSettings? UsageThresholds { get; set; }
 
-    /// <summary>
-    /// The usage-threshold settings screen (AC-233), rendered from what the providers declared. Handed in by the
-    /// app at startup for the same reason the scheduler is: the test and design-time graphs build a cockpit
-    /// without one and touch no config.
-    /// </summary>
+    // The usage-threshold settings screen (AC-233), rendered from what the providers declared. Handed in by the
+    // app at startup for the same reason the scheduler is: the test and design-time graphs build a cockpit
+    // without one and touch no config.
     public UsageThresholdsViewModel? UsageThresholdSettings { get; set; }
 
-    /// <summary>
-    /// The sidebar's own display order (AC-115). Kept apart from <see cref="Sessions"/> on purpose: the session
-    /// grid binds straight to <see cref="Sessions"/> and keeps its own positional cell layout, so reordering the
-    /// strip must never touch <see cref="Sessions"/> — moving an item there rebuilds its pane (a fresh TTY with no
-    /// pty → a black terminal) and drags the grid tiles along with the strip. This list is reconciled against
-    /// <see cref="Sessions"/> on read: new sessions append, closed ones drop out, and a drag only re-slots it here.
-    /// In-memory only, like the sessions it orders.
-    /// </summary>
+    // The sidebar's own display order (AC-115). Kept apart from `Sessions` on purpose: the session
+    // grid binds straight to `Sessions` and keeps its own positional cell layout, so reordering the
+    // strip must never touch `Sessions` — moving an item there rebuilds its pane (a fresh TTY with no
+    // pty → a black terminal) and drags the grid tiles along with the strip. This list is reconciled against
+    // `Sessions` on read: new sessions append, closed ones drop out, and a drag only re-slots it here.
+    // In-memory only, like the sessions it orders.
     private readonly List<SessionPanelViewModel> _sidebarOrder = [];
 
     // AC-561: the strip binds to this collection itself, not to a fresh snapshot handed back on every read —
@@ -210,43 +199,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // menu — on any reorder, close, or workspace switch. See _SyncVisibleSessions.
     private readonly ObservableCollection<SessionPanelViewModel> _visibleSessions = [];
 
-    /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
+    // Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
 
-    /// <summary>Left-menu launcher buttons contributed by plugins (#14); clicking one runs the plugin's action (typically opening a dialog).</summary>
+    // Left-menu launcher buttons contributed by plugins (#14); clicking one runs the plugin's action (typically opening a dialog).
     public ObservableCollection<PluginSideButton> PluginSideButtons { get; } = [];
 
-    /// <summary>Controls contributed by plugins to every session's header bar, each built per session from that session's own context. Empty = nothing rendered.</summary>
+    // Controls contributed by plugins to every session's header bar, each built per session from that session's own context. Empty = nothing rendered.
     public ObservableCollection<PluginSessionHeaderItem> PluginSessionHeaderItems { get; } = [];
 
-    /// <summary>What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's header, rather than a button each.</summary>
+    // What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's header, rather than a button each.
     public ObservableCollection<PluginSessionAction> PluginSessionHeaderActions { get; } = [];
 
-    /// <summary>Plugin-registered sources of supervised background activities (AC-82) — the status bar shows a counter per source (only while it has activities) and a panel with a Kill per item.</summary>
+    // Plugin-registered sources of supervised background activities (AC-82) — the status bar shows a counter per source (only while it has activities) and a panel with a Kill per item.
     public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
 
-    /// <summary>Sessions-toolbar buttons contributed by plugins (AC-91) — global quick actions shown next to the workspace gear. Empty = nothing rendered.</summary>
+    // Sessions-toolbar buttons contributed by plugins (AC-91) — global quick actions shown next to the workspace gear. Empty = nothing rendered.
     public ObservableCollection<PluginToolbarAction> PluginToolbarActions { get; } = [];
 
-    /// <summary>
-    /// The operator's left-menu preference per plugin (#72): where it sits, and whether it shows there at all.
-    /// Read from the plugin registrations at startup and refreshed when the manager changes one. A plugin the
-    /// operator never touched is absent, which is what keeps discovery order the default.
-    /// </summary>
+    // The operator's left-menu preference per plugin (#72): where it sits, and whether it shows there at all.
+    // Read from the plugin registrations at startup and refreshed when the manager changes one. A plugin the
+    // operator never touched is absent, which is what keeps discovery order the default.
     private readonly Dictionary<string, PluginMenuPreference> _pluginMenuPreferences = new(StringComparer.Ordinal);
 
-    /// <summary>Raised when the left-menu order or visibility changed (#72) — the cue for the sidebar to rebuild.</summary>
+    // Raised when the left-menu order or visibility changed (#72) — the cue for the sidebar to rebuild.
     public event EventHandler? PluginMenuChanged;
 
-    /// <summary>
-    /// Everything the plugins put in the left menu — launcher buttons and inline sections alike — in the order and
-    /// visibility the operator chose (#72); ties keep the order the plugins were discovered in.
-    /// <para>
-    /// One list, not one per kind: drawing every button and then every section meant a plugin that contributes a
-    /// section (the open pull requests) sat below every plugin that contributes a button, however far up the operator
-    /// moved it. An order that a plugin's kind can overrule is not an order.
-    /// </para>
-    /// </summary>
+    // Everything the plugins put in the left menu — launcher buttons and inline sections alike — in the order and
+    // visibility the operator chose (#72); ties keep the order the plugins were discovered in.
+    //
+    // One list, not one per kind: drawing every button and then every section meant a plugin that contributes a
+    // section (the open pull requests) sat below every plugin that contributes a button, however far up the operator
+    // moved it. An order that a plugin's kind can overrule is not an order.
     public IReadOnlyList<PluginMenuEntry> VisibleMenuEntries =>
         PluginSideButtons.Select(button => new PluginMenuEntry(button.PluginId, button, null))
             .Concat(PluginSideSections.Select(section => new PluginMenuEntry(section.PluginId, null, section)))
@@ -256,14 +240,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             .OrderBy(entry => _MenuOrderOf(entry.PluginId))
             .ToList();
 
-    /// <summary>The plugin Sessions-toolbar buttons in the operator's chosen order/visibility (#72) — the same hide/order rules as the left menu, so a plugin hidden there does not surface a toolbar button either.</summary>
+    // The plugin Sessions-toolbar buttons in the operator's chosen order/visibility (#72) — the same hide/order rules as the left menu, so a plugin hidden there does not surface a toolbar button either.
     public IReadOnlyList<PluginToolbarAction> VisibleToolbarActions =>
         PluginToolbarActions
             .Where(action => !_IsHiddenInMenu(action.PluginId))
             .OrderBy(action => _MenuOrderOf(action.PluginId))
             .ToList();
 
-    /// <summary>Applies a menu preference the plugin manager just persisted, and tells the sidebar to rebuild (#72).</summary>
+    // Applies a menu preference the plugin manager just persisted, and tells the sidebar to rebuild (#72).
     public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu)
     {
         _pluginMenuPreferences[pluginId] = new PluginMenuPreference(menuOrder, hiddenInMenu);
@@ -278,46 +262,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private sealed record PluginMenuPreference(int Order, bool Hidden);
 
-    /// <summary>Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.</summary>
+    // Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.
     public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
 
-    /// <summary>The currently-active shortcuts (app actions + plugin shortcuts) the view matches key presses against. Rebuilt when settings or plugin shortcuts change.</summary>
+    // The currently-active shortcuts (app actions + plugin shortcuts) the view matches key presses against. Rebuilt when settings or plugin shortcuts change.
     public IReadOnlyList<ShortcutBinding> ActiveShortcuts { get; private set; } = [];
 
-    /// <summary>Rows for the Options → Shortcuts tab: the editable app-action gestures, then the read-only plugin-contributed ones.</summary>
+    // Rows for the Options → Shortcuts tab: the editable app-action gestures, then the read-only plugin-contributed ones.
     public ObservableCollection<ShortcutRowViewModel> ShortcutRows { get; } = [];
 
-    /// <summary>Per-plugin settings views (#14) keyed by plugin folder id, opened from any of the gears — the plugin manager's, the left-menu button's, a plugin dialog's — or by the plugin itself.</summary>
+    // Per-plugin settings views (#14) keyed by plugin folder id, opened from any of the gears — the plugin manager's, the left-menu button's, a plugin dialog's — or by the plugin itself.
     public Dictionary<string, PluginSettingsRegistration> PluginSettings { get; } = [];
 
-    /// <summary>Settings-saved callbacks (#52) keyed by plugin folder id, registered via <see cref="ICockpitHost.OnSettingsSaved"/> and run once that plugin's settings dialog Save() returns true.</summary>
+    // Settings-saved callbacks (#52) keyed by plugin folder id, registered via `ICockpitHost.OnSettingsSaved` and run once that plugin's settings dialog Save() returns true.
     private readonly Dictionary<string, List<Action>> _settingsSavedHandlers = [];
 
-    /// <summary>The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.</summary>
+    // The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.
     public PluginManagerViewModel Plugins { get; }
 
-    /// <summary>The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.</summary>
+    // The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.
     public DelegatedTasksViewModel DelegatedTasks { get; }
 
-    /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
+    // The operator's read-only view on the agent line (AC-397) — the only window on traffic they are not part of.
+    public AgentLineInspectorViewModel AgentLineInspector { get; } = new();
+
+    // The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.
     public WorktreesViewModel Worktrees { get; }
 
-    /// <summary>The operator's projects (AC-161): the Options tab that manages them and the sidebar section that starts them read this one shared view model.</summary>
+    // The operator's projects (AC-161): the Options tab that manages them and the sidebar section that starts them read this one shared view model.
     public ProjectsViewModel Projects { get; }
 
-    /// <summary>The workspace tab strip and the active workspace's panes.</summary>
+    // The workspace tab strip and the active workspace's panes.
     public WorkspacesViewModel Workspaces { get; }
 
-    /// <summary>
-    /// Names what closing this workspace takes with it, asks, and closes it if the answer is yes — the one path
-    /// behind the tab's ✕, its context menu and the command palette, so the prompt cannot drift from what
-    /// closing actually does.
-    /// <para>
-    /// It asks because none of it comes back: a dashboard's whole arrangement, or every session tied to it. The
-    /// message says what is about to go rather than "are you sure" — "this cannot be undone" tells an operator
-    /// nothing they had not already assumed.
-    /// </para>
-    /// </summary>
+    // Names what closing this workspace takes with it, asks, and closes it if the answer is yes — the one path
+    // behind the tab's ✕, its context menu and the command palette, so the prompt cannot drift from what
+    // closing actually does.
+    //
+    // It asks because none of it comes back: a dashboard's whole arrangement, or every session tied to it. The
+    // message says what is about to go rather than "are you sure" — "this cannot be undone" tells an operator
+    // nothing they had not already assumed.
     public async Task CloseWorkspaceWithConfirmationAsync(string workspaceId)
     {
         if (Workspaces.Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
@@ -364,21 +348,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>"3 widgets" / "1 session", or null when there is nothing to lose — an empty workspace needs no warning about what it holds.</summary>
+    // "3 widgets" / "1 session", or null when there is nothing to lose — an empty workspace needs no warning about what it holds.
     private static string? _Count(int count, string noun) =>
         count == 0 ? null : count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
-    /// <summary>How many sessions a plugin workspace runs embedded in its body — kept out of <see cref="Sessions"/>, so the close-confirmation counts them here or it undercounts what the workspace is about to stop.</summary>
+    // How many sessions a plugin workspace runs embedded in its body — kept out of `Sessions`, so the close-confirmation counts them here or it undercounts what the workspace is about to stop.
     private int _EmbeddedSessionCount(string workspaceId) =>
         _embeddedSessions.TryGetValue(workspaceId, out var owned) ? owned.Count : 0;
 
-    /// <summary>
-    /// Closes a workspace and everything running on it (Raymond, 2026-07-15). Its sessions go first, through the
-    /// ordinary close path so each is disposed the way it would be on its own — otherwise they keep running with
-    /// a WorkspaceId pointing at a workspace that no longer exists: no tab shows them, nothing can reach them,
-    /// and their pty and child process outlive the desk they belonged to. Invisible-but-alive is the worst of
-    /// the three states a closed session can be in.
-    /// </summary>
+    // Closes a workspace and everything running on it (Raymond, 2026-07-15). Its sessions go first, through the
+    // ordinary close path so each is disposed the way it would be on its own — otherwise they keep running with
+    // a WorkspaceId pointing at a workspace that no longer exists: no tab shows them, nothing can reach them,
+    // and their pty and child process outlive the desk they belonged to. Invisible-but-alive is the worst of
+    // the three states a closed session can be in.
     public async Task CloseWorkspaceAsync(string workspaceId)
     {
         // The last workspace is not closable, and killing the sessions of a workspace that then stays is worse
@@ -402,16 +384,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await Workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaceId);
     }
 
-    /// <summary>
-    /// Asks before something irreversible, through the same confirmation dialog the rest of the cockpit uses.
-    /// Answers "no" without asking when there is no dialog service (design-time/tests): a graph with no way to
-    /// ask must not answer yes on the operator's behalf.
-    /// </summary>
-    /// <summary>Picks a dashboard file to import; null without a dialog service, or when the operator backed out.</summary>
+    // Asks before something irreversible, through the same confirmation dialog the rest of the cockpit uses.
+    // Answers "no" without asking when there is no dialog service (design-time/tests): a graph with no way to
+    // ask must not answer yes on the operator's behalf.
+    // Picks a dashboard file to import; null without a dialog service, or when the operator backed out.
     public Task<string?> PickDashboardToImportAsync() =>
         _dialogService is null ? Task.FromResult<string?>(null) : _dialogService.PickDashboardToImportAsync();
 
-    /// <summary>Picks where to write a dashboard; null without a dialog service, or when the operator backed out.</summary>
+    // Picks where to write a dashboard; null without a dialog service, or when the operator backed out.
     public Task<string?> PickDashboardExportPathAsync(string suggestedName) =>
         _dialogService is null ? Task.FromResult<string?>(null) : _dialogService.PickDashboardExportPathAsync(suggestedName);
 
@@ -420,68 +400,60 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? Task.FromResult(false)
             : _dialogService.ShowConfirmationDialogAsync(title, message, confirmLabel);
 
-    /// <summary>
-    /// Whether the session grid applies: sessions exist AND a Sessions workspace is active. A dashboard owns
-    /// the content area while it is selected, so the grid must stand down even though the sessions themselves
-    /// keep running — they are hidden, not closed.
-    /// </summary>
+    // Whether the session grid applies: sessions exist AND a Sessions workspace is active. A dashboard owns
+    // the content area while it is selected, so the grid must stand down even though the sessions themselves
+    // keep running — they are hidden, not closed.
     public bool ShowSessionGrid => HasSessionsHere && Workspaces.IsSessionsActive;
 
-    /// <summary>The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its own empty state.</summary>
+    // The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its own empty state.
     public bool ShowSessionEmptyState => !HasSessionsHere && Workspaces.IsSessionsActive;
 
-    /// <summary>
-    /// Whether the workspace now showing holds any session. Deliberately not <see cref="HasSessions"/>: a fresh
-    /// second workspace has to greet you with the empty state, even while the first one is full of running
-    /// sessions.
-    /// </summary>
+    // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
+    // second workspace has to greet you with the empty state, even while the first one is full of running
+    // sessions.
     public bool HasSessionsHere => VisibleSessions.Any();
 
-    /// <summary>Owns the live toast collection (#61); <see cref="Toasts"/> below is what <c>CockpitView.axaml</c>'s overlay actually binds to.</summary>
+    // Owns the live toast collection (#61); `Toasts` below is what `CockpitView.axaml`'s overlay actually binds to.
     public ToastHostViewModel ToastHost { get; } = new();
 
-    /// <summary>Toasts currently shown by the overlay (#61), fed by <see cref="Services.ToastService"/> via <see cref="ToastHost"/>.</summary>
+    // Toasts currently shown by the overlay (#61), fed by `Services.ToastService` via `ToastHost`.
     public ObservableCollection<ToastViewModel> Toasts => ToastHost.Toasts;
 
-    /// <summary>A dismissible banner shown when one or more plugins failed to load (#14) — the app keeps running; details are in Options → Plugins.</summary>
+    // A dismissible banner shown when one or more plugins failed to load (#14) — the app keeps running; details are in Options → Plugins.
     [ObservableProperty]
     private string _pluginFailureBanner = string.Empty;
 
-    /// <summary>True while the plugin-failure banner should be shown.</summary>
+    // True while the plugin-failure banner should be shown.
     [ObservableProperty]
     private bool _hasPluginFailures;
 
-    /// <summary>A dismissible banner (AC-208) shown when one or more plugins are sitting at awaiting-approval — new, or their bytes changed since last approved — so that state is visible without opening Plugin store → Installed.</summary>
+    // A dismissible banner (AC-208) shown when one or more plugins are sitting at awaiting-approval — new, or their bytes changed since last approved — so that state is visible without opening Plugin store → Installed.
     [ObservableProperty]
     private string _pendingApprovalBanner = string.Empty;
 
-    /// <summary>True while the pending-approval banner should be shown.</summary>
+    // True while the pending-approval banner should be shown.
     [ObservableProperty]
     private bool _hasPendingApprovals;
 
-    /// <summary>
-    /// Whether this run was started with <see cref="PluginManager.SafeModeArgument"/> (AC-478) — no plugin was
-    /// instantiated, so the safe-mode banner and its "Restart" affordance (<see cref="RestartAppCommand"/>, which
-    /// exits safe mode on any restart — see <c>AppRestartService.BuildLaunchArguments</c>) stay on screen for the
-    /// whole run, never dismissed like the failure/pending-approval banners above: it describes the run itself,
-    /// not a one-off event to acknowledge.
-    /// </summary>
+    // Whether this run was started with `PluginManager.SafeModeArgument` (AC-478) — no plugin was
+    // instantiated, so the safe-mode banner and its "Restart" affordance (`RestartAppCommand`, which
+    // exits safe mode on any restart — see `AppRestartService.BuildLaunchArguments`) stay on screen for the
+    // whole run, never dismissed like the failure/pending-approval banners above: it describes the run itself,
+    // not a one-off event to acknowledge.
     public bool IsSafeMode => _safeMode;
 
-    /// <summary>The safe-mode banner's text (AC-478); empty (and so invisible, see <see cref="IsSafeMode"/>) on an ordinary run.</summary>
+    // The safe-mode banner's text (AC-478); empty (and so invisible, see `IsSafeMode`) on an ordinary run.
     public string SafeModeBanner => _safeMode
         ? "Safe mode — no plugins were loaded. Plugin manager still works: disable the one that is crashing, then restart."
         : string.Empty;
 
-    /// <summary>
-    /// Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes,
-    /// and again on every later <see cref="PluginDiagnostics.Changed"/> (#184) — a contribution such as
-    /// <see cref="CockpitHost.AddMcpServer"/> can fail after that point, and the banner must not go on
-    /// reflecting only the snapshot from startup while the Plugin manager moves on. Errors (a plugin that did
-    /// not load), warnings (one that loaded but is flagged, e.g. built against a newer SDK) and a contribution
-    /// failing after load read as three different facts, since the operator can do something different about
-    /// each.
-    /// </summary>
+    // Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes,
+    // and again on every later `PluginDiagnostics.Changed` (#184) — a contribution such as
+    // `CockpitHost.AddMcpServer` can fail after that point, and the banner must not go on
+    // reflecting only the snapshot from startup while the Plugin manager moves on. Errors (a plugin that did
+    // not load), warnings (one that loaded but is flagged, e.g. built against a newer SDK) and a contribution
+    // failing after load read as three different facts, since the operator can do something different about
+    // each.
     public void RefreshPluginFailures()
     {
         var issues = _pluginDiagnostics?.Failures ?? [];
@@ -582,12 +554,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public bool HasPluginSettings(string pluginId) => PluginSettings.ContainsKey(pluginId);
 
-    /// <summary>
-    /// The single way a plugin's settings dialog opens, wherever the gear that opened it sits (#: settings from
-    /// anywhere). Every entry point routes here rather than opening the view itself, so a settings change saved
-    /// from a plugin's own dialog runs the same settings-saved handlers as one saved from the manager — a plugin
-    /// that re-registers its MCP server on save must not depend on which gear the operator happened to reach for.
-    /// </summary>
+    // The single way a plugin's settings dialog opens, wherever the gear that opened it sits (#: settings from
+    // anywhere). Every entry point routes here rather than opening the view itself, so a settings change saved
+    // from a plugin's own dialog runs the same settings-saved handlers as one saved from the manager — a plugin
+    // that re-registers its MCP server on save must not depend on which gear the operator happened to reach for.
     public async Task OpenPluginSettingsAsync(string pluginId)
     {
         if (_pluginDialogHost is null || !PluginSettings.TryGetValue(pluginId, out var settings))
@@ -607,12 +577,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             singleInstanceKey: $"settings:{pluginId}");
     }
 
-    /// <summary>
-    /// The ⚙ on a widget pane. The widget supplies the form's content and the host puts it in the same
-    /// Save/Close dialog a plugin's own settings use — a widget never builds a window. Saving asks that
-    /// instance to refresh, which is how its view picks up the config the form just wrote, without the widget
-    /// having to watch its own storage.
-    /// </summary>
+    // The ⚙ on a widget pane. The widget supplies the form's content and the host puts it in the same
+    // Save/Close dialog a plugin's own settings use — a widget never builds a window. Saving asks that
+    // instance to refresh, which is how its view picks up the config the form just wrote, without the widget
+    // having to watch its own storage.
     public async Task ShowWidgetSettingsAsync(WidgetPaneViewModel pane)
     {
         if (_pluginDialogHost is null || pane.CreateConfigView() is not { } form)
@@ -676,60 +644,52 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>False when no session is open, driving the empty-state welcome screen vs. the session grid (#31).</summary>
+    // False when no session is open, driving the empty-state welcome screen vs. the session grid (#31).
     public bool HasSessions => Sessions.Count > 0;
 
-    /// <summary>
-    /// Column count for the adaptive session grid (#24): one session fills the width; two or more lay
-    /// out in two columns (so 3–4 form a 2×2), rather than the old fixed two that left a single session
-    /// pinned to the left half.
-    /// </summary>
-    /// <remarks>Counts the workspace now showing, not every session alive: a second desk with one session must lay out as one, however full the first desk is.</remarks>
+    // Column count for the adaptive session grid (#24): one session fills the width; two or more lay
+    // out in two columns (so 3–4 form a 2×2), rather than the old fixed two that left a single session
+    // pinned to the left half.
+    // Counts the workspace now showing, not every session alive: a second desk with one session must lay out as one, however full the first desk is.
     public int GridColumns => VisibleSessions.Count() <= 1 ? 1 : 2;
 
-    /// <summary>The Zoom toggle only makes sense in the grid layout with more than one session — a single session already fills the pane, and single-session layout has no grid to zoom out of.</summary>
+    // The Zoom toggle only makes sense in the grid layout with more than one session — a single session already fills the pane, and single-session layout has no grid to zoom out of.
     public bool ShowZoomButton => !SingleSessionLayout && VisibleSessions.Count() > 1;
 
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
 
-    /// <summary>True while the grid is collapsed to show only <see cref="SelectedSession"/> at full width.</summary>
+    // True while the grid is collapsed to show only `SelectedSession` at full width.
     [ObservableProperty]
     private bool _isZoomed;
 
-    /// <summary>
-    /// Options' "show one session at a time" (#24) — the cockpit-wide default, persisted to
-    /// <c>LayoutSettings</c>. What a desk actually does is <see cref="SingleSessionLayout"/>: a Sessions
-    /// workspace may override this (Raymond, 2026-07-15). Options edits the default and nothing else, or
-    /// opening it on an overriding workspace would save that workspace's choice over the global one.
-    /// </summary>
+    // Options' "show one session at a time" (#24) — the cockpit-wide default, persisted to
+    // `LayoutSettings`. What a desk actually does is `SingleSessionLayout`: a Sessions
+    // workspace may override this (Raymond, 2026-07-15). Options edits the default and nothing else, or
+    // opening it on an overriding workspace would save that workspace's choice over the global one.
     [ObservableProperty]
     private bool _globalSingleSessionLayout;
 
-    /// <summary>Options' "stack sessions vertically" — the cockpit-wide default. The effective value is <see cref="StackSessionsVertically"/>.</summary>
+    // Options' "stack sessions vertically" — the cockpit-wide default. The effective value is `StackSessionsVertically`.
     [ObservableProperty]
     private bool _globalStackSessionsVertically;
 
-    /// <summary>
-    /// What the active workspace actually does: its own override, else Options' default. Everything that
-    /// arranges panes reads this; nothing writes it.
-    /// </summary>
+    // What the active workspace actually does: its own override, else Options' default. Everything that
+    // arranges panes reads this; nothing writes it.
     public bool SingleSessionLayout =>
         Workspaces?.Active is { SingleSessionLayout: { } single } active && active.Type == WorkspaceType.Sessions
             ? single
             : GlobalSingleSessionLayout;
 
-    /// <summary>The active workspace's stacking, its own override else Options'. Bound to the grid's <see cref="Controls.SessionTilePanel.StackVertically"/>.</summary>
+    // The active workspace's stacking, its own override else Options'. Bound to the grid's `Controls.SessionTilePanel.StackVertically`.
     public bool StackSessionsVertically =>
         Workspaces?.Active is { StackSessionsVertically: { } stack } active && active.Type == WorkspaceType.Sessions
             ? stack
             : GlobalStackSessionsVertically;
 
-    /// <summary>
-    /// Two-way for the Sessions ⚙: whether this desk follows Options. Unticking it starts the override from
-    /// what the desk is doing right now, so taking control changes nothing until the operator changes
-    /// something — a checkbox that rearranges your sessions the moment you tick it is one nobody ticks twice.
-    /// </summary>
+    // Two-way for the Sessions ⚙: whether this desk follows Options. Unticking it starts the override from
+    // what the desk is doing right now, so taking control changes nothing until the operator changes
+    // something — a checkbox that rearranges your sessions the moment you tick it is one nobody ticks twice.
     public bool WorkspaceFollowsGlobalLayout
     {
         get => Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions
@@ -749,7 +709,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Two-way for the Sessions ⚙'s own "show one session at a time" — writes this workspace's override, never Options.</summary>
+    // Two-way for the Sessions ⚙'s own "show one session at a time" — writes this workspace's override, never Options.
     public bool WorkspaceSingleSessionLayout
     {
         get => SingleSessionLayout;
@@ -765,7 +725,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Two-way for the Sessions ⚙'s own "stack sessions vertically" — writes this workspace's override, never Options.</summary>
+    // Two-way for the Sessions ⚙'s own "stack sessions vertically" — writes this workspace's override, never Options.
     public bool WorkspaceStackSessionsVertically
     {
         get => StackSessionsVertically;
@@ -781,150 +741,128 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// True whenever the multi-pane grid is showing (two or more sessions, not the single-pane/zoom layout):
-    /// every pane then carries the drag-reorder grip, and the column/row gutters between them are resizable.
-    /// Covers the vertical column, the side-by-side row, and the 2×2 alike — they're one draggable grid.
-    /// </summary>
+    // True whenever the multi-pane grid is showing (two or more sessions, not the single-pane/zoom layout):
+    // every pane then carries the drag-reorder grip, and the column/row gutters between them are resizable.
+    // Covers the vertical column, the side-by-side row, and the 2×2 alike — they're one draggable grid.
     public bool StackSessionsInStack => !ShowSinglePane && Sessions.Count >= 2;
 
-    /// <summary>When true, closing the window hides it to the system tray and keeps the app running (#33). Read by MainWindow on close.</summary>
+    // When true, closing the window hides it to the system tray and keeps the app running (#33). Read by MainWindow on close.
     [ObservableProperty]
     private bool _minimizeToTrayOnClose;
 
-    /// <summary>
-    /// Width in pixels of the left sidebar column (#49), dragged via the <c>GridSplitter</c> in
-    /// <c>CockpitView.axaml</c> and persisted so it survives a restart. The splitter's column already
-    /// enforces <see cref="LayoutSettings.MinSidebarWidth"/>/<see cref="LayoutSettings.MaxSidebarWidth"/>
-    /// while dragging; <see cref="LoadLayoutSettingsAsync"/> and <c>LayoutSettingsStore</c> clamp again
-    /// defensively for a value read from a hand-edited <c>cockpit.json</c>.
-    /// </summary>
+    // Width in pixels of the left sidebar column (#49), dragged via the `GridSplitter` in
+    // `CockpitView.axaml` and persisted so it survives a restart. The splitter's column already
+    // enforces `LayoutSettings.MinSidebarWidth`/`LayoutSettings.MaxSidebarWidth`
+    // while dragging; `LoadLayoutSettingsAsync` and `LayoutSettingsStore` clamp again
+    // defensively for a value read from a hand-edited `cockpit.json`.
     [ObservableProperty]
     private double _sidebarWidth = LayoutSettings.DefaultSidebarWidth;
 
-    /// <summary>When true the left sidebar is collapsed out of view; the session content takes its space. Toggled by the chevron in the sidebar header (and the floating one that appears when collapsed), persisted immediately.</summary>
+    // When true the left sidebar is collapsed out of view; the session content takes its space. Toggled by the chevron in the sidebar header (and the floating one that appears when collapsed), persisted immediately.
     [ObservableProperty]
     private bool _sidebarCollapsed;
 
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
 
-    /// <summary>
-    /// Mirrors <see cref="Cockpit.Core.Debugging.DebugSettings.ShowDebugControls"/> (#73): show the controls
-    /// that exist to investigate the cockpit itself — the TTY header's Redraw — rather than to do the work.
-    /// Off by default; pushed to open sessions so a change takes effect without reopening them.
-    /// </summary>
+    // Mirrors `Cockpit.Core.Debugging.DebugSettings.ShowDebugControls` (#73): show the controls
+    // that exist to investigate the cockpit itself — the TTY header's Redraw — rather than to do the work.
+    // Off by default; pushed to open sessions so a change takes effect without reopening them.
     [ObservableProperty]
     private bool _showDebugControls;
 
-    /// <summary>
-    /// Whether the orchestrator (delegation) MCP is offered to sessions (AC-40). It is a cockpit-hosted server, no
-    /// longer listed in the MCP-servers manager, so this Options toggle is where it is turned on or off. On by
-    /// default; the change is persisted and takes effect on the next session's servers.
-    /// </summary>
+    // Whether the orchestrator (delegation) MCP is offered to sessions (AC-40). It is a cockpit-hosted server, no
+    // longer listed in the MCP-servers manager, so this Options toggle is where it is turned on or off. On by
+    // default; the change is persisted and takes effect on the next session's servers.
     [ObservableProperty]
     private bool _orchestratorMcpEnabled = true;
 
     [ObservableProperty]
     private string _debugSettingsStatus = string.Empty;
 
-    /// <summary>
-    /// Whether a backup keeps the keys, tokens and webhooks that live in the settings (#70). Off by design: the
-    /// archive's whole use is that you can put it somewhere — a cloud folder, another machine — and a thing you can
-    /// put anywhere must not be a key ring.
-    /// </summary>
+    // Whether a backup keeps the keys, tokens and webhooks that live in the settings (#70). Off by design: the
+    // archive's whole use is that you can put it somewhere — a cloud folder, another machine — and a thing you can
+    // put anywhere must not be a key ring.
     [ObservableProperty]
     private bool _backupIncludesCredentials;
 
-    /// <summary>Whether a backup also carries the profiles' own config directories (<c>~/.claude</c> and friends) — the agents' own logins, which live outside the cockpit's directory. Never a default.</summary>
+    // Whether a backup also carries the profiles' own config directories (`~/.claude` and friends) — the agents' own logins, which live outside the cockpit's directory. Never a default.
     [ObservableProperty]
     private bool _backupIncludesProfiles;
 
     [ObservableProperty]
     private string _backupStatus = string.Empty;
 
-    /// <summary>The plugins this backup will carry — their binaries and everything they saved. All of them, unless the operator unticks one.</summary>
+    // The plugins this backup will carry — their binaries and everything they saved. All of them, unless the operator unticks one.
     public ObservableCollection<BackupPluginViewModel> BackupPlugins { get; } = [];
 
-    /// <summary>The build this cockpit is (#71): the version, and the commit — which is a nightly's only identity.</summary>
+    // The build this cockpit is (#71): the version, and the commit — which is a nightly's only identity.
     [ObservableProperty]
     private string _currentBuild = string.Empty;
 
-    /// <summary>Look for a newer build when the cockpit starts. On: an update nobody is told about is an update nobody installs.</summary>
+    // Look for a newer build when the cockpit starts. On: an update nobody is told about is an update nobody installs.
     [ObservableProperty]
     private bool _checkForUpdatesOnStartup = true;
 
-    /// <summary>Also hear about the nightly build of main. Off, and it means what it says: main, as it was last night.</summary>
+    // Also hear about the nightly build of main. Off, and it means what it says: main, as it was last night.
     [ObservableProperty]
     private bool _includeNightlyBuilds;
 
     [ObservableProperty]
     private string _updateStatus = string.Empty;
 
-    /// <summary>Where the newer build is, or empty — what the Download button opens.</summary>
+    // Where the newer build is, or empty — what the Download button opens.
     [ObservableProperty]
     private string _updateUrl = string.Empty;
 
-    /// <summary>The newer build's name/version, shown as the headline of the persistent update banner (AC-73).</summary>
+    // The newer build's name/version, shown as the headline of the persistent update banner (AC-73).
     [ObservableProperty]
     private string _updateName = string.Empty;
 
-    /// <summary>
-    /// Whether the persistent update banner (AC-73) is shown: a newer build was found and the operator has not
-    /// dismissed this one. The startup toast auto-dismisses before the window has focus and is missed; the banner
-    /// stays until "Open release" or dismiss, and comes back when a build newer than the dismissed one turns up —
-    /// so the same release never nags while a genuinely newer one still gets through.
-    /// </summary>
+    // Whether the persistent update banner (AC-73) is shown: a newer build was found and the operator has not
+    // dismissed this one. The startup toast auto-dismisses before the window has focus and is missed; the banner
+    // stays until "Open release" or dismiss, and comes back when a build newer than the dismissed one turns up —
+    // so the same release never nags while a genuinely newer one still gets through.
     [ObservableProperty]
     private bool _updateBannerVisible;
 
-    /// <summary>
-    /// Whether a download for "Update now"/"Install on next start" is in flight (AC-388). Drives the banner's/Options'
-    /// progress indicator directly (AC-379: a rendered-view test asserts the control itself, not this field) and
-    /// disables both buttons, so a second click cannot start a second transfer over the first.
-    /// </summary>
+    // Whether a download for "Update now"/"Install on next start" is in flight (AC-388). Drives the banner's/Options'
+    // progress indicator directly (AC-379: a rendered-view test asserts the control itself, not this field) and
+    // disables both buttons, so a second click cannot start a second transfer over the first.
     [ObservableProperty]
     private bool _isUpdateDownloading;
 
-    /// <summary>
-    /// 0-100 progress for the download <see cref="IsUpdateDownloading"/> is tracking (AC-388). Velopack's progress
-    /// callback fires from whatever thread it runs its transfer on, not the UI thread (AC-368) — every write to this
-    /// property from that callback goes through <c>Dispatcher.UIThread</c>, the same discipline
-    /// <see cref="_periodicUpdateTimer"/>'s tick already follows.
-    /// </summary>
+    // 0-100 progress for the download `IsUpdateDownloading` is tracking (AC-388). Velopack's progress
+    // callback fires from whatever thread it runs its transfer on, not the UI thread (AC-368) — every write to this
+    // property from that callback goes through `Dispatcher.UIThread`, the same discipline
+    // `_periodicUpdateTimer`'s tick already follows.
     [ObservableProperty]
     private int _updateDownloadProgress;
 
-    /// <summary>The version of the release now on offer, and of the one the operator last dismissed from the banner.
-    /// A version identifies a build on its own: a nightly is packed as <c>-nightly.&lt;run&gt;</c>, so the rolling tag
-    /// it is published under repeats but the version does not.</summary>
+    // The version of the release now on offer, and of the one the operator last dismissed from the banner.
+    // A version identifies a build on its own: a nightly is packed as `-nightly.&lt;run&gt;`, so the rolling tag
+    // it is published under repeats but the version does not.
     private string _offeredRelease = string.Empty;
     private string _dismissedRelease = string.Empty;
 
-    /// <summary>
-    /// The channel the operator picked, or null while nobody has (AC-387). Held apart from
-    /// <see cref="IncludeNightlyBuilds"/> — which shows the channel in force, chosen or derived — so that saving the
-    /// settings for an unrelated reason cannot turn a derived channel into a choice behind the operator's back.
-    /// </summary>
+    // The channel the operator picked, or null while nobody has (AC-387). Held apart from
+    // `IncludeNightlyBuilds` — which shows the channel in force, chosen or derived — so that saving the
+    // settings for an unrelated reason cannot turn a derived channel into a choice behind the operator's back.
     private UpdateChannel? _chosenChannel;
 
-    /// <summary>True while the stored settings are being applied, so filling the controls does not read as using them.</summary>
+    // True while the stored settings are being applied, so filling the controls does not read as using them.
     private bool _loadingUpdateSettings;
 
-    /// <summary>
-    /// Which of the two update settings the operator has decided for. Kept apart rather than as one "touched" flag:
-    /// they are stored together but chosen separately, and one flag for both means changing either one claims the
-    /// other as well.
-    /// </summary>
+    // Which of the two update settings the operator has decided for. Kept apart rather than as one "touched" flag:
+    // they are stored together but chosen separately, and one flag for both means changing either one claims the
+    // other as well.
     private bool _startupChoiceMade;
     private bool _channelChoiceMade;
 
-    /// <summary>
-    /// Whether the stored update settings have been read and applied, and whether the operator changed something
-    /// before that happened. Two plain flags rather than awaiting the read: both this and the read run on the UI
-    /// thread, and awaiting the same task from two places says nothing about which of them resumes first — a save
-    /// that woke up first would still be writing settings it had not learned yet.
-    /// </summary>
+    // Whether the stored update settings have been read and applied, and whether the operator changed something
+    // before that happened. Two plain flags rather than awaiting the read: both this and the read run on the UI
+    // thread, and awaiting the same task from two places says nothing about which of them resumes first — a save
+    // that woke up first would still be writing settings it had not learned yet.
     private bool _updateSettingsRead;
     private bool _updateSettingsSavePending;
 
@@ -938,81 +876,75 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public bool CanCheckForUpdates => _updates is not null;
 
-    /// <summary>
-    /// Whether this copy can fetch a newer build over itself (AC-385) — true only for one the updater installed.
-    /// Unpacked from the tarball, run from a checkout, or installed by a distribution's package manager, and the
-    /// answer is no: the cockpit can still say that a newer build exists, but replacing this one is somebody
-    /// else's job. Fixed for the lifetime of the process; see the constructor.
-    /// </summary>
+    // Whether this copy can fetch a newer build over itself (AC-385) — true only for one the updater installed.
+    // Unpacked from the tarball, run from a checkout, or installed by a distribution's package manager, and the
+    // answer is no: the cockpit can still say that a newer build exists, but replacing this one is somebody
+    // else's job. Fixed for the lifetime of the process; see the constructor.
     public bool CanUpdateItself { get; }
 
     public bool HasUpdate => UpdateUrl.Length > 0;
 
-    /// <summary>
-    /// Whether "Update now"/"Install on next start" show, in the banner and in Options (AC-388): a build must be on
-    /// offer, and this copy must be one the updater can replace. A rendered-view test asserts the actual
-    /// <c>Button.IsVisible</c> against this, not <see cref="CanUpdateItself"/>/<see cref="HasUpdate"/> separately —
-    /// AC-379's lesson, that a button hung off a container's own condition or an internal field a test cannot see is
-    /// not the same as the button being visible for the right reason.
-    /// </summary>
+    // Whether "Update now"/"Install on next start" show, in the banner and in Options (AC-388): a build must be on
+    // offer, and this copy must be one the updater can replace. A rendered-view test asserts the actual
+    // `Button.IsVisible` against this, not `CanUpdateItself`/`HasUpdate` separately —
+    // AC-379's lesson, that a button hung off a container's own condition or an internal field a test cannot see is
+    // not the same as the button being visible for the right reason.
     public bool ShowSelfUpdateButtons => CanUpdateItself && HasUpdate;
 
-    /// <summary>The pre-AC-388 fallback: a build is on offer but this copy cannot fetch it, so the release page is the whole offer.</summary>
+    // The pre-AC-388 fallback: a build is on offer but this copy cannot fetch it, so the release page is the whole offer.
     public bool ShowOpenReleaseButton => !CanUpdateItself && HasUpdate;
 
-    /// <summary>
-    /// Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
-    /// per-session. The effective value fed straight into <c>TerminalControl.FontFamily</c>, so both a
-    /// single family name and a comma-separated fallback list work. Driven by the Options dropdown
-    /// (<see cref="TerminalFontSelection"/>): a curated choice sets it directly, the "Custom…" choice
-    /// mirrors <see cref="TerminalCustomFontFamily"/>.
-    /// </summary>
+    // Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
+    // per-session. The effective value fed straight into `TerminalControl.FontFamily`, so both a
+    // single family name and a comma-separated fallback list work. Driven by the Options dropdown
+    // (`TerminalFontSelection`): a curated choice sets it directly, the "Custom…" choice
+    // mirrors `TerminalCustomFontFamily`.
     [ObservableProperty]
     private string _terminalFontFamily = "Cascadia Mono, Consolas, monospace";
 
-    /// <summary>Global TTY terminal font size in points (#40), clamped to <see cref="Cockpit.Core.Terminal.TerminalSettings.MinFontSize"/>-<see cref="Cockpit.Core.Terminal.TerminalSettings.MaxFontSize"/> on save.</summary>
+    // Global TTY terminal font size in points (#40), clamped to `Cockpit.Core.Terminal.TerminalSettings.MinFontSize`-`Cockpit.Core.Terminal.TerminalSettings.MaxFontSize` on save.
     [ObservableProperty]
     private int _terminalFontSize = 13;
 
-    /// <summary>Selected item in the Options font-family dropdown (#40) — a curated family or <see cref="CustomFontChoice"/>. Drives <see cref="TerminalFontFamily"/> and toggles <see cref="IsTerminalFontCustom"/>.</summary>
+    // Selected item in the Options font-family dropdown (#40) — a curated family or `CustomFontChoice`. Drives `TerminalFontFamily` and toggles `IsTerminalFontCustom`.
     [ObservableProperty]
     private string _terminalFontSelection = "Cascadia Mono, Consolas, monospace";
 
-    /// <summary>True when the font-family dropdown is on "Custom…" (#40), revealing the free-text box bound to <see cref="TerminalCustomFontFamily"/>.</summary>
+    // True when the font-family dropdown is on "Custom…" (#40), revealing the free-text box bound to `TerminalCustomFontFamily`.
     [ObservableProperty]
     private bool _isTerminalFontCustom;
 
-    /// <summary>Free-text font family entered when the dropdown is on "Custom…" (#40); mirrored into <see cref="TerminalFontFamily"/> while custom is active.</summary>
+    // Free-text font family entered when the dropdown is on "Custom…" (#40); mirrored into `TerminalFontFamily` while custom is active.
     [ObservableProperty]
     private string _terminalCustomFontFamily = string.Empty;
 
     [ObservableProperty]
     private string _terminalSettingsStatus = string.Empty;
 
-    /// <summary>The worktree-root override (AC-85); blank uses the default. Bound in Options → Sessions.</summary>
+    // The worktree-root override (AC-85); blank uses the default. Bound in Options → Sessions.
     [ObservableProperty]
     private string _worktreeRoot = string.Empty;
 
     [ObservableProperty]
     private string _worktreeSettingsStatus = string.Empty;
 
-    /// <summary>The default worktree root, shown as the folder field's placeholder so a blank value clearly means "use the default".</summary>
+    // The default worktree root, shown as the folder field's placeholder so a blank value clearly means "use the default".
     public string WorktreeRootPlaceholder { get; private set; } = string.Empty;
 
-    /// <summary>The clones-root override (AC-90); blank uses the default. Bound in Options → Sessions, alongside the worktree root.</summary>
+    // The clones-root override (AC-90); blank uses the default. Bound in Options → Sessions, alongside the worktree root.
     [ObservableProperty]
     private string _cloneRoot = string.Empty;
 
     [ObservableProperty]
     private string _cloneSettingsStatus = string.Empty;
 
-    /// <summary>The default clones root, shown as the folder field's placeholder so a blank value clearly means "use the default".</summary>
+    // The default clones root, shown as the folder field's placeholder so a blank value clearly means "use the default".
     public string CloneRootPlaceholder { get; private set; } = string.Empty;
 
-    /// <summary>Sentinel item in the font-family dropdown (#40) that switches to a free-text box for any font not in the curated list.</summary>
+    // Sentinel item in the font-family dropdown (#40) that switches to a free-text box for any font not in the curated list.
     public const string CustomFontChoice = "Custom…";
 
-    /// <summary>Curated monospace font choices offered by the Options dialog's Terminal font-family dropdown; any font not listed is reachable via <see cref="CustomFontChoice"/>.</summary>
+    // Curated monospace font choices offered by the Options dialog's Terminal font-family dropdown; any font not listed is reachable via `CustomFontChoice`.
     public IReadOnlyList<string> TerminalFontFamilies { get; } =
     [
         "Cascadia Mono, Consolas, monospace",
@@ -1023,35 +955,35 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         "Courier New",
     ];
 
-    /// <summary>Items for the Options font-family dropdown (#40): the curated families plus the "Custom…" sentinel.</summary>
+    // Items for the Options font-family dropdown (#40): the curated families plus the "Custom…" sentinel.
     public IReadOnlyList<string> TerminalFontChoices => [.. TerminalFontFamilies, CustomFontChoice];
 
     // ── AC-67: macOS render-backend selector (Auto / Metal / OpenGL / Software) ──────────────────────────────
     private readonly IRenderingSettingsStore? _renderingSettingsStore;
 
-    /// <summary>The backend the app actually started on (what it is rendering with now), so a save can tell whether
-    /// the operator's choice differs and a restart is needed. Fixed for the session — only a restart re-reads it.</summary>
+    // The backend the app actually started on (what it is rendering with now), so a save can tell whether
+    // the operator's choice differs and a restart is needed. Fixed for the session — only a restart re-reads it.
     private RenderBackendChoice _startupRenderBackend = RenderBackendChoice.Auto;
 
-    /// <summary>Selected item in the Options render-backend dropdown (AC-67): Auto / Metal / OpenGL / Software.</summary>
+    // Selected item in the Options render-backend dropdown (AC-67): Auto / Metal / OpenGL / Software.
     [ObservableProperty]
     private string _renderBackendSelection = "Auto";
 
-    /// <summary>True once a saved render-backend choice differs from what this process started on — reveals "Restart now".</summary>
+    // True once a saved render-backend choice differs from what this process started on — reveals "Restart now".
     [ObservableProperty]
     private bool _renderBackendNeedsRestart;
 
     [ObservableProperty]
     private string _renderingSettingsStatus = string.Empty;
 
-    /// <summary>The render-backend choices offered by the Options dropdown.</summary>
+    // The render-backend choices offered by the Options dropdown.
     public IReadOnlyList<string> RenderBackendChoices { get; } = ["Auto", "Metal", "OpenGL", "Software"];
 
-    /// <summary>True on macOS, where the render backend is a real choice; gates the setting's visibility.</summary>
+    // True on macOS, where the render backend is a real choice; gates the setting's visibility.
     public bool IsMacOsPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
 
-    /// <summary>Whether to show the render-backend setting (AC-67): where it does something — macOS — plus in any dev
-    /// build, so it can be verified on a Windows/Linux dev machine even though it is inert there for release users.</summary>
+    // Whether to show the render-backend setting (AC-67): where it does something — macOS — plus in any dev
+    // build, so it can be verified on a Windows/Linux dev machine even though it is inert there for release users.
     public bool ShowRenderBackendSetting => IsMacOsPlatform || CockpitBuild.IsDevelopment;
 
     private static string RenderBackendLabel(RenderBackendChoice choice) => choice switch
@@ -1083,8 +1015,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         RenderBackendNeedsRestart = false;
     }
 
-    /// <summary>Persists the render-backend choice (AC-67). Avalonia fixes the backend once at startup, so a save that
-    /// changes it from what this process started on flags <see cref="RenderBackendNeedsRestart"/> to offer a restart.</summary>
+    // Persists the render-backend choice (AC-67). Avalonia fixes the backend once at startup, so a save that
+    // changes it from what this process started on flags `RenderBackendNeedsRestart` to offer a restart.
     [RelayCommand]
     private async Task SaveRenderingSettingsAsync()
     {
@@ -1100,36 +1032,32 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
     // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// The default-shell choices for the Options terminal picker (#AC-25): an "OS default" entry first, then every
-    /// shell <see cref="ShellCatalog"/> detected on this machine. Rebuilt on load so it reflects what is installed.
-    /// </summary>
+    // The default-shell choices for the Options terminal picker (#AC-25): an "OS default" entry first, then every
+    // shell `ShellCatalog` detected on this machine. Rebuilt on load so it reflects what is installed.
     public ObservableCollection<TerminalShellChoice> TerminalShellChoices { get; } = [];
 
-    /// <summary>
-    /// The chosen default shell a new terminal opens (#AC-25). Its <see cref="TerminalShellChoice.Value"/> is
-    /// persisted to <see cref="Cockpit.Core.Terminal.TerminalSettings.Shell"/> on save; "OS default" persists blank,
-    /// "Custom…" persists whatever the operator typed in <see cref="TerminalCustomShell"/>.
-    /// </summary>
+    // The chosen default shell a new terminal opens (#AC-25). Its `TerminalShellChoice.Value` is
+    // persisted to `Cockpit.Core.Terminal.TerminalSettings.Shell` on save; "OS default" persists blank,
+    // "Custom…" persists whatever the operator typed in `TerminalCustomShell`.
     [ObservableProperty]
     private TerminalShellChoice? _selectedTerminalShell;
 
-    /// <summary>True when the shell picker is on "Custom…" (#AC-25), revealing the free-text box for a third-party shell path/command.</summary>
+    // True when the shell picker is on "Custom…" (#AC-25), revealing the free-text box for a third-party shell path/command.
     [ObservableProperty]
     private bool _isTerminalShellCustom;
 
-    /// <summary>Free-text shell path or command entered when the picker is on "Custom…" (#AC-25) — e.g. <c>/usr/bin/fish</c>, <c>nu</c>, common on Linux/macOS. Resolved via <see cref="ShellCatalog.ForCommand"/> at launch.</summary>
+    // Free-text shell path or command entered when the picker is on "Custom…" (#AC-25) — e.g. `/usr/bin/fish`, `nu`, common on Linux/macOS. Resolved via `ShellCatalog.ForCommand` at launch.
     [ObservableProperty]
     private string _terminalCustomShell = string.Empty;
 
-    /// <summary>Sentinel <see cref="TerminalShellChoice.Value"/> for the "Custom…" entry that reveals the free-text shell box; any shell not in the detected list is reachable through it.</summary>
+    // Sentinel `TerminalShellChoice.Value` for the "Custom…" entry that reveals the free-text shell box; any shell not in the detected list is reachable through it.
     public const string CustomShellChoiceValue = "custom";
 
-    /// <summary>Reveals the custom-shell box when the picker is on "Custom…" (#AC-25), mirroring the font-family "Custom…" pattern.</summary>
+    // Reveals the custom-shell box when the picker is on "Custom…" (#AC-25), mirroring the font-family "Custom…" pattern.
     partial void OnSelectedTerminalShellChanged(TerminalShellChoice? value) =>
         IsTerminalShellCustom = value is not null && value.Value == CustomShellChoiceValue;
 
-    /// <summary>Maps the dropdown selection to the effective font family (#40): "Custom…" reveals the free-text box and uses its value, any other choice is used directly.</summary>
+    // Maps the dropdown selection to the effective font family (#40): "Custom…" reveals the free-text box and uses its value, any other choice is used directly.
     partial void OnTerminalFontSelectionChanged(string value)
     {
         if (value == CustomFontChoice)
@@ -1147,7 +1075,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>While the dropdown is on "Custom…" (#40), keeps the effective font family in sync with the free-text box.</summary>
+    // While the dropdown is on "Custom…" (#40), keeps the effective font family in sync with the free-text box.
     partial void OnTerminalCustomFontFamilyChanged(string value)
     {
         if (IsTerminalFontCustom && !string.IsNullOrWhiteSpace(value))
@@ -1156,7 +1084,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Aligns the dropdown/custom-box state with the effective <see cref="TerminalFontFamily"/> (#40) — used after loading from the store so a saved custom font reopens in the "Custom…" state.</summary>
+    // Aligns the dropdown/custom-box state with the effective `TerminalFontFamily` (#40) — used after loading from the store so a saved custom font reopens in the "Custom…" state.
     private void SyncTerminalFontSelectionFromFamily()
     {
         if (TerminalFontFamilies.Contains(TerminalFontFamily))
@@ -1173,7 +1101,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Pushes the terminal font family to every open TTY session as it changes (#40), so Options → Terminal applies live without a restart.</summary>
+    // Pushes the terminal font family to every open TTY session as it changes (#40), so Options → Terminal applies live without a restart.
     partial void OnTerminalFontFamilyChanged(string value)
     {
         foreach (var session in Sessions)
@@ -1185,7 +1113,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Pushes the terminal font size to every open TTY session as it changes (#40), same live-apply as <see cref="OnTerminalFontFamilyChanged"/>.</summary>
+    // Pushes the terminal font size to every open TTY session as it changes (#40), same live-apply as `OnTerminalFontFamilyChanged`.
     partial void OnTerminalFontSizeChanged(int value)
     {
         foreach (var session in Sessions)
@@ -1201,11 +1129,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     partial void OnGlobalSingleSessionLayoutChanged(bool value) => _OnEffectiveLayoutChanged();
 
-    /// <summary>
-    /// Re-reads what the active desk is doing and pushes it everywhere. One place, because the effective value
-    /// moves for three different reasons — Options changed, this workspace's override changed, or a different
-    /// workspace became active — and every one of them has to re-dock the TTY headers (#54) and re-lay the grid.
-    /// </summary>
+    // Re-reads what the active desk is doing and pushes it everywhere. One place, because the effective value
+    // moves for three different reasons — Options changed, this workspace's override changed, or a different
+    // workspace became active — and every one of them has to re-dock the TTY headers (#54) and re-lay the grid.
     internal void _OnEffectiveLayoutChanged()
     {
         OnPropertyChanged(nameof(SingleSessionLayout));
@@ -1228,7 +1154,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         RefreshPaneVisibility();
     }
 
-    /// <summary>True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.</summary>
+    // True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.
     public bool ShowSinglePane => SingleSessionLayout || IsZoomed;
 
     partial void OnIsZoomedChanged(bool value)
@@ -1242,63 +1168,61 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _audioStatus = "Ready.";
 
-    /// <summary>Whether a local OS toast is shown when a session needs attention while you are present (independent of Discord).</summary>
+    // Whether a local OS toast is shown when a session needs attention while you are present (independent of Discord).
     [ObservableProperty]
     private bool _localNotificationsEnabled = true;
 
-    /// <summary>Whether the Discord webhook is POSTed when a session needs attention while you are away (independent of local toasts).</summary>
+    // Whether the Discord webhook is POSTed when a session needs attention while you are away (independent of local toasts).
     [ObservableProperty]
     private bool _discordNotificationsEnabled;
 
-    /// <summary>Discord webhook URL POSTed to when the operator is away. Empty disables the away channel.</summary>
+    // Discord webhook URL POSTed to when the operator is away. Empty disables the away channel.
     [ObservableProperty]
     private string _webhookUrl = string.Empty;
 
-    /// <summary>Idle minutes before the operator counts as "away" (when the PC is not locked).</summary>
+    // Idle minutes before the operator counts as "away" (when the PC is not locked).
     [ObservableProperty]
     private int _idleThresholdMinutes = (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
 
-    /// <summary>Minutes a finished session stays "done" before it falls back to idle. 0 leaves it on "done" forever. Distinct from <see cref="IdleThresholdMinutes"/>, which is about the operator being away.</summary>
+    // Minutes a finished session stays "done" before it falls back to idle. 0 leaves it on "done" forever. Distinct from `IdleThresholdMinutes`, which is about the operator being away.
     [ObservableProperty]
     private int _sessionIdleMinutes = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
 
-    /// <summary>Whether a session that finished its turn announces itself when the operator is not watching it.</summary>
+    // Whether a session that finished its turn announces itself when the operator is not watching it.
     [ObservableProperty]
     private bool _notifyOnSessionFinished = true;
 
-    /// <summary>Whether a session announces that it has gone idle.</summary>
+    // Whether a session announces that it has gone idle.
     [ObservableProperty]
     private bool _notifyOnSessionIdle;
 
-    /// <summary>Whether one message is sent when the last session goes idle — nothing is running any more.</summary>
+    // Whether one message is sent when the last session goes idle — nothing is running any more.
     [ObservableProperty]
     private bool _notifyWhenAllSessionsIdle;
 
-    /// <summary>
-    /// Whether the cockpit window is the focused one. Set by the window itself (it is the only thing that knows),
-    /// and read by the finished-session notification: a session you are looking at does not need to announce itself.
-    /// </summary>
+    // Whether the cockpit window is the focused one. Set by the window itself (it is the only thing that knows),
+    // and read by the finished-session notification: a session you are looking at does not need to announce itself.
     [ObservableProperty]
     private bool _isWindowActive = true;
 
     [ObservableProperty]
     private string _notificationSettingsStatus = string.Empty;
 
-    /// <summary>One shared "Saved" indicator for the Options dialog's single footer Save (#13), shown next to the Save button instead of a per-section label.</summary>
+    // One shared "Saved" indicator for the Options dialog's single footer Save (#13), shown next to the Save button instead of a per-section label.
     [ObservableProperty]
     private string _allSettingsStatus = string.Empty;
 
     [ObservableProperty]
     private string _shortcutSettingsStatus = string.Empty;
 
-    /// <summary>When true, every transcript row shows its arrival timestamp (T7). Applied to all open sessions.</summary>
+    // When true, every transcript row shows its arrival timestamp (T7). Applied to all open sessions.
     [ObservableProperty]
     private bool _showTimestamps;
 
     [ObservableProperty]
     private string _transcriptDisplaySettingsStatus = string.Empty;
 
-    /// <summary>Which metrics the header's usage pill shows (AC-105), as four toggles composed into the saved field list. Applied to all open sessions.</summary>
+    // Which metrics the header's usage pill shows (AC-105), as four toggles composed into the saved field list. Applied to all open sessions.
     [ObservableProperty]
     private bool _showUsagePillContext = true;
 
@@ -1314,36 +1238,43 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _usagePillSettingsStatus = string.Empty;
 
-    /// <summary>When true, sending "exit" closes the session after its turn completes (T10). Applied to all open sessions.</summary>
+    // When true, sending "exit" closes the session after its turn completes (T10). Applied to all open sessions.
     [ObservableProperty]
     private bool _autoCloseOnExit;
 
-    /// <summary>When true, messages queued mid-turn are sent together as one follow-up turn instead of one-per-turn (AC-145). Applied to all open SDK/chat sessions.</summary>
+    // When true, messages queued mid-turn are sent together as one follow-up turn instead of one-per-turn (AC-145). Applied to all open SDK/chat sessions.
     [ObservableProperty]
     private bool _combineQueuedMessages;
+
+    // When true, an agent may be woken by a neighbour's urgent message — a turn started for it that the operator
+    // did not ask for (AC-615). On by default, and the operator's decision rather than each agent's: this is the
+    // consent for that turn, and the session it is spent on is not the one paying for it. A session can still
+    // override it for itself with `set_wake_optin`.
+    [ObservableProperty]
+    private bool _wakeAgentsByDefault = true;
 
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
 
-    /// <summary>Master switch for voice input (push-to-talk dictation). Off by default — enabling it is what triggers the first Whisper model download.</summary>
+    // Master switch for voice input (push-to-talk dictation). Off by default — enabling it is what triggers the first Whisper model download.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRunCalibration))]
     private bool _voiceEnabled;
 
     private readonly ITranscriptionAdvisor? _transcriptionAdvisor;
 
-    /// <summary>Effective ggml model name fed to the speech-to-text service, e.g. "large-v3-turbo", "small", "tiny".
-    /// Driven by the Options dropdown (<see cref="SelectedTranscriptionModel"/>): a curated model sets it directly,
-    /// the "Custom…" choice mirrors <see cref="VoiceCustomModelName"/>. Smaller models download and transcribe faster.</summary>
+    // Effective ggml model name fed to the speech-to-text service, e.g. "large-v3-turbo", "small", "tiny".
+    // Driven by the Options dropdown (`SelectedTranscriptionModel`): a curated model sets it directly,
+    // the "Custom…" choice mirrors `VoiceCustomModelName`. Smaller models download and transcribe faster.
     [ObservableProperty]
     private string _voiceModelName = "large-v3-turbo";
 
-    /// <summary>Sentinel item in the transcription-model dropdown (AC-68) that reveals a free-text box for any ggml
-    /// name not in the curated list — quantized variants like <c>large-v3-turbo-q5_0</c>, or a model added later.</summary>
+    // Sentinel item in the transcription-model dropdown (AC-68) that reveals a free-text box for any ggml
+    // name not in the curated list — quantized variants like `large-v3-turbo-q5_0`, or a model added later.
     public const string CustomModelChoice = "Custom…";
 
-    /// <summary>Curated Whisper models offered by the Options → Voice → Transcribe dropdown (AC-68), each with a short
-    /// accuracy-vs-load hint. Prefixed at runtime with an "Auto ★" recommendation and suffixed with <see cref="CustomModelChoice"/>.</summary>
+    // Curated Whisper models offered by the Options → Voice → Transcribe dropdown (AC-68), each with a short
+    // accuracy-vs-load hint. Prefixed at runtime with an "Auto ★" recommendation and suffixed with `CustomModelChoice`.
     private static readonly IReadOnlyList<TranscriptionModelOption> _curatedModels =
     [
         new("large-v3-turbo", "most accurate · heaviest"),
@@ -1354,49 +1285,49 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         new(CustomModelChoice, "enter any ggml name", IsCustom: true),
     ];
 
-    /// <summary>Items for the model dropdown (AC-68): an "Auto ★" recommendation (when an advisor is present), then the
-    /// curated models, then "Custom…". Built once at construction — the recommendation is fixed for the session.</summary>
+    // Items for the model dropdown (AC-68): an "Auto ★" recommendation (when an advisor is present), then the
+    // curated models, then "Custom…". Built once at construction — the recommendation is fixed for the session.
     public ObservableCollection<TranscriptionModelOption> TranscriptionModelChoices { get; } = new();
 
-    /// <summary>The per-machine recommendation (AC-68 slice 2); null in the design-time/test graph with no advisor.</summary>
+    // The per-machine recommendation (AC-68 slice 2); null in the design-time/test graph with no advisor.
     private TranscriptionRecommendation? _transcriptionRecommendation;
 
-    /// <summary>Whether the model dropdown is on the "Auto ★" item — persisted as <see cref="Cockpit.Core.Voice.VoiceSettings.ModelAutoSelected"/>.</summary>
+    // Whether the model dropdown is on the "Auto ★" item — persisted as `Cockpit.Core.Voice.VoiceSettings.ModelAutoSelected`.
     private bool _transcriptionModelAuto;
 
-    /// <summary>Selected item in the transcription-model dropdown (AC-68) — the "Auto ★" recommendation, a curated
-    /// model, or the "Custom…" sentinel. Drives <see cref="VoiceModelName"/> and toggles <see cref="IsTranscriptionModelCustom"/>.</summary>
+    // Selected item in the transcription-model dropdown (AC-68) — the "Auto ★" recommendation, a curated
+    // model, or the "Custom…" sentinel. Drives `VoiceModelName` and toggles `IsTranscriptionModelCustom`.
     [ObservableProperty]
     private TranscriptionModelOption? _selectedTranscriptionModel;
 
-    /// <summary>True when the model dropdown is on "Custom…" (AC-68), revealing the free-text box bound to <see cref="VoiceCustomModelName"/>.</summary>
+    // True when the model dropdown is on "Custom…" (AC-68), revealing the free-text box bound to `VoiceCustomModelName`.
     [ObservableProperty]
     private bool _isTranscriptionModelCustom;
 
-    /// <summary>Free-text ggml model entered when the dropdown is on "Custom…" (AC-68); mirrored into <see cref="VoiceModelName"/> while custom is active.</summary>
+    // Free-text ggml model entered when the dropdown is on "Custom…" (AC-68); mirrored into `VoiceModelName` while custom is active.
     [ObservableProperty]
     private string _voiceCustomModelName = string.Empty;
 
-    /// <summary>Host-aware Whisper backend choices offered by the Options → Voice → Transcribe combo box (AC-68).
-    /// Built from <see cref="ITranscriptionAdvisor"/>: always Auto and CPU, plus a single GPU option only when a GPU
-    /// runtime actually loads here — so a non-NVIDIA machine is never offered CUDA.</summary>
+    // Host-aware Whisper backend choices offered by the Options → Voice → Transcribe combo box (AC-68).
+    // Built from `ITranscriptionAdvisor`: always Auto and CPU, plus a single GPU option only when a GPU
+    // runtime actually loads here — so a non-NVIDIA machine is never offered CUDA.
     public ObservableCollection<VoiceBackendPreferenceOption> VoiceBackendPreferences { get; } = new();
 
     [ObservableProperty]
     private VoiceBackendPreferenceOption _selectedVoiceBackendPreference = new("Auto (recommended)", VoiceBackendPreference.Auto);
 
-    /// <summary>One-line explanation of what the chosen transcription backend does on this machine (AC-68); recomputed
-    /// when the selection changes. Slice 2 makes the Auto recommendation hardware-aware and richer.</summary>
+    // One-line explanation of what the chosen transcription backend does on this machine (AC-68); recomputed
+    // when the selection changes. Slice 2 makes the Auto recommendation hardware-aware and richer.
     [ObservableProperty]
     private string _transcriptionAdvice = string.Empty;
 
-    /// <summary>A short badge line describing the detected transcription hardware (AC-68), e.g. "Vulkan GPU available"
-    /// or "No GPU acceleration detected — CPU only". Slice 2 adds GPU brand and display-adapter facts.</summary>
+    // A short badge line describing the detected transcription hardware (AC-68), e.g. "Vulkan GPU available"
+    // or "No GPU acceleration detected — CPU only". Slice 2 adds GPU brand and display-adapter facts.
     [ObservableProperty]
     private string _transcriptionHardware = string.Empty;
 
-    /// <summary>Builds the host-aware backend list and the initial model/advice state (AC-68). Called from both
-    /// constructors; without an advisor (design-time/tests) it offers Auto + CPU only.</summary>
+    // Builds the host-aware backend list and the initial model/advice state (AC-68). Called from both
+    // constructors; without an advisor (design-time/tests) it offers Auto + CPU only.
     private void _InitVoiceTranscriptionOptions()
     {
         var capabilities = _transcriptionAdvisor?.DetectCapabilities() ?? TranscriptionCapabilities.CpuOnly;
@@ -1433,8 +1364,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _UpdateTranscriptionAdvice();
     }
 
-    /// <summary>Recomputes the one-line advice (AC-68). For "Auto" the recommendation's reason is the richest
-    /// explanation (why CPU on a single GPU that draws the screen); an explicit CPU/GPU choice gets the generic note.</summary>
+    // Recomputes the one-line advice (AC-68). For "Auto" the recommendation's reason is the richest
+    // explanation (why CPU on a single GPU that draws the screen); an explicit CPU/GPU choice gets the generic note.
     private void _UpdateTranscriptionAdvice()
     {
         if (SelectedVoiceBackendPreference.Value is VoiceBackendPreference.Auto && _transcriptionRecommendation is { } recommendation)
@@ -1449,8 +1380,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     partial void OnSelectedVoiceBackendPreferenceChanged(VoiceBackendPreferenceOption value) => _UpdateTranscriptionAdvice();
 
-    /// <summary>Maps the dropdown selection to the effective model (AC-68): "Custom…" reveals the free-text box and
-    /// uses its value, any curated model is used directly.</summary>
+    // Maps the dropdown selection to the effective model (AC-68): "Custom…" reveals the free-text box and
+    // uses its value, any curated model is used directly.
     partial void OnSelectedTranscriptionModelChanged(TranscriptionModelOption? value)
     {
         if (value is null)
@@ -1487,7 +1418,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>While the model dropdown is on "Custom…" (AC-68), keeps the effective model in sync with the box.</summary>
+    // While the model dropdown is on "Custom…" (AC-68), keeps the effective model in sync with the box.
     partial void OnVoiceCustomModelNameChanged(string value)
     {
         if (IsTranscriptionModelCustom && !string.IsNullOrWhiteSpace(value))
@@ -1496,8 +1427,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Aligns the model dropdown/custom-box with the effective <see cref="VoiceModelName"/> (AC-68) — used
-    /// after loading so a saved custom model reopens in the "Custom…" state, and a preset reopens selected.</summary>
+    // Aligns the model dropdown/custom-box with the effective `VoiceModelName` (AC-68) — used
+    // after loading so a saved custom model reopens in the "Custom…" state, and a preset reopens selected.
     private void _SyncTranscriptionModelFromName()
     {
         // Auto ★ when the operator chose it and there is a recommendation item to point at.
@@ -1530,80 +1461,78 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private TranscriptionCalibration? _transcriptionCalibration;
     private CancellationTokenSource? _calibrationCts;
 
-    /// <summary>True while a calibration runs — shows the overlay and disables Run (AC-68).</summary>
+    // True while a calibration runs — shows the overlay and disables Run (AC-68).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRunCalibration))]
     private bool _isCalibrating;
 
-    /// <summary>The current step's text ("CPU: measuring… (2/3)", a result note, or an error) (AC-68).</summary>
+    // The current step's text ("CPU: measuring… (2/3)", a result note, or an error) (AC-68).
     [ObservableProperty]
     private string _calibrationStatus = string.Empty;
 
-    /// <summary>0..100 for the overlay bar while a step reports a real fraction (a model download); else indeterminate.</summary>
+    // 0..100 for the overlay bar while a step reports a real fraction (a model download); else indeterminate.
     [ObservableProperty]
     private double _calibrationProgressValue;
 
-    /// <summary>True when the current step has no honest percentage (loading, warming up, measuring) — the bar spins.</summary>
+    // True when the current step has no honest percentage (loading, warming up, measuring) — the bar spins.
     [ObservableProperty]
     private bool _calibrationProgressIndeterminate = true;
 
-    /// <summary>Whether measured results exist to show the comparison bars and verdict (AC-68).</summary>
+    // Whether measured results exist to show the comparison bars and verdict (AC-68).
     [ObservableProperty]
     private bool _hasCalibration;
 
-    /// <summary>One row per measured backend (CPU, GPU), fastest first — the comparison bars.</summary>
+    // One row per measured backend (CPU, GPU), fastest first — the comparison bars.
     public ObservableCollection<CalibrationResultRow> CalibrationResults { get; } = [];
 
-    /// <summary>Full-scale (ms) for the speed bars: the slowest backend, so the bars read relative to each other.</summary>
+    // Full-scale (ms) for the speed bars: the slowest backend, so the bars read relative to each other.
     [ObservableProperty]
     private double _calibrationSpeedMaxMs = 1;
 
-    /// <summary>Full-scale (ms) for the hitch bars, floored so a smooth result still shows a short bar.</summary>
+    // Full-scale (ms) for the hitch bars, floored so a smooth result still shows a short bar.
     [ObservableProperty]
     private double _calibrationHitchMaxMs = 32;
 
-    /// <summary>Which backend Auto runs on, in words ("Auto runs on GPU (Vulkan)") — so the resolved choice is visible (AC-68).</summary>
+    // Which backend Auto runs on, in words ("Auto runs on GPU (Vulkan)") — so the resolved choice is visible (AC-68).
     [ObservableProperty]
     private string _calibrationChosenText = string.Empty;
 
-    /// <summary>The model the backend comparison was timed with, so those numbers are read against a known model (AC-68).</summary>
+    // The model the backend comparison was timed with, so those numbers are read against a known model (AC-68).
     [ObservableProperty]
     private string _calibrationModelText = string.Empty;
 
-    /// <summary>Per-model measured rows on the chosen backend (AC-68) — the accuracy-vs-speed table.</summary>
+    // Per-model measured rows on the chosen backend (AC-68) — the accuracy-vs-speed table.
     public ObservableCollection<CalibrationModelRow> CalibrationModelResults { get; } = [];
 
-    /// <summary>Full-scale (ms) for the model bars: the slowest measured model.</summary>
+    // Full-scale (ms) for the model bars: the slowest measured model.
     [ObservableProperty]
     private double _calibrationModelMaxMs = 1;
 
-    /// <summary>The model the verdict suggests, in words ("Suggested model: small") (AC-68).</summary>
+    // The model the verdict suggests, in words ("Suggested model: small") (AC-68).
     [ObservableProperty]
     private string _calibrationModelRecommendation = string.Empty;
 
-    /// <summary>Why that model is suggested (AC-68).</summary>
+    // Why that model is suggested (AC-68).
     [ObservableProperty]
     private string _calibrationModelAdvice = string.Empty;
 
-    /// <summary>Whether a measured model ladder exists to show its table (AC-68).</summary>
+    // Whether a measured model ladder exists to show its table (AC-68).
     [ObservableProperty]
     private bool _hasModelLadder;
 
-    /// <summary>The verdict's one-line reasoning (AC-68).</summary>
+    // The verdict's one-line reasoning (AC-68).
     [ObservableProperty]
     private string _calibrationRationale = string.Empty;
 
-    /// <summary>Calibration needs the model, so it can run only when voice is on and a calibrator is present (AC-68).</summary>
+    // Calibration needs the model, so it can run only when voice is on and a calibrator is present (AC-68).
     public bool CanRunCalibration => _transcriptionCalibrator is not null && VoiceEnabled && !IsCalibrating;
 
-    /// <summary>Whether the "Run calibration" affordance is offered at all — only in a graph that has a calibrator.</summary>
+    // Whether the "Run calibration" affordance is offered at all — only in a graph that has a calibrator.
     public bool ShowCalibration => _transcriptionCalibrator is not null;
 
-    /// <summary>
-    /// Measures every backend this machine can use — the CPU and, if a GPU runtime loads, the GPU — each in its own
-    /// child process, then picks one with a CPU preference and remembers it (AC-68). A failed measurement is reported
-    /// on the status line, never thrown into the dialog.
-    /// </summary>
+    // Measures every backend this machine can use — the CPU and, if a GPU runtime loads, the GPU — each in its own
+    // child process, then picks one with a CPU preference and remembers it (AC-68). A failed measurement is reported
+    // on the status line, never thrown into the dialog.
     [RelayCommand]
     private async Task RunCalibrationAsync()
     {
@@ -1651,8 +1580,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Cancels a running calibration — the blocking overlay's escape hatch, so a wedged child (a stalled
-    /// download, a native load that hangs) can never trap the operator behind it (AC-68).</summary>
+    // Cancels a running calibration — the blocking overlay's escape hatch, so a wedged child (a stalled
+    // download, a native load that hangs) can never trap the operator behind it (AC-68).
     [RelayCommand]
     private void CancelCalibration() => _calibrationCts?.Cancel();
 
@@ -1726,7 +1655,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ => backend.ToString(),
     };
 
-    /// <summary>Selectable dictation languages for speech-to-text — "Auto-detect" plus common fixed languages. A fixed language beats detection when you always dictate in one tongue (Options flyout combo).</summary>
+    // Selectable dictation languages for speech-to-text — "Auto-detect" plus common fixed languages. A fixed language beats detection when you always dictate in one tongue (Options flyout combo).
     public IReadOnlyList<SttLanguageOption> SttLanguages { get; } =
     [
         new("Auto-detect", "auto"),
@@ -1740,89 +1669,77 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private SttLanguageOption _selectedSttLanguage = new("Auto-detect", "auto");
 
-    /// <summary>Input (microphone) devices offered by the Options combo box; the first entry is the system default. Refreshed from the audio backend when the voice settings load.</summary>
+    // Input (microphone) devices offered by the Options combo box; the first entry is the system default. Refreshed from the audio backend when the voice settings load.
     public ObservableCollection<AudioDeviceOption> InputDevices { get; } = new() { new("System default", null) };
 
     [ObservableProperty]
     private AudioDeviceOption _selectedInputDevice = new("System default", null);
 
-    /// <summary>Output (playback) devices for read-aloud (#35); the first entry is the system default.</summary>
+    // Output (playback) devices for read-aloud (#35); the first entry is the system default.
     public ObservableCollection<AudioDeviceOption> OutputDevices { get; } = new() { new("System default", null) };
 
     [ObservableProperty]
     private AudioDeviceOption _selectedOutputDevice = new("System default", null);
 
-    /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
+    // Avalonia `Key` enum name for the push-to-talk hotkey, e.g. "F9".
     [ObservableProperty]
     private string _voicePushToTalkKeyName = "F9";
 
-    /// <summary>
-    /// When true, the push-to-talk hotkey also fires while the cockpit window has no focus (#34), via
-    /// <c>VoicePushToTalkCoordinator</c>. Off by default — opt-in like voice itself.
-    /// </summary>
+    // When true, the push-to-talk hotkey also fires while the cockpit window has no focus (#34), via
+    // `VoicePushToTalkCoordinator`. Off by default — opt-in like voice itself.
     [ObservableProperty]
     private bool _voiceGlobalPushToTalk;
 
-    /// <summary>
-    /// Shown next to global push-to-talk on Linux once the operator has saved a change to it (#34): there the
-    /// hotkey is a desktop-portal binding the compositor only picks up at startup, so unlike on Windows — where
-    /// <c>VoicePushToTalkCoordinator</c> re-arms it live — the change takes effect only after a restart. The label
-    /// says so; this drives the "Restart now" button beside it.
-    /// </summary>
+    // Shown next to global push-to-talk on Linux once the operator has saved a change to it (#34): there the
+    // hotkey is a desktop-portal binding the compositor only picks up at startup, so unlike on Windows — where
+    // `VoicePushToTalkCoordinator` re-arms it live — the change takes effect only after a restart. The label
+    // says so; this drives the "Restart now" button beside it.
     [ObservableProperty]
     private bool _voiceGlobalPushToTalkNeedsRestart;
 
-    /// <summary>The global push-to-talk value this process actually armed with at startup — the baseline the save
-    /// compares against, so toggling it and back leaves nothing to restart for. Null until first loaded.</summary>
+    // The global push-to-talk value this process actually armed with at startup — the baseline the save
+    // compares against, so toggling it and back leaves nothing to restart for. Null until first loaded.
     private bool? _voiceGlobalPushToTalkRunning;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice"/>. When true a finished transcript is submitted straight after injection instead of waiting for a manual send. Off by default.</summary>
+    // Mirrors `Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice`. When true a finished transcript is submitted straight after injection instead of waiting for a manual send. Off by default.
     [ObservableProperty]
     private bool _voiceAutoSubmit;
 
-    /// <summary>
-    /// What the global hotkey is really triggered by, in the words of whoever bound it — or why nothing is. Read
-    /// back rather than assumed: under Wayland the compositor owns the binding and the key above is a hint it may
-    /// ignore, and on macOS there is no implementation at all. Empty while global push-to-talk is off.
-    /// </summary>
+    // What the global hotkey is really triggered by, in the words of whoever bound it — or why nothing is. Read
+    // back rather than assumed: under Wayland the compositor owns the binding and the key above is a hint it may
+    // ignore, and on macOS there is no implementation at all. Empty while global push-to-talk is off.
     [ObservableProperty]
     private string _voiceGlobalHotkeyTrigger = string.Empty;
 
-    /// <summary>
-    /// Mirrors <see cref="Cockpit.Core.Screenshots.ScreenshotSettings.GlobalHotkeyEnabled"/> (AC-220): whether the
-    /// screenshot key fires while the cockpit has no focus. Off by default — a desktop-wide key is taken from
-    /// every other application, so it is the operator's to grant. The composer button works either way.
-    /// </summary>
+    // Mirrors `Cockpit.Core.Screenshots.ScreenshotSettings.GlobalHotkeyEnabled` (AC-220): whether the
+    // screenshot key fires while the cockpit has no focus. Off by default — a desktop-wide key is taken from
+    // every other application, so it is the operator's to grant. The composer button works either way.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
     private bool _screenshotGlobalHotkeyEnabled;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Screenshots.ScreenshotSettings.HotkeyKeyName"/> — the Avalonia <c>Key</c> name for the screenshot hotkey, e.g. "F8".</summary>
+    // Mirrors `Cockpit.Core.Screenshots.ScreenshotSettings.HotkeyKeyName` — the Avalonia `Key` name for the screenshot hotkey, e.g. "F8".
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
     private string _screenshotHotkeyKeyName = "F8";
 
-    /// <summary>What the screenshot hotkey is really triggered by, in the words of whoever bound it. Read back for the same reason push-to-talk's is; empty while the key is off.</summary>
+    // What the screenshot hotkey is really triggered by, in the words of whoever bound it. Read back for the same reason push-to-talk's is; empty while the key is off.
     [ObservableProperty]
     private string _screenshotHotkeyTrigger = string.Empty;
 
-    /// <summary>
-    /// Mirrors <see cref="Cockpit.Core.Screenshots.ScreenshotSettings.PreviewEnabled"/> (AC-566): whether
-    /// confirming a selection opens a preview of the exact image before it is sent, instead of injecting it
-    /// straight away. Off by default — not everyone wants the extra window.
-    /// </summary>
+    // Mirrors `Cockpit.Core.Screenshots.ScreenshotSettings.PreviewEnabled` (AC-566): whether
+    // confirming a selection opens a preview of the exact image before it is sent, instead of injecting it
+    // straight away. Off by default — not everyone wants the extra window.
     [ObservableProperty]
     private bool _screenshotPreviewEnabled;
 
-    /// <summary>
-    /// Names two desktop-wide keys that want the same key, or empty when there is no clash (AC-220). Shown live
-    /// while the operator is typing a key rather than after saving, since after saving one of the two features
-    /// has already silently stopped working — which is the whole failure this exists to prevent.
-    /// </summary>
+    // Names two desktop-wide keys that want the same key, or empty when there is no clash (AC-220). Shown live
+    // while the operator is typing a key rather than after saving, since after saving one of the two features
+    // has already silently stopped working — which is the whole failure this exists to prevent.
     public string HotkeyConflict =>
         GlobalHotkeyConflictCheck.Describe(_ConfiguredGlobalHotkeys()) ?? string.Empty;
 
-    /// <summary>The bindings as the settings screen currently reads — what would be armed if it were saved now.</summary>
+    // The bindings as the settings screen currently reads — what would be armed if it were saved now.
     private IReadOnlyList<GlobalHotkeyBinding> _ConfiguredGlobalHotkeys()
     {
         var bindings = new List<GlobalHotkeyBinding>();
@@ -1858,7 +1775,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ScreenshotPreviewEnabled = settings.PreviewEnabled;
     }
 
-    /// <summary>Persists the screenshot settings edited in Options (AC-220). Re-arming is <c>GlobalHotkeyCoordinator</c>'s, driven by the same saved event push-to-talk uses.</summary>
+    // Persists the screenshot settings edited in Options (AC-220). Re-arming is `GlobalHotkeyCoordinator`'s, driven by the same saved event push-to-talk uses.
     [RelayCommand]
     private async Task SaveScreenshotSettingsAsync()
     {
@@ -1875,23 +1792,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         });
     }
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudWhenSpeaking"/> (AC-9). Off by default — the threshold cannot tell your voice from the cockpit's own coming out of a speaker.</summary>
+    // Mirrors `Cockpit.Core.Voice.VoiceSettings.StopReadAloudWhenSpeaking` (AC-9). Off by default — the threshold cannot tell your voice from the cockpit's own coming out of a speaker.
     [ObservableProperty]
     private bool _voiceStopReadAloudWhenSpeaking;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudLevelThreshold"/>. Decimal because that is what NumericUpDown binds.</summary>
+    // Mirrors `Cockpit.Core.Voice.VoiceSettings.StopReadAloudLevelThreshold`. Decimal because that is what NumericUpDown binds.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(VoiceStopReadAloudThresholdValue))]
     private decimal _voiceStopReadAloudLevelThreshold = 0.15m;
 
-    /// <summary>The barge-in threshold as a 0..1 double, for the <c>MicLevelMeter</c> marker (the setting itself is a decimal so NumericUpDown can bind it).</summary>
+    // The barge-in threshold as a 0..1 double, for the `MicLevelMeter` marker (the setting itself is a decimal so NumericUpDown can bind it).
     public double VoiceStopReadAloudThresholdValue => (double)VoiceStopReadAloudLevelThreshold;
 
-    /// <summary>Two-way bound to the "Test microphone" toggle; flipping it starts/stops a live level meter for setting the barge-in threshold by eye (AC-9).</summary>
+    // Two-way bound to the "Test microphone" toggle; flipping it starts/stops a live level meter for setting the barge-in threshold by eye (AC-9).
     [ObservableProperty]
     private bool _isTestingMic;
 
-    /// <summary>Live microphone level (0..1 RMS) during the mic test, driving the <c>MicLevelMeter</c> fill.</summary>
+    // Live microphone level (0..1 RMS) during the mic test, driving the `MicLevelMeter` fill.
     [ObservableProperty]
     private double _micTestLevel;
 
@@ -1948,7 +1865,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Stops the mic test and releases the microphone. Called from the dialog's close handler so it never stays open.</summary>
+    // Stops the mic test and releases the microphone. Called from the dialog's close handler so it never stays open.
     public void StopMicTest()
     {
         if (IsTestingMic)
@@ -1957,19 +1874,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicSilenceTimeoutMs"/>: trailing silence (ms) that ends an open-mic utterance. Tunable.</summary>
+    // Mirrors `Cockpit.Core.Voice.VoiceSettings.OpenMicSilenceTimeoutMs`: trailing silence (ms) that ends an open-mic utterance. Tunable.
     [ObservableProperty]
     private int _voiceOpenMicSilenceTimeoutMs = 800;
 
-    /// <summary>The open-mic coordinator, wired at startup, exposing the runtime on/off toggle bound to the sidebar mic button (open-mic is turned on/off live, not via a settings checkbox).</summary>
+    // The open-mic coordinator, wired at startup, exposing the runtime on/off toggle bound to the sidebar mic button (open-mic is turned on/off live, not via a settings checkbox).
     [ObservableProperty]
     private OpenMicCoordinator? _openMic;
 
-    /// <summary>
-    /// The screenshot coordinator, wired at startup (AC-220). Held so every session panel can be handed the
-    /// capture its composer button runs, and so a platform that cannot capture at all is said once rather than
-    /// discovered per button.
-    /// </summary>
+    // The screenshot coordinator, wired at startup (AC-220). Held so every session panel can be handed the
+    // capture its composer button runs, and so a platform that cannot capture at all is said once rather than
+    // discovered per button.
     [ObservableProperty]
     private ScreenshotCoordinator? _screenshots;
 
@@ -1986,12 +1901,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Wires every session again once the platform has finished saying whether it can capture (AC-326). On Linux
-    /// that answer is a D-Bus round trip and this property is assigned in the same statement that builds the
-    /// coordinator, so the pass above always reads "cannot" — and every session already open at startup would
-    /// keep a greyed-out button for the rest of the run.
-    /// </summary>
+    // Wires every session again once the platform has finished saying whether it can capture (AC-326). On Linux
+    // that answer is a D-Bus round trip and this property is assigned in the same statement that builds the
+    // coordinator, so the pass above always reads "cannot" — and every session already open at startup would
+    // keep a greyed-out button for the rest of the run.
     private async Task _RewireScreenshotsWhenSupportSettlesAsync(ScreenshotCoordinator screenshots)
     {
         await screenshots.SupportSettled.ConfigureAwait(true);
@@ -2002,7 +1915,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Hands a session panel the capture behind its composer button — and, where the platform has none, the sentence that says so.</summary>
+    // Hands a session panel the capture behind its composer button — and, where the platform has none, the sentence that says so.
     private void _WireScreenshots(SessionPanelViewModel session)
     {
         if (Screenshots is not { } screenshots)
@@ -2017,24 +1930,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.NotifyScreenshotWiringChanged();
     }
 
-    /// <summary>Selectable read-aloud voices (#35) offered by the Options flyout combo box — SupertonicTTS speaker choices.</summary>
+    // Selectable read-aloud voices (#35) offered by the Options flyout combo box — SupertonicTTS speaker choices.
     public IReadOnlyList<TtsVoiceOption> TtsVoices => TtsVoiceCatalog.Voices;
 
-    /// <summary>
-    /// Speaks one sample sentence in the selected voice and language, so the operator can hear a voice before
-    /// settling on it. A no-op when no playback queue is wired (design-time, tests).
-    /// </summary>
-    /// <remarks>
-    /// AC-546 removed the old "Test read-aloud" button along with the read-aloud modes it previewed, and that went
-    /// one step too far: what the button rendered (Verbatim / Naturalized / Summarized) is gone, but "let me hear
-    /// this voice first" is a different question and the catalogue now offers ten speakers instead of two. Picking
-    /// one of ten by name alone is picking blind.
-    /// <para>
-    /// Deliberately not routed through the session read-aloud path: there is no session here, nothing to extract
-    /// prose from, and no barge-in to lose a batch to — one fixed sentence straight onto the queue is the whole of
-    /// it. Stops current playback first, so pressing it twice replaces the sample rather than queueing a second.
-    /// </para>
-    /// </remarks>
+    // Speaks one sample sentence in the selected voice and language, so the operator can hear a voice before
+    // settling on it. A no-op when no playback queue is wired (design-time, tests).
+    // AC-546 removed the old "Test read-aloud" button along with the read-aloud modes it previewed, and that went
+    // one step too far: what the button rendered (Verbatim / Naturalized / Summarized) is gone, but "let me hear
+    // this voice first" is a different question and the catalogue now offers ten speakers instead of two. Picking
+    // one of ten by name alone is picking blind.
+    //
+    // Deliberately not routed through the session read-aloud path: there is no session here, nothing to extract
+    // prose from, and no barge-in to lose a batch to — one fixed sentence straight onto the queue is the whole of
+    // it. Stops current playback first, so pressing it twice replaces the sample rather than queueing a second.
     [RelayCommand]
     private void PreviewVoice()
     {
@@ -2057,11 +1965,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? "Dit is de stem waarmee de assistent je antwoord voorleest."
             : "This is the voice the assistant reads your answer in.";
 
-    /// <summary>SupertonicTTS speaker used for read-aloud (#35). One multilingual model voices both languages; the model downloads lazily on first use, the same as the Whisper model.</summary>
+    // SupertonicTTS speaker used for read-aloud (#35). One multilingual model voices both languages; the model downloads lazily on first use, the same as the Whisper model.
     [ObservableProperty]
     private TtsVoiceOption _selectedTtsVoice = TtsVoiceCatalog.Default;
 
-    /// <summary>Preferred read-aloud base language (#35): the voice leans to it and unmarked text speaks in it, keeping foreign terms in their language. English or Dutch — the two the voice handles here.</summary>
+    // Preferred read-aloud base language (#35): the voice leans to it and unmarked text speaks in it, keeping foreign terms in their language. English or Dutch — the two the voice handles here.
     public IReadOnlyList<SttLanguageOption> ReadAloudLanguages { get; } =
     [
         new("English", "en"),
@@ -2074,13 +1982,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _voiceSettingsStatus = string.Empty;
 
-    /// <summary>
-    /// True on Linux, where the physical key for global push-to-talk is bound by the desktop's own
-    /// Shortcuts settings rather than configurable in-app (#34) — drives the Options-flyout hint text.
-    /// </summary>
+    // True on Linux, where the physical key for global push-to-talk is bound by the desktop's own
+    // Shortcuts settings rather than configurable in-app (#34) — drives the Options-flyout hint text.
     public bool IsLinuxPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
 
-    /// <summary>Pushes the timestamp toggle to every open session as it changes, so the switch takes effect live.</summary>
+    // Pushes the timestamp toggle to every open session as it changes, so the switch takes effect live.
     partial void OnShowTimestampsChanged(bool value)
     {
         foreach (var session in Sessions)
@@ -2097,7 +2003,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     partial void OnShowUsagePillWeeklyChanged(bool value) => ApplyUsagePillFields();
 
-    /// <summary>The chosen usage-pill fields in display order, composed from the four toggles.</summary>
+    // The chosen usage-pill fields in display order, composed from the four toggles.
     private IReadOnlyList<UsagePillField> ComposeUsagePillFields()
     {
         var fields = new List<UsagePillField>();
@@ -2124,7 +2030,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return fields;
     }
 
-    /// <summary>Pushes the usage-pill field selection to every open session as a toggle changes, so it takes effect live.</summary>
+    // Pushes the usage-pill field selection to every open session as a toggle changes, so it takes effect live.
     private void ApplyUsagePillFields()
     {
         var fields = ComposeUsagePillFields();
@@ -2134,7 +2040,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Pushes the auto-close-on-exit toggle to every open session as it changes.</summary>
+    // Pushes the auto-close-on-exit toggle to every open session as it changes.
     partial void OnAutoCloseOnExitChanged(bool value)
     {
         foreach (var session in Sessions)
@@ -2143,7 +2049,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Pushes the combine-queued-messages toggle to every open SDK/chat session as it changes (AC-145); TTY sessions have no send queue.</summary>
+    // Pushes the combine-queued-messages toggle to every open SDK/chat session as it changes (AC-145); TTY sessions have no send queue.
     partial void OnCombineQueuedMessagesChanged(bool value)
     {
         foreach (var session in Sessions)
@@ -2155,7 +2061,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Keeps each session's <see cref="SessionViewModel.IsSelected"/> in sync with the active selection.</summary>
+    // Pushes the operator's wake decision to the coordinator as it changes (AC-615). Live rather than read at
+    // session start: turning wakes off has to reach the sessions that are already open, which is the case the
+    // operator is most likely to be reaching for the toggle in.
+    partial void OnWakeAgentsByDefaultChanged(bool value) => _agentCoordinator?.SetDefaultWakeConsent(value);
+
+    // Keeps each session's `SessionViewModel.IsSelected` in sync with the active selection.
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
     {
         if (oldValue is not null)
@@ -2171,12 +2082,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         RefreshPaneVisibility();
     }
 
-    /// <summary>
-    /// Sets each session's <see cref="SessionPanelViewModel.IsPaneVisible"/> for the current layout: all
-    /// visible in the multi-session grid, only the selected one in single-pane mode (#24 / Zoom). Driven
-    /// from C# on every selection/layout change rather than a per-item XAML binding, so the one live grid
-    /// reliably shows exactly one panel in single-pane mode instead of stacking them.
-    /// </summary>
+    // Sets each session's `SessionPanelViewModel.IsPaneVisible` for the current layout: all
+    // visible in the multi-session grid, only the selected one in single-pane mode (#24 / Zoom). Driven
+    // from C# on every selection/layout change rather than a per-item XAML binding, so the one live grid
+    // reliably shows exactly one panel in single-pane mode instead of stacking them.
     private void RefreshPaneVisibility()
     {
         var single = ShowSinglePane;
@@ -2186,13 +2095,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Whether a session belongs on the workspace now showing. Two Sessions workspaces are separate desks, so
-    /// each shows only its own — but the sessions of the others keep running: they are hidden, never removed
-    /// from <see cref="Sessions"/>. That distinction is the whole point. Rebinding the grid to a filtered list
-    /// would rebuild the panes, which is what cost a dragged TTY its pty on 2026-07-13; gating visibility
-    /// leaves every view (and pty) built exactly once, the same way the single-pane layout already works.
-    /// </summary>
+    // Whether a session belongs on the workspace now showing. Two Sessions workspaces are separate desks, so
+    // each shows only its own — but the sessions of the others keep running: they are hidden, never removed
+    // from `Sessions`. That distinction is the whole point. Rebinding the grid to a filtered list
+    // would rebuild the panes, which is what cost a dragged TTY its pty on 2026-07-13; gating visibility
+    // leaves every view (and pty) built exactly once, the same way the single-pane layout already works.
     private bool BelongsToActiveWorkspace(SessionPanelViewModel session)
     {
         // Asked before the no-active-workspace shortcut below, which answers "true" — the assistant has no desk
@@ -2219,14 +2126,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) == active.Id;
     }
 
-    /// <summary>
-    /// The sessions on the workspace now showing, in the sidebar's own order — what the strip lists, so it never
-    /// offers a session the grid is hiding. Reads from <see cref="_sidebarOrder"/> (reconciled on access) rather
-    /// than from <see cref="Sessions"/>, so a drag-reorder of the strip leaves the grid's tiles where they are.
-    /// Returns the same <see cref="_visibleSessions"/> instance on every call — <see cref="_SyncVisibleSessions"/>
-    /// updates it with the minimal Add/Remove/Move rather than rebuilding it, which is what lets the sidebar's
-    /// ItemsControl keep an unrelated row's container (and any popup open on it) alive across the change.
-    /// </summary>
+    // The sessions on the workspace now showing, in the sidebar's own order — what the strip lists, so it never
+    // offers a session the grid is hiding. Reads from `_sidebarOrder` (reconciled on access) rather
+    // than from `Sessions`, so a drag-reorder of the strip leaves the grid's tiles where they are.
+    // Returns the same `_visibleSessions` instance on every call — `_SyncVisibleSessions`
+    // updates it with the minimal Add/Remove/Move rather than rebuilding it, which is what lets the sidebar's
+    // ItemsControl keep an unrelated row's container (and any popup open on it) alive across the change.
     public IEnumerable<SessionPanelViewModel> VisibleSessions
     {
         get
@@ -2236,12 +2141,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Brings <see cref="_sidebarOrder"/> back in line with <see cref="Sessions"/>: drops sessions that have
-    /// closed and appends any that appeared, keeping the operator's chosen order for everything already tracked.
-    /// Idempotent and cheap (a handful of sessions), so it is safe to run on every <see cref="VisibleSessions"/>
-    /// read — no dependency on when <see cref="Sessions"/>'s change event happens to fire.
-    /// </summary>
+    // Brings `_sidebarOrder` back in line with `Sessions`: drops sessions that have
+    // closed and appends any that appeared, keeping the operator's chosen order for everything already tracked.
+    // Idempotent and cheap (a handful of sessions), so it is safe to run on every `VisibleSessions`
+    // read — no dependency on when `Sessions`'s change event happens to fire.
     private void _ReconcileSidebarOrder()
     {
         _sidebarOrder.RemoveAll(session => !Sessions.Contains(session));
@@ -2254,26 +2157,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Reconciles <see cref="_sidebarOrder"/>, then brings <see cref="_visibleSessions"/> — the collection the
-    /// sidebar's ItemsControl is actually bound to — in line with it, filtered to the active workspace. Diffs
-    /// against the target order rather than clearing and re-adding: a session already at the right slot is left
-    /// untouched, one that only moved gets a single in-place <see cref="ObservableCollection{T}.Move"/> (which
-    /// Avalonia's ItemsControl honours by relocating the existing row container, not discarding it), and only a
-    /// session that closed or just became visible costs a Remove/Insert. That distinction is AC-561: a full
-    /// clear-and-rebuild tears down every row's container on any change, including one sitting under an open
-    /// ContextMenu it had nothing to do with, and Avalonia's own ControlDetachedFromVisualTree handler quietly
-    /// closes that popup.
-    /// <para>
-    /// Mutates <see cref="_visibleSessions"/> as a side effect of a property read, which the old fresh-<c>List</c>
-    /// shape made harmless to call reentrantly — this one is not: an Add/Remove/Move fires
-    /// <see cref="ObservableCollection{T}.CollectionChanged"/> synchronously, and a second subscriber that reads
-    /// <see cref="VisibleSessions"/> (or anything else that calls this) from inside that handler would re-enter
-    /// mid-diff and throw "Cannot change ObservableCollection during a CollectionChanged event". <see cref="_syncing"/>
-    /// turns that into a no-op instead: the outer call is already bringing the collection up to date, so a nested
-    /// call has nothing left to do.
-    /// </para>
-    /// </summary>
+    // Reconciles `_sidebarOrder`, then brings `_visibleSessions` — the collection the
+    // sidebar's ItemsControl is actually bound to — in line with it, filtered to the active workspace. Diffs
+    // against the target order rather than clearing and re-adding: a session already at the right slot is left
+    // untouched, one that only moved gets a single in-place `ObservableCollection{T}.Move` (which
+    // Avalonia's ItemsControl honours by relocating the existing row container, not discarding it), and only a
+    // session that closed or just became visible costs a Remove/Insert. That distinction is AC-561: a full
+    // clear-and-rebuild tears down every row's container on any change, including one sitting under an open
+    // ContextMenu it had nothing to do with, and Avalonia's own ControlDetachedFromVisualTree handler quietly
+    // closes that popup.
+    //
+    // Mutates `_visibleSessions` as a side effect of a property read, which the old fresh-`List`
+    // shape made harmless to call reentrantly — this one is not: an Add/Remove/Move fires
+    // `ObservableCollection{T}.CollectionChanged` synchronously, and a second subscriber that reads
+    // `VisibleSessions` (or anything else that calls this) from inside that handler would re-enter
+    // mid-diff and throw "Cannot change ObservableCollection during a CollectionChanged event". `_syncing`
+    // turns that into a no-op instead: the outer call is already bringing the collection up to date, so a nested
+    // call has nothing left to do.
     private bool _syncing;
 
     private void _SyncVisibleSessions()
@@ -2327,12 +2227,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Ties the session content to the strip: which workspace is active decides which panes belong on screen
-    /// and whether the session grid applies at all. Called from both constructors, right after
-    /// <see cref="Workspaces"/> is built — the design-time/test graph needs this exactly as much as the real
-    /// one, and wiring it in only one of them is how the two quietly drift apart.
-    /// </summary>
+    // Ties the session content to the strip: which workspace is active decides which panes belong on screen
+    // and whether the session grid applies at all. Called from both constructors, right after
+    // `Workspaces` is built — the design-time/test graph needs this exactly as much as the real
+    // one, and wiring it in only one of them is how the two quietly drift apart.
     private void _WireWorkspaceVisibility() =>
         Workspaces.PropertyChanged += (_, e) =>
         {
@@ -2389,18 +2287,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _InitVoiceTranscriptionOptions();
     }
 
-    /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
+    // The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.
     public SecurityOptionsViewModel Security { get; }
 
-    /// <summary>The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and read-replies-aloud.</summary>
+    // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and read-replies-aloud.
     public AssistantOptionsViewModel AssistantOptions { get; }
 
-    /// <summary>
-    /// The assistant chip at the bottom of the sidebar (AC-543). Set by the shell once
-    /// <c>AssistantIndicatorCoordinator</c> exists — that is what feeds it, since what the chip shows is joined
-    /// from three sources and the component itself deliberately knows about none of them. Null in the
-    /// design-time/unit-test graph, where the sidebar simply draws no chip.
-    /// </summary>
+    // The assistant chip at the bottom of the sidebar (AC-543). Set by the shell once
+    // `AssistantIndicatorCoordinator` exists — that is what feeds it, since what the chip shows is joined
+    // from three sources and the component itself deliberately knows about none of them. Null in the
+    // design-time/unit-test graph, where the sidebar simply draws no chip.
     [ObservableProperty]
     private AssistantIndicatorViewModel? _assistantIndicator;
 
@@ -2409,12 +2305,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void OnUnprotectedSecretsWritten(object? sender, EventArgs e) =>
         Dispatcher.UIThread.Post(() => _ = Security.RefreshAsync());
 
-    /// <summary>
-    /// Turns encryption on from the awareness banner (AC-41) and says how it went with a toast. The banner's
-    /// "Enable now" opens the password dialog in the view and hands the password here, so a success or a failure
-    /// is reported the same way however the migration was started. On failure the credentials are untouched — the
-    /// migration verifies itself before it publishes anything — so the message says exactly that.
-    /// </summary>
+    // Turns encryption on from the awareness banner (AC-41) and says how it went with a toast. The banner's
+    // "Enable now" opens the password dialog in the view and hands the password here, so a success or a failure
+    // is reported the same way however the migration was started. On failure the credentials are untouched — the
+    // migration verifies itself before it publishes anything — so the message says exactly that.
     public async Task EnableEncryptionFromBannerAsync(string password)
     {
         try
@@ -2432,7 +2326,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>The Debug tab's diagnostics panel (AC-58): render backend, memory, GC, platform and crash logs, as copyable text.</summary>
+    // The Debug tab's diagnostics panel (AC-58): render backend, memory, GC, platform and crash logs, as copyable text.
     public DiagnosticsViewModel Diagnostics { get; }
 
     public CockpitViewModel(
@@ -2503,6 +2397,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
         IAgentResourceClaims? agentClaims = null,
+        IAgentLineBudget? agentLineBudget = null,
+        IAgentNotifyAuditLog? agentNotifyTrail = null,
         IClaimCollisionMonitor? claimCollisionMonitor = null,
         SessionStateRecorder? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
@@ -2662,7 +2558,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator = agentCoordinator;
         _agentMessages = agentMessages;
         _agentClaims = agentClaims;
+        _agentLineBudget = agentLineBudget;
         _claimCollisionMonitor = claimCollisionMonitor;
+
+        // AC-397. Built here rather than injected, because it is only useful with all four stores present and this is
+        // the one place that holds them; a graph missing any of them gets the design-time shape, which says so in the
+        // window instead of drawing empty lists.
+        //
+        // Deliberately *not* given IWorkspaceAgentGateway, though that is where "who shares this desk" properly
+        // lives. That gateway is constructed from this view model, so depending on it here is a cycle — and a
+        // container follows it until the stack runs out, which is a crashed process rather than a failed resolve.
+        // The desk is worked out below from the same SessionWorkspacePlacement rule the gateway itself applies, so
+        // there is one rule and not two; what is duplicated is the call, not the decision.
+        AgentLineInspector = agentCoordinator is not null && agentClaims is not null && agentLineBudget is not null
+                && agentNotifyTrail is not null
+            ? new AgentLineInspectorViewModel(agentNotifyTrail, agentClaims, agentLineBudget, agentCoordinator)
+            : new AgentLineInspectorViewModel();
+        // Read fresh on every refresh rather than captured, because the desk follows the operator's selection.
+        AgentLineInspector.Desk = _SelectedSessionDesk;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
@@ -2821,7 +2734,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle;
     }
 
-    /// <summary>Persists the notification settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    // Persists the notification settings edited in the Options flyout to `cockpit.json`.
     [RelayCommand]
     private async Task SaveNotificationSettingsAsync()
     {
@@ -2863,7 +2776,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _RebuildActiveShortcuts();
     }
 
-    /// <summary>Persists the keyboard shortcuts edited in the Options → Shortcuts tab to <c>cockpit.json</c>.</summary>
+    // Persists the keyboard shortcuts edited in the Options → Shortcuts tab to `cockpit.json`.
     [RelayCommand]
     private async Task SaveShortcutSettingsAsync()
     {
@@ -2917,11 +2830,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Takes a gesture away from whoever else held it (AC-608). Without this the operator binds a chord that is
-    /// already in use and nothing happens: the dispatch invokes the first match in catalog order, so one of the two
-    /// silently never fires and neither row shows that anything is wrong.
-    /// </summary>
+    // Takes a gesture away from whoever else held it (AC-608). Without this the operator binds a chord that is
+    // already in use and nothing happens: the dispatch invokes the first match in catalog order, so one of the two
+    // silently never fires and neither row shows that anything is wrong.
     private void _OnShortcutRowChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(ShortcutRowViewModel.Gesture) || sender is not ShortcutRowViewModel claimant)
@@ -3056,12 +2967,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Raised when a pane-focus shortcut (Ctrl+arrow) asks to move the selection to the pane in that direction.
-    /// The grid geometry that answers "which pane is to the left" lives in the view (the session tile panel),
-    /// which the view-model does not reach — so the view handles this and sets <see cref="SelectedSession"/>,
-    /// the same one-way arrangement the drag-reorder and scroll-to-selected already use.
-    /// </summary>
+    // Raised when a pane-focus shortcut (Ctrl+arrow) asks to move the selection to the pane in that direction.
+    // The grid geometry that answers "which pane is to the left" lives in the view (the session tile panel),
+    // which the view-model does not reach — so the view handles this and sets `SelectedSession`,
+    // the same one-way arrangement the drag-reorder and scroll-to-selected already use.
     public event EventHandler<PaneDirection>? SpatialNavigationRequested;
 
     private async Task LoadTranscriptDisplaySettingsAsync()
@@ -3075,7 +2984,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ShowTimestamps = settings.ShowTimestamps;
     }
 
-    /// <summary>Persists the transcript-display settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    // Persists the transcript-display settings edited in the Options flyout to `cockpit.json`.
     [RelayCommand]
     private async Task SaveTranscriptDisplaySettingsAsync()
     {
@@ -3102,7 +3011,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ShowUsagePillWeekly = settings.VisibleFields.Contains(UsagePillField.WeeklyWindow);
     }
 
-    /// <summary>Persists the usage-pill field selection edited in the Options dialog to <c>cockpit.json</c>.</summary>
+    // Persists the usage-pill field selection edited in the Options dialog to `cockpit.json`.
     [RelayCommand]
     private async Task SaveUsagePillSettingsAsync()
     {
@@ -3125,9 +3034,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _sessionBehaviorSettingsStore.LoadAsync();
         AutoCloseOnExit = settings.AutoCloseOnExit;
         CombineQueuedMessages = settings.CombineQueuedMessages;
+        WakeAgentsByDefault = settings.WakeAgentsByDefault;
+        // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
+        // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
+        // its own default rather than on the operator's, which happen to agree today and need not tomorrow.
+        _agentCoordinator?.SetDefaultWakeConsent(settings.WakeAgentsByDefault);
     }
 
-    /// <summary>Persists the session-behaviour settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    // Persists the session-behaviour settings edited in the Options flyout to `cockpit.json`.
     [RelayCommand]
     private async Task SaveSessionBehaviorSettingsAsync()
     {
@@ -3140,81 +3054,73 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             AutoCloseOnExit = AutoCloseOnExit,
             CombineQueuedMessages = CombineQueuedMessages,
+            WakeAgentsByDefault = WakeAgentsByDefault,
         });
         SessionBehaviorSettingsStatus = "Saved";
     }
 
-    /// <summary>What the cockpit and its sessions are using, for the status bar (#78) — e.g. "CPU 12% · RAM 1.9 GB".</summary>
+    // What the cockpit and its sessions are using, for the status bar (#78) — e.g. "CPU 12% · RAM 1.9 GB".
     [ObservableProperty]
     private string _resourceSummary = string.Empty;
 
-    /// <summary>The CPU half of the status-bar figure, up to and including "RAM " — split from the memory so the memory alone can change colour.</summary>
+    // The CPU half of the status-bar figure, up to and including "RAM " — split from the memory so the memory alone can change colour.
     [ObservableProperty]
     private string _resourceCpu = string.Empty;
 
     [ObservableProperty]
     private string _resourceMemory = string.Empty;
 
-    /// <summary>Which brush the memory figure reads in: quiet, amber as it climbs, red where the system starts killing things.</summary>
+    // Which brush the memory figure reads in: quiet, amber as it climbs, red where the system starts killing things.
     [ObservableProperty]
     private string _resourceMemoryBrushKey = "CockpitTextSecondaryBrush";
 
-    /// <summary>The same, broken down per session — the panel's own text when there is nothing to break down.</summary>
+    // The same, broken down per session — the panel's own text when there is nothing to break down.
     [ObservableProperty]
     private string _resourceDetail = string.Empty;
 
-    /// <summary>
-    /// The breakdown as rows (#78): what the resource panel lists. It opens from the figures in the status bar
-    /// rather than appearing on hover — a tooltip is at the mercy of the platform's hit-testing and placement, and
-    /// on this one it turned out to be at the mercy of both. A panel the operator opens is also a panel that stays
-    /// open while they read it.
-    /// </summary>
+    // The breakdown as rows (#78): what the resource panel lists. It opens from the figures in the status bar
+    // rather than appearing on hover — a tooltip is at the mercy of the platform's hit-testing and placement, and
+    // on this one it turned out to be at the mercy of both. A panel the operator opens is also a panel that stays
+    // open while they read it.
     public ObservableCollection<ResourceRowViewModel> ResourceRows { get; } = [];
 
-    /// <summary>
-    /// The local model servers (#78) — Ollama, LM Studio — with what they are holding. A session that talks to one
-    /// over HTTP has no process of its own, so it can never appear above; the model it loaded is nonetheless the
-    /// heaviest thing on the machine, and "nothing to break down" was a poor answer to "what is using my memory".
-    /// </summary>
+    // The local model servers (#78) — Ollama, LM Studio — with what they are holding. A session that talks to one
+    // over HTTP has no process of its own, so it can never appear above; the model it loaded is nonetheless the
+    // heaviest thing on the machine, and "nothing to break down" was a poor answer to "what is using my memory".
     public ObservableCollection<ResourceRowViewModel> ModelServerRows { get; } = [];
 
-    /// <summary>Whether a local model server is running at all — no Ollama, no section.</summary>
+    // Whether a local model server is running at all — no Ollama, no section.
     public bool HasModelServers => ModelServerRows.Count > 0;
 
-    /// <summary>Whether the resource panel is open — toggled from the status bar's figures.</summary>
+    // Whether the resource panel is open — toggled from the status bar's figures.
     [ObservableProperty]
     private bool _isResourcePanelOpen;
 
-    /// <summary>True when there is nothing to break down: sessions that run over HTTP have no local process to weigh.</summary>
+    // True when there is nothing to break down: sessions that run over HTTP have no local process to weigh.
     public bool HasResourceRows => ResourceRows.Count > 0;
 
-    /// <summary>Opens the breakdown, or closes it — the status bar's figures are the button.</summary>
+    // Opens the breakdown, or closes it — the status bar's figures are the button.
     [RelayCommand]
     private void ToggleResourcePanel() => IsResourcePanelOpen = !IsResourcePanelOpen;
 
-    /// <summary>Closes the breakdown. Esc, and the panel's own close button.</summary>
+    // Closes the breakdown. Esc, and the panel's own close button.
     [RelayCommand]
     private void CloseResourcePanel() => IsResourcePanelOpen = false;
 
-    /// <summary>Left of the meter: how many sessions are being weighed, so it is visible that the breakdown exists at all rather than hidden behind a hover nobody tries.</summary>
+    // Left of the meter: how many sessions are being weighed, so it is visible that the breakdown exists at all rather than hidden behind a hover nobody tries.
     [ObservableProperty]
     private string _resourceSessions = string.Empty;
 
-    /// <summary>
-    /// Whether a memory warning is standing. Kept here between samples, because the decision is "has it climbed since
-    /// I last said so", and that question needs a memory of its own.
-    /// </summary>
+    // Whether a memory warning is standing. Kept here between samples, because the decision is "has it climbed since
+    // I last said so", and that question needs a memory of its own.
     private bool _warnedAboutMemory;
 
-    /// <summary>
-    /// Says something when the cockpit and its sessions together approach what the machine has (#78).
-    /// <para>
-    /// A session is 300–700 MB of Node; three of them outweigh the whole app. This is the difference between "the app
-    /// suddenly disappeared" and "you were told, and you could have closed a session". Why the operating system kills
-    /// what it kills — and why the coalition explanation this comment used to give is wrong — is in
-    /// <see cref="Cockpit.Core.Diagnostics.MemoryPressure"/>.
-    /// </para>
-    /// </summary>
+    // Says something when the cockpit and its sessions together approach what the machine has (#78).
+    //
+    // A session is 300–700 MB of Node; three of them outweigh the whole app. This is the difference between "the app
+    // suddenly disappeared" and "you were told, and you could have closed a session". Why the operating system kills
+    // what it kills — and why the coalition explanation this comment used to give is wrong — is in
+    // `Cockpit.Core.Diagnostics.MemoryPressure`.
     private void _WarnAboutMemory(ResourceUsage usage)
     {
         var decision = MemoryPressure.Decide(usage.MemoryBytes, MachineMemory.TotalBytes(), _warnedAboutMemory);
@@ -3250,10 +3156,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 session.ProcessId))
             .ToList();
 
-    /// <summary>
-    /// Takes one sample and updates the status bar (#78). Driven by a timer in the view, like the idle sweep —
-    /// the view model stays free of timers, and a test can tick it whenever it likes.
-    /// </summary>
+    // Takes one sample and updates the status bar (#78). Driven by a timer in the view, like the idle sweep —
+    // the view model stays free of timers, and a test can tick it whenever it likes.
     internal void SampleResources()
     {
         if (_resourceMonitor is null)
@@ -3409,19 +3313,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static string _Percent(long part, long whole) =>
         whole > 0 ? $"{(double)part / whole:P0}" : "an unknown share";
 
-    /// <summary>
-    /// Whether this cockpit can back itself up (#70) — false only in the design-time view model, which has no
-    /// services at all. The buttons bind to it, so a build that forgot to register the service shows them disabled
-    /// rather than showing two controls that swallow a click and do nothing.
-    /// </summary>
+    // Whether this cockpit can back itself up (#70) — false only in the design-time view model, which has no
+    // services at all. The buttons bind to it, so a build that forgot to register the service shows them disabled
+    // rather than showing two controls that swallow a click and do nothing.
     public bool CanBackUp => _backupService is not null;
 
-    /// <summary>
-    /// Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup — the
-    /// single first look; <see cref="StartPeriodicUpdateChecks"/> keeps looking every hour after this while the window
-    /// stays open. A failed check is silent here: the cockpit has just opened, and a toast saying GitHub was
-    /// unreachable is noise about a thing nobody asked for. Ask from the Options tab and it says exactly what went wrong.
-    /// </summary>
+    // Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup — the
+    // single first look; `StartPeriodicUpdateChecks` keeps looking every hour after this while the window
+    // stays open. A failed check is silent here: the cockpit has just opened, and a toast saying GitHub was
+    // unreachable is noise about a thing nobody asked for. Ask from the Options tab and it says exactly what went wrong.
     public async Task InitialiseUpdatesAsync()
     {
         if (_updates is not { } updates)
@@ -3499,11 +3399,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _ToastUpdate(AppRelease release) =>
         ToastHost.Add($"{release.Version} is out. You are on {CurrentBuild}.", ToastSeverity.Information, "Open it", OpenUpdate);
 
-    /// <summary>
-    /// One background re-check for a newer build (AC-188), on the hourly cadence set by <see cref="StartPeriodicUpdateChecks"/>.
-    /// Gated by the same <see cref="CheckForUpdatesOnStartup"/> setting as the startup look, and toasts a given release
-    /// only once — a build already on offer, or one the operator dismissed, stays quiet. Silent on a failed check.
-    /// </summary>
+    // One background re-check for a newer build (AC-188), on the hourly cadence set by `StartPeriodicUpdateChecks`.
+    // Gated by the same `CheckForUpdatesOnStartup` setting as the startup look, and toasts a given release
+    // only once — a build already on offer, or one the operator dismissed, stays quiet. Silent on a failed check.
     public async Task RunPeriodicUpdateCheckAsync()
     {
         if (_updates is not { } updates || !CheckForUpdatesOnStartup)
@@ -3540,18 +3438,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Starts the hourly re-check for a newer build (AC-188) while the window stays open, so a long-running cockpit
-    /// does not miss a release cut hours after it opened. No-op without an update service, and idempotent — a second
-    /// call is ignored rather than starting a second timer. Stopped in <see cref="DisposeAsync"/>. Rides a
-    /// DispatcherTimer, like the plugin/managed-CLI check in <c>App</c>: it ticks on the UI thread, so the check
-    /// touches its bound state directly without marshalling.
-    /// </summary>
-    /// <summary>
-    /// Starts watching for resumes that have come due (AC-234), and reports whatever lapsed while the cockpit was
-    /// closed. Teaches the coordinator how to find a live session, which only the cockpit knows. Idempotent, and a
-    /// no-op in the graphs that have no coordinator (unit tests, the designer).
-    /// </summary>
+    // Starts the hourly re-check for a newer build (AC-188) while the window stays open, so a long-running cockpit
+    // does not miss a release cut hours after it opened. No-op without an update service, and idempotent — a second
+    // call is ignored rather than starting a second timer. Stopped in `DisposeAsync`. Rides a
+    // DispatcherTimer, like the plugin/managed-CLI check in `App`: it ticks on the UI thread, so the check
+    // touches its bound state directly without marshalling.
+    // Starts watching for resumes that have come due (AC-234), and reports whatever lapsed while the cockpit was
+    // closed. Teaches the coordinator how to find a live session, which only the cockpit knows. Idempotent, and a
+    // no-op in the graphs that have no coordinator (unit tests, the designer).
     public Task StartScheduledResumesAsync()
     {
         if (ScheduledResumes is not { } coordinator)
@@ -3577,7 +3471,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _periodicUpdateTimer.Start();
     }
 
-    /// <summary>Looks now, because the operator asked (#71). Unlike the startup check, this one says when it could not look at all.</summary>
+    // Looks now, because the operator asked (#71). Unlike the startup check, this one says when it could not look at all.
     public async Task CheckForUpdatesAsync()
     {
         if (_updates is not { } updates)
@@ -3606,7 +3500,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateStatus = $"You are on the newest build ({CurrentBuild}).";
     }
 
-    /// <summary>Opens the release page. The cockpit does not install itself — see IUpdateService for why.</summary>
+    // Opens the release page. The cockpit does not install itself — see IUpdateService for why.
     [RelayCommand]
     public void OpenUpdate()
     {
@@ -3624,20 +3518,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Downloads the build on offer and, once the operator confirms, applies it and restarts (AC-388). Only reachable
-    /// when <see cref="CanUpdateItself"/> — the view gates the button on it, the NotPackaged copy keeps its
-    /// "Open release" link unchanged. A failed or aborted download leaves <see cref="UpdateUrl"/>/the banner/the
-    /// offered release exactly as they were (criterion 4): only <see cref="UpdateStatus"/> changes, the same
-    /// discipline <see cref="CheckForUpdatesAsync"/> already holds for its own failures.
-    /// <para>
-    /// Restarting is never automatic (criterion 6): a successful download only asks, through
-    /// <see cref="ISessionDialogService.ShowConfirmationDialogAsync"/>, naming how many sessions are still running
-    /// (criterion 7) rather than a generic "are you sure?" — a running agent session should not vanish without the
-    /// operator being told what is about to take it down. Declining leaves the build downloaded and ready; nothing
-    /// is applied until they click again or use <see cref="InstallUpdateOnNextStartAsync"/> instead.
-    /// </para>
-    /// </summary>
+    // Downloads the build on offer and, once the operator confirms, applies it and restarts (AC-388). Only reachable
+    // when `CanUpdateItself` — the view gates the button on it, the NotPackaged copy keeps its
+    // "Open release" link unchanged. A failed or aborted download leaves `UpdateUrl`/the banner/the
+    // offered release exactly as they were (criterion 4): only `UpdateStatus` changes, the same
+    // discipline `CheckForUpdatesAsync` already holds for its own failures.
+    //
+    // Restarting is never automatic (criterion 6): a successful download only asks, through
+    // `ISessionDialogService.ShowConfirmationDialogAsync`, naming how many sessions are still running
+    // (criterion 7) rather than a generic "are you sure?" — a running agent session should not vanish without the
+    // operator being told what is about to take it down. Declining leaves the build downloaded and ready; nothing
+    // is applied until they click again or use `InstallUpdateOnNextStartAsync` instead.
     [RelayCommand]
     public async Task UpdateNowAsync()
     {
@@ -3661,12 +3552,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         updates.ApplyDownloadedUpdateAndRestart();
     }
 
-    /// <summary>
-    /// Downloads the build on offer and applies it the next time the cockpit starts, without touching this session
-    /// (criterion 3, criterion 7's conservative alternative to restarting now): <c>WaitExitThenApplyUpdates(silent:
-    /// true, restart: false)</c> underneath. Never restarts on its own — that would be exactly the silent apply
-    /// criterion 6 rules out.
-    /// </summary>
+    // Downloads the build on offer and applies it the next time the cockpit starts, without touching this session
+    // (criterion 3, criterion 7's conservative alternative to restarting now): `WaitExitThenApplyUpdates(silent:
+    // true, restart: false)` underneath. Never restarts on its own — that would be exactly the silent apply
+    // criterion 6 rules out.
     [RelayCommand]
     public async Task InstallUpdateOnNextStartAsync()
     {
@@ -3684,11 +3573,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateStatus = $"Downloaded {UpdateName}. It will be installed the next time the cockpit starts.";
     }
 
-    /// <summary>
-    /// The download half shared by <see cref="UpdateNowAsync"/> and <see cref="InstallUpdateOnNextStartAsync"/>.
-    /// Returns whether it succeeded; a failure already left <see cref="UpdateStatus"/> saying why and touched
-    /// nothing else (criterion 4) — the caller has nothing left to do but stop.
-    /// </summary>
+    // The download half shared by `UpdateNowAsync` and `InstallUpdateOnNextStartAsync`.
+    // Returns whether it succeeded; a failure already left `UpdateStatus` saying why and touched
+    // nothing else (criterion 4) — the caller has nothing left to do but stop.
     private async Task<bool> _DownloadUpdateAsync(IUpdateService updates)
     {
         IsUpdateDownloading = true;
@@ -3717,11 +3604,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Names how many sessions are running before "Update now" restarts (criterion 7) — never a generic "are you
-    /// sure?". <see cref="SessionPanelViewModel.RequiresCloseConfirmation"/> is the same reading the close-confirm
-    /// prompt already uses for "is this session doing something a restart would cut off".
-    /// </summary>
+    // Names how many sessions are running before "Update now" restarts (criterion 7) — never a generic "are you
+    // sure?". `SessionPanelViewModel.RequiresCloseConfirmation` is the same reading the close-confirm
+    // prompt already uses for "is this session doing something a restart would cut off".
     private Task<bool> _ConfirmRestartAsync()
     {
         if (_dialogService is not { } dialogs)
@@ -3744,10 +3629,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now");
     }
 
-    /// <summary>
-    /// Hides the update banner (AC-73) for the build now on offer. Per-build, not forever: the operator is saying
-    /// "not this one", so a later check that finds a newer build shows the banner again — see <see cref="_Announce"/>.
-    /// </summary>
+    // Hides the update banner (AC-73) for the build now on offer. Per-build, not forever: the operator is saying
+    // "not this one", so a later check that finds a newer build shows the banner again — see `_Announce`.
     [RelayCommand]
     private void DismissUpdate()
     {
@@ -3774,7 +3657,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // string, or dedup silently breaks.
     private static string _ReleaseKey(AppRelease release) => release.Version;
 
-    /// <summary>The stream the checks ask on: what the channel control says, however it came to say it.</summary>
+    // The stream the checks ask on: what the channel control says, however it came to say it.
     private UpdateChannel _Stream => IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable;
 
     // Saves the startup preference without touching the channel: a cockpit that recorded a channel choice because
@@ -3790,10 +3673,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _SaveUpdateSettings();
     }
 
-    /// <summary>
-    /// Touching the channel is the choice (AC-387). From here on it is the operator's and it wins over what the build
-    /// would have implied — including when they set it back to the value the build gave them.
-    /// </summary>
+    // Touching the channel is the choice (AC-387). From here on it is the operator's and it wins over what the build
+    // would have implied — including when they set it back to the value the build gave them.
     partial void OnIncludeNightlyBuildsChanged(bool value)
     {
         if (_loadingUpdateSettings)
@@ -3806,12 +3687,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _SaveUpdateSettings();
     }
 
-    /// <summary>
-    /// Writes both settings — but never before the stored ones have been read. A save that went first would persist a
-    /// channel this cockpit has not learned yet, writing "nobody chose" over a choice made on an earlier run and
-    /// erasing it. Held back instead, and performed by <see cref="InitialiseUpdatesAsync"/> the moment both halves
-    /// are known.
-    /// </summary>
+    // Writes both settings — but never before the stored ones have been read. A save that went first would persist a
+    // channel this cockpit has not learned yet, writing "nobody chose" over a choice made on an earlier run and
+    // erasing it. Held back instead, and performed by `InitialiseUpdatesAsync` the moment both halves
+    // are known.
     private void _SaveUpdateSettings()
     {
         if (_updateSettingsStore is not { } store)
@@ -3828,11 +3707,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = store.SaveAsync(new UpdateSettings(CheckForUpdatesOnStartup, _chosenChannel));
     }
 
-    /// <summary>
-    /// Writes the whole cockpit to <paramref name="archivePath"/> (#70). The view picks the file; this decides what
-    /// goes in it, and says afterwards what was left out — a backup without keys is only useful if you know which
-    /// ones you will have to enter again.
-    /// </summary>
+    // Writes the whole cockpit to `archivePath` (#70). The view picks the file; this decides what
+    // goes in it, and says afterwards what was left out — a backup without keys is only useful if you know which
+    // ones you will have to enter again.
     public async Task CreateBackupAsync(string archivePath)
     {
         if (_backupService is not { } backups)
@@ -3862,14 +3739,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Puts the cockpit back from an archive (#70). The archive is read first and the operator is shown what it
-    /// carries — the cockpit's own settings, and which plugins — so they choose what comes back rather than
-    /// discovering it afterwards. What is replaced is moved aside, not deleted, and the app restarts to read what it
-    /// now finds on disk.
-    /// </summary>
-    /// <param name="archivePath">The backup.</param>
-    /// <param name="choose">Asks the operator what to restore; null means they cancelled.</param>
+    // Puts the cockpit back from an archive (#70). The archive is read first and the operator is shown what it
+    // carries — the cockpit's own settings, and which plugins — so they choose what comes back rather than
+    // discovering it afterwards. What is replaced is moved aside, not deleted, and the app restarts to read what it
+    // now finds on disk.
+    //
+    // `archivePath`: The backup.
+    // `choose`: Asks the operator what to restore; null means they cancelled.
     public async Task RestoreBackupAsync(string archivePath, Func<BackupManifest, Task<RestoreOptions?>> choose)
     {
         if (_backupService is not { } backups)
@@ -3898,10 +3774,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Fills the backup tab's plugin list from what is installed (#70). Called when the Options dialog opens: a plugin
-    /// installed since the app started should not be missing from its own backup.
-    /// </summary>
+    // Fills the backup tab's plugin list from what is installed (#70). Called when the Options dialog opens: a plugin
+    // installed since the app started should not be missing from its own backup.
     public IReadOnlyList<string> InstalledPluginIds =>
         Plugins.Plugins.Select(plugin => plugin.Discovered.FolderId).ToList();
 
@@ -3966,7 +3840,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ShowDebugControls = settings.ShowDebugControls;
     }
 
-    /// <summary>Persists the debug settings edited in the Options dialog to <c>cockpit.json</c>.</summary>
+    // Persists the debug settings edited in the Options dialog to `cockpit.json`.
     [RelayCommand]
     private async Task SaveDebugSettingsAsync()
     {
@@ -3994,7 +3868,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SidebarCollapsed = settings.SidebarCollapsed;
     }
 
-    /// <summary>Persists the layout settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    // Persists the layout settings edited in the Options flyout to `cockpit.json`.
     [RelayCommand]
     private async Task SaveLayoutSettingsAsync()
     {
@@ -4014,13 +3888,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         LayoutSettingsStatus = "Saved";
     }
 
-    /// <summary>
-    /// Persists the sidebar width alone (#49), called from the view when the <c>GridSplitter</c> drag
-    /// ends — a direct-manipulation UI setting that should save immediately, unlike the Options-dialog
-    /// settings above which wait for the dialog's own Save. Clamped before both the property assignment
-    /// and the save so an out-of-range drag (shouldn't happen given the column's own min/max) can't
-    /// persist.
-    /// </summary>
+    // Persists the sidebar width alone (#49), called from the view when the `GridSplitter` drag
+    // ends — a direct-manipulation UI setting that should save immediately, unlike the Options-dialog
+    // settings above which wait for the dialog's own Save. Clamped before both the property assignment
+    // and the save so an out-of-range drag (shouldn't happen given the column's own min/max) can't
+    // persist.
     public async Task SetSidebarWidthAsync(double width)
     {
         SidebarWidth = Math.Clamp(width, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth);
@@ -4040,10 +3912,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         });
     }
 
-    /// <summary>
-    /// Collapses or expands the left sidebar and persists it immediately — a direct-manipulation setting like
-    /// the width drag, so it survives a restart without waiting for the Options dialog's Save.
-    /// </summary>
+    // Collapses or expands the left sidebar and persists it immediately — a direct-manipulation setting like
+    // the width drag, so it survives a restart without waiting for the Options dialog's Save.
     [RelayCommand]
     private async Task ToggleSidebar()
     {
@@ -4074,7 +3944,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         WorktreeRoot = (await _worktreeSettingsStore.LoadAsync()).Root ?? string.Empty;
     }
 
-    /// <summary>Persists the worktree-root override (AC-85); a blank field clears the override, keeping the default.</summary>
+    // Persists the worktree-root override (AC-85); a blank field clears the override, keeping the default.
     [RelayCommand]
     private async Task SaveWorktreeSettingsAsync()
     {
@@ -4099,7 +3969,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CloneRoot = (await _cloneSettingsStore.LoadAsync()).Root ?? string.Empty;
     }
 
-    /// <summary>Persists the clones-root override (AC-90); a blank field clears the override, keeping the default.</summary>
+    // Persists the clones-root override (AC-90); a blank field clears the override, keeping the default.
     [RelayCommand]
     private async Task SaveCloneSettingsAsync()
     {
@@ -4128,11 +3998,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _BuildTerminalShellChoices(settings.Shell);
     }
 
-    /// <summary>
-    /// (Re)builds the Options default-shell picker (#AC-25) from the shells detected now, and selects the one the
-    /// saved <paramref name="configured"/> value names (its <see cref="ShellDescriptor.Id"/>, matched
-    /// case-insensitively) — falling back to "OS default" when it is blank or no longer resolves on this machine.
-    /// </summary>
+    // (Re)builds the Options default-shell picker (#AC-25) from the shells detected now, and selects the one the
+    // saved `configured` value names (its `ShellDescriptor.Id`, matched
+    // case-insensitively) — falling back to "OS default" when it is blank or no longer resolves on this machine.
     private void _BuildTerminalShellChoices(string configured)
     {
         var shells = ShellCatalog.Detect();
@@ -4173,7 +4041,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Persists the TTY terminal-appearance settings (#40) edited in the Options dialog to <c>cockpit.json</c>, clamping the font size to the supported range.</summary>
+    // Persists the TTY terminal-appearance settings (#40) edited in the Options dialog to `cockpit.json`, clamping the font size to the supported range.
     [RelayCommand]
     private async Task SaveTerminalSettingsAsync()
     {
@@ -4278,12 +4146,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private static string? _NullIfEmpty(string value) => string.IsNullOrEmpty(value) ? null : value;
 
-    /// <summary>
-    /// Persists the voice settings edited in the Options flyout to <c>cockpit.json</c>. Open sessions
-    /// re-read the setting the next time they start a push-to-talk hold — no live-push needed, since
-    /// <see cref="SessionPanelViewModel.BeginVoiceHold"/> only gates on the enabled flag it loaded once
-    /// at session creation, the same "settings apply to new sessions" behaviour as the profile picker.
-    /// </summary>
+    // Persists the voice settings edited in the Options flyout to `cockpit.json`. Open sessions
+    // re-read the setting the next time they start a push-to-talk hold — no live-push needed, since
+    // `SessionPanelViewModel.BeginVoiceHold` only gates on the enabled flag it loaded once
+    // at session creation, the same "settings apply to new sessions" behaviour as the profile picker.
     [RelayCommand]
     private async Task SaveVoiceSettingsAsync()
     {
@@ -4344,21 +4210,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceSettingsSaved?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Raised once the voice settings are saved, so whatever was configured from them can re-apply. See the remarks on the raise site.</summary>
+    // Raised once the voice settings are saved, so whatever was configured from them can re-apply. See the remarks on the raise site.
     public event EventHandler? VoiceSettingsSaved;
 
-    /// <summary>Whether a "Restart now" affordance can do anything — false in the design-time constructor, where there is no real app to restart.</summary>
+    // Whether a "Restart now" affordance can do anything — false in the design-time constructor, where there is no real app to restart.
     public bool CanRestartApp => _appRestart is not null;
 
-    /// <summary>Restarts the app so a saved change that only applies at startup (the Linux global hotkey) takes effect, without the operator closing and relaunching by hand. See <see cref="VoiceGlobalPushToTalkNeedsRestart"/>.</summary>
+    // Restarts the app so a saved change that only applies at startup (the Linux global hotkey) takes effect, without the operator closing and relaunching by hand. See `VoiceGlobalPushToTalkNeedsRestart`.
     [RelayCommand(CanExecute = nameof(CanRestartApp))]
     private void RestartApp() => _appRestart?.Restart();
 
-    /// <summary>
-    /// Whether saving global push-to-talk should offer a restart: only on Linux (elsewhere the change applies
-    /// live), and only when the saved value differs from what this process armed with at startup — so toggling it
-    /// and back offers nothing. Pulled out so the platform-gated decision is testable off Linux.
-    /// </summary>
+    // Whether saving global push-to-talk should offer a restart: only on Linux (elsewhere the change applies
+    // live), and only when the saved value differs from what this process armed with at startup — so toggling it
+    // and back offers nothing. Pulled out so the platform-gated decision is testable off Linux.
     internal static bool ShouldOfferGlobalPushToTalkRestart(bool isLinux, bool? runningValue, bool savedValue) =>
         isLinux && runningValue is bool running && running != savedValue;
 
@@ -4409,12 +4273,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AudioStatus = "Playback done.";
     }
 
-    /// <summary>
-    /// Opens the New-session dialog — SDK vs TTY is now chosen inside it (#32) — and, once confirmed,
-    /// mints the matching session: SDK (headless stream-json rendered as the chat UI) or TTY (the real
-    /// interactive <c>claude</c> TUI in a terminal panel, the #9 experiment), started immediately with
-    /// the chosen profile and start options.
-    /// </summary>
+    // Opens the New-session dialog — SDK vs TTY is now chosen inside it (#32) — and, once confirmed,
+    // mints the matching session: SDK (headless stream-json rendered as the chat UI) or TTY (the real
+    // interactive `claude` TUI in a terminal panel, the #9 experiment), started immediately with
+    // the chosen profile and start options.
     [RelayCommand]
     private async Task NewSessionAsync()
     {
@@ -4432,12 +4294,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _LaunchSessionFromResultAsync(result);
     }
 
-    /// <summary>
-    /// Opens a plain terminal pane (#AC-25) next to the AI sessions, running the operator's chosen default shell —
-    /// or, when none is configured, the OS default the <see cref="ShellCatalog"/> detects. Reuses the whole TTY
-    /// path: a terminal is another <see cref="TtyViewModel"/> in the <see cref="Sessions"/> collection, so the grid,
-    /// reorder and lifecycle are the existing ones. Runtime-only, exactly like an AI session.
-    /// </summary>
+    // Opens a plain terminal pane (#AC-25) next to the AI sessions, running the operator's chosen default shell —
+    // or, when none is configured, the OS default the `ShellCatalog` detects. Reuses the whole TTY
+    // path: a terminal is another `TtyViewModel` in the `Sessions` collection, so the grid,
+    // reorder and lifecycle are the existing ones. Runtime-only, exactly like an AI session.
     [RelayCommand]
     private void NewTerminal()
     {
@@ -4457,12 +4317,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         terminal.LaunchTerminal(shell);
     }
 
-    /// <summary>
-    /// The shell a new terminal opens (#AC-25): the operator's configured default when it is set and still resolves
-    /// on this machine (matched by <see cref="ShellDescriptor.Id"/> or absolute path, so a configured "pwsh" survives
-    /// a machine where its path differs), otherwise the OS default — the first shell <see cref="ShellCatalog"/>
-    /// detects. Null only when the machine has no resolvable shell at all, which is near-impossible.
-    /// </summary>
+    // The shell a new terminal opens (#AC-25): the operator's configured default when it is set and still resolves
+    // on this machine (matched by `ShellDescriptor.Id` or absolute path, so a configured "pwsh" survives
+    // a machine where its path differs), otherwise the OS default — the first shell `ShellCatalog`
+    // detects. Null only when the machine has no resolvable shell at all, which is near-impossible.
     private ShellDescriptor? _ResolveDefaultShell()
     {
         var shells = ShellCatalog.Detect();
@@ -4487,17 +4345,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return ShellCatalog.ForCommand(configured) ?? (shells.Count > 0 ? shells[0] : null);
     }
 
-    /// <summary>
-    /// Opens a session on <paramref name="profile"/> for a plugin (#69) — a workflow step, a shortcut — and hands it
-    /// <paramref name="prompt"/> as its first input. The profile's own defaults decide model, permissions and effort:
-    /// naming a profile means "the way I set that one up", and a caller who knew better would have said so.
-    /// Returns the name the session carries, so the caller can say which one it started.
-    /// <para>
-    /// <paramref name="sessionName"/> names it outright, the way the New-session dialog's own name field does — a flow
-    /// that starts a session on a ticket should not have to open it as "Claude — 14:22" and rename it a step later
-    /// (#AC-312). Left blank, the profile and the clock name it as before.
-    /// </para>
-    /// </summary>
+    // Opens a session on `profile` for a plugin (#69) — a workflow step, a shortcut — and hands it
+    // `prompt` as its first input. The profile's own defaults decide model, permissions and effort:
+    // naming a profile means "the way I set that one up", and a caller who knew better would have said so.
+    // Returns the name the session carries, so the caller can say which one it started.
+    //
+    // `sessionName` names it outright, the way the New-session dialog's own name field does — a flow
+    // that starts a session on a ticket should not have to open it as "Claude — 14:22" and rename it a step later
+    // (#AC-312). Left blank, the profile and the clock name it as before.
     public async Task<string> StartSessionForPluginAsync(SessionProfile profile, string? prompt, string? workingDirectory, string? sessionName = null)
     {
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
@@ -4537,13 +4392,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return name;
     }
 
-    /// <summary>
-    /// Opens the New-session dialog on a plugin's behalf (#AC-96), optionally pre-filled from <paramref name="prefill"/>,
-    /// starts the session the operator confirms, and returns its <see cref="SessionPanelViewModel.PaneId"/> — or null when
-    /// the operator cancels or nothing could be started. The whole dialog is shown, so the operator sees and can change
-    /// every field before anything starts; a <see cref="NewSessionPrefill.InitialPrompt"/> is injected into the started
-    /// session through the same seam a plugin's inject uses, so it lands in the composer for the operator to send.
-    /// </summary>
+    // Opens the New-session dialog on a plugin's behalf (#AC-96), optionally pre-filled from `prefill`,
+    // starts the session the operator confirms, and returns its `SessionPanelViewModel.PaneId` — or null when
+    // the operator cancels or nothing could be started. The whole dialog is shown, so the operator sees and can change
+    // every field before anything starts; a `NewSessionPrefill.InitialPrompt` is injected into the started
+    // session through the same seam a plugin's inject uses, so it lands in the composer for the operator to send.
     public async Task<string?> ShowNewSessionDialogForPluginAsync(NewSessionPrefill? prefill)
     {
         if (_dialogService is null)
@@ -4568,12 +4421,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return paneId;
     }
 
-    /// <summary>
-    /// The project a plugin's prefill named by its link (AC-419) — "the one tracked in YouTrack's AC" — handed to the
-    /// dialog through the project parameter the operator's own project pick already uses (AC-164), so a preselected
-    /// project brings its folder, profile, worktree default and MCP overlay exactly as picking it by hand would.
-    /// Null for no link, a link nothing declares, or one two projects declare; the dialog then opens on no project.
-    /// </summary>
+    // The project a plugin's prefill named by its link (AC-419) — "the one tracked in YouTrack's AC" — handed to the
+    // dialog through the project parameter the operator's own project pick already uses (AC-164), so a preselected
+    // project brings its folder, profile, worktree default and MCP overlay exactly as picking it by hand would.
+    // Null for no link, a link nothing declares, or one two projects declare; the dialog then opens on no project.
     private async Task<Project?> _ProjectLinkedAsAsync(ProjectLink? link)
     {
         if (link is null)
@@ -4602,11 +4453,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return ProjectLinkMatch.For(Projects.Projects, link.FieldKey, link.Value);
     }
 
-    /// <summary>
-    /// Starts a session on <paramref name="project"/> with the project's own defaults and no dialog (AC-164) — the
-    /// sidebar's ▶ and the launcher's Start. What it opens with is <see cref="ProjectQuickStart"/>'s to answer; this
-    /// only launches it, through the same path the dialog's result takes.
-    /// </summary>
+    // Starts a session on `project` with the project's own defaults and no dialog (AC-164) — the
+    // sidebar's ▶ and the launcher's Start. What it opens with is `ProjectQuickStart`'s to answer; this
+    // only launches it, through the same path the dialog's result takes.
     [RelayCommand]
     private async Task StartProjectSessionAsync(Project? project)
     {
@@ -4629,10 +4478,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await NewSessionForProjectAsync(project);
     }
 
-    /// <summary>
-    /// Opens the New-session dialog on <paramref name="project"/> (AC-164) — the "New session…" next to the quick
-    /// start, for when the operator wants to change something the project would otherwise decide.
-    /// </summary>
+    // Opens the New-session dialog on `project` (AC-164) — the "New session…" next to the quick
+    // start, for when the operator wants to change something the project would otherwise decide.
     [RelayCommand]
     private async Task NewSessionForProjectAsync(Project? project)
     {
@@ -4647,7 +4494,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary><paramref name="title"/> if no session carries it, else "<paramref name="title"/> 2", "… 3" — the first free one.</summary>
+    // `title` if no session carries it, else "`title` 2", "… 3" — the first free one.
     private string _UniqueSessionTitle(string title)
     {
         var taken = Sessions.Select(session => session.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -4665,7 +4512,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return $"{title} {suffix}";
     }
 
-    /// <summary>Opens <paramref name="project"/>'s folder in the operating system's own file manager — the same shell hand-off the worktrees dialog uses.</summary>
+    // Opens `project`'s folder in the operating system's own file manager — the same shell hand-off the worktrees dialog uses.
     [RelayCommand]
     private void OpenProjectFolder(Project? project)
     {
@@ -4684,7 +4531,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Opens the project editor for <paramref name="project"/> from the sidebar, persisting through the same manager the Options tab uses.</summary>
+    // Opens the project editor for `project` from the sidebar, persisting through the same manager the Options tab uses.
     [RelayCommand]
     private Task EditProjectAsync(Project? project) =>
         project is null ? Task.CompletedTask : Projects.EditAsync(project);
@@ -4722,12 +4569,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return await _StartSessionAsync(session, result);
     }
 
-    /// <summary>
-    /// The starting half of a session launch (AC-410): worktree/working-directory resolution through to
-    /// <see cref="ProjectsViewModel.MarkOpenedAsync"/> — everything <see cref="_LaunchSessionFromResultAsync"/>
-    /// used to do after minting and attaching the panel. Split out so a restore (which only ever attaches,
-    /// never starts) does not carry this half, and reused as-is by the fresh-launch path above.
-    /// </summary>
+    // The starting half of a session launch (AC-410): worktree/working-directory resolution through to
+    // `ProjectsViewModel.MarkOpenedAsync` — everything `_LaunchSessionFromResultAsync`
+    // used to do after minting and attaching the panel. Split out so a restore (which only ever attaches,
+    // never starts) does not carry this half, and reused as-is by the fresh-launch path above.
     private async Task<string?> _StartSessionAsync(SessionPanelViewModel session, NewSessionResult result)
     {
         string paneId;
@@ -4914,15 +4759,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             .FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), full, comparison));
     }
 
-    /// <summary>Context-menu Rename: begin the sidebar row's inline rename.</summary>
+    // Context-menu Rename: begin the sidebar row's inline rename.
     [RelayCommand]
     private void RenameSession(SessionPanelViewModel session) => session.BeginRename();
 
-    /// <summary>
-    /// Context-menu Set status (AC-32): edit this session's status line by hand through the dialog, seeded with its
-    /// current value. Writes the result back to the same <see cref="SessionPanelViewModel.Statusline"/> the MCP
-    /// <c>set_status</c> tool sets, so manual and agent updates stay one source of truth; a cancel leaves it as it was.
-    /// </summary>
+    // Context-menu Set status (AC-32): edit this session's status line by hand through the dialog, seeded with its
+    // current value. Writes the result back to the same `SessionPanelViewModel.Statusline` the MCP
+    // `set_status` tool sets, so manual and agent updates stay one source of truth; a cancel leaves it as it was.
     [RelayCommand]
     private async Task SetSessionStatusAsync(SessionPanelViewModel session)
     {
@@ -4938,10 +4781,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
-    /// choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
-    /// </summary>
+    // Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
+    // choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
     [RelayCommand]
     private async Task ScheduleSessionResumeAsync(SessionPanelViewModel session)
     {
@@ -4962,25 +4803,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
 
-    /// <summary>Context-menu Clear status (AC-32): wipe this session's status line, the same as the MCP setting it to empty.</summary>
+    // Context-menu Clear status (AC-32): wipe this session's status line, the same as the MCP setting it to empty.
     [RelayCommand]
     private void ClearSessionStatus(SessionPanelViewModel session) => session.Statusline = string.Empty;
 
-    /// <summary>
-    /// Reorders <paramref name="session"/> to sit at <paramref name="targetVisibleIndex"/> among the sessions the
-    /// sidebar is actually showing (the active workspace's <see cref="VisibleSessions"/>) — the primitive behind
-    /// both the drag-reorder (AC-115) and the Move up/down menu items.
-    /// </summary>
-    /// <remarks>
-    /// The reorder lands in <see cref="_sidebarOrder"/>, never in <see cref="Sessions"/>: the session grid binds to
-    /// <see cref="Sessions"/> and keeps its own positional cell layout, so touching that collection would rebuild
-    /// panes and drag the grid tiles along with the strip — the very coupling this separation removes. The order is
-    /// global and can interleave other workspaces' sessions, so the move anchors to the target visible row's real
-    /// position rather than a raw ±1 index — otherwise a step could swap with a session hidden on another workspace
-    /// and do nothing (or the wrong thing) on screen. Order is kept only in this in-memory list: sessions
-    /// themselves do not survive a restart (there is no persisted session list), so neither does their order — by
-    /// design for AC-115.
-    /// </remarks>
+    // Reorders `session` to sit at `targetVisibleIndex` among the sessions the
+    // sidebar is actually showing (the active workspace's `VisibleSessions`) — the primitive behind
+    // both the drag-reorder (AC-115) and the Move up/down menu items.
+    // The reorder lands in `_sidebarOrder`, never in `Sessions`: the session grid binds to
+    // `Sessions` and keeps its own positional cell layout, so touching that collection would rebuild
+    // panes and drag the grid tiles along with the strip — the very coupling this separation removes. The order is
+    // global and can interleave other workspaces' sessions, so the move anchors to the target visible row's real
+    // position rather than a raw ±1 index — otherwise a step could swap with a session hidden on another workspace
+    // and do nothing (or the wrong thing) on screen. Order is kept only in this in-memory list: sessions
+    // themselves do not survive a restart (there is no persisted session list), so neither does their order — by
+    // design for AC-115.
     public void MoveSessionToVisibleIndex(SessionPanelViewModel session, int targetVisibleIndex)
     {
         var visible = VisibleSessions.ToList();
@@ -5003,7 +4840,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Context-menu Move up: shift the session one place earlier in the sidebar order.</summary>
+    // Context-menu Move up: shift the session one place earlier in the sidebar order.
     [RelayCommand]
     private void MoveSessionUp(SessionPanelViewModel session)
     {
@@ -5014,7 +4851,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Context-menu Move down: shift the session one place later in the sidebar order.</summary>
+    // Context-menu Move down: shift the session one place later in the sidebar order.
     [RelayCommand]
     private void MoveSessionDown(SessionPanelViewModel session)
     {
@@ -5026,7 +4863,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Context-menu Duplicate: start a new session with the same profile/model/mode as this one (≈ Fork).</summary>
+    // Context-menu Duplicate: start a new session with the same profile/model/mode as this one (≈ Fork).
     [RelayCommand]
     private async Task DuplicateSessionAsync(SessionPanelViewModel session)
     {
@@ -5042,13 +4879,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Context-menu Clear context (AC-564): drops what the agent remembers and carries the pane itself over
-    /// unchanged. Deliberately not routed through <see cref="_LaunchSessionFromResultAsync"/>, which the sibling
-    /// Duplicate uses: that path mints a second pane and re-runs worktree isolation, which for a session already
-    /// running in its own worktree would create a second one beside it. The session restarts on the working
-    /// directory it is already in.
-    /// </summary>
+    // Context-menu Clear context (AC-564): drops what the agent remembers and carries the pane itself over
+    // unchanged. Deliberately not routed through `_LaunchSessionFromResultAsync`, which the sibling
+    // Duplicate uses: that path mints a second pane and re-runs worktree isolation, which for a session already
+    // running in its own worktree would create a second one beside it. The session restarts on the working
+    // directory it is already in.
     [RelayCommand]
     private async Task ClearSessionContextAsync(SessionPanelViewModel session)
     {
@@ -5074,7 +4909,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await sdkSession.ClearContextAsync(result.Profile);
     }
 
-    /// <summary>Opens the Manage-profiles dialog from the sidebar, independent of creating a session (L2).</summary>
+    // Opens the Manage-profiles dialog from the sidebar, independent of creating a session (L2).
     [RelayCommand]
     private async Task ManageProfilesAsync()
     {
@@ -5086,16 +4921,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowManageProfilesDialogAsync();
     }
 
-    /// <summary>
-    /// Opens the assistant's own profile editor from Options → Voice.
-    /// </summary>
-    /// <remarks>
-    /// The command lives here rather than on <see cref="AssistantOptionsViewModel"/> because the dialog it opens
-    /// needs <see cref="IAssistantSessionHost"/> for its restart button, and that host is constructed from
-    /// this view model — so injecting it into the dialog service (which this view model already depends on) would
-    /// be a cycle. It is handed in as a parameter instead, the same escape and the same reason
-    /// <see cref="ISessionDialogService.ShowWorktreesDialogAsync"/> and <c>ShowProjectsDialogAsync</c> already use.
-    /// </remarks>
+    // Opens the assistant's own profile editor from Options → Voice.
+    // The command lives here rather than on `AssistantOptionsViewModel` because the dialog it opens
+    // needs `IAssistantSessionHost` for its restart button, and that host is constructed from
+    // this view model — so injecting it into the dialog service (which this view model already depends on) would
+    // be a cycle. It is handed in as a parameter instead, the same escape and the same reason
+    // `ISessionDialogService.ShowWorktreesDialogAsync` and `ShowProjectsDialogAsync` already use.
     [RelayCommand]
     private async Task EditAssistantProfileAsync()
     {
@@ -5111,14 +4942,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await AssistantOptions.RefreshAsync();
     }
 
-    /// <summary>
-    /// The living assistant, handed in by the app at startup for the same reason <see cref="ScheduledResumes"/> is:
-    /// it is built from this view model, so it cannot also be a constructor argument of it. Null in the test and
-    /// design-time graphs, where the profile editor simply offers no restart.
-    /// </summary>
+    // The living assistant, handed in by the app at startup for the same reason `ScheduledResumes` is:
+    // it is built from this view model, so it cannot also be a constructor argument of it. Null in the test and
+    // design-time graphs, where the profile editor simply offers no restart.
     public IAssistantSessionHost? AssistantHost { get; set; }
 
-    /// <summary>Opens the MCP-servers dialog (#26) from the sidebar to edit the shared MCP-server registry.</summary>
+    // Opens the MCP-servers dialog (#26) from the sidebar to edit the shared MCP-server registry.
     [RelayCommand]
     private async Task OpenMcpServersAsync()
     {
@@ -5130,7 +4959,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowMcpServersDialogAsync();
     }
 
-    /// <summary>Opens the Verify-runners dialog (AC-86) from the sidebar to register the per-project command the visual verify loop may run.</summary>
+    // Opens the Verify-runners dialog (AC-86) from the sidebar to register the per-project command the visual verify loop may run.
     [RelayCommand]
     private async Task OpenVerifyRunnersAsync()
     {
@@ -5142,11 +4971,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowVerifyRunnersDialogAsync();
     }
 
-    /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
+    // Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.
     [RelayCommand]
     private Task OptionsAsync() => _ShowOptionsAsync();
 
-    /// <summary>Opens the projects manager (AC-161) — its own window, not a corner of Options.</summary>
+    // Opens the projects manager (AC-161) — its own window, not a corner of Options.
     [RelayCommand]
     private async Task ManageProjectsAsync()
     {
@@ -5156,10 +4985,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
-    /// so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
-    /// </summary>
+    // Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
+    // so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
     [RelayCommand]
     private Task OpenProjectsWorkspaceAsync() => Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
 
@@ -5175,12 +5002,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowOptionsDialogAsync(this);
     }
 
-    /// <summary>
-    /// Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the
-    /// action button on a plugin-update toast, so the operator lands straight on the updates list instead
-    /// of the full Options→Plugins tab. Skips the audio-device refresh <see cref="OptionsAsync"/> does
-    /// since it is irrelevant here.
-    /// </summary>
+    // Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the
+    // action button on a plugin-update toast, so the operator lands straight on the updates list instead
+    // of the full Options→Plugins tab. Skips the audio-device refresh `OptionsAsync` does
+    // since it is irrelevant here.
     public async Task OpenPluginStoreUpdatesAsync()
     {
         if (_dialogService is null)
@@ -5192,10 +5017,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowPluginStoreDialogAsync(Plugins, PluginStoreFilter.UpdatesAvailable);
     }
 
-    /// <summary>
-    /// Opens the plugin store from the sidebar (AC-76) — on the Updates filter when updates are waiting (the sidebar
-    /// badge is showing), so a click on the "N updates" indicator lands straight on them; otherwise the normal browse.
-    /// </summary>
+    // Opens the plugin store from the sidebar (AC-76) — on the Updates filter when updates are waiting (the sidebar
+    // badge is showing), so a click on the "N updates" indicator lands straight on them; otherwise the normal browse.
     [RelayCommand]
     private async Task OpenPluginStoreAsync()
     {
@@ -5208,7 +5031,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowPluginStoreDialogAsync(Plugins, Plugins.HasUpdateBadge ? PluginStoreFilter.UpdatesAvailable : null);
     }
 
-    /// <summary>Opens the About dialog (#46) from the sidebar: app name, version, description and links.</summary>
+    // Opens the About dialog (#46) from the sidebar: app name, version, description and links.
     [RelayCommand]
     private async Task AboutAsync()
     {
@@ -5220,11 +5043,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowAboutDialogAsync();
     }
 
-    /// <summary>
-    /// Opens the guide in the operator's browser (AC-512) — the guide's content lives on the website, not in the
-    /// app. Honest about the one thing this cannot know: whether that browser can actually reach it. When it
-    /// cannot even start (no default browser, a locked-down machine), says so rather than opening nothing.
-    /// </summary>
+    // Opens the guide in the operator's browser (AC-512) — the guide's content lives on the website, not in the
+    // app. Honest about the one thing this cannot know: whether that browser can actually reach it. When it
+    // cannot even start (no default browser, a locked-down machine), says so rather than opening nothing.
     [RelayCommand]
     private async Task OpenGuideAsync()
     {
@@ -5240,10 +5061,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             "OK");
     }
 
-    /// <summary>
-    /// Shows the in-app glossary (AC-512): the five primitives, explained without a browser — the guide's own
-    /// depth stays on the website, this is what still answers something when that site is unreachable (AC-510).
-    /// </summary>
+    // Shows the in-app glossary (AC-512): the five primitives, explained without a browser — the guide's own
+    // depth stays on the website, this is what still answers something when that site is unreachable (AC-510).
     [RelayCommand]
     private async Task ShowGlossaryAsync()
     {
@@ -5255,14 +5074,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowGlossaryDialogAsync();
     }
 
-    /// <summary>Reopens the first-run wizard (AC-512) from the Help menu — a no-op without one wired up.</summary>
+    // Reopens the first-run wizard (AC-512) from the Help menu — a no-op without one wired up.
     [RelayCommand]
     private Task RunSetupAgainAsync() => _firstRunWizard?.ShowAsync() ?? Task.CompletedTask;
 
-    /// <summary>
-    /// Opens the delegated-tasks view (#67): the work other sessions handed to a profile. Those tasks run as
-    /// sessions with no tab of their own, so this is where they stay visible — and stoppable.
-    /// </summary>
+    // Opens the delegated-tasks view (#67): the work other sessions handed to a profile. Those tasks run as
+    // sessions with no tab of their own, so this is where they stay visible — and stoppable.
     [RelayCommand]
     private async Task ShowDelegatedTasksAsync()
     {
@@ -5272,6 +5089,49 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _dialogService.ShowDelegatedTasksDialogAsync();
+    }
+
+    // The desk the selected session is on, and the agent panes sharing it (AC-397) — the same answer
+    // `WorkspaceAgentGateway` gives an agent asking who its neighbours are, worked out here through the same
+    // `SessionWorkspacePlacement` rule because depending on that gateway from this view model is the
+    // cycle it is built on top of.
+    //
+    // Null when nothing is selected, when the selection is a plain terminal pane (no agent on the other end), or
+    // when it sits on no desk at all — the three cases where there is no line to report on rather than an empty one.
+    private AgentLineDesk? _SelectedSessionDesk()
+    {
+        if (SelectedSession is not { ShowPluginHeaderItems: true } selected)
+        {
+            return null;
+        }
+
+        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+        if (SessionWorkspacePlacement.Resolve(selected, firstSessionsWorkspaceId) is not { } workspaceId)
+        {
+            return null;
+        }
+
+        return new AgentLineDesk(
+            workspaceId,
+            AllSessions()
+                .Where(candidate => candidate.ShowPluginHeaderItems
+                    && SessionWorkspacePlacement.Resolve(candidate, firstSessionsWorkspaceId) == workspaceId)
+                .Select(candidate => candidate.PaneId)
+                .ToHashSet(StringComparer.Ordinal));
+    }
+
+    // Opens the agent-line inspector (AC-397). The operator is not in the message path, so without this the traffic
+    // between agents on their own desk is invisible to them — including the wakes one agent asked for on another's
+    // session, and the refusals nobody was told about.
+    [RelayCommand]
+    private async Task ShowAgentLineAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowAgentLineInspectorDialogAsync(AgentLineInspector);
     }
 
     [RelayCommand]
@@ -5305,7 +5165,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Opens the command palette (#: command palette): a searchable list of every app action and plugin command with its shortcut.</summary>
+    // Opens the command palette (#: command palette): a searchable list of every app action and plugin command with its shortcut.
     [RelayCommand]
     private async Task ShowCommandPaletteAsync()
     {
@@ -5374,10 +5234,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static string _PrettifyGesture(string gesture) =>
         string.IsNullOrWhiteSpace(gesture) ? string.Empty : gesture.Replace("+", " + ");
 
-    /// <summary>
-    /// Persists every options section in one go — the Options dialog's single footer Save (#13)
-    /// replaces the six per-section Save buttons the flyout used to have.
-    /// </summary>
+    // Persists every options section in one go — the Options dialog's single footer Save (#13)
+    // replaces the six per-section Save buttons the flyout used to have.
     [RelayCommand]
     private async Task SaveAllSettingsAsync()
     {
@@ -5399,23 +5257,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AllSettingsStatus = "Saved";
     }
 
-    /// <summary>
-    /// Attaches a freshly minted session panel: gives it a desk, a title, and a place in <see cref="Sessions"/>.
-    /// </summary>
-    /// <param name="targetWorkspaceId">
-    /// The desk to put it on when something already knows which one (AC-545: a spawn the assistant asked for, naming
-    /// a workspace the operator may not be looking at). Null — every caller that existed before — keeps the original
-    /// behaviour exactly: the desk is worked out here and the operator is taken to the new session.
-    /// <para>
-    /// Named, this is deliberately <em>three</em> departures from that and not one, because a spawn onto a desk that
-    /// is not on screen must not move the operator. The id is stamped directly, the way
-    /// <see cref="_AttachRestoredSession"/> does it, rather than through <c>EnsureSessionWorkspace</c> — which would
-    /// switch the active workspace to it; and <see cref="SelectedSession"/> is left alone — which would pull the grid
-    /// and the sidebar onto a session nobody asked to look at. Whether the id names a desk that can host a session at
-    /// all is settled before this is reached (<c>AssistantAgentGateway</c>): this method takes an id it is told, and a
-    /// session stamped onto a dashboard would run invisibly rather than not at all.
-    /// </para>
-    /// </param>
+    // Attaches a freshly minted session panel: gives it a desk, a title, and a place in `Sessions`.
+    //
+    // `targetWorkspaceId`:
+    // The desk to put it on when something already knows which one (AC-545: a spawn the assistant asked for, naming
+    // a workspace the operator may not be looking at). Null — every caller that existed before — keeps the original
+    // behaviour exactly: the desk is worked out here and the operator is taken to the new session.
+    //
+    // Named, this is deliberately *three* departures from that and not one, because a spawn onto a desk that
+    // is not on screen must not move the operator. The id is stamped directly, the way
+    // `_AttachRestoredSession` does it, rather than through `EnsureSessionWorkspace` — which would
+    // switch the active workspace to it; and `SelectedSession` is left alone — which would pull the grid
+    // and the sidebar onto a session nobody asked to look at. Whether the id names a desk that can host a session at
+    // all is settled before this is reached (`AssistantAgentGateway`): this method takes an id it is told, and a
+    // session stamped onto a dashboard would run invisibly rather than not at all.
     private void AddSession(
         SessionPanelViewModel session, string? name, string profileLabel, bool nameIsChosen = false, string? targetWorkspaceId = null)
     {
@@ -5439,13 +5294,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// The wiring every session panel needs once it is going to be shown, regardless of how it got here: preference
-    /// seeding, the close/property-changed subscriptions, and joining <see cref="Sessions"/>. Shared by a freshly
-    /// started session (<see cref="AddSession"/>) and one brought back after a restart
-    /// (<see cref="_AttachRestoredSession"/>) — the two differ only in how <see cref="SessionPanelViewModel.WorkspaceId"/>,
-    /// the title and selection are decided, which is why those stay in the callers.
-    /// </summary>
+    // The wiring every session panel needs once it is going to be shown, regardless of how it got here: preference
+    // seeding, the close/property-changed subscriptions, and joining `Sessions`. Shared by a freshly
+    // started session (`AddSession`) and one brought back after a restart
+    // (`_AttachRestoredSession`) — the two differ only in how `SessionPanelViewModel.WorkspaceId`,
+    // the title and selection are decided, which is why those stay in the callers.
     private void _AttachSession(SessionPanelViewModel session)
     {
         _SeedSessionPreferences(session);
@@ -5482,14 +5335,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = Workspaces.RenamePaneAsync(session.WorkspaceId, session.PaneId, session.Title, !session.HasGeneratedName);
     }
 
-    /// <summary>
-    /// Attaches a session pane rebuilt from a saved <see cref="WorkspacePane"/> (AC-410): shown, but nothing
-    /// started — <see cref="RestoreSessionPanesAsync"/> mints the panel and adopts its saved id before calling
-    /// this. <paramref name="workspaceId"/> is set directly rather than through <see cref="Workspaces"/>'
-    /// <c>EnsureSessionWorkspace</c>, which would switch the operator to that desk; restoring a pane on a
-    /// workspace must not activate it. Deliberately does not set <see cref="SelectedSession"/> — the restore loop
-    /// picks at most one session for that, once, across every pane it restores.
-    /// </summary>
+    // Attaches a session pane rebuilt from a saved `WorkspacePane` (AC-410): shown, but nothing
+    // started — `RestoreSessionPanesAsync` mints the panel and adopts its saved id before calling
+    // this. `workspaceId` is set directly rather than through `Workspaces`'
+    // `EnsureSessionWorkspace`, which would switch the operator to that desk; restoring a pane on a
+    // workspace must not activate it. Deliberately does not set `SelectedSession` — the restore loop
+    // picks at most one session for that, once, across every pane it restores.
     private void _AttachRestoredSession(SessionPanelViewModel session, string workspaceId, WorkspacePane pane)
     {
         session.WorkspaceId = workspaceId;
@@ -5500,12 +5351,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _AttachSession(session);
     }
 
-    /// <summary>
-    /// The <see cref="WorkspacePane"/> record for a just-started AI session (AC-410) — the operator's
-    /// <em>intention</em>: which profile and kind it runs under, and the folder it was asked to run in, before
-    /// isolation may have moved it into a worktree. Written by <see cref="_PersistNewSessionPane"/> right after
-    /// <see cref="AddSession"/>, before the session actually starts.
-    /// </summary>
+    // The `WorkspacePane` record for a just-started AI session (AC-410) — the operator's
+    // *intention*: which profile and kind it runs under, and the folder it was asked to run in, before
+    // isolation may have moved it into a worktree. Written by `_PersistNewSessionPane` right after
+    // `AddSession`, before the session actually starts.
     private static WorkspacePane _BuildSessionPane(SessionPanelViewModel session, NewSessionResult result) =>
         new(session.PaneId, PaneKind.AiSession)
         {
@@ -5517,12 +5366,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId = result.ProjectId,
         };
 
-    /// <summary>
-    /// Persists <paramref name="session"/>'s pane record right after <see cref="AddSession"/> — deliberately before
-    /// <see cref="_StartSessionAsync"/> runs, not after: a crash in between leaves at most one config write, so the
-    /// worst case is a pane that never comes back, not one that comes back describing a session that never
-    /// actually started this way (AC-410). Fire-and-forget, the same as every other workspace-settings write.
-    /// </summary>
+    // Persists `session`'s pane record right after `AddSession` — deliberately before
+    // `_StartSessionAsync` runs, not after: a crash in between leaves at most one config write, so the
+    // worst case is a pane that never comes back, not one that comes back describing a session that never
+    // actually started this way (AC-410). Fire-and-forget, the same as every other workspace-settings write.
     private void _PersistNewSessionPane(SessionPanelViewModel session, NewSessionResult result)
     {
         session.HasPersistedPane = true;
@@ -5541,25 +5388,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // not by a non-null value.
     private readonly Dictionary<string, string?> _restoreWorkingDirectories = new(StringComparer.Ordinal);
 
-    /// <summary>
-    /// Brings back every AI-session pane saved on a Sessions workspace (AC-410), once <see cref="Workspaces"/> has
-    /// loaded <c>cockpit.json</c>: for each, composes a restore plan, resolves its worktree (if any) from the
-    /// registry, mints the matching panel through the factory its saved <see cref="PaneSessionKind"/> names, adopts
-    /// the pane's saved id, and attaches it — shown, but nothing started. Chained after
-    /// <c>Workspaces.InitializeAsync</c> in <c>App.axaml.cs</c>'s startup fire-and-forget.
-    /// <para>
-    /// Waits on <see cref="IWorktreeReconcileGate"/> first: <c>Program.cs</c> starts the startup worktree reconcile
-    /// fire-and-forget so it never delays the window, and without this wait an operator who accepts a restore offer
-    /// within about a second of launch could race the reconcile into removing the very worktree the offer is about
-    /// to reattach.
-    /// </para>
-    /// <para>
-    /// Never throws — the same contract <c>InitializeAsync</c> keeps, so a continuation chained after both always
-    /// runs. A pane this run cannot make sense of (an id already restored, in the unlikely event of a
-    /// hand-duplicated <c>cockpit.json</c>) is skipped rather than aborting every other pane's restore; the skip is
-    /// logged so it leaves a trail instead of a pane that silently never comes back.
-    /// </para>
-    /// </summary>
+    // Brings back every AI-session pane saved on a Sessions workspace (AC-410), once `Workspaces` has
+    // loaded `cockpit.json`: for each, composes a restore plan, resolves its worktree (if any) from the
+    // registry, mints the matching panel through the factory its saved `PaneSessionKind` names, adopts
+    // the pane's saved id, and attaches it — shown, but nothing started. Chained after
+    // `Workspaces.InitializeAsync` in `App.axaml.cs`'s startup fire-and-forget.
+    //
+    // Waits on `IWorktreeReconcileGate` first: `Program.cs` starts the startup worktree reconcile
+    // fire-and-forget so it never delays the window, and without this wait an operator who accepts a restore offer
+    // within about a second of launch could race the reconcile into removing the very worktree the offer is about
+    // to reattach.
+    //
+    // Never throws — the same contract `InitializeAsync` keeps, so a continuation chained after both always
+    // runs. A pane this run cannot make sense of (an id already restored, in the unlikely event of a
+    // hand-duplicated `cockpit.json`) is skipped rather than aborting every other pane's restore; the skip is
+    // logged so it leaves a trail instead of a pane that silently never comes back.
     public async Task RestoreSessionPanesAsync(CancellationToken cancellationToken = default)
     {
         if (_sessionFactory is null || _ttySessionFactory is null || _sessionStateStore is null)
@@ -5689,14 +5532,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// What a restored pane starts with once the operator accepts the offer (AC-410) — mirrors
-    /// <see cref="ProjectQuickStart.ComposeAsync"/>'s use of app-default mode/model/effort (the typed Claude
-    /// vocabulary is migration-only; there is no dialog here to have overridden them). Null when
-    /// <see cref="SessionRestorePlan.Profile"/> is null (<see cref="SessionRestoreAvailability.ProfileGone"/> or an
-    /// <see cref="SessionRestoreAvailability.Unknown"/> plan with no profile at all) — there is nothing to start a
-    /// session under, so the caller leaves the offer standing rather than starting the wrong thing.
-    /// </summary>
+    // What a restored pane starts with once the operator accepts the offer (AC-410) — mirrors
+    // `ProjectQuickStart.ComposeAsync`'s use of app-default mode/model/effort (the typed Claude
+    // vocabulary is migration-only; there is no dialog here to have overridden them). Null when
+    // `SessionRestorePlan.Profile` is null (`SessionRestoreAvailability.ProfileGone` or an
+    // `SessionRestoreAvailability.Unknown` plan with no profile at all) — there is nothing to start a
+    // session under, so the caller leaves the offer standing rather than starting the wrong thing.
     private NewSessionResult? _BuildRestoreLaunchResult(SessionRestorePlan plan, SessionResume resume)
     {
         if (plan.Profile is not { } profile)
@@ -5730,15 +5571,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         };
     }
 
-    /// <summary>
-    /// Starts a restored pane once the operator has decided (AC-410) — <see cref="SessionPanelViewModel.RestoreDecided"/>'s
-    /// handler. "Resume" resolves to <see cref="SessionResume.BySessionId"/> when the plan's saved state actually
-    /// names a conversation id, and to <see cref="SessionResume.New"/> otherwise (and always for "Start fresh") —
-    /// the same fall-back <c>_BuildRestoreLaunchResult</c> would otherwise silently need twice. Clears
-    /// <see cref="SessionPanelViewModel.RestoreOffer"/> only once the start actually returns a pane id: a cancelled
-    /// isolation prompt (see <c>_StartSessionAsync</c>) closes the session outright, and a plan with no profile to
-    /// start under leaves the offer standing rather than pretending a start happened.
-    /// </summary>
+    // Starts a restored pane once the operator has decided (AC-410) — `SessionPanelViewModel.RestoreDecided`'s
+    // handler. "Resume" resolves to `SessionResume.BySessionId` when the plan's saved state actually
+    // names a conversation id, and to `SessionResume.New` otherwise (and always for "Start fresh") —
+    // the same fall-back `_BuildRestoreLaunchResult` would otherwise silently need twice. Clears
+    // `SessionPanelViewModel.RestoreOffer` only once the start actually returns a pane id: a cancelled
+    // isolation prompt (see `_StartSessionAsync`) closes the session outright, and a plan with no profile to
+    // start under leaves the offer standing rather than pretending a start happened.
     private async Task _StartRestoredSessionAsync(SessionPanelViewModel session, SessionRestoreChoice choice)
     {
         if (!_restorePlans.TryGetValue(session.PaneId, out var plan))
@@ -5761,36 +5600,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// AC-290's other half of a scheduled resume: when its pane is gone, or merely restored and not yet started,
-    /// but the earlier conversation is one AC-410 already knows how to bring back, reopen it exactly the way the
-    /// restore-offer banner's own "Resume conversation" would — <see cref="_StartRestoredSessionAsync"/> — and send
-    /// the prompt the moment it lands. Wired as <see cref="ScheduledResumeCoordinator.ReopenAndSend"/>.
-    /// <para>
-    /// Deliberately does not compose a fresh restore plan for a pane <see cref="RestoreSessionPanesAsync"/> never
-    /// saw this run: a pane closed on purpose already had its <c>WorkspacePane</c> record removed (<see
-    /// cref="CloseSessionAsync"/>), so there is nothing left to reopen it with, and reopening it anyway would
-    /// second-guess the operator's own close. The reachable case is a crash the operator was never asked about —
-    /// restart materializes the restore offer, and a resume due after that restart can pick it straight back up.
-    /// </para>
-    /// <para>
-    /// SDK sessions only, for now: a TTY's <c>PromptSink</c> is wired asynchronously by the view once its pty has
-    /// actually come up (<c>TtyView.StartPty</c>), well after <see cref="_StartSessionAsync"/> already returned and
-    /// <see cref="_StartRestoredSessionAsync"/> already cleared the offer — so <c>CanTakeAPrompt</c> reads false
-    /// immediately afterwards every time, and attempting a TTY reopen here would start the pty, destroy its restore
-    /// offer, and still have to report the resume as undelivered. Left for a follow-up that can wait for the pty
-    /// rather than assume it is already there; an SDK session's runtime, by contrast, is up by the time
-    /// <c>StartConfiguredAsync</c> returns.
-    /// </para>
-    /// <para>
-    /// Gates on the saved conversation id directly rather than <see cref="SessionPanelViewModel.CanResumeConversation"/>
-    /// (which only reflects <see cref="SessionRestoreAvailability.Known"/>): <see cref="_StartRestoredSessionAsync"/>
-    /// decides <see cref="SessionResume.BySessionId"/> vs. <see cref="SessionResume.New"/> from the id string itself,
-    /// and a provider that reports <c>Known</c> without actually supplying one — a contract violation at the plugin
-    /// seam, but not one anything currently stops — must not fall through to a silent fresh start under this
-    /// method's own toast claiming otherwise.
-    /// </para>
-    /// </summary>
+    // AC-290's other half of a scheduled resume: when its pane is gone, or merely restored and not yet started,
+    // but the earlier conversation is one AC-410 already knows how to bring back, reopen it exactly the way the
+    // restore-offer banner's own "Resume conversation" would — `_StartRestoredSessionAsync` — and send
+    // the prompt the moment it lands. Wired as `ScheduledResumeCoordinator.ReopenAndSend`.
+    //
+    // Deliberately does not compose a fresh restore plan for a pane `RestoreSessionPanesAsync` never
+    // saw this run: a pane closed on purpose already had its `WorkspacePane` record removed (`CloseSessionAsync`), so there is nothing left to reopen it with, and reopening it anyway would
+    // second-guess the operator's own close. The reachable case is a crash the operator was never asked about —
+    // restart materializes the restore offer, and a resume due after that restart can pick it straight back up.
+    //
+    // SDK sessions only, for now: a TTY's `PromptSink` is wired asynchronously by the view once its pty has
+    // actually come up (`TtyView.StartPty`), well after `_StartSessionAsync` already returned and
+    // `_StartRestoredSessionAsync` already cleared the offer — so `CanTakeAPrompt` reads false
+    // immediately afterwards every time, and attempting a TTY reopen here would start the pty, destroy its restore
+    // offer, and still have to report the resume as undelivered. Left for a follow-up that can wait for the pty
+    // rather than assume it is already there; an SDK session's runtime, by contrast, is up by the time
+    // `StartConfiguredAsync` returns.
+    //
+    // Gates on the saved conversation id directly rather than `SessionPanelViewModel.CanResumeConversation`
+    // (which only reflects `SessionRestoreAvailability.Known`): `_StartRestoredSessionAsync`
+    // decides `SessionResume.BySessionId` vs. `SessionResume.New` from the id string itself,
+    // and a provider that reports `Known` without actually supplying one — a contract violation at the plugin
+    // seam, but not one anything currently stops — must not fall through to a silent fresh start under this
+    // method's own toast claiming otherwise.
     private async Task<bool> _ReopenAndSendResumeAsync(string paneId, string prompt)
     {
         if (Sessions.FirstOrDefault(session => session.PaneId == paneId) is not SessionViewModel session
@@ -5804,7 +5637,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return session.RestoreOffer is null && session.CanTakeAPrompt && await session.SendPromptAsync(prompt);
     }
 
-    /// <summary>A restore offer was resolved into a start (AC-410) — run the matching launch through the normal start path.</summary>
+    // A restore offer was resolved into a start (AC-410) — run the matching launch through the normal start path.
     private void OnSessionRestoreDecided(object? sender, SessionRestoreChoice choice)
     {
         if (sender is SessionPanelViewModel session)
@@ -5813,13 +5646,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Seeds a freshly built session with the live global preferences it must start on — transcript display (T7),
-    /// usage-pill fields (AC-105), auto-close-on-exit (T10), diagnostic controls (#73), combine-queued-messages
-    /// (AC-145, SDK only), and, for a TTY, terminal appearance (#40) and stacked layout (#54). Each is kept current
-    /// afterwards by its own OnXChanged hook. Shared by the grid path (<see cref="AddSession"/>) and the embedded
-    /// path (<see cref="Embed"/>): the settings a session starts on are the same wherever it is shown.
-    /// </summary>
+    // Seeds a freshly built session with the live global preferences it must start on — transcript display (T7),
+    // usage-pill fields (AC-105), auto-close-on-exit (T10), diagnostic controls (#73), combine-queued-messages
+    // (AC-145, SDK only), and, for a TTY, terminal appearance (#40) and stacked layout (#54). Each is kept current
+    // afterwards by its own OnXChanged hook. Shared by the grid path (`AddSession`) and the embedded
+    // path (`Embed`): the settings a session starts on are the same wherever it is shown.
     private void _SeedSessionPreferences(SessionPanelViewModel session)
     {
         session.ShowTimestamps = ShowTimestamps;
@@ -5857,12 +5688,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Sets a session's agent/workflow statusline by its <see cref="SessionPanelViewModel.PaneId"/> (#AC-13) — the
-    /// line shown under its title in the header and sidebar. Returns whether a live session matched; false is a
-    /// no-op (the session may have closed), never an error. Must be called on the UI thread — the host API that a
-    /// plugin/agent reaches this through marshals to it.
-    /// </summary>
+    // Sets a session's agent/workflow statusline by its `SessionPanelViewModel.PaneId` (#AC-13) — the
+    // line shown under its title in the header and sidebar. Returns whether a live session matched; false is a
+    // no-op (the session may have closed), never an error. Must be called on the UI thread — the host API that a
+    // plugin/agent reaches this through marshals to it.
     public bool SetSessionStatusline(string paneId, string statusline)
     {
         if (FindSession(paneId) is not { } target)
@@ -5888,37 +5717,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // matches the convention rather than hunting for a ticket anywhere in free text.
     private static readonly Regex _TicketIdPattern = new(@"^[A-Z]{2,}-\d+\b", RegexOptions.Compiled);
 
-    /// <summary>
-    /// The ticket id a session's brief text opens with, if any (AC-544) — the small, tracker-neutral pattern every
-    /// hand-written brief in this codebase already uses ("AC-13", "AC-544"). Lets a host-side spawn path seed a fresh
-    /// session's statusline deterministically, from what it already knows, instead of leaving the line blank until
-    /// (or unless) the agent inside calls <c>set_status</c> itself.
-    /// <para>
-    /// Null for text that does not open with one — and a caller with nothing to find here must seed nothing rather
-    /// than invent a line. A blank statusline is read, correctly, as "this session has not said"; a confidently wrong
-    /// one is read as fact, and it is the assistant that would go on to repeat it.
-    /// </para>
-    /// </summary>
+    // The ticket id a session's brief text opens with, if any (AC-544) — the small, tracker-neutral pattern every
+    // hand-written brief in this codebase already uses ("AC-13", "AC-544"). Lets a host-side spawn path seed a fresh
+    // session's statusline deterministically, from what it already knows, instead of leaving the line blank until
+    // (or unless) the agent inside calls `set_status` itself.
+    //
+    // Null for text that does not open with one — and a caller with nothing to find here must seed nothing rather
+    // than invent a line. A blank statusline is read, correctly, as "this session has not said"; a confidently wrong
+    // one is read as fact, and it is the assistant that would go on to repeat it.
     private static string? _TicketFromBrief(string? text) =>
         !string.IsNullOrWhiteSpace(text) && _TicketIdPattern.Match(text.TrimStart()) is { Success: true } match
             ? match.Value
             : null;
 
-    /// <summary>
-    /// A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
-    /// own <c>set_status</c>, a plugin acting on its embedded pane, and a consent routed to it all reach it (AC-152),
-    /// not only grid sessions. Read the collections on the UI thread, like its callers do.
-    /// </summary>
+    // A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
+    // own `set_status`, a plugin acting on its embedded pane, and a consent routed to it all reach it (AC-152),
+    // not only grid sessions. Read the collections on the UI thread, like its callers do.
     public SessionPanelViewModel? FindSession(string paneId) =>
         _AllSessions().FirstOrDefault(session => session.PaneId == paneId);
 
-    /// <summary>
-    /// Every session the host holds, grid and embedded together (AC-391): an embedded agent (an Autopilot step, a
-    /// plugin-run) is a full session with its own MCP token even though the grid deliberately never lists it, so a
-    /// caller enumerating "every agent" — the workspace-presence roster, say — must not miss it the way iterating
-    /// <see cref="Sessions"/> alone would. Same collections as <see cref="FindSession"/>; read them on the UI
-    /// thread, like its callers do.
-    /// </summary>
+    // Every session the host holds, grid and embedded together (AC-391): an embedded agent (an Autopilot step, a
+    // plugin-run) is a full session with its own MCP token even though the grid deliberately never lists it, so a
+    // caller enumerating "every agent" — the workspace-presence roster, say — must not miss it the way iterating
+    // `Sessions` alone would. Same collections as `FindSession`; read them on the UI
+    // thread, like its callers do.
     public IEnumerable<SessionPanelViewModel> AllSessions() => _AllSessions();
 
     // Every session the host holds — the grid's, plus the embedded ones the grid deliberately does not list. The seam
@@ -5932,22 +5754,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the life of the process, and the next request on that pane is denied without a card ever being shown.
     private IEnumerable<SessionPanelViewModel> _ConsentPanes() => _WithAssistant(_AllSessions());
 
-    /// <summary>
-    /// <paramref name="sessions"/> with the live assistant on the end. It is in neither <see cref="Sessions"/> nor
-    /// the embedded table by construction (see <see cref="CreateAssistantSession"/>), so every loop that fans a live
-    /// setting out to "all sessions", and every consent pane lookup, reaches every session except the one the
-    /// operator is actually talking to unless it goes through here.
-    /// </summary>
+    // `sessions` with the live assistant on the end. It is in neither `Sessions` nor
+    // the embedded table by construction (see `CreateAssistantSession`), so every loop that fans a live
+    // setting out to "all sessions", and every consent pane lookup, reaches every session except the one the
+    // operator is actually talking to unless it goes through here.
     private IEnumerable<SessionPanelViewModel> _WithAssistant(IEnumerable<SessionPanelViewModel> sessions) =>
         _assistantSession is { } assistant ? sessions.Append(assistant) : sessions;
 
-    /// <summary>
-    /// The display names of the sessions by pane id, for the managed-worktrees panel (AC-520). The persisted
-    /// <see cref="WorkspacePane"/> title goes in first and a live pane's title overwrites it: the persisted one
-    /// survives the pane closing or crashing — which is exactly when the panel most needs a name instead of
-    /// "a pane" — while a live pane carries the title the operator sees right now. Read on the UI thread as one
-    /// snapshot; see <see cref="WorktreesViewModel.SessionNames"/>.
-    /// </summary>
+    // The display names of the sessions by pane id, for the managed-worktrees panel (AC-520). The persisted
+    // `WorkspacePane` title goes in first and a live pane's title overwrites it: the persisted one
+    // survives the pane closing or crashing — which is exactly when the panel most needs a name instead of
+    // "a pane" — while a live pane carries the title the operator sees right now. Read on the UI thread as one
+    // snapshot; see `WorktreesViewModel.SessionNames`.
     private IReadOnlyDictionary<string, string> _SessionNames()
     {
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -5970,19 +5788,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return names;
     }
 
-    /// <summary>
-    /// The pane ids currently showing an open restore offer (AC-410), for the managed-worktrees panel's Release
-    /// action (AC-520 fix 6) — what tells apart a row that is "live" only because of that offer from one whose
-    /// session is genuinely doing something. Read on the UI thread as one snapshot; see
-    /// <see cref="WorktreesViewModel.RestoreOfferPaneIds"/>.
-    /// </summary>
+    // The pane ids currently showing an open restore offer (AC-410), for the managed-worktrees panel's Release
+    // action (AC-520 fix 6) — what tells apart a row that is "live" only because of that offer from one whose
+    // session is genuinely doing something. Read on the UI thread as one snapshot; see
+    // `WorktreesViewModel.RestoreOfferPaneIds`.
     private IReadOnlySet<string> _RestoreOfferPaneIds() =>
         _AllSessions().Where(session => session.HasRestoreOffer).Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>
-    /// Renames a session — the title in its header and sidebar — by its <see cref="SessionPanelViewModel.PaneId"/>
-    /// (#AC-13). A blank name is ignored. Returns whether a live session matched. Must be called on the UI thread.
-    /// </summary>
+    // Renames a session — the title in its header and sidebar — by its `SessionPanelViewModel.PaneId`
+    // (#AC-13). A blank name is ignored. Returns whether a live session matched. Must be called on the UI thread.
     public bool SetSessionName(string paneId, string name)
     {
         if (string.IsNullOrWhiteSpace(name) || Sessions.FirstOrDefault(session => session.PaneId == paneId) is not { } target)
@@ -5994,24 +5808,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return true;
     }
 
-    /// <summary>
-    /// Names a session the way <see cref="SetSessionName"/> does, but stands down when its name is one somebody
-    /// chose (#AC-310) — how linking a ticket to a running session labels it without erasing the name the operator
-    /// typed. Returns whether the session was renamed, so false covers both "no such session" and "it already has
-    /// a name of its own". A suggested name counts as generated in its turn, so linking a second ticket to the same
-    /// session relabels it rather than leaving it showing the first. Must be called on the UI thread.
-    /// </summary>
+    // Names a session the way `SetSessionName` does, but stands down when its name is one somebody
+    // chose (#AC-310) — how linking a ticket to a running session labels it without erasing the name the operator
+    // typed. Returns whether the session was renamed, so false covers both "no such session" and "it already has
+    // a name of its own". A suggested name counts as generated in its turn, so linking a second ticket to the same
+    // session relabels it rather than leaving it showing the first. Must be called on the UI thread.
     // FindSession, not Sessions: an embedded pane already reaches its statusline and its consent through the same
     // resolver, and an agent proposing a name for the session it is running in must not miss for being embedded
     // (AC-152, #AC-312).
     public bool SuggestSessionName(string paneId, string name) =>
         FindSession(paneId)?.SuggestName(name) ?? false;
 
-    /// <summary>
-    /// Edge-triggered attention routing: fires the presence-aware notifier once, on the transition
-    /// into <see cref="SessionStatus.NeedsAttention"/> — not on every status touch while it stays
-    /// there. The notifier itself decides present-toast vs away-webhook.
-    /// </summary>
+    // Edge-triggered attention routing: fires the presence-aware notifier once, on the transition
+    // into `SessionStatus.NeedsAttention` — not on every status touch while it stays
+    // there. The notifier itself decides present-toast vs away-webhook.
     private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not SessionPanelViewModel session)
@@ -6072,12 +5882,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Lets finished sessions fall back to idle once they have been quiet for the configured time, and announces
-    /// that — per session, and once more when the last of them goes quiet so the cockpit as a whole is idle.
-    /// Driven by a periodic sweep rather than a timer per session: one tick decides for all of them.
-    /// </summary>
-    /// <param name="now">The current time, injected so the sweep is testable without waiting for it.</param>
+    // Lets finished sessions fall back to idle once they have been quiet for the configured time, and announces
+    // that — per session, and once more when the last of them goes quiet so the cockpit as a whole is idle.
+    // Driven by a periodic sweep rather than a timer per session: one tick decides for all of them.
+    //
+    // `now`: The current time, injected so the sweep is testable without waiting for it.
     internal void SweepIdleSessions(DateTimeOffset now)
     {
         var threshold = SessionIdleMinutes > 0 ? TimeSpan.FromMinutes(SessionIdleMinutes) : TimeSpan.Zero;
@@ -6100,21 +5909,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// AC-439: recomputes which panes currently collide across a workspace boundary and stamps
-    /// <see cref="SessionPanelViewModel.HasClaimCollision"/> on every one of them — an operator-only chip, never
-    /// anything an agent's tool result carries. Driven by a timer in the view, on the same footing as the idle sweep
-    /// and the resource sampler: the view model stays free of timers, and a test can call this whenever it likes. A
-    /// no-op when no monitor was supplied (the design-time/unit-test graph), which reads as "no collisions" rather
-    /// than an error.
-    /// <para>
-    /// <see cref="IClaimCollisionMonitor.PanesInCollision"/> canonicalizes every claimed resource, which for a
-    /// path-shaped one means real filesystem calls (<see cref="System.IO.File.Exists(string)"/>,
-    /// <see cref="System.IO.File.ResolveLinkTarget"/>) on strings an agent chose — a stalled network mount behind
-    /// one claim must not stall this UI-thread timer for every pane. The computation therefore runs on the thread
-    /// pool; only the property stamping below runs back on the UI thread once it completes.
-    /// </para>
-    /// </summary>
+    // AC-439: recomputes which panes currently collide across a workspace boundary and stamps
+    // `SessionPanelViewModel.HasClaimCollision` on every one of them — an operator-only chip, never
+    // anything an agent's tool result carries. Driven by a timer in the view, on the same footing as the idle sweep
+    // and the resource sampler: the view model stays free of timers, and a test can call this whenever it likes. A
+    // no-op when no monitor was supplied (the design-time/unit-test graph), which reads as "no collisions" rather
+    // than an error.
+    //
+    // `IClaimCollisionMonitor.PanesInCollision` canonicalizes every claimed resource, which for a
+    // path-shaped one means real filesystem calls (`System.IO.File.Exists(string)`,
+    // `System.IO.File.ResolveLinkTarget`) on strings an agent chose — a stalled network mount behind
+    // one claim must not stall this UI-thread timer for every pane. The computation therefore runs on the thread
+    // pool; only the property stamping below runs back on the UI thread once it completes.
     internal async Task RefreshClaimCollisionsAsync()
     {
         if (_claimCollisionMonitor is null)
@@ -6130,7 +5936,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>A session asked to close itself (T10: an "exit" turn finished) — run the normal close flow.</summary>
+    // A session asked to close itself (T10: an "exit" turn finished) — run the normal close flow.
     private void OnSessionCloseRequested(object? sender, EventArgs e)
     {
         if (sender is SessionPanelViewModel session)
@@ -6181,19 +5987,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSession = session;
     }
 
-    /// <summary>
-    /// Moves the selection to the previous session in <see cref="Sessions"/>, wrapping from the first
-    /// to the last. No-op when there are no sessions; selects the only session when there is exactly
-    /// one. Bound to the configurable <see cref="ShortcutAction.PreviousSession"/> shortcut (Ctrl+Shift+Up by default).
-    /// </summary>
+    // Moves the selection to the previous session in `Sessions`, wrapping from the first
+    // to the last. No-op when there are no sessions; selects the only session when there is exactly
+    // one. Bound to the configurable `ShortcutAction.PreviousSession` shortcut (Ctrl+Shift+Up by default).
     [RelayCommand]
     public void SelectPreviousSession() => _StepSelection(-1);
 
-    /// <summary>
-    /// Moves the selection to the next session in <see cref="Sessions"/>, wrapping from the last to
-    /// the first. No-op when there are no sessions. Bound to the configurable
-    /// <see cref="ShortcutAction.NextSession"/> shortcut (Ctrl+Shift+Down by default).
-    /// </summary>
+    // Moves the selection to the next session in `Sessions`, wrapping from the last to
+    // the first. No-op when there are no sessions. Bound to the configurable
+    // `ShortcutAction.NextSession` shortcut (Ctrl+Shift+Down by default).
     [RelayCommand]
     public void SelectNextSession() => _StepSelection(1);
 
@@ -6274,9 +6076,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-393: and whatever it had claimed. This is the whole of what keeps a claim from outliving its agent —
         // there is no expiry and no heartbeat in phase 1 — so a session that ends without releasing must not leave
         // its neighbours working around a worktree nobody is on any more.
+        //
+        // AC-396: and what it had spent against the line's rate limit. Only host memory is at stake — the counts are
+        // per sender and expire on their own within the window — but a pane id that is never coming back should not
+        // keep an entry for the life of the app.
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);
+        _agentLineBudget?.Forget(session.PaneId);
 
         // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
         // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
@@ -6314,37 +6121,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// The live assistant instance, or null before it has been woken. Held so the things that must reach it despite
-    /// it being in neither collection can — consent routing (<see cref="_ConsentPanes"/>) and the live fan-out of the
-    /// speech settings (<see cref="_WithAssistant"/>). <see cref="FindSession"/> deliberately still cannot see it:
-    /// teaching it to would hand every other caller a session the cockpit keeps out of both collections on purpose.
-    /// </summary>
+    // The live assistant instance, or null before it has been woken. Held so the things that must reach it despite
+    // it being in neither collection can — consent routing (`_ConsentPanes`) and the live fan-out of the
+    // speech settings (`_WithAssistant`). `FindSession` deliberately still cannot see it:
+    // teaching it to would hand every other caller a session the cockpit keeps out of both collections on purpose.
     private SessionViewModel? _assistantSession;
 
-    /// <summary>
-    /// Mints the voice assistant's session panel and hands it over (AC-543). The <em>only</em> way one is made:
-    /// <see cref="Services.AssistantSessionHost"/> calls this and keeps the sole reference, which is what makes the
-    /// assistant's identity established by construction — no agent can declare that it is the assistant, because
-    /// declaring is not how one comes into being.
-    /// </summary>
-    /// <remarks>
-    /// The third session kind, and deliberately in neither of the two collections: not in <see cref="Sessions"/>,
-    /// which would give it a grid tile, a place in the sidebar and a turn in the selection cycle; and not in
-    /// <c>_embeddedSessions</c>, which is keyed by the plugin workspace that owns it and torn down when that
-    /// workspace closes. The assistant belongs to no workspace at all — <see cref="SessionPanelViewModel.BelongsToNoWorkspace"/>
-    /// is set here rather than left to the caller, because a caller that forgot would get the silent
-    /// first-Sessions-desk fallback this whole rule exists to prevent.
-    /// <para>
-    /// Returns null in a graph with no session machinery (design-time, tests without a factory) — the same
-    /// condition <see cref="Embed"/> throws on. Null rather than a throw because the assistant is optional by
-    /// design: an app that cannot make one shows an unavailable indicator, it does not fail to start.
-    /// </para>
-    /// </remarks>
-    /// <param name="paneId">
-    /// The stable id the assistant is always known by, so the state store's record for the last conversation is
-    /// found again after a restart — the same identity trick a restored pane uses (AC-410).
-    /// </param>
+    // Mints the voice assistant's session panel and hands it over (AC-543). The *only* way one is made:
+    // `Services.AssistantSessionHost` calls this and keeps the sole reference, which is what makes the
+    // assistant's identity established by construction — no agent can declare that it is the assistant, because
+    // declaring is not how one comes into being.
+    // The third session kind, and deliberately in neither of the two collections: not in `Sessions`,
+    // which would give it a grid tile, a place in the sidebar and a turn in the selection cycle; and not in
+    // `_embeddedSessions`, which is keyed by the plugin workspace that owns it and torn down when that
+    // workspace closes. The assistant belongs to no workspace at all — `SessionPanelViewModel.BelongsToNoWorkspace`
+    // is set here rather than left to the caller, because a caller that forgot would get the silent
+    // first-Sessions-desk fallback this whole rule exists to prevent.
+    //
+    // Returns null in a graph with no session machinery (design-time, tests without a factory) — the same
+    // condition `Embed` throws on. Null rather than a throw because the assistant is optional by
+    // design: an app that cannot make one shows an unavailable indicator, it does not fail to start.
+    //
+    // `paneId`:
+    // The stable id the assistant is always known by, so the state store's record for the last conversation is
+    // found again after a restart — the same identity trick a restored pane uses (AC-410).
     internal SessionViewModel? CreateAssistantSession(string paneId)
     {
         if (_sessionFactory is null)
@@ -6368,17 +6168,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return session;
     }
 
-    /// <summary>
-    /// Undoes <see cref="CreateAssistantSession"/>'s wiring for an assistant instance that is being replaced —
-    /// the assistant died and <see cref="Services.AssistantSessionHost"/> is standing a new one up.
-    /// </summary>
-    /// <remarks>
-    /// Without this the dead <see cref="SessionViewModel"/> stayed subscribed to
-    /// <see cref="OnSessionPropertyChanged"/> and sat in <see cref="_lastStatus"/> for the life of the process,
-    /// so the one path the ticket asks for by name — coming back after falling over — leaked a whole session and
-    /// everything it holds, every time it did what it was built to do. The ordinary close path has always cleaned
-    /// up this pair; the assistant needs its own because it goes through neither of the two existing ones.
-    /// </remarks>
+    // Undoes `CreateAssistantSession`'s wiring for an assistant instance that is being replaced —
+    // the assistant died and `Services.AssistantSessionHost` is standing a new one up.
+    // Without this the dead `SessionViewModel` stayed subscribed to
+    // `OnSessionPropertyChanged` and sat in `_lastStatus` for the life of the process,
+    // so the one path the ticket asks for by name — coming back after falling over — leaked a whole session and
+    // everything it holds, every time it did what it was built to do. The ordinary close path has always cleaned
+    // up this pair; the assistant needs its own because it goes through neither of the two existing ones.
     internal void ReleaseAssistantSession(SessionPanelViewModel session)
     {
         session.PropertyChanged -= OnSessionPropertyChanged;
@@ -6392,50 +6188,41 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Whether <paramref name="profile"/> has a terminal route of its own — Claude's, or one a plugin registered.
-    /// Asked by the spawn service before honouring a request for a TTY session, so "that profile cannot run as a
-    /// terminal" is a sentence the assistant can say rather than a launch that silently comes up as something else.
-    /// </summary>
+    // Whether `profile` has a terminal route of its own — Claude's, or one a plugin registered.
+    // Asked by the spawn service before honouring a request for a TTY session, so "that profile cannot run as a
+    // terminal" is a sentence the assistant can say rather than a launch that silently comes up as something else.
     internal bool ProfileHasTtyRoute(SessionProfile profile) =>
         SessionKindDefaults.HasTtyRoute(profile, _ttyProviderResolver);
 
-    /// <summary>
-    /// Starts an ordinary session on <paramref name="workspaceId"/> for a host-side spawn service (AC-545) — the
-    /// assistant asking for work to be set up on a desk it named. Returns the pane it landed on and what that pane is
-    /// called, or null when nothing started.
-    /// </summary>
-    /// <remarks>
-    /// <b>What is deliberately the same as every other launch.</b> The session goes through
-    /// <see cref="_LaunchSessionFromResultAsync"/> and therefore through <see cref="_StartSessionAsync"/>: the same
-    /// worktree isolation, the same session-state record, the same project marking, the same pane record written
-    /// before the start (AC-410) so it survives a restart. A second launch path here would be a second one to teach
-    /// every time one of those changes, and the ones it forgot would fail silently for the sessions nobody was
-    /// watching — which, by construction, is all of these.
-    /// <para>
-    /// <b>What is deliberately different.</b> Only the desk: <paramref name="workspaceId"/> is stamped rather than
-    /// worked out, the workspace is not activated and <see cref="SelectedSession"/> does not move. See
-    /// <see cref="AddSession"/>. This is the whole of the difference, and it stays that small on purpose.
-    /// </para>
-    /// <para>
-    /// <b>The assistant is not one of these.</b> A session started here is an ordinary pane — it joins
-    /// <see cref="Sessions"/>, takes a tile and a sidebar row, is found by <see cref="FindSession"/>, appears in the
-    /// assistant's own <c>list_sessions</c>, and is closed by the ordinary close path. The assistant itself is in none
-    /// of that (<see cref="CreateAssistantSession"/> keeps it out of both collections), so it neither lists nor can
-    /// stop itself by accident — and <c>AssistantAgentGateway.StopAsync</c> refuses its pane id explicitly anyway
-    /// rather than relying on it being unfindable.
-    /// </para>
-    /// <para>
-    /// Whether the desk exists, whether it can host a session and whether the profile is real are all settled before
-    /// this is called. This executes; it does not scope — see <c>IAssistantAgentGateway</c>.
-    /// </para>
-    /// </remarks>
-    /// <param name="prompt">
-    /// The brief to hand the session once it is up. Injected <em>and submitted</em>, unlike the plugin path's
-    /// <see cref="StartSessionForPluginAsync"/>, which leaves the text in the composer for the operator to send: a
-    /// spawn is approved on screen with this prompt spelled out in the Allow row, so starting the work is what was
-    /// agreed to, and a worker sitting on an unsent message would be a session the operator was told had started.
-    /// </param>
+    // Starts an ordinary session on `workspaceId` for a host-side spawn service (AC-545) — the
+    // assistant asking for work to be set up on a desk it named. Returns the pane it landed on and what that pane is
+    // called, or null when nothing started.
+    // *What is deliberately the same as every other launch.* The session goes through
+    // `_LaunchSessionFromResultAsync` and therefore through `_StartSessionAsync`: the same
+    // worktree isolation, the same session-state record, the same project marking, the same pane record written
+    // before the start (AC-410) so it survives a restart. A second launch path here would be a second one to teach
+    // every time one of those changes, and the ones it forgot would fail silently for the sessions nobody was
+    // watching — which, by construction, is all of these.
+    //
+    // *What is deliberately different.* Only the desk: `workspaceId` is stamped rather than
+    // worked out, the workspace is not activated and `SelectedSession` does not move. See
+    // `AddSession`. This is the whole of the difference, and it stays that small on purpose.
+    //
+    // *The assistant is not one of these.* A session started here is an ordinary pane — it joins
+    // `Sessions`, takes a tile and a sidebar row, is found by `FindSession`, appears in the
+    // assistant's own `list_sessions`, and is closed by the ordinary close path. The assistant itself is in none
+    // of that (`CreateAssistantSession` keeps it out of both collections), so it neither lists nor can
+    // stop itself by accident — and `AssistantAgentGateway.StopAsync` refuses its pane id explicitly anyway
+    // rather than relying on it being unfindable.
+    //
+    // Whether the desk exists, whether it can host a session and whether the profile is real are all settled before
+    // this is called. This executes; it does not scope — see `IAssistantAgentGateway`.
+    //
+    // `prompt`:
+    // The brief to hand the session once it is up. Injected *and submitted*, unlike the plugin path's
+    // `StartSessionForPluginAsync`, which leaves the text in the composer for the operator to send: a
+    // spawn is approved on screen with this prompt spelled out in the Allow row, so starting the work is what was
+    // agreed to, and a worker sitting on an unsent message would be a session the operator was told had started.
     internal async Task<(string PaneId, string Name)?> StartSessionOnWorkspaceAsync(
         string workspaceId,
         SessionProfile profile,
@@ -6510,17 +6297,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return (paneId, name);
     }
 
-    /// <summary>
-    /// Closes <paramref name="session"/> for the host-side spawn service (AC-545) — the assistant asked, and the
-    /// operator clicked Allow on the row that named this pane.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="CloseSessionAsync"/> and not <see cref="RequestCloseSessionAsync"/>: that one raises the "this
-    /// session is still running, close it?" confirmation, which for this caller would be a second dialog about a
-    /// decision the operator has just made in the chat window — and one drawn on the main window, which is not where
-    /// they were looking. The gateway settles what may be closed (an agent session, never the assistant's own); this
-    /// carries it out.
-    /// </remarks>
+    // Closes `session` for the host-side spawn service (AC-545) — the assistant asked, and the
+    // operator clicked Allow on the row that named this pane.
+    // `CloseSessionAsync` and not `RequestCloseSessionAsync`: that one raises the "this
+    // session is still running, close it?" confirmation, which for this caller would be a second dialog about a
+    // decision the operator has just made in the chat window — and one drawn on the main window, which is not where
+    // they were looking. The gateway settles what may be closed (an agent session, never the assistant's own); this
+    // carries it out.
     internal Task StopSessionForAssistantAsync(SessionPanelViewModel session) => CloseSessionAsync(session);
 
     // --- IEmbeddedSessionHost (AC-122): sessions a plugin workspace runs inside its own full-surface body. ---
@@ -6991,13 +6774,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return worktree.Path;
     }
 
-    /// <summary>
-    /// Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) — backs
-    /// <see cref="Cockpit.Plugins.Abstractions.ICockpitHost.CreateRunWorktreeAsync"/>. Returns its path and branch, or
-    /// null when there is no worktree manager or <paramref name="repositoryDirectory"/> is not a git repository. Keyed to
-    /// a fresh id (not a session pane), so it is the run's to reuse across every step and persists as the merge-ready
-    /// deliverable after the run.
-    /// </summary>
+    // Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) — backs
+    // `Cockpit.Plugins.Abstractions.ICockpitHost.CreateRunWorktreeAsync`. Returns its path and branch, or
+    // null when there is no worktree manager or `repositoryDirectory` is not a git repository. Keyed to
+    // a fresh id (not a session pane), so it is the run's to reuse across every step and persists as the merge-ready
+    // deliverable after the run.
     public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, CancellationToken cancellationToken)
     {
         if (_worktreeManager is null
@@ -7045,7 +6826,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             : SessionOptionCatalog.AllPermissionModes.FirstOrDefault(mode => string.Equals(mode.Value, request.PermissionMode, StringComparison.OrdinalIgnoreCase))
                 ?? SessionOptionCatalog.DefaultPermissionMode;
 
-    /// <summary>Whether <paramref name="session"/> is still an embedded session this host owns — false once its workspace closed and it was torn down, which is how a start racing that teardown knows to stand down.</summary>
+    // Whether `session` is still an embedded session this host owns — false once its workspace closed and it was torn down, which is how a start racing that teardown knows to stand down.
     private bool _IsEmbeddedSessionLive(SessionPanelViewModel session) =>
         _embeddedSessions.Values.Any(owned => owned.Contains(session));
 
@@ -7098,6 +6879,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);
+        _agentLineBudget?.Forget(session.PaneId);
         if (_worktreeManager is not null)
         {
             try
@@ -7111,11 +6893,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>
-    /// Close affordance entry point (#11): a busy session flips its sidebar row to an inline Close/Keep
-    /// prompt first, so a running turn is never killed on a single click; an idle/waiting/done session
-    /// closes straight away.
-    /// </summary>
+    // Close affordance entry point (#11): a busy session flips its sidebar row to an inline Close/Keep
+    // prompt first, so a running turn is never killed on a single click; an idle/waiting/done session
+    // closes straight away.
     [RelayCommand]
     private async Task RequestCloseSessionAsync(SessionPanelViewModel session)
     {
@@ -7128,7 +6908,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await CloseSessionAsync(session);
     }
 
-    /// <summary>Confirms a pending close from the inline prompt and tears the session down.</summary>
+    // Confirms a pending close from the inline prompt and tears the session down.
     [RelayCommand]
     private async Task ConfirmCloseSessionAsync(SessionPanelViewModel session)
     {
@@ -7136,7 +6916,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await CloseSessionAsync(session);
     }
 
-    /// <summary>Dismisses the inline close prompt, keeping the session.</summary>
+    // Dismisses the inline close prompt, keeping the session.
     [RelayCommand]
     private void CancelCloseSession(SessionPanelViewModel session)
     {
@@ -7149,11 +6929,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IsZoomed = !IsZoomed;
     }
 
-    /// <summary>
-    /// Disposes every live session on app shutdown so each child claude process is killed and releases
-    /// its MCP permission-server connection — otherwise those open SSE streams keep the server (and the
-    /// whole process) alive after the window closes (bug #32).
-    /// </summary>
+    // Disposes every live session on app shutdown so each child claude process is killed and releases
+    // its MCP permission-server connection — otherwise those open SSE streams keep the server (and the
+    // whole process) alive after the window closes (bug #32).
     public async ValueTask DisposeAsync()
     {
         // Stop the hourly update timer (AC-188) so it does not keep ticking against a disposed view model.

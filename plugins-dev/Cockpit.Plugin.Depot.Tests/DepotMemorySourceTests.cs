@@ -8,13 +8,11 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotMemorySource.BuildRegistrationPairs"/> (AC-501) — one registration per connection instead of the
-/// single fixed one this plugin handed the host before. The registry that receives it
-/// (<c>ProjectMemorySourceRegistry.Register</c>) refuses a blank scheme, title or instruction, so this is not
-/// cosmetic: a registration that regresses to blank here is one the host silently drops, and the operator would
-/// never learn why a connection stopped appearing as a memory source.
-/// </summary>
+// `DepotMemorySource.BuildRegistrationPairs` (AC-501) — one registration per connection instead of the
+// single fixed one this plugin handed the host before. The registry that receives it
+// (`ProjectMemorySourceRegistry.Register`) refuses a blank scheme, title or instruction, so this is not
+// cosmetic: a registration that regresses to blank here is one the host silently drops, and the operator would
+// never learn why a connection stopped appearing as a memory source.
 public class DepotMemorySourceTests
 {
     private static DepotConnectionRegistration Connection(string id, string name, string url = "https://depot.example.com") =>

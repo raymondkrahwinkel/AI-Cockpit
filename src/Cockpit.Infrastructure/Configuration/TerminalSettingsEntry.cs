@@ -2,7 +2,7 @@ using Cockpit.Core.Terminal;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="TerminalSettings"/> in the <c>terminal</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of `TerminalSettings` in the `terminal` section of `cockpit.json`.
 internal sealed class TerminalSettingsEntry
 {
     public string FontFamily { get; set; } = "Cascadia Mono, Consolas, monospace";

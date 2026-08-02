@@ -2,15 +2,12 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Stops and asks. For the steps that are not free to undo — a deploy, a ticket moved to Done, a message sent to
-/// someone else — where the value of a flow is that it does the work, and the value of this step is that it does not
-/// do it behind your back.
-/// <para>
-/// Saying no is not a failure: nothing went wrong, you said not now. So the run records it as skipped, with what you
-/// were asked, and the branch stops there.
-/// </para>
-/// </summary>
+// Stops and asks. For the steps that are not free to undo — a deploy, a ticket moved to Done, a message sent to
+// someone else — where the value of a flow is that it does the work, and the value of this step is that it does not
+// do it behind your back.
+//
+// Saying no is not a failure: nothing went wrong, you said not now. So the run records it as skipped, with what you
+// were asked, and the branch stops there.
 internal sealed class ApproveRunner(ICockpitHost host) : IStepRunner
 {
     public string TypeId => "cockpit.approve";

@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Audio;
 
-/// <summary>
-/// Pure PCM sample-format conversion for TTS playback: the synthesis engine hands back normalized
-/// float32 mono ([-1, 1]), <see cref="Abstractions.Audio.IAudioPlaybackService"/> plays signed 16-bit
-/// little-endian bytes — the mirror image of <c>VoicePushToTalkService._ToFloatSamples</c> (int16 bytes
-/// to float, for STT input).
-/// </summary>
+// Pure PCM sample-format conversion for TTS playback: the synthesis engine hands back normalized
+// float32 mono ([-1, 1]), `Abstractions.Audio.IAudioPlaybackService` plays signed 16-bit
+// little-endian bytes — the mirror image of `VoicePushToTalkService._ToFloatSamples` (int16 bytes
+// to float, for STT input).
 public static class PcmSampleConverter
 {
     public static byte[] ToInt16Bytes(IReadOnlyList<float> samples)

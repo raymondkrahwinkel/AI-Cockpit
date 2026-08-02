@@ -4,25 +4,21 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// Translates a <c>session/update</c> notification's <c>params</c> into zero-or-more <see cref="PluginSessionEvent"/>s
-/// (AC-270 sub [c]), discriminated on <c>params.update.sessionUpdate</c> (protocol §4) — the plugin-local mirror of
-/// <c>Cockpit.Plugin.ClaudeProvider.ClaudeStreamJson.ParseLine</c>: switches on the discriminator, and an unknown or
-/// malformed update yields nothing rather than throwing, so one bad line never kills the notification pump.
-/// </summary>
-/// <remarks>
-/// Not stateless (P1-3): the lazy <c>tool_call</c> create (protocol §4b) carries only a tool name, and the
-/// refining <c>tool_call_update</c> — the real title/kind/<c>rawInput</c> — arrives on a later notification.
-/// Exactly one <see cref="PluginToolUseRequested"/> must reach the host per toolCallId, at the earliest of: a
-/// <c>tool_call</c> that already carries <c>rawInput</c>, the first <c>tool_call_update</c> that does, or a
-/// terminal <c>tool_call_update</c> for an id that never got one (with whatever is known by then). One instance
-/// is owned per session by <see cref="KimiAcpSessionDriver"/>, which also drives the fourth trigger — a
-/// <c>session/request_permission</c> for an id that never got one — through <see cref="EnsureToolUseRequested"/>,
-/// since that request arrives outside the <c>session/update</c> stream this class otherwise reads.
-/// </remarks>
+// Translates a `session/update` notification's `params` into zero-or-more `PluginSessionEvent`s
+// (AC-270 sub [c]), discriminated on `params.update.sessionUpdate` (protocol §4) — the plugin-local mirror of
+// `Cockpit.Plugin.ClaudeProvider.ClaudeStreamJson.ParseLine`: switches on the discriminator, and an unknown or
+// malformed update yields nothing rather than throwing, so one bad line never kills the notification pump.
+// Not stateless (P1-3): the lazy `tool_call` create (protocol §4b) carries only a tool name, and the
+// refining `tool_call_update` — the real title/kind/`rawInput` — arrives on a later notification.
+// Exactly one `PluginToolUseRequested` must reach the host per toolCallId, at the earliest of: a
+// `tool_call` that already carries `rawInput`, the first `tool_call_update` that does, or a
+// terminal `tool_call_update` for an id that never got one (with whatever is known by then). One instance
+// is owned per session by `KimiAcpSessionDriver`, which also drives the fourth trigger — a
+// `session/request_permission` for an id that never got one — through `EnsureToolUseRequested`,
+// since that request arrives outside the `session/update` stream this class otherwise reads.
 internal sealed class KimiSessionUpdateMapper
 {
-    /// <summary>How many toolCallIds either map remembers before the oldest is forgotten — exposed for tests.</summary>
+    // How many toolCallIds either map remembers before the oldest is forgotten — exposed for tests.
     internal const int MaxTrackedToolCalls = 4096;
 
     // toolCallId -> the best tool name/rawInput known so far, for an id that has not produced its one
@@ -77,13 +73,11 @@ internal sealed class KimiSessionUpdateMapper
         };
     }
 
-    /// <summary>
-    /// Trigger (c) for a <c>session/request_permission</c> (P1-3): if <paramref name="toolCallId"/> never
-    /// produced its one <see cref="PluginToolUseRequested"/>, emits it now — using whatever this mapper already
-    /// knows about the id, or <paramref name="fallbackToolName"/> if it knows nothing at all — because a
-    /// permission card with no matching prior tool-use request has no host-side tool to attach its buttons to
-    /// (D3). Returns <see langword="null"/> once the id already has one.
-    /// </summary>
+    // Trigger (c) for a `session/request_permission` (P1-3): if `toolCallId` never
+    // produced its one `PluginToolUseRequested`, emits it now — using whatever this mapper already
+    // knows about the id, or `fallbackToolName` if it knows nothing at all — because a
+    // permission card with no matching prior tool-use request has no host-side tool to attach its buttons to
+    // (D3). Returns `null` once the id already has one.
     public PluginToolUseRequested? EnsureToolUseRequested(string toolCallId, string? sessionId, string fallbackToolName)
     {
         if (_emittedToolUseRequests.ContainsKey(toolCallId))

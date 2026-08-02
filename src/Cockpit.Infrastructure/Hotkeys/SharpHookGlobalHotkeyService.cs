@@ -5,34 +5,26 @@ using Cockpit.Core.Abstractions.Hotkeys;
 
 namespace Cockpit.Infrastructure.Hotkeys;
 
-/// <summary>
-/// Global hotkeys via SharpHook's low-level keyboard hook (<c>WH_KEYBOARD_LL</c> on Windows, X11's input on
-/// Linux) — the counterpart of <see cref="PortalGlobalHotkeyService"/>. Filters every raw key event down to
-/// the registered keys and reports their press/release edges; unlike Win32's <c>RegisterHotKey</c>
-/// (press-only), the low-level hook sees both edges, which push-to-talk's hold needs.
-/// </summary>
-/// <remarks>
-/// One hook serves every binding: it is installed once and reads the current key map per event, so re-arming
-/// on a changed key is an assignment rather than a second hook on the same keyboard.
-/// </remarks>
+// Global hotkeys via SharpHook's low-level keyboard hook (`WH_KEYBOARD_LL` on Windows, X11's input on
+// Linux) — the counterpart of `PortalGlobalHotkeyService`. Filters every raw key event down to
+// the registered keys and reports their press/release edges; unlike Win32's `RegisterHotKey`
+// (press-only), the low-level hook sees both edges, which push-to-talk's hold needs.
+// One hook serves every binding: it is installed once and reads the current key map per event, so re-arming
+// on a changed key is an assignment rather than a second hook on the same keyboard.
 internal sealed class SharpHookGlobalHotkeyService(ILogger<SharpHookGlobalHotkeyService> logger) : IGlobalHotkeyService
 {
     private readonly SimpleGlobalHook _hook = new(GlobalHookType.Keyboard);
 
-    /// <summary>The armed keys by hotkey id, replaced wholesale on each <see cref="StartAsync"/>. Read on the hook's own thread, so it is swapped rather than mutated.</summary>
+    // The armed keys by hotkey id, replaced wholesale on each `StartAsync`. Read on the hook's own thread, so it is swapped rather than mutated.
     private IReadOnlyDictionary<KeyCode, GlobalHotkeyBinding> _armed = new Dictionary<KeyCode, GlobalHotkeyBinding>();
 
     private IReadOnlyDictionary<string, string> _triggerDescriptions = new Dictionary<string, string>();
 
-    /// <summary>
-    /// Which hotkeys are down, so a hold collapses to one edge whatever the OS repeats.
-    /// </summary>
-    /// <remarks>
-    /// Behind a lock, and not out of habit: it is written from the hook's own thread on every key event and
-    /// cleared from the caller's thread on every arm. While this was a single <c>bool</c> — one key, one hold —
-    /// that pairing was harmless, because a bool write cannot tear. A set can, and the failure it buys is a hold
-    /// whose key-up finds nothing to remove: push-to-talk never hears the release and the microphone stays open.
-    /// </remarks>
+    // Which hotkeys are down, so a hold collapses to one edge whatever the OS repeats.
+    // Behind a lock, and not out of habit: it is written from the hook's own thread on every key event and
+    // cleared from the caller's thread on every arm. While this was a single `bool` — one key, one hold —
+    // that pairing was harmless, because a bool write cannot tear. A set can, and the failure it buys is a hold
+    // whose key-up finds nothing to remove: push-to-talk never hears the release and the microphone stays open.
     private readonly HashSet<string> _held = [];
     private readonly Lock _heldGate = new();
 
@@ -42,18 +34,14 @@ internal sealed class SharpHookGlobalHotkeyService(ILogger<SharpHookGlobalHotkey
     public event EventHandler<string>? Released;
     public event EventHandler? TriggerDescriptionsChanged;
 
-    /// <summary>Windows and X11 bind what they are asked for, so this is the configured key — once it has actually taken.</summary>
+    // Windows and X11 bind what they are asked for, so this is the configured key — once it has actually taken.
     public string? TriggerDescriptionFor(string hotkeyId) =>
         _triggerDescriptions.GetValueOrDefault(hotkeyId);
 
-    /// <summary>
-    /// Arms the hook on exactly the given keys. Safe to call again: it replaces the key map, which is how
-    /// changing a key in Options takes effect without a restart.
-    /// </summary>
-    /// <remarks>
-    /// The key used to be read exactly once, at startup, and nothing re-armed. Changing it in Options saved the
-    /// new key and left the hook listening for the old one — with nothing anywhere to say so.
-    /// </remarks>
+    // Arms the hook on exactly the given keys. Safe to call again: it replaces the key map, which is how
+    // changing a key in Options takes effect without a restart.
+    // The key used to be read exactly once, at startup, and nothing re-armed. Changing it in Options saved the
+    // new key and left the hook listening for the old one — with nothing anywhere to say so.
     public Task StartAsync(IReadOnlyList<GlobalHotkeyBinding> bindings, CancellationToken cancellationToken = default)
     {
         var armed = new Dictionary<KeyCode, GlobalHotkeyBinding>();

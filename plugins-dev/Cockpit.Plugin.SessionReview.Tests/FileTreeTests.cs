@@ -1,6 +1,6 @@
 namespace Cockpit.Plugin.SessionReview.Tests;
 
-/// <summary>The shape of the review panel's file tree (AC-578): nesting, folder collapsing and ordering.</summary>
+// The shape of the review panel's file tree (AC-578): nesting, folder collapsing and ordering.
 public class FileTreeTests
 {
     private static FileDiff File(string path) => new(path, FileChangeKind.Modified, []);

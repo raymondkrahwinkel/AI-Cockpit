@@ -6,19 +6,15 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// What makes a flow more than a button (#69): the triggers that fire by themselves. A flow marked Active and
-/// starting with "Text appears" runs when a session says the thing; one starting with "Schedule" runs when the clock
-/// comes round.
-/// <para>
-/// Only an <em>active</em> flow fires. A flow being drawn must not run while it is half-wired, and Active is the
-/// switch that says "I meant this" — which is why nothing here reads a flow that is merely saved.
-/// </para>
-/// <para>
-/// The flows are re-read on every signal rather than cached. They are edited in a dialog that this object cannot see,
-/// and a watcher running yesterday's copy of a flow is worse than one that is a millisecond late.
-/// </para>
-/// </summary>
+// What makes a flow more than a button (#69): the triggers that fire by themselves. A flow marked Active and
+// starting with "Text appears" runs when a session says the thing; one starting with "Schedule" runs when the clock
+// comes round.
+//
+// Only an *active* flow fires. A flow being drawn must not run while it is half-wired, and Active is the
+// switch that says "I meant this" — which is why nothing here reads a flow that is merely saved.
+//
+// The flows are re-read on every signal rather than cached. They are edited in a dialog that this object cannot see,
+// and a watcher running yesterday's copy of a flow is worse than one that is a millisecond late.
 internal sealed class FlowWatcher : IDisposable
 {
     // The clock is checked every half minute: a schedule of "09:00" means that minute, not that second, and a timer

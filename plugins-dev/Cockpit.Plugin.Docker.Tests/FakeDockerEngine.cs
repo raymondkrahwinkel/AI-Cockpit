@@ -2,8 +2,8 @@ using Cockpit.Plugin.Docker.Engine;
 
 namespace Cockpit.Plugin.Docker.Tests;
 
-/// <summary>A fake <see cref="IDockerEngine"/> so the MCP surface is tested without a running daemon. Records the
-/// calls it received so tests can assert what reached the engine.</summary>
+// A fake `IDockerEngine` so the MCP surface is tested without a running daemon. Records the
+// calls it received so tests can assert what reached the engine.
 internal sealed class FakeDockerEngine : IDockerEngine
 {
     public DockerDaemonInfo Info { get; set; } = new("27.0.0", "1.47", "linux", "amd64");
@@ -31,7 +31,7 @@ internal sealed class FakeDockerEngine : IDockerEngine
 
     public PruneResult PruneValue { get; set; } = new(4096, ["abc"]);
 
-    /// <summary>When set, every call throws it — to exercise the sanitized-error path.</summary>
+    // When set, every call throws it — to exercise the sanitized-error path.
     public Exception? Throw { get; set; }
 
     public List<string> Started { get; } = [];

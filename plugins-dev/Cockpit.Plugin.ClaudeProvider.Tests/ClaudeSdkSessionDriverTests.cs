@@ -3,14 +3,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeSdkSessionDriver"/> (Fase 4, SDK route) driven against a <see cref="FakeClaudeSdkSubprocess"/> —
-/// the turn-taking and, above all, the in-band permission round-trip that replaces the host's HTTP MCP permission
-/// server: a <c>can_use_tool</c> control_request surfaces as <see cref="PluginPermissionRequested"/>, and the
-/// operator's answer is written back as a <c>control_response</c> echoing the request's own <c>request_id</c>.
-/// The live CLI end (that it emits <c>can_use_tool</c> for this spawn) needs a manual eyeball check; everything the
-/// cockpit does with the line is proven here.
-/// </summary>
+// `ClaudeSdkSessionDriver` (Fase 4, SDK route) driven against a `FakeClaudeSdkSubprocess` —
+// the turn-taking and, above all, the in-band permission round-trip that replaces the host's HTTP MCP permission
+// server: a `can_use_tool` control_request surfaces as `PluginPermissionRequested`, and the
+// operator's answer is written back as a `control_response` echoing the request's own `request_id`.
+// The live CLI end (that it emits `can_use_tool` for this spawn) needs a manual eyeball check; everything the
+// cockpit does with the line is proven here.
 public class ClaudeSdkSessionDriverTests : IDisposable
 {
     private readonly string _tempDir = Directory.CreateTempSubdirectory("claude-sdk-driver-tests").FullName;

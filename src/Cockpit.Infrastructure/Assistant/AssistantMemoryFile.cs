@@ -4,14 +4,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-/// <summary>
-/// The assistant's memory as a markdown file next to <c>cockpit.json</c> (AC-595). Plain text a human can open,
-/// because opening it is the only way to prune it.
-/// </summary>
-/// <remarks>
-/// Not in <c>cockpit.json</c>: that file is written whole by <c>CockpitConfigFileAccess</c> on every settings
-/// change, and a growing block of free text in it would ride along with every one of those writes.
-/// </remarks>
+// The assistant's memory as a markdown file next to `cockpit.json` (AC-595). Plain text a human can open,
+// because opening it is the only way to prune it.
+// Not in `cockpit.json`: that file is written whole by `CockpitConfigFileAccess` on every settings
+// change, and a growing block of free text in it would ride along with every one of those writes.
 internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 {
     private const string Heading = "# What the operator asked me to remember";
@@ -27,7 +23,7 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
     {
     }
 
-    /// <summary>Test seam: point the memory at arbitrary files.</summary>
+    // Test seam: point the memory at arbitrary files.
     internal AssistantMemoryFile(string filePath, string statePath)
     {
         _filePath = filePath;
@@ -40,10 +36,8 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
     public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) =>
         _ReadAsync(_statePath, cancellationToken);
 
-    /// <summary>
-    /// Overwrites, where <see cref="RememberAsync"/> appends — and in a second file rather than a section of the
-    /// first, so neither write has to parse or hold a lock over the other's lines.
-    /// </summary>
+    // Overwrites, where `RememberAsync` appends — and in a second file rather than a section of the
+    // first, so neither write has to parse or hold a lock over the other's lines.
     public async Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default)
     {
         var state = text?.Trim();

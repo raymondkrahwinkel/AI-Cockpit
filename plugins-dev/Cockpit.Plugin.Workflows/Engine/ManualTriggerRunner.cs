@@ -2,7 +2,7 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>The manual trigger: you started it, so there is nothing to do but hand the flow its first item.</summary>
+// The manual trigger: you started it, so there is nothing to do but hand the flow its first item.
 internal sealed class ManualTriggerRunner : IStepRunner
 {
     public string TypeId => "cockpit.manual";

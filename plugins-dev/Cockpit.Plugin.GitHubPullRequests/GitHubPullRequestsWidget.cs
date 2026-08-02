@@ -11,23 +11,19 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// The dashboard-workspace view of your open pull requests (#AC-18): number, title, repository, an amber stripe
-/// on the ones waiting for your review, left-click to drop a review prompt, right-click for the menu — placed as
-/// a resizable pane. It reads the same <see cref="PullRequestRefreshSource"/> the side-menu badge (AC-517)
-/// subscribes to (AC-515) and the same connection/repository settings, so the two never disagree about what is
-/// open; what it adds is a per-pane "how many to show", because a dashboard pane is sized by hand.
-/// </summary>
-/// <remarks>
-/// Built in <c>Initialize</c> where the full <see cref="ICockpitHost"/> is in scope, so the closure hands it the
-/// host (to inject prompts and open dialogs), this instance's <see cref="IWidgetContext"/> (its own count, its
-/// refresh signal), and the plugin's one shared <see cref="PullRequestRefreshSource"/> — every widget instance
-/// (a dashboard can hold more than one) reads the same source rather than polling for itself. Pull requests the
-/// operator has set aside are hidden here too — ignoring is a decision about a PR, not about one surface — but
-/// the widget does not offer the ignore action itself, or announce review-request arrivals; curation and the
-/// toast both stay with <see cref="PullRequestBadgeUpdater"/>, which runs for the plugin's whole lifetime rather
-/// than only while a pane happens to be on screen.
-/// </remarks>
+// The dashboard-workspace view of your open pull requests (#AC-18): number, title, repository, an amber stripe
+// on the ones waiting for your review, left-click to drop a review prompt, right-click for the menu — placed as
+// a resizable pane. It reads the same `PullRequestRefreshSource` the side-menu badge (AC-517)
+// subscribes to (AC-515) and the same connection/repository settings, so the two never disagree about what is
+// open; what it adds is a per-pane "how many to show", because a dashboard pane is sized by hand.
+// Built in `Initialize` where the full `ICockpitHost` is in scope, so the closure hands it the
+// host (to inject prompts and open dialogs), this instance's `IWidgetContext` (its own count, its
+// refresh signal), and the plugin's one shared `PullRequestRefreshSource` — every widget instance
+// (a dashboard can hold more than one) reads the same source rather than polling for itself. Pull requests the
+// operator has set aside are hidden here too — ignoring is a decision about a PR, not about one surface — but
+// the widget does not offer the ignore action itself, or announce review-request arrivals; curation and the
+// toast both stay with `PullRequestBadgeUpdater`, which runs for the plugin's whole lifetime rather
+// than only while a pane happens to be on screen.
 internal sealed class GitHubPullRequestsWidget : UserControl
 {
     // On top of the shared PullRequestRefreshSource's own background poll, a short debounce coalesces the burst
@@ -163,7 +159,7 @@ internal sealed class GitHubPullRequestsWidget : UserControl
         _context.Sessions.OutputProduced -= _OnSessionOutput;
     }
 
-    /// <summary>What the pane's ↻ and the signal-refresh debounce both do: ask the shared source, and only a non-quiet caller reports a failure.</summary>
+    // What the pane's ↻ and the signal-refresh debounce both do: ask the shared source, and only a non-quiet caller reports a failure.
     private async Task _RefreshAsync(bool forceRefresh, bool quiet = false)
     {
         _loading.IsVisible = !quiet;
@@ -181,7 +177,7 @@ internal sealed class GitHubPullRequestsWidget : UserControl
         }
     }
 
-    /// <summary>Draws one snapshot from the shared source — this widget never announces arrivals itself (see <see cref="PullRequestBadgeUpdater"/>); curation stays with the persistent, per-operator ignore list.</summary>
+    // Draws one snapshot from the shared source — this widget never announces arrivals itself (see `PullRequestBadgeUpdater`); curation stays with the persistent, per-operator ignore list.
     private void _ApplySnapshot(PullRequestFeedSnapshot snapshot)
     {
         var result = snapshot.Result;

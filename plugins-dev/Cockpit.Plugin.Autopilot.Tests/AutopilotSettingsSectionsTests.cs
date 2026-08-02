@@ -5,15 +5,13 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The settings view offers its four groups to the host's navigation rail (AC-316) instead of stacking them into one
-/// scroll. What matters is that the groups are the ones the settings were already written in, in that order, and that
-/// asking for one puts exactly that group on screen — nothing moved, nothing was renamed.
-/// </summary>
+// The settings view offers its four groups to the host's navigation rail (AC-316) instead of stacking them into one
+// scroll. What matters is that the groups are the ones the settings were already written in, in that order, and that
+// asking for one puts exactly that group on screen — nothing moved, nothing was renamed.
 [Collection("avalonia")]
 public class AutopilotSettingsSectionsTests
 {
-    /// <summary>An in-memory <see cref="IPluginStorage"/> that round-trips through JSON, the way the host's real storage does.</summary>
+    // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does.
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);

@@ -33,19 +33,18 @@ public interface IStepRunner
     string ConsentAction(StepContext context) => string.Empty;
 }
 
-/// <summary>What a step produced: the items the next step gets, and a line for the run log saying what happened.</summary>
-/// <param name="Items">What flows on. Usually the input, or what the step made.</param>
-/// <param name="Output">What the operator reads in the run: the command's output, the message that was sent.</param>
+// What a step produced: the items the next step gets, and a line for the run log saying what happened.
+//
+// `Items`: What flows on. Usually the input, or what the step made.
+// `Output`: What the operator reads in the run: the command's output, the message that was sent.
 public sealed record StepOutcome(IReadOnlyList<WorkflowItem> Items, string Output)
 {
-    /// <summary>
-    /// This branch ends here, and nothing went wrong. A step that asked you and was told "not now" is not a failure —
-    /// but without saying so it would report success and the flow would carry on doing the very thing you refused.
-    /// </summary>
+    // This branch ends here, and nothing went wrong. A step that asked you and was told "not now" is not a failure —
+    // but without saying so it would report success and the flow would carry on doing the very thing you refused.
     public bool Stops { get; init; }
 
     public static StepOutcome Passing(IReadOnlyList<WorkflowItem> input, string output) => new(input, output);
 
-    /// <summary>The branch ends here on purpose. <paramref name="why"/> is what the run says about it.</summary>
+    // The branch ends here on purpose. `why` is what the run says about it.
     public static StepOutcome Stop(string why) => new([], why) { Stops = true };
 }

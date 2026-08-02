@@ -3,11 +3,9 @@ using Cockpit.Plugin.Depot.Model;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotConnectionRegistration.McpServerName"/> (AC-243): the fixed <c>"Depot: "</c> prefix Raymond chose
-/// so a connection managed here can never collide with (and silently overwrite, since <c>AddMcpServer</c> is an
-/// upsert-by-name) an unrelated server an operator configured by hand in the MCP-servers dialog.
-/// </summary>
+// `DepotConnectionRegistration.McpServerName` (AC-243): the fixed `"Depot: "` prefix Raymond chose
+// so a connection managed here can never collide with (and silently overwrite, since `AddMcpServer` is an
+// upsert-by-name) an unrelated server an operator configured by hand in the MCP-servers dialog.
 public class DepotConnectionRegistrationTests
 {
     [Fact]
@@ -28,12 +26,10 @@ public class DepotConnectionRegistrationTests
     }
 }
 
-/// <summary>
-/// <see cref="PluginMcpSignInOutcome"/>'s zero value (AC-243): must be <c>Unavailable</c>, not <c>Authorized</c> —
-/// <c>default(PluginMcpSignInOutcome)</c> is what an unstubbed fake (<c>Substitute.For&lt;ICockpitHost&gt;()</c>'s
-/// default <c>Task&lt;T&gt;</c> answer for any method nobody configured a return for), a missed switch arm, or a
-/// deserialization gap all produce — none of which have actually signed anything in.
-/// </summary>
+// `PluginMcpSignInOutcome`'s zero value (AC-243): must be `Unavailable`, not `Authorized` —
+// `default(PluginMcpSignInOutcome)` is what an unstubbed fake (`Substitute.For&lt;ICockpitHost&gt;()`'s
+// default `Task&lt;T&gt;` answer for any method nobody configured a return for), a missed switch arm, or a
+// deserialization gap all produce — none of which have actually signed anything in.
 public class PluginMcpSignInOutcomeTests
 {
     [Fact]

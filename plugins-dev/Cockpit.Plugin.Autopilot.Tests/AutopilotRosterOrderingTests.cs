@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// What the roster claims about model cost (AC-256). The defect these exist for was not a crash: the brief told the CEO
-/// its model list ran cheapest-first while the list ran the other way, and the CEO obeyed it straight into the most
-/// expensive tier. So these assert the claim against the order it was built from, not merely that a claim is present.
-/// </summary>
+// What the roster claims about model cost (AC-256). The defect these exist for was not a crash: the brief told the CEO
+// its model list ran cheapest-first while the list ran the other way, and the CEO obeyed it straight into the most
+// expensive tier. So these assert the claim against the order it was built from, not merely that a claim is present.
 public class AutopilotRosterOrderingTests
 {
     private static readonly IReadOnlyList<PluginProfileInfo> Ranked =

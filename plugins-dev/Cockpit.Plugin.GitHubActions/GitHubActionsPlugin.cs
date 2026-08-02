@@ -3,12 +3,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubActions;
 
-/// <summary>
-/// GitHub Actions CI status (AC-52): adds an indicator to each session's header showing the latest workflow-run status
-/// of the branch that session is working in — green pass, red fail, amber running — click to open the run on GitHub.
-/// Completes the GitHub set (Issues + Pull Requests + Git status → + CI). Uses the machine's existing <c>gh</c> login;
-/// no local state, so <see cref="ConfigureServices"/> is empty.
-/// </summary>
+// GitHub Actions CI status (AC-52): adds an indicator to each session's header showing the latest workflow-run status
+// of the branch that session is working in — green pass, red fail, amber running — click to open the run on GitHub.
+// Completes the GitHub set (Issues + Pull Requests + Git status → + CI). Uses the machine's existing `gh` login;
+// no local state, so `ConfigureServices` is empty.
 public sealed class GitHubActionsPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

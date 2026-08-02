@@ -2,7 +2,7 @@ using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="WorktreeSettings"/> in the <c>worktreeSettings</c> section of <c>cockpit.json</c> (AC-85). Separate from the <c>worktrees</c> registry section, which lists the worktrees themselves.</summary>
+// On-disk shape of `WorktreeSettings` in the `worktreeSettings` section of `cockpit.json` (AC-85). Separate from the `worktrees` registry section, which lists the worktrees themselves.
 internal sealed class WorktreeSettingsEntry
 {
     public string? Root { get; set; }

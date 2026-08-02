@@ -5,11 +5,9 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>
-/// Uploads/downloads <c>.cockpit/logo.png</c> (AC-244) — the pre-signed URL comes from Depot's own
-/// <c>request_upload</c>/<c>request_download</c> MCP tools via <see cref="ICockpitHost.CallMcpToolAsync"/>, but
-/// the bytes themselves go over a plain HTTP PUT/GET, per Depot's own contract for those tools.
-/// </summary>
+// Uploads/downloads `.cockpit/logo.png` (AC-244) — the pre-signed URL comes from Depot's own
+// `request_upload`/`request_download` MCP tools via `ICockpitHost.CallMcpToolAsync`, but
+// the bytes themselves go over a plain HTTP PUT/GET, per Depot's own contract for those tools.
 public static class CockpitProjectLogoBlob
 {
     public const string BlobPath = ".cockpit/logo.png";

@@ -3,22 +3,20 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubActions;
 
-/// <summary>
-/// Reads the latest GitHub Actions run for the branch a repository is on, via the local GitHub CLI
-/// (<c>gh run list --branch &lt;branch&gt; --limit 1 --json …</c>) run in that repo's working directory — reusing the
-/// user's existing <c>gh</c> login, no token to paste. The branch comes from <c>git rev-parse</c> in the same
-/// directory. Fails soft: no gh, no login, no repo, a detached HEAD, or no runs yet all yield <see langword="null"/>
-/// rather than an error, so a session that has no CI simply shows nothing.
-/// </summary>
+// Reads the latest GitHub Actions run for the branch a repository is on, via the local GitHub CLI
+// (`gh run list --branch &lt;branch&gt; --limit 1 --json …`) run in that repo's working directory — reusing the
+// user's existing `gh` login, no token to paste. The branch comes from `git rev-parse` in the same
+// directory. Fails soft: no gh, no login, no repo, a detached HEAD, or no runs yet all yield `null`
+// rather than an error, so a session that has no CI simply shows nothing.
 internal sealed class CiWorkflowRunClient
 {
-    /// <summary>Whether a run URL is a safe https github.com link to hand to the OS browser opener. Internal for testing.</summary>
+    // Whether a run URL is a safe https github.com link to hand to the OS browser opener. Internal for testing.
     internal static bool IsGitHubRunUrl(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
         && uri.Scheme == Uri.UriSchemeHttps
         && (uri.Host == "github.com" || uri.Host.EndsWith(".github.com", StringComparison.Ordinal));
 
-    /// <summary>The gh arguments for the latest run on a branch. Internal so a test can assert them without shelling out.</summary>
+    // The gh arguments for the latest run on a branch. Internal so a test can assert them without shelling out.
     internal static string[] RunListArguments(string branch) =>
     [
         "run", "list", "--branch", branch, "--limit", "1",
@@ -48,7 +46,7 @@ internal sealed class CiWorkflowRunClient
         return ParseRuns(stdout).FirstOrDefault();
     }
 
-    /// <summary>Parses <c>gh run list --json …</c> output. Internal so a test can feed it a fixture.</summary>
+    // Parses `gh run list --json …` output. Internal so a test can feed it a fixture.
     internal static IReadOnlyList<CiRun> ParseRuns(string json)
     {
         if (string.IsNullOrWhiteSpace(json))

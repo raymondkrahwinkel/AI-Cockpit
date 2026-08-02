@@ -1,12 +1,10 @@
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>
-/// Classifies a resource reference into one of the four <see cref="ProjectResourcePortability"/> shapes. Three of
-/// the four — <see cref="ProjectResourcePortability.RepoRelative"/>, <see cref="ProjectResourcePortability.AnchorRelative"/>
-/// and <see cref="ProjectResourcePortability.PluginSource"/> — travel with a shared <c>.cockpit/project.json</c>
-/// (AC-605 decision, 2026-08-02, reversing AC-244's original two-of-four call on <c>AnchorRelative</c> — see
-/// <see cref="IsPortable"/>'s own remark).
-/// </summary>
+// Classifies a resource reference into one of the four `ProjectResourcePortability` shapes. Three of
+// the four — `ProjectResourcePortability.RepoRelative`, `ProjectResourcePortability.AnchorRelative`
+// and `ProjectResourcePortability.PluginSource` — travel with a shared `.cockpit/project.json`
+// (AC-605 decision, 2026-08-02, reversing AC-244's original two-of-four call on `AnchorRelative` — see
+// `IsPortable`'s own remark).
 // AC-605 (2026-08-02, measured against Cockpit.Core.Projects.ProjectResourcePathPortability.ClassifyScope): the two
 // now agree on every shape, including "~/x" — see ProjectResourceScopeParityTests for the shared table both sides
 // are pinned against. An absolute-but-inside-SourceDirectory reference that bypassed ToStoredReference is still

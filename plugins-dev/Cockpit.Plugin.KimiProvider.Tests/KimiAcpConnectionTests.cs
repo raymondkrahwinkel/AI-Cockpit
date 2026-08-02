@@ -2,13 +2,11 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>
-/// <see cref="KimiAcpConnection"/> against a <see cref="FakeCliSubprocess"/> (AC-268) — proves the JSON-RPC
-/// transport under the Kimi ACP driver: a request gets its correlated reply, a JSON-RPC error surfaces as an
-/// exception, notifications and agent-initiated requests are routed to their own streams, a request
-/// outstanding when the stream ends fails rather than hangs, and stderr is drained concurrently so a bounded
-/// pipe never blocks the child (D14).
-/// </summary>
+// `KimiAcpConnection` against a `FakeCliSubprocess` (AC-268) — proves the JSON-RPC
+// transport under the Kimi ACP driver: a request gets its correlated reply, a JSON-RPC error surfaces as an
+// exception, notifications and agent-initiated requests are routed to their own streams, a request
+// outstanding when the stream ends fails rather than hangs, and stderr is drained concurrently so a bounded
+// pipe never blocks the child (D14).
 public class KimiAcpConnectionTests
 {
     private static readonly Dictionary<string, string?> _NoEnv = new();

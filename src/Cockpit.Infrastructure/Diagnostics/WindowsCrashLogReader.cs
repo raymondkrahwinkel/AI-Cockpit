@@ -4,11 +4,9 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.Infrastructure.Diagnostics;
 
-/// <summary>
-/// Windows crash dumps, from the Windows Error Reporting folder <c>%LOCALAPPDATA%\CrashDumps</c> (AC-58). WER
-/// writes a <c>.dmp</c> there per crashing process named for the executable, so filtering to the cockpit's own is
-/// a filename match — the cross-platform rounding-out of the macOS case AC-57 was about.
-/// </summary>
+// Windows crash dumps, from the Windows Error Reporting folder `%LOCALAPPDATA%\CrashDumps` (AC-58). WER
+// writes a `.dmp` there per crashing process named for the executable, so filtering to the cockpit's own is
+// a filename match — the cross-platform rounding-out of the macOS case AC-57 was about.
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsCrashLogReader : ICrashLogReader
 {

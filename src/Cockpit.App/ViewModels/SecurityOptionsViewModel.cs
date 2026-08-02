@@ -7,15 +7,12 @@ using Cockpit.Core.Terminal;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The Security tab: whether the credentials in <c>cockpit.json</c> are encrypted, and the migration that runs
-/// when the operator changes their mind either way.
-/// <para>
-/// Both directions migrate, and both are shown while they happen. The work is usually over in a blink, but this
-/// is the one operation that rewrites every credential the operator has: a screen that flickers is better than
-/// an app that goes quiet while it does that.
-/// </para>
-/// </summary>
+// The Security tab: whether the credentials in `cockpit.json` are encrypted, and the migration that runs
+// when the operator changes their mind either way.
+//
+// Both directions migrate, and both are shown while they happen. The work is usually over in a blink, but this
+// is the one operation that rewrites every credential the operator has: a screen that flickers is better than
+// an app that goes quiet while it does that.
 public sealed partial class SecurityOptionsViewModel(
     ISecretProtectionService protection,
     IScreenLockSettingsStore? screenLockSettings = null,
@@ -29,23 +26,19 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private bool _isEncrypted;
 
-    /// <summary>
-    /// AC-5: whether AI-Cockpit locks itself when the operating system locks (screen lock), re-asking for the
-    /// encryption password just as at startup. On by default, and only shown while encryption is on — there is
-    /// nothing to re-ask for otherwise. Its row is hidden, not disabled, when encryption is off: a control that does
-    /// nothing is worse than an absent one. Persisted the moment it changes, in its own <c>ScreenLock</c> section so
-    /// it survives turning encryption off and on again. Without a store (design-time/unit-test) it is an in-memory
-    /// default that simply does not persist.
-    /// </summary>
+    // AC-5: whether AI-Cockpit locks itself when the operating system locks (screen lock), re-asking for the
+    // encryption password just as at startup. On by default, and only shown while encryption is on — there is
+    // nothing to re-ask for otherwise. Its row is hidden, not disabled, when encryption is off: a control that does
+    // nothing is worse than an absent one. Persisted the moment it changes, in its own `ScreenLock` section so
+    // it survives turning encryption off and on again. Without a store (design-time/unit-test) it is an in-memory
+    // default that simply does not persist.
     [ObservableProperty]
     private bool _lockWithOperatingSystem = true;
 
-    /// <summary>
-    /// The terminal-access master switch (AC-34): off by default, an opt-in. While off, the <c>cockpit-terminal</c>
-    /// MCP is not advertised to any session — for an agent the feature does not exist. Turning it on makes it
-    /// reachable, still behind a per-pane Approve/Deny. Persisted, and flipped live so the next session sees the
-    /// change without a restart.
-    /// </summary>
+    // The terminal-access master switch (AC-34): off by default, an opt-in. While off, the `cockpit-terminal`
+    // MCP is not advertised to any session — for an agent the feature does not exist. Turning it on makes it
+    // reachable, still behind a per-pane Approve/Deny. Persisted, and flipped live so the next session sees the
+    // change without a restart.
     [ObservableProperty]
     private bool _terminalAccessEnabled;
 
@@ -61,16 +54,14 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string? _status;
 
-    /// <summary>
-    /// Whether the app-level awareness banner (AC-41) should show: encryption is off and the settings hold at
-    /// least one credential in the clear that the operator has not dismissed the warning for. Bound by
-    /// <c>CockpitView.axaml</c>'s banner, and re-read on every <see cref="RefreshAsync"/> — startup, a save that
-    /// wrote a new credential, and after either migration — so a single property is the whole of its visibility.
-    /// </summary>
+    // Whether the app-level awareness banner (AC-41) should show: encryption is off and the settings hold at
+    // least one credential in the clear that the operator has not dismissed the warning for. Bound by
+    // `CockpitView.axaml`'s banner, and re-read on every `RefreshAsync` — startup, a save that
+    // wrote a new credential, and after either migration — so a single property is the whole of its visibility.
     [ObservableProperty]
     private bool _showUnprotectedBanner;
 
-    /// <summary>True only while <see cref="RefreshAsync"/> is seeding the toggle from disk, so the change it makes to the property is not written straight back out.</summary>
+    // True only while `RefreshAsync` is seeding the toggle from disk, so the change it makes to the property is not written straight back out.
     private bool _loadingLockSetting;
 
     public async Task RefreshAsync()
@@ -109,7 +100,7 @@ public sealed partial class SecurityOptionsViewModel(
         }
     }
 
-    /// <summary>Persists the AC-5 toggle the moment it changes. The load above sets it too, which is why that path suppresses this — a seed from disk must not be a write back to disk.</summary>
+    // Persists the AC-5 toggle the moment it changes. The load above sets it too, which is why that path suppresses this — a seed from disk must not be a write back to disk.
     partial void OnLockWithOperatingSystemChanged(bool value)
     {
         if (_loadingLockSetting || screenLockSettings is null)
@@ -137,10 +128,8 @@ public sealed partial class SecurityOptionsViewModel(
         await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = value }).ConfigureAwait(true);
     }
 
-    /// <summary>
-    /// Dismisses the awareness banner for the credentials now in the file (AC-41). Hides it at once, then persists
-    /// the dismissal so it stays hidden across restarts — until a new credential changes the set and brings it back.
-    /// </summary>
+    // Dismisses the awareness banner for the credentials now in the file (AC-41). Hides it at once, then persists
+    // the dismissal so it stays hidden across restarts — until a new credential changes the set and brings it back.
     [RelayCommand]
     private async Task DismissBannerAsync()
     {

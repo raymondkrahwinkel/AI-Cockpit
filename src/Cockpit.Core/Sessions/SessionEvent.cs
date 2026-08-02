@@ -1,80 +1,64 @@
 namespace Cockpit.Core.Sessions;
 
-/// <summary>
-/// Base type for every typed event a <see cref="Abstractions.Sessions.ISessionDriver"/> can raise —
-/// the one vocabulary the whole app renders, whichever provider produced it. Its shape was modelled on
-/// the richest source, the <c>claude</c> CLI's stream-json output (captured against a live process); a
-/// provider that cannot produce a given event (thinking deltas, rate-limit info) simply never raises it,
-/// which <see cref="SessionCapabilities"/> tells the UI up front. Plugin providers emit the trimmed
-/// <c>PluginSessionEvent</c> instead, which the host adapter maps onto these types.
-/// </summary>
+// Base type for every typed event a `Abstractions.Sessions.ISessionDriver` can raise —
+// the one vocabulary the whole app renders, whichever provider produced it. Its shape was modelled on
+// the richest source, the `claude` CLI's stream-json output (captured against a live process); a
+// provider that cannot produce a given event (thinking deltas, rate-limit info) simply never raises it,
+// which `SessionCapabilities` tells the UI up front. Plugin providers emit the trimmed
+// `PluginSessionEvent` instead, which the host adapter maps onto these types.
 public abstract record SessionEvent
 {
-    /// <summary>Session id reported by the CLI's <c>system/init</c> event, once known.</summary>
+    // Session id reported by the CLI's `system/init` event, once known.
     public required string? SessionId { get; init; }
 
-    /// <summary>
-    /// Non-null when this event belongs to a nested Task/sub-agent tool call rather than the
-    /// top-level conversation; carried verbatim from the wrapper so a future agent-tree view
-    /// can attribute events to their owning sub-agent.
-    /// </summary>
+    // Non-null when this event belongs to a nested Task/sub-agent tool call rather than the
+    // top-level conversation; carried verbatim from the wrapper so a future agent-tree view
+    // can attribute events to their owning sub-agent.
     public string? ParentToolUseId { get; init; }
 
-    /// <summary>Wrapper-level event uuid, when the wire event carries one.</summary>
+    // Wrapper-level event uuid, when the wire event carries one.
     public string? Uuid { get; init; }
 }
 
-/// <summary>
-/// Session-level metadata reported once at start of stream (<c>{"type":"system","subtype":"init",...}</c>).
-/// </summary>
+// Session-level metadata reported once at start of stream (`{"type":"system","subtype":"init",...}`).
 public sealed record SessionInitialized : SessionEvent
 {
     public required string Cwd { get; init; }
     public required IReadOnlyList<string> Tools { get; init; }
 
-    /// <summary>
-    /// The model the session actually started under, when the driver's own init event names it (AC-141) — null
-    /// when the provider has no such concept, or the session was launched with an explicit model the live-control
-    /// already shows. Only ever used to seed a live-control's starting value; never fires a switch back at the
-    /// driver.
-    /// </summary>
+    // The model the session actually started under, when the driver's own init event names it (AC-141) — null
+    // when the provider has no such concept, or the session was launched with an explicit model the live-control
+    // already shows. Only ever used to seed a live-control's starting value; never fires a switch back at the
+    // driver.
     public string? Model { get; init; }
 }
 
-/// <summary>
-/// An extended-thinking block, streamed separately from visible assistant text so the UI can
-/// render it collapsed/dimmed. Covers both the <c>content_block_start</c> (empty
-/// thinking/signature) and accumulated <c>thinking_delta</c>/<c>signature_delta</c> content.
-/// </summary>
+// An extended-thinking block, streamed separately from visible assistant text so the UI can
+// render it collapsed/dimmed. Covers both the `content_block_start` (empty
+// thinking/signature) and accumulated `thinking_delta`/`signature_delta` content.
 public sealed record AssistantThinkingDelta : SessionEvent
 {
     public required int BlockIndex { get; init; }
     public required string Thinking { get; init; }
 }
 
-/// <summary>
-/// An incremental chunk of assistant text produced while streaming
-/// (<c>{"type":"stream_event","event":{...content_block_delta text_delta...}}</c>).
-/// </summary>
+// An incremental chunk of assistant text produced while streaming
+// (`{"type":"stream_event","event":{...content_block_delta text_delta...}}`).
 public sealed record AssistantTextDelta : SessionEvent
 {
     public required int BlockIndex { get; init; }
     public required string Text { get; init; }
 }
 
-/// <summary>
-/// A complete assistant text block, as reported on the non-partial
-/// <c>{"type":"assistant","message":{"content":[{"type":"text",...}]}}</c> event.
-/// </summary>
+// A complete assistant text block, as reported on the non-partial
+// `{"type":"assistant","message":{"content":[{"type":"text",...}]}}` event.
 public sealed record AssistantTextCompleted : SessionEvent
 {
     public required string Text { get; init; }
 }
 
-/// <summary>
-/// The assistant requested a tool call
-/// (<c>{"type":"assistant","message":{"content":[{"type":"tool_use",...}]}}</c>).
-/// </summary>
+// The assistant requested a tool call
+// (`{"type":"assistant","message":{"content":[{"type":"tool_use",...}]}}`).
 public sealed record ToolUseRequested : SessionEvent
 {
     public required string ToolUseId { get; init; }
@@ -82,10 +66,8 @@ public sealed record ToolUseRequested : SessionEvent
     public required string InputJson { get; init; }
 }
 
-/// <summary>
-/// The result of a previously requested tool call
-/// (<c>{"type":"user","message":{"content":[{"type":"tool_result",...}]}}</c>).
-/// </summary>
+// The result of a previously requested tool call
+// (`{"type":"user","message":{"content":[{"type":"tool_result",...}]}}`).
 public sealed record ToolResult : SessionEvent
 {
     public required string ToolUseId { get; init; }
@@ -93,14 +75,12 @@ public sealed record ToolResult : SessionEvent
     public required bool IsError { get; init; }
 }
 
-/// <summary>
-/// Claude is asking the host to allow or deny a tool call. This is a host-side concept:
-/// there is no single canonical wire event for it (it depends on the chosen permission
-/// approach — <c>canUseTool</c> callback, <c>--permission-prompt-tool</c>, or a PreToolUse
-/// hook). F-C1 surfaces every <see cref="ToolUseRequested"/> as a pending permission
-/// decision that the UI can allow/deny read-only; see ClaudeCliSession for how the
-/// decision is (not yet) fed back to the CLI process.
-/// </summary>
+// Claude is asking the host to allow or deny a tool call. This is a host-side concept:
+// there is no single canonical wire event for it (it depends on the chosen permission
+// approach — `canUseTool` callback, `--permission-prompt-tool`, or a PreToolUse
+// hook). F-C1 surfaces every `ToolUseRequested` as a pending permission
+// decision that the UI can allow/deny read-only; see ClaudeCliSession for how the
+// decision is (not yet) fed back to the CLI process.
 public sealed record PermissionRequested : SessionEvent
 {
     public required string ToolUseId { get; init; }
@@ -108,19 +88,15 @@ public sealed record PermissionRequested : SessionEvent
     public required string InputJson { get; init; }
 }
 
-/// <summary>
-/// Claude surfaced a clarifying question to the user as part of its assistant text.
-/// F-C1 does not attempt to detect questions from prose; reserved for a future increment
-/// (e.g. explicit question tool use). Not raised by <c>ClaudeCliSession</c> yet.
-/// </summary>
+// Claude surfaced a clarifying question to the user as part of its assistant text.
+// F-C1 does not attempt to detect questions from prose; reserved for a future increment
+// (e.g. explicit question tool use). Not raised by `ClaudeCliSession` yet.
 public sealed record Question : SessionEvent
 {
     public required string Text { get; init; }
 }
 
-/// <summary>
-/// A turn finished (<c>{"type":"result",...,"result":"...","session_id":...}</c>).
-/// </summary>
+// A turn finished (`{"type":"result",...,"result":"...","session_id":...}`).
 public sealed record TurnCompleted : SessionEvent
 {
     public required string Subtype { get; init; }
@@ -129,63 +105,55 @@ public sealed record TurnCompleted : SessionEvent
     public string? StopReason { get; init; }
     public string? TerminalReason { get; init; }
 
-    /// <summary>Token usage reported in the result event's <c>usage</c> object (#8 token/cost meter), or null when the result carries none (e.g. an error subtype).</summary>
+    // Token usage reported in the result event's `usage` object (#8 token/cost meter), or null when the result carries none (e.g. an error subtype).
     public TokenUsage? Usage { get; init; }
 
-    /// <summary>Session cost in USD from the result's <c>total_cost_usd</c> (#8), or null when absent.</summary>
+    // Session cost in USD from the result's `total_cost_usd` (#8), or null when absent.
     public double? TotalCostUsd { get; init; }
 
-    /// <summary>The CLI's own turn count for the session from <c>num_turns</c> (#8), or null when absent.</summary>
+    // The CLI's own turn count for the session from `num_turns` (#8), or null when absent.
     public int? NumTurns { get; init; }
 
-    /// <summary>
-    /// Why the turn failed, in the provider's own words (AC-410) — mirrors
-    /// <c>Cockpit.Plugins.Abstractions.Sessions.PluginTurnCompleted.Errors</c>. Null on every turn except the one
-    /// failure mode that carries no <see cref="Result"/> to explain itself: an <c>error_during_execution</c> from a
-    /// <c>--resume</c> id the provider no longer recognises.
-    /// </summary>
+    // Why the turn failed, in the provider's own words (AC-410) — mirrors
+    // `Cockpit.Plugins.Abstractions.Sessions.PluginTurnCompleted.Errors`. Null on every turn except the one
+    // failure mode that carries no `Result` to explain itself: an `error_during_execution` from a
+    // `--resume` id the provider no longer recognises.
     public IReadOnlyList<string>? Errors { get; init; }
 }
 
-/// <summary>
-/// Token counts from a <c>result</c> event's <c>usage</c> object (#8 token/cost meter). Carried on
-/// <see cref="TurnCompleted.Usage"/>; how these accumulate across turns (running total vs per-turn delta) is a
-/// consumer concern, not decided here — this record just mirrors what the CLI reported for one result.
-/// </summary>
+// Token counts from a `result` event's `usage` object (#8 token/cost meter). Carried on
+// `TurnCompleted.Usage`; how these accumulate across turns (running total vs per-turn delta) is a
+// consumer concern, not decided here — this record just mirrors what the CLI reported for one result.
 public sealed record TokenUsage(int InputTokens, int OutputTokens, int CacheReadInputTokens, int CacheCreationInputTokens)
 {
-    /// <summary>Input + output tokens including cache reads and creations — one number for a compact meter.</summary>
+    // Input + output tokens including cache reads and creations — one number for a compact meter.
     public int Total => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
 }
 
-/// <summary>
-/// Per-session/per-turn status and attention state, derived from the CLI's own
-/// <c>system/post_turn_summary</c> and <c>system/notification</c> events — the stream already
-/// carries the status/attention signal the cockpit needs, so this event is a direct mapping
-/// rather than a host-side heuristic. See <c>StreamJson-Schema.md</c> "Relevantie voor de cockpit".
-/// </summary>
+// Per-session/per-turn status and attention state, derived from the CLI's own
+// `system/post_turn_summary` and `system/notification` events — the stream already
+// carries the status/attention signal the cockpit needs, so this event is a direct mapping
+// rather than a host-side heuristic. See `StreamJson-Schema.md` "Relevantie voor de cockpit".
 public sealed record SessionStatusChanged : SessionEvent
 {
-    /// <summary>From <c>post_turn_summary.status_category</c> (e.g. "review_ready"), or <see langword="null"/> when this update came from a notification only.</summary>
+    // From `post_turn_summary.status_category` (e.g. "review_ready"), or `null` when this update came from a notification only.
     public string? StatusCategory { get; init; }
 
-    /// <summary>From <c>post_turn_summary.status_detail</c>.</summary>
+    // From `post_turn_summary.status_detail`.
     public string? StatusDetail { get; init; }
 
-    /// <summary>From <c>post_turn_summary.needs_action</c>.</summary>
+    // From `post_turn_summary.needs_action`.
     public string? NeedsAction { get; init; }
 
-    /// <summary>From <c>notification.text</c>, when this update came from a notification.</summary>
+    // From `notification.text`, when this update came from a notification.
     public string? NotificationText { get; init; }
 
-    /// <summary>From <c>notification.priority</c> (e.g. "immediate"), when this update came from a notification.</summary>
+    // From `notification.priority` (e.g. "immediate"), when this update came from a notification.
     public string? NotificationPriority { get; init; }
 }
 
-/// <summary>
-/// Rate-limit status for the account driving this session
-/// (<c>{"type":"rate_limit_event","rate_limit_info":{...}}</c>).
-/// </summary>
+// Rate-limit status for the account driving this session
+// (`{"type":"rate_limit_event","rate_limit_info":{...}}`).
 public sealed record RateLimitInfo : SessionEvent
 {
     public required string Status { get; init; }
@@ -193,52 +161,44 @@ public sealed record RateLimitInfo : SessionEvent
     public long? ResetsAt { get; init; }
 }
 
-/// <summary>
-/// What kind of outstanding work a <see cref="BackgroundTask"/> is. The host weighs the two differently (AC-276):
-/// a sub-agent keeps the session off "done", a shell only holds back the "session finished" notification — a
-/// dev server or <c>tail -f</c> would otherwise pin a session on "working" for as long as it runs.
-/// </summary>
+// What kind of outstanding work a `BackgroundTask` is. The host weighs the two differently (AC-276):
+// a sub-agent keeps the session off "done", a shell only holds back the "session finished" notification — a
+// dev server or `tail -f` would otherwise pin a session on "working" for as long as it runs.
 public enum BackgroundTaskKind
 {
-    /// <summary>A kind this build does not know. Ordinal 0 so an unmapped value is the least authoritative one.</summary>
+    // A kind this build does not know. Ordinal 0 so an unmapped value is the least authoritative one.
     Unknown,
 
-    /// <summary>A nested agent (the Task tool) — work the operator is waiting on.</summary>
+    // A nested agent (the Task tool) — work the operator is waiting on.
     SubAgent,
 
-    /// <summary>A backgrounded shell command that outlived the turn that started it.</summary>
+    // A backgrounded shell command that outlived the turn that started it.
     Shell,
 }
 
-/// <summary>One piece of work that outlived its turn — see <see cref="BackgroundTasksChanged"/>.</summary>
+// One piece of work that outlived its turn — see `BackgroundTasksChanged`.
 public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description);
 
-/// <summary>
-/// The set of work outliving its turn changed (AC-276). <see cref="Tasks"/> is the <em>complete</em> set as of
-/// this event and never a delta — a dropped event self-corrects on the next one, where a start/stop ledger would
-/// strand the session on "working" the first time an end went missing.
-/// </summary>
+// The set of work outliving its turn changed (AC-276). `Tasks` is the *complete* set as of
+// this event and never a delta — a dropped event self-corrects on the next one, where a start/stop ledger would
+// strand the session on "working" the first time an end went missing.
 public sealed record BackgroundTasksChanged : SessionEvent
 {
-    /// <summary>Everything still outstanding. Empty when the last of it finished.</summary>
+    // Everything still outstanding. Empty when the last of it finished.
     public required IReadOnlyList<BackgroundTask> Tasks { get; init; }
 }
 
-/// <summary>
-/// Something went wrong in the session driver itself (process failure, parse failure, ...).
-/// This is a driver-level event, not a wire event.
-/// </summary>
+// Something went wrong in the session driver itself (process failure, parse failure, ...).
+// This is a driver-level event, not a wire event.
 public sealed record SessionError : SessionEvent
 {
     public required string Message { get; init; }
     public Exception? Exception { get; init; }
 }
 
-/// <summary>
-/// Forward-compat catch-all for a wire line whose <c>type</c>/<c>subtype</c>/block-type this
-/// parser does not (yet) model. Carries the raw JSON so nothing is silently dropped and
-/// nothing crashes on an unrecognized shape.
-/// </summary>
+// Forward-compat catch-all for a wire line whose `type`/`subtype`/block-type this
+// parser does not (yet) model. Carries the raw JSON so nothing is silently dropped and
+// nothing crashes on an unrecognized shape.
 public sealed record UnknownEvent : SessionEvent
 {
     public required string RawJson { get; init; }

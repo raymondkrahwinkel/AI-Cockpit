@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexMcpConfig"/> (#26/#44): turns the host-resolved MCP servers into <c>codex app-server</c>'s
-/// <c>-c 'mcp_servers.&lt;name&gt;={…}'</c> overrides. The load-bearing property is that a bearer token never
-/// lands in a config arg (visible in <c>/proc/&lt;pid&gt;/cmdline</c>) — it rides the process environment via
-/// <c>bearer_token_env_var</c> instead.
-/// </summary>
+// `CodexMcpConfig` (#26/#44): turns the host-resolved MCP servers into `codex app-server`'s
+// `-c 'mcp_servers.&lt;name&gt;={…}'` overrides. The load-bearing property is that a bearer token never
+// lands in a config arg (visible in `/proc/&lt;pid&gt;/cmdline`) — it rides the process environment via
+// `bearer_token_env_var` instead.
 public class CodexMcpConfigTests
 {
     [Fact]

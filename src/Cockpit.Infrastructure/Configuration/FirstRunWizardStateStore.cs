@@ -2,10 +2,8 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// Persists <see cref="CockpitConfigFile.FirstRunWizardVersion"/> via the shared read-modify-write (AC-509), so it
-/// never clobbers a sibling section — the same pattern <c>PluginStoreConfigStore</c> uses for its own marker.
-/// </summary>
+// Persists `CockpitConfigFile.FirstRunWizardVersion` via the shared read-modify-write (AC-509), so it
+// never clobbers a sibling section — the same pattern `PluginStoreConfigStore` uses for its own marker.
 internal sealed class FirstRunWizardStateStore : IFirstRunWizardStateStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -15,7 +13,7 @@ internal sealed class FirstRunWizardStateStore : IFirstRunWizardStateStore, ISin
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal FirstRunWizardStateStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

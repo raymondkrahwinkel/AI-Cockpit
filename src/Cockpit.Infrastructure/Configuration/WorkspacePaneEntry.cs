@@ -2,11 +2,9 @@ using Cockpit.Core.Workspaces;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of one <see cref="WorkspacePane"/>. The grid cell is flattened to four numbers rather than a
-/// nested object: it reads better in a file an operator may edit by hand, and matches how the pane's position
-/// is already talked about (column/row/span).
-/// </summary>
+// On-disk shape of one `WorkspacePane`. The grid cell is flattened to four numbers rather than a
+// nested object: it reads better in a file an operator may edit by hand, and matches how the pane's position
+// is already talked about (column/row/span).
 internal sealed class WorkspacePaneEntry
 {
     public string Id { get; set; } = string.Empty;
@@ -55,7 +53,7 @@ internal sealed class WorkspacePaneEntry
         ProjectId = pane.ProjectId,
     };
 
-    /// <summary>This entry as a domain record; spans are floored at one so a zero-span pane cannot render as invisible.</summary>
+    // This entry as a domain record; spans are floored at one so a zero-span pane cannot render as invisible.
     public WorkspacePane ToDomain()
     {
         var kind = Enum.TryParse<PaneKind>(Kind, ignoreCase: true, out var parsed) ? parsed : PaneKind.AiSession;

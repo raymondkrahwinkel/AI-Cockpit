@@ -7,49 +7,45 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The "Finish setting up…" bind step (AC-246): the one-time bind step that turns a <see cref="SharedProject"/>
-/// this machine has not bound yet into an ordinary local <c>Project</c>. Deliberately its own, much smaller dialog
-/// rather than <see cref="ProjectDialogViewModel"/> with everything locked (AC-242 mockup, section 4) — the two
-/// answer different questions: this one asks only what is machine-local and has never been set before (a project
-/// with ten shared resource rows would otherwise open its very first screen as the same long form
-/// <see cref="ProjectDialogViewModel"/> grows into over time), while the full editor (already reachable afterward,
-/// once <c>ProjectsViewModel._ClaimBoundProjects</c> has claimed the result) is where the shared fields are shown,
-/// locked, with their ◆/● origin badges.
-/// <para>
-/// AC-246 decision (Raymond, 2026-08-02): only <see cref="SelectedProfileLabel"/> is required. <see cref="SourceDirectory"/>
-/// is an offer, not a gate — a shared project with no <see cref="GitUrl"/> and no files of its own (a notes-only
-/// project) binds and starts with a profile alone. Never filled in automatically: an empty folder is not this
-/// dialog's problem to solve on the operator's behalf.
-/// </para>
-/// <para>
-/// AC-246: every machine-specific reference is asked here, once, rather than synchronized (Raymond, 2026-08-02:
-/// "dat paden stukje lokaal is voor een project") — see <see cref="ResourceRows"/>. A machine-scope row travels as
-/// a <em>placeholder</em>: <c>Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectResourceEntry.Create</c> (AC-246,
-/// 2026-08-02) still keeps a secret-shaped reference (AC-612) out entirely, but a plain absolute path now writes
-/// role and label with the reference itself left blank, so this dialog has something to ask about — a real project
-/// with an absolute resource row is the normal case this block exists for now, not only a hand-edited or
-/// future-writer defence. <see cref="ResourceRows"/> is populated from the caller's own read of the definition,
-/// judged fresh here rather than trusted on the writer's word either way: a blank reference on a row this dialog
-/// did not expect (a hand-edited <c>.cockpit/project.json</c>, a row this build's role parser does not recognise)
-/// is treated the same as an ordinary placeholder, and a non-blank absolute reference (an older writer that never
-/// learned the placeholder shape) still asks about it rather than trusting it.
-/// </para>
-/// </summary>
+// The "Finish setting up…" bind step (AC-246): the one-time bind step that turns a `SharedProject`
+// this machine has not bound yet into an ordinary local `Project`. Deliberately its own, much smaller dialog
+// rather than `ProjectDialogViewModel` with everything locked (AC-242 mockup, section 4) — the two
+// answer different questions: this one asks only what is machine-local and has never been set before (a project
+// with ten shared resource rows would otherwise open its very first screen as the same long form
+// `ProjectDialogViewModel` grows into over time), while the full editor (already reachable afterward,
+// once `ProjectsViewModel._ClaimBoundProjects` has claimed the result) is where the shared fields are shown,
+// locked, with their ◆/● origin badges.
+//
+// AC-246 decision (Raymond, 2026-08-02): only `SelectedProfileLabel` is required. `SourceDirectory`
+// is an offer, not a gate — a shared project with no `GitUrl` and no files of its own (a notes-only
+// project) binds and starts with a profile alone. Never filled in automatically: an empty folder is not this
+// dialog's problem to solve on the operator's behalf.
+//
+// AC-246: every machine-specific reference is asked here, once, rather than synchronized (Raymond, 2026-08-02:
+// "dat paden stukje lokaal is voor een project") — see `ResourceRows`. A machine-scope row travels as
+// a *placeholder*: `Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectResourceEntry.Create` (AC-246,
+// 2026-08-02) still keeps a secret-shaped reference (AC-612) out entirely, but a plain absolute path now writes
+// role and label with the reference itself left blank, so this dialog has something to ask about — a real project
+// with an absolute resource row is the normal case this block exists for now, not only a hand-edited or
+// future-writer defence. `ResourceRows` is populated from the caller's own read of the definition,
+// judged fresh here rather than trusted on the writer's word either way: a blank reference on a row this dialog
+// did not expect (a hand-edited `.cockpit/project.json`, a row this build's role parser does not recognise)
+// is treated the same as an ordinary placeholder, and a non-blank absolute reference (an older writer that never
+// learned the placeholder shape) still asks about it rather than trusting it.
 public partial class SharedProjectBindingDialogViewModel : ViewModelBase
 {
     private readonly string _sharedProjectId;
 
-    /// <summary>Raised when the dialog is done: the new project, or null when the operator cancelled.</summary>
+    // Raised when the dialog is done: the new project, or null when the operator cancelled.
     public event Action<Project?>? CloseRequested;
 
-    /// <summary>Raised when the operator picks "Choose…"; the view opens the folder picker and assigns <see cref="SourceDirectory"/>.</summary>
+    // Raised when the operator picks "Choose…"; the view opens the folder picker and assigns `SourceDirectory`.
     public event Action? BrowseRequested;
 
-    /// <summary>Raised when the operator picks "Clone…"; the host clones <see cref="GitUrl"/> and assigns <see cref="SourceDirectory"/>.</summary>
+    // Raised when the operator picks "Clone…"; the host clones `GitUrl` and assigns `SourceDirectory`.
     public event Action? CloneRequested;
 
-    /// <summary>Design-time constructor for the Avalonia previewer.</summary>
+    // Design-time constructor for the Avalonia previewer.
     public SharedProjectBindingDialogViewModel()
     {
         _sharedProjectId = "depot:handbook";
@@ -59,16 +55,14 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         Profiles.Add("Zyra — Sonnet");
     }
 
-    /// <summary>
-    /// A design/screenshot instance with machine-specific rows to ask about (AC-246's own vormwaarschuwing: this
-    /// block, not Profile/Folder, is the one that can grow) — three rows rather than the bare scene above, enough
-    /// to prove the bounded, independently scrollable block actually scrolls instead of pushing Profile/Folder off
-    /// the window. Two placeholder rows (no <c>OriginalReference</c> — the normal case now that
-    /// <c>CockpitProjectResourceEntry.Create</c> writes a machine-scope row as role + label with the reference
-    /// withheld) and one defensive row that still shows a "was: …" hint, so the scene proves both shapes render.
-    /// Mirrors <c>ProjectsViewModel.DesignSampleWithSharedProjects</c>'s own "stage it directly, there is no host
-    /// or plugin in a headless render" reasoning.
-    /// </summary>
+    // A design/screenshot instance with machine-specific rows to ask about (AC-246's own vormwaarschuwing: this
+    // block, not Profile/Folder, is the one that can grow) — three rows rather than the bare scene above, enough
+    // to prove the bounded, independently scrollable block actually scrolls instead of pushing Profile/Folder off
+    // the window. Two placeholder rows (no `OriginalReference` — the normal case now that
+    // `CockpitProjectResourceEntry.Create` writes a machine-scope row as role + label with the reference
+    // withheld) and one defensive row that still shows a "was: …" hint, so the scene proves both shapes render.
+    // Mirrors `ProjectsViewModel.DesignSampleWithSharedProjects`'s own "stage it directly, there is no host
+    // or plugin in a headless render" reasoning.
     internal static SharedProjectBindingDialogViewModel DesignSampleWithResourceRows()
     {
         var viewModel = new SharedProjectBindingDialogViewModel();
@@ -120,13 +114,11 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Builds the dialog for <paramref name="sharedProject"/>, reading its full definition through
-    /// <paramref name="source"/> first (AC-246) — <see cref="ISharedProjectSource.ListAsync"/>'s own read only ever
-    /// kept a name, description and role, not enough to bind. Null when the read failed; the caller (the dialog
-    /// service) is what shows the error, the same split <c>ProjectDialogViewModel.CreateAsync</c> leaves to its own
-    /// caller for a failure of its own.
-    /// </summary>
+    // Builds the dialog for `sharedProject`, reading its full definition through
+    // `source` first (AC-246) — `ISharedProjectSource.ListAsync`'s own read only ever
+    // kept a name, description and role, not enough to bind. Null when the read failed; the caller (the dialog
+    // service) is what shows the error, the same split `ProjectDialogViewModel.CreateAsync` leaves to its own
+    // caller for a failure of its own.
     public static async Task<(SharedProjectBindingDialogViewModel? ViewModel, string? Error)> CreateAsync(
         SharedProject sharedProject,
         string sourceName,
@@ -150,22 +142,22 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         return (viewModel, null);
     }
 
-    /// <summary>Which connection this project comes from — "Work", "Personal" — shown in the hint line above the fields.</summary>
+    // Which connection this project comes from — "Work", "Personal" — shown in the hint line above the fields.
     public string SourceName { get; }
 
-    /// <summary>The shared project's own name, read live at open time — shown in the title, never edited here (AC-246: name is claimed, not asked).</summary>
+    // The shared project's own name, read live at open time — shown in the title, never edited here (AC-246: name is claimed, not asked).
     public string ProjectName { get; }
 
     public string? Description { get; }
 
-    /// <summary>Behind <see cref="GitUrl"/> so "Clone…" builds on it; carried through untouched to the new project.</summary>
+    // Behind `GitUrl` so "Clone…" builds on it; carried through untouched to the new project.
     private readonly string? _behaviorPrompt;
 
     private readonly bool _isolateInWorktreeByDefault;
 
     private readonly IReadOnlyList<string>? _enabledMcpServerNames;
 
-    /// <summary>Resource rows already portable by shape — copied straight onto the new project, never shown or asked about here (AC-605's table: nothing to ask when it already travels).</summary>
+    // Resource rows already portable by shape — copied straight onto the new project, never shown or asked about here (AC-605's table: nothing to ask when it already travels).
     private readonly List<ProjectResource> _portableResources = [];
 
     public string DialogTitle => $"Finish setting up — {ProjectName}";
@@ -179,29 +171,27 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _sourceDirectory = string.Empty;
 
-    /// <summary>Where <see cref="SourceDirectory"/> can be cloned from — an offer (AC-246), never required. Null for a project with no source of its own.</summary>
+    // Where `SourceDirectory` can be cloned from — an offer (AC-246), never required. Null for a project with no source of its own.
     public string? GitUrl { get; private set; }
 
     public bool HasGitUrl => !string.IsNullOrWhiteSpace(GitUrl);
 
-    /// <summary>The configured profiles, by label — the one required field.</summary>
+    // The configured profiles, by label — the one required field.
     public ObservableCollection<string> Profiles { get; } = [];
 
-    /// <summary>
-    /// Machine-specific rows the shared definition names but does not carry a value for (AC-246, AC-605: only a
-    /// <see cref="ProjectResourceScope.Machine"/> reference lands here — Repo/Home/Instance rows already travel and
-    /// were folded straight into the new project instead). Almost always empty in practice — see this class's own
-    /// remarks on why the writer never lets one reach here to begin with. Skippable: a row left blank is dropped on
-    /// save, the same as any other blank row in this codebase's project editors.
-    /// </summary>
+    // Machine-specific rows the shared definition names but does not carry a value for (AC-246, AC-605: only a
+    // `ProjectResourceScope.Machine` reference lands here — Repo/Home/Instance rows already travel and
+    // were folded straight into the new project instead). Almost always empty in practice — see this class's own
+    // remarks on why the writer never lets one reach here to begin with. Skippable: a row left blank is dropped on
+    // save, the same as any other blank row in this codebase's project editors.
     public ObservableCollection<SharedProjectBindingResourceRowViewModel> ResourceRows { get; } = [];
 
     public bool HasResourceRows => ResourceRows.Count > 0;
 
-    /// <summary>Only a profile is required (AC-246 decision, 2026-08-02) — the folder is an offer, not a gate.</summary>
+    // Only a profile is required (AC-246 decision, 2026-08-02) — the folder is an offer, not a gate.
     public bool CanSave => !string.IsNullOrWhiteSpace(SelectedProfileLabel);
 
-    /// <summary>Assigns a folder chosen by the picker, dropping a stale clone URL when the operator points the project somewhere else — mirrors <c>ProjectDialogViewModel.ApplyPickedDirectory</c>.</summary>
+    // Assigns a folder chosen by the picker, dropping a stale clone URL when the operator points the project somewhere else — mirrors `ProjectDialogViewModel.ApplyPickedDirectory`.
     public void ApplyPickedDirectory(string directory, string? gitUrl = null)
     {
         SourceDirectory = directory;
@@ -210,15 +200,13 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasGitUrl));
     }
 
-    /// <summary>
-    /// The bound project. The binding itself is a <see cref="ProjectResourceRole.Memory"/> row whose reference is
-    /// <see cref="SharedProject.Id"/>, prepended ahead of everything else (AC-246) — the same shape
-    /// <c>ProjectsViewModel.LoadSharedProjectsAsync</c>/<c>_ClaimBoundProjects</c> already read to recognise a bound
-    /// project and claim its shared fields' origin (AC-604/AC-245), and the same mechanism the AC-242 mockup names:
-    /// one Depot project carries both the memory and the definition. Prepended rather than appended so it is always
-    /// what <c>Project.MemoryRef</c> resolves to, even if a hand-edited definition somehow also carried its own
-    /// Memory-role row.
-    /// </summary>
+    // The bound project. The binding itself is a `ProjectResourceRole.Memory` row whose reference is
+    // `SharedProject.Id`, prepended ahead of everything else (AC-246) — the same shape
+    // `ProjectsViewModel.LoadSharedProjectsAsync`/`_ClaimBoundProjects` already read to recognise a bound
+    // project and claim its shared fields' origin (AC-604/AC-245), and the same mechanism the AC-242 mockup names:
+    // one Depot project carries both the memory and the definition. Prepended rather than appended so it is always
+    // what `Project.MemoryRef` resolves to, even if a hand-edited definition somehow also carried its own
+    // Memory-role row.
     public Project ToProject()
     {
         var overlay = _enabledMcpServerNames is { } enabled
@@ -260,10 +248,8 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     private static string? _NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
-/// <summary>
-/// One machine-specific row <see cref="SharedProjectBindingDialogViewModel.ResourceRows"/> asks about (AC-246) — the
-/// role and label came from the shared definition; only <see cref="Reference"/> is this machine's to fill in.
-/// </summary>
+// One machine-specific row `SharedProjectBindingDialogViewModel.ResourceRows` asks about (AC-246) — the
+// role and label came from the shared definition; only `Reference` is this machine's to fill in.
 public sealed partial class SharedProjectBindingResourceRowViewModel : ViewModelBase
 {
     public SharedProjectBindingResourceRowViewModel(ProjectResourceRole role, string? label, string? originalReference)
@@ -277,13 +263,11 @@ public sealed partial class SharedProjectBindingResourceRowViewModel : ViewModel
 
     public string? Label { get; }
 
-    /// <summary>What the shared definition's row displays when there is no <see cref="Label"/> to show instead — the role and, when the writer's own machine had one, the reference that will not travel.</summary>
+    // What the shared definition's row displays when there is no `Label` to show instead — the role and, when the writer's own machine had one, the reference that will not travel.
     public string DisplayLabel => Label is { Length: > 0 } ? Label : $"{Role} reference";
 
-    /// <summary>
-    /// The absolute reference exactly as the shared definition carried it — shown as context only ("was: …"),
-    /// never copied into <see cref="Reference"/>: it names a place only the machine that wrote it has.
-    /// </summary>
+    // The absolute reference exactly as the shared definition carried it — shown as context only ("was: …"),
+    // never copied into `Reference`: it names a place only the machine that wrote it has.
     public string? OriginalReference { get; }
 
     [ObservableProperty]

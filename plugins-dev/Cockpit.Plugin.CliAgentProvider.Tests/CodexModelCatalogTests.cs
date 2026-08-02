@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexModelCatalog"/> (increment 2 step C): drives a <see cref="FakeCliSubprocess"/> through the
-/// initialize handshake and a model/list reply, proving it parses the offered models and the default without a
-/// live Codex — and never issues a thread/start (which would cost credits).
-/// </summary>
+// `CodexModelCatalog` (increment 2 step C): drives a `FakeCliSubprocess` through the
+// initialize handshake and a model/list reply, proving it parses the offered models and the default without a
+// live Codex — and never issues a thread/start (which would cost credits).
 public class CodexModelCatalogTests
 {
     private static CliAgentConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());

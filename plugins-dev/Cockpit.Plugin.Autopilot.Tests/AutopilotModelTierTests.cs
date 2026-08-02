@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The cost ceiling (AC-256). These pin the two things a ceiling has to get right: that it actually turns a plan down,
-/// and that it stays silent about everything it cannot fairly judge — otherwise it either does nothing or blocks work
-/// on a guess.
-/// </summary>
+// The cost ceiling (AC-256). These pin the two things a ceiling has to get right: that it actually turns a plan down,
+// and that it stays silent about everything it cannot fairly judge — otherwise it either does nothing or blocks work
+// on a guess.
 public class AutopilotModelTierTests
 {
     private static readonly IReadOnlyList<PluginProfileInfo> Roster =

@@ -3,25 +3,21 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// Lists open issues across all repositories for an owner via the local GitHub CLI (<c>gh search issues
-/// --owner &lt;owner&gt; --state open --json …</c>), reusing the user's existing <c>gh</c> login — no token
-/// to paste. Issues in archived repositories are excluded (resolved against <c>gh repo list --archived</c>).
-/// Results are cached briefly per owner so reopening the dialog or clicking around does not re-shell out on
-/// every view; the archived-repo list (which rarely changes) is cached longer. Refresh forces a re-fetch.
-/// </summary>
+// Lists open issues across all repositories for an owner via the local GitHub CLI (`gh search issues
+// --owner &lt;owner&gt; --state open --json …`), reusing the user's existing `gh` login — no token
+// to paste. Issues in archived repositories are excluded (resolved against `gh repo list --archived`).
+// Results are cached briefly per owner so reopening the dialog or clicking around does not re-shell out on
+// every view; the archived-repo list (which rarely changes) is cached longer. Refresh forces a re-fetch.
 internal sealed class GitHubGhClient
 {
-    /// <summary>
-    /// gh's own page size for the issue search. <see cref="SearchOpenIssuesAsync"/> compares the raw parsed count
-    /// against this — before archived-repo issues are filtered out of it in <see cref="ApplyArchivedFilter"/> — so
-    /// the dialog's "may be capped" warning (AC-519) is driven by a count taken where truncation actually happens: a
-    /// result that comes back at exactly this size might have more behind it, and there is no way to tell short of
-    /// asking a narrower question (a label filter).
-    /// </summary>
+    // gh's own page size for the issue search. `SearchOpenIssuesAsync` compares the raw parsed count
+    // against this — before archived-repo issues are filtered out of it in `ApplyArchivedFilter` — so
+    // the dialog's "may be capped" warning (AC-519) is driven by a count taken where truncation actually happens: a
+    // result that comes back at exactly this size might have more behind it, and there is no way to tell short of
+    // asking a narrower question (a label filter).
     public const int IssueSearchLimit = 100;
 
-    /// <summary>Page size for one repo's label list — generous for a filter dropdown; a repo with more labels than this keeps the overflow off the list rather than paginating.</summary>
+    // Page size for one repo's label list — generous for a filter dropdown; a repo with more labels than this keeps the overflow off the list rather than paginating.
     internal const int LabelListLimit = 100;
 
     private static readonly TimeSpan IssueTtl = TimeSpan.FromSeconds(60);
@@ -66,13 +62,11 @@ internal sealed class GitHubGhClient
         return (result, wasTruncated);
     }
 
-    /// <summary>
-    /// Excludes archived-repo issues from a freshly parsed page, and reports whether that raw, pre-exclusion page
-    /// was itself full (AC-519 fix) — pulled out of <see cref="SearchOpenIssuesAsync"/> so the truncation signal is
-    /// provable without shelling out to gh: a page of exactly <see cref="IssueSearchLimit"/> raw issues must still
-    /// warn even when most of them turn out to belong to archived repositories and get filtered out here, since the
-    /// truncation already happened server-side before this method ever runs.
-    /// </summary>
+    // Excludes archived-repo issues from a freshly parsed page, and reports whether that raw, pre-exclusion page
+    // was itself full (AC-519 fix) — pulled out of `SearchOpenIssuesAsync` so the truncation signal is
+    // provable without shelling out to gh: a page of exactly `IssueSearchLimit` raw issues must still
+    // warn even when most of them turn out to belong to archived repositories and get filtered out here, since the
+    // truncation already happened server-side before this method ever runs.
     internal static (IReadOnlyList<GitHubIssue> Issues, bool WasTruncated) ApplyArchivedFilter(IReadOnlyList<GitHubIssue> issues, IReadOnlySet<string> archived)
     {
         var wasTruncated = issues.Count == IssueSearchLimit;
@@ -83,11 +77,9 @@ internal sealed class GitHubGhClient
         return (result, wasTruncated);
     }
 
-    /// <summary>
-    /// The <c>gh search issues</c> argument list — pulled out of <see cref="SearchOpenIssuesAsync"/> so the query
-    /// this plugin builds (owner scope, open state, page size, assignee, and any extra GitHub search qualifiers) is
-    /// asserted without shelling out.
-    /// </summary>
+    // The `gh search issues` argument list — pulled out of `SearchOpenIssuesAsync` so the query
+    // this plugin builds (owner scope, open state, page size, assignee, and any extra GitHub search qualifiers) is
+    // asserted without shelling out.
     internal static string[] SearchArguments(string owner, bool assignedToMe, string? extraTerms)
     {
         var args = new List<string>
@@ -114,24 +106,20 @@ internal sealed class GitHubGhClient
         return args.ToArray();
     }
 
-    /// <summary>
-    /// GitHub's own search syntax for narrowing by label, quoted so a label containing a space reads as one value
-    /// rather than splitting into "label:X" plus a stray free-text word — no shell is involved (the argument list
-    /// bypasses one), so this is GitHub's own query quoting, not OS escaping.
-    /// </summary>
+    // GitHub's own search syntax for narrowing by label, quoted so a label containing a space reads as one value
+    // rather than splitting into "label:X" plus a stray free-text word — no shell is involved (the argument list
+    // bypasses one), so this is GitHub's own query quoting, not OS escaping.
     internal static string LabelSearchTerm(string label) => $"label:\"{label}\"";
 
-    /// <summary>GitHub's own search syntax for narrowing to one repository — no quoting needed, <c>owner/repo</c> has no spaces.</summary>
+    // GitHub's own search syntax for narrowing to one repository — no quoting needed, `owner/repo` has no spaces.
     internal static string RepoSearchTerm(string repository) => $"repo:{repository}";
 
-    /// <summary>
-    /// The union of labels across every one of the owner's repositories (AC-519) — deliberately not the labels seen
-    /// in the loaded issues, which is the same gap the YouTrack status filter had: a label that exists on a repo but
-    /// happens not to appear among the currently loaded (possibly capped) issues would otherwise be unreachable as a
-    /// filter. A repo whose label list cannot be read (deleted mid-listing, no access) is skipped rather than failing
-    /// the whole lookup — one broken repo should not cost every other repo its labels. Cached as long as the
-    /// archived-repo list.
-    /// </summary>
+    // The union of labels across every one of the owner's repositories (AC-519) — deliberately not the labels seen
+    // in the loaded issues, which is the same gap the YouTrack status filter had: a label that exists on a repo but
+    // happens not to appear among the currently loaded (possibly capped) issues would otherwise be unreachable as a
+    // filter. A repo whose label list cannot be read (deleted mid-listing, no access) is skipped rather than failing
+    // the whole lookup — one broken repo should not cost every other repo its labels. Cached as long as the
+    // archived-repo list.
     public async Task<IReadOnlyList<string>> ListRepositoryLabelsAsync(string owner, CancellationToken cancellationToken)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
@@ -173,17 +161,15 @@ internal sealed class GitHubGhClient
         return result;
     }
 
-    /// <summary>The <c>gh label list</c> argument list for one repository, pulled out for the same reason <see cref="SearchArguments"/> is.</summary>
+    // The `gh label list` argument list for one repository, pulled out for the same reason `SearchArguments` is.
     internal static string[] LabelListArguments(string repository) =>
         ["label", "list", "--repo", repository, "--json", "name", "--limit", LabelListLimit.ToString()];
 
-    /// <summary>
-    /// The owner's repositories, as <c>owner/repo</c> — the source the project editor's repository field offers
-    /// (AC-317). Deliberately <c>gh repo list</c> and not the repositories seen in the loaded issues: a repository with
-    /// no open issue is still a repository this project can live in, and the issue-derived list has never been able to
-    /// say so. Archived ones are left out for the same reason they are left out of the issue list. Cached as long as
-    /// the archived list — a repository created a minute ago does not have to be in a dropdown a minute later.
-    /// </summary>
+    // The owner's repositories, as `owner/repo` — the source the project editor's repository field offers
+    // (AC-317). Deliberately `gh repo list` and not the repositories seen in the loaded issues: a repository with
+    // no open issue is still a repository this project can live in, and the issue-derived list has never been able to
+    // say so. Archived ones are left out for the same reason they are left out of the issue list. Cached as long as
+    // the archived list — a repository created a minute ago does not have to be in a dropdown a minute later.
     public async Task<IReadOnlyList<string>> ListRepositoriesAsync(string owner, CancellationToken cancellationToken)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();

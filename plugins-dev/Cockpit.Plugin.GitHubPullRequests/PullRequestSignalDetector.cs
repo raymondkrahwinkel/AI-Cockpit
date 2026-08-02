@@ -2,13 +2,11 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// Recognises, in a chunk of session output, the signals that mean the open-PR list may have just changed —
-/// a pull-request url (a PR was created/opened/referenced) or a merged/closed/reopened state change — so the
-/// inline section can refresh the instant it happens instead of waiting for its periodic poll. Substring-based
-/// so it fires whether the text came from Claude's prose, a shelled-out <c>gh pr create</c>, or a raw TTY
-/// transcript line; deliberately narrow to avoid refreshing on unrelated chatter.
-/// </summary>
+// Recognises, in a chunk of session output, the signals that mean the open-PR list may have just changed —
+// a pull-request url (a PR was created/opened/referenced) or a merged/closed/reopened state change — so the
+// inline section can refresh the instant it happens instead of waiting for its periodic poll. Substring-based
+// so it fires whether the text came from Claude's prose, a shelled-out `gh pr create`, or a raw TTY
+// transcript line; deliberately narrow to avoid refreshing on unrelated chatter.
 internal static class PullRequestSignalDetector
 {
     // e.g. https://github.com/acme/webshop/pull/5 — the url gh prints on create, and what

@@ -2,29 +2,25 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// Which GitHub issue each session is working on (#77) — by pane, not by "the active session", which is a guess the
-/// moment four panes are open. The same arrangement the YouTrack plugin uses, and for the same reason.
-/// <para>
-/// It is also where the session gets labelled after the issue (#AC-310). Linking used to be invisible outside this
-/// plugin's own header — a session could carry an issue while its sidebar row still read "default - 3", which is
-/// exactly the session you want to pick out of four. Doing it here rather than at each call site is what makes it
-/// hold for every route in: the dialog's Link to session, the session header's own picker, and the new session
-/// started from an issue.
-/// </para>
-/// <para>
-/// Deliberately not persisted: the cockpit does not restore sessions on startup, so a link kept for a pane that never
-/// comes back is worse than asking again.
-/// </para>
-/// </summary>
+// Which GitHub issue each session is working on (#77) — by pane, not by "the active session", which is a guess the
+// moment four panes are open. The same arrangement the YouTrack plugin uses, and for the same reason.
+//
+// It is also where the session gets labelled after the issue (#AC-310). Linking used to be invisible outside this
+// plugin's own header — a session could carry an issue while its sidebar row still read "default - 3", which is
+// exactly the session you want to pick out of four. Doing it here rather than at each call site is what makes it
+// hold for every route in: the dialog's Link to session, the session header's own picker, and the new session
+// started from an issue.
+//
+// Deliberately not persisted: the cockpit does not restore sessions on startup, so a link kept for a pane that never
+// comes back is worse than asking again.
 internal sealed class SessionIssueLinks(ICockpitHost host)
 {
     private readonly Dictionary<string, GitHubIssue> _byPaneId = new(StringComparer.Ordinal);
 
-    /// <summary>Raised when a pane's link changes, so the header showing it can re-render.</summary>
+    // Raised when a pane's link changes, so the header showing it can re-render.
     public event EventHandler<string>? Changed;
 
-    /// <summary>Raised when an issue is picked for a session — the act a workflow can start on. Unlinking does not raise it: a flow that ran when you *stopped* working on something would be doing work about work you just put down.</summary>
+    // Raised when an issue is picked for a session — the act a workflow can start on. Unlinking does not raise it: a flow that ran when you *stopped* working on something would be doing work about work you just put down.
     public event EventHandler<IssuePicked>? Picked;
 
     public GitHubIssue? For(string paneId) =>
@@ -64,5 +60,5 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
     }
 }
 
-/// <summary>An issue was picked for a session: which issue, and where that session is working.</summary>
+// An issue was picked for a session: which issue, and where that session is working.
 internal sealed record IssuePicked(GitHubIssue Issue, string? WorkingDirectory);

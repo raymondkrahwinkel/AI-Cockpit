@@ -3,30 +3,24 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// Parses a single JSONL stdout line from <c>codex exec --json</c> into zero-or-more typed
-/// <see cref="PluginSessionEvent"/>s (#45 fase B1) — the plugin-local, pure-function mirror of
-/// <c>Cockpit.Infrastructure.Sessions.ClaudeStreamJsonParser</c>, this plugin's only CLI-<em>specific</em> logic.
-/// </summary>
-/// <remarks>
-/// B2 caveat (design doc §2.3/§4): the exact <c>item.*</c> field names/shapes below (<c>item_type</c>,
-/// <c>command</c>, <c>aggregated_output</c>, ...) are a best-effort reconstruction from Codex's public
-/// non-interactive-mode documentation and issue trackers, not a captured transcript from a real run — no
-/// logged-in <c>codex</c> CLI is available in this environment. Unrecognized <c>type</c>/<c>item_type</c>
-/// values are ignored rather than thrown on (forward-compat, exactly <c>ClaudeStreamJsonParser</c>'s
-/// <c>UnknownEvent</c> philosophy, minus a plugin-facing "unknown" event type — <see cref="PluginSessionEvent"/>
-/// has none on the narrow contract), so schema drift degrades gracefully instead of crashing the driver; B2 is
-/// to re-verify every field name/shape against a real, logged-in <c>codex</c> CLI and adjust only this
-/// file (and its fixtures) — not restructure the driver around it.
-/// </remarks>
+// Parses a single JSONL stdout line from `codex exec --json` into zero-or-more typed
+// `PluginSessionEvent`s (#45 fase B1) — the plugin-local, pure-function mirror of
+// `Cockpit.Infrastructure.Sessions.ClaudeStreamJsonParser`, this plugin's only CLI-*specific* logic.
+// B2 caveat (design doc §2.3/§4): the exact `item.*` field names/shapes below (`item_type`,
+// `command`, `aggregated_output`, ...) are a best-effort reconstruction from Codex's public
+// non-interactive-mode documentation and issue trackers, not a captured transcript from a real run — no
+// logged-in `codex` CLI is available in this environment. Unrecognized `type`/`item_type`
+// values are ignored rather than thrown on (forward-compat, exactly `ClaudeStreamJsonParser`'s
+// `UnknownEvent` philosophy, minus a plugin-facing "unknown" event type — `PluginSessionEvent`
+// has none on the narrow contract), so schema drift degrades gracefully instead of crashing the driver; B2 is
+// to re-verify every field name/shape against a real, logged-in `codex` CLI and adjust only this
+// file (and its fixtures) — not restructure the driver around it.
 internal static class CodexJsonlEventMapper
 {
-    /// <summary>
-    /// Parses one stdout line. <paramref name="sessionId"/> is the caller's currently-known session id (or
-    /// <see langword="null"/> before the first <c>thread.started</c>); it is echoed back unchanged except when
-    /// this line is itself a <c>thread.started</c>. Malformed JSON and any unrecognized <c>type</c>/<c>item_type</c>
-    /// combination produce zero events rather than throwing.
-    /// </summary>
+    // Parses one stdout line. `sessionId` is the caller's currently-known session id (or
+    // `null` before the first `thread.started`); it is echoed back unchanged except when
+    // this line is itself a `thread.started`. Malformed JSON and any unrecognized `type`/`item_type`
+    // combination produce zero events rather than throwing.
     public static CodexJsonlMapResult ParseLine(string line, string? sessionId)
     {
         if (string.IsNullOrWhiteSpace(line))

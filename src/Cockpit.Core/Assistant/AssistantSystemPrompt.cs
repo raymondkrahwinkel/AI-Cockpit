@@ -1,42 +1,35 @@
 namespace Cockpit.Core.Assistant;
 
-/// <summary>
-/// The standing instruction the assistant runs under (AC-543, criterion 13). In the codebase and under version
-/// control, next to <see cref="Cockpit.Core.Delegation.DelegationSystemPrompt"/> and for the same reason: it is a
-/// load-bearing part of the product, not a setting. In <c>cockpit.json</c> nobody would find it, and nobody could
-/// see it change.
-/// </summary>
-/// <remarks>
-/// <b>Why it carries this much weight.</b> Speech reaches the assistant one-to-one — Whisper in, the assistant,
-/// SupertonicTTS out — with no cleanup pass on the way in and no rewrite on the way out (decision 10). What the
-/// removed rewrite step used to do, this prompt now instructs. That is the whole of it: there is no second place
-/// where a 300-word answer gets shortened before it is spoken.
-/// <para>
-/// <b>Written in English, about answering in Dutch.</b> Every surface around the assistant is English — the UI,
-/// the tool descriptions, this prompt — and a model follows its surroundings. Left unsaid, it answers a Dutch
-/// question in English. The language rule is therefore stated outright rather than left to good behaviour.
-/// </para>
-/// <para>
-/// <b>The honesty clause (AC-544, criterion 6) is here rather than in a tool.</b> A statusline is a convention: a
-/// session writes one because it was asked to, so "no session mentions AC-223" is a statement about what has been
-/// written down, never about what is being worked on. The tool description says so too, but a description is read
-/// once at mount and the temptation to round an absence up to an answer arrives later, mid-sentence, under time
-/// pressure from someone who asked a yes/no question. This is the same rule the update check follows when it
-/// cannot run: say that it could not, rather than report "up to date".
-/// </para>
-/// <para>
-/// <b>The acting paragraph (AC-545) says almost nothing about how to spawn, and a great deal about the gate.</b>
-/// How the tools work is in the tool descriptions, which is where a model looks when it is about to call one. What
-/// belongs here is the part that has to hold when it is <em>not</em> reading them: that permission is a click on a
-/// screen the operator may not be looking at, so it has to be said out loud; that a spoken "yes" is a sentence and
-/// never an approval, however plainly it was meant; and that a refusal is a normal turn to keep talking through
-/// rather than the end of the conversation. With an open microphone the assistant hears every word in the room
-/// (decision 12) — one that can also start sessions needs that separation stated, not implied.
-/// </para>
-/// </remarks>
+// The standing instruction the assistant runs under (AC-543, criterion 13). In the codebase and under version
+// control, next to `Cockpit.Core.Delegation.DelegationSystemPrompt` and for the same reason: it is a
+// load-bearing part of the product, not a setting. In `cockpit.json` nobody would find it, and nobody could
+// see it change.
+// *Why it carries this much weight.* Speech reaches the assistant one-to-one — Whisper in, the assistant,
+// SupertonicTTS out — with no cleanup pass on the way in and no rewrite on the way out (decision 10). What the
+// removed rewrite step used to do, this prompt now instructs. That is the whole of it: there is no second place
+// where a 300-word answer gets shortened before it is spoken.
+//
+// *Written in English, about answering in Dutch.* Every surface around the assistant is English — the UI,
+// the tool descriptions, this prompt — and a model follows its surroundings. Left unsaid, it answers a Dutch
+// question in English. The language rule is therefore stated outright rather than left to good behaviour.
+//
+// *The honesty clause (AC-544, criterion 6) is here rather than in a tool.* A statusline is a convention: a
+// session writes one because it was asked to, so "no session mentions AC-223" is a statement about what has been
+// written down, never about what is being worked on. The tool description says so too, but a description is read
+// once at mount and the temptation to round an absence up to an answer arrives later, mid-sentence, under time
+// pressure from someone who asked a yes/no question. This is the same rule the update check follows when it
+// cannot run: say that it could not, rather than report "up to date".
+//
+// *The acting paragraph (AC-545) says almost nothing about how to spawn, and a great deal about the gate.*
+// How the tools work is in the tool descriptions, which is where a model looks when it is about to call one. What
+// belongs here is the part that has to hold when it is *not* reading them: that permission is a click on a
+// screen the operator may not be looking at, so it has to be said out loud; that a spoken "yes" is a sentence and
+// never an approval, however plainly it was meant; and that a refusal is a normal turn to keep talking through
+// rather than the end of the conversation. With an open microphone the assistant hears every word in the room
+// (decision 12) — one that can also start sessions needs that separation stated, not implied.
 public static class AssistantSystemPrompt
 {
-    /// <summary>The default instruction; the operator can replace it per profile, the same way every other profile-level system prompt is overridable.</summary>
+    // The default instruction; the operator can replace it per profile, the same way every other profile-level system prompt is overridable.
     public const string Default =
         "You are the cockpit's voice assistant. The operator reaches you by holding a hotkey or typing in a small " +
         "chat window, and your reply is usually spoken aloud rather than read. Everything below follows from that.\n" +

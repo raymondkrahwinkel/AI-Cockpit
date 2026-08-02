@@ -3,13 +3,11 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// Scans the plugins root (a <c>plugins/</c> folder next to <c>cockpit.json</c>) for plugin subfolders,
-/// parses each <c>plugin.json</c>, hashes its whole load closure and runs the pure <see cref="PluginLoadPolicy"/>
-/// to decide what should happen with it. Pure discovery — it loads no assemblies; the loader acts on the
-/// results. A folder with a missing/invalid manifest or a missing entry assembly is skipped silently
-/// (it is not a valid plugin).
-/// </summary>
+// Scans the plugins root (a `plugins/` folder next to `cockpit.json`) for plugin subfolders,
+// parses each `plugin.json`, hashes its whole load closure and runs the pure `PluginLoadPolicy`
+// to decide what should happen with it. Pure discovery — it loads no assemblies; the loader acts on the
+// results. A folder with a missing/invalid manifest or a missing entry assembly is skipped silently
+// (it is not a valid plugin).
 internal sealed class PluginDiscovery : ISingletonService
 {
     public async Task<IReadOnlyList<DiscoveredPlugin>> DiscoverAsync(

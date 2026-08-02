@@ -5,18 +5,15 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// The host's <see cref="IEmbeddedSession"/>: the session view to place, the pane id to act on it, the task that
-/// completes when the session ends, the callback that toggles its composer, and the host callback that ends this one
-/// session. The host owns the session, so there is nothing here to dispose.
-/// <para>
-/// It also forwards the session's turn-busy state (AC-195): <see cref="IsBusy"/> mirrors
-/// <see cref="SessionViewModel.IsBusy"/> and <see cref="BusyChanged"/> fires as a turn starts and settles, so an
-/// embedder that shows the session — the Autopilot plan pop-out's CEO — can light a "working" cue while a long,
-/// silent planning turn runs instead of looking hung. The busy source is the live session view model; the adapter
-/// lives as long as the embedder holds it, which is within the session's own lifetime.
-/// </para>
-/// </summary>
+// The host's `IEmbeddedSession`: the session view to place, the pane id to act on it, the task that
+// completes when the session ends, the callback that toggles its composer, and the host callback that ends this one
+// session. The host owns the session, so there is nothing here to dispose.
+//
+// It also forwards the session's turn-busy state (AC-195): `IsBusy` mirrors
+// `SessionViewModel.IsBusy` and `BusyChanged` fires as a turn starts and settles, so an
+// embedder that shows the session — the Autopilot plan pop-out's CEO — can light a "working" cue while a long,
+// silent planning turn runs instead of looking hung. The busy source is the live session view model; the adapter
+// lives as long as the embedder holds it, which is within the session's own lifetime.
 internal sealed class EmbeddedSession : IEmbeddedSession
 {
     private readonly SessionViewModel _session;

@@ -6,11 +6,9 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.Workflows;
 
-/// <summary>
-/// The workflow window (#69): it shows the manager — the flows you have — and swaps to the editor when you open
-/// one. Two views rather than one, because keeping flows and building a flow are different jobs: the manager is
-/// where you arm, duplicate and throw away; the editor is where a flow is drawn, and it wants the whole window.
-/// </summary>
+// The workflow window (#69): it shows the manager — the flows you have — and swaps to the editor when you open
+// one. Two views rather than one, because keeping flows and building a flow are different jobs: the manager is
+// where you arm, duplicate and throw away; the editor is where a flow is drawn, and it wants the whole window.
 internal sealed class WorkflowsDialogControl : UserControl
 {
     private readonly WorkflowStore _store;

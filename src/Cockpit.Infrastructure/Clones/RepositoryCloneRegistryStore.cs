@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Clones;
 
-/// <summary>
-/// Persists the repository-clone registry under the <c>clones</c> section of <c>cockpit.json</c> (AC-90), going
-/// through <see cref="CockpitConfigFileAccess"/> so each mutation is a gated read-modify-write that never clobbers a
-/// sibling section — the same seam the worktree registry and the settings stores use.
-/// </summary>
+// Persists the repository-clone registry under the `clones` section of `cockpit.json` (AC-90), going
+// through `CockpitConfigFileAccess` so each mutation is a gated read-modify-write that never clobbers a
+// sibling section — the same seam the worktree registry and the settings stores use.
 internal sealed class RepositoryCloneRegistryStore : IRepositoryCloneRegistry, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class RepositoryCloneRegistryStore : IRepositoryCloneRegistry, I
     {
     }
 
-    /// <summary>Test seam: point the registry at an arbitrary config file path.</summary>
+    // Test seam: point the registry at an arbitrary config file path.
     internal RepositoryCloneRegistryStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

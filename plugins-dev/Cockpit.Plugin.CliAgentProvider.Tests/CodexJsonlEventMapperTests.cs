@@ -2,13 +2,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexJsonlEventMapper"/> (#45 fase B1) against representative <c>codex exec --json</c> JSONL
-/// lines, per the design doc's event table (Cockpit-ProviderPlugins-PhaseB-CLI-2026-07-11.md §2.3) — the only
-/// CLI-specific logic in this plugin, so it is exercised as a pure function against fixtures rather than
-/// through a spawned process (no logged-in <c>codex</c> CLI in this environment; B2 to re-verify against a
-/// real transcript).
-/// </summary>
+// `CodexJsonlEventMapper` (#45 fase B1) against representative `codex exec --json` JSONL
+// lines, per the design doc's event table (Cockpit-ProviderPlugins-PhaseB-CLI-2026-07-11.md §2.3) — the only
+// CLI-specific logic in this plugin, so it is exercised as a pure function against fixtures rather than
+// through a spawned process (no logged-in `codex` CLI in this environment; B2 to re-verify against a
+// real transcript).
 public class CodexJsonlEventMapperTests
 {
     [Fact]

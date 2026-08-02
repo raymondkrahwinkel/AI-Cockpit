@@ -20,11 +20,9 @@ namespace Cockpit.App.Views;
 
 public partial class CockpitView : UserControl
 {
-    /// <summary>
-    /// How often finished sessions are checked against the idle threshold. A sweep is cheap (a comparison per
-    /// session), and the threshold is in minutes, so half a minute of slack in when a session turns grey is
-    /// invisible — where a timer per session would not be.
-    /// </summary>
+    // How often finished sessions are checked against the idle threshold. A sweep is cheap (a comparison per
+    // session), and the threshold is in minutes, so half a minute of slack in when a session turns grey is
+    // invisible — where a timer per session would not be.
     private static readonly TimeSpan IdleSweepInterval = TimeSpan.FromSeconds(30);
 
     // Often enough that the number means something while you watch an agent work, rarely enough that reading the
@@ -367,9 +365,9 @@ public partial class CockpitView : UserControl
     private ShortcutFocus _FocusedInput() =>
         ShortcutDispatchGate.FocusOf(TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement());
 
-    /// <summary>Sidebar item click → select that session, and arm a possible drag-reorder (AC-115). Plain event
-    /// handler (not a command) since the clicked session is the DataContext of the <see cref="Border"/> raising the
-    /// event, not the item passed as a bindable CommandParameter — simplest wiring for a whole-row click target.</summary>
+    // Sidebar item click → select that session, and arm a possible drag-reorder (AC-115). Plain event
+    // handler (not a command) since the clicked session is the DataContext of the `Border` raising the
+    // event, not the item passed as a bindable CommandParameter — simplest wiring for a whole-row click target.
     private void OnSessionItemPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Border { DataContext: SessionPanelViewModel session } || DataContext is not CockpitViewModel cockpit)
@@ -473,10 +471,10 @@ public partial class CockpitView : UserControl
         }
     }
 
-    /// <summary>Clicking anywhere on a workspace tab switches to it — same whole-row click target as a session
-    /// row, and the same wiring: the tab is the <see cref="Border"/>'s DataContext. The ✕ inside the tab is a
-    /// Button, so its click is handled there and never reaches this; a press that bubbles up from it would
-    /// otherwise select the workspace it is about to close.</summary>
+    // Clicking anywhere on a workspace tab switches to it — same whole-row click target as a session
+    // row, and the same wiring: the tab is the `Border`'s DataContext. The ✕ inside the tab is a
+    // Button, so its click is handled there and never reaches this; a press that bubbles up from it would
+    // otherwise select the workspace it is about to close.
     private void OnWorkspaceTabPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
@@ -562,7 +560,7 @@ public partial class CockpitView : UserControl
 
     private void OnWorkspaceTabPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingTab = null;
 
-    /// <summary>Double-click a tab to rename it in place — the same inline edit a session row uses.</summary>
+    // Double-click a tab to rename it in place — the same inline edit a session row uses.
     private void OnWorkspaceTabDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (sender is Border { DataContext: WorkspaceTabViewModel tab })
@@ -581,11 +579,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    /// <summary>
-    /// Ask-then-close lives on the view model, so the ✕, the context menu and the command palette all take the
-    /// same path. Two copies of "what is about to be lost" is two chances for the prompt to drift from what
-    /// closing actually does.
-    /// </summary>
+    // Ask-then-close lives on the view model, so the ✕, the context menu and the command palette all take the
+    // same path. Two copies of "what is about to be lost" is two chances for the prompt to drift from what
+    // closing actually does.
     private void OnCloseWorkspaceRequested(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
@@ -594,11 +590,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    /// <summary>
-    /// The rename box becomes visible where it was already in the tree, so nothing gives it focus on its own —
-    /// you had to click it before you could type (Raymond). Selecting everything on the way in makes the first
-    /// keystroke replace the name, which is the whole point of asking to rename it.
-    /// </summary>
+    // The rename box becomes visible where it was already in the tree, so nothing gives it focus on its own —
+    // you had to click it before you could type (Raymond). Selecting everything on the way in makes the first
+    // keystroke replace the name, which is the whole point of asking to rename it.
     private void OnWorkspaceRenameAttached(object? sender, VisualTreeAttachmentEventArgs e)
     {
         if (sender is TextBox box)
@@ -671,11 +665,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    /// <summary>
-    /// Adds a dashboard from a file. A widget this cockpit does not have is skipped and named rather than the
-    /// whole file being refused (Raymond's call), so the operator is told what to install rather than left with
-    /// a dashboard that looks broken instead of incomplete.
-    /// </summary>
+    // Adds a dashboard from a file. A widget this cockpit does not have is skipped and named rather than the
+    // whole file being refused (Raymond's call), so the operator is told what to install rather than left with
+    // a dashboard that looks broken instead of incomplete.
     private async Task _ImportDashboardAsync()
     {
         if (DataContext is not CockpitViewModel cockpit || await cockpit.PickDashboardToImportAsync() is not { } path)
@@ -849,15 +841,12 @@ public partial class CockpitView : UserControl
         }
     }
 
-    /// <summary>
-    /// Which workspace tab the pointer is over, or null. Only a dashboard other than the one showing counts: a
-    /// sessions workspace cannot hold a widget (<c>WorkspaceTypeRules.Accepts</c> refuses it), and its own tab
-    /// would be a drop that does nothing.
-    /// <para>
-    /// Hit-tested from the strip rather than by handlers on the tabs, for the reason the strip's own drag
-    /// already found out: a move rebuilds the tabs, so anything attached to one does not survive it.
-    /// </para>
-    /// </summary>
+    // Which workspace tab the pointer is over, or null. Only a dashboard other than the one showing counts: a
+    // sessions workspace cannot hold a widget (`WorkspaceTypeRules.Accepts` refuses it), and its own tab
+    // would be a drop that does nothing.
+    //
+    // Hit-tested from the strip rather than by handlers on the tabs, for the reason the strip's own drag
+    // already found out: a move rebuilds the tabs, so anything attached to one does not survive it.
     private WorkspaceTabViewModel? _WorkspaceTabAt(PointerEventArgs e)
     {
         if (WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
@@ -880,10 +869,8 @@ public partial class CockpitView : UserControl
         return null;
     }
 
-    /// <summary>
-    /// Lights the tab a drop would land on. Set on the container rather than the view model: it lasts exactly
-    /// as long as the gesture, so it has no business being persisted or reasoned about anywhere else.
-    /// </summary>
+    // Lights the tab a drop would land on. Set on the container rather than the view model: it lasts exactly
+    // as long as the gesture, so it has no business being persisted or reasoned about anywhere else.
     private void _HighlightDropTargetTab()
     {
         if (WorkspaceTabStrip?.ItemsPanelRoot is not { } strip)
@@ -897,7 +884,7 @@ public partial class CockpitView : UserControl
         }
     }
 
-    /// <summary>Lays the ghost over the cells the gesture would take. Hidden when the answer is "nowhere legal", which is itself the feedback: the pane will not go there.</summary>
+    // Lays the ghost over the cells the gesture would take. Hidden when the answer is "nowhere legal", which is itself the feedback: the pane will not go there.
     private void _ShowGhost(Control grid, int columns, int rows)
     {
         if (WidgetDropGhost is null)
@@ -932,11 +919,9 @@ public partial class CockpitView : UserControl
             }
         });
 
-    /// <summary>
-    /// The ⚙ on a widget pane. The plugin supplies the form's content; the host puts it in the dialog with the
-    /// Save/Close footer — the same split as a plugin's own settings view, so a widget never builds a window.
-    /// Saving asks that instance to refresh, which is how its view picks up the config the form just wrote.
-    /// </summary>
+    // The ⚙ on a widget pane. The plugin supplies the form's content; the host puts it in the dialog with the
+    // Save/Close footer — the same split as a plugin's own settings view, so a widget never builds a window.
+    // Saving asks that instance to refresh, which is how its view picks up the config the form just wrote.
     private void OnWidgetConfigPressed(object? sender, RoutedEventArgs e) =>
         _WithWidgetPane(sender, pane =>
         {
@@ -1220,16 +1205,12 @@ public partial class CockpitView : UserControl
         return null;
     }
 
-    /// <summary>
-    /// Puts keyboard focus on whatever this pane types into: a terminal pane's terminal, an SDK pane's composer.
-    /// </summary>
-    /// <remarks>
-    /// This only ever looked for a terminal, so switching to an SDK session moved the selection and left focus
-    /// where it was — on the session the operator had just left, which is where the next keystroke went. It reads
-    /// as the app ignoring the switch, and on a terminal pane it never showed, because there the one control it
-    /// knew about is the one that wanted focus. Fixed here rather than at the selection-change caller: the pane
-    /// click path goes through the same helper and had the same hole.
-    /// </remarks>
+    // Puts keyboard focus on whatever this pane types into: a terminal pane's terminal, an SDK pane's composer.
+    // This only ever looked for a terminal, so switching to an SDK session moved the selection and left focus
+    // where it was — on the session the operator had just left, which is where the next keystroke went. It reads
+    // as the app ignoring the switch, and on a terminal pane it never showed, because there the one control it
+    // knew about is the one that wanted focus. Fixed here rather than at the selection-change caller: the pane
+    // click path goes through the same helper and had the same hole.
     internal static void _FocusInputIn(Control container)
     {
         if (container.GetVisualDescendants().OfType<TerminalControl>().FirstOrDefault() is { } terminal)

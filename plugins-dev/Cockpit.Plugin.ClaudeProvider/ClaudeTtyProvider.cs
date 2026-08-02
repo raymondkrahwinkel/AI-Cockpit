@@ -2,13 +2,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// The <c>claude</c> CLI as a TTY provider, hosted in the plugin (Fase 4, weg A) — a port of the host's
-/// <c>ClaudeTtySessionProvider</c>: resolves the executable, pre-marks the working directory trusted, installs the
-/// statusline relay that carries Claude's limits, fans the shared MCP registry into a <c>--mcp-config</c>, and
-/// composes the launch-only flags. Never adds <c>-p</c>/stream-json — this is the genuine interactive TUI, which
-/// owns its own live switching (<c>/model</c>, Shift+Tab) since TTY mode has no control channel.
-/// </summary>
+// The `claude` CLI as a TTY provider, hosted in the plugin (Fase 4, weg A) — a port of the host's
+// `ClaudeTtySessionProvider`: resolves the executable, pre-marks the working directory trusted, installs the
+// statusline relay that carries Claude's limits, fans the shared MCP registry into a `--mcp-config`, and
+// composes the launch-only flags. Never adds `-p`/stream-json — this is the genuine interactive TUI, which
+// owns its own live switching (`/model`, Shift+Tab) since TTY mode has no control channel.
 internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider
 {
     public const string PermissionModeKey = "permission-mode";
@@ -85,50 +83,41 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         };
     }
 
-    /// <summary>
-    /// How often <see cref="WatchConversationIdAsync"/> re-scans the config dir — the same interval
-    /// <see cref="ClaudeTranscriptReader"/> already polls at.
-    /// </summary>
+    // How often `WatchConversationIdAsync` re-scans the config dir — the same interval
+    // `ClaudeTranscriptReader` already polls at.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>
-    /// How long <see cref="WatchConversationIdAsync"/> keeps scanning before giving up and reporting nothing —
-    /// long enough to outlast ordinary CLI startup latency (process spawn, an auth/version check) before the
-    /// transcript file exists at all, short enough to close the cross-session window described there promptly
-    /// rather than leaving it open for the rest of the app's life.
-    /// </summary>
+    // How long `WatchConversationIdAsync` keeps scanning before giving up and reporting nothing —
+    // long enough to outlast ordinary CLI startup latency (process spawn, an auth/version check) before the
+    // transcript file exists at all, short enough to close the cross-session window described there promptly
+    // rather than leaving it open for the rest of the app's life.
     private static readonly TimeSpan WatchTimeout = TimeSpan.FromSeconds(10);
 
-    /// <summary>
-    /// Reports this session's conversation id exactly once, as soon as its own transcript can be told apart from
-    /// every other file under <paramref name="stateDirectory"/> (AC-408) — the same "new file since launch"
-    /// identification <see cref="ClaudeTranscriptReader"/> uses for status, but a bounded one-shot scan
-    /// rather than a standing watch.
-    /// <para>
-    /// A standing watch would keep scanning the <em>whole</em> config dir — every session's transcripts, not just
-    /// this one's — for as long as this session runs: Claude's per-session <c>&lt;cwd-hash&gt;</c> folder name is
-    /// undocumented, so narrowing the scan to just this session's own folder was rejected (see the remark on
-    /// <see cref="BuildArguments"/>), and forcing <c>--session-id</c> is rejected for the same reason. Left
-    /// unbounded, a second session starting under the same config dir later in this session's life would
-    /// eventually be seen and misreported as <em>this</em> session's id — silently, and the wrong pane would be
-    /// resumed into the wrong conversation once a later ticket persists what this one reports. Stopping after one
-    /// report, or after <see cref="WatchTimeout"/> with nothing found, closes that window instead of leaving it
-    /// open.
-    /// </para>
-    /// <para>
-    /// If more than one new file shows up in the very same poll, this session's own transcript cannot be told
-    /// apart from another session's that just started in the same instant — reporting nothing is the correct
-    /// answer there, not guessing the newest one (a wrong <see cref="PluginConversationIdState.Known"/> is worse
-    /// than none at all).
-    /// </para>
-    /// <para>
-    /// Consequence, deliberately accepted: this route never reports a changed id after a <c>/clear</c> — the new
-    /// transcript it starts is exactly the same "unattributable new file" case above, and this scan cannot tell
-    /// it apart from another session starting. <see cref="PluginTtyLaunchContext.ReportConversationId"/> itself
-    /// still allows repeated calls, and the SDK route (<see cref="IPluginSessionDriver.Conversation"/>) does
-    /// report a live mid-session change; this TTY route only cannot do so reliably, and does not pretend it can.
-    /// </para>
-    /// </summary>
+    // Reports this session's conversation id exactly once, as soon as its own transcript can be told apart from
+    // every other file under `stateDirectory` (AC-408) — the same "new file since launch"
+    // identification `ClaudeTranscriptReader` uses for status, but a bounded one-shot scan
+    // rather than a standing watch.
+    //
+    // A standing watch would keep scanning the *whole* config dir — every session's transcripts, not just
+    // this one's — for as long as this session runs: Claude's per-session `&lt;cwd-hash&gt;` folder name is
+    // undocumented, so narrowing the scan to just this session's own folder was rejected (see the remark on
+    // `BuildArguments`), and forcing `--session-id` is rejected for the same reason. Left
+    // unbounded, a second session starting under the same config dir later in this session's life would
+    // eventually be seen and misreported as *this* session's id — silently, and the wrong pane would be
+    // resumed into the wrong conversation once a later ticket persists what this one reports. Stopping after one
+    // report, or after `WatchTimeout` with nothing found, closes that window instead of leaving it
+    // open.
+    //
+    // If more than one new file shows up in the very same poll, this session's own transcript cannot be told
+    // apart from another session's that just started in the same instant — reporting nothing is the correct
+    // answer there, not guessing the newest one (a wrong `PluginConversationIdState.Known` is worse
+    // than none at all).
+    //
+    // Consequence, deliberately accepted: this route never reports a changed id after a `/clear` — the new
+    // transcript it starts is exactly the same "unattributable new file" case above, and this scan cannot tell
+    // it apart from another session starting. `PluginTtyLaunchContext.ReportConversationId` itself
+    // still allows repeated calls, and the SDK route (`IPluginSessionDriver.Conversation`) does
+    // report a live mid-session change; this TTY route only cannot do so reliably, and does not pretend it can.
     internal static async Task WatchConversationIdAsync(
         string stateDirectory,
         IReadOnlySet<string> knownAtLaunch,
@@ -164,11 +153,9 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         }
     }
 
-    /// <summary>
-    /// The session's standing instructions and the orchestrator nudge as one value, blank-separated — the
-    /// instructions first, since they say who the session is and what it works on, and the nudge is a note about
-    /// tools. Null when neither applies, which leaves the flag off entirely.
-    /// </summary>
+    // The session's standing instructions and the orchestrator nudge as one value, blank-separated — the
+    // instructions first, since they say who the session is and what it works on, and the nudge is a note about
+    // tools. Null when neither applies, which leaves the flag off entirely.
     internal static string? _AppendedInstructions(string? instructions, string? delegationSystemPrompt)
     {
         var parts = new[] { instructions, delegationSystemPrompt }
@@ -179,12 +166,10 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         return parts.Count == 0 ? null : string.Join("\n\n", parts);
     }
 
-    /// <summary>
-    /// The launch-only start-default flags for the TTY spawn (<c>internal</c> for unit tests). Deliberately no
-    /// <c>-p</c>/stream-json/permission-prompt-tool: the interactive TUI prompts for permission itself. The session
-    /// id is not forced (<c>--session-id</c> is undocumented for a new interactive session); the cockpit locates the
-    /// live transcript as the new file that appears after launch.
-    /// </summary>
+    // The launch-only start-default flags for the TTY spawn (`internal` for unit tests). Deliberately no
+    // `-p`/stream-json/permission-prompt-tool: the interactive TUI prompts for permission itself. The session
+    // id is not forced (`--session-id` is undocumented for a new interactive session); the cockpit locates the
+    // live transcript as the new file that appears after launch.
     internal static List<string> BuildArguments(
         string? permissionMode,
         string? model,

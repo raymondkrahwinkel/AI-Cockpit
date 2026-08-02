@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.GitHubActions.Tests;
 
-/// <summary>
-/// The GitHub Actions plugin's non-UI logic (AC-52): the gh argument list, run-list JSON parsing, run-state derivation
-/// and the browser-open URL guard — all without shelling out.
-/// </summary>
+// The GitHub Actions plugin's non-UI logic (AC-52): the gh argument list, run-list JSON parsing, run-state derivation
+// and the browser-open URL guard — all without shelling out.
 public class CiWorkflowRunClientTests
 {
     [Fact]

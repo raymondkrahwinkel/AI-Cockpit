@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-/// <summary>An <see cref="ICockpitActions"/> that records what it was asked to inject or copy, so a test can assert what a control's click handler sent it.</summary>
+// An `ICockpitActions` that records what it was asked to inject or copy, so a test can assert what a control's click handler sent it.
 internal sealed class FakeCockpitActions : ICockpitActions
 {
     public bool HasActiveSession { get; set; }

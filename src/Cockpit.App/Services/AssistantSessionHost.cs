@@ -166,21 +166,15 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: false, cancellationToken);
 
-    /// <summary>
-    /// How full the context may get before the assistant hands itself over and starts again (AC-596). A percentage
-    /// rather than a token count, because it is the provider that reports the fill and it knows the window.
-    /// </summary>
-    /// <remarks>
-    /// ponytail: one number for every provider. High enough that an ordinary exchange never reaches it, low enough
-    /// to leave room for the turn that crosses it plus the one that answers the operator afterwards.
-    /// </remarks>
+    // How full the context may get before the assistant hands itself over and starts again (AC-596). A percentage
+    // rather than a token count, because it is the provider that reports the fill and it knows the window.
+    // ponytail: one number for every provider. High enough that an ordinary exchange never reaches it, low enough
+    // to leave room for the turn that crosses it plus the one that answers the operator afterwards.
     internal const double RestartAboveContextPercent = 80;
 
-    /// <summary>
-    /// How long the assistant may sit untouched before it is stopped (AC-602). Coming back costs a start the
-    /// operator spends a sentence talking over (see the warm-up on the hotkey press), so the only thing an hour of
-    /// silence buys by staying up is a model in memory.
-    /// </summary>
+    // How long the assistant may sit untouched before it is stopped (AC-602). Coming back costs a start the
+    // operator spends a sentence talking over (see the warm-up on the hotkey press), so the only thing an hour of
+    // silence buys by staying up is a model in memory.
     internal static readonly TimeSpan StopAfterIdle = TimeSpan.FromHours(1);
 
     // `replaceALiveInstance`:
@@ -431,15 +425,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    /// <summary>
-    /// Restarts the assistant on a fresh conversation once its context is nearly full (AC-596) — but only while
-    /// nothing is running and nothing is waiting on the operator.
-    /// </summary>
-    /// <remarks>
-    /// It is the whole conversation that goes, so what carries across is the standing instruction, the memory file
-    /// and whatever the assistant last wrote with <c>note_state</c>. Never mid-turn, and never over an unanswered
-    /// permission: that row belongs to a session that would no longer exist to receive the answer.
-    /// </remarks>
+    // Restarts the assistant on a fresh conversation once its context is nearly full (AC-596) — but only while
+    // nothing is running and nothing is waiting on the operator.
+    // It is the whole conversation that goes, so what carries across is the standing instruction, the memory file
+    // and whatever the assistant last wrote with `note_state`. Never mid-turn, and never over an unanswered
+    // permission: that row belongs to a session that would no longer exist to receive the answer.
     private void _HandOverIfTheContextIsFull(SessionViewModel session)
     {
         if (!ReferenceEquals(session, Session)
@@ -471,10 +461,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     internal static bool ShouldStopWhenIdle(TimeSpan sinceLastInteraction, bool isBusy, bool isWaitingOnOperator) =>
         sinceLastInteraction >= StopAfterIdle && !isBusy && !isWaitingOnOperator;
 
-    /// <summary>
-    /// Stops an assistant nobody has spoken to for an hour (AC-602). The chip stays on Ready and is owed no
-    /// reason: it is available, it is simply not warm, and the next hold builds a new one on the same conversation.
-    /// </summary>
+    // Stops an assistant nobody has spoken to for an hour (AC-602). The chip stays on Ready and is owed no
+    // reason: it is available, it is simply not warm, and the next hold builds a new one on the same conversation.
     private async Task _StopIfIdleAsync()
     {
         if (Session is not { } session
@@ -504,7 +492,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    /// <summary>Pushes the idle stop back. Every way the operator can reach the assistant calls this.</summary>
+    // Pushes the idle stop back. Every way the operator can reach the assistant calls this.
     private void _NoteInteraction()
     {
         _lastInteraction = DateTimeOffset.UtcNow;

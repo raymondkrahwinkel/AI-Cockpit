@@ -3,7 +3,7 @@ using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>The providers offered when creating a profile (#26), with their display labels and the default local server URLs.</summary>
+// The providers offered when creating a profile (#26), with their display labels and the default local server URLs.
 public static class SessionProviderCatalog
 {
     public static IReadOnlyList<SessionProviderOption> Providers { get; } =
@@ -23,12 +23,10 @@ public static class SessionProviderCatalog
     public static SessionProviderOption Resolve(SessionProvider provider) =>
         Providers.FirstOrDefault(option => option.Value == provider) ?? Providers[0];
 
-    /// <summary>
-    /// The full provider picker for the profile editor (#45): the built-in providers plus one option per
-    /// provider a plugin has registered, each carrying its own <see cref="SessionProviderOption.PluginProviderId"/>
-    /// so several plugin-registered providers are individually selectable rather than collapsing onto the
-    /// generic <see cref="Providers"/> "Plugin" placeholder.
-    /// </summary>
+    // The full provider picker for the profile editor (#45): the built-in providers plus one option per
+    // provider a plugin has registered, each carrying its own `SessionProviderOption.PluginProviderId`
+    // so several plugin-registered providers are individually selectable rather than collapsing onto the
+    // generic `Providers` "Plugin" placeholder.
     public static IReadOnlyList<SessionProviderOption> AllProviders(IPluginProviderRegistry pluginProviderRegistry) =>
     [
         .. Providers.Where(option => option.Value != SessionProvider.Plugin),
@@ -36,7 +34,7 @@ public static class SessionProviderCatalog
             new SessionProviderOption(registration.DisplayName, SessionProvider.Plugin, registration.ProviderId)),
     ];
 
-    /// <summary>The default base URL for a local provider's OpenAI-compatible server, pre-filled when the provider is picked.</summary>
+    // The default base URL for a local provider's OpenAI-compatible server, pre-filled when the provider is picked.
     public static string DefaultBaseUrl(SessionProvider provider) => provider switch
     {
         SessionProvider.Ollama => "http://localhost:11434",

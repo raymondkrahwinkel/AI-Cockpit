@@ -6,10 +6,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Stands in front of the cockpit when the operator encrypted their credentials: the password is the key, so
-/// nothing that reads a setting — no plugin, no MCP server, no session — may run until it has been typed.
-/// </summary>
+// Stands in front of the cockpit when the operator encrypted their credentials: the password is the key, so
+// nothing that reads a setting — no plugin, no MCP server, no session — may run until it has been typed.
 public partial class UnlockWindow : Window
 {
     public UnlockWindow()
@@ -28,11 +26,9 @@ public partial class UnlockWindow : Window
         };
     }
 
-    /// <summary>
-    /// Puts the window in front with the caret in the password box — what the operator came here to type. Called when
-    /// the window opens, and again when the OS unlocks (AC-187): a screen shown while the desktop was still locked was
-    /// never activated on the operator's own desktop, so it needs asking a second time.
-    /// </summary>
+    // Puts the window in front with the caret in the password box — what the operator came here to type. Called when
+    // the window opens, and again when the OS unlocks (AC-187): a screen shown while the desktop was still locked was
+    // never activated on the operator's own desktop, so it needs asking a second time.
     public void TakeFocus()
     {
         Activate();

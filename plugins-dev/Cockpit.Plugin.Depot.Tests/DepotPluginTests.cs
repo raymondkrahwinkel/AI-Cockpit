@@ -7,11 +7,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotPlugin"/>'s <c>Initialize</c> plus its <see cref="IPluginMcpProvider"/> half (AC-504). Asserts on
-/// the registration's/contribution's content, not merely that a host method was called: a call with the wrong
-/// scheme, URL or a blank instruction would still "pass" a test that only checked the call happened.
-/// </summary>
+// `DepotPlugin`'s `Initialize` plus its `IPluginMcpProvider` half (AC-504). Asserts on
+// the registration's/contribution's content, not merely that a host method was called: a call with the wrong
+// scheme, URL or a blank instruction would still "pass" a test that only checked the call happened.
 public class DepotPluginTests
 {
     private static ICockpitHost _HostWithConnections(params DepotConnectionRegistration[] connections)

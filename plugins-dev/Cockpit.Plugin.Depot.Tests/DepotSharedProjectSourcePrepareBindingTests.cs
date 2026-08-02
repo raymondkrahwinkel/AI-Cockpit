@@ -7,13 +7,11 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotSharedProjectSource.PrepareBindingAsync"/> (AC-246): the second, fuller read the "Finish setting
-/// up…" bind step needs. Every fixture is the actual JSON text Depot's <c>read</c> tool would send, parsed by the
-/// real <see cref="Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectDefinitionJson"/> deserializer — the same
-/// "measure against a real-looking response, never a fake that hands back an already-built type" discipline
-/// <see cref="DepotSharedProjectSourceTests"/> already documents for <c>ListAsync</c>.
-/// </summary>
+// `DepotSharedProjectSource.PrepareBindingAsync` (AC-246): the second, fuller read the "Finish setting
+// up…" bind step needs. Every fixture is the actual JSON text Depot's `read` tool would send, parsed by the
+// real `Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectDefinitionJson` deserializer — the same
+// "measure against a real-looking response, never a fake that hands back an already-built type" discipline
+// `DepotSharedProjectSourceTests` already documents for `ListAsync`.
 public class DepotSharedProjectSourcePrepareBindingTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");

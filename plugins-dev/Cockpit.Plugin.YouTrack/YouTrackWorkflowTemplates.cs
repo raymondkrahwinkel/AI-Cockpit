@@ -2,17 +2,14 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The flows this plugin knows how to draw (#69). Its steps are only half the offer: a trigger that hands over a
-/// ticket and a step that moves one are the pieces, and "pick a ticket, cut the branch, put an agent on it, move it to
-/// in progress" is what they are for. An operator staring at an empty canvas has to work that out; here it is, ready
-/// to open and read.
-/// <para>
-/// Written as the workflows plugin's own JSON — the same text a flow is exported to — so a template that ships with a
-/// plugin, one shared as a file, and one you drew yourself are the same kind of thing. The ids inside are rewritten on
-/// use, so a template can be started from twice.
-/// </para>
-/// </summary>
+// The flows this plugin knows how to draw (#69). Its steps are only half the offer: a trigger that hands over a
+// ticket and a step that moves one are the pieces, and "pick a ticket, cut the branch, put an agent on it, move it to
+// in progress" is what they are for. An operator staring at an empty canvas has to work that out; here it is, ready
+// to open and read.
+//
+// Written as the workflows plugin's own JSON — the same text a flow is exported to — so a template that ships with a
+// plugin, one shared as a file, and one you drew yourself are the same kind of thing. The ids inside are rewritten on
+// use, so a template can be started from twice.
 internal static class YouTrackWorkflowTemplates
 {
     public static IEnumerable<WorkflowTemplate> All =>

@@ -2,14 +2,12 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-/// <summary>
-/// <see cref="CockpitProjectResourceEntry.Create"/> — what happens to an absolute reference instead of shipping it
-/// or refusing the write outright (AC-244, narrowed by AC-605: an anchor-relative reference is portable now, so it
-/// is written like any other portable row — see <see cref="Create_AnchorRelativeReference_ReturnsARowWithThatPortability"/> —
-/// and again by AC-246: a plain absolute reference is written as a placeholder — role and label, no reference — not
-/// dropped outright any more; see <see cref="Create_AbsoluteReference_ReturnsAPlaceholderRow"/>. A secret-shaped
-/// reference is the one case still dropped in full, whatever its shape — AC-612, unchanged.
-/// </summary>
+// `CockpitProjectResourceEntry.Create` — what happens to an absolute reference instead of shipping it
+// or refusing the write outright (AC-244, narrowed by AC-605: an anchor-relative reference is portable now, so it
+// is written like any other portable row — see Create_AnchorRelativeReference_ReturnsARowWithThatPortability —
+// and again by AC-246: a plain absolute reference is written as a placeholder — role and label, no reference — not
+// dropped outright any more; see Create_AbsoluteReference_ReturnsAPlaceholderRow. A secret-shaped
+// reference is the one case still dropped in full, whatever its shape — AC-612, unchanged.
 public class CockpitProjectResourceEntryTests
 {
     [Fact]

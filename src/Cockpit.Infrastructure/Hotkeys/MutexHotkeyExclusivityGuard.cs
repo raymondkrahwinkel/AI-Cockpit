@@ -1,25 +1,20 @@
 using Cockpit.Core.Abstractions.Hotkeys;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Hotkeys;
 
-/// <summary>
-/// Claims a hotkey with a named, per-user <see cref="Mutex"/> — the same mechanism and reasoning as
-/// <see cref="SingleInstanceGuard"/>, one level narrower. That guard keeps a second production cockpit from
-/// starting at all, but a development build intentionally runs beside it (<see cref="SingleInstanceGuard.TryAcquire(bool)"/>)
-/// — which is exactly the AC-71 scenario: two live instances, each arming the same key and neither aware of the
-/// other. Neither <see cref="IGlobalHotkeyService"/> backend can see the other instance; a mutex per hotkey id
-/// is what can, on all three platforms, and the kernel releases it the moment a process dies without disposing
-/// it — a crash included — so a waiting instance never needs a restart to pick the key back up.
-/// </summary>
-/// <remarks>
-/// A <see cref="Mutex"/> is owned by the thread that acquired it, and only that thread may release it — but
-/// <see cref="TryAcquire"/> is called from an async continuation (whichever thread-pool thread happens to
-/// resume <c>GlobalHotkeyCoordinator.ApplyAsync</c>) and the matching release can land on a different one
-/// entirely. Each claim therefore gets its own small, long-lived <see cref="_ClaimThread"/> that does the
-/// acquiring and, later, the releasing itself — <see cref="TryAcquire"/>/the returned claim's
-/// <see cref="IDisposable.Dispose"/> only ever signal it across a wait handle.
-/// </remarks>
+// Claims a hotkey with a named, per-user `Mutex` — the same mechanism and reasoning as
+// `SingleInstanceGuard`, one level narrower. That guard keeps a second production cockpit from
+// starting at all, but a development build intentionally runs beside it (`SingleInstanceGuard.TryAcquire(bool)`)
+// — which is exactly the AC-71 scenario: two live instances, each arming the same key and neither aware of the
+// other. Neither `IGlobalHotkeyService` backend can see the other instance; a mutex per hotkey id
+// is what can, on all three platforms, and the kernel releases it the moment a process dies without disposing
+// it — a crash included — so a waiting instance never needs a restart to pick the key back up.
+// A `Mutex` is owned by the thread that acquired it, and only that thread may release it — but
+// `TryAcquire` is called from an async continuation (whichever thread-pool thread happens to
+// resume `GlobalHotkeyCoordinator.ApplyAsync`) and the matching release can land on a different one
+// entirely. Each claim therefore gets its own small, long-lived `_ClaimThread` that does the
+// acquiring and, later, the releasing itself — `TryAcquire`/the returned claim's
+// `IDisposable.Dispose` only ever signal it across a wait handle.
 internal sealed class MutexHotkeyExclusivityGuard : IHotkeyExclusivityGuard
 {
     private readonly Lock _gate = new();
@@ -74,12 +69,10 @@ internal sealed class MutexHotkeyExclusivityGuard : IHotkeyExclusivityGuard
         }
     }
 
-    /// <summary>
-    /// Owns one named <see cref="Mutex"/> for its entire lifetime, on one dedicated OS thread: the thread waits
-    /// on the mutex as its very first action, so the acquire and — once <see cref="Dispose"/> signals it to stop
-    /// — the release both run on that same thread, satisfying the mutex's thread affinity regardless of which
-    /// thread-pool thread called in from either side.
-    /// </summary>
+    // Owns one named `Mutex` for its entire lifetime, on one dedicated OS thread: the thread waits
+    // on the mutex as its very first action, so the acquire and — once `Dispose` signals it to stop
+    // — the release both run on that same thread, satisfying the mutex's thread affinity regardless of which
+    // thread-pool thread called in from either side.
     private sealed class _ClaimThread : IDisposable
     {
         private readonly Thread _thread;
@@ -94,7 +87,7 @@ internal sealed class MutexHotkeyExclusivityGuard : IHotkeyExclusivityGuard
             _ready.Wait();
         }
 
-        /// <summary>Starts the thread and waits for its first acquire attempt, returning null when another process already holds the mutex.</summary>
+        // Starts the thread and waits for its first acquire attempt, returning null when another process already holds the mutex.
         public static _ClaimThread? TryStart(string hotkeyId)
         {
             var thread = new _ClaimThread(hotkeyId);

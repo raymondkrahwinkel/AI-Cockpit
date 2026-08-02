@@ -3,14 +3,12 @@ using Cockpit.Core.Worktrees;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One worktree in the management panel (AC-85): its git state (clean/dirty/ahead) and whether the pane that owns
-/// it still exists, so it is never a guess whether removing it loses work, and reattach is only offered when there
-/// is no owning pane already on the tree.
-/// </summary>
+// One worktree in the management panel (AC-85): its git state (clean/dirty/ahead) and whether the pane that owns
+// it still exists, so it is never a guess whether removing it loses work, and reattach is only offered when there
+// is no owning pane already on the tree.
 public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 {
-    /// <summary>The owner's display name, sanitized — null when none was supplied or nothing survived sanitizing.</summary>
+    // The owner's display name, sanitized — null when none was supplied or nothing survived sanitizing.
     private readonly string? _ownerName;
 
     public ManagedWorktreeRowViewModel(WorktreeStatus status, bool isOwnerLive, string? ownerName = null, bool hasOpenRestoreOffer = false)
@@ -25,26 +23,20 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 
     public WorktreeRecord Record => Status.Record;
 
-    /// <summary>
-    /// True while the pane that owns this worktree still exists — reattach is blocked, removing it would pull the
-    /// tree out from under it. Not necessarily a running session (AC-410): a restored, not-yet-started pane is
-    /// "live" here too, on purpose — its worktree must stay reserved for the resume offer it is still showing,
-    /// even though nothing on it is actually running yet.
-    /// </summary>
+    // True while the pane that owns this worktree still exists — reattach is blocked, removing it would pull the
+    // tree out from under it. Not necessarily a running session (AC-410): a restored, not-yet-started pane is
+    // "live" here too, on purpose — its worktree must stay reserved for the resume offer it is still showing,
+    // even though nothing on it is actually running yet.
     public bool IsOwnerLive { get; }
 
-    /// <summary>
-    /// Whether the owning pane currently shows an open restore offer (AC-410) — the reason <see cref="IsOwnerLive"/>
-    /// can be true with nothing actually running behind it. Restore starts a session and clears the offer before
-    /// anything else, so the two never overlap: a truly running session reads false here.
-    /// </summary>
+    // Whether the owning pane currently shows an open restore offer (AC-410) — the reason `IsOwnerLive`
+    // can be true with nothing actually running behind it. Restore starts a session and clears the offer before
+    // anything else, so the two never overlap: a truly running session reads false here.
     public bool HasOpenRestoreOffer { get; }
 
-    /// <summary>
-    /// Whether "Release" should be offered (AC-520 fix 6): only when the owner counts as live purely on the strength
-    /// of a restore offer nobody has acted on. A session that is actually doing something disables it — Remove and
-    /// Reattach are already available the moment the offer is gone, so there is nothing left for Release to do.
-    /// </summary>
+    // Whether "Release" should be offered (AC-520 fix 6): only when the owner counts as live purely on the strength
+    // of a restore offer nobody has acted on. A session that is actually doing something disables it — Remove and
+    // Reattach are already available the moment the offer is gone, so there is nothing left for Release to do.
     public bool CanRelease => IsOwnerLive && HasOpenRestoreOffer;
 
     public string RepositoryName => System.IO.Path.GetFileName(Record.RepositoryRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
@@ -55,13 +47,13 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 
     public bool IsClean => Status.IsClean;
 
-    /// <summary>Reattach is offered only when the owning session is gone (Raymond 2026-07-19: GONE only) — never onto a live tree.</summary>
+    // Reattach is offered only when the owning session is gone (Raymond 2026-07-19: GONE only) — never onto a live tree.
     public bool CanReattach => !IsOwnerLive;
 
-    /// <summary>Remove is blocked while a session is still on the tree (Raymond 2026-07-19): removing it would pull the working directory out from under a running session. Close the session first.</summary>
+    // Remove is blocked while a session is still on the tree (Raymond 2026-07-19): removing it would pull the working directory out from under a running session. Close the session first.
     public bool CanRemove => !IsOwnerLive;
 
-    /// <summary>A plain-language state for the pill, in the order that matters for data safety: gone folder, then an emptied one, then unsaved work, then commits that exist nowhere else, then retained, then clean.</summary>
+    // A plain-language state for the pill, in the order that matters for data safety: gone folder, then an emptied one, then unsaved work, then commits that exist nowhere else, then retained, then clean.
     public string StatusLabel =>
         !Status.Exists ? "Folder missing"
         : Status.WorkingCopyMissing ? "No working copy"

@@ -1,6 +1,6 @@
 namespace Cockpit.Core.Markdown;
 
-/// <summary>Kind of a top-level markdown block.</summary>
+// Kind of a top-level markdown block.
 public enum MarkdownBlockKind
 {
     Paragraph,

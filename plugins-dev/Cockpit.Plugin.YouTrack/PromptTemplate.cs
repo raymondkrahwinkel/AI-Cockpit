@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The prompt dropped into the active session (or the clipboard, with no active session) when a YouTrack
-/// issue is clicked. Editable in the plugin's settings; placeholders are substituted per issue: <c>{id}</c>,
-/// <c>{idReadable}</c>, <c>{summary}</c>, <c>{url}</c>, <c>{project}</c>, <c>{description}</c>.
-/// </summary>
+// The prompt dropped into the active session (or the clipboard, with no active session) when a YouTrack
+// issue is clicked. Editable in the plugin's settings; placeholders are substituted per issue: `{id}`,
+// `{idReadable}`, `{summary}`, `{url}`, `{project}`, `{description}`.
 internal static class PromptTemplate
 {
     public const string Default =

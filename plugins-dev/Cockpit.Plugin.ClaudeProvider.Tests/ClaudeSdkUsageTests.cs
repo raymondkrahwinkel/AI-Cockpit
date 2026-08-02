@@ -2,17 +2,14 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeSdkUsage"/> — the SDK route's source for the header's usage pill (AC-530).
-/// <para>
-/// <see cref="RealTurn"/> is not a hand-written shape: it is a verbatim capture from CLI 2.1.220 driven with the
-/// exact flags <see cref="ClaudeSdkArguments"/> builds (persistent <c>--input-format stream-json</c>, no <c>-p</c>),
-/// over a prompt that forced four sequential tool calls so the turn really does contain more than one API response.
-/// Only the message <c>content</c> arrays were emptied, since this class never reads them. Every figure asserted
-/// below was measured off that run, so a test passing here is a test agreeing with the real CLI rather than with a
-/// fixture written to match the code.
-/// </para>
-/// </summary>
+// `ClaudeSdkUsage` — the SDK route's source for the header's usage pill (AC-530).
+//
+// `RealTurn` is not a hand-written shape: it is a verbatim capture from CLI 2.1.220 driven with the
+// exact flags `ClaudeSdkArguments` builds (persistent `--input-format stream-json`, no `-p`),
+// over a prompt that forced four sequential tool calls so the turn really does contain more than one API response.
+// Only the message `content` arrays were emptied, since this class never reads them. Every figure asserted
+// below was measured off that run, so a test passing here is a test agreeing with the real CLI rather than with a
+// fixture written to match the code.
 public class ClaudeSdkUsageTests
 {
     // Four assistant lines (one per API call), a rate-limit line, and the closing result line.
@@ -328,6 +325,6 @@ public class ClaudeSdkUsageTests
         Assert.Equal(3d, status.ContextUsedPercent);
     }
 
-    /// <summary>The real capture, exposed for the driver-level test that pushes it down an actual stdout pump.</summary>
+    // The real capture, exposed for the driver-level test that pushes it down an actual stdout pump.
     internal static IReadOnlyList<string> RealTurnLines => RealTurn;
 }

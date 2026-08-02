@@ -6,12 +6,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// Who decides that a step is validated cheaply (AC-255). The harness does: it offers the CEO its own account of a
-/// step only where it could actually observe one, and hands it the unchanged deep-inspection instruction everywhere
-/// else. Neither the CEO nor the step agent has any say in that — which is the point, since the step agent is the party
-/// being checked. The wording of both turns is tested in <see cref="AutopilotStepEvidenceTests"/>.
-/// </summary>
+// Who decides that a step is validated cheaply (AC-255). The harness does: it offers the CEO its own account of a
+// step only where it could actually observe one, and hands it the unchanged deep-inspection instruction everywhere
+// else. Neither the CEO nor the step agent has any say in that — which is the point, since the step agent is the party
+// being checked. The wording of both turns is tested in `AutopilotStepEvidenceTests`.
 [Collection("avalonia")]
 public class AutopilotEvidenceGateTests
 {

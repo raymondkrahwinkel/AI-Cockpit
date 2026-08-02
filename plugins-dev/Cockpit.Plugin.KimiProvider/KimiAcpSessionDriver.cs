@@ -4,42 +4,35 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// <see cref="IPluginSessionDriver"/> for Kimi Code over the Agent Client Protocol (AC-269/270/271/272).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Lifecycle: <see cref="StartAsync(string?, string?, string?, IReadOnlyDictionary{string, string}?, IReadOnlyList{PluginMcpServer}?, CancellationToken)"/>
-/// spawns <c>kimi acp</c>, does the <c>initialize</c> handshake (AC-268), then <c>session/new</c> or
-/// <c>session/resume</c> — never <c>session/load</c> (D1): that variant replays the whole history as
-/// <c>session/update</c> notifications before its response settles, which would double the transcript Cockpit
-/// already renders itself. <see cref="SendUserMessageAsync"/> is fire-and-forget: <c>session/prompt</c> only
-/// settles at turn end (protocol §3), so awaiting it here would block the caller for the whole turn; the
-/// streaming content arrives through the notification pump instead, translated by
-/// <see cref="KimiSessionUpdateMapper"/>, and the stop reason lands on the pump's background task.
-/// </para>
-/// <para>
-/// Two background pumps, mirroring <c>CodexAppServerSessionDriver</c>: one drains <see cref="KimiAcpConnection.Notifications"/>
-/// (the transcript), the other <see cref="KimiAcpConnection.ServerRequests"/> (blocking reverse-requests — permission
-/// prompts, and anything unmodelled, which gets a JSON-RPC <c>-32601</c> rather than a made-up success, D11).
-/// </para>
-/// <para>
-/// AC-274: <see cref="Status"/> is filled by polling the ACP-builtin <c>/usage</c> command as an ordinary
-/// <c>session/prompt</c> — the only way to get token/context data out of kimi at all (protocol §11; no
-/// <c>session/update</c> variant carries usage). Its one <c>agent_message_chunk</c> reply is parsed straight
-/// into <see cref="_status"/> by <see cref="_HandleNotification"/> while <see cref="_capturingUsageResponse"/>
-/// is set, never reaching the transcript or emitting a second <see cref="PluginTurnCompleted"/>. <see cref="_promptGate"/>
-/// serialises every <c>session/prompt</c> send — real turn or usage poll — because the wire has no per-notification
-/// turn id (protocol §11) to tell a poll's chunk apart from a running turn's; the poll only ever starts right
-/// after a real turn settles (<see cref="_SendPromptAsync"/>), never against a timer and never mid-turn.
-/// </para>
-/// </remarks>
+// `IPluginSessionDriver` for Kimi Code over the Agent Client Protocol (AC-269/270/271/272).
+//
+// Lifecycle: `StartAsync(string?, string?, string?, IReadOnlyDictionary{string, string}?, IReadOnlyList{PluginMcpServer}?, CancellationToken)`
+// spawns `kimi acp`, does the `initialize` handshake (AC-268), then `session/new` or
+// `session/resume` — never `session/load` (D1): that variant replays the whole history as
+// `session/update` notifications before its response settles, which would double the transcript Cockpit
+// already renders itself. `SendUserMessageAsync` is fire-and-forget: `session/prompt` only
+// settles at turn end (protocol §3), so awaiting it here would block the caller for the whole turn; the
+// streaming content arrives through the notification pump instead, translated by
+// `KimiSessionUpdateMapper`, and the stop reason lands on the pump's background task.
+//
+// Two background pumps, mirroring `CodexAppServerSessionDriver`: one drains `KimiAcpConnection.Notifications`
+// (the transcript), the other `KimiAcpConnection.ServerRequests` (blocking reverse-requests — permission
+// prompts, and anything unmodelled, which gets a JSON-RPC `-32601` rather than a made-up success, D11).
+//
+// AC-274: `Status` is filled by polling the ACP-builtin `/usage` command as an ordinary
+// `session/prompt` — the only way to get token/context data out of kimi at all (protocol §11; no
+// `session/update` variant carries usage). Its one `agent_message_chunk` reply is parsed straight
+// into `_status` by `_HandleNotification` while `_capturingUsageResponse`
+// is set, never reaching the transcript or emitting a second `PluginTurnCompleted`. `_promptGate`
+// serialises every `session/prompt` send — real turn or usage poll — because the wire has no per-notification
+// turn id (protocol §11) to tell a poll's chunk apart from a running turn's; the poll only ever starts right
+// after a real turn settles (`_SendPromptAsync`), never against a timer and never mid-turn.
 internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 {
     private const string _ClientName = "Cockpit";
     private const string _ClientVersion = "1.0.0";
 
-    /// <summary>The most outstanding <c>session/request_permission</c>s tracked at once (P1-9) — exposed for tests.</summary>
+    // The most outstanding `session/request_permission`s tracked at once (P1-9) — exposed for tests.
     internal const int MaxPendingApprovals = 500;
 
     // P1-10b: the JSON-RPC code kimi returns for "no usable auth token" (protocol §1) — a session/new|resume
@@ -172,24 +165,20 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
-    /// <summary>
-    /// The initialize response's <c>agentCapabilities</c> (loadSession, promptCapabilities, mcpCapabilities,
-    /// sessionCapabilities), or <see langword="null"/> before <see cref="StartAsync(string?, CancellationToken)"/>
-    /// completes.
-    /// </summary>
+    // The initialize response's `agentCapabilities` (loadSession, promptCapabilities, mcpCapabilities,
+    // sessionCapabilities), or `null` before `StartAsync(string?, CancellationToken)`
+    // completes.
     internal JsonElement? AgentCapabilities => _agentCapabilities;
 
-    /// <summary>
-    /// The initialize response's <c>authMethods</c> (protocol §1) — kimi advertises exactly one, the
-    /// <c>type:"terminal"</c> <c>kimi acp --login</c> device-code flow — or <see langword="null"/> before
-    /// <see cref="StartAsync(string?, CancellationToken)"/> completes (P1-10a). Not otherwise acted on by this
-    /// driver: <see cref="_AuthRequiredErrorCode"/>'s handling below covers the one place it actually matters,
-    /// but kept alongside <see cref="AgentCapabilities"/> so a future config-view/UI has it without another
-    /// round trip through the initialize response.
-    /// </summary>
+    // The initialize response's `authMethods` (protocol §1) — kimi advertises exactly one, the
+    // `type:"terminal"` `kimi acp --login` device-code flow — or `null` before
+    // `StartAsync(string?, CancellationToken)` completes (P1-10a). Not otherwise acted on by this
+    // driver: `_AuthRequiredErrorCode`'s handling below covers the one place it actually matters,
+    // but kept alongside `AgentCapabilities` so a future config-view/UI has it without another
+    // round trip through the initialize response.
     internal JsonElement? AuthMethods => _authMethods;
 
-    /// <summary>The most recently launched trailing /usage poll task (P1-6), or <see langword="null"/> before the first one — exposed for tests only.</summary>
+    // The most recently launched trailing /usage poll task (P1-6), or `null` before the first one — exposed for tests only.
     internal Task? PendingUsagePollTaskForTests => _pendingUsagePollTask;
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>

@@ -7,23 +7,17 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
-/// <summary>
-/// The first-run wizard's work-kind step (AC-511): pick the kind of work, see the plugins that suggests already
-/// ticked, change any tick, and confirm the lot once. A work kind is a set of answers that pre-ticks boxes and
-/// nothing else — it is not written down, and after this step there is only a set of installed plugins.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The batch is the whole point and also the risk: enabling a plugin costs a dialog each (<c>PluginManagerViewModel
-/// .EnablePluginAsync</c>), which four plugins turn into four dialogs. The guard moves rather than goes — every row
-/// carries what its own dialog would have said, and <see cref="PluginConsentTerms.PermissionsNotice"/> is the same
-/// constant that dialog shows.
-/// </para>
-/// <para>
-/// Nothing here installs until <see cref="ConfirmCommand"/> runs. The wizard's own Skip and Next never reach it, so
-/// leaving the step with rows ticked installs nothing: the pre-tick is a suggestion, not a decision already taken.
-/// </para>
-/// </remarks>
+// The first-run wizard's work-kind step (AC-511): pick the kind of work, see the plugins that suggests already
+// ticked, change any tick, and confirm the lot once. A work kind is a set of answers that pre-ticks boxes and
+// nothing else — it is not written down, and after this step there is only a set of installed plugins.
+//
+// The batch is the whole point and also the risk: enabling a plugin costs a dialog each (`PluginManagerViewModel
+// .EnablePluginAsync`), which four plugins turn into four dialogs. The guard moves rather than goes — every row
+// carries what its own dialog would have said, and `PluginConsentTerms.PermissionsNotice` is the same
+// constant that dialog shows.
+//
+// Nothing here installs until `ConfirmCommand` runs. The wizard's own Skip and Next never reach it, so
+// leaving the step with rows ticked installs nothing: the pre-tick is a suggestion, not a decision already taken.
 public sealed partial class WorkKindStepViewModel : ObservableObject
 {
     private readonly IPluginStoreConfigStore? _storeConfigStore;
@@ -43,7 +37,7 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
         _registrationStore = registrationStore;
     }
 
-    /// <summary>Design-time/preview constructor: rows handed in, no store to load them from and nothing to install with.</summary>
+    // Design-time/preview constructor: rows handed in, no store to load them from and nothing to install with.
     internal WorkKindStepViewModel(IEnumerable<WorkKindPluginRowViewModel> plugins)
     {
         foreach (var plugin in plugins)
@@ -60,10 +54,8 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
 
     public ObservableCollection<WorkKindPluginRowViewModel> Plugins { get; } = [];
 
-    /// <summary>
-    /// Whether any store said which work kind its plugins are for. An index published before the field exists says
-    /// nothing, and then the chooser has nothing to offer — the list still works, ticked by hand.
-    /// </summary>
+    // Whether any store said which work kind its plugins are for. An index published before the field exists says
+    // nothing, and then the chooser has nothing to offer — the list still works, ticked by hand.
     [ObservableProperty]
     private bool _hasRecommendations;
 
@@ -74,7 +66,7 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ConfirmCommand))]
     private bool _isInstalling;
 
-    /// <summary>What the last batch did, per the provisioning service's own summary — empty until one has run.</summary>
+    // What the last batch did, per the provisioning service's own summary — empty until one has run.
     [ObservableProperty]
     private string? _summary;
 
@@ -83,10 +75,8 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
 
     private PluginWorkKindOption? _selectedWorkKind;
 
-    /// <summary>
-    /// The chosen work kind. Setting it re-ticks the list from scratch: it is the answer to "what do you do", so a
-    /// second answer replaces the first rather than adding to it. Every tick is still the operator's to change.
-    /// </summary>
+    // The chosen work kind. Setting it re-ticks the list from scratch: it is the answer to "what do you do", so a
+    // second answer replaces the first rather than adding to it. Every tick is still the operator's to change.
     public PluginWorkKindOption? SelectedWorkKind
     {
         get => _selectedWorkKind;
@@ -110,7 +100,7 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
         _ => $"Install {SelectedCount} plugins",
     };
 
-    /// <summary>Reads every configured store's catalogue and turns it into rows. Called by the view when it appears.</summary>
+    // Reads every configured store's catalogue and turns it into rows. Called by the view when it appears.
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         if (_storeConfigStore is null || _storeClient is null)
@@ -167,10 +157,8 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Installs everything ticked, in one pass: the provisioning service isolates each plugin, so one failure
-    /// leaves the rest installed, and what lands is enabled with the checksum the install pinned.
-    /// </summary>
+    // Installs everything ticked, in one pass: the provisioning service isolates each plugin, so one failure
+    // leaves the rest installed, and what lands is enabled with the checksum the install pinned.
     [RelayCommand(CanExecute = nameof(CanConfirm))]
     private async Task ConfirmAsync(CancellationToken cancellationToken)
     {
@@ -235,10 +223,8 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Keeps the button's count and enabled state on a hand-ticked box. Each row raises its own change, so the
-    /// count is derived rather than tracked — a tracked one would drift the first time a row was ticked twice.
-    /// </summary>
+    // Keeps the button's count and enabled state on a hand-ticked box. Each row raises its own change, so the
+    // count is derived rather than tracked — a tracked one would drift the first time a row was ticked twice.
     private void _WatchSelection()
     {
         foreach (var plugin in Plugins)

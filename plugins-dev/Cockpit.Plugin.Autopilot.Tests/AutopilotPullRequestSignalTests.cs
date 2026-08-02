@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The PR-delivery signal path (AC-216): a plugin template's <see cref="PluginAutopilotTemplate.DeliversPullRequest"/>
-/// rides through <see cref="AutopilotTemplate.ForPlugin"/> and is stamped on the approved <see cref="AutopilotPlan"/>, so
-/// the run's finalizer knows a code run must end with a PR while an admin run does not. Also pins the autopilot-own tools
-/// pre-authorized for a run's sessions (AC-215).
-/// </summary>
+// The PR-delivery signal path (AC-216): a plugin template's `PluginAutopilotTemplate.DeliversPullRequest`
+// rides through `AutopilotTemplate.ForPlugin` and is stamped on the approved `AutopilotPlan`, so
+// the run's finalizer knows a code run must end with a PR while an admin run does not. Also pins the autopilot-own tools
+// pre-authorized for a run's sessions (AC-215).
 public class AutopilotPullRequestSignalTests
 {
     [Fact]

@@ -7,13 +7,11 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// One editable row in the instances list of <see cref="YouTrackSettingsControl"/> (#48): a label, instance
-/// base URL, permanent token and optional default project short-name, plus a remove button. Exposes
-/// <see cref="ToInstance"/> so the settings control can collect every row's current values on save, and
-/// <see cref="IsBlank"/> so an untouched freshly-added row (or one emptied back out) is dropped instead of
-/// persisted as a junk entry.
-/// </summary>
+// One editable row in the instances list of `YouTrackSettingsControl` (#48): a label, instance
+// base URL, permanent token and optional default project short-name, plus a remove button. Exposes
+// `ToInstance` so the settings control can collect every row's current values on save, and
+// `IsBlank` so an untouched freshly-added row (or one emptied back out) is dropped instead of
+// persisted as a junk entry.
 internal sealed class YouTrackInstanceRowControl : UserControl
 {
     private readonly TextBox _label;
@@ -102,7 +100,7 @@ internal sealed class YouTrackInstanceRowControl : UserControl
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

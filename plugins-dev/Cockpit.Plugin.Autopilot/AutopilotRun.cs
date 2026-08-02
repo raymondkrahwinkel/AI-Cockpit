@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// A point the "Start in Autopilot" trigger (AC-150) hands to the pipeline: which tracker it came from and enough of
-/// the issue to show and, later, run it. Built from the <see cref="PluginIntent"/> data a tracker sends; the run
-/// pipeline (later Autopilot sub-tickets) reads the rest of <see cref="Data"/> — branch, repository, url — as it needs it.
-/// </summary>
+// A point the "Start in Autopilot" trigger (AC-150) hands to the pipeline: which tracker it came from and enough of
+// the issue to show and, later, run it. Built from the `PluginIntent` data a tracker sends; the run
+// pipeline (later Autopilot sub-tickets) reads the rest of `Data` — branch, repository, url — as it needs it.
 internal sealed record AutopilotRun(string Tracker, string IssueId, string Title, string Stage, IReadOnlyDictionary<string, string> Data)
 {
     // tracker, issue and title are the fields both trackers agree to send; the whole payload rides along in Data for
@@ -20,12 +18,10 @@ internal sealed record AutopilotRun(string Tracker, string IssueId, string Title
         Stage: intent.Data.GetValueOrDefault("stage", string.Empty),
         Data: intent.Data);
 
-    /// <summary>
-    /// The epic this run's sub was picked from by <see cref="AutopilotEpicRunner"/> (AC-346), or empty for every run
-    /// clicked directly on its own item — which is every run before this ticket, and still the common case. Carried
-    /// through <see cref="AutopilotPlanSource"/> onto the frozen plan so the settle-hook (AC-346's progress comment)
-    /// knows to write onto the epic rather than (or in addition to) the sub itself, without the coordinator or the
-    /// driver ever needing to know an epic exists.
-    /// </summary>
+    // The epic this run's sub was picked from by `AutopilotEpicRunner` (AC-346), or empty for every run
+    // clicked directly on its own item — which is every run before this ticket, and still the common case. Carried
+    // through `AutopilotPlanSource` onto the frozen plan so the settle-hook (AC-346's progress comment)
+    // knows to write onto the epic rather than (or in addition to) the sub itself, without the coordinator or the
+    // driver ever needing to know an epic exists.
     public string EpicId { get; init; } = string.Empty;
 }

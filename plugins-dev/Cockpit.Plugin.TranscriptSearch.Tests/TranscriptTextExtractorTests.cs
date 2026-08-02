@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
-/// <summary>
-/// Pulling searchable prose out of a transcript JSONL line (#9): a plain-string user prompt, the text blocks
-/// of an assistant message (skipping thinking/tool-use), the role resolution, and the null cases (tool-result,
-/// non-message, malformed).
-/// </summary>
+// Pulling searchable prose out of a transcript JSONL line (#9): a plain-string user prompt, the text blocks
+// of an assistant message (skipping thinking/tool-use), the role resolution, and the null cases (tool-result,
+// non-message, malformed).
 public class TranscriptTextExtractorTests
 {
     [Fact]

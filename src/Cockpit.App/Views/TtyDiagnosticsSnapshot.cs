@@ -2,21 +2,18 @@ using Exclr8.Terminal.Buffer;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Formats a compact single-line snapshot of Exclr8's <see cref="TerminalBuffer"/> render state, for the
-/// #58 TTY-glitch diagnostic logging in <c>TtyView</c>: cursor position, DECSTBM scroll-region
-/// margins, scrollback viewport offset, grid size, and any active selection's anchor/active endpoints.
-///
-/// <para>Decompiling Exclr8.Terminal 1.0.7 (ilspycmd) showed every one of these — <see cref="TerminalBuffer.CursorRow"/>/
-/// <see cref="TerminalBuffer.CursorCol"/>, <see cref="TerminalBuffer.ScrollTop"/>/<see cref="TerminalBuffer.ScrollBottom"/>,
-/// <see cref="TerminalBuffer.ScrollOffset"/>, <see cref="TerminalBuffer.Cols"/>/<see cref="TerminalBuffer.Rows"/>,
-/// <see cref="TerminalBuffer.Selection"/> — is public API on the sealed <c>TerminalBuffer</c>, reached
-/// through <c>TerminalControl.Buffer</c> (also public). No reflection needed: the assumption that these
-/// were internal did not hold, and plain property access is strictly safer than reflection here (compiler-
-/// checked, no member-name typos). Still wrapped in try/catch: a future Exclr8 release that renames or
-/// drops a member should degrade this diagnostic line to "?", not crash the TTY view it exists to debug.
-/// </para>
-/// </summary>
+// Formats a compact single-line snapshot of Exclr8's `TerminalBuffer` render state, for the
+// #58 TTY-glitch diagnostic logging in `TtyView`: cursor position, DECSTBM scroll-region
+// margins, scrollback viewport offset, grid size, and any active selection's anchor/active endpoints.
+//
+// Decompiling Exclr8.Terminal 1.0.7 (ilspycmd) showed every one of these — `TerminalBuffer.CursorRow`/
+// `TerminalBuffer.CursorCol`, `TerminalBuffer.ScrollTop`/`TerminalBuffer.ScrollBottom`,
+// `TerminalBuffer.ScrollOffset`, `TerminalBuffer.Cols`/`TerminalBuffer.Rows`,
+// `TerminalBuffer.Selection` — is public API on the sealed `TerminalBuffer`, reached
+// through `TerminalControl.Buffer` (also public). No reflection needed: the assumption that these
+// were internal did not hold, and plain property access is strictly safer than reflection here (compiler-
+// checked, no member-name typos). Still wrapped in try/catch: a future Exclr8 release that renames or
+// drops a member should degrade this diagnostic line to "?", not crash the TTY view it exists to debug.
 public static class TtyDiagnosticsSnapshot
 {
     public static string Capture(TerminalBuffer? buffer)

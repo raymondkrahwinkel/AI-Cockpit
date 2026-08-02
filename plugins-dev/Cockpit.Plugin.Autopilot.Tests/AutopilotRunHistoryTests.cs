@@ -4,13 +4,11 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The history of settled runs: a finished run is recorded here newest-first so it does not vanish
-/// from the surface, survives a restart through the plugin's storage, and is capped so it cannot grow without bound.
-/// </summary>
+// The history of settled runs: a finished run is recorded here newest-first so it does not vanish
+// from the surface, survives a restart through the plugin's storage, and is capped so it cannot grow without bound.
 public class AutopilotRunHistoryTests
 {
-    /// <summary>An in-memory <see cref="IPluginStorage"/> that round-trips through JSON, the way the host's real storage does.</summary>
+    // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does.
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);
