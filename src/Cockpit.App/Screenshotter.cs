@@ -108,6 +108,10 @@ internal static class Screenshotter
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
+        // AC-605: the three scope shapes/actions that scene above has no room left to show alongside its own two
+        // rows — see _ProjectEditorWithResourceScopes's own remarks on why this is a separate scene rather than
+        // more rows crammed into that one.
+        ["project-editor-resource-scopes"] = (_, _) => _ProjectEditorWithResourceScopes(),
         // AC-604: a project a plugin partly claims — the mixed case the whole ticket exists for. Name and
         // Behaviour are shared (Name read-only, Behaviour editable — the badge's own two lock states), Description/
         // Logo/MCP overlay/the worktree switch stay local, each carrying its own "● This machine" badge rather than
@@ -535,16 +539,139 @@ internal static class Screenshotter
         // together they made this scene paint a state the app cannot produce — and the diagnostics pass corrects it
         // the moment it runs, which is how the red hint disappeared from the render without a single test noticing
         // (a palette baseline permits a screen to paint fewer colours than it lists).
+        //
+        // AC-605 finding: this row's reference used to be hardcoded C:\Users\raymond\OldNotes\handbook.md — fully
+        // qualified on Windows, but not on Linux (Path.IsPathFullyQualified is itself platform-specific, the same
+        // asymmetry ProjectResourcePathPortability's own class remarks document). On this repo's Linux CI/dev boxes
+        // that made the real diagnostics pass above — the one this very comment already says "corrects it the
+        // moment it runs" — silently reclassify the row as Repo-scoped and not-broken once it settled, some tens of
+        // milliseconds after this method returns and well before Screenshotter captures its frame: the IsBroken and
+        // Scope set below were never actually what rendered on Linux, they were only ever the first frame's
+        // head start. Rooted per platform now (mirroring how every test file in this repo already roots a path
+        // it means to keep absolute), so the real diagnostics pass settles on the same Machine/broken state these
+        // initializers describe on every platform this repo builds on, not only the one that authored the literal.
+        //
+        // AC-605 review: the first Linux-rooted literal was "/home/raymond/OldNotes/handbook.md" — this scene's own
+        // SourceDirectory above already hardcodes "/home/raymond" as this operator's home, so that literal is this
+        // scene's fiction, not a guarantee about any real machine, but a scene whose whole point is "this file does
+        // not exist" must not depend on that being true by chance. Renamed to a folder name no real project would
+        // ever have, so "does not exist" holds by construction rather than by nobody happening to have an
+        // "OldNotes" folder — the same reasoning ProjectResourceProbeTests' own _NonExistentAbsolutePath helper
+        // already applies with a GUID; a fixed literal is fine here only because a render scene must stay
+        // deterministic across runs; a marker in the name does the same job a GUID does in a test.
         viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
-            viewModel.MemorySourceChoices, ProjectResourceRole.Reference, @"C:\Users\raymond\OldNotes\handbook.md", "Old handbook")
+            viewModel.MemorySourceChoices,
+            ProjectResourceRole.Reference,
+            OperatingSystem.IsWindows()
+                ? @"C:\Users\raymond\.cockpit-screenshot-scene-does-not-exist\handbook.md"
+                : "/home/raymond/.cockpit-screenshot-scene-does-not-exist/handbook.md",
+            "Old handbook")
         {
             IsBroken = true,
-            IsMachineBound = true,
+            Scope = ProjectResourceScope.Machine,
         });
 
         // Taller than the dialog opens, the way the memory-source scene already is — clamped by DialogScreenClamp
         // to 90% of the headless screen either way, but still what pushes the resource section as far above that
         // ceiling as this dialog's other sections leave room for.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    /// <summary>
+    /// AC-605 criterion 10: the two scope shapes/one action <see cref="_ProjectEditorWithResources"/> has no room
+    /// left to show alongside its own two rows (an Instance-scope Memory row, a Machine-scope broken Reference
+    /// row) — <see cref="Controls.DialogScreenClamp"/>'s 90%-of-headless-screen ceiling already clips that scene's
+    /// own second row's scope sentence at the very edge (measured, not assumed; this ceiling does not move for a
+    /// taller requested <c>Height</c> here, nor for a taller <c>--size</c> passed to <c>Screenshotter.Run</c> — it
+    /// clamps to the headless platform's own fixed screen size), so a third or fourth row there would not render at
+    /// all. Its own scene rather than more rows crammed into that one, the same reason
+    /// <see cref="_ProjectEditorWithInstructionsSendAlong"/> already exists apart from it — a coordinator review
+    /// round asked for "all four scopes and the fix action visible" and explicitly offered this as one of two
+    /// acceptable answers.
+    /// <para>
+    /// Two rows, not four: <see cref="ProjectResourceScope.Repo"/> already renders in full, un-clipped, in
+    /// <see cref="_ProjectEditorWithInstructionsSendAlong"/> ("docs/handbook.md" resolves through the same live
+    /// diagnostics pass to "Travels with the repo.") — verified by rendering that scene during this same review
+    /// round, not assumed — and <see cref="ProjectResourceScope.Instance"/>/<see cref="ProjectResourceScope.Machine"/>
+    /// already render in <see cref="_ProjectEditorWithResources"/>. Adding a third row here to repeat
+    /// <see cref="ProjectResourceScope.Repo"/> a second time was tried first and pushed the fix banner below the
+    /// fold — exactly the failure this scene exists to avoid. Across the three scenes together, all four scopes and
+    /// the fix action are each shown in full at least once; that is what "visible" means for a screenshot, not that
+    /// every scene shows everything.
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// A <c>"~"</c>-anchored reference (AC-605's own new form) — <see cref="ProjectResourceScope.Home"/>. Rendered
+    /// broken: a coordinator review round asked whether a "found" anchor row could be shown instead, and it cannot
+    /// be reproducibly — <c>$HOME</c> differs by machine and by CI runner, so no literal path under it is
+    /// guaranteed to exist wherever this scene renders. A specific, invented nested path under it
+    /// (<c>~/Notes/team-conventions.md</c>) not existing, on the other hand, is guaranteed everywhere — the same
+    /// "guaranteed missing, not missing by chance" reasoning <see cref="_ProjectEditorWithResources"/>'s own broken
+    /// row already applies to its folder name.
+    /// </description></item>
+    /// <item><description>
+    /// An absolute path that lives inside <c>SourceDirectory</c> but was never converted by
+    /// <see cref="ProjectResourcePathPortability.ToStoredReference"/> (AC-605 criterion 5) — the one case that
+    /// shows the "Make repo-relative" action at all. Unlike the older scenes above (which predate this concern and
+    /// still hardcode a POSIX-only <c>SourceDirectory</c>), this scene roots <c>SourceDirectory</c> itself per
+    /// platform, so "lives inside SourceDirectory" is actually true on whichever platform renders this scene, not
+    /// only the one that authored the literal.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Both rows below <em>also</em> stage <see cref="ProjectResourceRowViewModel.IsBroken"/>,
+    /// <see cref="ProjectResourceRowViewModel.Scope"/> and (for the first) <see cref="ProjectResourceRowViewModel.RepoRelativeFix"/>
+    /// directly, the same as <see cref="_ProjectEditorWithResources"/>'s own two rows — this was tried without
+    /// staging first, reasoning that the real background diagnostics pass would land on the same values anyway (it
+    /// does, eventually, which is exactly why <see cref="_ProjectEditorWithResources"/>'s own literals are rooted
+    /// the way they are). What that attempt missed: <see cref="ThemePaletteBaselineTests"/> calls
+    /// <c>window.UpdateLayout()</c> immediately after construction, with no wait at all — measured against the
+    /// baseline it recorded, not assumed — while <see cref="Screenshotter.Run"/>'s own plugin-loading and startup
+    /// work happens to take long enough for the pass's 400 ms debounce to have already settled by the time it
+    /// captures a frame. Those are two different amounts of elapsed time reading the same unstaged scene, and the
+    /// theory one always wins that race and the other never does — nothing here — so an unstaged version of this
+    /// scene recorded a baseline of the row's blank, not-yet-judged resting state: no red hint, no scope sentence,
+    /// no button, and none of <c>CockpitStatusErrorColor</c> or the button's own styling on record, silently
+    /// leaving exactly the UI this scene exists to guard unprotected by its own baseline. Staged values make the
+    /// fast, unwaited capture path see the same thing the slow one eventually settles on, deterministically, the
+    /// same reason <see cref="_ProjectEditorWithResources"/> already stages its own two rows.
+    /// </para>
+    /// </summary>
+    private static ProjectDialog _ProjectEditorWithResourceScopes()
+    {
+        var sourceDirectory = OperatingSystem.IsWindows() ? @"C:\Users\raymond\Cockpit" : "/home/raymond/Cockpit";
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = sourceDirectory };
+        // Every bit of chrome this scene does not need earns back room under DialogScreenClamp's own fold — see
+        // _ProjectEditorWithMemorySourceReachability's own remarks on the same design-time sample rows.
+        viewModel.AdditionalInfo.Clear();
+
+        // First, not second: the row with more to show (broken hint + the "Make repo-relative" action itself —
+        // the criterion 5 row this scene exists to prove renders at all) goes where the fold is furthest away.
+        // Staged to match exactly what the real diagnostics pass computes for this reference (an absolute path
+        // inside sourceDirectory that does not exist) — see this method's own doc comment on why both must agree.
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices,
+            ProjectResourceRole.Reference,
+            Path.Combine(sourceDirectory, "docs", "onboarding.md"),
+            "Onboarding (hand-typed)")
+        {
+            IsBroken = true,
+            Scope = ProjectResourceScope.Machine,
+            // Always "/"-separated regardless of platform (ProjectResourcePathPortability.ToStoredReference's own
+            // FIX 5) — not Path.Combine("docs", "onboarding.md"), which would carry a backslash on Windows and
+            // disagree with what the real pass actually computes there.
+            RepoRelativeFix = "docs/onboarding.md",
+        });
+
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Reference, "~/Notes/team-conventions.md", "Team conventions")
+        {
+            IsBroken = true,
+            Scope = ProjectResourceScope.Home,
+        });
+
+        // Taller than the dialog opens, the same reason every scene in this family already gives — clamped by
+        // DialogScreenClamp to 90% of the headless screen regardless.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
@@ -751,7 +878,7 @@ internal static class Screenshotter
     /// (<c>CockpitStatusWaitingBrush</c>) with NotSignedIn, already proven legible by this very scene.
     /// <see cref="ProjectResourceRowViewModel.Reachability"/> is staged directly rather than through a real
     /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/> delegate and a live dialog run, the same
-    /// shortcut <see cref="_ProjectEditorWithResources"/> already takes for <c>IsBroken</c>/<c>IsMachineBound"</c>:
+    /// shortcut <see cref="_ProjectEditorWithResources"/> already takes for <c>IsBroken</c>/<c>Scope</c>:
     /// what this scene exists to prove is the view's own state rendering, not the plugin/host wiring behind it,
     /// which the ViewModel and Depot-plugin test suites already cover on their own.
     /// </summary>

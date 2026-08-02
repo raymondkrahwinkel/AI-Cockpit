@@ -3,8 +3,10 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
 /// <summary>
-/// <see cref="CockpitProjectResourceEntry.Create"/> — the AC-244 decision that an absolute or anchor-relative
-/// reference is left out of a written definition rather than shipped or the write refused outright.
+/// <see cref="CockpitProjectResourceEntry.Create"/> — the decision that an absolute reference is left out of a
+/// written definition rather than shipped or the write refused outright (AC-244, narrowed by AC-605: an
+/// anchor-relative reference is portable now, so it is written like any other portable row — see
+/// <see cref="Create_AnchorRelativeReference_ReturnsARowWithThatPortability"/>).
 /// </summary>
 public class CockpitProjectResourceEntryTests
 {
@@ -36,9 +38,13 @@ public class CockpitProjectResourceEntryTests
     }
 
     [Fact]
-    public void Create_AnchorRelativeReference_ReturnsNull()
+    public void Create_AnchorRelativeReference_ReturnsARowWithThatPortability()
     {
-        Assert.Null(CockpitProjectResourceEntry.Create("Reference", "~/Notes/private.md"));
+        var entry = CockpitProjectResourceEntry.Create("Reference", "~/Notes/private.md");
+
+        Assert.NotNull(entry);
+        Assert.Equal("~/Notes/private.md", entry.Reference);
+        Assert.Equal("anchor-relative", entry.Portability);
     }
 
     [Fact]

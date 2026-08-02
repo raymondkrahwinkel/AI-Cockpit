@@ -16,9 +16,23 @@ public class ProjectResourcePortabilityClassifierTests
     [Theory]
     [InlineData("~/Notes/CONVENTIONS.md")]
     [InlineData("~")]
+    [InlineData("~//Notes/CONVENTIONS.md")]
     public void Classify_TildeAnchoredPath_IsAnchorRelative(string reference)
     {
         Assert.Equal(ProjectResourcePortability.AnchorRelative, ProjectResourcePortabilityClassifier.Classify(reference));
+    }
+
+    /// <summary>
+    /// Raymond's decision (AC-605): "~user/" is not a supported anchor form — a POSIX shell's "someone else's home"
+    /// expansion .NET's own path APIs know nothing about. Reads as an ordinary repo-relative-shaped reference
+    /// instead, the same as any other text this classifier does not recognise a shape for.
+    /// </summary>
+    [Theory]
+    [InlineData("~henk/x")]
+    [InlineData("~x")]
+    public void Classify_ATildeReferenceThatIsNotASupportedAnchorForm_IsRepoRelative(string reference)
+    {
+        Assert.Equal(ProjectResourcePortability.RepoRelative, ProjectResourcePortabilityClassifier.Classify(reference));
     }
 
     [Theory]
@@ -70,9 +84,9 @@ public class ProjectResourcePortabilityClassifierTests
     [Theory]
     [InlineData(ProjectResourcePortability.RepoRelative, true)]
     [InlineData(ProjectResourcePortability.PluginSource, true)]
-    [InlineData(ProjectResourcePortability.AnchorRelative, false)]
+    [InlineData(ProjectResourcePortability.AnchorRelative, true)]
     [InlineData(ProjectResourcePortability.Absolute, false)]
-    public void IsPortable_EachShape_MatchesTheAC244Decision(ProjectResourcePortability portability, bool expected)
+    public void IsPortable_EachShape_MatchesTheAC605Decision(ProjectResourcePortability portability, bool expected)
     {
         Assert.Equal(expected, ProjectResourcePortabilityClassifier.IsPortable(portability));
     }

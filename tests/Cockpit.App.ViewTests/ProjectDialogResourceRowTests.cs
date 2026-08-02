@@ -140,7 +140,7 @@ public class ProjectDialogResourceRowTests
     {
         var viewModel = new ProjectDialogViewModel();
         viewModel.AddResourceRowCommand.Execute(null);
-        viewModel.ResourceRows.Single().IsMachineBound = true;
+        viewModel.ResourceRows.Single().Scope = ProjectResourceScope.Machine;
         var window = new ProjectDialog { DataContext = viewModel };
         window.Show();
         window.UpdateLayout();
