@@ -115,7 +115,7 @@ internal sealed class AgentsMcpTools(
         "These messages were sent by other agent sessions on your desk. " + AgentInboxTurnNotice.TrustStatement;
 
     [McpServerTool(Name = "list_agents")]
-    [Description("Lists the other agent sessions sharing your workspace — the tab/desk the operator put you on — so you can see who else is working alongside you. Each entry has the pane id, its name, the profile it runs under, its statusline (whatever it last set with cockpit-session__set_status), and the resources it has claimed with `claim` — so you can see who is on which worktree or branch before you touch one. A pane the workspace holds but that has never called a cockpit-agents tool shows enrolled=false with a short note instead of being left off the list — silently missing is worse than visibly not-yet-checked-in. Calling this also enrolls you on the roster, so the next agent to call it sees you. Use the pane id from here as `toPaneId` when you notify someone. `deliversAtTurnStart` says whether a message you send that pane will surface on its own with its next turn; when it is false the pane only sees mail when it calls read_inbox itself, so do not read silence from it as an answer. `wakeOptIn` says whether that pane has agreed to be woken for an urgent message — send one with urgent=true and a pane showing false will still only read it in its own time, so this is what tells you whether urgent means anything for this addressee. It runs for the session you call it from — you do not name one.")]
+    [Description("Lists the other agent sessions sharing your workspace — the tab/desk the operator put you on — so you can see who else is working alongside you. Each entry has the pane id, its name, the profile it runs under, its statusline (whatever it last set with cockpit-session__set_status), and the resources it has claimed with `claim` — so you can see who is on which worktree or branch before you touch one. Every agent session on your desk is listed whether or not it has ever used these tools — the cockpit puts them on the roster itself, so this is who is there and not who happens to have called in. A pane that has never called a cockpit-agents tool carries `lastContactUtc: null` and a short `gap` note saying so; that is worth reading before you rely on it answering, but it is still a pane you can send to. Use the pane id from here as `toPaneId` when you notify someone. `deliversAtTurnStart` says whether a message you send that pane will surface on its own with its next turn; when it is false the pane only sees mail when it calls read_inbox itself, so do not read silence from it as an answer. `wakeOptIn` says whether that pane has agreed to be woken for an urgent message — send one with urgent=true and a pane showing false will still only read it in its own time, so this is what tells you whether urgent means anything for this addressee. It runs for the session you call it from — you do not name one.")]
     public async Task<string> ListAgentsAsync()
     {
         try
@@ -133,9 +133,10 @@ internal sealed class AgentsMcpTools(
                 return _Serialize(new { ok = false, error = "This session is not one the cockpit can place in a workspace — list_agents works on an interactive agent session sharing a desk with others." });
             }
 
-            // Calling list_agents is itself the announcement: a pane that asks who else is here is, from this moment,
-            // one of the panes the roster knows about.
-            coordinator.Enroll(caller);
+            // The host already put every pane on this desk on the roster while it built the snapshot above (AC-613),
+            // so this is no longer the announcement. It is the caller reaching this server under its own steam,
+            // which is a different fact — and the one a gap is reported on.
+            coordinator.RecordContact(caller);
 
             // One read of the desk's claims, grouped by holder, rather than a lookup per pane: the store answers for a
             // whole desk at once, and asking it once per row would let the answer change between rows — a resource
@@ -148,7 +149,7 @@ internal sealed class AgentsMcpTools(
 
             var agents = snapshot.Panes.Select(pane =>
             {
-                var enrolled = coordinator.IsEnrolled(pane.PaneId);
+                var lastContactUtc = coordinator.LastContactUtc(pane.PaneId);
                 return new
                 {
                     paneId = pane.PaneId,
@@ -160,16 +161,24 @@ internal sealed class AgentsMcpTools(
                     name = _ForRoster(pane.Name),
                     profile = pane.Profile,
                     statusline = _ForRoster(pane.Statusline),
-                    enrolled,
-                    // Deliberately not diagnosed further than this: the roster only ever learns about a pane by that
-                    // pane announcing itself, so a neighbour that has simply not looked around yet looks identical to
-                    // one whose MCP injection silently failed (AC-156) or that does not have this server mounted at
-                    // all — this host has no cheap way to tell those apart from here, and the very first agent to
-                    // call list_agents in a workspace will see every one of its (healthy) neighbours this way. Naming
-                    // one specific cause would be a diagnosis this cannot actually make.
-                    gap = enrolled
+                    // True for every pane on this list. The host puts the panes it knows about on the roster while it
+                    // works out who shares your desk (AC-613), so this says the cockpit knows this session is here —
+                    // it no longer says anything about whether that session has ever called a tool. Kept rather than
+                    // dropped so a reader written against the old shape does not lose a field, but `gap` below is
+                    // what carries the information now.
+                    enrolled = coordinator.IsEnrolled(pane.PaneId),
+                    // When this pane last reached the cockpit-agents server itself. Null means it never has — which
+                    // used to be reported as not being on the roster at all, and wrongly: until AC-613 the roster
+                    // was filled in by panes calling tools, so a neighbour that worked all night without calling one
+                    // was indistinguishable from a neighbour that was not there.
+                    lastContactUtc,
+                    // Deliberately not diagnosed further than this: a neighbour that has simply not looked around yet
+                    // looks identical to one whose MCP injection silently failed (AC-156) or that does not have this
+                    // server mounted at all, and this host has no cheap way to tell those apart from here. Naming one
+                    // specific cause would be a diagnosis this cannot actually make.
+                    gap = lastContactUtc is not null
                         ? null
-                        : "This pane is in the workspace but has never announced itself on the roster. That can mean it simply has not looked yet, that cockpit-agents is not mounted for it, or that the MCP injection failed silently (AC-156) — there is no way to tell which from here. Absence here would look like nothing is wrong; this is the visible alternative.",
+                        : "This pane is on your desk — the cockpit can see it — but it has never called a cockpit-agents tool itself. That can mean it simply has not looked yet, that cockpit-agents is not mounted for it, or that the MCP injection failed silently (AC-156); there is no way to tell which from here. You can still send to it, and it will still be listed: this says only that nothing has been heard from it.",
                     // What this pane says it is working on. Nothing stops a neighbour from touching a claimed resource
                     // anyway — a claim signals, it does not lock — so the age is here as well as the timestamp: a claim
                     // that has stood for hours is the shape an agent that went away without releasing leaves behind.
@@ -259,8 +268,8 @@ internal sealed class AgentsMcpTools(
                     "This session is not one the cockpit can place in a workspace — notify works on an interactive agent session sharing a desk with others.", urgent).ConfigureAwait(false);
             }
 
-            // Sending is an announcement too: an agent that talks to its neighbours is one of them.
-            coordinator.Enroll(caller);
+            // Sending is contact too: an agent that talks to its neighbours has demonstrably reached this server.
+            coordinator.RecordContact(caller);
 
             // Checked before the workspace membership below, and separately from it, because the caller is always in
             // its own snapshot — membership would wave this through. An agent that could address itself could use
@@ -419,7 +428,7 @@ internal sealed class AgentsMcpTools(
                 return _Serialize(new { ok = false, error = "This session is not one the cockpit can place in a workspace — set_wake_optin works on an interactive agent session sharing a desk with others." });
             }
 
-            coordinator.Enroll(caller);
+            coordinator.RecordContact(caller);
             coordinator.SetWakeConsent(caller, enabled);
 
             return _Serialize(new
@@ -504,9 +513,9 @@ internal sealed class AgentsMcpTools(
                 return _Serialize(new { ok = false, error = "This session is not one the cockpit can place in a workspace — claim works on an interactive agent session sharing a desk with others." });
             }
 
-            // Claiming is an announcement too, like calling list_agents or sending: an agent that says what it is
-            // working on is one of the agents on the roster.
-            coordinator.Enroll(caller);
+            // Claiming is contact too, like calling list_agents or sending: an agent that says what it is working on
+            // has reached this server.
+            coordinator.RecordContact(caller);
 
             var result = claims.Claim(caller, wanted, _Desk(snapshot));
 

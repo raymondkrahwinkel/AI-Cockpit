@@ -234,14 +234,66 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         var agents = json!["agents"]!.AsArray();
-        // The caller enrolls itself just by calling.
+        // The caller has demonstrably reached this server — it is the one calling.
         var self = agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-1")!;
-        Assert.True(self["enrolled"]!.GetValue<bool>());
+        Assert.NotNull(self["lastContactUtc"]);
         Assert.Null(self["gap"]);
         // The pane that never called in is still listed — as a gap, not omitted.
         var silent = agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-2")!;
-        Assert.False(silent["enrolled"]!.GetValue<bool>());
+        Assert.Null(silent["lastContactUtc"]);
         Assert.False(string.IsNullOrEmpty(silent["gap"]!.GetValue<string>()));
+    }
+
+    /// <summary>
+    /// AC-613. The host puts the panes it knows about on the roster (the real gateway does that while building the
+    /// snapshot; here the coordinator is driven directly, because this suite substitutes the gateway). What has to
+    /// hold at this layer: enrollment stops being evidence of tool use, and the gap survives it — a pane the cockpit
+    /// can see but has never heard from still says so.
+    /// <para>
+    /// Before this split the two were one flag, and a pane that worked all night without calling a cockpit-agents
+    /// tool was reported to its neighbours as if it were not there.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ListAgents_APaneTheHostEnrolled_IsEnrolledAndStillShowsAGapUntilItCallsIn()
+    {
+        var snapshot = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-2", "Silent", null, string.Empty, true),
+        ]);
+        _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
+        // What the host does for every pane it places on a desk.
+        _coordinator.Enroll("pane-1");
+        _coordinator.Enroll("pane-2");
+        McpRequestContext.Set("pane-1");
+
+        var silent = JsonNode.Parse(await _Tools().ListAgentsAsync())!["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.True(silent["enrolled"]!.GetValue<bool>());
+        Assert.Null(silent["lastContactUtc"]);
+        Assert.Contains("never called a cockpit-agents tool", silent["gap"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    /// <summary>The other half: once a pane does call in, the gap closes and the moment is reported.</summary>
+    [Fact]
+    public async Task ListAgents_APaneThatHasCalledIn_ClosesItsGapAndCarriesTheContactTime()
+    {
+        _DeskWith("pane-1", "pane-2");
+        var before = DateTimeOffset.UtcNow;
+
+        // pane-2 reaches the server under its own steam — any cockpit-agents tool will do.
+        McpRequestContext.Set("pane-2");
+        await _Tools().ListAgentsAsync();
+
+        McpRequestContext.Set("pane-1");
+        var seen = JsonNode.Parse(await _Tools().ListAgentsAsync())!["agents"]!
+            .AsArray()
+            .First(agent => agent!["paneId"]!.GetValue<string>() == "pane-2")!;
+
+        Assert.Null(seen["gap"]);
+        Assert.True(seen["lastContactUtc"]!.GetValue<DateTimeOffset>() >= before);
     }
 
     [Fact]

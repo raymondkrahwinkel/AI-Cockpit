@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Infrastructure.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using NSubstitute;
 
@@ -40,7 +41,7 @@ public class WorkspaceAgentGatewayDeliveryTests
             return (cockpit, session, terminal);
         });
 
-        var snapshot = await new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance).GetWorkspaceSnapshotAsync(session.PaneId);
+        var snapshot = await new WorkspaceAgentGateway(cockpit, new WorkspaceAgentCoordinator(), NullLogger<WorkspaceAgentGateway>.Instance).GetWorkspaceSnapshotAsync(session.PaneId);
 
         Assert.NotNull(snapshot);
         Assert.True(snapshot.Panes.Single(pane => pane.PaneId == session.PaneId).DeliversAtTurnStart);
