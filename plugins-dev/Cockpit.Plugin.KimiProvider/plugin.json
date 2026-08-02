@@ -1,7 +1,7 @@
 {
   "id": "kimi-provider",
   "name": "Kimi Code Provider (ACP)",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "entryAssembly": "Cockpit.Plugin.KimiProvider.dll",
   "entryType": "Cockpit.Plugin.KimiProvider.KimiProviderPlugin",
   "abstractionsVersion": 1,
