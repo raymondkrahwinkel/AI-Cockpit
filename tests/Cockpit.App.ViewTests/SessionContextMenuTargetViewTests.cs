@@ -19,25 +19,25 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Measured before fixing (see AC-561-progress.md for the full log): a real headless mouse right-click, resolved
-/// through Avalonia's own hit-testing and <c>ContextRequested</c> pipeline (not a hand-picked sender), against a
-/// row picked out of the visual tree — repeated for a fresh list, after a full pointer-driven drag-reorder
-/// (<see cref="CockpitViewModel.MoveSessionToVisibleIndex"/>, "a move rebuilds the row containers" per the
-/// <c>ItemsControl</c>'s own comment), and with a second Sessions workspace filtering <see cref="CockpitViewModel.VisibleSessions"/>
-/// — always resolved the <em>correct</em> row via <c>MenuItem.DataContext</c> (Popup DataContext inheritance,
-/// resolved at <c>ContextMenu.Open()</c>) in every one of those three conditions.
+/// Measured (see AC-561-progress.md for the full log): a real headless mouse right-click, resolved through
+/// Avalonia's own hit-testing and <c>ContextRequested</c> pipeline (not a hand-picked sender), against a row picked
+/// out of the visual tree — repeated for a fresh list, after a full pointer-driven drag-reorder
+/// (<see cref="CockpitViewModel.MoveSessionToVisibleIndex"/>), and with a second Sessions workspace filtering
+/// <see cref="CockpitViewModel.VisibleSessions"/> — always resolved the <em>correct</em> row via
+/// <c>MenuItem.DataContext</c> (Popup DataContext inheritance, resolved at <c>ContextMenu.Open()</c>) in every one
+/// of those three conditions. So candidate 1 (a stale/misrouted DataContext on the menu item itself) is ruled out.
 /// </para>
 /// <para>
-/// One genuine, reproducible failure mode was found and is exercised by
-/// <see cref="AnAlreadyOpenMenu_IsClosedByAReorderOfARowItDoesNotOwn"/>: an <em>already-open</em> context menu's
-/// owning <c>Border</c> gets torn down and rebuilt — and the Popup silently closes — the moment any reorder shifts
-/// that row's list position, even one the operator did not touch (e.g. a session ahead of it moved). Avalonia's own
-/// <c>ContextMenu.ControlDetachedFromVisualTree</c> closes the popup as soon as its owning control detaches. A
+/// The genuine, reproducible failure mode is candidate 2 and is exercised by
+/// <see cref="AnAlreadyOpenMenu_SurvivesAReorderOfARowItDoesNotOwn"/>: an <em>already-open</em> context menu's
+/// owning <c>Border</c> was torn down and rebuilt — silently closing the Popup — the moment any reorder shifted
+/// <em>any</em> row's list position, even one the operator did not touch, because
+/// <c>CockpitViewModel.VisibleSessions</c> used to hand back a fresh snapshot on every read. Avalonia's own
+/// <c>ContextMenu.ControlDetachedFromVisualTree</c> closes the popup as soon as its owning control detaches, and a
 /// click aimed at a menu item that has just vanished this way falls through to whatever the sidebar now shows at
-/// that pixel — which is the "different session becomes active" half of the report. This did not reproduce for a
-/// single right-click against a settled list (the three scenarios AC-561's acceptance criteria name), so the fix
-/// here is the hardening AC-561 itself prescribes for candidate 1 (explicit <c>CommandParameter</c> rather than an
-/// inferred DataContext) plus a regression pin for the mechanism that did reproduce.
+/// that pixel — the "different session becomes active" half of the report. The fix makes
+/// <c>VisibleSessions</c> diff into a stable <c>ObservableCollection</c> with in-place Add/Remove/Move instead, so
+/// an unrelated row's container - and any Popup open on it - survives.
 /// </para>
 /// </remarks>
 [Collection("avalonia")]
@@ -215,32 +215,33 @@ public class SessionContextMenuTargetViewTests
         });
     }
 
-    // AC-2: not just Rename - every one of the eight actions must read the same, correctly-resolved target. All
-    // eight already share one helper (_InvokeSessionCommand); this pins that every MenuItem's CommandParameter -
-    // what that helper now reads first - is wired to the row's own session, for a row that is not the first (fresh
-    // list), for the row after a reorder, and for the sole visible row under a workspace filter.
+    // AC-2: not just Rename - every one of the nine actions must read the same, correctly-resolved target. All
+    // nine already share one helper (_InvokeSessionCommand), which reads sender.DataContext - the row's own
+    // MenuItem, not a separate CommandParameter (removed: it inherited through the exact same chain as
+    // DataContext, so it could never fail independently of it - see AC-561-progress.md).
     [Theory]
     [InlineData("Rename")]
     [InlineData("Duplicate")]
+    [InlineData("Clear context…")]
     [InlineData("Set status…")]
     [InlineData("Resume later…")]
     [InlineData("Clear status")]
     [InlineData("Move up")]
     [InlineData("Move down")]
     [InlineData("Close")]
-    public void EveryContextMenuItem_CarriesTheRowsOwnSessionAsItsCommandParameter(string header)
+    public void EveryContextMenuItem_CarriesTheRowsOwnSessionAsItsDataContext(string header)
     {
         HeadlessAvalonia.Run(() =>
         {
             var (window, view, cockpit) = _BuildShownWindow();
             var rows = _Rows(_Strip(view));
-            var target = rows[1];
+            var target = rows[1]; // Session 2 - a SessionViewModel, so SupportsClearContext is true here
             var expected = (SessionPanelViewModel)target.DataContext!;
 
             _RightClick(window, target);
 
             var item = _MenuItem(target, header);
-            Assert.Same(expected, item.CommandParameter);
+            Assert.Same(expected, item.DataContext);
 
             window.Close();
         });
@@ -271,22 +272,29 @@ public class SessionContextMenuTargetViewTests
     }
 
     /// <summary>
-    /// The one mechanism that did reproduce during measurement (see the class remarks): an already-open menu on a
-    /// row that a reorder never touched directly still gets closed, because the whole ItemsControl rebuilds
-    /// whenever <see cref="CockpitViewModel.VisibleSessions"/> fires - even the containers for rows the operator did
-    /// not move. This is a narrower condition than AC-561's named acceptance scenarios (it needs a menu already
-    /// open, not a fresh click against a settled list) and is left as a documented, pinned-down limitation rather
-    /// than an architecture change: the assertion below is a canary so a future incidental fix (or regression) is
-    /// visible, not a claim that the behavior is what AC-561 requires.
+    /// AC-561's actual root cause, pinned down: before the fix, <c>VisibleSessions</c> returned a fresh
+    /// <c>List&lt;&gt;</c> on every read and every change fired one <c>OnPropertyChanged(nameof(VisibleSessions))</c>
+    /// - to Avalonia's binding system that reads as "everything is different", so the whole ItemsControl tore down
+    /// and rebuilt every row container, including ones an unrelated reorder never touched. A row's ContextMenu is a
+    /// Popup attached to its owning Border; Avalonia's own <c>ControlDetachedFromVisualTree</c> handler closes that
+    /// Popup the moment the Border is torn down - so an already-open menu on session 2 was silently closed by
+    /// moving session 3, and the next click landed on whatever the sidebar now showed underneath (the "different
+    /// session becomes active" half of the report). The fix (<see cref="CockpitViewModel"/>'s
+    /// <c>_SyncVisibleSessions</c>) diffs into the same <c>ObservableCollection</c> instance the ItemsControl is
+    /// bound to instead, so a row not part of the diff keeps its container - and its open Popup - alive.
+    /// Confirmed red against the pre-fix code and green against the fix (see AC-561-progress.md for the run).
     /// </summary>
     [Fact]
-    public void AnAlreadyOpenMenu_IsClosedByAReorderOfARowItDoesNotOwn()
+    public void AnAlreadyOpenMenu_SurvivesAReorderOfARowItDoesNotOwn()
     {
         HeadlessAvalonia.Run(() =>
         {
             var (window, view, cockpit) = _BuildShownWindow();
             var strip = _Strip(view);
             var s2 = cockpit.Sessions[1];
+            var s3 = cockpit.Sessions[2];
+            s2.Statusline = "before";
+            s3.Statusline = "untouched";
             var row = strip.GetVisualDescendants().OfType<Border>().First(b => ReferenceEquals(b.DataContext, s2));
 
             row.RaiseEvent(new ContextRequestedEventArgs());
@@ -297,7 +305,12 @@ public class SessionContextMenuTargetViewTests
             cockpit.MoveSessionToVisibleIndex(cockpit.Sessions[2], 0);
             window.UpdateLayout();
 
-            Assert.False(row.ContextMenu!.IsOpen, "documents the known race: a reorder elsewhere closes an already-open menu");
+            Assert.True(row.ContextMenu!.IsOpen, "a reorder of a row this menu does not own must not close it");
+
+            // The still-open menu must still act on session 2 - not whatever the reorder now shows underneath it.
+            _Click(_MenuItem(row, "Clear status"));
+            Assert.Equal(string.Empty, s2.Statusline);
+            Assert.Equal("untouched", s3.Statusline);
 
             window.Close();
         });

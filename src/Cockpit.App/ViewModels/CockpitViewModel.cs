@@ -202,6 +202,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     private readonly List<SessionPanelViewModel> _sidebarOrder = [];
 
+    // AC-561: the strip binds to this collection itself, not to a fresh snapshot handed back on every read —
+    // an ItemsControl only tears down and rebuilds the containers for entries an Add/Remove/Move actually
+    // touches, so a session with an open ContextMenu that is not part of the change keeps its own Border alive
+    // and the popup stays open. Handing back a new List<> each time (the previous shape) reads to Avalonia's
+    // binding system as "everything is different", which discarded every row — including one under an open
+    // menu — on any reorder, close, or workspace switch. See _SyncVisibleSessions.
+    private readonly ObservableCollection<SessionPanelViewModel> _visibleSessions = [];
+
     /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
 
@@ -2215,16 +2223,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// The sessions on the workspace now showing, in the sidebar's own order — what the strip lists, so it never
     /// offers a session the grid is hiding. Reads from <see cref="_sidebarOrder"/> (reconciled on access) rather
     /// than from <see cref="Sessions"/>, so a drag-reorder of the strip leaves the grid's tiles where they are.
-    /// Returns a snapshot rather than a deferred query: the getter reconciles <see cref="_sidebarOrder"/> as a
-    /// side effect, so handing back a live view over that same field would risk a "collection modified" the moment
-    /// a later read reconciles again mid-enumeration.
+    /// Returns the same <see cref="_visibleSessions"/> instance on every call — <see cref="_SyncVisibleSessions"/>
+    /// updates it with the minimal Add/Remove/Move rather than rebuilding it, which is what lets the sidebar's
+    /// ItemsControl keep an unrelated row's container (and any popup open on it) alive across the change.
     /// </summary>
     public IEnumerable<SessionPanelViewModel> VisibleSessions
     {
         get
         {
-            _ReconcileSidebarOrder();
-            return _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
+            _SyncVisibleSessions();
+            return _visibleSessions;
         }
     }
 
@@ -2242,6 +2250,50 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             if (!_sidebarOrder.Contains(session))
             {
                 _sidebarOrder.Add(session);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reconciles <see cref="_sidebarOrder"/>, then brings <see cref="_visibleSessions"/> — the collection the
+    /// sidebar's ItemsControl is actually bound to — in line with it, filtered to the active workspace. Diffs
+    /// against the target order rather than clearing and re-adding: a session already at the right slot is left
+    /// untouched, one that only moved gets a single in-place <see cref="ObservableCollection{T}.Move"/> (which
+    /// Avalonia's ItemsControl honours by relocating the existing row container, not discarding it), and only a
+    /// session that closed or just became visible costs a Remove/Insert. That distinction is AC-561: a full
+    /// clear-and-rebuild tears down every row's container on any change, including one sitting under an open
+    /// ContextMenu it had nothing to do with, and Avalonia's own ControlDetachedFromVisualTree handler quietly
+    /// closes that popup.
+    /// </summary>
+    private void _SyncVisibleSessions()
+    {
+        _ReconcileSidebarOrder();
+        var target = _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
+
+        for (var i = _visibleSessions.Count - 1; i >= 0; i--)
+        {
+            if (!target.Contains(_visibleSessions[i]))
+            {
+                _visibleSessions.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < target.Count; i++)
+        {
+            var session = target[i];
+            if (i < _visibleSessions.Count && ReferenceEquals(_visibleSessions[i], session))
+            {
+                continue;
+            }
+
+            var existingIndex = _visibleSessions.IndexOf(session);
+            if (existingIndex >= 0)
+            {
+                _visibleSessions.Move(existingIndex, i);
+            }
+            else
+            {
+                _visibleSessions.Insert(i, session);
             }
         }
     }
