@@ -322,7 +322,19 @@
          instead of treating every project the same. A project nothing ever claims resolves null and the editor is
          unchanged (acceptance criterion 4). Additions only — a minor; major and abstractionsVersion stay 1. No
          in-repo plugin calls this yet, so no minHostVersion bump accompanies it. -->
-    <Version>1.46.0</Version>
+    <!-- 1.47.0 (AC-609): added to IPluginTranscriptReader a statusFile-carrying ReadActivityAsync overload and
+         ReadEntries (with PluginTranscriptEntry / PluginTranscriptEntryKind / PluginTranscriptSlice) — both
+         default-implemented, the first forwarding to the existing overload and the second reporting nothing, so an
+         already-compiled plugin keeps its behaviour exactly. The overload exists because the older one has no way to
+         know which transcript is the session's: all it is given is what was on disk before the launch, so it must
+         take whichever artifact appears next — a race against every other invocation of the same CLI on the machine,
+         and one whose loss is silent and permanent (the reader tails a foreign file that then stops growing, so the
+         host is handed no activity at all and reports the session Idle for its whole life). A provider that can name
+         its own transcript — the CLI states it in the statusline snapshot the host already polls — now does.
+         ReadEntries is the same identity used for reading back: a TTY session's on-disk record is the only
+         transcript it has, so this is what lets a read surface answer for one instead of denying it exists.
+         Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.47.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

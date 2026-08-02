@@ -8,7 +8,15 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.17.0: a plugin's left-menu launcher button can now carry a live counter/badge (AC-516) — new host-provided
+    <!-- 0.18.0: a provider plugin can now be told which session a transcript read is for, and can be asked to read
+         one back (AC-609) — IPluginTranscriptReader gains a statusFile-carrying ReadActivityAsync overload and
+         ReadEntries, with the PluginTranscriptEntry / PluginTranscriptEntryKind / PluginTranscriptSlice types those
+         answer in. Both members are default-implemented, so an already-compiled plugin loads and behaves exactly as
+         before; the bump is for the other direction. A plugin that implements either binds against the host's own
+         copy of Cockpit.Plugins.Abstractions (ProjectReference with Private=false / ExcludeAssets=runtime), so on an
+         older host the slice type it returns is simply not there to load — hence minHostVersion 0.18.0 on a plugin
+         that does. Minor because it is additive; still 0.x.
+         0.17.0: a plugin's left-menu launcher button can now carry a live counter/badge (AC-516) — new host-provided
          functionality a plugin contributes to: ICockpitHost.AddSideMenuButtonWithBadge, returning a
          SideMenuButtonBadge the plugin updates (Primary, and optionally a second Secondary count — "3 / 2") after
          registering, without calling the method again; the host follows the badge's Changed event and re-renders
@@ -137,7 +145,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.17.0</VersionPrefix>
+    <VersionPrefix>0.18.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
