@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
@@ -63,6 +64,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
 
+    // AC-602: when the operator last reached the assistant, and the clock that stops it an hour after that.
+    private DateTimeOffset _lastInteraction = DateTimeOffset.UtcNow;
+
+    private DispatcherTimer? _idleTimer;
+
     public AssistantSessionHost(
         CockpitViewModel cockpit,
         IAssistantSettingsStore settings,
@@ -111,6 +117,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // Thinking, and neither may overwrite an Unavailable the operator still needs to read.
     public void ReportHoldListening(bool listening)
     {
+        _NoteInteraction();
+
         if (listening)
         {
             if (Activity == AssistantActivity.Ready)
@@ -168,6 +176,13 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// </remarks>
     internal const double RestartAboveContextPercent = 80;
 
+    /// <summary>
+    /// How long the assistant may sit untouched before it is stopped (AC-602). Coming back costs a start the
+    /// operator spends a sentence talking over (see the warm-up on the hotkey press), so the only thing an hour of
+    /// silence buys by staying up is a model in memory.
+    /// </summary>
+    internal static readonly TimeSpan StopAfterIdle = TimeSpan.FromHours(1);
+
     // `replaceALiveInstance`:
     // Whether a healthy instance is torn down too. False is `EnsureStartedAsync`'s idempotent lazy
     // start; true is `RestartAsync`. One body rather than two so both take the same start gate — a
@@ -222,6 +237,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             return;
         }
+
+        _NoteInteraction();
 
         // Reported before the start, not after: bringing the instance up the first time takes long enough that the
         // operator is owed something on screen for it, and "thinking" is what that wait is.
@@ -403,6 +420,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 or nameof(SessionPanelViewModel.ContextUsedPercent)
             && sender is SessionViewModel session)
         {
+            _NoteInteraction();
             _SyncActivityWithSession(session);
             _HandOverIfTheContextIsFull(session);
         }
@@ -442,6 +460,71 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // reading it as zero would postpone the hand-over indefinitely on a provider that only reports sometimes.
     internal static bool ShouldHandOver(double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator) =>
         contextUsedPercent >= RestartAboveContextPercent && !isBusy && !isWaitingOnOperator;
+
+    // And the same shape for the idle stop (AC-602). Both refuse for the same two reasons: a turn in flight goes
+    // with the session, and a permission row nobody answered belongs to one that would stop existing under it.
+    internal static bool ShouldStopWhenIdle(TimeSpan sinceLastInteraction, bool isBusy, bool isWaitingOnOperator) =>
+        sinceLastInteraction >= StopAfterIdle && !isBusy && !isWaitingOnOperator;
+
+    /// <summary>
+    /// Stops an assistant nobody has spoken to for an hour (AC-602). The chip stays on Ready and is owed no
+    /// reason: it is available, it is simply not warm, and the next hold builds a new one on the same conversation.
+    /// </summary>
+    private async Task _StopIfIdleAsync()
+    {
+        if (Session is not { } session
+            || !ShouldStopWhenIdle(
+                DateTimeOffset.UtcNow - _lastInteraction,
+                session.IsBusy,
+                session.HasPendingPermission || session.PendingConsent is not null))
+        {
+            return;
+        }
+
+        await _startGate.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            // Re-checked under the gate: a hold that landed while this was waiting has already made it not idle,
+            // and stopping it then would take the session out from under the sentence being spoken into it.
+            if (Session is { } stillThere && DateTimeOffset.UtcNow - _lastInteraction >= StopAfterIdle)
+            {
+                _logger.LogInformation("Stopping the assistant after an hour without a word; it will start again on the next one.");
+                Session = null;
+                await _DisposeQuietlyAsync(stillThere).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _startGate.Release();
+        }
+    }
+
+    /// <summary>Pushes the idle stop back. Every way the operator can reach the assistant calls this.</summary>
+    private void _NoteInteraction()
+    {
+        _lastInteraction = DateTimeOffset.UtcNow;
+        _idleTimer ??= _BuildIdleTimer();
+        _idleTimer.Start();
+    }
+
+    private DispatcherTimer _BuildIdleTimer()
+    {
+        // Ticking rather than being rescheduled on every interaction: the check is three field reads, and a timer
+        // that is restarted on each keystroke is a timer whose one job depends on nobody forgetting to restart it.
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        timer.Tick += (_, _) =>
+        {
+            if (Session is null)
+            {
+                timer.Stop();
+                return;
+            }
+
+            _ = _StopIfIdleAsync();
+        };
+
+        return timer;
+    }
 
     // Maps the session's own status onto what the chip reports.
     // Deliberately narrow. It only ever moves between `AssistantActivity.Thinking` and

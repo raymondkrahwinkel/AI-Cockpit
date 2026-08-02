@@ -503,6 +503,22 @@ public class AssistantSessionHostTests
         double fill, bool isBusy, bool isWaitingOnOperator, bool expected) =>
         Assert.Equal(expected, AssistantSessionHost.ShouldHandOver(fill, isBusy, isWaitingOnOperator));
 
+    // ── Stopping after an hour of silence (AC-602) ────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(59, false, false, false)]
+    [InlineData(60, false, false, true)]
+    [InlineData(600, false, false, true)]
+    // The same two refusals as the hand-over, for the same reason: a turn in flight goes with the session, and an
+    // unanswered permission row belongs to one that would stop existing under it.
+    [InlineData(600, true, false, false)]
+    [InlineData(600, false, true, false)]
+    public void StoppingWhenIdle_WaitsForAnHourWithoutAWord_AndForAnAssistantDoingNothing(
+        int idleMinutes, bool isBusy, bool isWaitingOnOperator, bool expected) =>
+        Assert.Equal(
+            expected,
+            AssistantSessionHost.ShouldStopWhenIdle(TimeSpan.FromMinutes(idleMinutes), isBusy, isWaitingOnOperator));
+
     [Fact]
     public void AProviderThatReportedNoFillThisTurn_DoesNotCountAsAnEmptyContext()
     {

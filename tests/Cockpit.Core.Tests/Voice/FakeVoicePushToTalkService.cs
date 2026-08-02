@@ -31,4 +31,12 @@ internal sealed class FakeVoicePushToTalkService : IVoicePushToTalkService
     public void RaisePrepared() => Prepared?.Invoke(this, EventArgs.Empty);
 
     public void RaiseAudioLevelSampled(double level) => AudioLevelSampled?.Invoke(this, level);
+
+    public int WarmUps { get; private set; }
+
+    public Task WarmUpAsync(CancellationToken cancellationToken = default)
+    {
+        WarmUps++;
+        return Task.CompletedTask;
+    }
 }

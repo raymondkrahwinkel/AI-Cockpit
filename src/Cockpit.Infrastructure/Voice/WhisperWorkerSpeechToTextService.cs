@@ -119,6 +119,22 @@ internal sealed class WhisperWorkerSpeechToTextService(
         }
     }
 
+    /// <summary>
+    /// Spawns the worker ahead of the clip that is coming (AC-603). Swallows its failure on purpose: nobody is
+    /// waiting on this call, and the transcription that follows reports the same problem where it can be seen.
+    /// </summary>
+    public async Task WarmUpAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _EnsureWorkerAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Warming the transcription worker failed; the next dictation will try again.");
+        }
+    }
+
     /// <summary>Ensures a live worker exists for the coming clip, returning whether this call had to spawn one
     /// (a cold start, AC-535) rather than reuse an already-warm process.</summary>
     private async Task<bool> _EnsureWorkerAsync(CancellationToken cancellationToken)

@@ -47,6 +47,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: you hear that the assistant is doing something. It used to go quiet the moment it went looking — nothing
   between your question and the answer, which is indistinguishable from not having been heard. Now it says it is
   going to have a look, and on a long one it says it is still at it, less often as the wait goes on.
+- added: the assistant lets go of itself after an hour with nobody talking to it, and comes straight back on the
+  next word. Nothing to notice: the conversation is picked up where it was, and the next hotkey press starts it
+  again in the background while you are still speaking.
+- added: the speech models load the moment you press the key, not when you have finished talking. Both the one that
+  hears you and the one that answers, and for dictation into a session as well as for the assistant. Pressing the
+  key is the promise that a transcription is coming, and the sentence you speak into it used to be time spent
+  waiting afterwards.
 
 ### Changed
 

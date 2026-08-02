@@ -13,6 +13,13 @@ public interface ISpeechToTextService
     Task<string> TranscribeAsync(float[] samples, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Brings the model up ahead of the transcription that is coming (AC-603), so the loading happens while the
+    /// operator is still speaking rather than after they stop. Best-effort: failures are left for
+    /// <see cref="TranscribeAsync"/> to report as it does today.
+    /// </summary>
+    Task WarmUpAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Raised while a <see cref="TranscribeAsync"/> call is still getting ready — the model or a GPU runtime
     /// coming down, or the model being loaded. Initializing lazily is what keeps voice free when it is off, but
     /// it also means the first dictation waits on gigabytes, and a wait nobody narrates is indistinguishable

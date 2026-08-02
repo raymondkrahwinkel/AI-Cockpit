@@ -114,6 +114,13 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             blocked is null ? VoiceOverlayState.Listening : VoiceOverlayState.Unavailable,
             blocked);
 
+        // AC-603: the press is the promise that a transcription is coming, and the sentence spoken into it is the
+        // only window in which the model can load for free. Not awaited, and a failure is first use's to report.
+        if (_isRecording)
+        {
+            _ = _pushToTalk.WarmUpAsync();
+        }
+
         // Kept: which session the hold routed to, and whether capture truly began, is still what tells a wrong
         // routing apart from a declined hold when a dictation later yields nothing.
         _logger.LogInformation(
