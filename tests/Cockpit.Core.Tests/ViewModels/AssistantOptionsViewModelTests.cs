@@ -231,8 +231,11 @@ public class AssistantOptionsViewModelTests
 
         // Records nothing: no test here repoints, because the row this file covers is not a picker. What it recorded
         // was picker scaffolding that outlived the picker — set, never asserted, and therefore guarding nothing.
-        public Task<AssistantProfileSlot> RepointAsync(SessionProfile record, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AssistantProfileSlot(record));
+        public Task<AssistantProfileSlot> RepointAsync(
+            SessionProfile record,
+            bool replacesStandingInstruction,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AssistantProfileSlot(record, null, replacesStandingInstruction));
 
         public Task<AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AssistantProfileSlot(null, reason));

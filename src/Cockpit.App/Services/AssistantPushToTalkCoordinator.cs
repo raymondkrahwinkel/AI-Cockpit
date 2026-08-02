@@ -34,6 +34,10 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     private readonly IVoicePushToTalkService _pushToTalk;
     private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly IOpenMicState? _openMicState;
+
+    // Warmed on the press alongside the transcriber (AC-603): the reply is spoken seconds after the release, and
+    // a cold voice makes the answer a second wait. Optional — a cockpit with no voice simply warms nothing.
+    private readonly ITextToSpeechService? _textToSpeech;
     private readonly ILogger<AssistantPushToTalkCoordinator> _logger;
 
     // Whether the hold in progress actually opened a microphone — nothing to transcribe if it did not.
@@ -61,6 +65,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         ILogger<AssistantPushToTalkCoordinator> logger,
         IVoicePlaybackQueue playbackQueue,
         IOpenMicState? openMicState = null,
+        ITextToSpeechService? textToSpeech = null,
         TimeSpan? messageLinger = null)
     {
         _hotkeys = hotkeys;
@@ -69,6 +74,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _pushToTalk = pushToTalk;
         _playbackQueue = playbackQueue;
         _openMicState = openMicState;
+        _textToSpeech = textToSpeech;
         _logger = logger;
         _messageLinger = messageLinger ?? DefaultMessageLinger;
 
@@ -166,9 +172,27 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         if (_isRecording)
         {
             _assistant.ReportHoldListening(true);
+            _WarmUpWhileTheySpeak();
         }
 
         _logger.LogInformation("Assistant push-to-talk hold started: capturing={Capturing}", _isRecording);
+    }
+
+    /// <summary>
+    /// Starts everything this hold is going to need while the operator is still talking into it (AC-602, AC-603):
+    /// the session, the transcriber, and the voice that will read the answer back.
+    /// </summary>
+    /// <remarks>
+    /// The press is the only free window there is. Afterwards the operator has stopped speaking and every one of
+    /// these is a silence they are waiting through — which is the same silence the assistant is built to avoid.
+    /// None of it is awaited and none of it is reported: a warm-up that fails leaves first use to do what it
+    /// already does, including saying what went wrong.
+    /// </remarks>
+    private void _WarmUpWhileTheySpeak()
+    {
+        _ = _assistant.EnsureStartedAsync();
+        _ = _pushToTalk.WarmUpAsync();
+        _ = _textToSpeech?.WarmUpAsync() ?? Task.CompletedTask;
     }
 
     // Test seam: the UI-thread logic for a hold ending — transcribe, then hand the words to the assistant.

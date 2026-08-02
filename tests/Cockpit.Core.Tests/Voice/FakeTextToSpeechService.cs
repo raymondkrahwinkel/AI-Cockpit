@@ -13,4 +13,6 @@ internal sealed class FakeTextToSpeechService : ITextToSpeechService
         Calls.Add((text, speakerId, language));
         return Task.FromResult(new TtsAudio(Samples: [0.1f, -0.1f], SampleRate: 22050));
     }
+
+    public Task WarmUpAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

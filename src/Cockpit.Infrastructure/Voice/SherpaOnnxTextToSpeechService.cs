@@ -47,6 +47,19 @@ internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpee
         return new TtsAudio(audio.Samples, audio.SampleRate);
     }
 
+    /// <summary>Loads the voice ahead of the reply that is coming (AC-603), and says nothing when it cannot.</summary>
+    public async Task WarmUpAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _GetOrLoadModelAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Warming the voice failed; the next spoken reply will try again.");
+        }
+    }
+
     private async Task<OfflineTts> _GetOrLoadModelAsync(CancellationToken cancellationToken)
     {
         if (_tts is not null)

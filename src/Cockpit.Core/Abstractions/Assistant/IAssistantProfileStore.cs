@@ -40,7 +40,15 @@ public interface IAssistantProfileStore
     /// The record the slot should resolve to from now on. A <em>new</em> record when the provider changed: the
     /// previous one is simply no longer referenced, never edited into shape.
     /// </param>
-    Task<AssistantProfileSlot> RepointAsync(SessionProfile record, CancellationToken cancellationToken = default);
+    /// <param name="replacesStandingInstruction">
+    /// Whether <paramref name="record"/>'s system prompt replaces the built-in standing instruction rather than
+    /// adding to it (AC-594). Required rather than defaulted: a caller that forgot it would silently switch the
+    /// assistant back to adding, which is a setting changing itself behind the operator's back.
+    /// </param>
+    Task<AssistantProfileSlot> RepointAsync(
+        SessionProfile record,
+        bool replacesStandingInstruction,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lands the slot explicitly on "not set up", with <paramref name="reason"/> saying why. For the switch that

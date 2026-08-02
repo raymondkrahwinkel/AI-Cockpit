@@ -28,15 +28,19 @@ internal sealed class AssistantProfileEntry
     /// <summary>Why <see cref="Profile"/> is absent. Written only when it is; ignored when a record is present.</summary>
     public string? UnsetReason { get; set; }
 
+    /// <summary>Whether the record's system prompt replaces the built-in standing instruction (AC-594); absent reads as false, which is "add to it".</summary>
+    public bool? ReplacesStandingInstruction { get; set; }
+
     public static AssistantProfileEntry FromDomain(AssistantProfileSlot slot) => new()
     {
         Profile = slot.Profile is null ? null : SessionProfileEntry.FromDomain(slot.Profile),
         // A configured slot writes no reason: keeping a stale one would leave the file claiming both a record and
         // an explanation for its absence, and whichever a later reader believed would be the wrong one.
         UnsetReason = slot.Profile is null ? slot.UnsetReason ?? NoRecordYetReason : null,
+        ReplacesStandingInstruction = slot.ReplacesStandingInstruction,
     };
 
     public AssistantProfileSlot ToDomain() => Profile is { } profile
-        ? new AssistantProfileSlot(profile.ToDomain())
+        ? new AssistantProfileSlot(profile.ToDomain(), null, ReplacesStandingInstruction ?? false)
         : new AssistantProfileSlot(null, string.IsNullOrWhiteSpace(UnsetReason) ? NoRecordYetReason : UnsetReason);
 }

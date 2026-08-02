@@ -374,7 +374,7 @@ public class AssistantSessionHostTests
     public void LaunchOptions_CarryTheProfilesOwnPermissionMode()
     {
         var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
-            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)));
+            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)), replacesStandingInstruction: false, memory: null);
 
         Assert.Equal(
             SessionOptionCatalog.BypassPermissionModeValue,
@@ -390,7 +390,7 @@ public class AssistantSessionHostTests
         // the host does not (and must not) know what a provider's options mean.
         var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
             ("model", "opus"),
-            ("effort", "high")));
+            ("effort", "high")), replacesStandingInstruction: false, memory: null);
 
         Assert.Equal("opus", options["model"]);
         Assert.Equal("high", options["effort"]);
@@ -404,7 +404,7 @@ public class AssistantSessionHostTests
         // in only when the options carry none — so an absent key is what makes today's behaviour survive this
         // change. A "helpful" default written here (say, always naming the mode) would silently move every
         // existing assistant.
-        var options = AssistantSessionHost._LaunchOptions(_Profile());
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
         Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
         Assert.False(options.ContainsKey("model"));
@@ -424,9 +424,130 @@ public class AssistantSessionHostTests
             with
         { SystemPrompt = "You are Olaf." };
 
-        var options = AssistantSessionHost._LaunchOptions(profile);
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false, memory: null);
 
-        Assert.Equal("You are Olaf.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.DoesNotContain("teapot", instruction, StringComparison.Ordinal);
+        Assert.EndsWith("You are Olaf.", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_WhatTheOperatorWrote_IsAddedToTheBuiltInInstruction_RatherThanPutInItsPlace()
+    {
+        // AC-594. The old behaviour dropped all of AssistantSystemPrompt.Default the moment this box had anything in
+        // it, so "your name is Zyra" silently cost the language rule and the whole permission paragraph.
+        var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
+
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false, memory: null);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
+        Assert.EndsWith("Your name is Zyra.", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_WithTheAdvancedOptionOn_CarryWhatTheOperatorWroteAndNothingElse()
+    {
+        var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
+
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
+
+        Assert.Equal("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+    }
+
+    [Fact]
+    public void LaunchOptions_CarryWhatTheAssistantWasAskedToRemember_UnderAHeadingOfItsOwn()
+    {
+        // AC-595. Last and labelled: it is the operator's material rather than the product's rules, and an
+        // assistant that cannot tell the two apart recites a remembered line back as if it were one.
+        var options = AssistantSessionHost._LaunchOptions(
+            _Profile() with { SystemPrompt = "Your name is Zyra." },
+            replacesStandingInstruction: false,
+            memory: "- 2026-08-02 — The operator is called Raymond.");
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
+        Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
+        Assert.EndsWith("The operator is called Raymond.", instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_CarryTheNoteTheAssistantLeftItself_UnderItsOwnHeading()
+    {
+        // AC-596. Labelled as possibly stale on purpose: an assistant that read this as "what the operator just
+        // said" would answer a question nobody asked again after every hand-over.
+        var options = AssistantSessionHost._LaunchOptions(
+            _Profile(),
+            replacesStandingInstruction: false,
+            memory: "- 2026-08-02 — The operator is called Raymond.",
+            currentState: "We are on AC-592; the release desk is running the tests.");
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.CurrentStateHeading, instruction, StringComparison.Ordinal);
+        Assert.EndsWith("the release desk is running the tests.", instruction, StringComparison.Ordinal);
+    }
+
+    // ── Handing over before the context fills (AC-596) ────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(79.9, false, false, false)]
+    [InlineData(80, false, false, true)]
+    [InlineData(99, false, false, true)]
+    // Never mid-turn: the restart would take the turn it is in the middle of with it.
+    [InlineData(99, true, false, false)]
+    // Never over a permission nobody has answered: that row belongs to a session that would no longer exist.
+    [InlineData(99, false, true, false)]
+    public void HandingOver_WaitsForAContextThatIsFull_AndForAnAssistantThatIsDoingNothing(
+        double fill, bool isBusy, bool isWaitingOnOperator, bool expected) =>
+        Assert.Equal(expected, AssistantSessionHost.ShouldHandOver(fill, isBusy, isWaitingOnOperator));
+
+    // ── Stopping after an hour of silence (AC-602) ────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(59, false, false, false)]
+    [InlineData(60, false, false, true)]
+    [InlineData(600, false, false, true)]
+    // The same two refusals as the hand-over, for the same reason: a turn in flight goes with the session, and an
+    // unanswered permission row belongs to one that would stop existing under it.
+    [InlineData(600, true, false, false)]
+    [InlineData(600, false, true, false)]
+    public void StoppingWhenIdle_WaitsForAnHourWithoutAWord_AndForAnAssistantDoingNothing(
+        int idleMinutes, bool isBusy, bool isWaitingOnOperator, bool expected) =>
+        Assert.Equal(
+            expected,
+            AssistantSessionHost.ShouldStopWhenIdle(TimeSpan.FromMinutes(idleMinutes), isBusy, isWaitingOnOperator));
+
+    [Fact]
+    public void AProviderThatReportedNoFillThisTurn_DoesNotCountAsAnEmptyContext()
+    {
+        // The failure this rules out is the quiet one: reading "no reading" as zero postpones the hand-over for
+        // ever on a provider that only reports sometimes, and the first anyone hears of it is a refused turn.
+        Assert.False(AssistantSessionHost.ShouldHandOver(null, isBusy: false, isWaitingOnOperator: false));
+    }
+
+    [Fact]
+    public void LaunchOptions_WithNothingEverRemembered_CarryNoMemoryHeading()
+    {
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: "   ");
+
+        Assert.DoesNotContain(
+            AssistantStandingInstruction.MemoryHeading,
+            options[WellKnownPluginSessionOptions.AppendSystemPrompt],
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_WithAnEmptyBox_AreTheBuiltInInstruction_WhicheverWayTheAdvancedOptionIsSet()
+    {
+        // Nothing written is nothing to replace: an operator who ticked the box and then cleared the text would
+        // otherwise start an assistant with no instruction at all.
+        var profile = _Profile() with { SystemPrompt = "   " };
+
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
+
+        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     // ── The restart (the operator's only way to reach a start-time setting) ───────────────────────────────────
@@ -564,7 +685,8 @@ public class AssistantSessionHostTests
         IAssistantProfileStore? profiles = null,
         ISessionStateStore? sessionState = null,
         bool speakReplies = true,
-        CockpitViewModel? cockpit = null)
+        CockpitViewModel? cockpit = null,
+        IAssistantMemory? memory = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
@@ -584,7 +706,8 @@ public class AssistantSessionHostTests
 
         return new AssistantSessionHost(
             cockpit ?? new CockpitViewModel(), settings, profiles, sessionState,
-            catalog ?? _Catalog(), NullLogger<AssistantSessionHost>.Instance);
+            catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
+            NullLogger<AssistantSessionHost>.Instance);
     }
 
     private static SessionStateRecord _StateFor(string paneId, string conversationId) =>

@@ -73,17 +73,23 @@
                         <TextBox Text="{Binding Label}"/>
                     </StackPanel>
 
-                    <!-- Reaches the assistant through AssistantSessionHost._LaunchOptions, which sends this on the
-                         append-system-prompt option when it is set and AssistantSystemPrompt.Default when it is
-                         not. Not on the operator's list of blocks, and kept anyway because it is consumed at every
-                         start: leaving it out would make the assistant's own standing instruction the one thing
-                         about it nobody could change. -->
+                    <!-- AC-594: this is added to AssistantSystemPrompt.Default, not put in its place. Replacing it
+                         outright is the checkbox below, because that default carries the language rule, the
+                         speak-don't-write rule, the honesty clause and the permission paragraph. -->
                     <StackPanel Spacing="4">
-                        <TextBlock Text="Standing instruction (empty = the assistant's built-in one)" FontSize="11"
+                        <TextBlock Text="Extra instructions (added to the assistant's built-in ones)" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
                                  MinHeight="56" MaxHeight="120"
-                                 PlaceholderText="Who the assistant is and how it should answer"/>
+                                 PlaceholderText="What to call it, house rules, anything it should always know"/>
+                        <CheckBox Content="Advanced: replace the built-in instructions instead of adding to them"
+                                  FontSize="11"
+                                  IsChecked="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ReplacesStandingInstruction}"
+                                  ToolTip.Tip="On: the assistant runs on your text alone. It then loses the built-in instructions to answer in your language, to speak rather than write a screen, to say when it could not check something, and never to treat a spoken yes as approval."/>
+                        <TextBlock FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ReplacesStandingInstruction}"
+                                   Text="The assistant now runs on your text alone: how it speaks, which language it answers in, that it says when a check could not be made, and that a spoken yes is never an approval are all yours to state."/>
                     </StackPanel>
 
                     <!-- Switchable, unlike the profile list's fixed dropdown: this record is replaced whole on every

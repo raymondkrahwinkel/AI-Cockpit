@@ -34,6 +34,12 @@ public interface IVoicePushToTalkService
     bool BeginHold();
 
     /// <summary>
+    /// Starts loading what this hold will need, without waiting for it (AC-603). Called on the press: the promise
+    /// that a transcription is coming is made there, and the sentence spoken into it is the free window.
+    /// </summary>
+    Task WarmUpAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Stops buffering and runs VAD gating + STT, returning the final text (empty string when VAD found no
     /// speech or STT returned nothing). Throws <see cref="InvalidOperationException"/> if called without a
     /// preceding successful <see cref="BeginHold"/>.

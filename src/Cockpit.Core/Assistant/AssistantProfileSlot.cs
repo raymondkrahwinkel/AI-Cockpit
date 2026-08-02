@@ -38,7 +38,14 @@ namespace Cockpit.Core.Assistant;
 /// <paramref name="Profile"/> is set. An empty slot with no reason is the failure mode criterion 4 rules out:
 /// the operator is owed either the old profile or an explanation, never a blank row.
 /// </param>
-public sealed record AssistantProfileSlot(SessionProfile? Profile = null, string? UnsetReason = null)
+/// <param name="ReplacesStandingInstruction">
+/// Whether the record's own system prompt <em>replaces</em> <see cref="AssistantSystemPrompt.Default"/> instead of
+/// being added to it (AC-594). Default false: what an operator types is an addition.
+/// </param>
+public sealed record AssistantProfileSlot(
+    SessionProfile? Profile = null,
+    string? UnsetReason = null,
+    bool ReplacesStandingInstruction = false)
 {
     /// <summary>
     /// The slot's stable identity. A constant rather than a generated id: there is exactly one slot, it is created

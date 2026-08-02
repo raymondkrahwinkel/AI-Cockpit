@@ -57,6 +57,9 @@ internal sealed class VoicePushToTalkService(
         return true;
     }
 
+    public Task WarmUpAsync(CancellationToken cancellationToken = default) =>
+        speechToText.WarmUpAsync(cancellationToken);
+
     public async Task<string> EndHoldAsync(CancellationToken cancellationToken = default)
     {
         if (_captureTask is null || _captureCancellation is null)

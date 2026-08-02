@@ -52,6 +52,20 @@ internal static class CockpitConfigPath
     /// </summary>
     public static string ClonesRoot => Path.Combine(Root, "clones");
 
+    /// <summary>
+    /// The voice assistant's own memory (AC-595): a markdown file next to <c>cockpit.json</c>, holding what the
+    /// operator told it to keep. Plain markdown on purpose — there is no UI for it, so opening it is the way to
+    /// prune it.
+    /// </summary>
+    public static string AssistantMemory => Path.Combine(Root, "assistant-memory.md");
+
+    /// <summary>
+    /// Where the assistant leaves the conversation before restarting itself (AC-596). Its own file rather than a
+    /// section of the memory: one is appended to and the other overwritten, and separate files need no parser and
+    /// no lock between them.
+    /// </summary>
+    public static string AssistantCurrentState => Path.Combine(Root, "assistant-state.md");
+
     /// <summary>Creates <paramref name="directory"/> if needed and restricts it to its owner. Idempotent.</summary>
     public static void EnsurePrivateDirectory(string directory)
     {

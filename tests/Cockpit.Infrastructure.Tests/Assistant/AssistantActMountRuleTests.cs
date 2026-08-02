@@ -46,7 +46,9 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
     private readonly ApprovingBroker _consent = new();
 
-    private AssistantAgentMcpTools _Tools() => new(_gateway, _consent);
+    private readonly RecordingAssistantMemory _memory = new();
+
+    private AssistantAgentMcpTools _Tools() => new(_gateway, _memory, _consent);
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -153,6 +155,8 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         Assert.Empty(_gateway.Calls);
         Assert.Empty(_consent.Asked);
+        Assert.Empty(_memory.Remembered);
+        Assert.Empty(_memory.Noted);
     }
 
     [Fact]
@@ -177,14 +181,17 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         Assert.Empty(_gateway.Calls);
         Assert.Empty(_consent.Asked);
+        Assert.Empty(_memory.Remembered);
+        Assert.Empty(_memory.Noted);
     }
 
     [Fact]
     public async Task EveryToolOnTheActingServer_FromTheAssistantsOwnPane_ReachesTheGateway()
     {
         // The other side of the same guard, and the reason the tests above prove anything: a server that refused
-        // everybody would pass every one of them while shipping a feature that does nothing. One gateway call per
-        // tool, counted against the tool set rather than against a number typed here.
+        // everybody would pass every one of them while shipping a feature that does nothing. One call through to
+        // what the tool is for — the gateway, or the memory for `remember` — counted against the tool set rather
+        // than against a number typed here.
         var tools = _EveryTool();
         Assert.NotEmpty(tools);
 
@@ -197,7 +204,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Assert.True((bool)result["ok"]!, $"{tool.Name} refused the assistant itself.");
         }
 
-        Assert.Equal(tools.Count, _gateway.Calls.Count);
+        Assert.Equal(tools.Count, _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count);
     }
 
     [Fact]

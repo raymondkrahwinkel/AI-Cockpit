@@ -1,7 +1,9 @@
+using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Assistant;
@@ -41,8 +43,8 @@ public class AssistantProfileStoreTests : IDisposable
         var store = new AssistantProfileStore(_configFilePath);
         var record = new SessionProfile("Assistant (Claude)", ClaudePluginProfile.Create(ClaudeConfigDir, null));
 
-        await store.RepointAsync(record);
-        await store.RepointAsync(record with { Label = "Something else entirely" });
+        await store.RepointAsync(record, replacesStandingInstruction: false);
+        await store.RepointAsync(record with { Label = "Something else entirely" }, replacesStandingInstruction: false);
 
         var loaded = await store.LoadAsync();
 
@@ -78,13 +80,13 @@ public class AssistantProfileStoreTests : IDisposable
         var codex = new SessionProfile("assistant-codex", new PluginProviderConfig(CodexProviderId, """{"model":"gpt-5-codex"}"""));
         var claudeAgain = new SessionProfile("assistant-claude-2", ClaudePluginProfile.Create(ClaudeConfigDir, null));
 
-        await store.RepointAsync(claude);
+        await store.RepointAsync(claude, replacesStandingInstruction: false);
         var afterClaude = await store.LoadAsync();
 
-        await store.RepointAsync(codex);
+        await store.RepointAsync(codex, replacesStandingInstruction: false);
         var afterCodex = await store.LoadAsync();
 
-        await store.RepointAsync(claudeAgain);
+        await store.RepointAsync(claudeAgain, replacesStandingInstruction: false);
         var afterBack = await store.LoadAsync();
 
         // Each load returns the record that was handed over, whole. The label is the tell: the forbidden
@@ -116,12 +118,12 @@ public class AssistantProfileStoreTests : IDisposable
     {
         var store = new AssistantProfileStore(_configFilePath);
         var claude = new SessionProfile("assistant-claude", ClaudePluginProfile.Create(ClaudeConfigDir, null));
-        await store.RepointAsync(claude);
+        await store.RepointAsync(claude, replacesStandingInstruction: false);
 
         // A switch that blows up while minting the new record never reaches the store, so nothing was written.
         try
         {
-            await store.RepointAsync(_MintRecordThatFails());
+            await store.RepointAsync(_MintRecordThatFails(), replacesStandingInstruction: false);
         }
         catch (InvalidOperationException)
         {
@@ -171,7 +173,7 @@ public class AssistantProfileStoreTests : IDisposable
         await assistantStore.RepointAsync(new SessionProfile(
             AssistantProfileSlot.DisplayName,
             ClaudePluginProfile.Create(ClaudeConfigDir, null),
-            Delegation: new DelegationPolicy(AllowedAsTarget: true)));
+            Delegation: new DelegationPolicy(AllowedAsTarget: true)), replacesStandingInstruction: false);
 
         var visibleProfiles = await profileStore.LoadAsync();
 
@@ -180,6 +182,39 @@ public class AssistantProfileStoreTests : IDisposable
 
         // It is stored and resolvable all the same — invisible to those two lists, not missing.
         Assert.True((await assistantStore.LoadAsync()).IsConfigured);
+    }
+
+    /// <summary>
+    /// AC-594: the advanced "replace the built-in instructions" choice survives a write and a read, and a config
+    /// written before it existed loads as adding rather than replacing.
+    /// </summary>
+    [Fact]
+    public async Task WhetherTheInstructionReplacesTheBuiltInOne_RoundTrips_AndAnOlderConfigReadsAsAdding()
+    {
+        var store = new AssistantProfileStore(_configFilePath);
+        var record = new SessionProfile("Assistant (Claude)", ClaudePluginProfile.Create(ClaudeConfigDir, null))
+        {
+            SystemPrompt = "Your name is Zyra.",
+        };
+
+        await store.RepointAsync(record, replacesStandingInstruction: true);
+        Assert.True((await store.LoadAsync()).ReplacesStandingInstruction);
+
+        await store.RepointAsync(record, replacesStandingInstruction: false);
+        Assert.False((await store.LoadAsync()).ReplacesStandingInstruction);
+
+        // A config written before this setting existed: the key is gone entirely, and that has to read as adding
+        // rather than as an assistant whose built-in instructions were replaced by whatever is in the box.
+        await store.RepointAsync(record, replacesStandingInstruction: true);
+        var config = JsonNode.Parse(await File.ReadAllTextAsync(_configFilePath));
+        var assistantSection = config?[nameof(CockpitConfigFile.AssistantProfile)]?.AsObject();
+        Assert.NotNull(assistantSection);
+        Assert.True(assistantSection.Remove(nameof(AssistantProfileSlot.ReplacesStandingInstruction)));
+        await File.WriteAllTextAsync(_configFilePath, config?.ToJsonString());
+
+        var loaded = await store.LoadAsync();
+        Assert.True(loaded.IsConfigured);
+        Assert.False(loaded.ReplacesStandingInstruction);
     }
 
     private static string _ProviderIdOf(AssistantProfileSlot slot) =>

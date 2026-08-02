@@ -23,7 +23,9 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
 
     private readonly RecordingGateway _gateway = new();
 
-    private AssistantAgentMcpTools _Tools() => new(_gateway, _consent);
+    private readonly RecordingAssistantMemory _memory = new();
+
+    private AssistantAgentMcpTools _Tools() => new(_gateway, _memory, _consent);
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -173,7 +175,7 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
     public async Task WithNobodyToAsk_BothToolsRefuse_AndNeitherReachesTheGateway()
     {
         McpRequestContext.Set(AssistantIdentity.PaneId);
-        var tools = new AssistantAgentMcpTools(_gateway);
+        var tools = new AssistantAgentMcpTools(_gateway, _memory);
 
         Assert.False((bool)_Json(await tools.SendMessageAsync(TargetPane, "heads-up", "the branch moved"))["ok"]!);
         Assert.False((bool)_Json(await tools.SendPromptAsync(TargetPane, "run the tests"))["ok"]!);

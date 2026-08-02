@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
@@ -8,6 +9,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -448,6 +450,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // text offset, not an entry count: counting entries would mark the whole (still-growing) entry "spoken" at the
     // first flush and lose everything the reply says after a tool approval. Reset with the list at the turn boundary.
     private int _readAloudFlushedLength;
+
+    // AC-597/598: whether anything has actually been spoken this turn. What decides both fillers — a lead-in is
+    // only owed when the model gave none, and a sign of life only when the operator has heard nothing since.
+    private bool _spokenSomethingThisTurn;
+
+    // Rotated so the same words never come twice in a row. Deliberately not reset per turn: it is the sequence of
+    // fillers the operator hears that has to vary, not the sequence within one turn.
+    private int _spokenFillerRotation;
+
+    // AC-598: the clock that says "still on it" through a long wait, and how many times it has said so this turn.
+    private DispatcherTimer? _signOfLifeTimer;
+
+    private int _signOfLifeRepeat;
 
     /// <summary>Set when an "exit" message is dispatched with auto-close on, so the next completed turn closes the session (T10).</summary>
     private bool _closeAfterTurn;
@@ -1111,6 +1126,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _currentAssistantEntry = null;
         _currentOrphanedSubAgentTextEntry = null;
         _readAloudFlushedLength = 0;
+        _spokenSomethingThisTurn = false;
+        _StopSignOfLifeClock();
         ClearCurrentTurnImages();
         _hasCompletedATurn = false;
         _needsAttention = false;
@@ -1861,7 +1878,88 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         var pending = prose[_readAloudFlushedLength..];
         _readAloudFlushedLength = prose.Length;
+        _spokenSomethingThisTurn = true;
+        _RestartSignOfLifeClock();
         _ = EnqueueReadAloudAsync(pending);
+    }
+
+    /// <summary>
+    /// Says out loud that it is about to go and look, when the model went straight to a tool without saying so
+    /// (AC-597). The assistant's own session only: an ordinary pane speaks its replies, it does not chat.
+    /// </summary>
+    /// <remarks>
+    /// The standing instruction asks for this lead-in and gets one about three turns in five. The rest go quiet
+    /// from the question until the whole answer is ready, which sounds exactly like not having been heard.
+    /// </remarks>
+    internal void _SpeakLeadInIfTheModelGaveNone()
+    {
+        if (!ReadResponsesAloud || _spokenSomethingThisTurn || !IsTheVoiceAssistant)
+        {
+            return;
+        }
+
+        var filler = AssistantSpokenFillers.GoingToLookUpSomething(ReadAloudLanguage, _spokenFillerRotation++);
+        if (filler.Length == 0)
+        {
+            return;
+        }
+
+        _spokenSomethingThisTurn = true;
+        _RestartSignOfLifeClock();
+        _ = EnqueueReadAloudAsync(filler);
+    }
+
+    /// <summary>True for the cockpit's own voice assistant, the one session that speaks unasked (AC-597/598).</summary>
+    private bool IsTheVoiceAssistant =>
+        string.Equals(PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Starts the clock that says "still on it" while a turn keeps running (AC-598), and pushes it back every time
+    /// something real is spoken.
+    /// </summary>
+    private void _RestartSignOfLifeClock()
+    {
+        if (!ReadResponsesAloud || !IsTheVoiceAssistant)
+        {
+            return;
+        }
+
+        _signOfLifeTimer ??= _BuildSignOfLifeTimer();
+        _signOfLifeTimer.Stop();
+        _signOfLifeTimer.Interval = AssistantSpokenFillers.SignOfLifeDelay(_signOfLifeRepeat);
+        _signOfLifeTimer.Start();
+    }
+
+    private DispatcherTimer _BuildSignOfLifeTimer()
+    {
+        var timer = new DispatcherTimer();
+        timer.Tick += (_, _) =>
+        {
+            // A turn that ended, or one stopped on a permission: the first has nothing to report and the second
+            // already said out loud that it is waiting. Speaking over either is noise.
+            if (!IsBusy || HasPendingPermission || PendingConsent is not null)
+            {
+                _StopSignOfLifeClock();
+                return;
+            }
+
+            var filler = AssistantSpokenFillers.StillAtIt(ReadAloudLanguage, _signOfLifeRepeat);
+            _signOfLifeRepeat++;
+            if (filler.Length > 0)
+            {
+                _ = EnqueueReadAloudAsync(filler);
+            }
+
+            timer.Interval = AssistantSpokenFillers.SignOfLifeDelay(_signOfLifeRepeat);
+        };
+
+        return timer;
+    }
+
+    private void _StopSignOfLifeClock()
+    {
+        _signOfLifeTimer?.Stop();
+        _signOfLifeRepeat = 0;
     }
 
     // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI
@@ -2087,6 +2185,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // the question until the whole answer was ready. Flushing on the call itself does not depend on
                 // anyone being asked anything.
                 _FlushPendingProseForReadAloud();
+
+                // AC-597: and when there was no lead-in to flush, say one of our own. Two turns in five reach this
+                // line with nothing written yet, and silence from the question to the answer reads as unheard.
+                _SpeakLeadInIfTheModelGaveNone();
+
+                // AC-598: the wait starts here too, so a turn that said its lead-in and then spends two minutes in
+                // tools still gives a sign of life.
+                _RestartSignOfLifeClock();
                 break;
 
             case ToolResult toolResult:
@@ -2242,6 +2348,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
                 _currentTurnAssistantEntries.Clear();
                 _readAloudFlushedLength = 0;
+                _spokenSomethingThisTurn = false;
+                _StopSignOfLifeClock();
                 _currentAssistantEntry = null;
                 _CloseThinkingRow();
                 // A sub-agent does not outlive the turn that spawned it (AC-146): a fresh Task call next turn
