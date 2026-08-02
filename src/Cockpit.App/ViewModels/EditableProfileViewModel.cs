@@ -325,6 +325,10 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     public bool IsDefaultKindTty => SelectedDefaultKind == SessionKind.Tty;
 
+    /// <summary>Whether a new session under this profile opens SDK by default, gating the SDK-only "Default view".</summary>
+    /// <remarks>True for a provider with no TTY route to run, where <see cref="SessionKindDefaults.ResolveDefaultKind"/> lands on SDK regardless of the toggle.</remarks>
+    public bool IsDefaultKindEffectivelySdk => IsDefaultKindSdk || !HasTtyProvider;
+
     [RelayCommand]
     private void SelectDefaultKindSdk() => SelectedDefaultKind = SessionKind.Sdk;
 
@@ -335,6 +339,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsDefaultKindSdk));
         OnPropertyChanged(nameof(IsDefaultKindTty));
+        OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
     }
 
     /// <summary>
@@ -397,6 +402,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(BaseUrlPlaceholder));
         OnPropertyChanged(nameof(SupportsEnvVars));
         OnPropertyChanged(nameof(HasTtyProvider));
+        OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
 
         // Point the base URL at the newly chosen provider's default port when adding a profile — including
         // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.

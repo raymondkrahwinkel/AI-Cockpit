@@ -332,8 +332,9 @@
 
                     <!-- Default view (AC-138): the reading level a new SDK session under this profile opens with —
                          provider-neutral, since any profile can launch an SDK session, so it sits outside the
-                         Claude-only session-defaults block below. Has no effect on a TTY session, which has no levels. -->
-                    <StackPanel Spacing="6">
+                         Claude-only session-defaults block below. Hidden while Default kind is TTY, which has no
+                         reading levels, the same way the New-session dialog hides its own View row for a TTY session. -->
+                    <StackPanel Spacing="6" IsVisible="{Binding IsDefaultKindEffectivelySdk}">
                         <TextBlock Text="DEFAULT VIEW" FontSize="11" Margin="0,4,0,0"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
