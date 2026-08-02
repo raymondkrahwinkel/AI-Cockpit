@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Sessions.Permissions;
 
-/// <summary>
-/// The outcome of a permission prompt: allow the tool call to proceed (optionally with a
-/// rewritten input) or deny it with a reason. Serialized back to the CLI's
-/// <c>--permission-prompt-tool</c> as the <c>behavior</c>/<c>updatedInput</c>/<c>message</c>
-/// contract (see <see cref="PermissionPromptResponse"/>).
-/// </summary>
+// The outcome of a permission prompt: allow the tool call to proceed (optionally with a
+// rewritten input) or deny it with a reason. Serialized back to the CLI's
+// `--permission-prompt-tool` as the `behavior`/`updatedInput`/`message`
+// contract (see `PermissionPromptResponse`).
 public sealed record PermissionDecision
 {
     private PermissionDecision(bool isAllowed, string? updatedInputJson, string? denyMessage)
@@ -15,21 +13,19 @@ public sealed record PermissionDecision
         DenyMessage = denyMessage;
     }
 
-    /// <summary>True to let the tool run, false to block it.</summary>
+    // True to let the tool run, false to block it.
     public bool IsAllowed { get; }
 
-    /// <summary>
-    /// When allowing, the tool input to run with as a raw JSON object. Null echoes the
-    /// originally proposed input unchanged.
-    /// </summary>
+    // When allowing, the tool input to run with as a raw JSON object. Null echoes the
+    // originally proposed input unchanged.
     public string? UpdatedInputJson { get; }
 
-    /// <summary>When denying, the reason surfaced to Claude as the tool-result error.</summary>
+    // When denying, the reason surfaced to Claude as the tool-result error.
     public string? DenyMessage { get; }
 
-    /// <summary>Allow the call, running the tool with <paramref name="updatedInputJson"/> (or the original input when null).</summary>
+    // Allow the call, running the tool with `updatedInputJson` (or the original input when null).
     public static PermissionDecision Allow(string? updatedInputJson = null) => new(true, updatedInputJson, null);
 
-    /// <summary>Deny the call; <paramref name="message"/> becomes the tool-result error Claude sees.</summary>
+    // Deny the call; `message` becomes the tool-result error Claude sees.
     public static PermissionDecision Deny(string message) => new(false, null, message);
 }

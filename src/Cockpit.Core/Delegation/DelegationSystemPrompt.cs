@@ -1,18 +1,14 @@
 namespace Cockpit.Core.Delegation;
 
-/// <summary>
-/// The instruction handed to a session that can delegate (#67). Tool descriptions tell a model <em>what</em> the
-/// orchestrator tools do; they say nothing about <em>when</em> reaching for them is a good idea. Without that, an
-/// agent that could hand cheap bulk work to a local model simply does it itself — the tools sit there unused.
-/// </summary>
-/// <remarks>
-/// Deliberately points at <c>list_profiles</c> rather than naming the profiles: the profiles and what they are
-/// good for live in the cockpit's own settings and change there, so restating them here would only give the model
-/// a second, staler copy.
-/// </remarks>
+// The instruction handed to a session that can delegate (#67). Tool descriptions tell a model *what* the
+// orchestrator tools do; they say nothing about *when* reaching for them is a good idea. Without that, an
+// agent that could hand cheap bulk work to a local model simply does it itself — the tools sit there unused.
+// Deliberately points at `list_profiles` rather than naming the profiles: the profiles and what they are
+// good for live in the cockpit's own settings and change there, so restating them here would only give the model
+// a second, staler copy.
 public static class DelegationSystemPrompt
 {
-    /// <summary>The default instruction; the operator can replace it per profile.</summary>
+    // The default instruction; the operator can replace it per profile.
     public const string Default =
         "You can hand work to other AI profiles running in this cockpit, through the cockpit-orchestrator tools. " +
         "Call list_profiles to see which profiles accept work and what each one is meant for, then use delegate_task " +

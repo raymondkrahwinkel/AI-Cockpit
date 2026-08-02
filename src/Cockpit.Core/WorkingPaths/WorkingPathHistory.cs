@@ -1,23 +1,19 @@
 namespace Cockpit.Core.WorkingPaths;
 
-/// <summary>
-/// The remembered working directories offered in the New-session dialog (so a project folder you have used
-/// before is one click away instead of retyped): a most-recent-first <see cref="Recent"/> list, auto-capped,
-/// and a user-pinned <see cref="Favorites"/> list. Immutable — the <c>With…</c> helpers return a new instance
-/// with the change applied, and the store persists the result.
-/// </summary>
+// The remembered working directories offered in the New-session dialog (so a project folder you have used
+// before is one click away instead of retyped): a most-recent-first `Recent` list, auto-capped,
+// and a user-pinned `Favorites` list. Immutable — the `With…` helpers return a new instance
+// with the change applied, and the store persists the result.
 public sealed record WorkingPathHistory(IReadOnlyList<string> Recent, IReadOnlyList<string> Favorites)
 {
-    /// <summary>How many recent paths are kept; older ones fall off the end. Favorites are separate and uncapped.</summary>
+    // How many recent paths are kept; older ones fall off the end. Favorites are separate and uncapped.
     public const int MaxRecent = 5;
 
     public static WorkingPathHistory Empty { get; } = new([], []);
 
-    /// <summary>
-    /// Records <paramref name="path"/> as the most-recently-used: moved (or added) to the front, de-duplicated
-    /// case-insensitively against the rest, and the list trimmed to <see cref="MaxRecent"/>. A blank path is
-    /// ignored (returns this unchanged). Favorites are untouched.
-    /// </summary>
+    // Records `path` as the most-recently-used: moved (or added) to the front, de-duplicated
+    // case-insensitively against the rest, and the list trimmed to `MaxRecent`. A blank path is
+    // ignored (returns this unchanged). Favorites are untouched.
     public WorkingPathHistory WithRecent(string? path)
     {
         var trimmed = path?.Trim();
@@ -31,7 +27,7 @@ public sealed record WorkingPathHistory(IReadOnlyList<string> Recent, IReadOnlyL
         return this with { Recent = recent.Take(MaxRecent).ToList() };
     }
 
-    /// <summary>Pins (<paramref name="favorite"/> true) or unpins <paramref name="path"/>. Pinning de-duplicates; a blank path is ignored.</summary>
+    // Pins (`favorite` true) or unpins `path`. Pinning de-duplicates; a blank path is ignored.
     public WorkingPathHistory WithFavorite(string? path, bool favorite)
     {
         var trimmed = path?.Trim();
@@ -49,11 +45,9 @@ public sealed record WorkingPathHistory(IReadOnlyList<string> Recent, IReadOnlyL
         return this with { Favorites = favorites };
     }
 
-    /// <summary>
-    /// Removes <paramref name="path"/> from the remembered directories entirely — dropped from both
-    /// <see cref="Recent"/> and <see cref="Favorites"/> (AC-131), so the New-session quick-pick's ✕ forgets it in one
-    /// go regardless of which list it was in. A blank path is ignored (returns this unchanged).
-    /// </summary>
+    // Removes `path` from the remembered directories entirely — dropped from both
+    // `Recent` and `Favorites` (AC-131), so the New-session quick-pick's ✕ forgets it in one
+    // go regardless of which list it was in. A blank path is ignored (returns this unchanged).
     public WorkingPathHistory WithoutPath(string? path)
     {
         var trimmed = path?.Trim();
@@ -69,7 +63,7 @@ public sealed record WorkingPathHistory(IReadOnlyList<string> Recent, IReadOnlyL
         };
     }
 
-    /// <summary>True when <paramref name="path"/> is currently pinned.</summary>
+    // True when `path` is currently pinned.
     public bool IsFavorite(string? path)
     {
         var trimmed = path?.Trim();

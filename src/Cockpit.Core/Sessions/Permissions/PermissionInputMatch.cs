@@ -3,19 +3,15 @@ using System.Text.Json;
 
 namespace Cockpit.Core.Sessions.Permissions;
 
-/// <summary>
-/// Produces a stable fingerprint for a tool-call input so two inputs that differ only in property
-/// order or insignificant whitespace compare equal. Used to match an exact-scope
-/// <see cref="PermissionRule"/> against a proposed call.
-/// </summary>
+// Produces a stable fingerprint for a tool-call input so two inputs that differ only in property
+// order or insignificant whitespace compare equal. Used to match an exact-scope
+// `PermissionRule` against a proposed call.
 public static class PermissionInputMatch
 {
-    /// <summary>
-    /// Canonicalizes <paramref name="inputJson"/> to a deterministic string: object keys sorted,
-    /// whitespace stripped. Malformed or empty JSON canonicalizes to its trimmed self so a rule can
-    /// still be compared without throwing — an unparseable input simply only matches an identically
-    /// unparseable one.
-    /// </summary>
+    // Canonicalizes `inputJson` to a deterministic string: object keys sorted,
+    // whitespace stripped. Malformed or empty JSON canonicalizes to its trimmed self so a rule can
+    // still be compared without throwing — an unparseable input simply only matches an identically
+    // unparseable one.
     public static string Canonicalize(string inputJson)
     {
         if (string.IsNullOrWhiteSpace(inputJson))

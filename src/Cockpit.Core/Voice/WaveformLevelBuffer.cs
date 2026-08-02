@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Voice;
 
-/// <summary>
-/// A fixed-width, scrolling history of microphone levels for the voice overlay's waveform: each
-/// <see cref="Push"/> shifts the newest level in on the right and drops the oldest on the left, so the
-/// bars read left-to-right as "what the mic heard over the last N frames". Pure and UI-free so the
-/// overlay view model stays a thin binding layer over it.
-/// </summary>
+// A fixed-width, scrolling history of microphone levels for the voice overlay's waveform: each
+// `Push` shifts the newest level in on the right and drops the oldest on the left, so the
+// bars read left-to-right as "what the mic heard over the last N frames". Pure and UI-free so the
+// overlay view model stays a thin binding layer over it.
 public sealed class WaveformLevelBuffer
 {
     private readonly double[] _levels;
@@ -22,7 +20,7 @@ public sealed class WaveformLevelBuffer
 
     public int BarCount => _levels.Length;
 
-    /// <summary>The current levels, oldest first — index 0 is the left edge, the last index the most recent sample.</summary>
+    // The current levels, oldest first — index 0 is the left edge, the last index the most recent sample.
     public IReadOnlyList<double> Levels => _levels;
 
     public void Push(double level)

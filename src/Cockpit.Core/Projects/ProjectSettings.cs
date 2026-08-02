@@ -1,28 +1,24 @@
 namespace Cockpit.Core.Projects;
 
-/// <summary>
-/// The saved projects, under the <c>projects</c> section of <c>cockpit.json</c> (same store pattern as
-/// workspaces, layout and voice). Immutable; the <c>With…</c> helpers return a new instance and the store
-/// persists it.
-/// </summary>
+// The saved projects, under the `projects` section of `cockpit.json` (same store pattern as
+// workspaces, layout and voice). Immutable; the `With…` helpers return a new instance and the store
+// persists it.
 public sealed record ProjectSettings
 {
-    /// <summary>No projects — what an operator who never made one has, and what the cockpit behaves as today.</summary>
+    // No projects — what an operator who never made one has, and what the cockpit behaves as today.
     public static ProjectSettings Empty { get; } = new();
 
-    /// <summary>The projects, in the order the manager and launcher show them.</summary>
+    // The projects, in the order the manager and launcher show them.
     public IReadOnlyList<Project> Projects { get; init; } = [];
 
-    /// <summary>The project <paramref name="projectId"/> names, or null — including for a session that belongs to a project the operator has since deleted.</summary>
+    // The project `projectId` names, or null — including for a session that belongs to a project the operator has since deleted.
     public Project? Find(string? projectId) =>
         string.IsNullOrEmpty(projectId) ? null : Projects.FirstOrDefault(project => project.Id == projectId);
 
-    /// <summary>
-    /// These settings made safe to bind to: nothing without an id or a name, no id twice, and no blank information
-    /// row. Applied on load and before save, so a hand-edited or half-written <c>cockpit.json</c> costs the operator
-    /// an entry rather than the whole list. An entry missing either field cannot be shown or referenced, so keeping
-    /// it only means a blank row nothing can start.
-    /// </summary>
+    // These settings made safe to bind to: nothing without an id or a name, no id twice, and no blank information
+    // row. Applied on load and before save, so a hand-edited or half-written `cockpit.json` costs the operator
+    // an entry rather than the whole list. An entry missing either field cannot be shown or referenced, so keeping
+    // it only means a blank row nothing can start.
     public ProjectSettings Normalized()
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -35,19 +31,16 @@ public sealed record ProjectSettings
         return usable.SequenceEqual(Projects) ? this : this with { Projects = usable };
     }
 
-    /// <summary>
-    /// <paramref name="project"/> with its information rows trimmed onto one line and the empty ones gone — a row the
-    /// operator added and left alone carries nothing, and saving it would put a blank line on the project's card.
-    /// <para>
-    /// Returning the <em>same instance</em> when there is nothing to tidy is what makes the caller's
-    /// <c>SequenceEqual</c> safe, and that is worth stating: a record's generated equality compares
-    /// <see cref="Project.AdditionalInfo"/> with the default comparer, which for a list is reference equality, not
-    /// content. Because this method only ever hands back either the original reference or a new project whose rows
-    /// genuinely differ (the inner <c>SequenceEqual</c> compares <see cref="ProjectInfoField"/> by value), there is no
-    /// third case where two references differ while the content matches. Simplify this to an unconditional
-    /// <c>project with</c> and the caller starts rebuilding the whole list on every load.
-    /// </para>
-    /// </summary>
+    // `project` with its information rows trimmed onto one line and the empty ones gone — a row the
+    // operator added and left alone carries nothing, and saving it would put a blank line on the project's card.
+    //
+    // Returning the *same instance* when there is nothing to tidy is what makes the caller's
+    // `SequenceEqual` safe, and that is worth stating: a record's generated equality compares
+    // `Project.AdditionalInfo` with the default comparer, which for a list is reference equality, not
+    // content. Because this method only ever hands back either the original reference or a new project whose rows
+    // genuinely differ (the inner `SequenceEqual` compares `ProjectInfoField` by value), there is no
+    // third case where two references differ while the content matches. Simplify this to an unconditional
+    // `project with` and the caller starts rebuilding the whole list on every load.
     private static Project _WithTidyInfo(Project project)
     {
         var fields = project.AdditionalInfo
@@ -67,13 +60,11 @@ public sealed record ProjectSettings
         return _TidyLinks(project.PluginFields) is { } links ? tidied with { PluginFields = links } : tidied;
     }
 
-    /// <summary>
-    /// <paramref name="links"/> trimmed and without the entries that name nothing, or null when there was nothing to
-    /// change — null rather than the same content again for the reason <see cref="_WithTidyInfo"/> explains: a record
-    /// compares a dictionary by reference, so handing back a fresh one that says the same thing would rebuild the whole
-    /// project list on every load. A blank key or value is dropped: a plugin field the operator cleared is a link that
-    /// is gone, and writing it as an empty string would leave a key nothing can be linked under.
-    /// </summary>
+    // `links` trimmed and without the entries that name nothing, or null when there was nothing to
+    // change — null rather than the same content again for the reason `_WithTidyInfo` explains: a record
+    // compares a dictionary by reference, so handing back a fresh one that says the same thing would rebuild the whole
+    // project list on every load. A blank key or value is dropped: a plugin field the operator cleared is a link that
+    // is gone, and writing it as an empty string would leave a key nothing can be linked under.
     private static IReadOnlyDictionary<string, string>? _TidyLinks(IReadOnlyDictionary<string, string> links)
     {
         if (links.Count == 0)
@@ -96,15 +87,15 @@ public sealed record ProjectSettings
         return unchanged ? null : usable;
     }
 
-    /// <summary>These settings with <paramref name="project"/> appended.</summary>
+    // These settings with `project` appended.
     public ProjectSettings WithProject(Project project) =>
         this with { Projects = [.. Projects, project] };
 
-    /// <summary>These settings with <paramref name="projectId"/> removed (a no-op when it holds no such project).</summary>
+    // These settings with `projectId` removed (a no-op when it holds no such project).
     public ProjectSettings WithoutProject(string projectId) =>
         this with { Projects = [.. Projects.Where(project => project.Id != projectId)] };
 
-    /// <summary>These settings with <paramref name="project"/> swapped in by id (a no-op when it holds no such project).</summary>
+    // These settings with `project` swapped in by id (a no-op when it holds no such project).
     public ProjectSettings WithUpdated(Project project) =>
         this with { Projects = [.. Projects.Select(existing => existing.Id == project.Id ? project : existing)] };
 }

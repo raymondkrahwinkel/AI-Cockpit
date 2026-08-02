@@ -1,20 +1,20 @@
 namespace Cockpit.Core.Plugins;
 
-/// <summary>What the host should do with a discovered plugin — the pure outcome of <see cref="PluginLoadPolicy.Decide"/>.</summary>
+// What the host should do with a discovered plugin — the pure outcome of `PluginLoadPolicy.Decide`.
 public enum PluginLoadDecision
 {
-    /// <summary>Enabled, hash matches the pinned consent, abstractions major matches — load it.</summary>
+    // Enabled, hash matches the pinned consent, abstractions major matches — load it.
     Load,
 
-    /// <summary>Known but the operator disabled it — skip.</summary>
+    // Known but the operator disabled it — skip.
     Disabled,
 
-    /// <summary>Never seen before, or the assembly hash changed since consent — prompt before loading.</summary>
+    // Never seen before, or the assembly hash changed since consent — prompt before loading.
     NeedsConsent,
 
-    /// <summary>Built against a different Cockpit.Plugins.Abstractions major than the host — refuse with a clear message.</summary>
+    // Built against a different Cockpit.Plugins.Abstractions major than the host — refuse with a clear message.
     AbstractionsMajorMismatch,
 
-    /// <summary>Needs a newer cockpit than this one (its <c>minHostVersion</c>) — refuse rather than load something that will fail where nobody can see it.</summary>
+    // Needs a newer cockpit than this one (its `minHostVersion`) — refuse rather than load something that will fail where nobody can see it.
     HostTooOld,
 }

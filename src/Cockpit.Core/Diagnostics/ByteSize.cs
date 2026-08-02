@@ -2,11 +2,9 @@ using System.Globalization;
 
 namespace Cockpit.Core.Diagnostics;
 
-/// <summary>
-/// Formats a byte count for a human reading the diagnostics panel (AC-58): the unit that keeps the number in the
-/// 1–1024 range, so "680 MB" and "73.6 GB" rather than a wall of digits. Binary units (1024), matching what
-/// Activity Monitor and the status bar already show.
-/// </summary>
+// Formats a byte count for a human reading the diagnostics panel (AC-58): the unit that keeps the number in the
+// 1–1024 range, so "680 MB" and "73.6 GB" rather than a wall of digits. Binary units (1024), matching what
+// Activity Monitor and the status bar already show.
 public static class ByteSize
 {
     private static readonly string[] Units = ["B", "KB", "MB", "GB", "TB"];

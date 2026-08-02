@@ -2,12 +2,10 @@ using System.Globalization;
 
 namespace Cockpit.Core.Diagnostics;
 
-/// <summary>
-/// One line of <c>ps -axo pid=,ppid=,time=,rss=</c> — how macOS's process table is read (#78). Pure, and tested,
-/// because it is the only part of the macOS path this codebase can verify without a Mac: the parsing is where it
-/// would go wrong, and the time format is the trap (<c>MM:SS.ss</c>, or <c>HH:MM:SS</c> once a process has run
-/// for an hour, or <c>D-HH:MM:SS</c> after a day).
-/// </summary>
+// One line of `ps -axo pid=,ppid=,time=,rss=` — how macOS's process table is read (#78). Pure, and tested,
+// because it is the only part of the macOS path this codebase can verify without a Mac: the parsing is where it
+// would go wrong, and the time format is the trap (`MM:SS.ss`, or `HH:MM:SS` once a process has run
+// for an hour, or `D-HH:MM:SS` after a day).
 public static class PsLine
 {
     public static ProcessRow? Parse(string line)
@@ -33,7 +31,7 @@ public static class PsLine
         return new ProcessRow(processId, parentProcessId, cpuTime, residentKilobytes * 1024, name);
     }
 
-    /// <summary>ps writes accumulated CPU time as <c>MM:SS.ss</c>, <c>HH:MM:SS</c> or <c>D-HH:MM:SS</c> depending on how long the process has lived.</summary>
+    // ps writes accumulated CPU time as `MM:SS.ss`, `HH:MM:SS` or `D-HH:MM:SS` depending on how long the process has lived.
     public static TimeSpan? ParseCpuTime(string value)
     {
         var days = 0;

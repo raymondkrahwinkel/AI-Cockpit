@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Diagnostics;
 
-/// <summary>
-/// Adds a process up with everything it spawned (#78). This is the whole reason the meter is worth having: a
-/// session <em>is</em> a <c>claude</c> process, but the CPU an operator wants to see is the build, the test run or
-/// the grep it started. Measuring the parent alone would read 0% at precisely the moment they look.
-/// </summary>
+// Adds a process up with everything it spawned (#78). This is the whole reason the meter is worth having: a
+// session *is* a `claude` process, but the CPU an operator wants to see is the build, the test run or
+// the grep it started. Measuring the parent alone would read 0% at precisely the moment they look.
 public static class ProcessTree
 {
     public static ResourceSample Sum(IReadOnlyList<ProcessRow> rows, int rootProcessId)
