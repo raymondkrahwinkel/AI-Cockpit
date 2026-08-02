@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 
@@ -54,7 +55,15 @@ public class PullRequestRefreshSourceTests
 
         var freshPullRequest = SamplePullRequest with { Title = "Fix the other thing" };
         release.SetResult(new PullRequestFeedResult([freshPullRequest], [], RepositoryMissing: false));
-        await _WaitUntilAsync(() => source.Current.Result.PullRequests.Count > 0 && source.Current.Result.PullRequests[0].Title == freshPullRequest.Title, TimeSpan.FromSeconds(2));
+
+        // Wait for the write to storage as well, not just for Current: the source assigns _current and only then
+        // calls _storage.Set, so a wait on Current alone can return inside that window and read the pre-fetch
+        // snapshot back out — which is what made this test flaky on a loaded runner.
+        await _WaitUntilAsync(
+            () => source.Current.Result.PullRequests.Count > 0
+                  && source.Current.Result.PullRequests[0].Title == freshPullRequest.Title
+                  && storage.Get<PullRequestFeedSnapshot>("refreshSourceSnapshot")?.Result.PullRequests is [{ Title: "Fix the other thing" }, ..],
+            TimeSpan.FromSeconds(2));
 
         var afterFetch = source.Current;
         var persisted = storage.Get<PullRequestFeedSnapshot>("refreshSourceSnapshot");
@@ -338,9 +347,10 @@ public class PullRequestRefreshSourceTests
         return condition();
     }
 
+    /// <summary>Concurrent because a background poll writes here while a test's wait loop reads — a plain dictionary throws or returns garbage on that overlap.</summary>
     private sealed class InMemoryStorage : IPluginStorage
     {
-        private readonly Dictionary<string, object?> _values = [];
+        private readonly ConcurrentDictionary<string, object?> _values = new();
 
         public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? (T?)value : default;
 
