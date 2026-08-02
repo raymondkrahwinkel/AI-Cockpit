@@ -19,6 +19,13 @@ namespace Cockpit.App.Services;
 // them outright.
 internal sealed class AvaloniaDesktopDisplays : IDesktopDisplays, ISingletonService
 {
+    // AC-577, no fast path — deliberately, and here the fast path would be the more expensive mistake. The only
+    // caller is PortalScreenshotCapture, which asks from the capture's own background work, so a CheckAccess()
+    // branch would never be taken in production. It would be taken in a process without a dispatcher loop, and
+    // there `_Read` finds no Application and returns an empty list, which the capture reports as a refusal naming
+    // what is missing — so a missing UI thread would arrive dressed as a considered answer. The trade written
+    // down: this type must not be constructed without a dispatcher loop, or this call hangs rather than fails.
+    // Tests reach the capture through IDesktopDisplays (Cockpit.Infrastructure.Tests has a stub), never here.
     public Task<IReadOnlyList<DesktopDisplay>> EnumerateAsync(CancellationToken cancellationToken = default) =>
         Dispatcher.UIThread.InvokeAsync(_Read).GetTask().WaitAsync(cancellationToken);
 

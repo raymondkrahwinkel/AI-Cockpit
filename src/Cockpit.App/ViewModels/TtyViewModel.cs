@@ -1092,6 +1092,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                             var readings = readUsage(await File.ReadAllTextAsync(statusFile, cancellation));
                             if (readings.Count > 0)
                             {
+                                // AC-577, no fast path — deliberately. This loop lives inside Task.Run, so
+                                // CheckAccess() is false by construction and the branch would exist only for a
+                                // test to take. The price wears a third face here, worth naming: the loop is
+                                // fire-and-forget, so without a dispatcher loop nothing hangs and nothing throws
+                                // — the await simply never returns and the readings stop arriving, in silence.
+                                // Only TtyView calls TrackLimits, which keeps it where a dispatcher exists.
                                 await Dispatcher.UIThread.InvokeAsync(() => ApplyUsage(signals, readings));
                             }
                         }

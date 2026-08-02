@@ -38,7 +38,13 @@ it keeps a one-person project alive.
    a review catch).
 3. **Build clean and test.** `dotnet build` with zero warnings, `dotnet test` green. New behaviour
    comes with tests; UI changes should be checked visually (`--screenshot` renders the main window
-   headless).
+   headless). A test that needs the UI thread goes in `Cockpit.App.ViewTests`, which starts a headless
+   Avalonia application. `Cockpit.Core.Tests` starts none, so `Dispatcher.UIThread` there binds to
+   whichever thread reaches it first: the test either passes while proving nothing or hangs the run
+   with no summary and no failing test. Naming `Avalonia.Threading` in `Cockpit.Core.Tests` is a build
+   error (AC-577). Reaching a dispatcher *indirectly* — calling a `Cockpit.App` type that marshals
+   internally — is not, and no analyzer sees it; CI's `--blame-hang` is what catches that one, five
+   minutes in, by naming the test that stopped.
 4. **Mind the trust boundary.** The cockpit never reads, stores or transmits Claude credentials —
    it only checks that a login exists. Anything that would change that needs an issue first.
 5. **Record it in the changelog.** When the work is finished, add a bullet under `## [Unreleased]`
