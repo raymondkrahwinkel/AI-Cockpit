@@ -71,6 +71,33 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="Margin" Value="0,4,0,0"/>
         </Style>
+
+        <!-- AC-618: a category already in use, offered as a chip under the field — clicking one fills the field
+             exactly as typing it would (SelectCategoryCommand), so there is only one way a category ends up saved.
+             Quiet by default, the same trio Button.toolChip already uses; the accent marks the one matching what
+             is currently in the field, the same "current mode" convention ScreenshotSelectionWindow's own tool
+             chips use. -->
+        <Style Selector="Button.categoryChip">
+            <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.categoryChip:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        </Style>
+        <Style Selector="Button.categoryChip.active">
+            <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="Button.categoryChip.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="TextElement.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
     </Window.Styles>
 
     <!-- Two explicit rows rather than a docked fill: the footer is exactly as tall as it needs to be and the row
@@ -152,6 +179,32 @@
                                        IsVisible="{Binding LogoOrigin.IsLockedHere}"/>
                         </StackPanel>
                     </Grid>
+
+                    <!-- AC-618: category is what the manager's list groups by ("Privé" before "Werk" — the operator's
+                         own ordering, remembered the first time each name is typed). Free text; the chips below are
+                         the categories already in use elsewhere, offered so retyping one is a click instead —
+                         clicking one only ever fills the box (SelectCategoryCommand), there is no second path onto
+                         the saved project and no button that does anything typing itself would not. -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Category"/>
+                        <TextBlock Classes="FieldHint" Text="Where this project shows up in the list. Leave it blank to leave it uncategorized."/>
+                        <TextBox Text="{Binding Category}" PlaceholderText="Work"/>
+                        <ItemsControl ItemsSource="{Binding CategoryChips}" IsVisible="{Binding HasCategoryChips}" Margin="0,6,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectCategoryChipViewModel">
+                                    <Button Classes="categoryChip" Classes.active="{Binding IsActive}"
+                                            Content="{Binding DisplayLabel}"
+                                            Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).SelectCategoryCommand}"
+                                            CommandParameter="{Binding Name}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
 
                     <StackPanel Spacing="2">
                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -327,7 +380,11 @@
                                                  are about what a starting session is given for this row, and off by default (unlike the one
                                                  beside it): opening a file is a bigger step than mentioning it exists, so nothing is read until
                                                  the operator says so. See ProjectResource.SendsContent's own doc comment for the reasoning. -->
+                                            <!-- AC-612: disabled (never just hidden) once IsSecretPath recognises the typed reference — a
+                                                 disabled-but-still-visible control is what tells the operator this row is why the box will
+                                                 not tick, rather than the box quietly doing nothing were it left enabled. -->
                                             <CheckBox Grid.Column="3" IsChecked="{Binding SendsContent}" IsVisible="{Binding ShowsSendsContentOption}"
+                                                      IsEnabled="{Binding !IsSecretPath}"
                                                       Content="Send along" FontSize="11" VerticalAlignment="Center"
                                                       ToolTip.Tip="Ticked, this file's contents are read and sent to the session at start — never for anything sensitive. Unticked (the default), only where it lives is sent. Either way it is a snapshot from when the session starts; an edit made afterward is not seen by a session already running."/>
                                             <Button Grid.Column="4" Classes="Subtle" VerticalAlignment="Center"
@@ -422,8 +479,33 @@
                                         <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsBroken}"
                                                    Foreground="{StaticResource CockpitStatusErrorBrush}"
                                                    Text="This reference could not be found."/>
-                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsMachineBound}"
-                                                   Text="This is an absolute path specific to this machine — it will not travel if the project definition is shared."/>
+                                        <!-- AC-612: a path recognised as likely credential material (see ProjectResourceSecretPathHeuristic's
+                                             own remarks — a heuristic, not a security boundary) — names only the path's own shape, never a
+                                             character of the file's content (Iron Law #8). Same FieldHint/error-red language as the "could
+                                             not be found" hint above, since this is exactly as severe a thing to tell the operator. -->
+                                        <TextBlock Classes="FieldHint" Margin="0"
+                                                   IsVisible="{Binding SecretPathWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                                   Text="{Binding SecretPathWarning}"/>
+                                        <!-- AC-605 criterion 7: every row's scope (repo / your machines / everyone with the instance / only
+                                             this machine), shown as a full sentence rather than a terse ◆/● badge — see
+                                             ProjectResourceRowViewModel.ScopeLabel's own remarks on why this must not read like the
+                                             AC-604 field-ownership badge on the same screen. Bound to ShowsScopeLabel, not a null-check on
+                                             ScopeLabel itself — see that property's own remarks on why a row offering the repo-relative fix
+                                             below hides this instead of repeating the same closing clause twice. -->
+                                        <TextBlock Classes="FieldHint" Margin="0"
+                                                   IsVisible="{Binding ShowsScopeLabel}"
+                                                   Text="{Binding ScopeLabel}"/>
+                                        <!-- AC-605 criterion 5: an absolute path already inside the project folder that never went through
+                                             the picker's own ToStoredReference conversion — recognised, with a one-click fix rather than a
+                                             silent rewrite (see ProjectResourcePathPortability.SuggestRepoRelativeFix's own remarks). -->
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" IsVisible="{Binding HasRepoRelativeFix}">
+                                            <TextBlock Grid.Column="0" Classes="FieldHint" Margin="0"
+                                                       Text="This absolute path lives inside the project folder but was never converted — it will not travel if the project definition is shared."/>
+                                            <Button Grid.Column="1" Content="Make repo-relative"
+                                                    ToolTip.Tip="Rewrites this row's reference to its repo-relative form, in place."
+                                                    Command="{Binding ApplyRepoRelativeFixCommand}"/>
+                                        </Grid>
 
                                         <!-- AC-503: the plugin-resource counterpart to the two hints above — a Memory row whose picked source
                                              can confirm a typed value gets the same visible confirmation/error treatment a broken Reference row

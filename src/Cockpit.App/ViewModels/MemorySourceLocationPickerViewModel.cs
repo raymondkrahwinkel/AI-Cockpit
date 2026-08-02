@@ -70,7 +70,7 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
 
     // Design-time constructor for the Avalonia previewer.
     public MemorySourceLocationPickerViewModel()
-        : this("Depot project — Synvolution", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([])))
+        : this("Depot project — Acme", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([])))
     {
     }
 

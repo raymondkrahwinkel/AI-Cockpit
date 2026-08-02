@@ -285,12 +285,115 @@ public class ProjectDialogViewModelTests
         viewModel.Name = "  Cockpit  ";
         viewModel.Description = "   ";
         viewModel.BehaviorPrompt = string.Empty;
+        viewModel.Category = "   ";
 
         var project = viewModel.ToProject();
 
         Assert.Equal("Cockpit", project.Name);
         Assert.Null(project.Description);
         Assert.Null(project.BehaviorPrompt);
+        Assert.Null(project.Category);
+    }
+
+    // AC-618: category — a plain, never-claimed field on the editor.
+
+    [Fact]
+    public async Task CreateAsync_ExistingProjectWithACategory_OpensWithItFilledIn()
+    {
+        var project = Project.Create("Cockpit") with { Category = "Werk" };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+
+        Assert.Equal("Werk", viewModel.Category);
+    }
+
+    [Fact]
+    public async Task ToProject_ANewCategory_IsTrimmedAndSaved()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.Name = "Cockpit";
+        viewModel.Category = "  Werk  ";
+
+        Assert.Equal("Werk", viewModel.ToProject().Category);
+    }
+
+    /// <summary>
+    /// Category is never one of the six claimable <c>HostProjectField</c>s (AC-604) — a shared project's own
+    /// definition never gets a say in what this operator files it under, so unlike Name/Description above there is
+    /// no origin badge to gate this and no <c>_Carry</c> path that could silently keep an edit from landing.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_CategoryIsNeverCarriedFromTheOriginalProject_EvenWhenOtherFieldsAreClaimed()
+    {
+        var project = Project.Create("Cockpit") with { Name = "Cockpit", Category = "Werk" };
+        var ownership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Name] = new ProjectFieldOwnership("Depot — Work"),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), fieldOwnership: ownership);
+
+        viewModel.Category = "Privé";
+
+        Assert.Equal("Privé", viewModel.ToProject().Category);
+    }
+
+    // AC-618: chips under the Category field — the known categories the host (SessionDialogService) hands
+    // CreateAsync, offered as a click instead of retyping.
+
+    [Fact]
+    public async Task CreateAsync_NoKnownCategories_ShowsNoChips()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+
+        Assert.Empty(viewModel.CategoryChips);
+        Assert.False(viewModel.HasCategoryChips);
+    }
+
+    [Fact]
+    public async Task CreateAsync_KnownCategories_BecomeChips_WithTheCurrentOneActive()
+    {
+        var project = Project.Create("Cockpit") with { Category = "Werk" };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore(), Catalog(), knownCategories: ["Privé", "Werk"]);
+
+        Assert.True(viewModel.HasCategoryChips);
+        Assert.Equal(["Privé", "Werk"], viewModel.CategoryChips.Select(chip => chip.Name));
+        Assert.False(viewModel.CategoryChips.Single(chip => chip.Name == "Privé").IsActive);
+        Assert.True(viewModel.CategoryChips.Single(chip => chip.Name == "Werk").IsActive);
+    }
+
+    /// <summary>AC-372: the same category typed with different casing must still read as "the current one" — never <see cref="StringComparison.CurrentCulture"/>, which a Turkish locale would break on exactly this letter.</summary>
+    [Fact]
+    public async Task CreateAsync_CategoryMatchingAChip_CaseInsensitively_MarksThatChipActive()
+    {
+        var project = Project.Create("Cockpit") with { Category = "WERK" };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore(), Catalog(), knownCategories: ["Werk"]);
+
+        Assert.True(viewModel.CategoryChips.Single().IsActive);
+    }
+
+    [Fact]
+    public async Task SelectCategoryCommand_FillsTheFieldAndMarksThatChipActive()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), Catalog(), knownCategories: ["Privé", "Werk"]);
+
+        viewModel.SelectCategoryCommand.Execute("Werk");
+
+        Assert.Equal("Werk", viewModel.Category);
+        Assert.True(viewModel.CategoryChips.Single(chip => chip.Name == "Werk").IsActive);
+        Assert.False(viewModel.CategoryChips.Single(chip => chip.Name == "Privé").IsActive);
+    }
+
+    [Fact]
+    public async Task TypingACategoryMatchingAChip_CaseInsensitively_MarksThatChipActive()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), Catalog(), knownCategories: ["Werk"]);
+
+        viewModel.Category = "werk";
+
+        Assert.True(viewModel.CategoryChips.Single().IsActive);
     }
 
     [Fact]

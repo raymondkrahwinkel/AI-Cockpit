@@ -70,6 +70,17 @@ internal static class DepotMemorySource
         IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost? host = null) =>
         BuildRegistrationPairs(connections, host).Select(pair => pair.Registration).ToList();
 
+    // One `ISharedProjectSource` per connection (AC-245), keyed under the same scheme
+    // `BuildRegistrationPairs` would give that connection's own memory source — so a
+    // `SharedProject.Id` this returns is exactly the `MemoryRef` a project would carry once bound
+    // to it, and `Ui.DepotSettingsControl` can sync both registrations by the same key when a
+    // connection is added, renamed or removed.
+    public static IReadOnlyList<ISharedProjectSource> BuildSharedProjectSources(
+        IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost host) =>
+        BuildRegistrationPairs(connections, host)
+            .Select(pair => (ISharedProjectSource)new DepotSharedProjectSource(pair.Connection, pair.Registration.Scheme, host))
+            .ToList();
+
     // AC-499: Title keeps naming the connection ("Depot project — Wispslate") even though the picker's own dropdown
     // no longer shows it once FamilyKey groups this registration under "Depot" — the instance dropdown reads
     // InstanceTitle instead (ProjectDialogViewModel.CreateAsync). Title still has a reader that never sees
@@ -207,6 +218,26 @@ internal static class DepotMemorySource
         var name = project.Name is { Length: > 0 } value ? value : project.Slug ?? string.Empty;
         return project.Kind is { Length: > 0 } kind ? $"{name} · {kind}" : name;
     }
+
+    // AC-245: `list_projects`' own parsed rows (slug/name/role/kind), for `DepotSharedProjectSource`
+    // — reuses `_TryParseProjects` rather than a second parser for the same response shape.
+    internal static bool TryParseProjects(string json, out IReadOnlyList<ListedProject> projects, out string? error)
+    {
+        if (!_TryParseProjects(json, out var parsed, out error))
+        {
+            projects = [];
+            return false;
+        }
+
+        projects = parsed
+            .Where(project => !string.IsNullOrWhiteSpace(project.Slug))
+            .Select(project => new ListedProject(project.Slug!, project.Name, project.Role, project.Kind))
+            .ToList();
+        return true;
+    }
+
+    // One `list_projects` row, the fields `DepotSharedProjectSource` needs — see `TryParseProjects`.
+    internal readonly record struct ListedProject(string Slug, string? Name, string? Role, string? Kind);
 
     private static readonly JsonSerializerOptions _SerializerOptions = new(JsonSerializerDefaults.Web);
 

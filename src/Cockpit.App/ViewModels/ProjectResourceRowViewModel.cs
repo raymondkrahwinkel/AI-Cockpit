@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
@@ -31,6 +32,7 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
     [NotifyPropertyChangedFor(nameof(IsCheckFailed))]
+    [NotifyPropertyChangedFor(nameof(SecretPathWarning))]
     private ProjectResourceRole _role;
 
     [ObservableProperty]
@@ -38,6 +40,10 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
     [NotifyPropertyChangedFor(nameof(IsCheckFailed))]
+    [NotifyPropertyChangedFor(nameof(IsSecretPath))]
+    [NotifyPropertyChangedFor(nameof(SecretPathWarning))]
+    [NotifyPropertyChangedFor(nameof(ShowsScopeLabel))]
+    [NotifyPropertyChangedFor(nameof(HasRepoRelativeFix))]
     private string _reference;
 
     [ObservableProperty]
@@ -117,12 +123,27 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isBroken;
 
-    // Whether this reference names an absolute path outside the project's own folder (AC-485) — a reference that
-    // means nothing on a machine that has this project somewhere else, or does not have it at all. Set from
-    // outside the same way `IsBroken` is (see `Cockpit.Core.Projects.ProjectResourcePathPortability`),
-    // since judging it needs `SourceDirectory`, which this row does not itself know.
+    // How far this reference travels (AC-605 criteria 6, 7) — set from outside, by
+    // `ProjectDialogViewModel`, from `Cockpit.Core.Projects.ProjectResourcePathPortability.ClassifyScope`.
+    // Renamed from the old `IsMachineBound` bool (AC-605 criterion 6): a property that only ever answered
+    // "machine-bound or not" could not tell an anchor-relative reference (travels to any machine the operator
+    // opens the project on) apart from a repo-relative one (travels with the repo) — both simply read as "not
+    // machine-bound". Null for a row this was never judged for (a brand-new row, a blank reference).
     [ObservableProperty]
-    private bool _isMachineBound;
+    [NotifyPropertyChangedFor(nameof(ScopeLabel))]
+    [NotifyPropertyChangedFor(nameof(ShowsScopeLabel))]
+    private ProjectResourceScope? _scope;
+
+    // The repo-relative form this row's `Reference` should have been saved as, when it is a fully
+    // qualified path that already lives inside the project's own folder but was never actually converted (AC-605
+    // criterion 5) — hand-typed, or written by hand into `cockpit.json`. Set from outside by
+    // `ProjectDialogViewModel` from `Cockpit.Core.Projects.ProjectResourcePathPortability.SuggestRepoRelativeFix`.
+    // Null when there is nothing to fix, which gates `HasRepoRelativeFix` and the editor's own
+    // remediation action.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRepoRelativeFix))]
+    [NotifyPropertyChangedFor(nameof(ShowsScopeLabel))]
+    private string? _repoRelativeFix;
 
     // What a Memory row's own registered source found about the typed value (AC-503), or null when nothing is
     // known yet — a brand-new row, a row whose source has no `MemorySourceChoice.CheckReachability`
@@ -187,7 +208,12 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         _reference = reference;
         _label = label;
         _reachesSessions = reachesSessions;
-        _sendsContent = sendsContent;
+        // AC-612: a row loaded already ticked for a secret-shaped reference (a hand-edited cockpit.json, or one
+        // saved before this ticket existed) must never arrive checked — see OnReferenceChanged's own remarks for
+        // the live-edit half of this, and ProjectResource.SendsContent's own getter for the belt this is the
+        // braces to (the domain model enforces it too, but a checkbox that reads "on" while doing nothing is
+        // exactly the silent-field failure this ticket exists to rule out).
+        _sendsContent = sendsContent && !ProjectResourceSecretPathHeuristic.IsLikelySecretPath(reference);
     }
 
     // Swaps in a freshly rebuilt family-instances dictionary (AC-523) — called by
@@ -290,8 +316,37 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         }
     }
 
-    // AC-503: a Reachability answer belongs to a specific typed value — an edit invalidates it the instant it happens, before any debounced re-check can even start.
-    partial void OnReferenceChanged(string value) => _ResetReachability();
+    // AC-503: a Reachability answer belongs to a specific typed value — an edit invalidates it the instant it
+    // happens, before any debounced re-check can even start.
+    //
+    // AC-612: also the live half of the secret-path guard the constructor applies at load — `IsSecretPath`
+    // is a pure, synchronous computation (no debounce, no async diagnostics pass to wait for; see its own remarks
+    // on why), so the instant a typed reference starts looking like credential material, "Send along" is switched
+    // off right here, in front of the operator, rather than silently doing nothing the next time this row is saved.
+    partial void OnReferenceChanged(string value)
+    {
+        _ResetReachability();
+
+        if (IsSecretPath)
+        {
+            SendsContent = false;
+        }
+    }
+
+    // AC-612: the belt to `OnReferenceChanged`'s braces — that method catches the tick the instant the
+    // reference starts looking secret, but says nothing about the tick being set directly while the reference
+    // already does (nothing in this class currently does that outside a test, but the disabled checkbox binding
+    // alone is a UI-only guard: it stops a click, not an assignment). Without this, the checkbox could end up
+    // showing checked-but-disabled — visibly wrong, exactly the silent-field failure this ticket exists to rule
+    // out — for however long it took the next reference edit or a save round-trip through
+    // `ProjectResource.SendsContent`'s own getter to correct it.
+    partial void OnSendsContentChanged(bool value)
+    {
+        if (value && IsSecretPath)
+        {
+            SendsContent = false;
+        }
+    }
 
     // AC-503: a Reachability answer belongs to a specific source — picking a different one (or Folder) invalidates
     // whatever the previous source found. AC-499: also resets the instance axis to the newly picked family's own
@@ -472,6 +527,88 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
 
     // Whether this row has neither a reference nor a label — the same "untouched" shape `ProjectInfoFieldViewModel` drops on save.
     public bool IsBlank => string.IsNullOrWhiteSpace(Reference) && string.IsNullOrWhiteSpace(Label);
+
+    // The sentence shown under this row for its `Scope` (AC-605 criterion 7) — null (hidden) for a row
+    // with no scope known yet. Deliberately full sentences rather than a terse ◆/● badge: AC-604 already put a
+    // two-glyph ownership badge next to a project field's own `Origin`, and a second badge language reading
+    // the same way on the same screen would tell the operator nothing about which question either one answers. The
+    // `ProjectResourceScope.Machine` wording is unchanged from the pre-AC-605 hint on purpose — the one
+    // case this scene's own render already showed (see `Screenshotter._ProjectEditorWithResources`).
+    //
+    // AC-605 review round (Raymond): `ProjectResourceScope.Home`'s sentence used to lead with "your
+    // home folder — travels to any machine *you* open this project on", the AC-482 framing this ticket
+    // reverses. This is the one place an operator can see whether a row leaves the machine at all — reading that
+    // sentence, a `~/...` row looked like it stayed put, when criterion 3 already made it travel in
+    // `.cockpit/project.json` to everyone the project is shared with. Rewritten so "shared" is the sentence's
+    // own point, not an implication left for the operator to work out.
+    public string? ScopeLabel => Scope switch
+    {
+        ProjectResourceScope.Repo => "Travels with the repo.",
+        ProjectResourceScope.Home => "Anchored to a home folder — travels to everyone this project is shared with, resolved against whoever opens it.",
+        ProjectResourceScope.Instance => "Resolved through its plugin's own connection — the same reference works for anyone with access to it.",
+        ProjectResourceScope.Machine => "This is an absolute path specific to this machine — it will not travel if the project definition is shared.",
+        _ => null,
+    };
+
+    // Whether `ScopeLabel` is actually shown (AC-605 review round) — hidden once
+    // `HasRepoRelativeFix` is true, even though `Scope` is still `ProjectResourceScope.Machine`
+    // in that state: the fix banner's own sentence already says this path will not travel and, unlike the plain
+    // scope sentence, also offers the remedy — showing both repeated the same closing clause ("it will not travel
+    // if the project definition is shared") twice in a row for no benefit. Found rendering the AC-605 scope-scene:
+    // with both shown, a row with a fix available cost two lines' worth of near-identical text where one said
+    // everything the other did and more.
+    //
+    // AC-612: hidden the same way once `IsSecretPath` is true — `SecretPathWarning` is the
+    // more specific, more urgent thing to say about this row, and a plain "travels to everyone" or "stays on this
+    // machine" sentence sitting next to it would read as a second, competing answer to "does this leave the
+    // machine" rather than as a detail. One row, one primary explanation (the same reasoning that already governs
+    // `HasRepoRelativeFix` above).
+    public bool ShowsScopeLabel => ScopeLabel is not null && !HasRepoRelativeFix && !IsSecretPath;
+
+    // Whether `RepoRelativeFix` has something to offer (AC-605 criterion 5) — gates the editor's own
+    // "make repo-relative" action.
+    //
+    // AC-612: also false whenever `IsSecretPath` is true, even if `RepoRelativeFix` itself
+    // is not null — Raymond's decision explicitly rules out building any escape from the secret-path gate, and an
+    // unguarded button here would quietly be one: repo-relative is a shape `ProjectResourceSecretPathHeuristic`
+    // never evaluates at all (see its own class remarks on scope), so clicking "Make repo-relative" on a row like
+    // `SourceDirectory/.ssh/id_rsa` would rewrite it to `.ssh/id_rsa` and walk it straight out of every
+    // check this ticket adds — the exact "toch delen"-escape the ticket says not to build, just reached through a
+    // button that already existed for an unrelated reason.
+    public bool HasRepoRelativeFix => RepoRelativeFix is not null && !IsSecretPath;
+
+    // Whether `Reference` resolves to a location `ProjectResourceSecretPathHeuristic`
+    // recognises as likely credential material (AC-612). A pure, synchronous computation over `Reference`
+    // alone — no I/O, no debounce, unlike `Scope`/`IsBroken`/`RepoRelativeFix`,
+    // which `ProjectDialogViewModel` computes off the UI thread because they cost real disk access.
+    // This costs nothing to compute, so it is computed right here instead: the alternative (routing it through that
+    // same async pass) would mean "Send along" stays checked, and no warning shows, for up to that pass's own
+    // 400 ms quiet period after every keystroke — a window Raymond's "never send it" decision has no room for.
+    public bool IsSecretPath => ProjectResourceSecretPathHeuristic.IsLikelySecretPath(Reference);
+
+    // The sentence shown for a row `IsSecretPath` recognises (AC-612) — null (hidden) otherwise. Names
+    // only the path's own shape, never a character of what the file actually holds (Iron Law #8: this heuristic
+    // never reads the file at all, so it has no content to name even by accident). Sharper when
+    // `ShowsSendsContentOption` is offered at all (an Instructions row): that is the one role where a
+    // tick away from this row's content going out, so it is the one role whose sentence says so.
+    public string? SecretPathWarning => !IsSecretPath
+        ? null
+        : Role == ProjectResourceRole.Instructions
+            ? "This path looks like it holds credentials — its content will never be sent to a session, and this row will not be included if the project definition is shared."
+            : "This path looks like it holds credentials — this row will not be included if the project definition is shared.";
+
+    // Applies `RepoRelativeFix` in place (AC-605 criterion 5) — the one path that ever rewrites
+    // `Reference` for an absolute-but-already-inside-the-folder row: an explicit action the operator
+    // took, never automatic (see `Cockpit.Core.Projects.ProjectResourcePathPortability`'s own remarks
+    // on why only a picked path is rewritten without being asked).
+    [RelayCommand]
+    private void ApplyRepoRelativeFix()
+    {
+        if (RepoRelativeFix is { } fix)
+        {
+            Reference = fix;
+        }
+    }
 
     // This row as the domain model that is actually saved: the scheme folded into the reference when a Memory row
     // has a source other than Folder picked (AC-166) — the same fold `ProjectDialogViewModel._ToMemoryRef`

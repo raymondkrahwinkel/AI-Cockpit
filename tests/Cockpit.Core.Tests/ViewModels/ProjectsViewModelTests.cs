@@ -1,8 +1,10 @@
 using NSubstitute;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -206,5 +208,470 @@ public class ProjectsViewModelTests
         await viewModel.LoadAsync();
 
         Assert.Equal("Depot", viewModel.SelectedProject?.Name);
+    }
+
+    // AC-245: the shared-project catalog — grouping, filtering an already-bound or hidden project out, one
+    // source's failure not costing the others, and the AC-604 ownership claim this consumes it through.
+
+    private static (ProjectsViewModel ViewModel, IProjectOwnershipRegistry Ownership) BuildWithSharedSources(
+        IReadOnlyList<ISharedProjectSource> sources, params Project[] saved) =>
+        BuildWithSharedSources(sources, dialogs: null, out _, saved);
+
+    private static (ProjectsViewModel ViewModel, IProjectOwnershipRegistry Ownership) BuildWithSharedSources(
+        IReadOnlyList<ISharedProjectSource> sources, ISessionDialogService? dialogs, out IProjectStore store, params Project[] saved)
+    {
+        store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = saved });
+
+        var ownership = new ProjectOwnershipRegistry();
+        var registry = new _FakeSharedProjectSourceRegistry(sources);
+        var viewModel = new ProjectsViewModel(store, dialogs, ownership: ownership, sharedSources: registry);
+        return (viewModel, ownership);
+    }
+
+    private static (ProjectsViewModel ViewModel, IProjectOwnershipRegistry Ownership) BuildWithSharedSourcesAndHidden(
+        IReadOnlyList<ISharedProjectSource> sources, IReadOnlyList<string> hiddenIds)
+    {
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { HiddenSharedProjectIds = hiddenIds });
+
+        var ownership = new ProjectOwnershipRegistry();
+        var registry = new _FakeSharedProjectSourceRegistry(sources);
+        var viewModel = new ProjectsViewModel(store, dialogs: null, ownership: ownership, sharedSources: registry);
+        return (viewModel, ownership);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_PublishesOneGroupPerSource()
+    {
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One"),
+            new SharedProject("depot:two", "Two"),
+        ]));
+        var (viewModel, _) = BuildWithSharedSources([source]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.Equal("Depot — Work", group.SourceName);
+        Assert.Equal(["One", "Two"], group.Projects.Select(project => project.Name));
+        Assert.True(viewModel.HasSharedProjects);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ExcludesAProjectAlreadyBoundToALocalProject()
+    {
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One"),
+            new SharedProject("depot:two", "Two"),
+        ]));
+        var (viewModel, _) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.Equal(["Two"], group.Projects.Select(project => project.Name));
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ExcludesAProjectHiddenOnThisMachine()
+    {
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One"),
+            new SharedProject("depot:two", "Two"),
+        ]));
+        var (viewModel, _) = BuildWithSharedSourcesAndHidden([source], ["depot:one"]);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.Equal(["Two"], group.Projects.Select(project => project.Name));
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_EmptySuccessfulGroup_IsLeftOutEntirely()
+    {
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([]));
+        var (viewModel, _) = BuildWithSharedSources([source]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        Assert.Empty(viewModel.SharedProjectGroups);
+        Assert.False(viewModel.HasSharedProjects);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_OneSourceFailing_LeavesTheOthersIntact()
+    {
+        var broken = new _FakeSharedProjectSource("Depot — Broken", SharedProjectListResult.Failed("not signed in"));
+        var healthy = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, _) = BuildWithSharedSources([broken, healthy]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        Assert.Equal(2, viewModel.SharedProjectGroups.Count);
+        var brokenGroup = viewModel.SharedProjectGroups.Single(group => group.SourceName == "Depot — Broken");
+        Assert.True(brokenGroup.HasError);
+        Assert.Equal("not signed in", brokenGroup.Error);
+        Assert.Empty(brokenGroup.Projects);
+
+        var healthyGroup = viewModel.SharedProjectGroups.Single(group => group.SourceName == "Depot — Work");
+        Assert.False(healthyGroup.HasError);
+        Assert.Equal(["One"], healthyGroup.Projects.Select(project => project.Name));
+    }
+
+    /// <summary>
+    /// Adversarial: a source that throws instead of reporting a failure through <see cref="SharedProjectListResult.Failed"/>
+    /// as its own contract asks (a bug in a third-party plugin, say) must still degrade to a named failure rather
+    /// than crashing the whole workspace load.
+    /// </summary>
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ASourceThatThrows_DegradesToAFailedGroup()
+    {
+        var throwing = new _FakeSharedProjectSource("Depot — Buggy", exception: new InvalidOperationException("boom"));
+        var (viewModel, _) = BuildWithSharedSources([throwing]);
+
+        await viewModel.LoadSharedProjectsAsync();
+
+        var group = Assert.Single(viewModel.SharedProjectGroups);
+        Assert.True(group.HasError);
+        Assert.Contains("boom", group.Error);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ASourceThatNeverCompletes_TimesOutRatherThanHangingForever()
+    {
+        ProjectsViewModel.SharedProjectSourceTimeout = TimeSpan.FromMilliseconds(20);
+        try
+        {
+            var hanging = new _FakeSharedProjectSource("Depot — Slow", neverCompletes: true);
+            var (viewModel, _) = BuildWithSharedSources([hanging]);
+
+            await viewModel.LoadSharedProjectsAsync();
+
+            var group = Assert.Single(viewModel.SharedProjectGroups);
+            Assert.True(group.HasError);
+        }
+        finally
+        {
+            ProjectsViewModel.SharedProjectSourceTimeout = TimeSpan.FromSeconds(10);
+        }
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ClaimsOwnershipForALocalProjectAlreadyBoundToASharedOne()
+    {
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, ownership) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var resolved = ownership.Resolve(bound.Id);
+        Assert.NotNull(resolved);
+        Assert.Equal("Depot — Work", resolved![HostProjectField.Name]?.SourceName);
+        // A claimed field is locked host-side today regardless of what IsEditable says (no write-back yet, AC-247)
+        // — this reconciliation must not claim editability it cannot honour.
+        Assert.False(resolved[HostProjectField.Name]?.IsEditable);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_NoUnboundProjectOnAnySource_ClaimsNothing()
+    {
+        var unbound = Project.Create("Cockpit");
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, ownership) = BuildWithSharedSources([source], unbound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        Assert.Null(ownership.Resolve(unbound.Id));
+    }
+
+    [Fact]
+    public async Task LoadAsync_DoesNotAwaitTheSharedProjectsLoad()
+    {
+        // LoadAsync is awaited by SessionDialogService.ShowProjectsDialogAsync before the workspace window is even
+        // constructed — a source that never answers must not hold that open forever.
+        var hanging = new _FakeSharedProjectSource("Depot — Slow", neverCompletes: true);
+        var (viewModel, _) = BuildWithSharedSources([hanging]);
+
+        var loadTask = viewModel.LoadAsync();
+        var completed = await Task.WhenAny(loadTask, Task.Delay(TimeSpan.FromSeconds(2)));
+
+        Assert.Same(loadTask, completed);
+    }
+
+    // AC-246: the "Finish setting up…" bind step. FinishSettingUpAsync itself never talks to Depot — it only finds
+    // the right ISharedProjectSource by SharedProject.Id's own scheme prefix and hands off to ISessionDialogService,
+    // so these tests fake the dialog rather than the plugin read (that is DepotSharedProjectSourcePrepareBindingTests'
+    // and SharedProjectBindingDialogViewModelTests' job).
+
+    [Fact]
+    public async Task FinishSettingUpAsync_TheDialogReturnsAProject_PersistsItAndReloadsSharedProjects()
+    {
+        var shared = new SharedProject("depot:one", "One");
+        var source = new _FakeSharedProjectSource("depot", SharedProjectListResult.Success([shared]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var bound = Project.Create("One") with { MemoryRef = "depot:one", DefaultProfileLabel = "Zyra" };
+        dialogs.ShowSharedProjectBindingDialogAsync(shared, "depot", source).Returns(bound);
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+        Assert.Single(viewModel.SharedProjectGroups.Single().Projects); // the row is there before binding
+
+        await viewModel.FinishSettingUpCommand.ExecuteAsync(shared);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<ProjectSettings>(settings => settings.Projects.Any(project => project.Id == bound.Id)),
+            Arg.Any<CancellationToken>());
+        // Bound now — boundIds picks up its own Memory row on the very next reload this call already triggered,
+        // so the row must not still be sitting under "Shared via …" for the operator to bind a second time by
+        // mistake ("dezelfde binding twee keer koppelen", AC-246 harness).
+        Assert.Empty(viewModel.SharedProjectGroups);
+    }
+
+    [Fact]
+    public async Task FinishSettingUpAsync_TheOperatorCancels_WritesNothing()
+    {
+        var shared = new SharedProject("depot:one", "One");
+        var source = new _FakeSharedProjectSource("depot", SharedProjectListResult.Success([shared]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowSharedProjectBindingDialogAsync(shared, "depot", source).Returns((Project?)null);
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        await viewModel.FinishSettingUpCommand.ExecuteAsync(shared);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
+        Assert.Single(viewModel.SharedProjectGroups.Single().Projects); // still there, unbound
+    }
+
+    [Fact]
+    public async Task FinishSettingUpAsync_NoMatchingSourceRegisteredAnyMore_DoesNothingRatherThanThrowing()
+    {
+        // "koppelen terwijl de Depot-verbinding wegvalt" (AC-246 harness): the connection was removed between the
+        // list rendering and the click — SharedProjectGroups can still show a stale row from before that reload.
+        var shared = new SharedProject("depot:one", "One");
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var (viewModel, _) = BuildWithSharedSources([], dialogs, out var store);
+        await viewModel.LoadAsync();
+
+        await viewModel.FinishSettingUpCommand.ExecuteAsync(shared);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
+        await dialogs.DidNotReceive().ShowSharedProjectBindingDialogAsync(Arg.Any<SharedProject>(), Arg.Any<string>(), Arg.Any<ISharedProjectSource>());
+    }
+
+    // AC-618: the category groups the list actually renders, and the per-card origin badge that replaces AC-245's
+    // separate "On this machine" heading.
+
+    [Fact]
+    public async Task ProjectCategoryGroups_NoProjectHasACategory_IsOneHeaderlessGroupWithEveryProject()
+    {
+        var (viewModel, _, _) = Build(Project.Create("Cockpit"), Project.Create("Depot"));
+
+        await viewModel.LoadAsync();
+
+        var group = Assert.Single(viewModel.ProjectCategoryGroups);
+        Assert.False(group.HasHeader);
+        Assert.Null(group.CategoryName);
+        Assert.Equal(["Cockpit", "Depot"], group.Cards.Select(card => card.Project.Name));
+    }
+
+    [Fact]
+    public async Task ProjectCategoryGroups_GroupsByCategory_InCategoryOrderNotAlphabetical()
+    {
+        var work = Project.Create("Cockpit") with { Category = "Werk" };
+        var personal = Project.Create("Home lab") with { Category = "Privé" };
+        var plain = Project.Create("Scratch");
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new ProjectSettings { Projects = [work, personal, plain], CategoryOrder = ["Werk", "Privé"] });
+        var viewModel = new ProjectsViewModel(store, dialogs: null);
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal(["Werk", "Privé", "Uncategorized"], viewModel.ProjectCategoryGroups.Select(group => group.CategoryName));
+        Assert.Equal(["Cockpit"], viewModel.ProjectCategoryGroups[0].Cards.Select(card => card.Project.Name));
+        Assert.Equal(["Home lab"], viewModel.ProjectCategoryGroups[1].Cards.Select(card => card.Project.Name));
+        Assert.Equal(["Scratch"], viewModel.ProjectCategoryGroups[2].Cards.Select(card => card.Project.Name));
+        Assert.True(viewModel.ProjectCategoryGroups[2].HasHeader);
+    }
+
+    [Fact]
+    public async Task ProjectCategoryGroups_MatchesCategoryCaseInsensitively()
+    {
+        var lower = Project.Create("A") with { Category = "werk" };
+        var upper = Project.Create("B") with { Category = "WERK" };
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new ProjectSettings { Projects = [lower, upper], CategoryOrder = ["Werk"] });
+        var viewModel = new ProjectsViewModel(store, dialogs: null);
+
+        await viewModel.LoadAsync();
+
+        var group = viewModel.ProjectCategoryGroups.Single(g => g.CategoryName == "Werk");
+        Assert.Equal(["A", "B"], group.Cards.Select(card => card.Project.Name));
+    }
+
+    [Fact]
+    public async Task ProjectCategoryGroups_UncategorizedGroup_NeverDisappearsEvenWhenEmpty()
+    {
+        var work = Project.Create("Cockpit") with { Category = "Werk" };
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new ProjectSettings { Projects = [work], CategoryOrder = ["Werk"] });
+        var viewModel = new ProjectsViewModel(store, dialogs: null);
+
+        await viewModel.LoadAsync();
+
+        var uncategorized = viewModel.ProjectCategoryGroups.Last();
+        Assert.Equal("Uncategorized", uncategorized.CategoryName);
+        Assert.Empty(uncategorized.Cards);
+    }
+
+    /// <summary>
+    /// Reproduces the ordering hazard directly: <c>_PersistAsync</c> assigns the settings it was handed, not the
+    /// normalized settings <c>IProjectStore.SaveAsync</c> actually wrote — a category typed for the very first time
+    /// on this save has no <c>CategoryOrder</c> entry yet in the in-memory <c>_settings</c>. The group must still
+    /// show (reading a locally normalized view rather than trusting <c>_settings.CategoryOrder</c> verbatim) —
+    /// otherwise the project would render in neither the new category's group nor "Uncategorized".
+    /// </summary>
+    [Fact]
+    public async Task ProjectCategoryGroups_ANewlyTypedCategory_ShowsImmediatelyEvenBeforeCategoryOrderCatchesUp()
+    {
+        var (viewModel, store, dialogs) = Build();
+        var created = Project.Create("Cockpit") with { Category = "Werk" };
+        dialogs.ShowProjectDialogAsync(null).Returns(created);
+        await viewModel.LoadAsync();
+
+        await viewModel.AddProjectCommand.ExecuteAsync(null);
+
+        var group = viewModel.ProjectCategoryGroups.Single(g => g.CategoryName == "Werk");
+        Assert.Equal(["Cockpit"], group.Cards.Select(card => card.Project.Name));
+    }
+
+    [Fact]
+    public async Task ProjectCardViewModel_UnclaimedProject_ShowsTheLocalBadge()
+    {
+        var (viewModel, _, _) = Build(Project.Create("Cockpit"));
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal("● This machine", Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards).OriginBadge);
+    }
+
+    [Fact]
+    public async Task ProjectCardViewModel_AProjectBoundToASharedSource_ShowsItsConnectionBadge()
+    {
+        // The claim itself only happens inside the background LoadSharedProjectsAsync call (_ClaimBoundProjects) —
+        // this also proves that call's own AC-618 refresh actually reaches ProjectCategoryGroups, not only
+        // SharedProjectGroups, once it resolves.
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, _) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var card = Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards);
+        Assert.Equal("◆ Depot — Work", card.OriginBadge);
+    }
+
+    /// <summary>Meet table edge case: editing the last project in a category out of it removes that category's group entirely — it does not linger as an empty one the way "Uncategorized" does.</summary>
+    [Fact]
+    public async Task ProjectCategoryGroups_TheLastProjectInACategory_EditedToDropIt_RemovesTheGroup()
+    {
+        var project = Project.Create("Cockpit") with { Category = "Werk" };
+        var (viewModel, _, dialogs) = Build(project);
+        await viewModel.LoadAsync();
+        viewModel.SelectedProject = viewModel.Projects[0];
+        dialogs.ShowProjectDialogAsync(Arg.Any<Project?>()).Returns(project with { Category = null });
+
+        await viewModel.EditProjectCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(viewModel.ProjectCategoryGroups, group => group.CategoryName == "Werk");
+        var uncategorized = viewModel.ProjectCategoryGroups.Single();
+        Assert.Null(uncategorized.CategoryName);
+    }
+
+    /// <summary>Meet table edge case: a shared project with no category sits beside a categorized local one — same "Uncategorized" group, badges independent of category.</summary>
+    [Fact]
+    public async Task ProjectCategoryGroups_ASharedProjectWithoutACategory_SitsInUncategorized_NextToACategorizedLocalOne()
+    {
+        var categorizedLocal = Project.Create("Cockpit") with { Category = "Werk" };
+        var uncategorizedBound = Project.Create("Onboarding flow") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        var (viewModel, _) = BuildWithSharedSources([source], categorizedLocal, uncategorizedBound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var uncategorized = viewModel.ProjectCategoryGroups.Single(group => group.CategoryName == "Uncategorized");
+        var card = Assert.Single(uncategorized.Cards);
+        Assert.Equal("Onboarding flow", card.Project.Name);
+        Assert.Equal("◆ Depot — Work", card.OriginBadge);
+
+        var werk = viewModel.ProjectCategoryGroups.Single(group => group.CategoryName == "Werk");
+        Assert.Equal("Cockpit", Assert.Single(werk.Cards).Project.Name);
+    }
+
+    private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> sources) : ISharedProjectSourceRegistry
+    {
+        public IReadOnlyList<ISharedProjectSource> Sources => sources;
+
+        public bool Register(ISharedProjectSource source) => true;
+
+        public void Remove(string key)
+        {
+        }
+    }
+
+    private sealed class _FakeSharedProjectSource : ISharedProjectSource
+    {
+        private readonly SharedProjectListResult? _result;
+        private readonly Exception? _exception;
+        private readonly bool _neverCompletes;
+
+        public _FakeSharedProjectSource(string sourceName, SharedProjectListResult? result = null, Exception? exception = null, bool neverCompletes = false)
+        {
+            SourceName = sourceName;
+            _result = result;
+            _exception = exception;
+            _neverCompletes = neverCompletes;
+        }
+
+        public string Key => SourceName;
+
+        public string SourceName { get; }
+
+        public async Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken)
+        {
+            if (_neverCompletes)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            if (_exception is not null)
+            {
+                throw _exception;
+            }
+
+            return _result!;
+        }
+
+        // AC-246: not exercised by any test in this file (none of them call ProjectsViewModel.FinishSettingUpAsync)
+        // — a fixed failure is enough to satisfy the interface without a fake result nothing here reads.
+        public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectBindingResult.Failed("not implemented by this fake"));
     }
 }

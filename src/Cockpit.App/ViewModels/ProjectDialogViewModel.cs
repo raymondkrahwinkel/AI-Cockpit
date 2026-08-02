@@ -64,6 +64,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
 
         Name = project.Name;
+        Category = project.Category ?? string.Empty;
         Description = project.Description ?? string.Empty;
         SourceDirectory = project.SourceDirectory ?? string.Empty;
         GitUrl = project.GitUrl;
@@ -94,6 +95,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         IReadOnlyList<ProjectMemorySourceFamily>? memorySourceFamilies = null,
         Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)>? refreshMemorySources = null,
         IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? fieldOwnership = null,
+        IReadOnlyList<string>? knownCategories = null,
         CancellationToken cancellationToken = default)
     {
         var viewModel = new ProjectDialogViewModel(project)
@@ -113,6 +115,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // ConfigureMemorySourceAsync's own refresh is harmless, just not live, for a caller that opts out.
             _refreshMemorySources = refreshMemorySources ?? (() => (memorySources ?? [], memorySourceFamilies ?? [])),
         };
+
+        // AC-618: chips for the categories already in use elsewhere (ProjectSettings.CategoryOrder), so picking one
+        // is a click instead of retyping a name that has to match case-insensitively to land in the same group.
+        foreach (var category in knownCategories ?? [])
+        {
+            viewModel.CategoryChips.Add(new ProjectCategoryChipViewModel(
+                category, string.Equals(category, viewModel.Category, StringComparison.OrdinalIgnoreCase)));
+        }
 
         foreach (var registration in pluginFields ?? [])
         {
@@ -304,6 +314,20 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _name = string.Empty;
 
+    // Which category this project sits under in the manager's list (AC-618). Always local — never one of the six
+    // claimable `HostProjectField`s, so unlike Name/Description above there is no origin badge and no
+    // `_Carry{T}` here: nothing a shared project's definition claims can ever own this field.
+    [ObservableProperty]
+    private string _category = string.Empty;
+
+    // The categories already in use elsewhere (AC-618), as clickable chips under the field — built once, in
+    // `CreateAsync`, from `Cockpit.Core.Projects.ProjectSettings.CategoryOrder`. Empty for
+    // the design-time constructor and for a build with no categories in use yet, in which case
+    // `HasCategoryChips` is false and the row stays off screen rather than showing an empty bar.
+    public ObservableCollection<ProjectCategoryChipViewModel> CategoryChips { get; } = [];
+
+    public bool HasCategoryChips => CategoryChips.Count > 0;
+
     [ObservableProperty]
     private string _description = string.Empty;
 
@@ -418,6 +442,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         return new(_projectId ?? Guid.NewGuid().ToString("n"), _Carry(NameOrigin, Name.Trim(), p => p.Name))
         {
+            Category = _NullIfBlank(Category),
             Description = _Carry(DescriptionOrigin, _NullIfBlank(Description), p => p.Description),
             SourceDirectory = _NullIfBlank(SourceDirectory),
             GitUrl = GitUrl,
@@ -478,6 +503,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // Drops the logo. The stored copy goes when the project is saved, not here — cancelling must leave it as it was.
     [RelayCommand]
     private void ClearLogo() => LogoSource = string.Empty;
+
+    // A category chip's click (AC-618): fills the field exactly as if the operator had typed it — no second, chip-only path onto the saved project.
+    [RelayCommand]
+    private void SelectCategory(string category) => Category = category;
 
     [RelayCommand]
     private void AddInfoField() => AdditionalInfo.Add(new ProjectInfoFieldViewModel());
@@ -583,7 +612,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     partial void OnNameChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
 
-    // Re-running the portability check whenever the folder itself changes — a row already flagged machine-bound may no longer be once the operator points the project at a folder that now contains it, or the reverse.
+    // Keeps each chip's `ProjectCategoryChipViewModel.IsActive` matching the field as the operator types or clicks a chip — case-insensitively, the same comparison `ProjectSettings.CategoryOrder` itself groups by.
+    partial void OnCategoryChanged(string value)
+    {
+        foreach (var chip in CategoryChips)
+        {
+            chip.IsActive = string.Equals(chip.Name, value, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    // Re-running the repo-relative-fix check whenever the folder itself changes (AC-605 criterion 5) — a row already offering "make repo-relative" may no longer once the operator points the project at a folder that no longer contains it, or the reverse.
     partial void OnSourceDirectoryChanged(string value) => _RefreshResourceDiagnostics();
 
     private void _AddResourceRow(ProjectResourceRowViewModel row)
@@ -595,7 +633,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         //
         // AC-485 review (FIX 6) — Role is included, but not for either reason this comment used to give: Role does
         // not gate the broken-reference probe (ReachesSessions does, see _RefreshResourceDiagnostics below), and it
-        // does not gate portability either (ProjectResourcePathPortability.IsMachineBound never looks at a row's
+        // does not gate scope either (ProjectResourcePathPortability.ClassifyScope never looks at a row's
         // Role at all). The real reason is MUST-FIX 1: switching a row's role away from Memory (or back to it) can
         // itself rewrite Reference's own text — see ProjectResourceRowViewModel.OnRoleChanged — and it is that
         // rewritten value the diagnostics below must judge, not whatever Reference held a moment before the switch.
@@ -666,7 +704,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // answer onto every row, or been superseded by a later one (AC-485 review, MUST-FIX 2) — a hook a test can
     // await deterministically instead of sleeping for a computation whose entire point is to run off the UI
     // thread. Production code never awaits this itself: what the operator sees update is each row's own bound
-    // `ProjectResourceRowViewModel.IsBroken`/`ProjectResourceRowViewModel.IsMachineBound`,
+    // `ProjectResourceRowViewModel.IsBroken`/`ProjectResourceRowViewModel.Scope`,
     // whenever the background work gets there.
     internal Task ResourceDiagnosticsRefreshCompleted { get; private set; } = Task.CompletedTask;
 
@@ -699,8 +737,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // are read only on the calling (UI) thread, into a plain snapshot — touching a
     // `ProjectResourceRowViewModel` off the UI thread is not safe — and the snapshot alone, plain data
     // with no UI affinity, is handed to `Task.Run{TResult}(Func{TResult})` for the part that can
-    // actually take a while: `ProjectResourceProbe.FindUnresolved` and
-    // `ProjectResourcePathPortability.IsMachineBound` over every row. Once that finishes, the answer is
+    // actually take a while: `ProjectResourceProbe.FindUnresolved`,
+    // `ProjectResourcePathPortability.ClassifyScope` and
+    // `ProjectResourcePathPortability.SuggestRepoRelativeFix` over every row. Once that finishes, the answer is
     // written back onto each row — but only if no newer call has started in the meantime: `version` is
     // compared against `_resourceDiagnosticsRefreshVersion`'s current value, and a stale answer
     // (a slow, earlier call finishing after a faster, later one already has) is simply dropped rather than
@@ -716,6 +755,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // being in the result) keeps "not judged" and "judged and broken" apart, which the doc comment on
     // `ProjectResourceRowViewModel.IsBroken` already promises and the assignment below did not
     // previously keep.
+    //
     // Cancelled and replaced at the start of every `_RunResourceDiagnosticsAsync` call (AC-503
     // acceptance criterion 5) — a Reachability check is a network call that can run long enough to still be in
     // flight when a newer edit supersedes it, unlike the filesystem probe's own version-guard (which only ever
@@ -762,10 +802,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
         var fsProbeTask = Task.Run(() =>
         {
             var unresolvedReferences = ProjectResourceProbe.FindUnresolved(resources.Select(pair => pair.resource));
-            var isMachineBound = resources.ToDictionary(
+            var scopes = resources.ToDictionary(
                 pair => pair.row,
-                pair => ProjectResourcePathPortability.IsMachineBound(sourceDirectory, pair.resource.Reference));
-            return (Unresolved: unresolvedReferences, MachineBound: isMachineBound);
+                pair => ProjectResourcePathPortability.ClassifyScope(pair.resource.Reference));
+            var repoRelativeFixes = resources.ToDictionary(
+                pair => pair.row,
+                pair => ProjectResourcePathPortability.SuggestRepoRelativeFix(sourceDirectory, pair.resource.Reference));
+            return (Unresolved: unresolvedReferences, Scopes: scopes, RepoRelativeFixes: repoRelativeFixes);
         });
 
         // AC-503: a Memory row whose picked source has a reachability check and a non-blank typed value gets one,
@@ -787,7 +830,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 reachabilityCancellation.Token))
             .ToList();
 
-        var (unresolved, machineBound) = await fsProbeTask.ConfigureAwait(true);
+        var (unresolved, scopes, repoRelativeFixes) = await fsProbeTask.ConfigureAwait(true);
         await Task.WhenAll(reachabilityTasks).ConfigureAwait(true);
 
         if (version != _resourceDiagnosticsRefreshVersion)
@@ -798,7 +841,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         foreach (var (row, resource) in resources)
         {
             row.IsBroken = resource.ReachesSessions && unresolved.Contains(resource.Reference);
-            row.IsMachineBound = machineBound[row];
+            row.Scope = scopes[row];
+            row.RepoRelativeFix = repoRelativeFixes[row];
         }
     }
 

@@ -12,7 +12,7 @@ namespace Cockpit.Plugin.Depot.Tests;
 // two delegates existing.
 public class DepotMemorySourceLocationsTests
 {
-    private static DepotConnectionRegistration Connection() => new("c1", "Synvolution", "https://depot.example.com");
+    private static DepotConnectionRegistration Connection() => new("c1", "Acme", "https://depot.example.com");
 
     private static ProjectMemorySourceRegistration RegistrationFor(ICockpitHost host) =>
         DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration;
@@ -21,12 +21,12 @@ public class DepotMemorySourceLocationsTests
     public async Task ListLocationsAsync_CallsListProjectsOnThisConnectionsOwnServer()
     {
         var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync("Depot: Synvolution", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        host.CallMcpToolAsync("Depot: Acme", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"projects":[]}""")));
 
         await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
 
-        await host.Received(1).CallMcpToolAsync("Depot: Synvolution", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        await host.Received(1).CallMcpToolAsync("Depot: Acme", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -149,13 +149,13 @@ public class DepotMemorySourceLocationsTests
     public async Task SignInAsync_DrivesTheHostsOwnSignInForThisConnectionsServer_AndReportsSuccess()
     {
         var host = Substitute.For<ICockpitHost>();
-        host.SignInMcpServerAsync("Depot: Synvolution", Arg.Any<CancellationToken>())
+        host.SignInMcpServerAsync("Depot: Acme", Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpSignInOutcome.Authorized));
 
         var signedIn = await RegistrationFor(host).SignInAsync!(CancellationToken.None);
 
         Assert.True(signedIn);
-        await host.Received(1).SignInMcpServerAsync("Depot: Synvolution", Arg.Any<CancellationToken>());
+        await host.Received(1).SignInMcpServerAsync("Depot: Acme", Arg.Any<CancellationToken>());
     }
 
     [Fact]

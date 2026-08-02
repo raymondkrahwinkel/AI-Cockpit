@@ -104,6 +104,10 @@ internal static class Screenshotter
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
+        // AC-605: the three scope shapes/actions that scene above has no room left to show alongside its own two
+        // rows — see _ProjectEditorWithResourceScopes's own remarks on why this is a separate scene rather than
+        // more rows crammed into that one.
+        ["project-editor-resource-scopes"] = (_, _) => _ProjectEditorWithResourceScopes(),
         // AC-604: a project a plugin partly claims — the mixed case the whole ticket exists for. Name and
         // Behaviour are shared (Name read-only, Behaviour editable — the badge's own two lock states), Description/
         // Logo/MCP overlay/the worktree switch stay local, each carrying its own "● This machine" badge rather than
@@ -141,7 +145,37 @@ internal static class Screenshotter
         // _ProjectEditorWithInstructionsSendAlong's own remarks on why combining the two cost the resources scene
         // a hint it had already proved visible.
         ["project-editor-instructions-send-along"] = (_, _) => _ProjectEditorWithInstructionsSendAlong(),
+        // AC-612: a row pointing at a likely secrets location — its own scene rather than a row folded into
+        // project-editor-resources or project-editor-resource-scopes above, the same "no room left under the fold"
+        // reasoning both of those scenes' own remarks already give, and see _ProjectEditorWithSecretPath's own
+        // remarks on why a single row is enough here.
+        ["project-editor-secret-path"] = (_, _) => _ProjectEditorWithSecretPath(),
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
+        // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
+        // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
+        ["projects-shared"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithSharedProjects() },
+        // AC-246: the "Finish setting up…" bind step — bare, Profile required and Folder optional, matching the
+        // AC-242 mockup section 4. The design-time instance (a project with a GitUrl, so "Clone…" shows beside
+        // "Choose…") is enough to prove the two universally-needed fields render; the row above already proves the
+        // button that opens this exists on a shared-project card.
+        ["shared-project-binding"] = (_, _) => new SharedProjectBindingDialog { DataContext = new ViewModels.SharedProjectBindingDialogViewModel() },
+        // AC-246 vormwaarschuwing: the "Paths that differ on your machine" block with rows in it — proves the
+        // bounded, independently scrollable block actually renders and does not push Profile/Folder off the window
+        // the one time an operator meets a shared project with several machine-specific references at once.
+        //
+        // Width/Height set from the scene's own arguments (unlike the plain scene above, which is deliberately
+        // left at the dialog's built-in 520x420 — see its own remarks): this scene exists specifically to prove the
+        // block does not push everything else off screen, and the dialog's built-in height is exactly tall enough
+        // to hide that. A caller asking for a taller render (e.g. --size 900x900) used to get the built-in size
+        // back regardless — the block rendered, but entirely below the fold, which is what actually happened here
+        // (measured: at the built-in size only the section's heading, half-cut, was ever on screen). This scene is
+        // the one place that height is worth honouring.
+        ["shared-project-binding-resource-rows"] = (width, height) =>
+            new SharedProjectBindingDialog { DataContext = ViewModels.SharedProjectBindingDialogViewModel.DesignSampleWithResourceRows(), Width = width, Height = height },
+        // AC-618: categories as the list's main grouping, in a non-alphabetical order ("Werk" before "Privé"), with
+        // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
+        // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
+        ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
         ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),
@@ -520,16 +554,133 @@ internal static class Screenshotter
         // together they made this scene paint a state the app cannot produce — and the diagnostics pass corrects it
         // the moment it runs, which is how the red hint disappeared from the render without a single test noticing
         // (a palette baseline permits a screen to paint fewer colours than it lists).
+        //
+        // AC-605 finding: this row's reference used to be hardcoded C:\Users\raymond\OldNotes\handbook.md — fully
+        // qualified on Windows, but not on Linux (Path.IsPathFullyQualified is itself platform-specific, the same
+        // asymmetry ProjectResourcePathPortability's own class remarks document). On this repo's Linux CI/dev boxes
+        // that made the real diagnostics pass above — the one this very comment already says "corrects it the
+        // moment it runs" — silently reclassify the row as Repo-scoped and not-broken once it settled, some tens of
+        // milliseconds after this method returns and well before Screenshotter captures its frame: the IsBroken and
+        // Scope set below were never actually what rendered on Linux, they were only ever the first frame's
+        // head start. Rooted per platform now (mirroring how every test file in this repo already roots a path
+        // it means to keep absolute), so the real diagnostics pass settles on the same Machine/broken state these
+        // initializers describe on every platform this repo builds on, not only the one that authored the literal.
+        //
+        // AC-605 review: the first Linux-rooted literal was "/home/raymond/OldNotes/handbook.md" — this scene's own
+        // SourceDirectory above already hardcodes "/home/raymond" as this operator's home, so that literal is this
+        // scene's fiction, not a guarantee about any real machine, but a scene whose whole point is "this file does
+        // not exist" must not depend on that being true by chance. Renamed to a folder name no real project would
+        // ever have, so "does not exist" holds by construction rather than by nobody happening to have an
+        // "OldNotes" folder — the same reasoning ProjectResourceProbeTests' own _NonExistentAbsolutePath helper
+        // already applies with a GUID; a fixed literal is fine here only because a render scene must stay
+        // deterministic across runs; a marker in the name does the same job a GUID does in a test.
         viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
-            viewModel.MemorySourceChoices, ProjectResourceRole.Reference, @"C:\Users\raymond\OldNotes\handbook.md", "Old handbook")
+            viewModel.MemorySourceChoices,
+            ProjectResourceRole.Reference,
+            OperatingSystem.IsWindows()
+                ? @"C:\Users\raymond\.cockpit-screenshot-scene-does-not-exist\handbook.md"
+                : "/home/raymond/.cockpit-screenshot-scene-does-not-exist/handbook.md",
+            "Old handbook")
         {
             IsBroken = true,
-            IsMachineBound = true,
+            Scope = ProjectResourceScope.Machine,
         });
 
         // Taller than the dialog opens, the way the memory-source scene already is — clamped by DialogScreenClamp
         // to 90% of the headless screen either way, but still what pushes the resource section as far above that
         // ceiling as this dialog's other sections leave room for.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // AC-605 criterion 10: the two scope shapes/one action `_ProjectEditorWithResources` has no room
+    // left to show alongside its own two rows (an Instance-scope Memory row, a Machine-scope broken Reference
+    // row) — `Controls.DialogScreenClamp`'s 90%-of-headless-screen ceiling already clips that scene's
+    // own second row's scope sentence at the very edge (measured, not assumed; this ceiling does not move for a
+    // taller requested `Height` here, nor for a taller `--size` passed to `Screenshotter.Run` — it
+    // clamps to the headless platform's own fixed screen size), so a third or fourth row there would not render at
+    // all. Its own scene rather than more rows crammed into that one, the same reason
+    // `_ProjectEditorWithInstructionsSendAlong` already exists apart from it — a coordinator review
+    // round asked for "all four scopes and the fix action visible" and explicitly offered this as one of two
+    // acceptable answers.
+    //
+    // Two rows, not four: `ProjectResourceScope.Repo` already renders in full, un-clipped, in
+    // `_ProjectEditorWithInstructionsSendAlong` ("docs/handbook.md" resolves through the same live
+    // diagnostics pass to "Travels with the repo.") — verified by rendering that scene during this same review
+    // round, not assumed — and `ProjectResourceScope.Instance`/`ProjectResourceScope.Machine`
+    // already render in `_ProjectEditorWithResources`. Adding a third row here to repeat
+    // `ProjectResourceScope.Repo` a second time was tried first and pushed the fix banner below the
+    // fold — exactly the failure this scene exists to avoid. Across the three scenes together, all four scopes and
+    // the fix action are each shown in full at least once; that is what "visible" means for a screenshot, not that
+    // every scene shows everything.
+    // - <description>
+    // A `"~"`-anchored reference (AC-605's own new form) — `ProjectResourceScope.Home`. Rendered
+    // broken: a coordinator review round asked whether a "found" anchor row could be shown instead, and it cannot
+    // be reproducibly — `$HOME` differs by machine and by CI runner, so no literal path under it is
+    // guaranteed to exist wherever this scene renders. A specific, invented nested path under it
+    // (`~/Notes/team-conventions.md`) not existing, on the other hand, is guaranteed everywhere — the same
+    // "guaranteed missing, not missing by chance" reasoning `_ProjectEditorWithResources`'s own broken
+    // row already applies to its folder name.
+    // </description>
+    // - <description>
+    // An absolute path that lives inside `SourceDirectory` but was never converted by
+    // `ProjectResourcePathPortability.ToStoredReference` (AC-605 criterion 5) — the one case that
+    // shows the "Make repo-relative" action at all. Unlike the older scenes above (which predate this concern and
+    // still hardcode a POSIX-only `SourceDirectory`), this scene roots `SourceDirectory` itself per
+    // platform, so "lives inside SourceDirectory" is actually true on whichever platform renders this scene, not
+    // only the one that authored the literal.
+    // </description>
+    //
+    // Both rows below *also* stage `ProjectResourceRowViewModel.IsBroken`,
+    // `ProjectResourceRowViewModel.Scope` and (for the first) `ProjectResourceRowViewModel.RepoRelativeFix`
+    // directly, the same as `_ProjectEditorWithResources`'s own two rows — this was tried without
+    // staging first, reasoning that the real background diagnostics pass would land on the same values anyway (it
+    // does, eventually, which is exactly why `_ProjectEditorWithResources`'s own literals are rooted
+    // the way they are). What that attempt missed: `ThemePaletteBaselineTests` calls
+    // `window.UpdateLayout()` immediately after construction, with no wait at all — measured against the
+    // baseline it recorded, not assumed — while `Screenshotter.Run`'s own plugin-loading and startup
+    // work happens to take long enough for the pass's 400 ms debounce to have already settled by the time it
+    // captures a frame. Those are two different amounts of elapsed time reading the same unstaged scene, and the
+    // theory one always wins that race and the other never does — nothing here — so an unstaged version of this
+    // scene recorded a baseline of the row's blank, not-yet-judged resting state: no red hint, no scope sentence,
+    // no button, and none of `CockpitStatusErrorColor` or the button's own styling on record, silently
+    // leaving exactly the UI this scene exists to guard unprotected by its own baseline. Staged values make the
+    // fast, unwaited capture path see the same thing the slow one eventually settles on, deterministically, the
+    // same reason `_ProjectEditorWithResources` already stages its own two rows.
+    private static ProjectDialog _ProjectEditorWithResourceScopes()
+    {
+        var sourceDirectory = OperatingSystem.IsWindows() ? @"C:\Users\raymond\Cockpit" : "/home/raymond/Cockpit";
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = sourceDirectory };
+        // Every bit of chrome this scene does not need earns back room under DialogScreenClamp's own fold — see
+        // _ProjectEditorWithMemorySourceReachability's own remarks on the same design-time sample rows.
+        viewModel.AdditionalInfo.Clear();
+
+        // First, not second: the row with more to show (broken hint + the "Make repo-relative" action itself —
+        // the criterion 5 row this scene exists to prove renders at all) goes where the fold is furthest away.
+        // Staged to match exactly what the real diagnostics pass computes for this reference (an absolute path
+        // inside sourceDirectory that does not exist) — see this method's own doc comment on why both must agree.
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices,
+            ProjectResourceRole.Reference,
+            Path.Combine(sourceDirectory, "docs", "onboarding.md"),
+            "Onboarding (hand-typed)")
+        {
+            IsBroken = true,
+            Scope = ProjectResourceScope.Machine,
+            // Always "/"-separated regardless of platform (ProjectResourcePathPortability.ToStoredReference's own
+            // FIX 5) — not Path.Combine("docs", "onboarding.md"), which would carry a backslash on Windows and
+            // disagree with what the real pass actually computes there.
+            RepoRelativeFix = "docs/onboarding.md",
+        });
+
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Reference, "~/Notes/team-conventions.md", "Team conventions")
+        {
+            IsBroken = true,
+            Scope = ProjectResourceScope.Home,
+        });
+
+        // Taller than the dialog opens, the same reason every scene in this family already gives — clamped by
+        // DialogScreenClamp to 90% of the headless screen regardless.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
@@ -606,7 +757,7 @@ internal static class Screenshotter
         var depotInstances = new List<ViewModels.MemorySourceChoice>
         {
             new("Depot (krahwinkel-it)", "depot"),
-            new("Depot (synvolution)", "depot.synvolution"),
+            new("Depot (acme)", "depot.acme"),
         };
         var familyInstances = new Dictionary<string, IReadOnlyList<ViewModels.MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
         {
@@ -644,7 +795,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPicker()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
@@ -661,7 +812,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerSignIn()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.AuthorizationRequired),
             signInAsync: _ => Task.FromResult(true));
         viewModel.LoadAsync().GetAwaiter().GetResult();
@@ -672,7 +823,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerError()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed(
                 "Couldn't reach the Depot server — check the connection's URL in Depot's settings.")));
         viewModel.LoadAsync().GetAwaiter().GetResult();
@@ -690,7 +841,7 @@ internal static class Screenshotter
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("synvolution", "Synvolution", "Project · 8 documents · updated 20 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("acme", "Acme", "Project · 8 documents · updated 20 Jul 2026"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ai-hub", "AI-Hub", "Project · 5 documents · updated 18 Jul 2026"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("zyra", "Zyra", "Brain"),
@@ -699,7 +850,7 @@ internal static class Screenshotter
                 // No Detail — right after the pre-selected row, so both land in the same scrolled-into-view
                 // viewport and a height difference between them (point 3) is actually on screen, not assumed away.
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ddd-template", "DDD-Template"),
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("payroll-processor", "PayrollProcessor", "Project · 14 documents · updated 22 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("handbook-processor", "Handbook", "Project · 14 documents · updated 22 Jul 2026"),
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("vacancy-manager", "VacancyManager", "Project · 6 documents · updated 15 Jul 2026"),
             ])),
             currentValue: "eve-workbench");
@@ -713,7 +864,7 @@ internal static class Screenshotter
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerCurrentMissing()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
-            "Depot project — Synvolution",
+            "Depot project — Acme",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
                 new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
@@ -733,7 +884,7 @@ internal static class Screenshotter
     // (`CockpitStatusWaitingBrush`) with NotSignedIn, already proven legible by this very scene.
     // `ProjectResourceRowViewModel.Reachability` is staged directly rather than through a real
     // `ProjectMemorySourceRegistration.CheckReachability` delegate and a live dialog run, the same
-    // shortcut `_ProjectEditorWithResources` already takes for `IsBroken`/`IsMachineBound"`:
+    // shortcut `_ProjectEditorWithResources` already takes for `IsBroken`/`Scope`:
     // what this scene exists to prove is the view's own state rendering, not the plugin/host wiring behind it,
     // which the ViewModel and Depot-plugin test suites already cover on their own.
     private static ProjectDialog _ProjectEditorWithMemorySourceReachability()
@@ -797,6 +948,33 @@ internal static class Screenshotter
         // every section above the resource list plus two full rows — a single row's own checkbox and hint fit with
         // room to spare. A smaller value here was tried first and clipped this scene's own hint text mid-sentence,
         // exactly what this scene exists to rule out.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // A single Instructions row pointing at a likely secrets location (AC-612): its own scene rather than a third
+    // row folded into `_ProjectEditorWithResources` or a fifth into `_ProjectEditorWithResourceScopes`
+    // — both already sit at their own fold ceiling per their own remarks. One row is enough to show all three of
+    // this ticket's effects at once: the red warning sentence itself (melden), the "Send along" checkbox visibly
+    // present but disabled rather than merely unticked (inhoud — see `ProjectResourceRowViewModel.IsSecretPath`'s
+    // own remarks on why this needs no staging: it is a pure synchronous property, unlike `Scope`/`IsBroken`
+    // above, which the other two resource scenes stage directly because they come from an async pass this scene has
+    // no need to race). The third effect (delen — excluded from `.cockpit/project.json`) has nothing to render
+    // in this dialog at all; `ProjectResourceRowViewModel.SecretPathWarning`'s own sentence is the only
+    // place it is said, and it renders here as the second half of that sentence.
+    //
+    // Role Instructions, not Reference or Memory: this is the one role whose warning sentence names "content" at
+    // all (see `ProjectResourceRowViewModel.SecretPathWarning`'s own remarks) — the more specific of the
+    // two sentences this ticket added, so the one worth a render over the shorter "will not be shared" sentence a
+    // Reference row would show instead. `~/.ssh/id_rsa`: the one path from the ticket's own minimum list an
+    // operator is most likely to actually type, not an invented edge case.
+    private static ProjectDialog _ProjectEditorWithSecretPath()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Instructions, "~/.ssh/id_rsa", "SSH key"));
+
+        // 1500 rather than a value nearer this scene's own resting height — the same reasoning
+        // _ProjectEditorWithInstructionsSendAlong already gives for its own single row.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 

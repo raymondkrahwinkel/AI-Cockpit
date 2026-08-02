@@ -283,16 +283,16 @@ public class ProjectDialogResourceRowTests
     /// <summary>
     /// AC-485 review (FIX 7): <c>Path.GetFullPath</c> throws for a reference containing a NUL character — reachable
     /// from a hand-edited <c>cockpit.json</c>, not only from the picker. Before this fix that exception came
-    /// straight out of <c>CreateAsync</c> (via <c>ProjectResourcePathPortability.IsMachineBound</c>, called from the
-    /// diagnostics refresh <c>CreateAsync</c> awaits), so the dialog never opened at all over one bad row.
+    /// straight out of <c>CreateAsync</c> (via <c>ProjectResourcePathPortability.ClassifyScope</c>/<c>SuggestRepoRelativeFix</c>,
+    /// called from the diagnostics refresh <c>CreateAsync</c> awaits), so the dialog never opened at all over one bad row.
     /// </summary>
     [Fact]
     public async Task CreateAsync_AResourceWithAnIllegalCharacterInItsReference_StillOpens()
     {
         var project = Project.Create("Cockpit") with
         {
-            // SourceDirectory must actually be set: IsMachineBound returns early (no Path.GetFullPath call at all)
-            // when it is blank, which would leave this test green even without the guard it means to pin.
+            // SourceDirectory must actually be set: SuggestRepoRelativeFix returns early (no Path.GetFullPath call
+            // at all) when it is blank, which would leave this test green even without the guard it means to pin.
             SourceDirectory = _Root(),
             Resources = [new ProjectResource(_Root("bad\0name.md"), ProjectResourceRole.Reference)],
         };
@@ -378,10 +378,10 @@ public class ProjectDialogResourceRowTests
         Assert.Equal("/home/raymond/Notes/Cockpit", row.Reference);
     }
 
-    // --- AC: a machine-bound reference is visible in the editor -----------------------------------------------------------
+    // --- AC-605: a resource row's scope is visible in the editor, and an in-folder absolute path gets a fix ------
 
     [Fact]
-    public async Task CreateAsync_AnAbsoluteReferenceOutsideTheProjectFolder_MarksItsRowMachineBound()
+    public async Task CreateAsync_AnAbsoluteReferenceOutsideTheProjectFolder_MarksItsRowMachineScoped()
     {
         var project = Project.Create("Cockpit") with
         {
@@ -391,11 +391,21 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        Assert.True(viewModel.ResourceRows.Single().IsMachineBound);
+        var row = viewModel.ResourceRows.Single();
+        Assert.Equal(ProjectResourceScope.Machine, row.Scope);
+        // Outside the folder entirely, so there is nothing to offer converting it to.
+        Assert.Null(row.RepoRelativeFix);
     }
 
+    /// <summary>
+    /// AC-605 criterion 5: an absolute reference that never went through the picker's own <c>ToStoredReference</c>
+    /// conversion (hand-typed, or a hand-edited <c>cockpit.json</c>) is still reported <see cref="ProjectResourceScope.Machine"/>
+    /// — it genuinely is one, as stored — but this is exactly the case <see cref="ProjectResourceRowViewModel.RepoRelativeFix"/>
+    /// exists for: recognised, with a fix offered, rather than the old <c>IsMachineBound</c> silently reading false
+    /// and hiding the row's own absolute-path shape from the operator entirely.
+    /// </summary>
     [Fact]
-    public async Task CreateAsync_AnAbsoluteReferenceInsideTheProjectFolder_IsNeverMachineBound()
+    public async Task CreateAsync_AnAbsoluteReferenceInsideTheProjectFolder_OffersARepoRelativeFix()
     {
         var project = Project.Create("Cockpit") with
         {
@@ -405,11 +415,13 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        Assert.False(viewModel.ResourceRows.Single().IsMachineBound);
+        var row = viewModel.ResourceRows.Single();
+        Assert.Equal(ProjectResourceScope.Machine, row.Scope);
+        Assert.Equal("docs/handbook.md", row.RepoRelativeFix);
     }
 
     [Fact]
-    public async Task CreateAsync_ARelativeReference_IsNeverMachineBound()
+    public async Task CreateAsync_ARelativeReference_IsRepoScopedWithNoFixOffered()
     {
         var project = Project.Create("Cockpit") with
         {
@@ -419,11 +431,13 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        Assert.False(viewModel.ResourceRows.Single().IsMachineBound);
+        var row = viewModel.ResourceRows.Single();
+        Assert.Equal(ProjectResourceScope.Repo, row.Scope);
+        Assert.Null(row.RepoRelativeFix);
     }
 
     [Fact]
-    public async Task ChangingSourceDirectory_ReEvaluatesWhetherAResourceRowIsMachineBound()
+    public async Task ChangingSourceDirectory_ReEvaluatesWhetherAResourceRowHasARepoRelativeFixAvailable()
     {
         var reference = _Root("docs", "handbook.md");
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
@@ -433,12 +447,35 @@ public class ProjectDialogResourceRowTests
         viewModel.ResourceRows[0].Reference = reference;
         await viewModel.ResourceDiagnosticsRefreshCompleted;
 
-        Assert.True(viewModel.ResourceRows[0].IsMachineBound, "no folder is set yet, so any absolute path is machine-bound");
+        // No folder is set yet, so there is nothing to offer converting it relative to.
+        Assert.Equal(ProjectResourceScope.Machine, viewModel.ResourceRows[0].Scope);
+        Assert.Null(viewModel.ResourceRows[0].RepoRelativeFix);
 
         viewModel.SourceDirectory = _Root();
         await viewModel.ResourceDiagnosticsRefreshCompleted;
 
-        Assert.False(viewModel.ResourceRows[0].IsMachineBound, "the folder now contains the reference");
+        // Still an absolute path, as stored — the folder now contains the reference, so a fix is offered.
+        Assert.Equal(ProjectResourceScope.Machine, viewModel.ResourceRows[0].Scope);
+        Assert.Equal("docs/handbook.md", viewModel.ResourceRows[0].RepoRelativeFix);
+    }
+
+    /// <summary>AC-605 criterion 5: applying the offered fix rewrites Reference in place, the one path that ever does so without the operator picking the value from the folder browser.</summary>
+    [Fact]
+    public async Task ApplyingTheRepoRelativeFix_RewritesTheReferenceInPlace()
+    {
+        var reference = _Root("docs", "handbook.md");
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.Name = "Cockpit";
+        viewModel.SourceDirectory = _Root();
+        viewModel.AddResourceRowCommand.Execute(null);
+        viewModel.ResourceRows[0].Role = ProjectResourceRole.Reference;
+        viewModel.ResourceRows[0].Reference = reference;
+        await viewModel.ResourceDiagnosticsRefreshCompleted;
+        Assert.Equal("docs/handbook.md", viewModel.ResourceRows[0].RepoRelativeFix);
+
+        viewModel.ResourceRows[0].ApplyRepoRelativeFixCommand.Execute(null);
+
+        Assert.Equal("docs/handbook.md", viewModel.ResourceRows[0].Reference);
     }
 
     // --- AC-486: "Send along" is Instructions-only, off by default, round-trips, and cannot survive a role switch ----
@@ -741,7 +778,7 @@ public class ProjectDialogResourceRowTests
         var choices = new ObservableCollection<MemorySourceChoice>
         {
             new("Folder", Scheme: null),
-            new("Depot project — Synvolution", "depot"),
+            new("Depot project — Acme", "depot"),
             new("Depot project — Wispslate", "depot.wispslate"),
         };
         var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, "cockpit")
@@ -752,7 +789,7 @@ public class ProjectDialogResourceRowTests
         };
 
         // The typed value is deliberately left exactly as it was — a Reachability answer for "cockpit" against
-        // Synvolution says nothing about whether "cockpit" also resolves on Wispslate, so switching the source
+        // Acme says nothing about whether "cockpit" also resolves on Wispslate, so switching the source
         // alone (Reference untouched) must invalidate it just as much as an edited Reference would.
         row.SelectedMemorySourceChoice = choices[2];
 
@@ -870,7 +907,7 @@ public class ProjectDialogResourceRowTests
     public void SwitchingSelectedFamilyInstance_ResetsReachability()
     {
         var depotInstanceA = new MemorySourceChoice("Depot (krahwinkel-it)", "depot");
-        var depotInstanceB = new MemorySourceChoice("Depot (synvolution)", "depot.synvolution");
+        var depotInstanceB = new MemorySourceChoice("Depot (acme)", "depot.acme");
         var choices = new ObservableCollection<MemorySourceChoice>
         {
             new("Folder", Scheme: null),

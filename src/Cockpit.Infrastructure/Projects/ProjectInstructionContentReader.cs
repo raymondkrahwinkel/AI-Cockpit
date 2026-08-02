@@ -10,6 +10,14 @@ namespace Cockpit.Infrastructure.Projects;
 // The layer that assembles an actual launch (`ProjectQuickStart`, the New-session dialog's Start) runs this
 // once, next to its own `ProjectResourceProbe.FindUnresolved` call, and hands the result in to
 // `Cockpit.Core.Sessions.SessionStartDefaults.Resolve` as plain data.
+//
+// AC-605: a `~`-anchored `ProjectResource.Reference` is resolved to a real path before either the
+// size check or the read touches disk (see the resolve call inside `Read`) — a row this method never
+// resolved would classify as portable, sit silently in a shared `.cockpit/project.json`, and then simply never
+// reach a session, since `new FileInfo("~/x")` and `File.ReadAllText("~/x")` both throw for a path no
+// filesystem API expands on its own; that failure was caught by the same `catch` this class already carries
+// for an unreadable file, so it read as "not found" rather than "never actually tried". Found in review, not by a
+// test this class already had.
 public static class ProjectInstructionContentReader
 {
     // The most this reads of any one file, in bytes, before giving up on it as too large to ever matter rather
@@ -46,10 +54,15 @@ public static class ProjectInstructionContentReader
     // `fileLength`:
     // Overrides the file-size check — a test's own hook for proving the size cap is enforced without needing an
     // actual 32 KB-plus file on disk to prove it against. Null (the default) is `new FileInfo(path).Length`.
+    // Called with the row's `ProjectResource.Reference` resolved through
+    // `Core.Projects.ProjectResourcePathPortability.ResolveHomeAnchor` (AC-605), never the stored text
+    // itself — a test exercising a `~`-anchored row asserts against whatever path that reference actually
+    // resolves to on the box the test runs on, not the literal `"~/..."` string.
     // `readAllText`:
     // Overrides the read itself — another test-only hook, letting a test simulate an unreadable or vanished file
     // without needing real filesystem permissions or a genuine race to do it. Null (the default) is
     // `File.ReadAllText(string)`, which detects the file's own encoding the same way it always has.
+    // Called with the resolved path, the same as `fileLength` above.
     public static IReadOnlyDictionary<string, string> Read(
         IEnumerable<ProjectResource> resources,
         Func<string, long>? fileLength = null,
@@ -70,13 +83,28 @@ public static class ProjectInstructionContentReader
             if (string.IsNullOrWhiteSpace(reference) || result.ContainsKey(reference))
             {
                 // A blank reference has nothing to read, and a reference already read (two rows naming the same
-                // file) costs no second read — the dictionary already answers for it.
+                // stored text) costs no second read — the dictionary already answers for it. Keyed and deduplicated
+                // on the stored reference, not the resolved path (see the remark on `path` below): two rows that
+                // spell the same file two different ways (say "~/Notes/x.md" and its resolved absolute form) still
+                // read it twice, once per row, which is correct — SessionStartDefaults.Resolve looks each row's
+                // content up by that row's own Reference, so both rows need their own entry regardless of whether
+                // they happen to land on the same file underneath.
                 continue;
             }
 
+            // AC-605 criterion 1: the one place a "~"-anchored reference is resolved to a real filesystem path —
+            // every caller that treats a ProjectResource.Reference as a path must resolve it exactly this way
+            // rather than re-deriving the rule; see ProjectResourcePathPortability.ResolveHomeAnchor's own remarks.
+            // A no-op for anything that is not home-anchored, so this costs nothing for the ordinary repo-relative
+            // or already-absolute case. The result dictionary itself stays keyed by `reference` (the stored,
+            // unresolved text) rather than `path` — SessionStartDefaults.Resolve's own TryGetValue call looks a row
+            // up by its own Reference, never by whatever this reader resolved that to internally, so keying by the
+            // resolved path would make a "~/Notes/x.md" row's content unfindable by the very key its caller uses.
+            var path = ProjectResourcePathPortability.ResolveHomeAnchor(reference);
+
             try
             {
-                var size = length(reference);
+                var size = length(path);
                 if (size < 0 || size > _MaxReadBytes)
                 {
                     // Either a negative size a test hook used to signal "not there", or a file too large to ever
@@ -99,7 +127,7 @@ public static class ProjectInstructionContentReader
                 {
                     try
                     {
-                        text = readText(reference);
+                        text = readText(path);
                     }
                     catch
                     {

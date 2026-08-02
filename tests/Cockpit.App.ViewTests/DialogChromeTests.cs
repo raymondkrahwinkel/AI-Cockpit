@@ -28,6 +28,7 @@ public class DialogChromeTests
         nameof(PasswordDialog),
         nameof(ProjectDialog),
         nameof(SetStatusDialog),
+        nameof(SharedProjectBindingDialog),
     ];
 
     public static TheoryData<Type> DialogTypes()
@@ -69,6 +70,7 @@ public class DialogChromeTests
         [nameof(PasswordDialog)] = () => new PasswordDialog { DataContext = new PasswordDialogViewModel() },
         [nameof(ProjectDialog)] = () => new ProjectDialog { DataContext = new ProjectDialogViewModel() },
         [nameof(SetStatusDialog)] = () => new SetStatusDialog { DataContext = new SetStatusDialogViewModel("AC-335") },
+        [nameof(SharedProjectBindingDialog)] = () => new SharedProjectBindingDialog { DataContext = new SharedProjectBindingDialogViewModel() },
     };
 
     public static TheoryData<string> DeferredDialogNames()

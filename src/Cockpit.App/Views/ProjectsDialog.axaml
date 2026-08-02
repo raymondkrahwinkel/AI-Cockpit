@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:controls="using:Cockpit.App.Controls"
-        xmlns:projects="using:Cockpit.Core.Projects"
+        xmlns:sharedProjects="using:Cockpit.Plugins.Abstractions.Projects"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -36,7 +36,7 @@
 
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="18,16,18,24" Spacing="12">
-                <StackPanel Spacing="8" IsVisible="{Binding !HasProjects}" Margin="0,24,0,0">
+                <StackPanel Spacing="8" IsVisible="{Binding HasNothingToShow}" Margin="0,24,0,0">
                     <TextBlock Text="No projects yet" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     <TextBlock MaxWidth="420" TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
                                HorizontalAlignment="Center"
@@ -44,41 +44,122 @@
                                Text="A project remembers the folder you work in, who works on it and what it may reach — so starting work on it is one click, every time."/>
                 </StackPanel>
 
-                <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
+                <!-- AC-618: categories are the list's main grouping now; a project's origin (this machine, or which
+                     Depot connection) is a badge on its own card (see ProjectCardViewModel.OriginBadge) rather than
+                     AC-245's separate "On this machine" heading, which this replaces. An install where no project
+                     carries a category gets exactly one group with no CategoryName, drawn with no heading at all —
+                     the list looks precisely as it did before categories existed. -->
+                <ItemsControl ItemsSource="{Binding ProjectCategoryGroups}" IsVisible="{Binding HasProjects}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="projects:Project">
-                            <!-- A row per project, showing what it is rather than only its name: the logo it will
-                                 carry on its card, what it is for, and where its files and memory live. -->
-                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="{StaticResource CockpitPanelRadius}"
-                                    Background="{StaticResource CockpitSecondaryBgBrush}"
-                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                    PointerPressed="OnProjectPressed" DoubleTapped="OnProjectDoubleTapped"
-                                    Cursor="Hand">
-                                <Grid ColumnDefinitions="Auto,*">
-                                    <controls:ProjectLogoBadge Grid.Column="0" Size="38" Margin="0,0,12,0"
-                                                               VerticalAlignment="Top"
-                                                               LogoPath="{Binding LogoPath}"
-                                                               ProjectName="{Binding Name}"
-                                                               WellBackground="{StaticResource CockpitPanelBgBrush}"/>
-                                    <StackPanel Grid.Column="1" Spacing="2">
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
-                                        <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        <TextBlock Text="{Binding SourceDirectory}" FontSize="11"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                   IsVisible="{Binding SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        <TextBlock Text="{Binding MemoryRef, StringFormat='Memory: {0}'}" FontSize="11"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                   IsVisible="{Binding MemoryRef, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        <controls:ProjectInfoList Margin="0,6,0,0"
-                                                                  Fields="{Binding AdditionalInfo}"
-                                                                  IsVisible="{Binding HasAdditionalInfo}"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
+                        <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
+                            <StackPanel Spacing="8" Margin="0,10,0,0">
+                                <TextBlock Text="{Binding CategoryName}" FontSize="12" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                           IsVisible="{Binding HasHeader}"/>
+
+                                <ItemsControl ItemsSource="{Binding Cards}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                            <!-- A row per project, showing what it is rather than only its name: the logo it will
+                                                 carry on its card, what it is for, and where its files and memory live. -->
+                                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="{StaticResource CockpitPanelRadius}"
+                                                    Background="{StaticResource CockpitSecondaryBgBrush}"
+                                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                                    PointerPressed="OnProjectPressed" DoubleTapped="OnProjectDoubleTapped"
+                                                    Cursor="Hand">
+                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                    <controls:ProjectLogoBadge Grid.Column="0" Size="38" Margin="0,0,12,0"
+                                                                               VerticalAlignment="Top"
+                                                                               LogoPath="{Binding Project.LogoPath}"
+                                                                               ProjectName="{Binding Project.Name}"
+                                                                               WellBackground="{StaticResource CockpitPanelBgBrush}"/>
+                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                        <TextBlock Text="{Binding Project.Name}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding Project.Description}" FontSize="11" TextWrapping="Wrap"
+                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                   IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                        <TextBlock Text="{Binding Project.SourceDirectory}" FontSize="11"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                   IsVisible="{Binding Project.SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                        <TextBlock Text="{Binding Project.MemoryRef, StringFormat='Memory: {0}'}" FontSize="11"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                   IsVisible="{Binding Project.MemoryRef, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                        <controls:ProjectInfoList Margin="0,6,0,0"
+                                                                                  Fields="{Binding Project.AdditionalInfo}"
+                                                                                  IsVisible="{Binding Project.HasAdditionalInfo}"/>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{Binding OriginBadge}" FontSize="10.5"
+                                                               Margin="8,0,0,0" VerticalAlignment="Top"
+                                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- AC-245: what a plugin shares elsewhere (AC-242's Depot sync) but this machine has not bound to
+                     a local project yet — one section per source, populated in the background (ProjectsViewModel.
+                     LoadSharedProjectsAsync) so a slow or unreachable connection never holds this window shut.
+                     AC-246 adds the one action a row like this can take: "Finish setting up…", mirroring the
+                     AC-158 pattern a local project without a profile already shows (a visible button on the card
+                     itself, not a hidden context-menu-only action a first-time visitor to a shared connection would
+                     have no reason to look for). -->
+                <ItemsControl ItemsSource="{Binding SharedProjectGroups}" IsVisible="{Binding HasSharedProjects}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
+                            <StackPanel Spacing="6" Margin="0,10,0,0">
+                                <TextBlock Text="{Binding SourceName, StringFormat='Shared via {0}'}" FontSize="12"
+                                           FontWeight="SemiBold" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                           IsVisible="{Binding HasError}"/>
+
+                                <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="sharedProjects:SharedProject">
+                                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="{StaticResource CockpitPanelRadius}"
+                                                    Background="{StaticResource CockpitSecondaryBgBrush}" Opacity="0.85"
+                                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                                <StackPanel Spacing="2">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <Border Grid.Column="1" Margin="8,0,0,0" Padding="7,2"
+                                                                CornerRadius="{StaticResource CockpitPillRadius}"
+                                                                Background="{StaticResource CockpitStatusWaitingChipTintBrush}"
+                                                                VerticalAlignment="Top">
+                                                            <TextBlock Text="Not set up yet" FontSize="10"
+                                                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                        </Border>
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                               IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    <TextBlock Text="{Binding Role}" FontSize="10"
+                                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                               IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    <!-- $parent[Window], not $parent[ItemsControl]: this row sits inside two
+                                                         nested ItemsControls (groups, then projects), so the nearest ItemsControl
+                                                         ancestor is the inner one — DataContext SharedProjectGroupViewModel, not
+                                                         ProjectsViewModel. The window itself is the nearest ancestor typed right. -->
+                                                    <Button Classes="Accent" HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Center" Padding="10,5" Margin="0,6,0,0"
+                                                            Content="Finish setting up…"
+                                                            Command="{Binding $parent[Window].((vm:ProjectsViewModel)DataContext).FinishSettingUpCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

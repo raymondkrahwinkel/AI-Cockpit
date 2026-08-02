@@ -4,7 +4,6 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Projects;
 
 namespace Cockpit.App.Views;
 
@@ -27,17 +26,17 @@ public partial class ProjectsDialog : Window
     // highlights when you hit a narrow strip of it reads as broken.
     private void OnProjectPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is Control { DataContext: Project project } && DataContext is ProjectsViewModel projects)
+        if (sender is Control { DataContext: ProjectCardViewModel card } && DataContext is ProjectsViewModel projects)
         {
-            projects.SelectedProject = project;
+            projects.SelectedProject = card.Project;
         }
     }
 
     private void OnProjectDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is Control { DataContext: Project project } && DataContext is ProjectsViewModel projects)
+        if (sender is Control { DataContext: ProjectCardViewModel card } && DataContext is ProjectsViewModel projects)
         {
-            _ = projects.EditAsync(project);
+            _ = projects.EditAsync(card.Project);
         }
     }
 }

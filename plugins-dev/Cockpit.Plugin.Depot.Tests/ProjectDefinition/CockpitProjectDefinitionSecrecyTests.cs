@@ -47,6 +47,19 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.DoesNotContain(names, name => name.Contains("AdditionalInfo", StringComparison.OrdinalIgnoreCase));
     }
 
+    // AC-618 acceptance criterion 3: a project's category is explicitly local (`Project.Category`, stored only
+    // in `cockpit.json`) — sharing it here would let whoever shares a project impose their own filing on every
+    // colleague who binds to it. Definition_CarriesOnlyFieldsClearedForSharing_SoAddingOneIsADeliberateAct
+    // above already guards this by construction (the exhaustive whitelist would need editing), but this pins the
+    // specific rule by name so it reads as a decision rather than an accident of that other test's coverage.
+    [Fact]
+    public void Definition_CarriesNoCategory_SinceCategoryIsAlwaysLocalToEachOperator()
+    {
+        var names = typeof(CockpitProjectDefinition).GetProperties().Select(property => property.Name).ToArray();
+
+        Assert.DoesNotContain(names, name => name.Contains("Category", StringComparison.OrdinalIgnoreCase));
+    }
+
     // The known gap, pinned so it is a documented limit rather than a surprise. `ExtensionData` exists to
     // carry a newer Cockpit's fields through a read-then-write untouched (AC-244) — which means an older build
     // forwards a field it cannot recognise, including one holding a secret a later version chose to share. Keeping
@@ -72,6 +85,11 @@ public class CockpitProjectDefinitionSecrecyTests
             nameof(CockpitProjectResourceEntry.Label),
             nameof(CockpitProjectResourceEntry.Portability),
             nameof(CockpitProjectResourceEntry.ExtensionData),
+            // AC-246 (Raymond, 2026-08-02): a plain bool — "a row belongs here, without its reference" — cannot
+            // itself carry a secret value the way a free-text field could. The field this guard actually exists to
+            // catch (a text field a secret could hide in) is still exactly one: Reference, still governed by
+            // ProjectResourceSecretPathHeuristic before Create ever builds a row, Placeholder row or not.
+            nameof(CockpitProjectResourceEntry.Placeholder),
         ];
 
         var actual = typeof(CockpitProjectResourceEntry)

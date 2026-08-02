@@ -53,9 +53,18 @@ public sealed record ProjectResource(string Reference, ProjectResourceRole Role)
     // arriving pre-ticked in front of an operator who never touched it, and opening the file from the next session
     // on. Enforced here rather than at each reader because "the operator ticked this" has to mean the same thing
     // everywhere it is asked, and there were already three places asking.
+    //
+    // AC-612: also reported as false when `Reference` looks like it names credential material (see
+    // `ProjectResourceSecretPathHeuristic.IsLikelySecretPath`) — the same "enforced once, here, rather
+    // than at every reader" reasoning as the role check above, and the one place Raymond's decision ("`SendsContent`
+    // wordt geweigerd — de inhoud bereikt nooit een sessie-prompt") cannot be bypassed by a reader that skips
+    // whatever check the editor or a plugin happens to run: a hand-edited `cockpit.json` naming
+    // `~/.ssh/id_rsa` with this flag set gets the same false answer as one the editor built, without
+    // `Infrastructure.Projects.ProjectInstructionContentReader` — or anything reading this property —
+    // needing its own copy of the heuristic to stay honest.
     public bool SendsContent
     {
-        get => _sendsContent && Role == ProjectResourceRole.Instructions;
+        get => _sendsContent && Role == ProjectResourceRole.Instructions && !ProjectResourceSecretPathHeuristic.IsLikelySecretPath(Reference);
         init => _sendsContent = value;
     }
 

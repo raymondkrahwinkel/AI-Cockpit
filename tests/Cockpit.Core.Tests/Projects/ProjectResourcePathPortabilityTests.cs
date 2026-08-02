@@ -80,55 +80,186 @@ public class ProjectResourcePathPortabilityTests
         Assert.Equal(malformed, ProjectResourcePathPortability.ToStoredReference(_Root, malformed));
     }
 
-    [Fact]
-    public void IsMachineBound_APathInsideSourceDirectory_IsFalse() =>
-        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, _Under("docs", "handbook.md")));
+    // --- ClassifyScope (AC-605 criterion 6: renamed from IsMachineBound, no longer takes SourceDirectory — see
+    //     SuggestRepoRelativeFix for the half of the old behavior that needed one) --------------------------------
 
     [Fact]
-    public void IsMachineBound_APathOutsideSourceDirectory_IsTrue() =>
-        Assert.True(ProjectResourcePathPortability.IsMachineBound(_Root, _Outside));
+    public void ClassifyScope_ARelativeReference_IsRepo() =>
+        Assert.Equal(ProjectResourceScope.Repo, ProjectResourcePathPortability.ClassifyScope(Path.Combine("docs", "handbook.md")));
 
     [Fact]
-    public void IsMachineBound_ARelativeReference_IsFalse() =>
-        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, Path.Combine("docs", "handbook.md")));
+    public void ClassifyScope_AnAbsolutePath_IsMachine() =>
+        Assert.Equal(ProjectResourceScope.Machine, ProjectResourcePathPortability.ClassifyScope(_Outside));
 
     [Fact]
-    public void IsMachineBound_ASchemeReference_IsFalse() =>
-        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, "depot:cockpit"));
+    public void ClassifyScope_ASchemeReference_IsInstance() =>
+        Assert.Equal(ProjectResourceScope.Instance, ProjectResourcePathPortability.ClassifyScope("depot:cockpit"));
+
+    [Theory]
+    [InlineData("~")]
+    [InlineData("~/Notes/handbook.md")]
+    [InlineData("~//Notes/handbook.md")]
+    public void ClassifyScope_AHomeAnchoredReference_IsHome(string reference) =>
+        Assert.Equal(ProjectResourceScope.Home, ProjectResourcePathPortability.ClassifyScope(reference));
+
+    /// <summary>Raymond's decision (AC-605): "~user/" is not a supported anchor form — .NET has no notion of a POSIX shell's "someone else's home" expansion, so this is left as ordinary (repo-relative-shaped) text rather than guessed at.</summary>
+    [Theory]
+    [InlineData("~henk/x")]
+    [InlineData("~x")]
+    public void ClassifyScope_ATildeReferenceThatIsNotSupportedAnchorForm_IsRepoNotHome(string reference) =>
+        Assert.Equal(ProjectResourceScope.Repo, ProjectResourcePathPortability.ClassifyScope(reference));
 
     [Fact]
-    public void IsMachineBound_NoSourceDirectory_TreatsAnyAbsolutePathAsMachineBound() =>
-        Assert.True(ProjectResourcePathPortability.IsMachineBound(null, _Outside));
+    public void ClassifyScope_ABlankReference_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.ClassifyScope(""));
 
     [Fact]
-    public void IsMachineBound_ABlankReference_IsFalse() =>
-        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, ""));
+    public void ClassifyScope_Null_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.ClassifyScope(null));
 
-    /// <summary>AC-485 review (FIX 7): the same NUL-character case <see cref="ToStoredReference_APickedPathWithAnIllegalCharacter_IsStoredAsPickedRatherThanThrowing"/> pins for the sibling method — must fail open (not machine-bound) rather than throw.</summary>
+    /// <summary>AC-485 review (FIX 7)'s malformed-reference case, mirrored for the renamed method: must fail open (null) rather than throw.</summary>
     [Fact]
-    public void IsMachineBound_AReferenceWithAnIllegalCharacter_IsFalseRatherThanThrowing()
+    public void ClassifyScope_AReferenceWithAnIllegalCharacter_IsNullRatherThanThrowing()
     {
         var malformed = _Under("docs", "bad\0name.md");
 
-        var exception = Record.Exception(() => ProjectResourcePathPortability.IsMachineBound(_Root, malformed));
+        var exception = Record.Exception(() => ProjectResourcePathPortability.ClassifyScope(malformed));
 
         Assert.Null(exception);
-        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, malformed));
     }
 
     /// <summary>
     /// AC-485 review (FIX 8): pins the platform asymmetry the class doc now writes down rather than "fixes" — a
     /// reference shaped for the platform this test is <em>not</em> running on is never fully qualified as far as
-    /// <see cref="Path.IsPathFullyQualified(string)"/> is concerned, so it can never be judged machine-bound here,
-    /// however far outside the project folder it plainly is on the platform that authored it.
+    /// <see cref="Path.IsPathFullyQualified(string)"/> is concerned, so it reads as <see cref="ProjectResourceScope.Repo"/>
+    /// here, however far outside the project folder it plainly is on the platform that authored it.
     /// </summary>
     [Fact]
-    public void IsMachineBound_AReferenceShapedForTheOtherPlatform_IsNeverMachineBound()
+    public void ClassifyScope_AReferenceShapedForTheOtherPlatform_IsRepoNotMachine()
     {
         var otherPlatformPath = OperatingSystem.IsWindows()
             ? "/home/raymond/Elsewhere/notes"
             : @"C:\Users\raymond\Elsewhere\notes";
 
-        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, otherPlatformPath));
+        Assert.Equal(ProjectResourceScope.Repo, ProjectResourcePathPortability.ClassifyScope(otherPlatformPath));
+    }
+
+    // --- SuggestRepoRelativeFix (AC-605 criterion 5) ----------------------------------------------------------
+
+    [Fact]
+    public void SuggestRepoRelativeFix_AnAbsolutePathInsideSourceDirectory_SuggestsItsRepoRelativeForm() =>
+        Assert.Equal("docs/handbook.md",
+            ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, _Under("docs", "handbook.md")));
+
+    [Fact]
+    public void SuggestRepoRelativeFix_AnAbsolutePathOutsideSourceDirectory_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, _Outside));
+
+    [Fact]
+    public void SuggestRepoRelativeFix_ARelativeReference_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, Path.Combine("docs", "handbook.md")));
+
+    [Fact]
+    public void SuggestRepoRelativeFix_ASchemeReference_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, "depot:cockpit"));
+
+    [Fact]
+    public void SuggestRepoRelativeFix_AHomeAnchoredReference_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, "~/Notes/handbook.md"));
+
+    [Fact]
+    public void SuggestRepoRelativeFix_NoSourceDirectory_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(null, _Under("docs", "handbook.md")));
+
+    [Fact]
+    public void SuggestRepoRelativeFix_ABlankReference_IsNull() =>
+        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, ""));
+
+    [Fact]
+    public void SuggestRepoRelativeFix_AnIllegalCharacter_IsNullRatherThanThrowing()
+    {
+        var malformed = _Under("docs", "bad\0name.md");
+
+        var exception = Record.Exception(() => ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, malformed));
+
+        Assert.Null(exception);
+        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, malformed));
+    }
+
+    // --- IsHomeAnchored / ResolveHomeAnchor (AC-605 criterion 1) ------------------------------------------------
+
+    [Theory]
+    [InlineData("~")]
+    [InlineData("~/")]
+    [InlineData("~/Notes")]
+    [InlineData("~//Notes")]
+    public void IsHomeAnchored_ASupportedAnchorForm_IsTrue(string reference) =>
+        Assert.True(ProjectResourcePathPortability.IsHomeAnchored(reference));
+
+    [Theory]
+    [InlineData("~henk/x")]
+    [InlineData("~x")]
+    [InlineData("")]
+    [InlineData(null)]
+    [InlineData("docs/handbook.md")]
+    public void IsHomeAnchored_ANotSupportedForm_IsFalse(string? reference) =>
+        Assert.False(ProjectResourcePathPortability.IsHomeAnchored(reference));
+
+    [Fact]
+    public void ResolveHomeAnchor_BareTilde_IsTheHomeDirectory() =>
+        Assert.Equal(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ProjectResourcePathPortability.ResolveHomeAnchor("~"));
+
+    [Fact]
+    public void ResolveHomeAnchor_TildeSlash_IsTheHomeDirectory() =>
+        Assert.Equal(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ProjectResourcePathPortability.ResolveHomeAnchor("~/"));
+
+    [Fact]
+    public void ResolveHomeAnchor_TildeSlashSuffix_IsUnderTheHomeDirectory() =>
+        Assert.Equal(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Notes", "x.md"),
+            ProjectResourcePathPortability.ResolveHomeAnchor("~/Notes/x.md"));
+
+    /// <summary>A doubled separator right after the anchor must not be read as an absolute path that replaces home outright (the Path.Combine(home, "/x") footgun).</summary>
+    [Fact]
+    public void ResolveHomeAnchor_TildeDoubleSlashSuffix_IsStillUnderTheHomeDirectory() =>
+        Assert.Equal(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Notes"),
+            ProjectResourcePathPortability.ResolveHomeAnchor("~//Notes"));
+
+    /// <summary>
+    /// AC-605: deliberately not bounds-checked — see the class remarks on why a <c>..</c> segment climbing back out
+    /// of home is this method's to resolve, not to reject. On a home directory with at least two path segments
+    /// (true of every CI/dev box this repo runs on) this actually leaves the resolved path outside home.
+    /// </summary>
+    [Fact]
+    public void ResolveHomeAnchor_ASuffixThatClimbsOutOfHome_ResolvesWhereverThatLands()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var expected = Path.GetFullPath(Path.Combine(home, "..", "..", "etc", "passwd"));
+
+        Assert.Equal(expected, ProjectResourcePathPortability.ResolveHomeAnchor("~/../../etc/passwd"));
+    }
+
+    [Fact]
+    public void ResolveHomeAnchor_ANotSupportedTildeForm_IsReturnedUnchanged() =>
+        Assert.Equal("~henk/x", ProjectResourcePathPortability.ResolveHomeAnchor("~henk/x"));
+
+    [Fact]
+    public void ResolveHomeAnchor_ANonAnchoredReference_IsReturnedUnchanged() =>
+        Assert.Equal("docs/handbook.md", ProjectResourcePathPortability.ResolveHomeAnchor("docs/handbook.md"));
+
+    [Fact]
+    public void ResolveHomeAnchor_AnIllegalCharacter_IsReturnedUnchangedRatherThanThrowing()
+    {
+        var malformed = "~/bad\0name.md";
+
+        var exception = Record.Exception(() => ProjectResourcePathPortability.ResolveHomeAnchor(malformed));
+
+        Assert.Null(exception);
+        Assert.Equal(malformed, ProjectResourcePathPortability.ResolveHomeAnchor(malformed));
     }
 }

@@ -908,4 +908,35 @@ public interface ICockpitHost
 
     /// <summary>The session-resource providers every plugin has contributed — what a starting session is assembled from. Default empty.</summary>
     IReadOnlyList<Sessions.ISessionResourceProvider> SessionResourceProviders => [];
+
+    /// <summary>
+    /// Registers a place a plugin can list projects it shares elsewhere but this machine has not bound yet (AC-245)
+    /// — a Depot connection's own catalog, say — so the Projects workspace can offer them beside the local ones,
+    /// under a heading named by <see cref="Projects.SharedProject.SourceName"/>.
+    /// <para>
+    /// A <see cref="Projects.ISharedProjectSource.Key"/> another plugin already registered is kept as it was and
+    /// this registration ignored, the same agreement <see cref="AddProjectMemorySource"/> makes for a scheme two
+    /// plugins both offer.
+    /// </para>
+    /// This is additive to the AC-40 contract: <see cref="AbstractionsContract.Version"/> stays 1, the same as every
+    /// other default-implemented member added here. Default no-op so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void AddSharedProjectSource(Projects.ISharedProjectSource source)
+    {
+    }
+
+    /// <summary>
+    /// Withdraws the shared-project source registered under <paramref name="key"/> (AC-245) — a plugin that can
+    /// offer more than one source (a Depot connection the operator later removes, say) uses this so a source that
+    /// no longer applies stops being offered, instead of lingering there until the app restarts. A no-op when
+    /// nothing is registered under this key. Default no-op so existing <see cref="ICockpitHost"/> implementations
+    /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void RemoveSharedProjectSource(string key)
+    {
+    }
+
+    /// <summary>The shared-project sources every plugin has contributed — what the Projects workspace reads to list them. Default empty.</summary>
+    IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
 }

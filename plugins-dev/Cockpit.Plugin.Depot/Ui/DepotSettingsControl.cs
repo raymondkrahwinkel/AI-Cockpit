@@ -146,6 +146,11 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // to race.
         _SyncMemorySources(candidates);
 
+        // AC-245: same live-refresh reasoning as memory sources above, for the shared-project catalog — a
+        // connection added, renamed or removed here is reflected in the Projects workspace's next load rather than
+        // waiting for a restart.
+        _SyncSharedProjectSources(candidates);
+
         _settings.Connections = candidates;
 
         // This save's result becomes the next save's "before" state — see the field's own remarks for why a
@@ -221,6 +226,52 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             }
 
             _host.AddProjectMemorySource(newRegistration);
+        }
+    }
+
+    // AC-245: the same before/after diff-by-connection-Id _SyncMemorySources runs, applied to shared-project
+    // sources instead. A separate pass rather than folded into that method: the two registries are independent
+    // (ISharedProjectSourceRegistry, not IProjectMemorySourceRegistry) and keeping the diff loops apart means a
+    // future change to one shape never has to reason about the other's equality rules.
+    private void _SyncSharedProjectSources(IReadOnlyList<DepotConnectionRegistration> registrations)
+    {
+        // Diffed by (Key, Connection) rather than by Key alone: DepotSharedProjectSource is a plain class with no
+        // value equality of its own, and the first connection's Key is always the bare "depot" scheme regardless of
+        // its name — a rename of that one connection would leave Key identical before and after, so comparing Key
+        // alone would skip the refresh and leave a stale SourceName registered until a restart. Connection (a
+        // record) already carries the value equality that catches a name/URL change; Key alone still matters for
+        // the two-connections-trading-schemes ordering case _SyncMemorySources documents below.
+        var before = new Dictionary<string, (DepotConnectionRegistration Connection, string Key)>(StringComparer.Ordinal);
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(_originalConnections, _host))
+        {
+            before[pair.Connection.Id] = (pair.Connection, pair.Registration.Scheme);
+        }
+
+        var after = new Dictionary<string, (DepotConnectionRegistration Connection, string Key)>(StringComparer.Ordinal);
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(registrations, _host))
+        {
+            after[pair.Connection.Id] = (pair.Connection, pair.Registration.Scheme);
+        }
+
+        // Retire every stale key first, same ordering reason _SyncMemorySources documents: two connections trading
+        // keys in one save must not have the second's Add refused by the first's still-registered old key.
+        foreach (var (id, oldEntry) in before)
+        {
+            if (!after.TryGetValue(id, out var current) || current.Key != oldEntry.Key || current.Connection != oldEntry.Connection)
+            {
+                _host.RemoveSharedProjectSource(oldEntry.Key);
+            }
+        }
+
+        foreach (var (id, entry) in after)
+        {
+            if (before.TryGetValue(id, out var oldEntry) && oldEntry.Key == entry.Key && oldEntry.Connection == entry.Connection)
+            {
+                // Unchanged: re-adding would only hit Register's "key already taken" refusal.
+                continue;
+            }
+
+            _host.AddSharedProjectSource(new DepotSharedProjectSource(entry.Connection, entry.Key, _host));
         }
     }
 

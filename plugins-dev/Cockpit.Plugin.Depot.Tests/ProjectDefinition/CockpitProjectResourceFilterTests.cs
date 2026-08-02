@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 public class CockpitProjectResourceFilterTests
 {
     [Fact]
-    public void Apply_MixOfAllFourShapes_PortableCarriesTwoAndDroppedCarriesTheOtherTwoWithReasons()
+    public void Apply_MixOfAllFourShapes_AllFourLandInPortableNowNoneAreDropped()
     {
         var result = CockpitProjectResourceFilter.Apply(
         [
@@ -15,21 +15,28 @@ public class CockpitProjectResourceFilterTests
             ("Reference", "/home/raymond/private-notes.md", null),
         ]);
 
-        Assert.Equal(2, result.Portable.Count);
-        Assert.Equal(2, result.Dropped.Count);
-        Assert.Equal("~/Notes/private.md", Assert.Single(result.Dropped, d => d.Reference == "~/Notes/private.md").Reference);
-        Assert.Equal(ProjectResourcePortability.AnchorRelative, Assert.Single(result.Dropped, d => d.Reference == "~/Notes/private.md").Portability);
-        Assert.Equal(ProjectResourcePortability.Absolute, Assert.Single(result.Dropped, d => d.Reference == "/home/raymond/private-notes.md").Portability);
+        // AC-605: AnchorRelative is portable now — it travels to everyone with the instance, resolved against
+        // whoever opens the project, so it joins the other two portable rows instead of being dropped.
+        // AC-246: the fourth, absolute row is no longer dropped either — it lands here too, as a placeholder
+        // (role + label, no reference) rather than in Dropped.
+        Assert.Equal(4, result.Portable.Count);
+        Assert.Empty(result.Dropped);
+        var placeholder = Assert.Single(result.Portable, entry => entry.Placeholder);
+        Assert.Equal("Reference", placeholder.Role);
+        Assert.Equal(string.Empty, placeholder.Reference);
     }
 
     [Fact]
-    public void Apply_DroppedRow_CarriesTheOriginalRoleAndLabel()
+    public void Apply_APlainAbsoluteRow_CarriesTheOriginalRoleAndLabelAsAPlaceholderInPortable()
     {
-        var result = CockpitProjectResourceFilter.Apply([("Reference", "~/Notes/private.md", "My private notes")]);
+        var result = CockpitProjectResourceFilter.Apply([("Reference", "/home/raymond/private-notes.md", "My private notes")]);
 
-        var dropped = Assert.Single(result.Dropped);
-        Assert.Equal("Reference", dropped.Role);
-        Assert.Equal("My private notes", dropped.Label);
+        var placeholder = Assert.Single(result.Portable);
+        Assert.True(placeholder.Placeholder);
+        Assert.Equal("Reference", placeholder.Role);
+        Assert.Equal("My private notes", placeholder.Label);
+        Assert.Equal(string.Empty, placeholder.Reference);
+        Assert.Empty(result.Dropped);
     }
 
     [Fact]
@@ -50,16 +57,28 @@ public class CockpitProjectResourceFilterTests
         Assert.Empty(result.Dropped);
     }
 
-    // AC-244 finding (2026-08-02): host.ProjectResourcePathPortability.IsMachineBound shows the editor no warning
-    // for a "~/..." reference (Path.IsPathFullyQualified rejects it), while this filter still drops it — this test
-    // pins the drop side of that measured divergence so a future fix does not silently change it unnoticed.
+    // AC-605: reverses the AC-244-era divergence this test used to pin — the host editor and this filter now agree that a "~/..." reference travels, so it is carried, not dropped.
     [Fact]
-    public void Apply_AnchorRelativeReference_IsDroppedEvenThoughTheHostEditorShowsNoWarningForIt()
+    public void Apply_AnchorRelativeReference_IsPortableNotDropped()
     {
         var result = CockpitProjectResourceFilter.Apply([("Reference", "~/Notes/private.md", null)]);
 
-        var dropped = Assert.Single(result.Dropped);
-        Assert.Equal(ProjectResourcePortability.AnchorRelative, dropped.Portability);
+        var portable = Assert.Single(result.Portable);
+        Assert.Equal("anchor-relative", portable.Portability);
+        Assert.Empty(result.Dropped);
+    }
+
+    [Fact]
+    public void Apply_AbsoluteReference_IsAPlaceholderNotADropAnyMore()
+    {
+        // AC-246 (Raymond, 2026-08-02): reverses the AC-244-era "absolute means dropped" rule this test used to
+        // pin — role and label now travel as a placeholder instead.
+        var result = CockpitProjectResourceFilter.Apply([("Reference", "/home/raymond/private-notes.md", null)]);
+
+        var placeholder = Assert.Single(result.Portable);
+        Assert.Equal("absolute", placeholder.Portability);
+        Assert.True(placeholder.Placeholder);
+        Assert.Empty(result.Dropped);
     }
 
     // AC-244 (coordinator probe, 2026-08-02): a blank reference is a different reason than an unportable shape —
@@ -74,5 +93,25 @@ public class CockpitProjectResourceFilterTests
         var dropped = Assert.Single(result.Dropped);
         Assert.Equal(reference, dropped.Reference);
         Assert.Null(dropped.Portability);
+    }
+
+    // AC-612 (criterion 3, "Delen"): a secret-shaped row is dropped through the same mechanism AC-244 already
+    // built for an unportable row — no new reporting path. The reference is anchor-relative in shape, so
+    // `CockpitProjectResourceDropped.Portability` still reads `AnchorRelative` here: what this
+    // row's own shape classifies as, distinct from why `CockpitProjectResourceEntry.Create` refused it.
+    [Fact]
+    public void Apply_SecretPathReference_IsDroppedAlongsideTheAbsoluteRow()
+    {
+        var result = CockpitProjectResourceFilter.Apply(
+        [
+            ("Instructions", "~/.ssh/id_rsa", "SSH key"),
+            ("Instructions", "docs/CONVENTIONS.md", "Conventies"),
+        ]);
+
+        Assert.Single(result.Portable);
+        var dropped = Assert.Single(result.Dropped);
+        Assert.Equal("~/.ssh/id_rsa", dropped.Reference);
+        Assert.Equal("SSH key", dropped.Label);
+        Assert.Equal(ProjectResourcePortability.AnchorRelative, dropped.Portability);
     }
 }

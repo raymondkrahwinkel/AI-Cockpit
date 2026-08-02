@@ -334,7 +334,25 @@
          ReadEntries is the same identity used for reading back: a TTY session's on-disk record is the only
          transcript it has, so this is what lets a read surface answer for one instead of denying it exists.
          Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.47.0</Version>
+    <!-- 1.48.0 (AC-245): added the shared-project catalog seam — ICockpitHost.AddSharedProjectSource/
+         RemoveSharedProjectSource/SharedProjectSources (all default-implemented: no-op / no-op / empty) plus
+         ISharedProjectSource, SharedProject and SharedProjectListResult (new types) — a plugin that shares project
+         definitions elsewhere (AC-242's Depot sync) can list the ones this machine has not bound to a local Project
+         yet, so the Projects workspace can offer them beside the local ones. Additions only — a minor; major and
+         abstractionsVersion stay 1. Consumed in-repo by Cockpit.Plugin.Depot, whose minHostVersion moves with it.
+         Renumbered from a collision with 1.47.0 (AC-609) at merge time; no released version ever carried this
+         entry as 1.47.0. -->
+    <!-- 1.49.0 (AC-246): added ISharedProjectSource.PrepareBindingAsync — required, not default-implemented, since
+         it is a member a plugin implements rather than one the host calls (the same "an interface the plugin
+         implements is worse for an older binary, not better" reasoning 0.7.0's IPluginSettingsSections entry above
+         already documents) — plus SharedProjectBinding/SharedProjectBindingResource/SharedProjectBindingResult (new
+         types). Reads enough of a shared project's own portable definition (Name, Description, GitUrl,
+         BehaviorPrompt, the worktree switch, the MCP overlay's enabled names, and its resource rows) for the host to
+         build a usable local Project at the "Finish setting up…" bind step, without the App layer ever depending on
+         a plugin's own on-disk shape (Depot's CockpitProjectDefinition never crosses this boundary). Major and
+         abstractionsVersion stay 1. Consumed in-repo by Cockpit.Plugin.Depot, whose minHostVersion moves with it.
+         Renumbered from a collision with 1.48.0 at merge time. -->
+    <Version>1.49.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

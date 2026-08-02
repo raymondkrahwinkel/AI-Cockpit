@@ -140,7 +140,7 @@ public class ProjectDialogResourceRowTests
     {
         var viewModel = new ProjectDialogViewModel();
         viewModel.AddResourceRowCommand.Execute(null);
-        viewModel.ResourceRows.Single().IsMachineBound = true;
+        viewModel.ResourceRows.Single().Scope = ProjectResourceScope.Machine;
         var window = new ProjectDialog { DataContext = viewModel };
         window.Show();
         window.UpdateLayout();
@@ -353,5 +353,161 @@ public class ProjectDialogResourceRowTests
         Assert.Null(checkbox);
         // Switching roles reset it, and that reset must actually reach the real markup, not only the view model.
         Assert.False(row.SendsContent);
+    });
+
+    // --- AC-612: a row pointing at a likely secrets location is reported, refuses content, and is disabled --------
+
+    [Fact]
+    public void ASecretPathRow_ShowsTheWarningAndDisablesSendAlong() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Role = ProjectResourceRole.Instructions;
+        row.Reference = "~/.ssh/id_rsa";
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var hint = VisibleTextContaining(window, "looks like it holds credentials");
+        var checkbox = VisibleSendAlongCheckBox(window);
+        window.Close();
+
+        // Melden (AC-612 effect 1): visible in the real markup, not only on the view model.
+        Assert.NotNull(hint);
+        // Inhoud (AC-612 effect 2): the checkbox is disabled, not merely unticked — nothing invites clicking it back on.
+        Assert.NotNull(checkbox);
+        Assert.False(checkbox!.IsEnabled);
+    });
+
+    [Fact]
+    public void ASecretPathRow_TickingSendAlongInTheViewModel_StaysFalseInTheRealMarkup() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Role = ProjectResourceRole.Instructions;
+        row.Reference = "~/.ssh/id_rsa";
+        row.SendsContent = true; // an attempt to force it, e.g. from a hand-edited saved value re-applied at load
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var checkbox = VisibleSendAlongCheckBox(window);
+        window.Close();
+
+        Assert.NotNull(checkbox);
+        Assert.NotEqual(true, checkbox!.IsChecked);
+    });
+
+    [Fact]
+    public void TypingASecretPathLive_UnchecksAnAlreadyTickedSendAlongAtOnce() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Role = ProjectResourceRole.Instructions;
+        row.Reference = "docs/CONVENTIONS.md";
+        row.SendsContent = true;
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+        Assert.True(VisibleSendAlongCheckBox(window)!.IsChecked);
+
+        var textBox = ReferenceTextBox(viewModel, window, row);
+        textBox.Focus();
+        textBox.Text = "~/.ssh/id_rsa";
+        window.UpdateLayout();
+
+        var checkbox = VisibleSendAlongCheckBox(window);
+        window.Close();
+
+        // No 400ms diagnostics window here — the tick comes off the instant the shape looks secret, live, not only on save.
+        Assert.NotNull(checkbox);
+        Assert.NotEqual(true, checkbox!.IsChecked);
+        Assert.False(row.SendsContent);
+    });
+
+    [Fact]
+    public void ASecretPathRow_HidesTheMachineBoundHintInFavourOfTheSecretWarning() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Reference = "~/.ssh/id_rsa";
+        row.Scope = ProjectResourceScope.Home;
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var scopeHint = VisibleTextContaining(window, "travels to everyone");
+        var secretHint = VisibleTextContaining(window, "looks like it holds credentials");
+        window.Close();
+
+        // One row, one primary explanation (ShowsScopeLabel's own remarks) — the scope sentence steps aside.
+        Assert.Null(scopeHint);
+        Assert.NotNull(secretHint);
+    });
+
+    [Fact]
+    public void ANonInstructionsSecretPathRow_ShowsTheSharingWarningWithoutMentioningContent() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Role = ProjectResourceRole.Reference;
+        row.Reference = "~/.aws/credentials";
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var hint = VisibleTextContaining(window, "looks like it holds credentials");
+        window.Close();
+
+        Assert.NotNull(hint);
+        // Delen (AC-612 effect 3): a Reference/Memory row never offers "Send along" at all, so the sentence must not
+        // claim content is withheld from a session — that sentence belongs to Instructions rows alone.
+        Assert.DoesNotContain("its content will never be sent", hint!.Text);
+    });
+
+    [Fact]
+    public void ANonSecretRow_NeverShowsTheSecretPathWarning() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        viewModel.ResourceRows.Single().Reference = "docs/CONVENTIONS.md";
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var hint = VisibleTextContaining(window, "looks like it holds credentials");
+        window.Close();
+
+        Assert.Null(hint);
+    });
+
+    /// <summary>
+    /// AC-612 (Raymond, "no escape hatch"): a secret-shaped row inside the project folder must not offer "Make
+    /// repo-relative" — clicking it would rewrite e.g. <c>SourceDirectory/.ssh/id_rsa</c> to <c>.ssh/id_rsa</c>, a
+    /// shape the secret-path heuristic never evaluates (repo-relative is out of its scope), which would walk the row
+    /// straight out of every check this ticket added through a button that already existed for an unrelated reason.
+    /// </summary>
+    [Fact]
+    public void ASecretPathRowInsideTheProjectFolder_NeverOffersMakeRepoRelative() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Reference = "~/.ssh/id_rsa";
+        row.RepoRelativeFix = ".ssh/id_rsa"; // what ProjectDialogViewModel would compute were this row not secret
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var button = window.GetVisualDescendants().OfType<Button>()
+            .FirstOrDefault(b => ReferenceEquals(b.Command, viewModel.ResourceRows.Single().ApplyRepoRelativeFixCommand) && b.IsEffectivelyVisible);
+        window.Close();
+
+        Assert.Null(button);
     });
 }

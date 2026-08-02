@@ -1,11 +1,16 @@
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-// Classifies a resource reference into one of the four `ProjectResourcePortability` shapes. Only
-// `ProjectResourcePortability.RepoRelative` and `ProjectResourcePortability.PluginSource` travel with a shared `.cockpit/project.json` (AC-244 decision, 2026-08-02).
-// AC-244 finding (2026-08-02, measured against Cockpit.Core.Projects.ProjectResourcePathPortability.IsMachineBound):
-// it disagrees with this classifier, silently, on "~/x" and on an absolute-but-inside-SourceDirectory reference
-// that bypassed ToStoredReference — the editor shows no warning for either, this classifier drops both. Not fixed
-// here (host-side, different ticket) — see CockpitProjectResourceFilter for the drop report this backs instead.
+// Classifies a resource reference into one of the four `ProjectResourcePortability` shapes. Three of
+// the four — `ProjectResourcePortability.RepoRelative`, `ProjectResourcePortability.AnchorRelative`
+// and `ProjectResourcePortability.PluginSource` — travel with a shared `.cockpit/project.json`
+// (AC-605 decision, 2026-08-02, reversing AC-244's original two-of-four call on `AnchorRelative` — see
+// `IsPortable`'s own remark).
+// AC-605 (2026-08-02, measured against Cockpit.Core.Projects.ProjectResourcePathPortability.ClassifyScope): the two
+// now agree on every shape, including "~/x" — see ProjectResourceScopeParityTests for the shared table both sides
+// are pinned against. An absolute-but-inside-SourceDirectory reference that bypassed ToStoredReference is still
+// this classifier's to drop (it has no SourceDirectory to judge that against, and never will — see this plugin's
+// own "cannot reference Cockpit.Core" constraint); the host's own SuggestRepoRelativeFix is what surfaces and offers
+// to repair that case instead (AC-605 criterion 5) before a project ever gets to this classifier at all.
 public static class ProjectResourcePortabilityClassifier
 {
     public static ProjectResourcePortability Classify(string reference)
@@ -17,7 +22,7 @@ public static class ProjectResourcePortabilityClassifier
             return ProjectResourcePortability.PluginSource;
         }
 
-        if (reference.StartsWith('~'))
+        if (_IsHomeAnchored(reference))
         {
             return ProjectResourcePortability.AnchorRelative;
         }
@@ -26,7 +31,9 @@ public static class ProjectResourcePortabilityClassifier
     }
 
     public static bool IsPortable(ProjectResourcePortability portability) =>
-        portability is ProjectResourcePortability.RepoRelative or ProjectResourcePortability.PluginSource;
+        portability is ProjectResourcePortability.RepoRelative
+            or ProjectResourcePortability.AnchorRelative
+            or ProjectResourcePortability.PluginSource;
 
     public static string ToWireValue(ProjectResourcePortability portability) => portability switch
     {
@@ -45,4 +52,12 @@ public static class ProjectResourcePortabilityClassifier
         var separator = reference.IndexOf(':');
         return separator >= 2 && reference[(separator + 1)..].Trim().Length > 0;
     }
+
+    // Mirrors Cockpit.Core.Projects.ProjectResourcePathPortability.IsHomeAnchored exactly (AC-605 criterion 4) —
+    // this plugin cannot reference Cockpit.Core (see this class's own remarks), so the rule is reimplemented rather
+    // than shared, and ProjectResourceScopeParityTests is what keeps the two copies from drifting apart again.
+    // Deliberately narrower than a bare reference.StartsWith('~'): "~henk/x" is a POSIX shell's "some other user's
+    // home" expansion, not a form either side resolves — only "~" itself and anything starting with "~/" count.
+    private static bool _IsHomeAnchored(string reference) =>
+        reference == "~" || reference.StartsWith("~/", StringComparison.Ordinal);
 }

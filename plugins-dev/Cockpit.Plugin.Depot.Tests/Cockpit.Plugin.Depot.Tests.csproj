@@ -46,6 +46,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Depot\Cockpit.Plugin.Depot.csproj" />
+    <!-- AC-605 criterion 4: this is the test project, not the plugin itself — the "a plugin must not reference
+         Cockpit.Core" rule (AC-244) binds Cockpit.Plugin.Depot, not its own test project. Referenced only so
+         ProjectResourceScopeParityTests can pin the host's ProjectResourcePathPortability.ClassifyScope and this
+         plugin's own ProjectResourcePortabilityClassifier.Classify against the same shared table. -->
+    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
   </ItemGroup>
 
 </Project>

@@ -133,6 +133,18 @@ public sealed record Project(string Id, string Name)
     // Whether this project keeps any information of its own, so a surface leaves the block out rather than holding an empty space open.
     public bool HasAdditionalInfo => AdditionalInfo.Count > 0;
 
+    // Which category this project sits under in the manager's list (AC-618) — "Privé", "Werk", whatever the
+    // operator types; null/blank groups it under "Uncategorized" instead. Always local, even for a project bound
+    // to a shared Depot definition: the operator who shares a project does not get to impose their own filing on
+    // everyone who opens it, the same local/portable line `ProjectResource` already draws for memory.
+    //
+    // Compared case-insensitively (`StringComparison.OrdinalIgnoreCase` — never the culture-sensitive
+    // default, which is exactly the AC-372 class of bug: a Turkish locale's lowercase of `I` is not `i`,
+    // so `"Werk"` and `"werk"` would stop matching there). This project's own text is kept exactly as
+    // typed rather than rewritten to a shared casing — the group heading it shows under is what carries the
+    // "shown as first typed" rule; see `ProjectSettings.CategoryOrder`.
+    public string? Category { get; init; }
+
     // What this project is called elsewhere (AC-317), under the key the plugin that asked registered: the YouTrack
     // project it is tracked in, the repository it lives in. Where `AdditionalInfo` is what the operator
     // wants to remember, this is what a plugin resolves — a value it queries with, not a note anyone reads.

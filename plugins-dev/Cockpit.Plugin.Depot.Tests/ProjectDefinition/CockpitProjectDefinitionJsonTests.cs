@@ -15,13 +15,13 @@ public class CockpitProjectDefinitionJsonTests
     {
         var definition = new CockpitProjectDefinition
         {
-            Name = "PayrollProcessor",
-            Description = "Handles payroll",
-            GitUrl = "git@github.com:synvolution/payroll-processor.git",
+            Name = "Handbook",
+            Description = "Handles handbook",
+            GitUrl = "git@github.com:acme/handbook-processor.git",
             BehaviorPrompt = "Be careful with money.",
             IsolateInWorktreeByDefault = true,
             McpOverlay = new CockpitProjectMcpOverlayEntry { Enabled = ["Depot: Work", "YouTrack"] },
-            Resources = [CockpitProjectResourceEntry.Create("Memory", "depot:payroll-processor")!],
+            Resources = [CockpitProjectResourceEntry.Create("Memory", "depot:handbook-processor")!],
             Logo = ".cockpit/logo.png",
         };
 
@@ -36,7 +36,7 @@ public class CockpitProjectDefinitionJsonTests
         Assert.Equal(definition.IsolateInWorktreeByDefault, roundTripped.IsolateInWorktreeByDefault);
         Assert.Equal(definition.McpOverlay.Enabled, roundTripped.McpOverlay!.Enabled);
         Assert.Equal(definition.Logo, roundTripped.Logo);
-        Assert.Equal("depot:payroll-processor", Assert.Single(roundTripped.Resources!).Reference);
+        Assert.Equal("depot:handbook-processor", Assert.Single(roundTripped.Resources!).Reference);
     }
 
     [Fact]

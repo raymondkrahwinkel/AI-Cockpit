@@ -35,6 +35,7 @@ public class ProjectStoreTests : IDisposable
         var project = Project.Create("Cockpit") with
         {
             Description = "The cockpit itself",
+            Category = "Werk",
             SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
             GitUrl = "https://github.com/example/ai-cockpit.git",
             DefaultProfileLabel = "personal",
@@ -153,6 +154,69 @@ public class ProjectStoreTests : IDisposable
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
         Assert.Equal("kept", Assert.Single(loaded.Projects).Id);
+    }
+
+    // AC-245: the per-machine "hidden shared project" flag round-trips the same as everything else in this section.
+
+    [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsHiddenSharedProjectIds()
+    {
+        var store = new ProjectStore(_configFilePath);
+
+        await store.SaveAsync(ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit", "depot:other"] });
+        var loaded = await store.LoadAsync();
+
+        Assert.Equal(["depot:cockpit", "depot:other"], loaded.HiddenSharedProjectIds);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HiddenSharedProjectIdsButNoProjects_StillLoads()
+    {
+        // Regression: the store's own fast path used to treat "no Projects" alone as "nothing saved at all" and
+        // return ProjectSettings.Empty outright, silently dropping a hidden-ids list saved with no local projects.
+        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit"] });
+
+        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
+
+        Assert.Equal(["depot:cockpit"], loaded.HiddenSharedProjectIds);
+        Assert.Empty(loaded.Projects);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HandEditedNullInHiddenSharedProjectIds_LoadsWithThatEntryDropped()
+    {
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """{"HiddenSharedProjectIds":[null,"depot:cockpit"]}""");
+
+        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
+
+        Assert.Equal(["depot:cockpit"], loaded.HiddenSharedProjectIds);
+    }
+
+    // AC-618: a project's category, and the categories' own display order/casing, round-trip the same way.
+
+    [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsCategoryAndCategoryOrder()
+    {
+        var store = new ProjectStore(_configFilePath);
+        var project = Project.Create("Cockpit") with { Category = "Werk" };
+
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
+        var loaded = await store.LoadAsync();
+
+        Assert.Equal("Werk", Assert.Single(loaded.Projects).Category);
+        Assert.Equal(["Werk"], loaded.CategoryOrder);
+    }
+
+    /// <summary>Most projects carry no category; their own entry should not gain an empty field for it (CategoryOrder itself is always written, empty or not — that part is expected).</summary>
+    [Fact]
+    public async Task SaveAsync_ProjectWithoutCategory_WritesNoCategoryFieldOnTheProjectEntry()
+    {
+        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Admin")));
+
+        var written = await File.ReadAllTextAsync(_configFilePath);
+        Assert.DoesNotContain("\"Category\":", written);
     }
 
     /// <summary>The store owns one section: writing projects must not clobber a sibling the same file carries.</summary>

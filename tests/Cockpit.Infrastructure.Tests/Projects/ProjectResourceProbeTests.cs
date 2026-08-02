@@ -75,6 +75,31 @@ public class ProjectResourceProbeTests : IDisposable
         Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
 
+    /// <summary>
+    /// AC-605 criterion 2: unlike an ordinary relative path, a <c>~</c>-anchored reference resolves to a real path
+    /// on its own (no <c>SourceDirectory</c> needed), so this probe checks it for existence the same way it checks
+    /// any other absolute path — a home-anchored row that is missing gets the same "could not be found" treatment.
+    /// </summary>
+    [Fact]
+    public void AHomeAnchoredReferenceThatDoesNotExist_IsReportedUnresolvedByItsOriginalText()
+    {
+        var reference = "~/cockpit-resource-probe-tests-" + Guid.NewGuid().ToString("n") + "/does-not-exist";
+        var resources = new[] { new ProjectResource(reference, ProjectResourceRole.Memory) };
+
+        // Reported by the original "~/..." text, not its resolved form — that is what ProjectResource.Reference
+        // holds and what the editor's row binds against.
+        Assert.Contains(reference, ProjectResourceProbe.FindUnresolved(resources));
+    }
+
+    [Fact]
+    public void AHomeAnchoredReferenceThatExists_IsNotReportedUnresolved()
+    {
+        // "~" itself always exists (it is the home directory) — no fixture needed beyond that.
+        var resources = new[] { new ProjectResource("~", ProjectResourceRole.Memory) };
+
+        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
+    }
+
     [Fact]
     public void ABlankReference_IsNeverReportedUnresolved()
     {

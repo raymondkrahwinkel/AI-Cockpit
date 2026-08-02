@@ -59,4 +59,39 @@ public class ProjectResourceSendsContentTests
             recategorised.SendsContent,
             "changing the role must not hand the row a tick nobody set — that is the whole of the opt-in");
     }
+
+    /// <summary>
+    /// AC-612: the same enforcement, for the same reason, added to the same getter — a row pointing at a likely
+    /// secrets location must never report its content as sent, however it got the tick. Asserted through the stored
+    /// form for the same reason as <see cref="ARowStoredAsMemoryWithTheTick_DoesNotBecomeTickedByChangingItsRole"/>:
+    /// storage (a hand-edited <c>cockpit.json</c>, or a row saved before this ticket existed) is where a tick and an
+    /// unsafe reference come to disagree in the first place.
+    /// </summary>
+    [Fact]
+    public void SendsContent_OnAnInstructionsRowPointingAtASecretPath_ReadsAsFalse()
+    {
+        var resource = new ProjectResource("~/.ssh/id_rsa", ProjectResourceRole.Instructions) { SendsContent = true };
+
+        Assert.False(resource.SendsContent);
+    }
+
+    /// <summary>An absolute path resolving to the same secrets location is refused identically (AC-612 constraint 2) — the resolved location is what is judged, not the literal text.</summary>
+    [Fact]
+    public void SendsContent_OnAnInstructionsRowPointingAtASecretPathByItsAbsoluteForm_ReadsAsFalse()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var absolute = Path.Combine(home, ".ssh", "id_rsa");
+        var resource = new ProjectResource(absolute, ProjectResourceRole.Instructions) { SendsContent = true };
+
+        Assert.False(resource.SendsContent);
+    }
+
+    /// <summary>The exception the heuristic itself carries — a public key is not secret, so this row's tick is left alone.</summary>
+    [Fact]
+    public void SendsContent_OnAnInstructionsRowPointingAtAPublicKey_IsReportedAsStored()
+    {
+        var resource = new ProjectResource("~/.ssh/id_rsa.pub", ProjectResourceRole.Instructions) { SendsContent = true };
+
+        Assert.True(resource.SendsContent);
+    }
 }

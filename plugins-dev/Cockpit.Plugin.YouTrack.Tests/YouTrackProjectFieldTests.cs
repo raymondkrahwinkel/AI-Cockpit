@@ -69,10 +69,10 @@ public class YouTrackProjectFieldTests
     {
         var options = await YouTrackProjectField.BuildOptionsAsync(
             [Instance("Personal"), Instance("Work")],
-            Returns(("Personal", "AC", "AI-Cockpit"), ("Work", "PAY", "Payroll")),
+            Returns(("Personal", "AC", "AI-Cockpit"), ("Work", "PAY", "Handbook")),
             CancellationToken.None);
 
-        Assert.Equal(new[] { "Personal: AI-Cockpit — AC", "Work: Payroll — PAY" }, options.Select(option => option.Display));
+        Assert.Equal(new[] { "Personal: AI-Cockpit — AC", "Work: Handbook — PAY" }, options.Select(option => option.Display));
     }
 
     [Fact]

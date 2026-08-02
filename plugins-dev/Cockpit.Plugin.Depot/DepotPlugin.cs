@@ -67,6 +67,13 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             host.AddProjectMemorySource(registration);
         }
 
+        // AC-245: one shared-project source per connection, so the Projects workspace can list what this connection
+        // shares beside the local projects. Same zero-connections-means-nothing rule as the memory sources above.
+        foreach (var source in DepotMemorySource.BuildSharedProjectSources(settings.Connections, host))
+        {
+            host.AddSharedProjectSource(source);
+        }
+
         // AC-504: session delivery no longer pushes this plugin's servers into the shared registry — the host asks
         // for them through GetMcpServers when a session is assembled. Reclaim what an earlier version (AC-243)
         // pushed, the same move YouTrackPlugin made when it left the push path (AC-11), so those entries leave the
