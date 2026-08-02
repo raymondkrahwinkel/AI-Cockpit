@@ -132,6 +132,15 @@
                                     ToolTip.Tip="When you type several messages while the agent is working, send them together as one follow-up when the turn finishes, instead of one at a time. Off: each queued message gets its own turn."/>
                             </StackPanel>
 
+                            <!-- AC-615: the consent for a wake, which is a turn one agent causes on another and this
+                                 operator pays for. It used to be each agent's own call and no agent ever made it. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Let agents wake each other for urgent messages"
+                                          IsChecked="{Binding WakeAgentsByDefault}"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="When an agent marks a message to a neighbour on the same desk as urgent, the cockpit starts a turn for that neighbour there and then — so a warning about a branch or a worktree arrives before the damage. A woken agent is handed a labelled block saying who caused it; it grants nothing. Never interrupts: only a session standing still is woken, never one mid-turn and never one with a question in front of you. Off: urgent messages simply wait like any other. A session can override this for itself."/>
+                            </StackPanel>
+
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                             <!-- Screenshots (AC-220): a capture goes to the session in view, the same way push-to-talk

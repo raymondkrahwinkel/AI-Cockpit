@@ -148,6 +148,9 @@ internal static class Screenshotter
         ["plugin-store-updating"] = (_, _) => _PluginStoreBusy(percent: 200.0 / 6, "Updating 'Git status' (3 of 6)…"),
         ["manage-stores"] = (_, _) => _ManageStores(),
         ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
+        // AC-397, populated: the empty shape is the design-time one and proves nothing about the row templates, and
+        // this window is five lists whose failure mode is one of them quietly bound to the wrong collection.
+        ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
         // AC-543 criterion 11: the assistant chip in the sidebar it actually lives in, expanded and as the rail.
@@ -1269,6 +1272,22 @@ internal static class Screenshotter
         {
             SelectedPlugin = manager.AvailablePlugins.FirstOrDefault(),
         };
+    }
+
+    // Renders the agent-line inspector (AC-397) with one row in each of its five sections, including a refused send
+    // and a claim old enough to look stale — the two rows an operator is actually scanning for, and the two a scene
+    // built only from happy-path data would leave undrawn.
+    private static ViewModels.AgentLineInspectorViewModel _AgentLine()
+    {
+        var inspector = new ViewModels.AgentLineInspectorViewModel { DeskNote = "Desk ws-1 · 3 agent session(s)", EmptyNote = string.Empty };
+        inspector.Messages.Add(new ViewModels.AgentLineMessageRow("09:12:03", "pane-a", "pane-b", "heads-up", "Accepted", "I am merging DEP-85 to dev — leave that branch alone for ten minutes."));
+        inspector.Messages.Add(new ViewModels.AgentLineMessageRow("09:12:44", "pane-a", "pane-b", "heads-up", "RefusedRateLimited", "and again, and again, and again"));
+        inspector.Wakes.Add(new ViewModels.AgentLineWakeRow("09:12:03", "pane-a", "pane-b", "Woken"));
+        inspector.Wakes.Add(new ViewModels.AgentLineWakeRow("09:12:44", "pane-a", "pane-c", "AwaitingOperator"));
+        inspector.Claims.Add(new ViewModels.AgentLineClaimRow("/home/raymond/RiderProjects/AI-Cockpit", "pane-b", "38 min"));
+        inspector.Budget.Add(new ViewModels.AgentLineBudgetRow("pane-a", "Message", "20 of 20 in the last 60s"));
+        inspector.Gaps.Add(new ViewModels.AgentLineGapRow("pane-c", "On this desk, but has never called a cockpit-agents tool. Either it has not looked yet, the server is not mounted for it, or its MCP injection failed silently."));
+        return inspector;
     }
 
     // Renders the Manage-stores dialog (#62, AC-7) with a few sample stores seeded straight into the manager's

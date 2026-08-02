@@ -6,7 +6,8 @@ namespace Cockpit.Infrastructure.Agents;
 // Turn-start delivery over the inbox store (AC-394). Thin by intent: the store already knows how to hold a batch
 // in flight and how to put one back, so all that lives here is how much one turn may carry and the fact that
 // nothing waiting means no notice at all.
-internal sealed class AgentTurnInboxDelivery(IAgentMessageInbox inbox) : IAgentTurnInboxDelivery, ISingletonService
+internal sealed class AgentTurnInboxDelivery(IAgentMessageInbox inbox, IWorkspaceAgentCoordinator coordinator)
+    : IAgentTurnInboxDelivery, ISingletonService
 {
     // The most messages one turn carries on its own. Deliberately far below `read_inbox`'s 25: that batch is
     // one the recipient asked for, on a turn it chose to spend that way, and this one is neither. Here the mail
@@ -66,8 +67,15 @@ internal sealed class AgentTurnInboxDelivery(IAgentMessageInbox inbox) : IAgentT
         return new AgentInboxTurnNotice(paneId, carried, batch.Remaining + overBudget.Count);
     }
 
-    public void ConfirmDelivered(AgentInboxTurnNotice notice) =>
+    public void ConfirmDelivered(AgentInboxTurnNotice notice)
+    {
         inbox.ConfirmDelivered(notice.PaneId, notice.MessageIds);
+
+        // AC-614: mail reaching this pane counts as its inbox having been read, even though the pane called nothing.
+        // Recorded on confirmation rather than when the batch was taken, so what a sender is shown is a delivery
+        // that actually happened — a batch that was taken and then returned is not a read.
+        coordinator.RecordInboxRead(notice.PaneId);
+    }
 
     public void ReturnUndelivered(AgentInboxTurnNotice notice) =>
         inbox.ReturnUndelivered(notice.PaneId, notice.MessageIds);

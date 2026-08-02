@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 
@@ -90,6 +91,20 @@ internal sealed class CockpitMcpEndpointHost
             // the instance was built) do not live — so it would fail to resolve them at the first tool call.
             var mcpBuilder = builder.Services.AddMcpServer().WithHttpTransport();
             _WithToolsInstance(mcpBuilder, tools);
+
+            // AC-527: one registration, and every endpoint this host mounts carries the agent line's mail out on its
+            // tool results — the ones registered up front and the ones a plugin mounts later, without any of them
+            // knowing the inbox exists. Deliberately not narrowed to the cockpit-agents server: the value of this
+            // route is that *any* tool call an agent makes is a chance to reach it, and a pane that spends its day in
+            // cockpit-session or a plugin's tools is exactly the pane the old routes could not reach.
+            //
+            // The delivery service is resolved from the application's services, not this endpoint's slim container —
+            // the same reason WithTools takes a pre-built instance here rather than a type.
+            mcpBuilder.WithRequestFilters(filters => filters.AddCallToolFilter(next => async (context, cancellationToken) =>
+                McpInboxPiggyback.Attach(
+                    await next(context, cancellationToken).ConfigureAwait(false),
+                    _services.GetService<IAgentTurnInboxDelivery>(),
+                    _logger)));
 
             builder.WebHost.UseKestrel();
             // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second cockpit.

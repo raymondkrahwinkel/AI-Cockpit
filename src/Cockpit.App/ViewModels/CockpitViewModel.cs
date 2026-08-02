@@ -96,6 +96,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
     private readonly IAgentMessageInbox? _agentMessages;
     private readonly IAgentResourceClaims? _agentClaims;
+    private readonly IAgentLineBudget? _agentLineBudget;
     private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
@@ -281,6 +282,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.
     public DelegatedTasksViewModel DelegatedTasks { get; }
+
+    // The operator's read-only view on the agent line (AC-397) — the only window on traffic they are not part of.
+    public AgentLineInspectorViewModel AgentLineInspector { get; } = new();
 
     // The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.
     public WorktreesViewModel Worktrees { get; }
@@ -1242,6 +1246,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _combineQueuedMessages;
 
+    // When true, an agent may be woken by a neighbour's urgent message — a turn started for it that the operator
+    // did not ask for (AC-615). On by default, and the operator's decision rather than each agent's: this is the
+    // consent for that turn, and the session it is spent on is not the one paying for it. A session can still
+    // override it for itself with `set_wake_optin`.
+    [ObservableProperty]
+    private bool _wakeAgentsByDefault = true;
+
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
 
@@ -2050,6 +2061,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // Pushes the operator's wake decision to the coordinator as it changes (AC-615). Live rather than read at
+    // session start: turning wakes off has to reach the sessions that are already open, which is the case the
+    // operator is most likely to be reaching for the toggle in.
+    partial void OnWakeAgentsByDefaultChanged(bool value) => _agentCoordinator?.SetDefaultWakeConsent(value);
+
     // Keeps each session's `SessionViewModel.IsSelected` in sync with the active selection.
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
     {
@@ -2381,6 +2397,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
         IAgentResourceClaims? agentClaims = null,
+        IAgentLineBudget? agentLineBudget = null,
+        IAgentNotifyAuditLog? agentNotifyTrail = null,
         IClaimCollisionMonitor? claimCollisionMonitor = null,
         SessionStateRecorder? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
@@ -2540,7 +2558,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator = agentCoordinator;
         _agentMessages = agentMessages;
         _agentClaims = agentClaims;
+        _agentLineBudget = agentLineBudget;
         _claimCollisionMonitor = claimCollisionMonitor;
+
+        // AC-397. Built here rather than injected, because it is only useful with all four stores present and this is
+        // the one place that holds them; a graph missing any of them gets the design-time shape, which says so in the
+        // window instead of drawing empty lists.
+        //
+        // Deliberately *not* given IWorkspaceAgentGateway, though that is where "who shares this desk" properly
+        // lives. That gateway is constructed from this view model, so depending on it here is a cycle — and a
+        // container follows it until the stack runs out, which is a crashed process rather than a failed resolve.
+        // The desk is worked out below from the same SessionWorkspacePlacement rule the gateway itself applies, so
+        // there is one rule and not two; what is duplicated is the call, not the decision.
+        AgentLineInspector = agentCoordinator is not null && agentClaims is not null && agentLineBudget is not null
+                && agentNotifyTrail is not null
+            ? new AgentLineInspectorViewModel(agentNotifyTrail, agentClaims, agentLineBudget, agentCoordinator)
+            : new AgentLineInspectorViewModel();
+        // Read fresh on every refresh rather than captured, because the desk follows the operator's selection.
+        AgentLineInspector.Desk = _SelectedSessionDesk;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
@@ -2999,6 +3034,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _sessionBehaviorSettingsStore.LoadAsync();
         AutoCloseOnExit = settings.AutoCloseOnExit;
         CombineQueuedMessages = settings.CombineQueuedMessages;
+        WakeAgentsByDefault = settings.WakeAgentsByDefault;
+        // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
+        // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
+        // its own default rather than on the operator's, which happen to agree today and need not tomorrow.
+        _agentCoordinator?.SetDefaultWakeConsent(settings.WakeAgentsByDefault);
     }
 
     // Persists the session-behaviour settings edited in the Options flyout to `cockpit.json`.
@@ -3014,6 +3054,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             AutoCloseOnExit = AutoCloseOnExit,
             CombineQueuedMessages = CombineQueuedMessages,
+            WakeAgentsByDefault = WakeAgentsByDefault,
         });
         SessionBehaviorSettingsStatus = "Saved";
     }
@@ -5050,6 +5091,49 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowDelegatedTasksDialogAsync();
     }
 
+    // The desk the selected session is on, and the agent panes sharing it (AC-397) — the same answer
+    // `WorkspaceAgentGateway` gives an agent asking who its neighbours are, worked out here through the same
+    // `SessionWorkspacePlacement` rule because depending on that gateway from this view model is the
+    // cycle it is built on top of.
+    //
+    // Null when nothing is selected, when the selection is a plain terminal pane (no agent on the other end), or
+    // when it sits on no desk at all — the three cases where there is no line to report on rather than an empty one.
+    private AgentLineDesk? _SelectedSessionDesk()
+    {
+        if (SelectedSession is not { ShowPluginHeaderItems: true } selected)
+        {
+            return null;
+        }
+
+        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+        if (SessionWorkspacePlacement.Resolve(selected, firstSessionsWorkspaceId) is not { } workspaceId)
+        {
+            return null;
+        }
+
+        return new AgentLineDesk(
+            workspaceId,
+            AllSessions()
+                .Where(candidate => candidate.ShowPluginHeaderItems
+                    && SessionWorkspacePlacement.Resolve(candidate, firstSessionsWorkspaceId) == workspaceId)
+                .Select(candidate => candidate.PaneId)
+                .ToHashSet(StringComparer.Ordinal));
+    }
+
+    // Opens the agent-line inspector (AC-397). The operator is not in the message path, so without this the traffic
+    // between agents on their own desk is invisible to them — including the wakes one agent asked for on another's
+    // session, and the refusals nobody was told about.
+    [RelayCommand]
+    private async Task ShowAgentLineAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowAgentLineInspectorDialogAsync(AgentLineInspector);
+    }
+
     [RelayCommand]
     private async Task ShowWorktreesAsync()
     {
@@ -5992,9 +6076,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-393: and whatever it had claimed. This is the whole of what keeps a claim from outliving its agent —
         // there is no expiry and no heartbeat in phase 1 — so a session that ends without releasing must not leave
         // its neighbours working around a worktree nobody is on any more.
+        //
+        // AC-396: and what it had spent against the line's rate limit. Only host memory is at stake — the counts are
+        // per sender and expire on their own within the window — but a pane id that is never coming back should not
+        // keep an entry for the life of the app.
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);
+        _agentLineBudget?.Forget(session.PaneId);
 
         // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
         // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
@@ -6790,6 +6879,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);
+        _agentLineBudget?.Forget(session.PaneId);
         if (_worktreeManager is not null)
         {
             try

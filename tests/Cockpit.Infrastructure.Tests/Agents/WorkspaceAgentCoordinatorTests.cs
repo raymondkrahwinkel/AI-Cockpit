@@ -13,6 +13,87 @@ namespace Cockpit.Infrastructure.Tests.Agents;
 /// </summary>
 public sealed class WorkspaceAgentCoordinatorTests
 {
+    /// <summary>
+    /// AC-613's split, and the reason it exists: enrollment is the host saying it knows about a pane, contact is the
+    /// pane reaching this server. A pane the host enrolled has no contact time until it calls in, and that null is
+    /// what <c>list_agents</c> reports a gap on — the AC-156 signal that a single flag would have swallowed.
+    /// </summary>
+    [Fact]
+    public void Enroll_WithoutContact_LeavesTheContactTimeUnset()
+    {
+        var coordinator = new WorkspaceAgentCoordinator();
+
+        coordinator.Enroll("pane-1");
+
+        Assert.True(coordinator.IsEnrolled("pane-1"));
+        Assert.Null(coordinator.LastContactUtc("pane-1"));
+    }
+
+    [Fact]
+    public void RecordContact_EnrollsAndStampsTheMoment()
+    {
+        var coordinator = new WorkspaceAgentCoordinator();
+        var before = DateTimeOffset.UtcNow;
+
+        coordinator.RecordContact("pane-1");
+
+        Assert.True(coordinator.IsEnrolled("pane-1"));
+        Assert.True(coordinator.LastContactUtc("pane-1") >= before);
+    }
+
+    /// <summary>
+    /// The host enrolls repeatedly — once per snapshot, so on every tool call any pane on the desk makes. If that
+    /// overwrote the entry it would erase the contact time and the wake consent of a pane that had already said both,
+    /// which is the failure the roster's single-entry shape exists to make impossible.
+    /// </summary>
+    [Fact]
+    public void Enroll_AfterContactAndConsent_ClearsNeither()
+    {
+        var coordinator = new WorkspaceAgentCoordinator();
+        coordinator.RecordContact("pane-1");
+        coordinator.SetWakeConsent("pane-1", true);
+        var contacted = coordinator.LastContactUtc("pane-1");
+
+        coordinator.Enroll("pane-1");
+
+        Assert.Equal(contacted, coordinator.LastContactUtc("pane-1"));
+        Assert.True(coordinator.HasWakeConsent("pane-1"));
+    }
+
+    /// <summary>Consent is set on panes that may have contacted, and must not reach into the other field either.</summary>
+    [Fact]
+    public void SetWakeConsent_LeavesTheContactTimeAlone()
+    {
+        var coordinator = new WorkspaceAgentCoordinator();
+        coordinator.RecordContact("pane-1");
+        var contacted = coordinator.LastContactUtc("pane-1");
+
+        coordinator.SetWakeConsent("pane-1", true);
+        coordinator.SetWakeConsent("pane-1", false);
+
+        Assert.Equal(contacted, coordinator.LastContactUtc("pane-1"));
+    }
+
+    [Fact]
+    public void Forget_TakesTheContactTimeWithIt()
+    {
+        var coordinator = new WorkspaceAgentCoordinator();
+        coordinator.RecordContact("pane-1");
+
+        coordinator.Forget("pane-1");
+
+        Assert.Null(coordinator.LastContactUtc("pane-1"));
+        Assert.False(coordinator.IsEnrolled("pane-1"));
+    }
+
+    [Fact]
+    public void LastContactUtc_ForAPaneTheRosterNeverSaw_IsNull()
+    {
+        var coordinator = new WorkspaceAgentCoordinator();
+
+        Assert.Null(coordinator.LastContactUtc("pane-1"));
+    }
+
     [Fact]
     public void Enroll_ThenIsEnrolled_ReportsTrue()
     {

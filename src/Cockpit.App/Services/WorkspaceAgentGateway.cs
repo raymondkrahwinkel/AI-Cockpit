@@ -30,7 +30,10 @@ namespace Cockpit.App.Services;
 // blocking on `Dispatcher.UIThread.Invoke` —
 // the caller here is a Kestrel request thread, and blocking it with no timeout is the wrong shape for a seam later
 // tickets (notify/inbox, claims, delivery, wake, budget, inspector) all land on top of.
-internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit, ILogger<WorkspaceAgentGateway> logger)
+internal sealed class WorkspaceAgentGateway(
+    CockpitViewModel cockpit,
+    IWorkspaceAgentCoordinator coordinator,
+    ILogger<WorkspaceAgentGateway> logger)
     : IWorkspaceAgentGateway, ISingletonService
 {
     public Task<WorkspaceAgentSnapshot?> GetWorkspaceSnapshotAsync(string paneId) =>
@@ -74,10 +77,17 @@ internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit, ILogger<Wo
         // Written as the list of states that may be woken, not the list that may not. A status added later then
         // arrives as "not woken" and has to be argued into the set deliberately — where a deny-list would have made
         // it wakeable the day it was declared, silently, by whoever was thinking about something else entirely.
+        //
+        // WaitingForInput was in the wakeable set until AC-615 and is not any more. It reads as standing still, and
+        // it is not: it means a tool-use permission decision is pending, or the CLI asked for something — a question
+        // in front of the operator, exactly like NeedsAttention, which the enum's own docs call the same signal. It
+        // was survivable while wake was opt-in, because only a session that had chosen it could be interrupted that
+        // way. Now that the operator's setting makes wake the default, it would reach every session on the desk, and
+        // the first thing an agent would do with it is talk over the decision its operator is standing at.
         if (target.SessionStatus switch
             {
-                SessionStatus.Idle or SessionStatus.Done or SessionStatus.WaitingForInput => (AgentWakeOutcome?)null,
-                SessionStatus.NeedsAttention => AgentWakeOutcome.AwaitingOperator,
+                SessionStatus.Idle or SessionStatus.Done => (AgentWakeOutcome?)null,
+                SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => AgentWakeOutcome.AwaitingOperator,
                 SessionStatus.Busy or SessionStatus.WorkingBackground => AgentWakeOutcome.Busy,
                 _ => AgentWakeOutcome.Busy,
             } is { } refusal)
@@ -161,6 +171,21 @@ internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit, ILogger<Wo
                 candidate.Statusline,
                 candidate.DeliversInboxAtTurnStart))
             .ToList();
+
+        // AC-613: the host writing down the panes it knows about, which is what makes the roster measure presence
+        // instead of tool use. Done here rather than at session start because this is the one place that already
+        // answers "which agent sessions are on this desk" — the same rule, from the same source, applied at the only
+        // moment the answer is asked for. A pane created a second ago and a pane that has run all night are on the
+        // roster identically, and neither has to have called anything.
+        //
+        // Deliberately not the same thing as the pane having reached the cockpit-agents server: that is
+        // RecordContact, and keeping the two apart is what preserves the gap that AC-156's silent injection failure
+        // shows up as. Enroll never clears what a pane has already said, so running this on every snapshot is safe
+        // to repeat.
+        foreach (var pane in panes)
+        {
+            coordinator.Enroll(pane.PaneId);
+        }
 
         return new WorkspaceAgentSnapshot(workspaceId, panes);
     }

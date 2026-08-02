@@ -116,6 +116,13 @@ public interface ISessionDialogService
     /// <summary>Opens the delegated-tasks view (#67), so work another session handed to a profile stays visible and stoppable.</summary>
     Task ShowDelegatedTasksDialogAsync();
 
+    /// <summary>
+    /// Opens the read-only window on the agent line (AC-397): what the agents on this desk have said to each other,
+    /// which wakes were asked for, what is claimed and what has been refused. Takes its view model like the worktrees
+    /// dialog does, because the caller owns it — it reads the stores the caller was built with.
+    /// </summary>
+    Task ShowAgentLineInspectorDialogAsync(AgentLineInspectorViewModel inspector);
+
     /// <summary>Shows the command palette (#: command palette) over the given commands; runs the chosen one after the palette closes.</summary>
     Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands);
 

@@ -381,6 +381,11 @@
                                 <MenuItem Header="Glossary" Command="{Binding ShowGlossaryCommand}"
                                           ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
                                 <Separator/>
+                                <!-- AC-397: the only window on traffic the operator is not part of. Under Help
+                                     because it is something you go and look at, not something you act from. -->
+                                <MenuItem Header="Agent line" Command="{Binding ShowAgentLineCommand}"
+                                          ToolTip.Tip="What the agents on this desk have said to each other — messages, wakes, claims and refusals. Read-only."/>
+                                <Separator/>
                                 <MenuItem Header="Run setup again" Command="{Binding RunSetupAgainCommand}"
                                           ToolTip.Tip="Reopens the first-run wizard"/>
                             </MenuFlyout>
