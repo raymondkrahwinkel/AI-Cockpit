@@ -13,12 +13,10 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The CEO plan-flow workspace body (AC-174/AC-175): the pipeline as blocks on the left and, once a step is running,
-/// its live session on the right. It renders whatever the shared <see cref="AutopilotPlanController"/> holds and
-/// re-renders on its change — the planning pop-out and the executeStep session-embedding land as the flow is wired up.
-/// This grows up alongside the shipped gate-based <see cref="AutopilotWorkspaceBody"/> rather than replacing it in one move.
-/// </summary>
+// The CEO plan-flow workspace body (AC-174/AC-175): the pipeline as blocks on the left and, once a step is running,
+// its live session on the right. It renders whatever the shared `AutopilotPlanController` holds and
+// re-renders on its change — the planning pop-out and the executeStep session-embedding land as the flow is wired up.
+// This grows up alongside the shipped gate-based `AutopilotWorkspaceBody` rather than replacing it in one move.
 internal sealed class AutopilotPlanWorkspaceBody : UserControl
 {
     private readonly ICockpitHost _host;

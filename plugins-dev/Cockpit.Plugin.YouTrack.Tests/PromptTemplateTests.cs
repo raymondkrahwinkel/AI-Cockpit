@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The template both "Add to prompt" and "New session" (AC-298) render from — one call, so what a session sees
-/// injected and what New session prefills its composer with are never two slightly different renderings.
-/// </summary>
+// The template both "Add to prompt" and "New session" (AC-298) render from — one call, so what a session sees
+// injected and what New session prefills its composer with are never two slightly different renderings.
 public class PromptTemplateTests
 {
     private static readonly YouTrackIssue Issue = new("1-1", "AT-1", "Faster startup", "Cold start takes 4s.", "AT", "Backlog");

@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The AC-347 reliability aggregator: a run only ran clean when it reached merge-ready with no step needing a
-/// correction; the streak counts back from the newest run until the first that was not clean, within the same window
-/// <see cref="AutopilotReliabilitySummary.ConsideredRuns"/> reports.
-/// </summary>
+// The AC-347 reliability aggregator: a run only ran clean when it reached merge-ready with no step needing a
+// correction; the streak counts back from the newest run until the first that was not clean, within the same window
+// `AutopilotReliabilitySummary.ConsideredRuns` reports.
 public class AutopilotRunReliabilityTests
 {
     private static AutopilotRunStepRecord Step(AutopilotCorrectionKind correction = AutopilotCorrectionKind.None) =>

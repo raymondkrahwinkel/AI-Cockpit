@@ -9,13 +9,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The issue a session is working on, in that session's own header bar (#75): its id and status, and a menu with
-/// the moves the board actually allows. Which session matters here — the cockpit shows several at once, and the
-/// ticket you are working on in one pane says nothing about the other three — so this is bound to its own pane
-/// via <see cref="IPluginSessionContext.PaneId"/> rather than following the selection.
-/// Shows nothing at all until an issue is linked: an empty indicator in every header is noise.
-/// </summary>
+// The issue a session is working on, in that session's own header bar (#75): its id and status, and a menu with
+// the moves the board actually allows. Which session matters here — the cockpit shows several at once, and the
+// ticket you are working on in one pane says nothing about the other three — so this is bound to its own pane
+// via `IPluginSessionContext.PaneId` rather than following the selection.
+// Shows nothing at all until an issue is linked: an empty indicator in every header is noise.
 internal sealed class YouTrackSessionHeaderControl : UserControl
 {
     private readonly ICockpitHost _host;
@@ -130,7 +128,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
         ToolTip.SetTip(_row, $"{link.Issue.Summary}\n{link.Instance.Label}\n\nClick for actions.");
     }
 
-    /// <summary>Opens the picker for one pane — what the header menu's "Track a YouTrack issue" runs. Linking from the big dialog links to whichever session is selected, which is a guess as soon as four panes are open.</summary>
+    // Opens the picker for one pane — what the header menu's "Track a YouTrack issue" runs. Linking from the big dialog links to whichever session is selected, which is a guess as soon as four panes are open.
     public static void Pick(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, YouTrackSettings settings) =>
         // One picker per session pane: a second pick for the same pane should refocus it, not open another.
         _ = host.ShowDialogAsync(

@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.UsageTrend.Tests;
 
-/// <summary>
-/// Flattening a host <see cref="SessionUsageSnapshot"/> into a stored sample (AC-54): the context percentage and
-/// profile label carry straight over, and the five-hour / weekly figures are matched off the window labels the
-/// provider gives them ("5h" / "wk") rather than their position — so a provider that reports different windows
-/// contributes no false 5h/wk line.
-/// </summary>
+// Flattening a host `SessionUsageSnapshot` into a stored sample (AC-54): the context percentage and
+// profile label carry straight over, and the five-hour / weekly figures are matched off the window labels the
+// provider gives them ("5h" / "wk") rather than their position — so a provider that reports different windows
+// contributes no false 5h/wk line.
 public class UsageTrendSampleTests
 {
     private static readonly DateTimeOffset At = new(2026, 7, 19, 12, 0, 0, TimeSpan.Zero);

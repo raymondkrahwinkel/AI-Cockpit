@@ -5,14 +5,12 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// AC-521: a placeholder documented in the settings view that <see cref="PromptTemplate.Render"/> or
-/// <see cref="GitHubBranchName.From"/> does not actually replace (or the reverse — one they replace that stays
-/// undocumented) is exactly the gap this ticket closes. Both sides are read from the real thing rather than
-/// repeated by hand: the "documented" set comes off the actual rendered control (its visible label plus its "?"
-/// tooltip), and the "replaced" set is parsed out of the corresponding source file's own <c>.Replace("{...}", ...)</c>
-/// calls — a hardcoded list here could carry the same mistake the production code does.
-/// </summary>
+// AC-521: a placeholder documented in the settings view that `PromptTemplate.Render` or
+// `GitHubBranchName.From` does not actually replace (or the reverse — one they replace that stays
+// undocumented) is exactly the gap this ticket closes. Both sides are read from the real thing rather than
+// repeated by hand: the "documented" set comes off the actual rendered control (its visible label plus its "?"
+// tooltip), and the "replaced" set is parsed out of the corresponding source file's own `.Replace("{...}", ...)`
+// calls — a hardcoded list here could carry the same mistake the production code does.
 [Collection("avalonia")]
 public class SettingsControlPlaceholderHelpTests
 {

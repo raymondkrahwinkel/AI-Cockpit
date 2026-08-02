@@ -2,10 +2,8 @@ using Cockpit.Plugin.LocalCi.Execution;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
 
-/// <summary>
-/// The executing side gets no opinion of its own. Every refusal here has to be the classification's, word for word —
-/// a second, gentler judgement at this point is how a job that skipped what it could not do ends up reported green.
-/// </summary>
+// The executing side gets no opinion of its own. Every refusal here has to be the classification's, word for word —
+// a second, gentler judgement at this point is how a job that skipped what it could not do ends up reported green.
 public class LocalRunApprovalTests : IDisposable
 {
     private readonly TemporaryProject _project = new();

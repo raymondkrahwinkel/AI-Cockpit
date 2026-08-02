@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>
-/// <see cref="DepotUrlNormalizer"/> (AC-499): pins the round-trip guarantee the class doc comment promises —
-/// <c>Normalize(endpointUrl) + "/mcp" == endpointUrl</c> for every endpoint URL an operator actually pastes,
-/// including a deployment whose own base path ends in <c>/mcp</c> (<c>https://host/mcp/mcp</c>), which a naive
-/// "strip every trailing /mcp" implementation gets wrong.
-/// </summary>
+// `DepotUrlNormalizer` (AC-499): pins the round-trip guarantee the class doc comment promises —
+// `Normalize(endpointUrl) + "/mcp" == endpointUrl` for every endpoint URL an operator actually pastes,
+// including a deployment whose own base path ends in `/mcp` (`https://host/mcp/mcp`), which a naive
+// "strip every trailing /mcp" implementation gets wrong.
 public class DepotUrlNormalizerTests
 {
     [Fact]

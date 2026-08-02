@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexSandbox"/> (#45 D4 inc2b) — the single source of the sandbox choices and the kebab→camelCase
-/// mapping the live sandbox control turns into the app-server's SandboxPolicy <c>type</c> discriminator.
-/// </summary>
+// `CodexSandbox` (#45 D4 inc2b) — the single source of the sandbox choices and the kebab→camelCase
+// mapping the live sandbox control turns into the app-server's SandboxPolicy `type` discriminator.
 public class CodexSandboxTests
 {
     [Theory]

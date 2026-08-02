@@ -2,7 +2,7 @@ using Cockpit.Plugin.Docker.Compose;
 
 namespace Cockpit.Plugin.Docker.Tests;
 
-/// <summary>A fake <see cref="IComposeCli"/> that records invocations instead of spawning a process.</summary>
+// A fake `IComposeCli` that records invocations instead of spawning a process.
 internal sealed class FakeComposeCli : IComposeCli
 {
     public List<(string Directory, IReadOnlyList<string> Args)> Calls { get; } = [];

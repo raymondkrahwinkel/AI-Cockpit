@@ -3,12 +3,10 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// AC-517: the badge updater replaces the old always-visible section, so it has to prove three things the section
-/// used to give away for free by always being on screen — the null/zero distinction on the badge, the toast
-/// surviving the section's removal, and an older host's missing <c>AddSideMenuButtonWithBadge</c> not taking the
-/// rest of the plugin down with it.
-/// </summary>
+// AC-517: the badge updater replaces the old always-visible section, so it has to prove three things the section
+// used to give away for free by always being on screen — the null/zero distinction on the badge, the toast
+// surviving the section's removal, and an older host's missing `AddSideMenuButtonWithBadge` not taking the
+// rest of the plugin down with it.
 [Collection("avalonia")]
 public class PullRequestBadgeUpdaterTests
 {

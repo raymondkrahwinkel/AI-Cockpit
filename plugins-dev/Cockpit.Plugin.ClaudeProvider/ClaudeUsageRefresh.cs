@@ -3,31 +3,24 @@ using System.Diagnostics;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Asks the CLI to refresh the account's cached allowances, so <see cref="ClaudeUsageCache"/> has something recent
-/// to read on the SDK route (AC-549).
-/// <para>
-/// It runs <c>claude -p "/usage"</c>, which the CLI answers out of its own state: measured on 2.1.220 at
-/// <c>total_cost_usd</c> 0, <c>duration_api_ms</c> 0, <c>num_turns</c> 0 and zero tokens in every bucket. The
-/// answer itself is prose and deliberately ignored — the side effect is the point, because the same call rewrites
-/// <c>cachedUsageUtilization</c> in <c>.claude.json</c> as structured JSON, and parsing numbers beats parsing an
-/// English sentence that a future release may word differently.
-/// </para>
-/// </summary>
+// Asks the CLI to refresh the account's cached allowances, so `ClaudeUsageCache` has something recent
+// to read on the SDK route (AC-549).
+//
+// It runs `claude -p "/usage"`, which the CLI answers out of its own state: measured on 2.1.220 at
+// `total_cost_usd` 0, `duration_api_ms` 0, `num_turns` 0 and zero tokens in every bucket. The
+// answer itself is prose and deliberately ignored — the side effect is the point, because the same call rewrites
+// `cachedUsageUtilization` in `.claude.json` as structured JSON, and parsing numbers beats parsing an
+// English sentence that a future release may word differently.
 internal static class ClaudeUsageRefresh
 {
-    /// <summary>
-    /// How often an account may be re-asked. The allowances move slowly and the figures are account-wide, so this
-    /// is deliberately longer than a session would poll on its own — see <see cref="ClaudeUsageCache.MaxAge"/>,
-    /// which this must stay comfortably under or every reading expires before the next refresh.
-    /// </summary>
+    // How often an account may be re-asked. The allowances move slowly and the figures are account-wide, so this
+    // is deliberately longer than a session would poll on its own — see `ClaudeUsageCache.MaxAge`,
+    // which this must stay comfortably under or every reading expires before the next refresh.
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
 
-    /// <summary>
-    /// Per account, not per session: the five-hour and weekly windows belong to the login, so ten open sessions on
-    /// one profile must cost one subprocess between them rather than ten. Keyed by the config directory, which is
-    /// what decides whose <c>.claude.json</c> the CLI reads.
-    /// </summary>
+    // Per account, not per session: the five-hour and weekly windows belong to the login, so ten open sessions on
+    // one profile must cost one subprocess between them rather than ten. Keyed by the config directory, which is
+    // what decides whose `.claude.json` the CLI reads.
     private static readonly ConcurrentDictionary<string, _Account> _Accounts = new(StringComparer.OrdinalIgnoreCase);
 
     private sealed class _Account
@@ -36,11 +29,9 @@ internal static class ClaudeUsageRefresh
         public DateTimeOffset LastRefresh = DateTimeOffset.MinValue;
     }
 
-    /// <summary>
-    /// Refreshes this account's snapshot if the last one is old enough, and does nothing at all otherwise. Never
-    /// throws: a usage figure is a nicety, and a CLI that is missing, busy or slow must not disturb the session
-    /// that happened to ask.
-    /// </summary>
+    // Refreshes this account's snapshot if the last one is old enough, and does nothing at all otherwise. Never
+    // throws: a usage figure is a nicety, and a CLI that is missing, busy or slow must not disturb the session
+    // that happened to ask.
     public static async Task RefreshAsync(
         string cliPath,
         string? configDirectoryOverride,

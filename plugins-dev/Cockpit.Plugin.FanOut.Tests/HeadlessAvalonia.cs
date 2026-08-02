@@ -4,18 +4,14 @@ using Avalonia.Threading;
 
 namespace Cockpit.Plugin.FanOut.Tests;
 
-/// <summary>
-/// An Avalonia runtime without a screen: a control cannot be built without a platform, so this gives the tests
-/// one, once, letting the workspace body be started by a test rather than only by an operator.
-/// <para>
-/// A bare <see cref="Application"/> rather than the cockpit's own: these tests observe what the body embeds and
-/// where it places it, never how it is painted, and the body already falls back to literal colours when no theme
-/// answers. Pulling the whole app in for brushes nothing asserts on would be weight for its own sake.
-/// </para>
-/// <para>
-/// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
-/// </para>
-/// </summary>
+// An Avalonia runtime without a screen: a control cannot be built without a platform, so this gives the tests
+// one, once, letting the workspace body be started by a test rather than only by an operator.
+//
+// A bare `Application` rather than the cockpit's own: these tests observe what the body embeds and
+// where it places it, never how it is painted, and the body already falls back to literal colours when no theme
+// answers. Pulling the whole app in for brushes nothing asserts on would be weight for its own sake.
+//
+// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
 public sealed class HeadlessAvalonia
 {
     private static readonly Lock Gate = new();
@@ -38,6 +34,6 @@ public sealed class HeadlessAvalonia
         }
     }
 
-    /// <summary>Runs a body on the UI thread — controls have thread affinity, and xunit does not run tests on it.</summary>
+    // Runs a body on the UI thread — controls have thread affinity, and xunit does not run tests on it.
     public static T Run<T>(Func<T> body) => Dispatcher.UIThread.Invoke(body);
 }

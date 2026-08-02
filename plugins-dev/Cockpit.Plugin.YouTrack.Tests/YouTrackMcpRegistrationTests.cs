@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// <see cref="YouTrackMcpRegistration"/> (#60): the pure per-instance mapping from a configured
-/// <see cref="YouTrackInstance"/> to the JetBrains remote MCP-server contribution — endpoint derivation
-/// ("/api" -&gt; "/mcp", case-insensitive, trailing-slash tolerant) and skipping an instance that isn't fully
-/// configured yet.
-/// </summary>
+// `YouTrackMcpRegistration` (#60): the pure per-instance mapping from a configured
+// `YouTrackInstance` to the JetBrains remote MCP-server contribution — endpoint derivation
+// ("/api" -&gt; "/mcp", case-insensitive, trailing-slash tolerant) and skipping an instance that isn't fully
+// configured yet.
 public class YouTrackMcpRegistrationTests
 {
     [Theory]

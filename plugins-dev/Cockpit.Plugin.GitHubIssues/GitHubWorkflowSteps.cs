@@ -3,24 +3,20 @@ using Material.Icons;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// What GitHub lends the workflow editor (#77). The research that shapes all of it: <b>a GitHub issue has no
-/// status.</b> There is open, closed, and a reason for the closing. No In Progress, no board column, nothing to move a
-/// ticket to the way YouTrack does.
-/// <para>
-/// So: a trigger (you picked an issue for a session), and the three things people actually do in place of a status —
-/// pick it up (assign to yourself, and label it if your repo uses a label for that), say something on it, close it.
-/// The label is named in the plugin's settings, because GitHub enforces no convention and every repo calls it
-/// something else, or nothing.
-/// </para>
-/// <para>
-/// Projects v2 is the real status field and is deliberately absent: it needs an extra OAuth scope, a project that
-/// exists, and three ids resolved before anything can be set. Worth building when a flow actually wants it.
-/// </para>
-/// </summary>
+// What GitHub lends the workflow editor (#77). The research that shapes all of it: *a GitHub issue has no
+// status.* There is open, closed, and a reason for the closing. No In Progress, no board column, nothing to move a
+// ticket to the way YouTrack does.
+//
+// So: a trigger (you picked an issue for a session), and the three things people actually do in place of a status —
+// pick it up (assign to yourself, and label it if your repo uses a label for that), say something on it, close it.
+// The label is named in the plugin's settings, because GitHub enforces no convention and every repo calls it
+// something else, or nothing.
+//
+// Projects v2 is the real status field and is deliberately absent: it needs an extra OAuth scope, a project that
+// exists, and three ids resolved before anything can be set. Worth building when a flow actually wants it.
 internal static class GitHubWorkflowSteps
 {
-    /// <summary>The trigger's type id, fired when an issue is picked for a session.</summary>
+    // The trigger's type id, fired when an issue is picked for a session.
     public const string PickedTrigger = "github.picked";
 
     public static IEnumerable<IWorkflowStep> All(GitHubIssuesSettings settings) =>
@@ -60,7 +56,7 @@ internal static class GitHubWorkflowSteps
         };
     }
 
-    /// <summary>Picks the issue up: assigns it to you, and puts on your repo's in-progress label when you have named one.</summary>
+    // Picks the issue up: assigns it to you, and puts on your repo's in-progress label when you have named one.
     private sealed class PickUpIssueStep(GitHubIssuesSettings settings) : IWorkflowStep
     {
         public string TypeId => "github.start";

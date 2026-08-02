@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>What came of uploading <c>.cockpit/logo.png</c> to a Depot project (AC-244).</summary>
+// What came of uploading `.cockpit/logo.png` to a Depot project (AC-244).
 public sealed record CockpitProjectLogoUploadResult(PluginMcpToolCallOutcome Outcome, string? Error)
 {
     public static CockpitProjectLogoUploadResult AuthorizationRequired { get; } =

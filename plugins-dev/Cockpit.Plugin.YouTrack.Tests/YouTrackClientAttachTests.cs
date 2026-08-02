@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>The attachment upload (AC-14): a multipart POST to the issue's attachments endpoint, authenticated with the instance's bearer token, carrying the file bytes.</summary>
+// The attachment upload (AC-14): a multipart POST to the issue's attachments endpoint, authenticated with the instance's bearer token, carrying the file bytes.
 public class YouTrackClientAttachTests : IAsyncLifetime
 {
     private LoopbackHttpServer? _server;

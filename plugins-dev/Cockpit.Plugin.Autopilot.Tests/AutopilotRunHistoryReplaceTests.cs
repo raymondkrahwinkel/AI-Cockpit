@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// AC-347: an operator reclassifying a settled step writes back through <see cref="AutopilotRunHistory.Replace"/>. The
-/// case worth pinning is the one a position-keyed write gets silently wrong — a newer run settling in between shifts
-/// every entry down one, and the edit must still land on the run it was opened on.
-/// </summary>
+// AC-347: an operator reclassifying a settled step writes back through `AutopilotRunHistory.Replace`. The
+// case worth pinning is the one a position-keyed write gets silently wrong — a newer run settling in between shifts
+// every entry down one, and the edit must still land on the run it was opened on.
 public class AutopilotRunHistoryReplaceTests
 {
     private sealed class FakeStorage : IPluginStorage

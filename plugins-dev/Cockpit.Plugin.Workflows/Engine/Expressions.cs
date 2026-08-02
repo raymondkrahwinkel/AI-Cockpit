@@ -4,31 +4,25 @@ using Jint.Runtime;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// The powerful half of how a step uses data (#69). <c>{output}</c> puts a value somewhere; <c>{= ... }</c> computes
-/// one — <c>{= output.split('\n').length }</c>, <c>{= exitCode != '0' }</c> — and a decision's condition is nothing
-/// but such an expression.
-/// <para>
-/// JavaScript, through Jint, because a condition is an expression and inventing a half-language for it is how you end
-/// up with something that can compare but not count. It stays behind its own marker, so plain text remains plain
-/// text: the easy case never pays for the hard one.
-/// </para>
-/// <para>
-/// A flow runs a shell command if you ask it to, so the expression sandbox is not a security boundary and is not
-/// dressed up as one. The limits it does carry are against mistakes, not malice: a runaway loop must not take the
-/// cockpit with it, so an expression gets a second and a ceiling on statements, and then it fails and says so.
-/// </para>
-/// </summary>
+// The powerful half of how a step uses data (#69). `{output}` puts a value somewhere; `{= ... }` computes
+// one — `{= output.split('\n').length }`, `{= exitCode != '0' }` — and a decision's condition is nothing
+// but such an expression.
+//
+// JavaScript, through Jint, because a condition is an expression and inventing a half-language for it is how you end
+// up with something that can compare but not count. It stays behind its own marker, so plain text remains plain
+// text: the easy case never pays for the hard one.
+//
+// A flow runs a shell command if you ask it to, so the expression sandbox is not a security boundary and is not
+// dressed up as one. The limits it does carry are against mistakes, not malice: a runaway loop must not take the
+// cockpit with it, so an expression gets a second and a ceiling on statements, and then it fails and says so.
 internal static class Expressions
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(1);
 
-    /// <summary>
-    /// Runs <paramref name="code"/> against the data of the run. Every field of the incoming item is a variable
-    /// (<c>output</c>), and any earlier step is reachable by name (<c>step('Run a command').output</c>). Throws with
-    /// a sentence the operator can act on: an expression that cannot be evaluated is a step that failed, not a step
-    /// that quietly produced nothing.
-    /// </summary>
+    // Runs `code` against the data of the run. Every field of the incoming item is a variable
+    // (`output`), and any earlier step is reachable by name (`step('Run a command').output`). Throws with
+    // a sentence the operator can act on: an expression that cannot be evaluated is a step that failed, not a step
+    // that quietly produced nothing.
     public static object? Evaluate(
         string code,
         IReadOnlyList<WorkflowItem> input,
@@ -85,7 +79,7 @@ internal static class Expressions
         }
     }
 
-    /// <summary>Whether an expression's result counts as true. Empty text, zero and "false" are false; everything else is not.</summary>
+    // Whether an expression's result counts as true. Empty text, zero and "false" are false; everything else is not.
     public static bool IsTrue(object? value) => value switch
     {
         null => false,

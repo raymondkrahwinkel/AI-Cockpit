@@ -1,7 +1,7 @@
 {
   "id": "claude-provider",
   "name": "Claude Code",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "entryAssembly": "Cockpit.Plugin.ClaudeProvider.dll",
   "entryType": "Cockpit.Plugin.ClaudeProvider.ClaudeProviderPlugin",
   "abstractionsVersion": 1,

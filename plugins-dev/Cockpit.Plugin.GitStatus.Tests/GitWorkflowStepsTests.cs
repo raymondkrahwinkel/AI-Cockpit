@@ -3,15 +3,12 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-/// <summary>
-/// The git steps, against a real repository (#69). A fake git would prove nothing: what these steps promise is about
-/// what git actually does with a dirty tree, an existing branch, an empty diff.
-/// <para>
-/// The two rules worth holding open are the refusals. A flow that switches branches with uncommitted work drags that
-/// work onto a branch it does not belong to, and a flow that makes empty commits fills a history someone has to read
-/// with sentences about nothing.
-/// </para>
-/// </summary>
+// The git steps, against a real repository (#69). A fake git would prove nothing: what these steps promise is about
+// what git actually does with a dirty tree, an existing branch, an empty diff.
+//
+// The two rules worth holding open are the refusals. A flow that switches branches with uncommitted work drags that
+// work onto a branch it does not belong to, and a flow that makes empty commits fills a history someone has to read
+// with sentences about nothing.
 public class GitWorkflowStepsTests : IDisposable
 {
     private readonly string _repo = Path.Combine(Path.GetTempPath(), $"cockpit-git-{Guid.NewGuid():n}");

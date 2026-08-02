@@ -6,10 +6,8 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// A flow that opens has to be visible: the canvas drew a template's steps somewhere off-screen, because it kept the
-/// pan of whatever flow was open before it. The status line said "4 steps" while the canvas said nothing at all.
-/// </summary>
+// A flow that opens has to be visible: the canvas drew a template's steps somewhere off-screen, because it kept the
+// pan of whatever flow was open before it. The status line said "4 steps" while the canvas said nothing at all.
 [Collection("avalonia")]
 public class CanvasRendersTemplateTests
 {

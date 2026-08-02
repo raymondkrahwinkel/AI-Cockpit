@@ -8,18 +8,15 @@ using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The dialog's state dropdown, sourced from the project's own status field (AC-518) rather than from whichever
-/// issues happened to load — driven over a real HTTP round trip, the one path <see cref="YouTrackDialogControlTests"/>
-/// deliberately avoids (its harness plants <c>_all</c> directly and gives every instance a blank token so the
-/// dialog's own fetch short-circuits before it ever awaits anything real).
-/// <para>
-/// A real fetch cannot be driven inside a synchronous <see cref="HeadlessAvalonia.Run"/> body: the dialog kicks its
-/// load off from an async-void event handler, and its continuation only runs once that body has returned control to
-/// Avalonia's own dispatcher loop. So this test starts the dialog via <see cref="Dispatcher.UIThread.InvokeAsync"/>
-/// (which does not block the loop) and then polls, from the test's own thread, until the fetch has settled.
-/// </para>
-/// </summary>
+// The dialog's state dropdown, sourced from the project's own status field (AC-518) rather than from whichever
+// issues happened to load — driven over a real HTTP round trip, the one path `YouTrackDialogControlTests`
+// deliberately avoids (its harness plants `_all` directly and gives every instance a blank token so the
+// dialog's own fetch short-circuits before it ever awaits anything real).
+//
+// A real fetch cannot be driven inside a synchronous `HeadlessAvalonia.Run` body: the dialog kicks its
+// load off from an async-void event handler, and its continuation only runs once that body has returned control to
+// Avalonia's own dispatcher loop. So this test starts the dialog via `Dispatcher.UIThread.InvokeAsync`
+// (which does not block the loop) and then polls, from the test's own thread, until the fetch has settled.
 [Collection("avalonia")]
 public class YouTrackStateFilterServerSideTests
 {

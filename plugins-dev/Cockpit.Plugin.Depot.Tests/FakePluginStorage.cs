@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-/// <summary>An in-memory <see cref="IPluginStorage"/> for tests — stores values directly (no JSON round-trip), same as the Kubernetes plugin's own fake.</summary>
+// An in-memory `IPluginStorage` for tests — stores values directly (no JSON round-trip), same as the Kubernetes plugin's own fake.
 internal sealed class FakePluginStorage : IPluginStorage
 {
     private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);

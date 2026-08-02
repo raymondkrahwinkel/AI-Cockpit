@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// <see cref="YouTrackFieldParser"/> (#75): finding an issue's status field in a project that is free to call it
-/// whatever it likes ("State", "Stage", "Kanban State"), reading what it may become, and telling a
-/// workflow-governed field — where the allowed moves are events, not values — from an ordinary one.
-/// </summary>
+// `YouTrackFieldParser` (#75): finding an issue's status field in a project that is free to call it
+// whatever it likes ("State", "Stage", "Kanban State"), reading what it may become, and telling a
+// workflow-governed field — where the allowed moves are events, not values — from an ordinary one.
 public class YouTrackFieldParserTests
 {
     [Fact]

@@ -2,11 +2,9 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The steps the cockpit offers (#69) and how the picker finds them. Deliberately cockpit-shaped: the value is in
-/// what only this app can do — start sessions, delegate work, watch what an agent says. A general automation kit
-/// already exists, and the operator runs it elsewhere.
-/// </summary>
+// The steps the cockpit offers (#69) and how the picker finds them. Deliberately cockpit-shaped: the value is in
+// what only this app can do — start sessions, delegate work, watch what an agent says. A general automation kit
+// already exists, and the operator runs it elsewhere.
 public class NodeCatalogTests
 {
     [Fact]

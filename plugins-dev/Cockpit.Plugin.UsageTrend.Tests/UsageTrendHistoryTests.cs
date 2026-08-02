@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.UsageTrend.Tests;
 
-/// <summary>
-/// The two rules that keep the usage-trend history out of <c>cockpit.json</c>'s way (AC-54): a reading is written
-/// at most once per ten minutes per profile unless it jumped, and nothing older than fourteen days is kept. These
-/// run on plain lists — the reason the rules live in <see cref="UsageTrendHistory"/> apart from the widget.
-/// </summary>
+// The two rules that keep the usage-trend history out of `cockpit.json`'s way (AC-54): a reading is written
+// at most once per ten minutes per profile unless it jumped, and nothing older than fourteen days is kept. These
+// run on plain lists — the reason the rules live in `UsageTrendHistory` apart from the widget.
 public class UsageTrendHistoryTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 7, 19, 12, 0, 0, TimeSpan.Zero);

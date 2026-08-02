@@ -3,18 +3,15 @@ using System.Text;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Turns an issue into a branch name, following a pattern the operator sets: <c>{id}-{summary}</c> by default, but
-/// <c>feature/{id}</c> or <c>{id}_{summary}</c> if that is how their team works. Everything that goes into it is
-/// lowercased and made safe for git — no spaces, no punctuation git or a shell would choke on, no accents, no trailing
-/// separators — because a naming convention is a preference and a broken ref is not.
-/// <para>
-/// The plugin only <em>offers</em> this name. Creating the branch is git's business, not YouTrack's.
-/// </para>
-/// </summary>
+// Turns an issue into a branch name, following a pattern the operator sets: `{id}-{summary}` by default, but
+// `feature/{id}` or `{id}_{summary}` if that is how their team works. Everything that goes into it is
+// lowercased and made safe for git — no spaces, no punctuation git or a shell would choke on, no accents, no trailing
+// separators — because a naming convention is a preference and a broken ref is not.
+//
+// The plugin only *offers* this name. Creating the branch is git's business, not YouTrack's.
 internal static class BranchName
 {
-    /// <summary>What the operator gets unless they say otherwise.</summary>
+    // What the operator gets unless they say otherwise.
     public const string DefaultPattern = "{id}-{summary}";
 
     // Long enough to stay recognisable, short enough to keep the ref readable in a prompt or a terminal.

@@ -1,28 +1,22 @@
 namespace Cockpit.Plugin.SessionReview;
 
-/// <summary>
-/// A node of the review tree (AC-578): a folder when <see cref="File"/> is null, otherwise a changed file.
-/// </summary>
+// A node of the review tree (AC-578): a folder when `File` is null, otherwise a changed file.
 internal sealed class TreeNode
 {
     public required string Label { get; init; }
 
-    /// <summary>The file this node stands for, or null when the node is a folder.</summary>
+    // The file this node stands for, or null when the node is a folder.
     public FileDiff? File { get; init; }
 
     public List<TreeNode> Children { get; } = [];
 }
 
-/// <summary>
-/// Builds the folder tree the review panel shows on the left (AC-578) out of the changed files' paths.
-/// </summary>
+// Builds the folder tree the review panel shows on the left (AC-578) out of the changed files' paths.
 internal static class FileTree
 {
-    /// <summary>
-    /// Nests the files under their folders, collapsing any run of folders that holds nothing but one more folder
-    /// into a single node (<c>src/Cockpit.App/Controls</c> rather than three rows). Without that, a .NET repository
-    /// spends the whole panel on empty levels before the first file appears.
-    /// </summary>
+    // Nests the files under their folders, collapsing any run of folders that holds nothing but one more folder
+    // into a single node (`src/Cockpit.App/Controls` rather than three rows). Without that, a .NET repository
+    // spends the whole panel on empty levels before the first file appears.
     public static IReadOnlyList<TreeNode> Build(IEnumerable<FileDiff> files)
     {
         var root = new _Folder();

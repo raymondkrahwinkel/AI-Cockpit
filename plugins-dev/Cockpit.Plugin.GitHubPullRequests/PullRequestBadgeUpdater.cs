@@ -6,15 +6,13 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// The side-menu launcher this plugin registers instead of <c>AddSideMenuSection</c> (AC-517): a knop with a live
-/// "N / M" badge (AC-516) that opens <see cref="GitHubPullRequestsDialogControl"/> on click, reusing the section's
-/// old "pull-requests" <c>singleInstanceKey</c> so a second click refocuses rather than stacking a second window.
-/// Built once in <see cref="GitHubPullRequestsPlugin.Initialize"/> and disposed with the plugin — unlike the
-/// section it replaces, nothing here depends on a control being attached to the visual tree, so the badge, the
-/// instant-on-signal refresh, and the "review requested" toast all keep working while the left menu shows
-/// something else entirely.
-/// </summary>
+// The side-menu launcher this plugin registers instead of `AddSideMenuSection` (AC-517): a knop with a live
+// "N / M" badge (AC-516) that opens `GitHubPullRequestsDialogControl` on click, reusing the section's
+// old "pull-requests" `singleInstanceKey` so a second click refocuses rather than stacking a second window.
+// Built once in `GitHubPullRequestsPlugin.Initialize` and disposed with the plugin — unlike the
+// section it replaces, nothing here depends on a control being attached to the visual tree, so the badge, the
+// instant-on-signal refresh, and the "review requested" toast all keep working while the left menu shows
+// something else entirely.
 internal sealed class PullRequestBadgeUpdater : IDisposable
 {
     // On top of the shared PullRequestRefreshSource's own background poll, a short debounce coalesces the burst
@@ -97,12 +95,10 @@ internal sealed class PullRequestBadgeUpdater : IDisposable
 
     private void _OnUpdated(object? sender, PullRequestFeedSnapshot snapshot) => _Apply(snapshot);
 
-    /// <summary>
-    /// Sets the badge's counters and announces newly-arrived review requests. Badge updates need no thread
-    /// marshalling — <see cref="SideMenuButtonBadge"/> is built for a background-thread writer, the host marshals
-    /// itself on <see cref="SideMenuButtonBadge.Changed"/> — but <see cref="ICockpitHost.ShowToast"/> is not, and
-    /// the section this replaces only ever called it from a UI-thread <c>Dispatcher.UIThread.Post</c> continuation.
-    /// </summary>
+    // Sets the badge's counters and announces newly-arrived review requests. Badge updates need no thread
+    // marshalling — `SideMenuButtonBadge` is built for a background-thread writer, the host marshals
+    // itself on `SideMenuButtonBadge.Changed` — but `ICockpitHost.ShowToast` is not, and
+    // the section this replaces only ever called it from a UI-thread `Dispatcher.UIThread.Post` continuation.
     private void _Apply(PullRequestFeedSnapshot snapshot)
     {
         var result = snapshot.Result;
@@ -143,13 +139,11 @@ internal sealed class PullRequestBadgeUpdater : IDisposable
         }
     }
 
-    /// <summary>
-    /// A review request that was already waiting when the plugin first looked is not news, so the first load only
-    /// primes the seen-set (it has no stored one yet) and stays quiet. After that, every request that was not there
-    /// last time is announced once. Moved verbatim from the old side section (AC-517) — the persisted
-    /// <see cref="GitHubPullRequestsSettings.SeenReviewRequests"/> gate is what keeps this correct across restarts
-    /// and across the section's removal, not anything about being attached to a view.
-    /// </summary>
+    // A review request that was already waiting when the plugin first looked is not news, so the first load only
+    // primes the seen-set (it has no stored one yet) and stays quiet. After that, every request that was not there
+    // last time is announced once. Moved verbatim from the old side section (AC-517) — the persisted
+    // `GitHubPullRequestsSettings.SeenReviewRequests` gate is what keeps this correct across restarts
+    // and across the section's removal, not anything about being attached to a view.
     private void _AnnounceArrivals(IReadOnlyList<GitHubPullRequest> reviewRequested)
     {
         var seen = _settings.SeenReviewRequests;

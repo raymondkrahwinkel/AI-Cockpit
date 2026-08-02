@@ -1,7 +1,7 @@
 namespace Cockpit.Plugin.SessionReview.Tests;
 
-/// <summary>The session-review plugin's non-UI logic (AC-50): the git argument lists, the synthesised block for an
-/// untracked file, the review prompt and the result shape.</summary>
+// The session-review plugin's non-UI logic (AC-50): the git argument lists, the synthesised block for an
+// untracked file, the review prompt and the result shape.
 public class GitDiffReaderTests
 {
     [Fact]

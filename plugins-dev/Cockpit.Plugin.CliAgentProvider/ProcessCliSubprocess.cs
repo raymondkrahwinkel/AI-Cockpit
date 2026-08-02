@@ -4,18 +4,14 @@ using System.Text;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// Real <see cref="ICliSubprocess"/> backed by <see cref="System.Diagnostics.Process"/> (#45 fase B1) —
-/// mirrors <c>Cockpit.Infrastructure.Sessions.ClaudeCliProcess</c>'s spawn/UTF-8/dispose discipline exactly
-/// (that class is the blueprint; this plugin cannot reference it — see the design doc §2.0), adapted for a
-/// one-shot proces-per-turn spawn instead of a long-lived one.
-/// </summary>
-/// <remarks>
-/// B2 caveat: never exercised against a real <c>codex</c> process in this environment (no logged-in Codex
-/// CLI here) — kept as a thin, mockable seam so <see cref="CliSubprocessPluginSessionDriver"/>'s turn-taking
-/// logic is unit tested against <c>FakeCliSubprocess</c> instead; the live end-to-end run requires an
-/// environment with <c>codex</c> installed and authenticated.
-/// </remarks>
+// Real `ICliSubprocess` backed by `System.Diagnostics.Process` (#45 fase B1) —
+// mirrors `Cockpit.Infrastructure.Sessions.ClaudeCliProcess`'s spawn/UTF-8/dispose discipline exactly
+// (that class is the blueprint; this plugin cannot reference it — see the design doc §2.0), adapted for a
+// one-shot proces-per-turn spawn instead of a long-lived one.
+// B2 caveat: never exercised against a real `codex` process in this environment (no logged-in Codex
+// CLI here) — kept as a thin, mockable seam so `CliSubprocessPluginSessionDriver`'s turn-taking
+// logic is unit tested against `FakeCliSubprocess` instead; the live end-to-end run requires an
+// environment with `codex` installed and authenticated.
 internal sealed class ProcessCliSubprocess : ICliSubprocess
 {
     private Process? _process;

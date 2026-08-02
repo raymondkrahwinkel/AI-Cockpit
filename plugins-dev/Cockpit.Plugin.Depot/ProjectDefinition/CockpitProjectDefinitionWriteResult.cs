@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>What came of writing <c>.cockpit/project.json</c> to a Depot project (AC-244). A <c>baseChecksum</c> mismatch surfaces as <see cref="PluginMcpToolCallOutcome.Failed"/> with Depot's own error text — see <see cref="CockpitProjectDefinitionStore"/>'s remarks on why this does not add a dedicated conflict outcome.</summary>
+// What came of writing `.cockpit/project.json` to a Depot project (AC-244). A `baseChecksum` mismatch surfaces as `PluginMcpToolCallOutcome.Failed` with Depot's own error text — see `CockpitProjectDefinitionStore`'s remarks on why this does not add a dedicated conflict outcome.
 public sealed record CockpitProjectDefinitionWriteResult(PluginMcpToolCallOutcome Outcome, string? Checksum, string? Error)
 {
     public static CockpitProjectDefinitionWriteResult AuthorizationRequired { get; } =

@@ -2,10 +2,8 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// AC-202: a GitHub issue has no status field, so its stage is a label. The provider maps Autopilot's tracker-neutral
-/// lifecycle stages to conventional label names, which SetStageAsync adds as the run reaches each stage.
-/// </summary>
+// AC-202: a GitHub issue has no status field, so its stage is a label. The provider maps Autopilot's tracker-neutral
+// lifecycle stages to conventional label names, which SetStageAsync adds as the run reaches each stage.
 public class GitHubTrackerStageMappingTests
 {
     [Theory]

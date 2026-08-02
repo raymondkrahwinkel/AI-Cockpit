@@ -5,12 +5,10 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-/// <summary>
-/// An <see cref="ICockpitHost"/> that records every contribution a plugin registers through it (AC-522) — what
-/// <see cref="GitStatusPluginLoadTests"/> counts (settings view, session-header item, workflow steps, and the
-/// side-menu button/section that must now be absent), and what <see cref="GitStatusHeaderControlTests"/>
-/// constructs a real header control against, where only <see cref="Actions"/> is ever touched.
-/// </summary>
+// An `ICockpitHost` that records every contribution a plugin registers through it (AC-522) — what
+// `GitStatusPluginLoadTests` counts (settings view, session-header item, workflow steps, and the
+// side-menu button/section that must now be absent), and what `GitStatusHeaderControlTests`
+// constructs a real header control against, where only `Actions` is ever touched.
 internal sealed class FakeCockpitHost(ICockpitActions actions) : ICockpitHost
 {
     private readonly List<IWorkflowStep> _workflowSteps = [];

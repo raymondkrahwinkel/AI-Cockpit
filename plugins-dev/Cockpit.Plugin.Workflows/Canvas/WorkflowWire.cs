@@ -10,11 +10,9 @@ using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
-/// <summary>
-/// A wire between two steps (#69): a bezier that leaves sideways, an arrowhead where it arrives, and — on a
-/// decision — the name of the branch on the line itself. The arrowhead is not decoration: with fan-out and loops
-/// allowed, "which way does this one run" stops being obvious from the shape alone.
-/// </summary>
+// A wire between two steps (#69): a bezier that leaves sideways, an arrowhead where it arrives, and — on a
+// decision — the name of the branch on the line itself. The arrowhead is not decoration: with fan-out and loops
+// allowed, "which way does this one run" stops being obvious from the shape alone.
 internal sealed class WorkflowWire
 {
     private const double MinTangent = 40;
@@ -97,15 +95,15 @@ internal sealed class WorkflowWire
             };
     }
 
-    /// <summary>Raised when the operator clicked the wire's ✕.</summary>
+    // Raised when the operator clicked the wire's ✕.
     public event EventHandler? RemoveRequested;
 
     public Path Line { get; }
 
-    /// <summary>The wide, invisible curve the pointer meets.</summary>
+    // The wide, invisible curve the pointer meets.
     public Path Hit { get; }
 
-    /// <summary>The ✕ on the middle of the wire, shown on hover.</summary>
+    // The ✕ on the middle of the wire, shown on hover.
     public Border Remove { get; }
 
     public Path Arrow { get; }
@@ -187,11 +185,9 @@ internal sealed class WorkflowWire
     // A property, not a once-computed static: a static freezes the brush at type-load for the life of the process.
     private static IBrush WireBrush => _Brush("CockpitTextFaintBrush", "#656c78");
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush

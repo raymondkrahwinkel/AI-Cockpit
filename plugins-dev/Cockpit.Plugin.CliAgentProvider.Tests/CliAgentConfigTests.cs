@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CliAgentConfig"/>'s <c>ToString()</c> override (#45 fase B1, mirrors the Gemini/OpenAI plugin's
-/// own <c>OpenAiCompatConfigTests</c>): a plain <c>record</c>'s auto-generated <c>ToString()</c> would print
-/// <see cref="CliAgentConfig.ApiKey"/> in the clear — a leak surface anywhere this config lands in a log line
-/// or exception message.
-/// </summary>
+// `CliAgentConfig`'s `ToString()` override (#45 fase B1, mirrors the Gemini/OpenAI plugin's
+// own `OpenAiCompatConfigTests`): a plain `record`'s auto-generated `ToString()` would print
+// `CliAgentConfig.ApiKey` in the clear — a leak surface anywhere this config lands in a log line
+// or exception message.
 public class CliAgentConfigTests
 {
     [Fact]

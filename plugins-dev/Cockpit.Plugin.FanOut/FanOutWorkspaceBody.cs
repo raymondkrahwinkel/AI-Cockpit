@@ -7,13 +7,11 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.FanOut;
 
-/// <summary>
-/// The whole body of a Fan-out workspace: a short form that takes one task and the arms to run it on, and —
-/// once started — the tiles those arms run in. The sessions are real host sessions embedded through
-/// <see cref="IWorkspaceContext.EmbedSession"/>, so the host owns their lifetime and keeps them out of the
-/// session grid; closing the workspace ends all of them. This surface only decides what to ask for and where
-/// to put what comes back.
-/// </summary>
+// The whole body of a Fan-out workspace: a short form that takes one task and the arms to run it on, and —
+// once started — the tiles those arms run in. The sessions are real host sessions embedded through
+// `IWorkspaceContext.EmbedSession`, so the host owns their lifetime and keeps them out of the
+// session grid; closing the workspace ends all of them. This surface only decides what to ask for and where
+// to put what comes back.
 internal sealed class FanOutWorkspaceBody : UserControl
 {
     private readonly ICockpitHost _host;
@@ -163,17 +161,13 @@ internal sealed class FanOutWorkspaceBody : UserControl
 
     private void _Start() => Start(_ReadRun());
 
-    /// <summary>
-    /// Starts a run: one session per arm, laid out on the tile grid. Split from reading the form so that what a
-    /// run asks the host for, and where its tiles land, is settled in one place — and can be observed without
-    /// driving the form.
-    /// </summary>
-    /// <remarks>
-    /// A workspace starts one run and keeps it: a second call would embed another full set of sessions and then
-    /// replace the tiles holding the first set, leaving those sessions running with nothing on screen to reach or
-    /// stop them — real agents in real worktrees, spending, invisibly. Refusing here rather than relying on the
-    /// button being off-screen keeps that true whoever calls, which is the point of it being the seam.
-    /// </remarks>
+    // Starts a run: one session per arm, laid out on the tile grid. Split from reading the form so that what a
+    // run asks the host for, and where its tiles land, is settled in one place — and can be observed without
+    // driving the form.
+    // A workspace starts one run and keeps it: a second call would embed another full set of sessions and then
+    // replace the tiles holding the first set, leaving those sessions running with nothing on screen to reach or
+    // stop them — real agents in real worktrees, spending, invisibly. Refusing here rather than relying on the
+    // button being off-screen keeps that true whoever calls, which is the point of it being the seam.
     internal void Start(FanOutRun run)
     {
         if (_started || !run.CanStart)
@@ -266,10 +260,8 @@ internal sealed class FanOutWorkspaceBody : UserControl
             },
         };
 
-    /// <summary>
-    /// The first two rows say what an angle is for by example — a fan-out set up without one runs the same brief
-    /// several times, which is the one way it cannot pay off.
-    /// </summary>
+    // The first two rows say what an angle is for by example — a fan-out set up without one runs the same brief
+    // several times, which is the one way it cannot pay off.
     private static string _Placeholder(int index) => index switch
     {
         0 => "Angle — e.g. the smallest change that works",
@@ -279,7 +271,7 @@ internal sealed class FanOutWorkspaceBody : UserControl
 
     private static string _Stars(int count) => string.Join(',', Enumerable.Repeat("*", count));
 
-    /// <summary>The host's theme brush, resolved at call time; the fallback hex is only reached with no application (designer, headless test).</summary>
+    // The host's theme brush, resolved at call time; the fallback hex is only reached with no application (designer, headless test).
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush

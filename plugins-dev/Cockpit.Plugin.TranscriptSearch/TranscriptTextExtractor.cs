@@ -3,20 +3,16 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
-/// <summary>
-/// The human-readable text of one transcript JSONL entry: who said it (<paramref name="Role"/>), what
-/// (<paramref name="Text"/>), and the working directory the entry was written in (<paramref name="Cwd"/>, the
-/// <c>cwd</c> every message record carries), for #9 transcript search.
-/// </summary>
+// The human-readable text of one transcript JSONL entry: who said it (`Role`), what
+// (`Text`), and the working directory the entry was written in (`Cwd`, the
+// `cwd` every message record carries), for #9 transcript search.
 public sealed record TranscriptEntryText(string Role, string Text, string? Cwd);
 
-/// <summary>
-/// Pulls the searchable prose out of a single <c>claude</c> transcript JSONL line (#9): a user prompt or an
-/// assistant reply. A line's <c>message.content</c> is either a plain string (a typed prompt) or an array of
-/// blocks, of which only the <c>text</c> blocks are prose — thinking, tool-use and tool-result blocks are
-/// skipped, so a tool-result "user" record yields nothing. Anything unparseable or without prose returns null,
-/// so a malformed or non-message line simply isn't a search target rather than throwing.
-/// </summary>
+// Pulls the searchable prose out of a single `claude` transcript JSONL line (#9): a user prompt or an
+// assistant reply. A line's `message.content` is either a plain string (a typed prompt) or an array of
+// blocks, of which only the `text` blocks are prose — thinking, tool-use and tool-result blocks are
+// skipped, so a tool-result "user" record yields nothing. Anything unparseable or without prose returns null,
+// so a malformed or non-message line simply isn't a search target rather than throwing.
 public static class TranscriptTextExtractor
 {
     public static TranscriptEntryText? Extract(string? jsonLine)

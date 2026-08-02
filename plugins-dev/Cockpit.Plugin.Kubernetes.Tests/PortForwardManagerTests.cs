@@ -4,12 +4,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-/// <summary>
-/// The port-forward manager's lifecycle without a cluster: opening a tunnel binds a local listener and lists it as a
-/// supervised activity (source/target/cluster), and killing it — directly or through the status-bar activity's
-/// StopAsync — removes it and fires Changed. The pod WebSocket only opens on an incoming connection, so these
-/// exercise the manager's bookkeeping and the operator-facing Kill wiring, not a live apiserver.
-/// </summary>
+// The port-forward manager's lifecycle without a cluster: opening a tunnel binds a local listener and lists it as a
+// supervised activity (source/target/cluster), and killing it — directly or through the status-bar activity's
+// StopAsync — removes it and fires Changed. The pod WebSocket only opens on an incoming connection, so these
+// exercise the manager's bookkeeping and the operator-facing Kill wiring, not a live apiserver.
 public class PortForwardManagerTests
 {
     [Fact]

@@ -1,33 +1,27 @@
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// Resolves the configured <see cref="KimiConfig.Command"/> to a spawnable executable path (AC-268) — a copy
-/// of <c>Cockpit.Plugin.CliAgentProvider.CliExecutableLocator</c>'s resolution order (pin &gt; managed &gt; PATH).
-/// </summary>
-/// <remarks>
-/// <see cref="Process"/> with <c>UseShellExecute=false</c> does not consult <c>PATHEXT</c> the way a shell
-/// does, so a bare <c>"kimi"</c> would fail to launch a <c>kimi.cmd</c> npm shim on Windows even though it is
-/// on PATH. This best-effort resolver probes for <c>.cmd</c>/<c>.exe</c>/<c>.bat</c> siblings on Windows; it
-/// has not been verified against a real npm-global <c>kimi</c> install location.
-/// </remarks>
+// Resolves the configured `KimiConfig.Command` to a spawnable executable path (AC-268) — a copy
+// of `Cockpit.Plugin.CliAgentProvider.CliExecutableLocator`'s resolution order (pin &gt; managed &gt; PATH).
+// `Process` with `UseShellExecute=false` does not consult `PATHEXT` the way a shell
+// does, so a bare `"kimi"` would fail to launch a `kimi.cmd` npm shim on Windows even though it is
+// on PATH. This best-effort resolver probes for `.cmd`/`.exe`/`.bat` siblings on Windows; it
+// has not been verified against a real npm-global `kimi` install location.
 internal static class KimiExecutableLocator
 {
     private static readonly string[] _WindowsExecutableExtensions = [".cmd", ".exe", ".bat"];
 
-    /// <summary>
-    /// Resolves <paramref name="command"/> to a path <see cref="ProcessCliSubprocess"/> can spawn directly.
-    /// An absolute/rooted path is returned unchanged. Then, if a <paramref name="managedResolver"/> is given, a
-    /// cockpit-managed install of the command (distribution lands in sub [h]) wins over PATH. Otherwise a bare
-    /// command name is probed against every PATH directory; if nothing is found, <paramref name="command"/> is
-    /// returned unchanged so <see cref="System.Diagnostics.Process.Start()"/> still gets a real attempt (and a
-    /// real, diagnosable "file not found" if it truly is not installed).
-    /// </summary>
-    /// <param name="command">The configured command — an absolute pin, or a bare name like <c>kimi</c>.</param>
-    /// <param name="managedResolver">
-    /// Optional lookup for a cockpit-managed copy of the command (typically <c>name =&gt; host.ResolveManagedCliPath(name)</c>).
-    /// Consulted only for a bare name, after a rooted pin and before PATH — so a pin always wins and a null result
-    /// (nothing installed, offline, or the operator removed it) simply falls through to PATH.
-    /// </param>
+    // Resolves `command` to a path `ProcessCliSubprocess` can spawn directly.
+    // An absolute/rooted path is returned unchanged. Then, if a `managedResolver` is given, a
+    // cockpit-managed install of the command (distribution lands in sub [h]) wins over PATH. Otherwise a bare
+    // command name is probed against every PATH directory; if nothing is found, `command` is
+    // returned unchanged so `System.Diagnostics.Process.Start()` still gets a real attempt (and a
+    // real, diagnosable "file not found" if it truly is not installed).
+    //
+    // `command`: The configured command — an absolute pin, or a bare name like `kimi`.
+    // `managedResolver`:
+    // Optional lookup for a cockpit-managed copy of the command (typically `name =&gt; host.ResolveManagedCliPath(name)`).
+    // Consulted only for a bare name, after a rooted pin and before PATH — so a pin always wins and a null result
+    // (nothing installed, offline, or the operator removed it) simply falls through to PATH.
     public static string Resolve(string command, Func<string, string?>? managedResolver = null)
     {
         if (string.IsNullOrWhiteSpace(command) || Path.IsPathRooted(command))

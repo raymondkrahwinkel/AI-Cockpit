@@ -11,12 +11,10 @@ using Cockpit.Plugin.Docker.Ui;
 
 namespace Cockpit.Plugin.Docker;
 
-/// <summary>
-/// Docker plugin entry point (AC-84). Registers the local Docker daemon and injects a cockpit-hosted
-/// <c>cockpit-docker</c> MCP server so an agent can work with containers under strict, human-approved control. Proxy
-/// model — the plugin talks to the Docker Engine API itself (via Docker.DotNet), keeps the connection, and gates
-/// every call through <see cref="DockerAccessGate"/>. Sibling of the Kubernetes plugin (AC-80).
-/// </summary>
+// Docker plugin entry point (AC-84). Registers the local Docker daemon and injects a cockpit-hosted
+// `cockpit-docker` MCP server so an agent can work with containers under strict, human-approved control. Proxy
+// model — the plugin talks to the Docker Engine API itself (via Docker.DotNet), keeps the connection, and gates
+// every call through `DockerAccessGate`. Sibling of the Kubernetes plugin (AC-80).
 public sealed class DockerPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

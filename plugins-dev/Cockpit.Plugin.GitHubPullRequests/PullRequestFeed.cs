@@ -1,18 +1,15 @@
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// The fetch behind every surface that lists open pull requests — the side-menu badge (AC-517), the dashboard
-/// widget (#AC-18), and the dialog's own separate query. It answers one question, "which pull requests are open
-/// right now", the same way for the two that share it: the CLI mode's three searches (yours, watched
-/// repositories, everything you are involved with) merged by url with the review-requested ones, or the single
-/// repository the HTTP mode talks to; then the optional repository filter, then newest-activity-first.
-/// <para>
-/// One query behind more than one surface, so each is a second <em>view</em> of the same data, not a second copy
-/// of the query — the merge rules, the "@me spans owners" subtlety and the ordering live in one place. What is
-/// surface-specific — toasts for newly-arrived review requests, the cached last list, the ignored-PR curation —
-/// stays with each surface; this returns the facts, not the presentation.
-/// </para>
-/// </summary>
+// The fetch behind every surface that lists open pull requests — the side-menu badge (AC-517), the dashboard
+// widget (#AC-18), and the dialog's own separate query. It answers one question, "which pull requests are open
+// right now", the same way for the two that share it: the CLI mode's three searches (yours, watched
+// repositories, everything you are involved with) merged by url with the review-requested ones, or the single
+// repository the HTTP mode talks to; then the optional repository filter, then newest-activity-first.
+//
+// One query behind more than one surface, so each is a second *view* of the same data, not a second copy
+// of the query — the merge rules, the "@me spans owners" subtlety and the ordering live in one place. What is
+// surface-specific — toasts for newly-arrived review requests, the cached last list, the ignored-PR curation —
+// stays with each surface; this returns the facts, not the presentation.
 internal sealed class PullRequestFeed
 {
     private readonly GitHubPullRequestsClient _http = new();

@@ -6,16 +6,14 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.UsageTrend;
 
-/// <summary>
-/// The usage-trend widget (AC-54): the ctx / 5h / weekly figures the session header shows as now-values, charted
-/// over time and split per profile. It samples the active session's usage as the host reports it moving
-/// (<c>ICockpitSessionObserver.ActiveSessionUsageChanged</c>), debounced so it does not rewrite the settings file
-/// every few seconds, and keeps a rolling fourteen days in its own per-instance storage. With no history yet it
-/// shows a plain line about what it is waiting for rather than an empty frame.
-/// </summary>
+// The usage-trend widget (AC-54): the ctx / 5h / weekly figures the session header shows as now-values, charted
+// over time and split per profile. It samples the active session's usage as the host reports it moving
+// (`ICockpitSessionObserver.ActiveSessionUsageChanged`), debounced so it does not rewrite the settings file
+// every few seconds, and keeps a rolling fourteen days in its own per-instance storage. With no history yet it
+// shows a plain line about what it is waiting for rather than an empty frame.
 internal sealed class UsageTrendWidget : UserControl
 {
-    /// <summary>The storage key this instance keeps its sampled history under, within its own slice.</summary>
+    // The storage key this instance keeps its sampled history under, within its own slice.
     internal const string HistoryKey = "history";
 
     private readonly IWidgetContext _context;

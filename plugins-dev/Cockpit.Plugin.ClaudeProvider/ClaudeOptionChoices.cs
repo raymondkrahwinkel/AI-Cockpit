@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// The Claude launch/live option vocabularies the plugin owns now that Claude is a provider plugin (Fase 4): the
-/// permission modes, model aliases and effort levels, each with the friendly label the operator reads while the raw
-/// value round-trips to the CLI. These used to live in the host's <c>SessionOptionCatalog</c> — moving them here is
-/// what lets the core render Claude's options generically, knowing none of their meaning.
-/// </summary>
+// The Claude launch/live option vocabularies the plugin owns now that Claude is a provider plugin (Fase 4): the
+// permission modes, model aliases and effort levels, each with the friendly label the operator reads while the raw
+// value round-trips to the CLI. These used to live in the host's `SessionOptionCatalog` — moving them here is
+// what lets the core render Claude's options generically, knowing none of their meaning.
 internal static class ClaudeOptionChoices
 {
     // The CLI's four real --permission-mode values (there is no "auto" mode — the CLI rejects it). bypassPermissions

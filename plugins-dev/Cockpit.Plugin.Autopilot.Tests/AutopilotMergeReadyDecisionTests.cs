@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The template-driven merge-ready PR decision (AC-216) and its preflight (AC-215): a code run (the template asked for a
-/// PR) delivers one when it can, degrades fail-soft when it cannot (no git run, no remote, no gh), and an administrative
-/// run reports nothing. Pure, so the outcome/fallback is proven here without a git repo, a live run or the network.
-/// </summary>
+// The template-driven merge-ready PR decision (AC-216) and its preflight (AC-215): a code run (the template asked for a
+// PR) delivers one when it can, degrades fail-soft when it cannot (no git run, no remote, no gh), and an administrative
+// run reports nothing. Pure, so the outcome/fallback is proven here without a git repo, a live run or the network.
 public class AutopilotMergeReadyDecisionTests
 {
     [Fact]

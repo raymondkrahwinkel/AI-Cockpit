@@ -1,39 +1,33 @@
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Resolves the <c>claude</c> command to a path the plugin can spawn directly (Fase 4) — a port of the CLI-agent
-/// plugin's <c>CliExecutableLocator</c>, because both hit the same cross-platform trap: <see cref="System.Diagnostics.Process"/>
-/// with <c>UseShellExecute=false</c> does not consult <c>PATHEXT</c>, so a bare <c>"claude"</c> fails to launch a
-/// <c>claude.cmd</c> npm shim on Windows even though it is on PATH. An absolute/rooted path (a pinned executable)
-/// is returned unchanged; a bare name is probed against every PATH directory, then — on Windows — against the
-/// native installer's own location, so a blank profile just works on a machine with the desktop install.
-/// </summary>
-/// <remarks>
-/// The native Windows install (Claude desktop's bundled claude-code) is not on PATH: it lives under
-/// <c>%APPDATA%\Claude\claude-code\&lt;version&gt;\claude.exe</c>, one directory per installed version. A bare
-/// <c>claude</c> therefore fails a pure PATH probe even though the CLI is installed, which is why a fresh profile
-/// showed "Not found on PATH" until the operator pasted the absolute path by hand. <see cref="Resolve"/> now falls
-/// back to that location and picks the newest version. A pinned <c>ExecutablePath</c> on the profile still bypasses
-/// all of this and is the reliable path on any OS.
-/// </remarks>
+// Resolves the `claude` command to a path the plugin can spawn directly (Fase 4) — a port of the CLI-agent
+// plugin's `CliExecutableLocator`, because both hit the same cross-platform trap: `System.Diagnostics.Process`
+// with `UseShellExecute=false` does not consult `PATHEXT`, so a bare `"claude"` fails to launch a
+// `claude.cmd` npm shim on Windows even though it is on PATH. An absolute/rooted path (a pinned executable)
+// is returned unchanged; a bare name is probed against every PATH directory, then — on Windows — against the
+// native installer's own location, so a blank profile just works on a machine with the desktop install.
+// The native Windows install (Claude desktop's bundled claude-code) is not on PATH: it lives under
+// `%APPDATA%\Claude\claude-code\&lt;version&gt;\claude.exe`, one directory per installed version. A bare
+// `claude` therefore fails a pure PATH probe even though the CLI is installed, which is why a fresh profile
+// showed "Not found on PATH" until the operator pasted the absolute path by hand. `Resolve` now falls
+// back to that location and picks the newest version. A pinned `ExecutablePath` on the profile still bypasses
+// all of this and is the reliable path on any OS.
 internal static class ClaudeExecutableLocator
 {
     private static readonly string[] _WindowsExecutableExtensions = [".cmd", ".exe", ".bat"];
 
-    /// <summary>
-    /// Resolves <paramref name="command"/> to a spawnable path. Rooted paths pass through unchanged; then, if a
-    /// <paramref name="managedResolver"/> is given, a cockpit-managed install of the command (AC-20) wins over PATH;
-    /// otherwise a bare command name is looked up on PATH (Windows: trying <c>.cmd</c>/<c>.exe</c>/<c>.bat</c> per
-    /// directory) and then, on Windows, against the native installer's <c>%APPDATA%\Claude\claude-code</c> location.
-    /// If nothing is found, the command is returned unchanged so <see cref="System.Diagnostics.Process.Start()"/>
-    /// still gets a real attempt (and a diagnosable "file not found" if it truly is not installed).
-    /// </summary>
-    /// <param name="command">The configured command — an absolute pin, or a bare name like <c>claude</c>.</param>
-    /// <param name="managedResolver">
-    /// Optional lookup for a cockpit-managed copy of the command (typically <c>name =&gt; host.ResolveManagedCliPath(name)</c>).
-    /// Consulted only for a bare name, after a rooted pin and before PATH — so a pin always wins and a null result
-    /// (nothing installed, offline, or the operator removed it) simply falls through to PATH.
-    /// </param>
+    // Resolves `command` to a spawnable path. Rooted paths pass through unchanged; then, if a
+    // `managedResolver` is given, a cockpit-managed install of the command (AC-20) wins over PATH;
+    // otherwise a bare command name is looked up on PATH (Windows: trying `.cmd`/`.exe`/`.bat` per
+    // directory) and then, on Windows, against the native installer's `%APPDATA%\Claude\claude-code` location.
+    // If nothing is found, the command is returned unchanged so `System.Diagnostics.Process.Start()`
+    // still gets a real attempt (and a diagnosable "file not found" if it truly is not installed).
+    //
+    // `command`: The configured command — an absolute pin, or a bare name like `claude`.
+    // `managedResolver`:
+    // Optional lookup for a cockpit-managed copy of the command (typically `name =&gt; host.ResolveManagedCliPath(name)`).
+    // Consulted only for a bare name, after a rooted pin and before PATH — so a pin always wins and a null result
+    // (nothing installed, offline, or the operator removed it) simply falls through to PATH.
     public static string Resolve(string command, Func<string, string?>? managedResolver = null)
     {
         if (string.IsNullOrWhiteSpace(command) || Path.IsPathRooted(command))
@@ -79,12 +73,10 @@ internal static class ClaudeExecutableLocator
         return command;
     }
 
-    /// <summary>
-    /// The `claude` installer's launcher and older local-install layouts on Linux/macOS, none of which a GUI or
-    /// AppImage launch carries on PATH: <c>~/.local/bin/claude</c> (a symlink into the versioned install), then
-    /// <c>~/.claude/local/claude</c>, then the newest binary directly under <c>~/.local/share/claude/versions</c>.
-    /// Returns the first that exists.
-    /// </summary>
+    // The `claude` installer's launcher and older local-install layouts on Linux/macOS, none of which a GUI or
+    // AppImage launch carries on PATH: `~/.local/bin/claude` (a symlink into the versioned install), then
+    // `~/.claude/local/claude`, then the newest binary directly under `~/.local/share/claude/versions`.
+    // Returns the first that exists.
     private static string? _TryUnixWellKnownInstall()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -109,11 +101,9 @@ internal static class ClaudeExecutableLocator
         return PickNewestClaudeBinary(Path.Combine(home, ".local", "share", "claude", "versions"));
     }
 
-    /// <summary>
-    /// Given the installer's versions directory (files named by version, e.g. <c>2.1.211</c>, each the binary
-    /// itself), returns the highest-versioned one — the fallback for when the launcher symlink is missing but the
-    /// versioned binaries are present. Internal for testing.
-    /// </summary>
+    // Given the installer's versions directory (files named by version, e.g. `2.1.211`, each the binary
+    // itself), returns the highest-versioned one — the fallback for when the launcher symlink is missing but the
+    // versioned binaries are present. Internal for testing.
     internal static string? PickNewestClaudeBinary(string versionsDirectory)
     {
         if (!Directory.Exists(versionsDirectory))
@@ -136,10 +126,8 @@ internal static class ClaudeExecutableLocator
         return newest;
     }
 
-    /// <summary>
-    /// The native Windows install location: <c>%APPDATA%\Claude\claude-code</c>, holding one directory per installed
-    /// version. Returns the newest version's <c>claude.exe</c>, or <see langword="null"/> if the install is absent.
-    /// </summary>
+    // The native Windows install location: `%APPDATA%\Claude\claude-code`, holding one directory per installed
+    // version. Returns the newest version's `claude.exe`, or `null` if the install is absent.
     private static string? _TryWindowsDesktopInstall()
     {
         var appData = Environment.GetEnvironmentVariable("APPDATA");
@@ -151,12 +139,10 @@ internal static class ClaudeExecutableLocator
         return PickNewestClaudeExe(Path.Combine(appData, "Claude", "claude-code"));
     }
 
-    /// <summary>
-    /// Given the install root (<c>...\Claude\claude-code</c>), returns the <c>claude.exe</c> of the highest installed
-    /// version — versions are the per-version subdirectory names (e.g. <c>2.1.209</c>), compared as
-    /// <see cref="Version"/> so <c>2.1.209</c> beats <c>2.1.99</c>. Directories whose name is not a version, or that
-    /// hold no <c>claude.exe</c>, are only used if no properly-versioned install exists. Internal for testing.
-    /// </summary>
+    // Given the install root (`...\Claude\claude-code`), returns the `claude.exe` of the highest installed
+    // version — versions are the per-version subdirectory names (e.g. `2.1.209`), compared as
+    // `Version` so `2.1.209` beats `2.1.99`. Directories whose name is not a version, or that
+    // hold no `claude.exe`, are only used if no properly-versioned install exists. Internal for testing.
     internal static string? PickNewestClaudeExe(string installRoot)
     {
         if (!Directory.Exists(installRoot))

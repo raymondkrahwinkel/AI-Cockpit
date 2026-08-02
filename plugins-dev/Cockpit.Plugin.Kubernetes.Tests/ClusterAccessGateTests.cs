@@ -6,12 +6,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-/// <summary>
-/// The access gate (AC-80) is the one place the security policy lives, so these pin the matrix exactly: a namespace
-/// on the allowed list is free while one outside asks (reads included), a change always asks afresh as Dangerous,
-/// cluster-scoped resources and exec/port-forward/attach are blocked outright until turned on per cluster, and a
-/// denied prompt blocks the action. What the operator is shown is the literal action, never agent free text.
-/// </summary>
+// The access gate (AC-80) is the one place the security policy lives, so these pin the matrix exactly: a namespace
+// on the allowed list is free while one outside asks (reads included), a change always asks afresh as Dangerous,
+// cluster-scoped resources and exec/port-forward/attach are blocked outright until turned on per cluster, and a
+// denied prompt blocks the action. What the operator is shown is the literal action, never agent free text.
 public class ClusterAccessGateTests
 {
     private const string PaneId = "pane-1";

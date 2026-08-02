@@ -6,12 +6,10 @@ using Avalonia.Media;
 
 namespace Cockpit.Plugin.GeminiProvider;
 
-/// <summary>
-/// Wraps a settings input in a row with a small "?" help affordance to its right, showing a hover tooltip
-/// that explains what to fill in and how to obtain it — mirrors the same helper in the other example
-/// plugins (e.g. <c>Cockpit.Plugin.YouTrack.SettingsHelpRow</c>); plugins cannot share code with each
-/// other, only with the host, so each keeps its own small copy.
-/// </summary>
+// Wraps a settings input in a row with a small "?" help affordance to its right, showing a hover tooltip
+// that explains what to fill in and how to obtain it — mirrors the same helper in the other example
+// plugins (e.g. `Cockpit.Plugin.YouTrack.SettingsHelpRow`); plugins cannot share code with each
+// other, only with the host, so each keeps its own small copy.
 internal static class SettingsHelpRow
 {
     public static Control Build(Control input, string helpText)

@@ -3,35 +3,31 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// Lists open pull requests across all repositories for an owner via the local GitHub CLI (<c>gh search
-/// prs --owner &lt;owner&gt; --state open --json …</c>), reusing the user's existing <c>gh</c> login — no
-/// token to paste. Pull requests in archived repositories are excluded (resolved against <c>gh repo list
-/// --archived</c>). Results are cached briefly per owner so reopening the dialog/section or clicking around
-/// does not re-shell out on every view; the archived-repo list (which rarely changes) is cached longer.
-/// Refresh forces a re-fetch.
-/// </summary>
+// Lists open pull requests across all repositories for an owner via the local GitHub CLI (`gh search
+// prs --owner &lt;owner&gt; --state open --json …`), reusing the user's existing `gh` login — no
+// token to paste. Pull requests in archived repositories are excluded (resolved against `gh repo list
+// --archived`). Results are cached briefly per owner so reopening the dialog/section or clicking around
+// does not re-shell out on every view; the archived-repo list (which rarely changes) is cached longer.
+// Refresh forces a re-fetch.
 internal sealed class GitHubPrGhClient
 {
-    /// <summary>GitHub's search accepts at most five owner qualifiers; ask for more and it answers with an empty list rather than an error.</summary>
+    // GitHub's search accepts at most five owner qualifiers; ask for more and it answers with an empty list rather than an error.
     private const int OwnersPerSearch = 5;
 
-    /// <summary>
-    /// How long a cached pull-request search answers without shelling out again — and, since AC-515,
-    /// <see cref="PullRequestRefreshSource"/>'s own background poll interval. Used to sit at 60 seconds so a
-    /// caller almost always missed and paid for a fresh `gh` call; that only made sense back when a control
-    /// awaited this directly and had to render *something*. Now the refresh source is the only regular caller,
-    /// polls in the background and never blocks a render on the answer, so there is nothing left waiting on a
-    /// miss — a longer TTL only means fewer `gh` calls, not a slower screen. Five minutes: long enough that the
-    /// source's own tick (aligned to this value) usually finds a still-warm entry from whatever last refreshed
-    /// it — a manual click, a session signal — short enough that "how open pull requests are right now" stays
-    /// true within a coffee break.
-    /// </summary>
+    // How long a cached pull-request search answers without shelling out again — and, since AC-515,
+    // `PullRequestRefreshSource`'s own background poll interval. Used to sit at 60 seconds so a
+    // caller almost always missed and paid for a fresh `gh` call; that only made sense back when a control
+    // awaited this directly and had to render *something*. Now the refresh source is the only regular caller,
+    // polls in the background and never blocks a render on the answer, so there is nothing left waiting on a
+    // miss — a longer TTL only means fewer `gh` calls, not a slower screen. Five minutes: long enough that the
+    // source's own tick (aligned to this value) usually finds a still-warm entry from whatever last refreshed
+    // it — a manual click, a session signal — short enough that "how open pull requests are right now" stays
+    // true within a coffee break.
     internal static readonly TimeSpan PullRequestTtl = TimeSpan.FromMinutes(5);
 
     private static readonly TimeSpan ArchivedTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan RepositoriesTtl = TimeSpan.FromMinutes(30);
-    /// <summary>Every repository the operator is involved with, and whether it is archived — one gh call answers both.</summary>
+    // Every repository the operator is involved with, and whether it is archived — one gh call answers both.
     private static (DateTimeOffset At, Dictionary<string, bool> Repositories)? RepositoryCache;
     private static readonly object CacheGate = new();
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubPullRequest> PullRequests)> PullRequestCache = new(StringComparer.OrdinalIgnoreCase);
@@ -90,11 +86,9 @@ internal sealed class GitHubPrGhClient
         return result;
     }
 
-    /// <summary>
-    /// The open pull requests that are waiting for <em>your</em> review (<c>--review-requested @me</c>) —
-    /// across every repository, since a review request typically arrives on someone else's repo. Cached and
-    /// force-refreshed on the same terms as the other searches.
-    /// </summary>
+    // The open pull requests that are waiting for *your* review (`--review-requested @me`) —
+    // across every repository, since a review request typically arrives on someone else's repo. Cached and
+    // force-refreshed on the same terms as the other searches.
     public async Task<IReadOnlyList<GitHubPullRequest>> SearchReviewRequestedAsync(bool forceRefresh, CancellationToken cancellationToken)
     {
         const string cacheKey = "@me|review-requested";
@@ -123,22 +117,18 @@ internal sealed class GitHubPrGhClient
         return pullRequests;
     }
 
-    /// <summary>
-    /// Every open pull request in every repository the operator is involved with — theirs, the ones they
-    /// collaborate on, and the ones in their organisations — whoever opened it, and without a list to maintain.
-    /// <para>
-    /// Three things make this awkward, and each shapes what happens below. GitHub's search has no "everything I
-    /// can reach": without a scope it searches the whole of GitHub. Its scopes are owners, not repositories, and
-    /// it accepts <b>at most five owner qualifiers</b> — ask for fourteen and it returns an empty list rather than
-    /// an error, which is the kind of silence that reads as "no open pull requests". And an owner is coarser than
-    /// the truth: being in an organisation does not mean every repository in it is any of your business.
-    /// </para>
-    /// <para>
-    /// So: ask gh which repositories the operator is actually involved with, search their owners five at a time,
-    /// and keep only the pull requests that landed in one of those repositories. The repository list is what makes
-    /// the result exact; the owners are only how the search is reached.
-    /// </para>
-    /// </summary>
+    // Every open pull request in every repository the operator is involved with — theirs, the ones they
+    // collaborate on, and the ones in their organisations — whoever opened it, and without a list to maintain.
+    //
+    // Three things make this awkward, and each shapes what happens below. GitHub's search has no "everything I
+    // can reach": without a scope it searches the whole of GitHub. Its scopes are owners, not repositories, and
+    // it accepts *at most five owner qualifiers* — ask for fourteen and it returns an empty list rather than
+    // an error, which is the kind of silence that reads as "no open pull requests". And an owner is coarser than
+    // the truth: being in an organisation does not mean every repository in it is any of your business.
+    //
+    // So: ask gh which repositories the operator is actually involved with, search their owners five at a time,
+    // and keep only the pull requests that landed in one of those repositories. The repository list is what makes
+    // the result exact; the owners are only how the search is reached.
     public async Task<IReadOnlyList<GitHubPullRequest>> SearchInvolvedAsync(bool forceRefresh, CancellationToken cancellationToken)
     {
         const string cacheKey = "involved";
@@ -221,14 +211,11 @@ internal sealed class GitHubPrGhClient
         return result;
     }
 
-    /// <summary>
-    /// The repositories the operator owns, collaborates on, or reaches through an organisation, each with whether it
-    /// is archived. Cached far longer than pull requests: joining a repository is not an hourly event.
-    /// <para>
-    /// The archived flag comes from this same response. It used to be asked of gh per owner — three seconds a
-    /// call, up to fourteen of them, for something that was already in this payload.
-    /// </para>
-    /// </summary>
+    // The repositories the operator owns, collaborates on, or reaches through an organisation, each with whether it
+    // is archived. Cached far longer than pull requests: joining a repository is not an hourly event.
+    //
+    // The archived flag comes from this same response. It used to be asked of gh per owner — three seconds a
+    // call, up to fourteen of them, for something that was already in this payload.
     private static async Task<Dictionary<string, bool>> _MyRepositoriesAsync(bool forceRefresh, CancellationToken cancellationToken)
     {
         if (!forceRefresh)
@@ -275,15 +262,12 @@ internal sealed class GitHubPrGhClient
         return repositories;
     }
 
-    /// <summary>
-    /// Every open pull request in a repository or owner the operator watches — <em>whoever</em> opened it.
-    /// <para>
-    /// The other searches all ask "which of these are mine": authored by me, assigned to me, waiting on my
-    /// review. That is the right question for a personal list and the wrong one for a project you are
-    /// responsible for: a repository with five open pull requests, none of them yours, shows nothing at all.
-    /// A watched scope is <c>owner</c> (every repo of that user or org) or <c>owner/repo</c> (just the one).
-    /// </para>
-    /// </summary>
+    // Every open pull request in a repository or owner the operator watches — *whoever* opened it.
+    //
+    // The other searches all ask "which of these are mine": authored by me, assigned to me, waiting on my
+    // review. That is the right question for a personal list and the wrong one for a project you are
+    // responsible for: a repository with five open pull requests, none of them yours, shows nothing at all.
+    // A watched scope is `owner` (every repo of that user or org) or `owner/repo` (just the one).
     public async Task<IReadOnlyList<GitHubPullRequest>> SearchWatchedAsync(string scope, bool forceRefresh, CancellationToken cancellationToken)
     {
         var trimmed = scope.Trim();
@@ -325,17 +309,14 @@ internal sealed class GitHubPrGhClient
         return pullRequests;
     }
 
-    /// <summary>
-    /// Drops the pull requests that live in an archived repository.
-    /// <para>
-    /// The exclusion used to apply only when the operator had scoped the view to one owner, on the reasoning that
-    /// an <c>@me</c> search spans owners and has no single repo list to check against. But a pull request in an
-    /// archived repository cannot be merged, reviewed or closed — it is not open work, and a list of open work
-    /// that contains it is wrong regardless of how the list was asked for. So the owners are taken from the
-    /// results themselves (a repository is <c>owner/name</c>) and each one's archived repos are looked up — a
-    /// handful of lookups, cached far longer than the pull requests, since archiving is rare.
-    /// </para>
-    /// </summary>
+    // Drops the pull requests that live in an archived repository.
+    //
+    // The exclusion used to apply only when the operator had scoped the view to one owner, on the reasoning that
+    // an `@me` search spans owners and has no single repo list to check against. But a pull request in an
+    // archived repository cannot be merged, reviewed or closed — it is not open work, and a list of open work
+    // that contains it is wrong regardless of how the list was asked for. So the owners are taken from the
+    // results themselves (a repository is `owner/name`) and each one's archived repos are looked up — a
+    // handful of lookups, cached far longer than the pull requests, since archiving is rare.
     private static async Task<IReadOnlyList<GitHubPullRequest>> _WithoutArchivedAsync(
         IReadOnlyList<GitHubPullRequest> pullRequests,
         bool forceRefresh,
@@ -363,11 +344,9 @@ internal sealed class GitHubPrGhClient
             : pullRequests.Where(pullRequest => !archived.Contains(pullRequest.Repository)).ToList();
     }
 
-    /// <summary>
-    /// The pull requests that have been merged recently — what the "merged" trigger watches (#69). Authored by the
-    /// operator, because a flow that fired on every merge in every repository they can see would be a flow about other
-    /// people's afternoons.
-    /// </summary>
+    // The pull requests that have been merged recently — what the "merged" trigger watches (#69). Authored by the
+    // operator, because a flow that fired on every merge in every repository they can see would be a flow about other
+    // people's afternoons.
     public async Task<IReadOnlyList<GitHubPullRequest>> SearchMergedAsync(CancellationToken cancellationToken) =>
         _ParsePullRequests(await _RunGhAsync(MergedArguments, cancellationToken));
 

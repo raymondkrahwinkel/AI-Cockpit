@@ -2,10 +2,8 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// AC-346: starting Autopilot on an epic instead of a single issue. Asserted with xunit's own Assert, matching
-/// AutopilotReadyGateTests/AutopilotPlanIntentTests rather than the older FluentAssertions files in this project.
-/// </summary>
+// AC-346: starting Autopilot on an epic instead of a single issue. Asserted with xunit's own Assert, matching
+// AutopilotReadyGateTests/AutopilotPlanIntentTests rather than the older FluentAssertions files in this project.
 public class AutopilotEpicRunnerTests
 {
     private const string Ready = "Ready";
@@ -33,7 +31,7 @@ public class AutopilotEpicRunnerTests
         public void AddDependsOn(string subId, string dependsOnId) =>
             _Add(subId, new TrackerLinkedIssue("depends on", TrackerLinkDirection.Inward, dependsOnId, string.Empty, null));
 
-        /// <summary>Marks <paramref name="issueId"/>'s own links as unreadable — GetLinkedIssuesAsync throws for it, the way a real provider's I/O failure would (AC-346 review, MEDIUM 5).</summary>
+        // Marks `issueId`'s own links as unreadable — GetLinkedIssuesAsync throws for it, the way a real provider's I/O failure would (AC-346 review, MEDIUM 5).
         public void MakeUnreadable(string issueId) => _unreadable.Add(issueId);
 
         private void _Add(string issueId, TrackerLinkedIssue link)

@@ -2,10 +2,8 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-/// <summary>
-/// <see cref="CockpitProjectResourceEntry.Create"/> — the AC-244 decision that an absolute or anchor-relative
-/// reference is left out of a written definition rather than shipped or the write refused outright.
-/// </summary>
+// `CockpitProjectResourceEntry.Create` — the AC-244 decision that an absolute or anchor-relative
+// reference is left out of a written definition rather than shipped or the write refused outright.
 public class CockpitProjectResourceEntryTests
 {
     [Fact]

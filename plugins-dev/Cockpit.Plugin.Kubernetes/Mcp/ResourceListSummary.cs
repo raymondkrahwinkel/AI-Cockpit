@@ -3,11 +3,9 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-/// <summary>
-/// Turns a resource list into a compact summary — each item's name, namespace and creation time — so a list tool
-/// returns something an agent can scan without shipping the full body of every item (and, for a secret list, without
-/// its data). Extracted from the tools so it can be tested directly against a literal payload.
-/// </summary>
+// Turns a resource list into a compact summary — each item's name, namespace and creation time — so a list tool
+// returns something an agent can scan without shipping the full body of every item (and, for a secret list, without
+// its data). Extracted from the tools so it can be tested directly against a literal payload.
 internal static class ResourceListSummary
 {
     public static JsonNode Summarize(RawKubernetesList list)

@@ -1,23 +1,21 @@
 namespace Cockpit.Plugin.Workflows.Model;
 
-/// <summary>
-/// How the node picker files a type (#69) — the question it answers is "what am I looking for", which is why the
-/// categories are phrased from the operator's side and not from the code's.
-/// </summary>
+// How the node picker files a type (#69) — the question it answers is "what am I looking for", which is why the
+// categories are phrased from the operator's side and not from the code's.
 public enum NodeCategory
 {
-    /// <summary>What starts a run.</summary>
+    // What starts a run.
     Trigger,
 
-    /// <summary>Anything to do with the cockpit's own sessions.</summary>
+    // Anything to do with the cockpit's own sessions.
     Sessions,
 
-    /// <summary>Telling you, or somewhere else, that something happened.</summary>
+    // Telling you, or somewhere else, that something happened.
     Notify,
 
-    /// <summary>Reaching outside the cockpit: a command, an HTTP call.</summary>
+    // Reaching outside the cockpit: a command, an HTTP call.
     External,
 
-    /// <summary>Branching, waiting, deciding.</summary>
+    // Branching, waiting, deciding.
     Flow,
 }

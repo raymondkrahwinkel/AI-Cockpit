@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>Custom headers (AC-354) on the Claude route: a server that wants <c>X-Api-Key</c> rather than a bearer.</summary>
+// Custom headers (AC-354) on the Claude route: a server that wants `X-Api-Key` rather than a bearer.
 public class ClaudeCustomHeaderTests
 {
     private static JsonElement _Headers(string path, string serverName) =>

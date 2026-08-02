@@ -5,12 +5,10 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.ExampleWorkspace;
 
-/// <summary>
-/// The example workspace plugin (AC-122): its only contribution is one full-surface workspace type. Where a
-/// widget fills one cell of a Dashboard, this owns its whole body — and embeds a real host session in it — so it
-/// is what proves the workspace-type SDK end to end from outside the host, the way the clock proves the widget
-/// SDK. Bundled so the example is there out of the box.
-/// </summary>
+// The example workspace plugin (AC-122): its only contribution is one full-surface workspace type. Where a
+// widget fills one cell of a Dashboard, this owns its whole body — and embeds a real host session in it — so it
+// is what proves the workspace-type SDK end to end from outside the host, the way the clock proves the widget
+// SDK. Bundled so the example is there out of the box.
 public sealed class ExampleWorkspacePlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

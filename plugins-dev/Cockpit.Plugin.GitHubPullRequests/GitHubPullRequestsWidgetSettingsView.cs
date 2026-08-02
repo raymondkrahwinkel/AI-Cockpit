@@ -6,17 +6,13 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// One pull-requests widget instance's settings: how many pull requests the pane shows (#AC-18). Implements
-/// <see cref="IPluginSettingsView"/>, so the host wraps it in its standard Save/Close footer — the widget
-/// supplies the content, never the window.
-/// </summary>
-/// <remarks>
-/// Reads and writes through the instance's own <see cref="IWidgetContext.Storage"/>, which is what lets two
-/// PR widgets on one dashboard show different numbers of rows. Connection, repositories and the prompt template
-/// are deliberately absent: those are shared plugin settings, edited once from the plugin manager's gear, not
-/// per pane.
-/// </remarks>
+// One pull-requests widget instance's settings: how many pull requests the pane shows (#AC-18). Implements
+// `IPluginSettingsView`, so the host wraps it in its standard Save/Close footer — the widget
+// supplies the content, never the window.
+// Reads and writes through the instance's own `IWidgetContext.Storage`, which is what lets two
+// PR widgets on one dashboard show different numbers of rows. Connection, repositories and the prompt template
+// are deliberately absent: those are shared plugin settings, edited once from the plugin manager's gear, not
+// per pane.
 internal sealed class GitHubPullRequestsWidgetSettingsView : UserControl, IPluginSettingsView
 {
     private readonly IWidgetContext _context;

@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The evidence a step is judged by (AC-255): how the harness's observation of a worktree is worded, which spot-checks
-/// it raises, and how the validation turn changes shape when there is evidence and when there is none. The wiring that
-/// decides whether evidence exists at all is the coordinator's, and is tested in <see cref="AutopilotEvidenceGateTests"/>.
-/// </summary>
+// The evidence a step is judged by (AC-255): how the harness's observation of a worktree is worded, which spot-checks
+// it raises, and how the validation turn changes shape when there is evidence and when there is none. The wiring that
+// decides whether evidence exists at all is the coordinator's, and is tested in `AutopilotEvidenceGateTests`.
 public class AutopilotStepEvidenceTests
 {
     [Fact]

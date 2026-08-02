@@ -5,14 +5,12 @@ using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The explicit fallback for attaching a message's images to an issue (AC-116), exposed to the agent as
-/// <c>mcp__cockpit-youtrack__attach_message_images_to_issue</c>. The automatic path (a create/update tool
-/// completing in an image-bearing turn) covers the normal case; this tool is the safety net for a turn that has
-/// an image but no create/update. Always available (independent of the global auto-attach switch, since calling
-/// it is a deliberate act), and registered only while an instance is configured. The agent passes its own
-/// session id (COCKPIT_PANE_ID) so the images attached are the ones its message carried, not another session's.
-/// </summary>
+// The explicit fallback for attaching a message's images to an issue (AC-116), exposed to the agent as
+// `mcp__cockpit-youtrack__attach_message_images_to_issue`. The automatic path (a create/update tool
+// completing in an image-bearing turn) covers the normal case; this tool is the safety net for a turn that has
+// an image but no create/update. Always available (independent of the global auto-attach switch, since calling
+// it is a deliberate act), and registered only while an instance is configured. The agent passes its own
+// session id (COCKPIT_PANE_ID) so the images attached are the ones its message carried, not another session's.
 internal sealed class YouTrackAttachTools
 {
     private readonly ICockpitHost _host;

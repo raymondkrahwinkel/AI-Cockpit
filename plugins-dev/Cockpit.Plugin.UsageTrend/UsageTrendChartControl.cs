@@ -4,14 +4,12 @@ using Avalonia.Media;
 
 namespace Cockpit.Plugin.UsageTrend;
 
-/// <summary>
-/// One profile's usage over time, drawn straight onto the framework — three lines (context / 5h / weekly) on a
-/// 0-100% vertical scale, time along the horizontal, no chart library (there is no sparkline primitive in the
-/// host, so this follows the GitStatus control's precedent of vector-drawing its own). It renders only what it can
-/// honestly draw: a metric with fewer than two points contributes no line rather than a lone dot pretending to be
-/// a trend, and a control with nothing to plot says so in words instead of showing an empty frame that reads as
-/// broken — the same "no claim without data" rule the header keeps.
-/// </summary>
+// One profile's usage over time, drawn straight onto the framework — three lines (context / 5h / weekly) on a
+// 0-100% vertical scale, time along the horizontal, no chart library (there is no sparkline primitive in the
+// host, so this follows the GitStatus control's precedent of vector-drawing its own). It renders only what it can
+// honestly draw: a metric with fewer than two points contributes no line rather than a lone dot pretending to be
+// a trend, and a control with nothing to plot says so in words instead of showing an empty frame that reads as
+// broken — the same "no claim without data" rule the header keeps.
 internal sealed class UsageTrendChartControl : Control
 {
     // Distinct, theme-neutral line colours. The header colours its pills by severity (UsageSeverity), but that type
@@ -25,7 +23,7 @@ internal sealed class UsageTrendChartControl : Control
 
     private IReadOnlyList<UsageTrendSample> _samples = [];
 
-    /// <summary>The profile's samples this chart draws, oldest-first. Assigning re-draws; the widget prunes and groups before handing them over.</summary>
+    // The profile's samples this chart draws, oldest-first. Assigning re-draws; the widget prunes and groups before handing them over.
     public IReadOnlyList<UsageTrendSample> Samples
     {
         get => _samples;

@@ -3,15 +3,13 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexTranscriptReader"/> (AC-171): before this reader existed, <c>CliAgentProviderPlugin</c>
-/// registered no <c>CreateTranscriptReader</c> for the Codex TTY provider, so the host had no way to tail a
-/// Codex session's rollout file — the status dot was set to Idle once at launch and never moved again, no
-/// matter how much the session actually did. Locates the session's live rollout file as the new
-/// <c>configDir/sessions/yyyy/MM/dd/rollout-*.jsonl</c> that appears after launch, waits for it if the launch
-/// has not written it yet, tails it from its current end so history is never replayed, and buffers a partial
-/// line across polls. Fixture lines below are taken verbatim from real <c>codex-cli 0.144.4</c> rollout files.
-/// </summary>
+// `CodexTranscriptReader` (AC-171): before this reader existed, `CliAgentProviderPlugin`
+// registered no `CreateTranscriptReader` for the Codex TTY provider, so the host had no way to tail a
+// Codex session's rollout file — the status dot was set to Idle once at launch and never moved again, no
+// matter how much the session actually did. Locates the session's live rollout file as the new
+// `configDir/sessions/yyyy/MM/dd/rollout-*.jsonl` that appears after launch, waits for it if the launch
+// has not written it yet, tails it from its current end so history is never replayed, and buffers a partial
+// line across polls. Fixture lines below are taken verbatim from real `codex-cli 0.144.4` rollout files.
 public class CodexTranscriptReaderTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-codex-transcript-reader-tests-").FullName;

@@ -2,15 +2,13 @@ using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The persisted template store (AC-189): the operator's own templates and their edits (overrides) of the plugin
-/// templates survive a restart through the plugin's storage, while the plugin registrations themselves stay in memory.
-/// The combined list is the registrations with any override applied, followed by the user templates, each with the
-/// right edit/delete flags.
-/// </summary>
+// The persisted template store (AC-189): the operator's own templates and their edits (overrides) of the plugin
+// templates survive a restart through the plugin's storage, while the plugin registrations themselves stay in memory.
+// The combined list is the registrations with any override applied, followed by the user templates, each with the
+// right edit/delete flags.
 public class AutopilotTemplateStoreTests
 {
-    /// <summary>An in-memory <see cref="IPluginStorage"/> that round-trips through JSON, the way the host's real storage does.</summary>
+    // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does.
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);

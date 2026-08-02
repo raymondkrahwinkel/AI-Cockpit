@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>Sends text into the session you are working in, as if you had typed it.</summary>
+// Sends text into the session you are working in, as if you had typed it.
 internal sealed class InjectRunner(ICockpitHost host) : IStepRunner
 {
     public string TypeId => "cockpit.inject";

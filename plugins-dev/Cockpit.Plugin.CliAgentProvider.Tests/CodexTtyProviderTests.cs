@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexTtyProvider"/> (#45 fase B2): the interactive-TUI command line is deliberately not the
-/// headless <c>exec --json</c> shape <see cref="CliSubprocessPluginSessionDriver"/> builds — these tests
-/// pin exactly that difference (no <c>exec</c>, no <c>--json</c>, ever) plus resume/sandbox/model, all
-/// checked against the real <c>codex --help</c>/<c>codex resume --help</c> flags rather than assumed.
-/// </summary>
+// `CodexTtyProvider` (#45 fase B2): the interactive-TUI command line is deliberately not the
+// headless `exec --json` shape `CliSubprocessPluginSessionDriver` builds — these tests
+// pin exactly that difference (no `exec`, no `--json`, ever) plus resume/sandbox/model, all
+// checked against the real `codex --help`/`codex resume --help` flags rather than assumed.
 public class CodexTtyProviderTests
 {
     private static readonly IReadOnlyDictionary<string, string> NoOptions = new Dictionary<string, string>();

@@ -1,10 +1,8 @@
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// <see cref="ReviewRequestInbox"/> (#74): which review requests count as new, and what the next look should
-/// remember — the rule behind "announce this one, but only once".
-/// </summary>
+// `ReviewRequestInbox` (#74): which review requests count as new, and what the next look should
+// remember — the rule behind "announce this one, but only once".
 public class ReviewRequestInboxTests
 {
     [Fact]

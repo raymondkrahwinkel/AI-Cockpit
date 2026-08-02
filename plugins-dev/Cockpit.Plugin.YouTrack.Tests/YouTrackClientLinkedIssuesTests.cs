@@ -4,12 +4,10 @@ using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// AC-346: reading an issue's links (<c>GET /issues/{id}/links</c>) — YouTrack groups links by (type, direction)
-/// rather than one entry per linked issue, so this exercises the flattening and the per-direction name resolution
-/// (<c>sourceToTarget</c> for OUTWARD, <c>targetToSource</c> for INWARD) that <see cref="ITrackerProvider.GetLinkedIssuesAsync"/>
-/// promises.
-/// </summary>
+// AC-346: reading an issue's links (`GET /issues/{id}/links`) — YouTrack groups links by (type, direction)
+// rather than one entry per linked issue, so this exercises the flattening and the per-direction name resolution
+// (`sourceToTarget` for OUTWARD, `targetToSource` for INWARD) that `ITrackerProvider.GetLinkedIssuesAsync`
+// promises.
 public class YouTrackClientLinkedIssuesTests : IAsyncLifetime
 {
     private LoopbackHttpServer? _server;

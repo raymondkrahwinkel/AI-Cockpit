@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// Which issue a flow means (#77). The dangerous case is the last one: a bare number with no repository names an
-/// issue in a repository nobody stated — and commenting on the wrong repo's #42 is not a mistake that announces
-/// itself.
-/// </summary>
+// Which issue a flow means (#77). The dangerous case is the last one: a bare number with no repository names an
+// issue in a repository nobody stated — and commenting on the wrong repo's #42 is not a mistake that announces
+// itself.
 public class GitHubIssueReferenceTests
 {
     [Fact]

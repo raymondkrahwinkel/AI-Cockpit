@@ -2,18 +2,16 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Gets a Claude TTY session's limits out of Claude and into the cockpit by being its statusline — a copy of the
-/// host's <c>StatusLineRelay</c> (weg A). Claude's five-hour/weekly allowances are readable <em>only</em> in the
-/// JSON it hands its statusline command on stdin, so this registers a statusline of its own (via <c>--settings</c>,
-/// merged over the operator's own for this process only) whose script keeps the JSON where the session header can
-/// read it and then runs whatever statusline the operator already had — a feature that silently took the operator's
-/// statusline away would be no feature. The snapshot file is named in the launch spec's StatusFile (the host polls
-/// it) and in its SessionScopedFiles (the host deletes it when the session ends).
-/// </summary>
+// Gets a Claude TTY session's limits out of Claude and into the cockpit by being its statusline — a copy of the
+// host's `StatusLineRelay` (weg A). Claude's five-hour/weekly allowances are readable *only* in the
+// JSON it hands its statusline command on stdin, so this registers a statusline of its own (via `--settings`,
+// merged over the operator's own for this process only) whose script keeps the JSON where the session header can
+// read it and then runs whatever statusline the operator already had — a feature that silently took the operator's
+// statusline away would be no feature. The snapshot file is named in the launch spec's StatusFile (the host polls
+// it) and in its SessionScopedFiles (the host deletes it when the session ends).
 internal static class ClaudeStatusLine
 {
-    /// <summary>The env var carrying the file this session's statusline JSON is written to. Read by the script below.</summary>
+    // The env var carrying the file this session's statusline JSON is written to. Read by the script below.
     public const string StatusFileVariable = "COCKPIT_STATUS_FILE";
 
     private const string ScriptName = "statusline-relay.sh";
@@ -24,11 +22,9 @@ internal static class ClaudeStatusLine
 
     private static string StatusDirectory => Path.Combine(Root, "statusline");
 
-    /// <summary>
-    /// Installs the relay for one session: writes the script, computes the <c>--settings</c> JSON, names a fresh
-    /// snapshot file and points the env var at it. Returns nulls when there is nothing to chain and no settings to
-    /// write — a statusline is a nicety, and a session that cannot have one still starts.
-    /// </summary>
+    // Installs the relay for one session: writes the script, computes the `--settings` JSON, names a fresh
+    // snapshot file and points the env var at it. Returns nulls when there is nothing to chain and no settings to
+    // write — a statusline is a nicety, and a session that cannot have one still starts.
     public static (string? StatusFile, string? SettingsJson) Install(string configJsonDirectory, IDictionary<string, string?> environment)
     {
         try
@@ -49,12 +45,10 @@ internal static class ClaudeStatusLine
         }
     }
 
-    /// <summary>
-    /// Clears the snapshot files left behind by sessions that were killed rather than closed — a cleanly-ended
-    /// session's file is deleted by the host via the launch spec's SessionScopedFiles, but a hard kill leaves one.
-    /// Called once at plugin startup, the plugin-side equivalent of the host's former statusline housekeeping. A
-    /// session's spending is nobody's business once it is over.
-    /// </summary>
+    // Clears the snapshot files left behind by sessions that were killed rather than closed — a cleanly-ended
+    // session's file is deleted by the host via the launch spec's SessionScopedFiles, but a hard kill leaves one.
+    // Called once at plugin startup, the plugin-side equivalent of the host's former statusline housekeeping. A
+    // session's spending is nobody's business once it is over.
     public static void SweepStale()
     {
         try

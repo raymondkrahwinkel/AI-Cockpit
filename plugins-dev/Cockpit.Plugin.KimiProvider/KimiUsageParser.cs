@@ -3,12 +3,10 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// Extracts the context-used percentage from the free text kimi's <c>/usage</c> (and <c>/status</c>) builtin
-/// commands answer with (protocol §11) — the only wire-level source of token/context data ACP exposes, since
-/// neither <c>PromptResponse</c> nor any <c>session/update</c> variant carries a usage field. Pure, static,
-/// stateless; an unexpected shape returns <see langword="null"/> rather than guessing (AC-274).
-/// </summary>
+// Extracts the context-used percentage from the free text kimi's `/usage` (and `/status`) builtin
+// commands answer with (protocol §11) — the only wire-level source of token/context data ACP exposes, since
+// neither `PromptResponse` nor any `session/update` variant carries a usage field. Pure, static,
+// stateless; an unexpected shape returns `null` rather than guessing (AC-274).
 internal static class KimiUsageParser
 {
     // Matches the one line both /usage and /status end with: "Context: 45,000 / 200,000 (22.5%)". The two token

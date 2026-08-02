@@ -1,18 +1,14 @@
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Tells an image file's real media type from its bytes (AC-170) — never from its extension, which a caller
-/// could set to anything. Same idea as <c>Cockpit.Core.Screenshots.PngImage</c>'s signature read (this plugin
-/// does not reference <c>Cockpit.Core</c>, so the check is reimplemented here rather than shared), extended to
-/// the handful of formats YouTrack's attachment endpoint and Exclr8's paste handler actually produce.
-/// </summary>
+// Tells an image file's real media type from its bytes (AC-170) — never from its extension, which a caller
+// could set to anything. Same idea as `Cockpit.Core.Screenshots.PngImage`'s signature read (this plugin
+// does not reference `Cockpit.Core`, so the check is reimplemented here rather than shared), extended to
+// the handful of formats YouTrack's attachment endpoint and Exclr8's paste handler actually produce.
 internal static class ImageContentSniffer
 {
-    /// <summary>
-    /// Reads just enough of <paramref name="path"/> to identify it as an image by its magic bytes, returning the
-    /// matching MIME type — or <see langword="false"/> when the content is not a recognized image format,
-    /// regardless of what the file's extension claims.
-    /// </summary>
+    // Reads just enough of `path` to identify it as an image by its magic bytes, returning the
+    // matching MIME type — or `false` when the content is not a recognized image format,
+    // regardless of what the file's extension claims.
     public static bool TryDetectMediaType(string path, out string mediaType)
     {
         mediaType = string.Empty;
@@ -46,7 +42,7 @@ internal static class ImageContentSniffer
         return TryDetectMediaType(header, out mediaType);
     }
 
-    /// <summary>Signature-only variant of <see cref="TryDetectMediaType(string, out string)"/> for bytes already in memory (unit tests, in particular).</summary>
+    // Signature-only variant of `TryDetectMediaType(string, out string)` for bytes already in memory (unit tests, in particular).
     public static bool TryDetectMediaType(ReadOnlySpan<byte> header, out string mediaType)
     {
         if (_StartsWith(header, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))

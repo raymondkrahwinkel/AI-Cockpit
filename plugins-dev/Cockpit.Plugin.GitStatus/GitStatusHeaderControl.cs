@@ -9,14 +9,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// The git state of the repo a session is working in, shown in that session's own header bar: a coloured dot
-/// (clean / has changes / not a repo) plus the branch, with the counts on hover. It belongs here rather than in
-/// the sidebar because it describes one session, and the sidebar describes the cockpit — a section following
-/// "whichever session is selected" says nothing about the other three panes on screen.
-/// Refreshes when the session's working directory becomes known and when the session runs a git command; click
-/// to drop the status summary into that session.
-/// </summary>
+// The git state of the repo a session is working in, shown in that session's own header bar: a coloured dot
+// (clean / has changes / not a repo) plus the branch, with the counts on hover. It belongs here rather than in
+// the sidebar because it describes one session, and the sidebar describes the cockpit — a section following
+// "whichever session is selected" says nothing about the other three panes on screen.
+// Refreshes when the session's working directory becomes known and when the session runs a git command; click
+// to drop the status summary into that session.
 internal sealed class GitStatusHeaderControl : UserControl
 {
     // A git command may print progress over several lines; coalesce the burst and let the working tree settle

@@ -2,13 +2,11 @@ using System.Text;
 
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// Formats repository statuses (#1) as human/agent-readable text: a one-liner per repo for the injected
-/// prompt, and a compact per-column string for the dialog grid.
-/// </summary>
+// Formats repository statuses (#1) as human/agent-readable text: a one-liner per repo for the injected
+// prompt, and a compact per-column string for the dialog grid.
 internal static class GitStatusSummary
 {
-    /// <summary>One repo as a phrase, e.g. "3 uncommitted changes, 2 unpushed commits" or "clean, up to date with upstream".</summary>
+    // One repo as a phrase, e.g. "3 uncommitted changes, 2 unpushed commits" or "clean, up to date with upstream".
     public static string Describe(GitRepoStatus status)
     {
         if (status.Error is not null)
@@ -45,7 +43,7 @@ internal static class GitStatusSummary
         return string.Join(", ", parts);
     }
 
-    /// <summary>The compact ahead/behind column, e.g. "↑2 ↓1", "↑3", "—" (up to date) or "no upstream".</summary>
+    // The compact ahead/behind column, e.g. "↑2 ↓1", "↑3", "—" (up to date) or "no upstream".
     public static string RemoteState(GitRepoStatus status)
     {
         if (status.Error is not null)
@@ -77,7 +75,7 @@ internal static class GitStatusSummary
         return string.Join(" ", parts);
     }
 
-    /// <summary>The multi-repo block dropped into the active session.</summary>
+    // The multi-repo block dropped into the active session.
     public static string Render(IReadOnlyList<GitRepoStatus> statuses)
     {
         var builder = new StringBuilder();

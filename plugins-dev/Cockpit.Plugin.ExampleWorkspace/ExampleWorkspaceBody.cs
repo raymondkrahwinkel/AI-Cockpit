@@ -5,13 +5,11 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.ExampleWorkspace;
 
-/// <summary>
-/// The whole body of an Example workspace, drawn by this plugin — the host draws only the tab and the frame. The
-/// session in the middle is a real host session the plugin embedded through
-/// <see cref="IWorkspaceContext.EmbedSession"/>, not a mock: the host owns its lifetime and keeps it out of the
-/// session grid, and this control only places its view. That is the whole point of the example — a plugin owning a
-/// full surface with a live session inside it.
-/// </summary>
+// The whole body of an Example workspace, drawn by this plugin — the host draws only the tab and the frame. The
+// session in the middle is a real host session the plugin embedded through
+// `IWorkspaceContext.EmbedSession`, not a mock: the host owns its lifetime and keeps it out of the
+// session grid, and this control only places its view. That is the whole point of the example — a plugin owning a
+// full surface with a live session inside it.
 internal sealed class ExampleWorkspaceBody : UserControl
 {
     public ExampleWorkspaceBody(IWorkspaceContext context)
@@ -54,12 +52,10 @@ internal sealed class ExampleWorkspaceBody : UserControl
         };
     }
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard. The example is the one a plugin author reads first, so it shows the shape they should copy — a
-    /// translucent grey stood in for the hairline here and did not follow the repaint.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard. The example is the one a plugin author reads first, so it shows the shape they should copy — a
+    // translucent grey stood in for the hairline here and did not follow the repaint.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush

@@ -5,11 +5,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.GeminiProvider.Tests;
 
-/// <summary>
-/// <see cref="OpenAiCompatPluginSessionDriver"/> against a fake <see cref="IChatClient"/> (#45) — mirrors
-/// the host's own <c>OpenAiCompatSessionDriverTests</c> for the same history/streaming/error-handling shape,
-/// minus the tool-loop (this driver has no tool source of its own in fase A, so <see cref="PluginSessionCapabilities.SupportsTools"/> is always false).
-/// </summary>
+// `OpenAiCompatPluginSessionDriver` against a fake `IChatClient` (#45) — mirrors
+// the host's own `OpenAiCompatSessionDriverTests` for the same history/streaming/error-handling shape,
+// minus the tool-loop (this driver has no tool source of its own in fase A, so `PluginSessionCapabilities.SupportsTools` is always false).
 public class OpenAiCompatPluginSessionDriverTests
 {
     [Fact]

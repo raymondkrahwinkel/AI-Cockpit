@@ -1,12 +1,10 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The turns the autonomous run hands its sessions (AC-174): a step agent's opening instruction — its brief plus how to
-/// report done — and the validation turn the CEO is asked to judge a finished step by. Kept a pure builder off the
-/// coordinator so the wording (the tool to call, what to include) is tested without a live session. Unlike the CEO's
-/// hidden planning brief (<see cref="AutopilotCeoBrief"/>), the step brief is the agent's <em>visible</em> opening turn —
-/// it is the task it was given, submitted for it so an autonomous run needs no human to type the first message.
-/// </summary>
+// The turns the autonomous run hands its sessions (AC-174): a step agent's opening instruction — its brief plus how to
+// report done — and the validation turn the CEO is asked to judge a finished step by. Kept a pure builder off the
+// coordinator so the wording (the tool to call, what to include) is tested without a live session. Unlike the CEO's
+// hidden planning brief (`AutopilotCeoBrief`), the step brief is the agent's *visible* opening turn —
+// it is the task it was given, submitted for it so an autonomous run needs no human to type the first message.
 internal static class AutopilotStepBrief
 {
     public static string For(AutopilotStep step, int agentCount, int agentNumber)
@@ -76,23 +74,19 @@ internal static class AutopilotStepBrief
             """;
     }
 
-    /// <summary>
-    /// The one reminder a step agent gets if it goes quiet without reporting done: weaker/local
-    /// models sometimes end their turn with a text summary instead of calling the tool, which strands the step. Nudges
-    /// the tool call without disrupting an agent that is genuinely still working.
-    /// </summary>
+    // The one reminder a step agent gets if it goes quiet without reporting done: weaker/local
+    // models sometimes end their turn with a text summary instead of calling the tool, which strands the step. Nudges
+    // the tool call without disrupting an agent that is genuinely still working.
     public static string StepDoneReminder() =>
         $"If you have finished this step's work, call mcp__{AutopilotRunTools.EndpointName}__autopilot_step_done now with "
         + "a short summary of what you did — that is how the run advances; a text reply on its own does not report the "
         + "step done. If you are still working, ignore this and call it once you finish.";
 
-    /// <summary>
-    /// The turn the CEO judges a finished step by. With <paramref name="evidence"/> — an independent account of the
-    /// change, produced by the harness from the run's own worktree (AC-255) — the CEO validates against that instead of
-    /// re-reading the worktree itself. Without it, it gets exactly the instruction it always got: a run whose work the
-    /// harness cannot observe (a plain folder, a review gate judging a report, a git probe that failed) degrades loudly
-    /// back to the deep inspection rather than quietly to trusting the summary.
-    /// </summary>
+    // The turn the CEO judges a finished step by. With `evidence` — an independent account of the
+    // change, produced by the harness from the run's own worktree (AC-255) — the CEO validates against that instead of
+    // re-reading the worktree itself. Without it, it gets exactly the instruction it always got: a run whose work the
+    // harness cannot observe (a plain folder, a review gate judging a report, a git probe that failed) degrades loudly
+    // back to the deep inspection rather than quietly to trusting the summary.
     public static string ValidationTurn(AutopilotStep step, IReadOnlyList<string> summaries, AutopilotStepEvidence? evidence = null)
     {
         // A single whitespace-only summary is treated as no summary, like the zero-summary case — otherwise the CEO gets a
@@ -165,10 +159,10 @@ internal static class AutopilotStepBrief
             """;
     }
 
-    /// <summary>Marks both ends of the harness observation in a validation turn, so its contents cannot be read as instructions.</summary>
+    // Marks both ends of the harness observation in a validation turn, so its contents cannot be read as instructions.
     private const string ObservationFence = "----- HARNESS OBSERVATION -----";
 
-    /// <summary>Text on its way into a validation turn, with any copy of the fence defanged — only the turn itself may open or close that block.</summary>
+    // Text on its way into a validation turn, with any copy of the fence defanged — only the turn itself may open or close that block.
     private static string _WithoutFence(string text) =>
         text.Replace(ObservationFence, "-----(marker removed)-----", StringComparison.Ordinal);
 }

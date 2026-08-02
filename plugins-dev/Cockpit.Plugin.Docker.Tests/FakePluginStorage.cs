@@ -2,8 +2,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Docker.Tests;
 
-/// <summary>An in-memory <see cref="IPluginStorage"/> for tests — stores values directly (no JSON round-trip),
-/// enough to drive the settings layer. Relies on the interface's default secret handling.</summary>
+// An in-memory `IPluginStorage` for tests — stores values directly (no JSON round-trip),
+// enough to drive the settings layer. Relies on the interface's default secret handling.
 internal sealed class FakePluginStorage : IPluginStorage
 {
     private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);

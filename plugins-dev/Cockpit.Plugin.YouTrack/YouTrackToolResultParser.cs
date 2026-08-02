@@ -3,19 +3,17 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>The issue an attach targets, read from a YouTrack tool result (AC-116): the issue id, and the host of its web URL when the result carried one (used to pick the instance among several).</summary>
+// The issue an attach targets, read from a YouTrack tool result (AC-116): the issue id, and the host of its web URL when the result carried one (used to pick the instance among several).
 internal sealed record YouTrackAttachTarget(string IssueId, string? Host);
 
-/// <summary>
-/// Reads the issue an attach should target out of a YouTrack create/update tool's result (AC-116). The result
-/// is normally the JSON the JetBrains YouTrack MCP returns — <c>{"issueId":"AC-116","url":"…/issue/AC-116",…}</c>
-/// for a create, <c>{"issueId":"AC-116","updatedFields":[…]}</c> for an update — so the id comes from
-/// <c>issueId</c>/<c>idReadable</c>/<c>id</c> (YouTrack accepts either the readable or the internal id in the
-/// attachments path) and the host, when present, from the <c>url</c>. Because that shape is an external
-/// contract this plugin does not control, a result that is not that clean JSON object (multiple text blocks
-/// concatenated, an array, a wrapping envelope, a human-readable line) falls back to scanning the text for a
-/// YouTrack issue web URL. Returns null only when neither yields an issue, so an unrelated result is ignored.
-/// </summary>
+// Reads the issue an attach should target out of a YouTrack create/update tool's result (AC-116). The result
+// is normally the JSON the JetBrains YouTrack MCP returns — `{"issueId":"AC-116","url":"…/issue/AC-116",…}`
+// for a create, `{"issueId":"AC-116","updatedFields":[…]}` for an update — so the id comes from
+// `issueId`/`idReadable`/`id` (YouTrack accepts either the readable or the internal id in the
+// attachments path) and the host, when present, from the `url`. Because that shape is an external
+// contract this plugin does not control, a result that is not that clean JSON object (multiple text blocks
+// concatenated, an array, a wrapping envelope, a human-readable line) falls back to scanning the text for a
+// YouTrack issue web URL. Returns null only when neither yields an issue, so an unrelated result is ignored.
 internal static partial class YouTrackToolResultParser
 {
     public static YouTrackAttachTarget? TryParse(string resultContent)

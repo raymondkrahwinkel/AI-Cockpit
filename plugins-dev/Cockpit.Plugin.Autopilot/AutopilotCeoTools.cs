@@ -5,18 +5,16 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The in-process MCP tools (<c>mcp__cockpit-autopilot-ceo__*</c>) only the run's CEO validator uses (AC-174):
-/// report a step's validation verdict (<c>autopilot_validate</c>), answer or escalate a worker's mid-step
-/// consult (<c>autopilot_answer_worker</c>/<c>autopilot_escalate_to_operator</c>, AC-201), and keep the source issue in
-/// sync (<c>autopilot_tracker_stage</c>/<c>autopilot_tracker_note</c>). Split off the step agents' own endpoint
-/// (<see cref="AutopilotRunTools"/>) so a step agent never even sees the CEO's tools — tighter least-privilege, and a
-/// weaker (local) model is not distracted into calling a validate/tracker tool it has no business calling. Each is still
-/// pane-scoped through <see cref="ICockpitHost.CurrentMcpCallerPaneId"/>, so only the run's CEO session can call them.
-/// </summary>
+// The in-process MCP tools (`mcp__cockpit-autopilot-ceo__*`) only the run's CEO validator uses (AC-174):
+// report a step's validation verdict (`autopilot_validate`), answer or escalate a worker's mid-step
+// consult (`autopilot_answer_worker`/`autopilot_escalate_to_operator`, AC-201), and keep the source issue in
+// sync (`autopilot_tracker_stage`/`autopilot_tracker_note`). Split off the step agents' own endpoint
+// (`AutopilotRunTools`) so a step agent never even sees the CEO's tools — tighter least-privilege, and a
+// weaker (local) model is not distracted into calling a validate/tracker tool it has no business calling. Each is still
+// pane-scoped through `ICockpitHost.CurrentMcpCallerPaneId`, so only the run's CEO session can call them.
 internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager manager)
 {
-    /// <summary>The in-process MCP server name the plugin mounts the CEO's tools under — dark once a run has settled.</summary>
+    // The in-process MCP server name the plugin mounts the CEO's tools under — dark once a run has settled.
     internal const string EndpointName = "cockpit-autopilot-ceo";
 
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };

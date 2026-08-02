@@ -1,36 +1,30 @@
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Builds the <c>claude</c> CLI argument list for the SDK/session-driver route (Fase 4, weg A) — a port of the host's
-/// <c>ClaudeCliProcess.BuildArguments</c> with one deliberate divergence in the <em>permission</em> wiring: no
-/// host-owned permission MCP server. The plugin cannot reach the host's shared permission MCP server (weg A: the
-/// plugin owns its own machinery), and it does not need to — spawning in bidirectional stream-json mode with
-/// <c>--permission-prompt-tool stdio</c> makes the CLI route approvals back over the control protocol as
-/// <c>can_use_tool</c> requests (<see cref="ClaudeControlProtocol"/>), exactly the way Codex's app-server route
-/// surfaces its own in-band approvals. The user's own cockpit-configured MCP servers (#26/#44) <em>are</em> fanned in
-/// via <c>--mcp-config</c> (paired with <c>--strict-mcp-config</c> only when the session is unattended) — that is
-/// orthogonal to the permission wiring, and
-/// dropping it is what previously left an SDK session with no registry servers. Extracted and <c>internal</c> so the
-/// flag construction is unit-testable without spawning a real process.
-/// </summary>
+// Builds the `claude` CLI argument list for the SDK/session-driver route (Fase 4, weg A) — a port of the host's
+// `ClaudeCliProcess.BuildArguments` with one deliberate divergence in the *permission* wiring: no
+// host-owned permission MCP server. The plugin cannot reach the host's shared permission MCP server (weg A: the
+// plugin owns its own machinery), and it does not need to — spawning in bidirectional stream-json mode with
+// `--permission-prompt-tool stdio` makes the CLI route approvals back over the control protocol as
+// `can_use_tool` requests (`ClaudeControlProtocol`), exactly the way Codex's app-server route
+// surfaces its own in-band approvals. The user's own cockpit-configured MCP servers (#26/#44) *are* fanned in
+// via `--mcp-config` (paired with `--strict-mcp-config` only when the session is unattended) — that is
+// orthogonal to the permission wiring, and
+// dropping it is what previously left an SDK session with no registry servers. Extracted and `internal` so the
+// flag construction is unit-testable without spawning a real process.
 internal static class ClaudeSdkArguments
 {
-    /// <summary>
-    /// Sentinel value for <c>--permission-prompt-tool</c> that routes tool-approval prompts over the control protocol
-    /// (as <c>can_use_tool</c> requests) rather than to an MCP server. Verified against the official Agent SDK, which
-    /// sets exactly this when a <c>canUseTool</c> callback is provided (<c>client.py</c>:
-    /// <c>replace(options, permission_prompt_tool_name="stdio")</c> — "Automatically set … to 'stdio' for control protocol").
-    /// </summary>
+    // Sentinel value for `--permission-prompt-tool` that routes tool-approval prompts over the control protocol
+    // (as `can_use_tool` requests) rather than to an MCP server. Verified against the official Agent SDK, which
+    // sets exactly this when a `canUseTool` callback is provided (`client.py`:
+    // `replace(options, permission_prompt_tool_name="stdio")` — "Automatically set … to 'stdio' for control protocol").
     public const string StdioPermissionPromptTool = "stdio";
 
-    /// <summary>
-    /// The persistent, bidirectional <em>streaming</em> invocation — deliberately <b>without</b> <c>-p</c>/<c>--print</c>
-    /// (the SDK uses "streaming mode with stdin"), <b>with</b> <c>--permission-prompt-tool stdio</c>. The two together are
-    /// what make the CLI route tool approvals in-band as <c>can_use_tool</c> control_requests: without the stdio
-    /// permission-prompt tool the CLI has no permission mechanism in headless mode and runs tools ungated (measured — a
-    /// live run without it emitted zero <c>can_use_tool</c> requests). Bypass mode wires no permission tool, since it
-    /// allows everything with no prompt. All grounded in the Agent SDK's own spawn (<c>subprocess_cli.py</c>/<c>client.py</c>).
-    /// </summary>
+    // The persistent, bidirectional *streaming* invocation — deliberately *without* `-p`/`--print`
+    // (the SDK uses "streaming mode with stdin"), *with* `--permission-prompt-tool stdio`. The two together are
+    // what make the CLI route tool approvals in-band as `can_use_tool` control_requests: without the stdio
+    // permission-prompt tool the CLI has no permission mechanism in headless mode and runs tools ungated (measured — a
+    // live run without it emitted zero `can_use_tool` requests). Bypass mode wires no permission tool, since it
+    // allows everything with no prompt. All grounded in the Agent SDK's own spawn (`subprocess_cli.py`/`client.py`).
     public static List<string> BuildArguments(
         string? permissionMode,
         string? model,

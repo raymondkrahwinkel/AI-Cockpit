@@ -2,13 +2,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeStreamJson"/>'s "result" parsing (AC-410) — specifically the <c>errors[]</c> array, which
-/// <c>_ParseResult</c> did not read before this. Verified against the real CLI (2026-07-29, per the design doc):
-/// <c>claude --resume &lt;unknown-id&gt; -p "…" --output-format stream-json</c> fails loud and machine-readable,
-/// with <c>subtype: "error_during_execution"</c>, no <c>result</c>, and the actual reason only in <c>errors[]</c>.
-/// Without reading it, the host sees that a resume failed but never why.
-/// </summary>
+// `ClaudeStreamJson`'s "result" parsing (AC-410) — specifically the `errors[]` array, which
+// `_ParseResult` did not read before this. Verified against the real CLI (2026-07-29, per the design doc):
+// `claude --resume &lt;unknown-id&gt; -p "…" --output-format stream-json` fails loud and machine-readable,
+// with `subtype: "error_during_execution"`, no `result`, and the actual reason only in `errors[]`.
+// Without reading it, the host sees that a resume failed but never why.
 public class ClaudeStreamJsonTests
 {
     [Fact]

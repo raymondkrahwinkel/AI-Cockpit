@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-/// <summary>A minimal in-memory <see cref="IPluginStorage"/> for exercising settings round-trips without the host.</summary>
+// A minimal in-memory `IPluginStorage` for exercising settings round-trips without the host.
 internal sealed class InMemoryPluginStorage : IPluginStorage
 {
     private readonly Dictionary<string, object?> _values = [];

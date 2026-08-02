@@ -9,13 +9,11 @@ using Cockpit.Plugin.Kubernetes.Ui;
 
 namespace Cockpit.Plugin.Kubernetes;
 
-/// <summary>
-/// Kubernetes plugin (AC-80): register clusters and give agents scoped, human-approved access to them through an
-/// mcp__cockpit-k8s__* server. The plugin talks to the kube-apiserver itself (proxy model) and keeps the credentials, so
-/// an agent reaches a cluster only through gated tools — opening a cluster, a namespace outside its allowed list,
-/// and every change all ask the operator first (see <see cref="Security.ClusterAccessGate"/>). This build wires the
-/// cluster-registration settings; the gated MCP tools are added on top of it.
-/// </summary>
+// Kubernetes plugin (AC-80): register clusters and give agents scoped, human-approved access to them through an
+// mcp__cockpit-k8s__* server. The plugin talks to the kube-apiserver itself (proxy model) and keeps the credentials, so
+// an agent reaches a cluster only through gated tools — opening a cluster, a namespace outside its allowed list,
+// and every change all ask the operator first (see `Security.ClusterAccessGate`). This build wires the
+// cluster-registration settings; the gated MCP tools are added on top of it.
 public sealed class KubernetesPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

@@ -6,15 +6,12 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Picks an issue for one session (#75). Opened from that session's own header, so the issue lands on the pane you
-/// opened it from — not on "the active session", which is a guess the moment four panes are on screen.
-/// <para>
-/// It is a list of your open issues, and a box to narrow it. Deliberately not the full YouTrack dialog: this is the
-/// question "which of my tickets am I working on in this pane", and everything that does not help answer it is in the
-/// way.
-/// </para>
-/// </summary>
+// Picks an issue for one session (#75). Opened from that session's own header, so the issue lands on the pane you
+// opened it from — not on "the active session", which is a guess the moment four panes are on screen.
+//
+// It is a list of your open issues, and a box to narrow it. Deliberately not the full YouTrack dialog: this is the
+// question "which of my tickets am I working on in this pane", and everything that does not help answer it is in the
+// way.
 internal sealed class YouTrackIssuePickerControl : UserControl
 {
     private const int MaxResults = 100;

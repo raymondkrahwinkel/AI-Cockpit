@@ -4,13 +4,11 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexAppServerSessionDriver"/> against a <see cref="FakeCliSubprocess"/> (#45 fase 3) — proves the
-/// app-server lifecycle without a live Codex: the initialize/thread/start handshake surfaces a
-/// <see cref="PluginSessionInitialized"/> with the thread id, the cwd the cockpit passed rides thread/start
-/// (D5), agent-message deltas stream, an approval request is surfaced and answered, and a resume uses the
-/// existing thread id.
-/// </summary>
+// `CodexAppServerSessionDriver` against a `FakeCliSubprocess` (#45 fase 3) — proves the
+// app-server lifecycle without a live Codex: the initialize/thread/start handshake surfaces a
+// `PluginSessionInitialized` with the thread id, the cwd the cockpit passed rides thread/start
+// (D5), agent-message deltas stream, an approval request is surfaced and answered, and a resume uses the
+// existing thread id.
 public class CodexAppServerSessionDriverTests
 {
     private static CliAgentConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());

@@ -1,13 +1,11 @@
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// AC-299 bug 2: a Start work or Set state call reloads the grid from a fresh fetch, and that new list is a
-/// different collection of different <see cref="YouTrackIssue"/> instances — including one whose <c>State</c> is
-/// now different from the one that was selected. <see cref="IssueSelection.Restore"/> is what
-/// <c>YouTrackDialogControl</c> uses to find the same issue again, by <see cref="YouTrackIssue.IdReadable"/>
-/// rather than by object or structural equality.
-/// </summary>
+// AC-299 bug 2: a Start work or Set state call reloads the grid from a fresh fetch, and that new list is a
+// different collection of different `YouTrackIssue` instances — including one whose `State` is
+// now different from the one that was selected. `IssueSelection.Restore` is what
+// `YouTrackDialogControl` uses to find the same issue again, by `YouTrackIssue.IdReadable`
+// rather than by object or structural equality.
 public class IssueSelectionTests
 {
     private static readonly YouTrackIssue Backlog = new("1-1", "AT-1", "Faster startup", null, "AT", "Backlog");

@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The YouTrack half of the tracker-provider contract (AC-154): posts a comment, moves an issue's stage, and attaches
-/// a file, resolving the instance (base URL + token) for an issue from the plugin's configured instances. Every action
-/// returns whether it landed rather than throwing, so a failed post does not take a consumer's run down.
-/// </summary>
+// The YouTrack half of the tracker-provider contract (AC-154): posts a comment, moves an issue's stage, and attaches
+// a file, resolving the instance (base URL + token) for an issue from the plugin's configured instances. Every action
+// returns whether it landed rather than throwing, so a failed post does not take a consumer's run down.
 internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrackerProvider
 {
     private readonly YouTrackClient _client = new();

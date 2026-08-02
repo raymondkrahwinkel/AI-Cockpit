@@ -5,10 +5,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
 
-/// <summary>
-/// Only the two things the MCP tools actually take from the host: who called them, and what the operator said.
-/// Everything else on <see cref="ICockpitHost"/> has a default the tools never reach.
-/// </summary>
+// Only the two things the MCP tools actually take from the host: who called them, and what the operator said.
+// Everything else on `ICockpitHost` has a default the tools never reach.
 internal sealed class FakeCockpitHost : ICockpitHost
 {
     public string? CallerPaneId { get; set; }
@@ -56,7 +54,7 @@ internal sealed class FakeCockpitHost : ICockpitHost
     }
 }
 
-/// <summary>One session, as a header item would be handed it.</summary>
+// One session, as a header item would be handed it.
 internal sealed class FakeSession(string paneId, string? workingDirectory) : IPluginSessionContext
 {
     public string PaneId => paneId;

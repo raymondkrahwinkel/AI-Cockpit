@@ -14,11 +14,9 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows;
 
-/// <summary>
-/// Building one flow (#69): a toolbar that says which flow this is and whether it is armed, the canvas, and the
-/// step picker standing open on the right — not hiding behind a click, because "what can I even add" is the
-/// question you have while you look at the canvas, not after you have decided to add something.
-/// </summary>
+// Building one flow (#69): a toolbar that says which flow this is and whether it is armed, the canvas, and the
+// step picker standing open on the right — not hiding behind a click, because "what can I even add" is the
+// question you have while you look at the canvas, not after you have decided to add something.
 internal sealed class WorkflowEditorControl : UserControl
 {
     private readonly Workflow _workflow;
@@ -123,7 +121,7 @@ internal sealed class WorkflowEditorControl : UserControl
         _RefreshExecutable();
     }
 
-    /// <summary>Raised when the operator wants the list of flows back.</summary>
+    // Raised when the operator wants the list of flows back.
     public event EventHandler? BackRequested;
 
     // Everything about the flow as a whole: which one it is, what it is called, and whether it is armed.
@@ -401,11 +399,9 @@ internal sealed class WorkflowEditorControl : UserControl
         _dialog.Show(node, _Incoming(node), _Produced(node), _Earlier(node), _Before(node));
     }
 
-    /// <summary>
-    /// Keeps the wires of the step being edited on the ways out they were drawn to, if editing it changed what those
-    /// are (only a switch's do). Runs on every change while the dialog is open, so the canvas underneath is redrawn
-    /// with the wires already where they belong, rather than showing them on the wrong branch until it is closed.
-    /// </summary>
+    // Keeps the wires of the step being edited on the ways out they were drawn to, if editing it changed what those
+    // are (only a switch's do). Runs on every change while the dialog is open, so the canvas underneath is redrawn
+    // with the wires already where they belong, rather than showing them on the wrong branch until it is closed.
     private void _RewireOpenNode()
     {
         if (_openNode is not { } node || _outputsWhenOpened is not { } before)

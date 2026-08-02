@@ -5,18 +5,16 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The in-process MCP tools (<c>mcp__cockpit-autopilot-run__*</c>) a step agent uses (AC-174): report its work finished
-/// with <c>autopilot_step_done</c>, or consult its manager (the CEO) with <c>autopilot_blocked</c> (AC-201) — which the
-/// CEO answers or escalates to the operator, rather than the worker reaching the operator directly. This is the only
-/// Autopilot endpoint a step agent is given — the CEO's own tools (validate, tracker) live on the separate
-/// <see cref="AutopilotCeoTools"/> endpoint, so a step agent never sees them (least-privilege, and a weaker model is not
-/// distracted into calling them). Pane-scoped through <see cref="ICockpitHost.CurrentMcpCallerPaneId"/>, so a step can
-/// only report for its own session. Each call hands the outcome to the <see cref="AutopilotRunCoordinator"/>.
-/// </summary>
+// The in-process MCP tools (`mcp__cockpit-autopilot-run__*`) a step agent uses (AC-174): report its work finished
+// with `autopilot_step_done`, or consult its manager (the CEO) with `autopilot_blocked` (AC-201) — which the
+// CEO answers or escalates to the operator, rather than the worker reaching the operator directly. This is the only
+// Autopilot endpoint a step agent is given — the CEO's own tools (validate, tracker) live on the separate
+// `AutopilotCeoTools` endpoint, so a step agent never sees them (least-privilege, and a weaker model is not
+// distracted into calling them). Pane-scoped through `ICockpitHost.CurrentMcpCallerPaneId`, so a step can
+// only report for its own session. Each call hands the outcome to the `AutopilotRunCoordinator`.
 internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunManager manager)
 {
-    /// <summary>The in-process MCP server name the plugin mounts these tools under — dark once a run has settled.</summary>
+    // The in-process MCP server name the plugin mounts these tools under — dark once a run has settled.
     internal const string EndpointName = "cockpit-autopilot-run";
 
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };

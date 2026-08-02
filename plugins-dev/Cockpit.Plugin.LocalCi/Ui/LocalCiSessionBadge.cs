@@ -5,15 +5,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.LocalCi.Ui;
 
-/// <summary>
-/// The last local run in this session's checkout, in this session's header. A strip has room for an indicator and
-/// not for a panel, so it is one short line with the whole story on its tooltip — and nothing at all until a run
-/// has happened, which is most sessions most of the time.
-/// </summary>
-/// <remarks>
-/// Deliberately not the session's statusline: that line carries the ticket the session is working on, and a build
-/// result written over it trades a fact that lasts all day for one that lasts until the next run.
-/// </remarks>
+// The last local run in this session's checkout, in this session's header. A strip has room for an indicator and
+// not for a panel, so it is one short line with the whole story on its tooltip — and nothing at all until a run
+// has happened, which is most sessions most of the time.
+// Deliberately not the session's statusline: that line carries the ticket the session is working on, and a build
+// result written over it trades a fact that lasts all day for one that lasts until the next run.
 internal sealed class LocalCiSessionBadge : UserControl
 {
     private readonly IPluginSessionContext _session;

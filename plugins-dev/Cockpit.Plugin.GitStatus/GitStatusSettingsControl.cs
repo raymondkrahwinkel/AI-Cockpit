@@ -5,16 +5,13 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// The settings view (opened from the plugin manager's gear): the session-header indicator's one setting —
-/// whether it shows the branch name next to its status dot (AC-36). Implements <see cref="IPluginSettingsView"/>
-/// so the host dialog shows a Save button.
-/// <para>
-/// AC-522 removed the repository-list section this view used to show above the toggle below (managing the
-/// repos the plugin's now-removed dialog watched) — see <see cref="GitStatusSettings"/> for what that leaves
-/// behind in storage.
-/// </para>
-/// </summary>
+// The settings view (opened from the plugin manager's gear): the session-header indicator's one setting —
+// whether it shows the branch name next to its status dot (AC-36). Implements `IPluginSettingsView`
+// so the host dialog shows a Save button.
+//
+// AC-522 removed the repository-list section this view used to show above the toggle below (managing the
+// repos the plugin's now-removed dialog watched) — see `GitStatusSettings` for what that leaves
+// behind in storage.
 internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly GitStatusSettings _settings;

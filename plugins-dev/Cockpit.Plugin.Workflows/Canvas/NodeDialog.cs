@@ -10,21 +10,17 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
-/// <summary>
-/// One step, opened (#69): what flows <em>in</em> on the left, what the step is set to do in the middle, what it
-/// produced on the right. The three panes exist because a workflow tool's real question is never "what is this
-/// step's name" — it is "what have I got to work with here", and a narrow strip of text boxes cannot answer that.
-/// <para>
-/// The left pane is the answer to that question and also the way to use it: clicking a field writes its reference
-/// into the parameter you were last editing, so the syntax is something you can read rather than something you must
-/// remember. Fields of the step before are plain (<c>{output}</c>); fields of any earlier step carry that step's
-/// name (<c>{Run a command.output}</c>).
-/// </para>
-/// <para>
-/// Both side panes show what <em>actually</em> flowed in the last run. Before a first run they say so plainly rather
-/// than listing what a step might hypothetically produce — a guess in a help text is worse than no help text.
-/// </para>
-/// </summary>
+// One step, opened (#69): what flows *in* on the left, what the step is set to do in the middle, what it
+// produced on the right. The three panes exist because a workflow tool's real question is never "what is this
+// step's name" — it is "what have I got to work with here", and a narrow strip of text boxes cannot answer that.
+//
+// The left pane is the answer to that question and also the way to use it: clicking a field writes its reference
+// into the parameter you were last editing, so the syntax is something you can read rather than something you must
+// remember. Fields of the step before are plain (`{output}`); fields of any earlier step carry that step's
+// name (`{Run a command.output}`).
+//
+// Both side panes show what *actually* flowed in the last run. Before a first run they say so plainly rather
+// than listing what a step might hypothetically produce — a guess in a help text is worse than no help text.
 internal sealed class NodeDialog : Border
 {
     private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true };
@@ -107,19 +103,17 @@ internal sealed class NodeDialog : Border
         };
     }
 
-    /// <summary>Raised when a field changed — the flow is saved as it is edited, like everything else here.</summary>
+    // Raised when a field changed — the flow is saved as it is edited, like everything else here.
     public event EventHandler? Changed;
 
     public event EventHandler? CloseRequested;
 
-    /// <summary>The step currently open, or null.</summary>
+    // The step currently open, or null.
     public WorkflowNode? Node => _node;
 
-    /// <summary>
-    /// Opens <paramref name="node"/>. <paramref name="incoming"/> is what the last run handed to it,
-    /// <paramref name="produced"/> what it handed on, and <paramref name="earlier"/> what every step before it
-    /// produced — the data it can reach by name.
-    /// </summary>
+    // Opens `node`. `incoming` is what the last run handed to it,
+    // `produced` what it handed on, and `earlier` what every step before it
+    // produced — the data it can reach by name.
     public void Show(
         WorkflowNode node,
         IReadOnlyList<JsonObject> incoming,
@@ -533,17 +527,15 @@ internal sealed class NodeDialog : Border
         return control;
     }
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

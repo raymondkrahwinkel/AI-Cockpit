@@ -5,17 +5,15 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Fetches open ("#Unresolved") issues for a single YouTrack instance over a plain <see cref="HttpClient"/>,
-/// authenticated with a permanent token — YouTrack has no local CLI equivalent to <c>gh</c>, so this plugin
-/// is HTTP-only. Mirrors the query shape from the YouTrack skill: <c>GET {instance}/issues?fields=…&amp;
-/// query=[project:{tag}] [#Unresolved or extra, never both] [for: me]&amp;$top={n}</c> (see
-/// <see cref="BuildQuery"/> for why a non-empty extra filter replaces <c>#Unresolved</c> rather than joining
-/// it), where a null/empty project tag means every project on the instance (the dialog's "All" filter, #48) —
-/// the response's own <c>project.shortName</c> tells each issue which project it belongs to either way.
-/// Callers are expected to validate that the instance URL and token are set before calling — this client
-/// assumes valid input and lets HTTP/JSON failures surface as exceptions for the UI layer to report.
-/// </summary>
+// Fetches open ("#Unresolved") issues for a single YouTrack instance over a plain `HttpClient`,
+// authenticated with a permanent token — YouTrack has no local CLI equivalent to `gh`, so this plugin
+// is HTTP-only. Mirrors the query shape from the YouTrack skill: `GET {instance}/issues?fields=…&amp;
+// query=[project:{tag}] [#Unresolved or extra, never both] [for: me]&amp;$top={n}` (see
+// `BuildQuery` for why a non-empty extra filter replaces `#Unresolved` rather than joining
+// it), where a null/empty project tag means every project on the instance (the dialog's "All" filter, #48) —
+// the response's own `project.shortName` tells each issue which project it belongs to either way.
+// Callers are expected to validate that the instance URL and token are set before calling — this client
+// assumes valid input and lets HTTP/JSON failures surface as exceptions for the UI layer to report.
 internal sealed class YouTrackClient
 {
     private static readonly HttpClient Http = new();
@@ -53,10 +51,8 @@ internal sealed class YouTrackClient
         return issues;
     }
 
-    /// <summary>
-    /// One issue, by the id a human writes ("WEB-14") — what a workflow step is given, since a flow refers to a
-    /// ticket the way you would say it out loud, not by the internal id nobody sees.
-    /// </summary>
+    // One issue, by the id a human writes ("WEB-14") — what a workflow step is given, since a flow refers to a
+    // ticket the way you would say it out loud, not by the internal id nobody sees.
     public async Task<YouTrackIssue> GetIssueAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
@@ -83,12 +79,10 @@ internal sealed class YouTrackClient
         return new YouTrackIssue(id, readable, summary, description, _ExtractProject(element, null), _ExtractState(element));
     }
 
-    /// <summary>
-    /// Projects configured on the instance (short-name + full name) via the admin API (needs the token's
-    /// account to have project-admin read access). Returns an empty list — never throws — when that call fails,
-    /// e.g. a token scoped without admin access; the dialog then falls back to the projects already present in
-    /// the fetched issues (#48).
-    /// </summary>
+    // Projects configured on the instance (short-name + full name) via the admin API (needs the token's
+    // account to have project-admin read access). Returns an empty list — never throws — when that call fails,
+    // e.g. a token scoped without admin access; the dialog then falls back to the projects already present in
+    // the fetched issues (#48).
     public async Task<IReadOnlyList<YouTrackProject>> GetProjectsAsync(string instanceBaseUrl, string token, CancellationToken cancellationToken)
     {
         try
@@ -130,14 +124,12 @@ internal sealed class YouTrackClient
         }
     }
 
-    /// <summary>
-    /// The status field of one issue as its project defines it (#75) — which field is the status, what it is
-    /// worth now, and what it may become. Reads the issue's own custom fields (no admin rights needed), then
-    /// fills in the possible moves: a workflow-governed field is asked for its <c>possibleEvents</c>, an
-    /// ordinary one for the project's allowed values, falling back to the admin route when the issue response
-    /// did not carry the bundle. When neither yields anything the field comes back with no targets, and the UI
-    /// offers no status actions rather than actions that would be refused.
-    /// </summary>
+    // The status field of one issue as its project defines it (#75) — which field is the status, what it is
+    // worth now, and what it may become. Reads the issue's own custom fields (no admin rights needed), then
+    // fills in the possible moves: a workflow-governed field is asked for its `possibleEvents`, an
+    // ordinary one for the project's allowed values, falling back to the admin route when the issue response
+    // did not carry the bundle. When neither yields anything the field comes back with no targets, and the UI
+    // offers no status actions rather than actions that would be refused.
     public async Task<YouTrackIssueFields> GetIssueFieldsAsync(string instanceBaseUrl, string token, YouTrackIssue issue, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
@@ -171,11 +163,11 @@ internal sealed class YouTrackClient
         return fields with { State = state with { Values = values } };
     }
 
-    /// <summary>Moves an issue's status to <paramref name="target"/> — a value on an ordinary field, an event on a workflow-governed one. Throws when YouTrack refuses (an undefined transition, or no permission), so the caller can say why.</summary>
+    // Moves an issue's status to `target` — a value on an ordinary field, an event on a workflow-governed one. Throws when YouTrack refuses (an undefined transition, or no permission), so the caller can say why.
     public Task SetStateAsync(string instanceBaseUrl, string token, YouTrackIssue issue, YouTrackStateField field, string target, CancellationToken cancellationToken) =>
         _PostIssueAsync(instanceBaseUrl, token, issue, YouTrackUpdateBody.ForState(field, target), cancellationToken);
 
-    /// <summary>Assigns the issue to the token's own account (<c>GET /users/me</c>), on the project's assignee field.</summary>
+    // Assigns the issue to the token's own account (`GET /users/me`), on the project's assignee field.
     public async Task AssignToMeAsync(string instanceBaseUrl, string token, YouTrackIssue issue, string assigneeFieldName, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
@@ -210,25 +202,22 @@ internal sealed class YouTrackClient
         }
     }
 
-    /// <summary>
-    /// The project's allowed status values, independent of any single issue — unlike <see cref="GetIssueFieldsAsync"/>'s
-    /// per-issue read, this is what a state dropdown needs before any issue has been fetched at all: every open stage
-    /// the project defines, not just the ones a particular page of issues happens to show. Which field is "the" status
-    /// is resolved by the same State/Stage/Kanban State preference <see cref="YouTrackFieldParser"/> applies elsewhere,
-    /// so this and the per-issue Set-state menu can never disagree about it. Needs the token's account to read the
-    /// project's field configuration; returns no field name and an empty list — never throws — same fail-open shape as
-    /// <see cref="GetProjectsAsync"/>.
-    /// <para>
-    /// Asks for <c>isResolved</c> (<see href="https://www.jetbrains.com/help/youtrack/devportal/api-entity-StateBundleElement.html">StateBundleElement</see>-only)
-    /// so a resolved value (Done) never enters the dropdown — the state filter always queries with
-    /// <c>#Unresolved</c>, so "Done" would be an option that reads as present but returns nothing. What YouTrack
-    /// does when a project's status field runs on a plain <c>EnumBundle</c> instead (a Stage/Kanban State field,
-    /// whose elements carry no <c>isResolved</c> at all) is not documented; if asking for it makes the whole call
-    /// fail, this retries once with the field this endpoint has always asked for, keeping every value — a response
-    /// that already came back, just without <c>isResolved</c> on it, needs no retry: <see cref="YouTrackFieldParser.ParseProjectStateField"/>
-    /// already keeps a value it cannot confirm is resolved.
-    /// </para>
-    /// </summary>
+    // The project's allowed status values, independent of any single issue — unlike `GetIssueFieldsAsync`'s
+    // per-issue read, this is what a state dropdown needs before any issue has been fetched at all: every open stage
+    // the project defines, not just the ones a particular page of issues happens to show. Which field is "the" status
+    // is resolved by the same State/Stage/Kanban State preference `YouTrackFieldParser` applies elsewhere,
+    // so this and the per-issue Set-state menu can never disagree about it. Needs the token's account to read the
+    // project's field configuration; returns no field name and an empty list — never throws — same fail-open shape as
+    // `GetProjectsAsync`.
+    //
+    // Asks for `isResolved` (<see href="https://www.jetbrains.com/help/youtrack/devportal/api-entity-StateBundleElement.html">StateBundleElement</see>-only)
+    // so a resolved value (Done) never enters the dropdown — the state filter always queries with
+    // `#Unresolved`, so "Done" would be an option that reads as present but returns nothing. What YouTrack
+    // does when a project's status field runs on a plain `EnumBundle` instead (a Stage/Kanban State field,
+    // whose elements carry no `isResolved` at all) is not documented; if asking for it makes the whole call
+    // fail, this retries once with the field this endpoint has always asked for, keeping every value — a response
+    // that already came back, just without `isResolved` on it, needs no retry: `YouTrackFieldParser.ParseProjectStateField`
+    // already keeps a value it cannot confirm is resolved.
     public async Task<(string? FieldName, IReadOnlyList<string> Values)> GetProjectStateFieldAsync(string instanceBaseUrl, string token, string projectShortName, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(projectShortName))
@@ -263,11 +252,9 @@ internal sealed class YouTrackClient
     private static Task<string> _GetProjectCustomFieldsJsonAsync(string baseUrl, string token, string projectShortName, CancellationToken cancellationToken) =>
         _GetAsync($"{baseUrl}/admin/projects/{projectShortName}/customFields?fields=field(name),bundle(values(name))", token, cancellationToken);
 
-    /// <summary>
-    /// Attaches a file to an issue (AC-14): a multipart POST to <c>{instance}/issues/{id}/attachments</c>, the way
-    /// the YouTrack REST API takes an upload. Throws with YouTrack's own reason when it refuses (no permission, too
-    /// large), so the caller can say why.
-    /// </summary>
+    // Attaches a file to an issue (AC-14): a multipart POST to `{instance}/issues/{id}/attachments`, the way
+    // the YouTrack REST API takes an upload. Throws with YouTrack's own reason when it refuses (no permission, too
+    // large), so the caller can say why.
     public async Task AttachFileAsync(string instanceBaseUrl, string token, string idReadable, string fileName, byte[] bytes, string mediaType, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
@@ -325,7 +312,7 @@ internal sealed class YouTrackClient
         throw new InvalidOperationException($"YouTrack refused the update ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
     }
 
-    /// <summary>Posts a comment on an issue (<c>POST /issues/{id}/comments</c>). Surfaces YouTrack's own refusal text on failure.</summary>
+    // Posts a comment on an issue (`POST /issues/{id}/comments`). Surfaces YouTrack's own refusal text on failure.
     public async Task AddCommentAsync(string instanceBaseUrl, string token, string idReadable, string text, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
@@ -344,18 +331,16 @@ internal sealed class YouTrackClient
         throw new InvalidOperationException($"YouTrack refused the comment ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
     }
 
-    /// <summary>
-    /// Reads every link an issue carries (AC-346), <c>GET /issues/{id}/links</c>: YouTrack groups an issue's links by
-    /// link type and direction — one element per (type, direction) pair, each carrying the issues on the other side —
-    /// rather than one element per linked issue, so this flattens that into one <see cref="TrackerLinkedIssue"/> per
-    /// linked issue. <c>linkType.sourceToTarget</c>/<c>targetToSource</c> are the type's own two names for its two
-    /// directions (e.g. "parent for" / "subtask of"); which one names the link <em>from the queried issue's side</em>
-    /// depends on <c>direction</c> — "OUTWARD" means the queried issue is the source, so its own name is
-    /// <c>sourceToTarget</c>, and "INWARD" the reverse. "BOTH" (a symmetric link type, e.g. "relates to") has the same
-    /// name in both directions, so either resolves to it. Never throws — a malformed or missing field on one link
-    /// group is skipped rather than failing the whole read, since a caller degrading to "fewer links than expected"
-    /// is safer than one bad group taking an epic's whole child list down.
-    /// </summary>
+    // Reads every link an issue carries (AC-346), `GET /issues/{id}/links`: YouTrack groups an issue's links by
+    // link type and direction — one element per (type, direction) pair, each carrying the issues on the other side —
+    // rather than one element per linked issue, so this flattens that into one `TrackerLinkedIssue` per
+    // linked issue. `linkType.sourceToTarget`/`targetToSource` are the type's own two names for its two
+    // directions (e.g. "parent for" / "subtask of"); which one names the link *from the queried issue's side*
+    // depends on `direction` — "OUTWARD" means the queried issue is the source, so its own name is
+    // `sourceToTarget`, and "INWARD" the reverse. "BOTH" (a symmetric link type, e.g. "relates to") has the same
+    // name in both directions, so either resolves to it. Never throws — a malformed or missing field on one link
+    // group is skipped rather than failing the whole read, since a caller degrading to "fewer links than expected"
+    // is safer than one bad group taking an epic's whole child list down.
     public async Task<IReadOnlyList<TrackerLinkedIssue>> GetLinkedIssuesAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
@@ -410,7 +395,7 @@ internal sealed class YouTrackClient
         return links;
     }
 
-    /// <summary>Reads an issue's comments (<c>GET /issues/{id}/comments</c>), normalized to <see cref="TrackerComment"/> (YouTrack's <c>created</c> is epoch-ms).</summary>
+    // Reads an issue's comments (`GET /issues/{id}/comments`), normalized to `TrackerComment` (YouTrack's `created` is epoch-ms).
     public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
@@ -438,17 +423,14 @@ internal sealed class YouTrackClient
         return comments;
     }
 
-    /// <summary>
-    /// [project:{tag}] plus what to look for — <c>#Unresolved</c> unless the caller says otherwise, because showing
-    /// issues that are done is offering work that is over — plus <c>for: me</c> when <paramref name="assignedToMe"/>
-    /// (YouTrack's own "assigned to the current user" clause, resolved against the token). A null/empty tag omits the
-    /// project clause, matching every project on the instance.
-    /// <para>
-    /// <paramref name="filter"/> replaces <c>#Unresolved</c> rather than being appended to it: an operator who writes
-    /// "State: Done" means it, and a query that quietly kept "#Unresolved" in front of it would return nothing and
-    /// look like a broken search.
-    /// </para>
-    /// </summary>
+    // [project:{tag}] plus what to look for — `#Unresolved` unless the caller says otherwise, because showing
+    // issues that are done is offering work that is over — plus `for: me` when `assignedToMe`
+    // (YouTrack's own "assigned to the current user" clause, resolved against the token). A null/empty tag omits the
+    // project clause, matching every project on the instance.
+    //
+    // `filter` replaces `#Unresolved` rather than being appended to it: an operator who writes
+    // "State: Done" means it, and a query that quietly kept "#Unresolved" in front of it would return nothing and
+    // look like a broken search.
     internal static string BuildQuery(string? projectTag, string? filter, bool assignedToMe)
     {
         var what = string.IsNullOrWhiteSpace(filter) ? "#Unresolved" : filter.Trim();
@@ -458,7 +440,7 @@ internal sealed class YouTrackClient
         return assignedToMe ? $"{query} for: me" : query;
     }
 
-    /// <summary>The issue's web URL, derived from the API base URL by dropping a trailing "/api" — e.g. "https://x.youtrack.cloud/api" -> "https://x.youtrack.cloud/issue/PROJ-123".</summary>
+    // The issue's web URL, derived from the API base URL by dropping a trailing "/api" — e.g. "https://x.youtrack.cloud/api" -> "https://x.youtrack.cloud/issue/PROJ-123".
     internal static string BuildIssueUrl(string instanceBaseUrl, string idReadable)
     {
         var trimmed = instanceBaseUrl.TrimEnd('/');

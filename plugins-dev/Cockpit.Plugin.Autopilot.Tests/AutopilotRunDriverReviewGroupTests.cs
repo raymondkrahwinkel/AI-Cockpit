@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// AC-434: the driver's read-parallel/write-serial handling of a review-gate pair — <see cref="AutopilotRunDriverTests"/>
-/// covers the ordinary one-step-at-a-time loop this builds on. Plain xUnit assertions (not FluentAssertions, which the
-/// codebase is moving off — <c>CSharp.md</c> §FluentAssertions) since this is a new test file.
-/// </summary>
+// AC-434: the driver's read-parallel/write-serial handling of a review-gate pair — `AutopilotRunDriverTests`
+// covers the ordinary one-step-at-a-time loop this builds on. Plain xUnit assertions (not FluentAssertions, which the
+// codebase is moving off — `CSharp.md` §FluentAssertions) since this is a new test file.
 public class AutopilotRunDriverReviewGroupTests
 {
     private static AutopilotStep Gate(string id) =>

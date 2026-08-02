@@ -4,12 +4,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
-/// <summary>
-/// Search over the <c>claude</c> CLI's on-disk transcripts, as a plugin: the JSONL history and its schema belong
-/// to that one provider, so in a cockpit that drives several they have no business in the core. Contributes a
-/// left-menu button and the <c>Ctrl+F</c> shortcut it used to own as a built-in action, both opening the search
-/// dialog. It needs no services of its own — the search reads the profiles from the host on every query.
-/// </summary>
+// Search over the `claude` CLI's on-disk transcripts, as a plugin: the JSONL history and its schema belong
+// to that one provider, so in a cockpit that drives several they have no business in the core. Contributes a
+// left-menu button and the `Ctrl+F` shortcut it used to own as a built-in action, both opening the search
+// dialog. It needs no services of its own — the search reads the profiles from the host on every query.
 public sealed class TranscriptSearchPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

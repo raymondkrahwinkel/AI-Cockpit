@@ -4,35 +4,29 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// <see cref="IPluginSessionDriver"/> for the headless <c>claude</c> CLI over the persistent stream-json protocol
-/// (Fase 4, SDK route, weg A) — the plugin-owned analogue of the host's <c>ClaudeCliSession</c>. One long-lived process
-/// hosts the whole multi-turn conversation; each <see cref="SendUserMessageAsync"/> writes one user-message line and the
-/// streamed <c>assistant</c>/<c>stream_event</c>/<c>result</c> lines are mapped to plugin events by
-/// <see cref="ClaudeStreamJson"/>.
-/// </summary>
-/// <remarks>
-/// Permissions ride the <em>control protocol</em>, not an HTTP MCP server (<see cref="ClaudeControlProtocol"/>): the CLI
-/// is spawned without <c>--permission-prompt-tool</c>, an <c>initialize</c> control_request puts the cockpit on the
-/// control channel, and every tool needing approval arrives as a <c>can_use_tool</c> control_request which this driver
-/// surfaces as <see cref="PluginPermissionRequested"/> and answers with a control_response — the exact same in-band
-/// shape Codex's app-server route uses for <c>item/*/requestApproval</c>. No logged-in <c>claude</c> exists in this
-/// sandbox, so the live end (the CLI emitting <c>can_use_tool</c> for this spawn) needs a manual eyeball check; the
-/// turn-taking and the parse/respond round-trip are unit-tested against a fake subprocess.
-/// </remarks>
+// `IPluginSessionDriver` for the headless `claude` CLI over the persistent stream-json protocol
+// (Fase 4, SDK route, weg A) — the plugin-owned analogue of the host's `ClaudeCliSession`. One long-lived process
+// hosts the whole multi-turn conversation; each `SendUserMessageAsync` writes one user-message line and the
+// streamed `assistant`/`stream_event`/`result` lines are mapped to plugin events by
+// `ClaudeStreamJson`.
+// Permissions ride the *control protocol*, not an HTTP MCP server (`ClaudeControlProtocol`): the CLI
+// is spawned without `--permission-prompt-tool`, an `initialize` control_request puts the cockpit on the
+// control channel, and every tool needing approval arrives as a `can_use_tool` control_request which this driver
+// surfaces as `PluginPermissionRequested` and answers with a control_response — the exact same in-band
+// shape Codex's app-server route uses for `item/*/requestApproval`. No logged-in `claude` exists in this
+// sandbox, so the live end (the CLI emitting `can_use_tool` for this spawn) needs a manual eyeball check; the
+// turn-taking and the parse/respond round-trip are unit-tested against a fake subprocess.
 internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 {
-    /// <summary>
-    /// Option key for the per-session permission mode (also a live control) — the well-known key the host's driver
-    /// adapter folds its typed permission-mode selection into, so a launch-time choice (bypass, plan, …) actually
-    /// reaches this driver instead of falling back to the default.
-    /// </summary>
+    // Option key for the per-session permission mode (also a live control) — the well-known key the host's driver
+    // adapter folds its typed permission-mode selection into, so a launch-time choice (bypass, plan, …) actually
+    // reaches this driver instead of falling back to the default.
     public const string PermissionModeOptionKey = WellKnownPluginSessionOptions.PermissionMode;
 
-    /// <summary>Option key for the per-session model override (also a live control, #45 D4) — the well-known key the host adapter wires its live model switch to.</summary>
+    // Option key for the per-session model override (also a live control, #45 D4) — the well-known key the host adapter wires its live model switch to.
     public const string ModelOptionKey = WellKnownPluginSessionOptions.Model;
 
-    /// <summary>Option key for the per-session reasoning effort (a live control, #45 D4) — maps to the CLI's thinking-token budget, the one budget the control protocol can set mid-session (set_max_thinking_tokens).</summary>
+    // Option key for the per-session reasoning effort (a live control, #45 D4) — maps to the CLI's thinking-token budget, the one budget the control protocol can set mid-session (set_max_thinking_tokens).
     public const string EffortOptionKey = "effort";
 
     private readonly Func<IClaudeSdkSubprocess> _subprocessFactory;
@@ -413,23 +407,19 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
     }
 
-    /// <summary>
-    /// Env var that asks the CLI to forward a sub-agent's own text/thinking into the stream (AC-146) — the Task
-    /// tool's activity would otherwise be invisible beyond the parent tool-call row and its final result. An env
-    /// var rather than a CLI flag deliberately: an older CLI that does not know it simply never sets the
-    /// corresponding internal option and forwards nothing, exactly like today — an unrecognised environment
-    /// variable is silently ignored, where an unrecognised CLI flag would refuse to start the process at all.
-    /// That is the whole of the graceful degradation this needs; no version sniffing required.
-    /// </summary>
+    // Env var that asks the CLI to forward a sub-agent's own text/thinking into the stream (AC-146) — the Task
+    // tool's activity would otherwise be invisible beyond the parent tool-call row and its final result. An env
+    // var rather than a CLI flag deliberately: an older CLI that does not know it simply never sets the
+    // corresponding internal option and forwards nothing, exactly like today — an unrecognised environment
+    // variable is silently ignored, where an unrecognised CLI flag would refuse to start the process at all.
+    // That is the whole of the graceful degradation this needs; no version sniffing required.
     private const string ForwardSubagentTextEnvironmentVariable = "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT";
 
-    /// <summary>
-    /// Reads the account's cached allowances into the usage feed, and asks the CLI to refresh them for next time
-    /// (AC-549). Reading first and refreshing after is deliberate: the refresh is a subprocess, so awaiting it here
-    /// would put a process start on the stdout pump. This turn shows the previous refresh's figures — at most
-    /// <see cref="ClaudeUsageRefresh.Interval"/> old, and <see cref="ClaudeUsageCache"/> drops anything staler than
-    /// its own limit rather than showing it.
-    /// </summary>
+    // Reads the account's cached allowances into the usage feed, and asks the CLI to refresh them for next time
+    // (AC-549). Reading first and refreshing after is deliberate: the refresh is a subprocess, so awaiting it here
+    // would put a process start on the stdout pump. This turn shows the previous refresh's figures — at most
+    // `ClaudeUsageRefresh.Interval` old, and `ClaudeUsageCache` drops anything staler than
+    // its own limit rather than showing it.
     private void _FoldInAccountWindows()
     {
         if (_claudeJsonPath is not { } path)

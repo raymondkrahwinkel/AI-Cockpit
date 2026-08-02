@@ -3,12 +3,10 @@ using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// The two things you do to a pull request from either surface — drop its review prompt into the active session
-/// (or the clipboard when there is none), and open it in the browser. Shared by the side-menu section and the
-/// dashboard widget (#AC-18) so "click a PR" and "open a PR" mean exactly the same thing in both, down to the
-/// toast they raise.
-/// </summary>
+// The two things you do to a pull request from either surface — drop its review prompt into the active session
+// (or the clipboard when there is none), and open it in the browser. Shared by the side-menu section and the
+// dashboard widget (#AC-18) so "click a PR" and "open a PR" mean exactly the same thing in both, down to the
+// toast they raise.
 internal static class PullRequestActions
 {
     public static async Task InjectAsync(ICockpitHost host, GitHubPullRequestsSettings settings, GitHubPullRequest pullRequest)

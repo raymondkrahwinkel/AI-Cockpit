@@ -9,26 +9,21 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The canvas, drawn in the cockpit's own colours (AC-337). The rest of this suite asks whether a card behaves;
-/// these ask what it looks like — the question the repaint was about, and the one no behavioural test in this repo
-/// has ever answered. Twice in this epic a render found a fault a screen full of green tests had walked past.
-/// <para>
-/// Each test also writes its image next to the test output so it can be opened and looked at. What is asserted is
-/// only the part a machine can settle: that the theme is really loaded, and that no kind of step reads as a duller
-/// copy of the one that carries the accent.
-/// </para>
-/// </summary>
+// The canvas, drawn in the cockpit's own colours (AC-337). The rest of this suite asks whether a card behaves;
+// these ask what it looks like — the question the repaint was about, and the one no behavioural test in this repo
+// has ever answered. Twice in this epic a render found a fault a screen full of green tests had walked past.
+//
+// Each test also writes its image next to the test output so it can be opened and looked at. What is asserted is
+// only the part a machine can settle: that the theme is really loaded, and that no kind of step reads as a duller
+// copy of the one that carries the accent.
 [Collection("avalonia")]
 public class CanvasThemeRenderTests
 {
-    /// <summary>How far a stripe's hue has to sit from the accent's, in degrees, to read as another colour.</summary>
+    // How far a stripe's hue has to sit from the accent's, in degrees, to read as another colour.
     private const double MinimumHueSeparation = 40;
 
-    /// <summary>
-    /// Below this, a colour has so little of its hue left that it reads as grey — which is what lets the plain
-    /// step's slate sit at the accent's own hue without being mistaken for it.
-    /// </summary>
+    // Below this, a colour has so little of its hue left that it reads as grey — which is what lets the plain
+    // step's slate sit at the accent's own hue without being mistaken for it.
     private const double GreyEnough = 0.25;
 
     [Fact]
@@ -65,16 +60,13 @@ public class CanvasThemeRenderTests
         Assert.True(Math.Abs(_Saturation(stripe) - _Saturation((Color)accent)) < 0.1, $"the trigger's stripe {stripe} is a weaker accent, not the accent");
     }
 
-    /// <summary>
-    /// A card three times its own size, so the thing a 60px-tall card is too small to judge — how its title, its
-    /// subtitle and its gear sit together — can actually be looked at.
-    /// <para>
-    /// It also pins the fault that made this harness worth having. The first version of it laid the card out
-    /// without a window above it, and produced a card whose title was drawn in near-black on a dark fill: styles
-    /// reach a control when it reaches a styling root, so a loose tree renders as though the theme did not exist.
-    /// Asserting the title is light says the picture beside it can be trusted.
-    /// </para>
-    /// </summary>
+    // A card three times its own size, so the thing a 60px-tall card is too small to judge — how its title, its
+    // subtitle and its gear sit together — can actually be looked at.
+    //
+    // It also pins the fault that made this harness worth having. The first version of it laid the card out
+    // without a window above it, and produced a card whose title was drawn in near-black on a dark fill: styles
+    // reach a control when it reaches a styling root, so a loose tree renders as though the theme did not exist.
+    // Asserting the title is light says the picture beside it can be trusted.
     [Fact]
     public void ACardsTitle_IsLegible_WhichIsAlsoHowWeKnowTheHarnessIsHonest()
     {
@@ -99,10 +91,8 @@ public class CanvasThemeRenderTests
         Assert.True(brightest > 180, $"the brightest pixel in the title is {brightest} — the text is not the theme's");
     }
 
-    /// <summary>
-    /// The brightest channel value inside a control's box, in the rendered image. Used rather than a single sampled
-    /// pixel because where a glyph's stroke lands is not something a test should have to know.
-    /// </summary>
+    // The brightest channel value inside a control's box, in the rendered image. Used rather than a single sampled
+    // pixel because where a glyph's stroke lands is not something a test should have to know.
     private static int _BrightestPixelIn(WriteableBitmap image, Visual control, Visual root, double scale)
     {
         var origin = control.TranslatePoint(default, root)
@@ -138,7 +128,7 @@ public class CanvasThemeRenderTests
             $"{name} {candidate} sits {separation:0}° from {reference} at saturation {saturation:0.00} — same hue, less of it, which reads as the accent gone dull");
     }
 
-    /// <summary>The shorter way round the colour wheel between two colours, in degrees.</summary>
+    // The shorter way round the colour wheel between two colours, in degrees.
     private static double _HueSeparation(Color left, Color right)
     {
         var difference = Math.Abs(_Hue(left) - _Hue(right));
@@ -156,11 +146,9 @@ public class CanvasThemeRenderTests
         Name = name,
     };
 
-    /// <summary>
-    /// Renders one card and reads the colour of its leading stripe. The stripe's position is asked of the laid-out
-    /// visual tree rather than worked out on paper: a card that has an input pin starts further right than one that
-    /// does not, and guessing that offset is how a sampler ends up reporting the colour of a pin.
-    /// </summary>
+    // Renders one card and reads the colour of its leading stripe. The stripe's position is asked of the laid-out
+    // visual tree rather than worked out on paper: a card that has an input pin starts further right than one that
+    // does not, and guessing that offset is how a sampler ends up reporting the colour of a pin.
     private static Color _StripeColourOf(string typeId, string name, string fileName)
     {
         var card = new WorkflowNodeControl(_Node(typeId, name));
@@ -192,13 +180,11 @@ public class CanvasThemeRenderTests
     }
 
 
-    /// <summary>
-    /// Renders a control the way the app would: inside a window that has been shown. Measuring and arranging a
-    /// loose control is not enough and is quietly misleading — Avalonia applies application styles when a control
-    /// reaches a styling root, so a tree with no window above it renders every <c>Foreground</c> and every class
-    /// the theme sets as if the theme did not exist. The first version of this harness did exactly that, and the
-    /// picture it produced showed a card whose title was drawn in black on a dark card.
-    /// </summary>
+    // Renders a control the way the app would: inside a window that has been shown. Measuring and arranging a
+    // loose control is not enough and is quietly misleading — Avalonia applies application styles when a control
+    // reaches a styling root, so a tree with no window above it renders every `Foreground` and every class
+    // the theme sets as if the theme did not exist. The first version of this harness did exactly that, and the
+    // picture it produced showed a card whose title was drawn in black on a dark card.
     private static WriteableBitmap _Render(Control control, int width, int height, string fileName)
     {
         var root = new Border

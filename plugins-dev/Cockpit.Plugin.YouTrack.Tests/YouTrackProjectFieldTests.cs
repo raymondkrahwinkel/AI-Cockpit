@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The choices this plugin offers the project editor (AC-317). What is stored is the short name — the tag every
-/// query it makes is written in — so the tests here are about the display text never leaking into the stored value,
-/// and about an instance that could not be read saying so instead of looking empty.
-/// </summary>
+// The choices this plugin offers the project editor (AC-317). What is stored is the short name — the tag every
+// query it makes is written in — so the tests here are about the display text never leaking into the stored value,
+// and about an instance that could not be read saying so instead of looking empty.
 public class YouTrackProjectFieldTests
 {
     private static YouTrackInstance Instance(string label) => new(label, $"https://{label}.test/api", "token", string.Empty);

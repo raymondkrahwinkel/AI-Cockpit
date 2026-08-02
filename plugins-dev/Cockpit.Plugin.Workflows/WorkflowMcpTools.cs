@@ -7,18 +7,14 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows;
 
-/// <summary>
-/// The MCP tools an agent uses to work with cockpit workflows (#AC-12), exposed as <c>mcp__cockpit-workflows__*</c>
-/// through the plugin's own MCP server (contributed via <see cref="ICockpitHost.AddMcpEndpoint"/>). An agent can see
-/// which flows exist, read one, learn the step types it can build from, run a flow, and create/edit/arm/delete one —
-/// so a flow the operator drew, or one the agent assembled, is a tool the agent can reach for when it fits the work.
-/// </summary>
-/// <remarks>
-/// A workflow is plain data (nodes with a TypeId + string parameters, and index-referenced connections), so the
-/// create/update tools take that shape and this class turns it into a saved <see cref="Workflow"/>. The engine is
-/// built per run (never cached) because contributed steps register in an uncontrolled order — the same reason the
-/// watcher builds it lazily.
-/// </remarks>
+// The MCP tools an agent uses to work with cockpit workflows (#AC-12), exposed as `mcp__cockpit-workflows__*`
+// through the plugin's own MCP server (contributed via `ICockpitHost.AddMcpEndpoint`). An agent can see
+// which flows exist, read one, learn the step types it can build from, run a flow, and create/edit/arm/delete one —
+// so a flow the operator drew, or one the agent assembled, is a tool the agent can reach for when it fits the work.
+// A workflow is plain data (nodes with a TypeId + string parameters, and index-referenced connections), so the
+// create/update tools take that shape and this class turns it into a saved `Workflow`. The engine is
+// built per run (never cached) because contributed steps register in an uncontrolled order — the same reason the
+// watcher builds it lazily.
 internal sealed class WorkflowMcpTools
 {
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };

@@ -3,15 +3,12 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// A step another plugin contributed (<see cref="IWorkflowStep"/>), seen from inside the engine: a type for the
-/// picker and a runner for the run, built from the one declaration. This is the whole of what the workflows plugin
-/// knows about YouTrack — that someone offers a step called <c>youtrack.start</c> which asks for a ticket id.
-/// <para>
-/// Parameters are resolved before the step ever sees them, so a contributed step gets <c>{output}</c> for free and
-/// its author never learns the syntax exists. That is the point of resolving in one place.
-/// </para>
-/// </summary>
+// A step another plugin contributed (`IWorkflowStep`), seen from inside the engine: a type for the
+// picker and a runner for the run, built from the one declaration. This is the whole of what the workflows plugin
+// knows about YouTrack — that someone offers a step called `youtrack.start` which asks for a ticket id.
+//
+// Parameters are resolved before the step ever sees them, so a contributed step gets `{output}` for free and
+// its author never learns the syntax exists. That is the point of resolving in one place.
 internal sealed class ContributedStep(IWorkflowStep step) : IStepRunner
 {
     public string TypeId => step.TypeId;
@@ -26,7 +23,7 @@ internal sealed class ContributedStep(IWorkflowStep step) : IStepRunner
         _ => ConsentRisk.Dangerous,
     };
 
-    /// <summary>A non-trigger contributed step that did not declare its consent (#AC-38) — refused rather than run ungated.</summary>
+    // A non-trigger contributed step that did not declare its consent (#AC-38) — refused rather than run ungated.
     public static bool IsUndeclared(IWorkflowStep step) => !step.IsTrigger && step.RequiredConsent is null;
 
     public string ConsentAction(StepContext context)
@@ -38,7 +35,7 @@ internal sealed class ContributedStep(IWorkflowStep step) : IStepRunner
         return string.Join("\n", new[] { step.Name }.Concat(settings));
     }
 
-    /// <summary>How the picker and the canvas see it.</summary>
+    // How the picker and the canvas see it.
     public static NodeTypeDescriptor Describe(IWorkflowStep step) => new(
         step.TypeId,
         step.Name,

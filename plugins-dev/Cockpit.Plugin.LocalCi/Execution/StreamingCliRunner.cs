@@ -4,11 +4,9 @@ using System.Text;
 
 namespace Cockpit.Plugin.LocalCi.Execution;
 
-/// <summary>
-/// <see cref="IStreamingCliRunner"/> backed by a real process. Same shape as <see cref="Runtime.CliRunner"/> —
-/// argv via <see cref="ProcessStartInfo.ArgumentList"/>, both pipes drained while the process runs — but the lines
-/// go to the caller as they arrive instead of into a buffer nobody sees until the end.
-/// </summary>
+// `IStreamingCliRunner` backed by a real process. Same shape as `Runtime.CliRunner` —
+// argv via `ProcessStartInfo.ArgumentList`, both pipes drained while the process runs — but the lines
+// go to the caller as they arrive instead of into a buffer nobody sees until the end.
 internal sealed class StreamingCliRunner : IStreamingCliRunner
 {
     public async Task<StreamedRun> RunAsync(

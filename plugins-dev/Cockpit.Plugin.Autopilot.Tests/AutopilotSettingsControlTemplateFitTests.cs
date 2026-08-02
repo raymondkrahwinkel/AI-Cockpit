@@ -8,18 +8,15 @@ using Xunit.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// AC-521 Iron Law #9: unlike the YouTrack/GitHub-Issues/GitHub-Pull-Requests plugins (whose placeholder help lives
-/// in a "?" tooltip and so costs no visible layout), this plugin's Templates section has no tooltip idiom at all —
-/// the placeholder help is a plain, always-visible <c>_Hint</c>. Enriching its text really does grow the visible
-/// page, so this measures it rather than assuming a tooltip's usual "invisible until hovered" safety applies here.
-/// <para>
-/// The enriched hint is the <em>last</em> child added to the Templates section — after the header, the intro hint,
-/// the "+ New template" button and the template list — so growing it cannot push any of those earlier, actionable
-/// controls down or off screen; only more of the (already scrollable, informational) tail grows. This pins that
-/// claim with a measurement instead of an assertion in prose.
-/// </para>
-/// </summary>
+// AC-521 Iron Law #9: unlike the YouTrack/GitHub-Issues/GitHub-Pull-Requests plugins (whose placeholder help lives
+// in a "?" tooltip and so costs no visible layout), this plugin's Templates section has no tooltip idiom at all —
+// the placeholder help is a plain, always-visible `_Hint`. Enriching its text really does grow the visible
+// page, so this measures it rather than assuming a tooltip's usual "invisible until hovered" safety applies here.
+//
+// The enriched hint is the *last* child added to the Templates section — after the header, the intro hint,
+// the "+ New template" button and the template list — so growing it cannot push any of those earlier, actionable
+// controls down or off screen; only more of the (already scrollable, informational) tail grows. This pins that
+// claim with a measurement instead of an assertion in prose.
 [Collection("avalonia")]
 public class AutopilotSettingsControlTemplateFitTests
 {

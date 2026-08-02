@@ -4,14 +4,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Claude as a provider plugin (Fase 4): the plan overturns the 2026-07-13 "Claude wordt geen provider-plugin"
-/// decision now the contract has grown enough to carry it. Registers both of Claude's routes under the id
-/// <c>claude</c> (matching the host's existing Claude id, so the resolver prefers this plugin while the in-tree route
-/// stays as a fallback during the transition): the <em>TTY</em> route (the interactive TUI in a pane) and the
-/// <em>SDK/session-driver</em> route (headless stream-json), whose permissions ride the control protocol rather than an
-/// HTTP MCP server (<see cref="ClaudeSdkSessionDriver"/>) — weg A, the plugin owns its own machinery.
-/// </summary>
+// Claude as a provider plugin (Fase 4): the plan overturns the 2026-07-13 "Claude wordt geen provider-plugin"
+// decision now the contract has grown enough to carry it. Registers both of Claude's routes under the id
+// `claude` (matching the host's existing Claude id, so the resolver prefers this plugin while the in-tree route
+// stays as a fallback during the transition): the *TTY* route (the interactive TUI in a pane) and the
+// *SDK/session-driver* route (headless stream-json), whose permissions ride the control protocol rather than an
+// HTTP MCP server (`ClaudeSdkSessionDriver`) — weg A, the plugin owns its own machinery.
 public sealed class ClaudeProviderPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

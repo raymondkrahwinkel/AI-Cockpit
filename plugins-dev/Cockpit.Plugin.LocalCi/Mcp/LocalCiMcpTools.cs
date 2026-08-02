@@ -9,15 +9,12 @@ using ModelContextProtocol.Server;
 
 namespace Cockpit.Plugin.LocalCi.Mcp;
 
-/// <summary>
-/// The <c>cockpit-local-ci</c> tool surface: how a session checks its own work before pushing it.
-/// <para>
-/// Neither tool takes a project or a path. Which checkout is acted on comes from
-/// <see cref="ICockpitHost.CurrentMcpCallerPaneId"/> — the pane the transport says made the call — so a session
-/// cannot ask for a run in somebody else's tree, and a prompt-injected one cannot be talked into it. That is the
-/// whole reason the signatures look narrower than they could be.
-/// </para>
-/// </summary>
+// The `cockpit-local-ci` tool surface: how a session checks its own work before pushing it.
+//
+// Neither tool takes a project or a path. Which checkout is acted on comes from
+// `ICockpitHost.CurrentMcpCallerPaneId` — the pane the transport says made the call — so a session
+// cannot ask for a run in somebody else's tree, and a prompt-injected one cannot be talked into it. That is the
+// whole reason the signatures look narrower than they could be.
 internal sealed class LocalCiMcpTools(
     ICockpitHost host,
     SessionCheckouts checkouts,
@@ -179,10 +176,8 @@ internal sealed class LocalCiMcpTools(
             .Where(read => read.Document is not null)
             .SelectMany(read => LocalRunClassifier.Classify(read.Document!).Select(verdict => (read.Path, verdict)));
 
-    /// <summary>
-    /// What goes back to the agent. The log travels only when the run failed, and only its tail: a whole build log
-    /// in a session's context is the waste this plugin exists to save, and on a pass there is nothing in it to read.
-    /// </summary>
+    // What goes back to the agent. The log travels only when the run failed, and only its tail: a whole build log
+    // in a session's context is the waste this plugin exists to save, and on a pass there is nothing in it to read.
     private static object _Report(LocalRunResult result) => new
     {
         ok = result.Outcome == LocalRunOutcome.Passed,

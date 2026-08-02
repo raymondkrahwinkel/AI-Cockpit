@@ -1,18 +1,15 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The AC-174 run driver's bounded loop: steps run in order, a failed step reworks up to the cap and then settles, a
-/// hard failure blocks the run, and a step whose execution throws is a failed attempt rather than a crashed run.
-/// <para>
-/// AC-347: this is also where the <see cref="AutopilotStepOutcome.Rejected"/>/<see cref="AutopilotStepOutcome.Faulted"/>
-/// distinction has to hold in the wired system, not just in a direct call to <see cref="AutopilotCorrection.Classify"/>.
-/// Before this type existed, <c>executeStep</c> returned a plain <c>bool</c>, so every failed attempt — a genuine CEO
-/// rejection or a session that crashed before any verdict — reworked the same way, which made <c>Reworks</c> always
-/// equal <c>Attempts - 1</c> whenever a step ever left Pending, and left the <c>attempts &gt; 1</c> branch of
-/// <see cref="AutopilotCorrection.Classify"/> unreachable through the driver. The two tests below run the actual
-/// <see cref="AutopilotRunDriver"/> loop (not a hand-built state) to prove the branch is reachable.
-/// </para>
-/// </summary>
+// The AC-174 run driver's bounded loop: steps run in order, a failed step reworks up to the cap and then settles, a
+// hard failure blocks the run, and a step whose execution throws is a failed attempt rather than a crashed run.
+//
+// AC-347: this is also where the `AutopilotStepOutcome.Rejected`/`AutopilotStepOutcome.Faulted`
+// distinction has to hold in the wired system, not just in a direct call to `AutopilotCorrection.Classify`.
+// Before this type existed, `executeStep` returned a plain `bool`, so every failed attempt — a genuine CEO
+// rejection or a session that crashed before any verdict — reworked the same way, which made `Reworks` always
+// equal `Attempts - 1` whenever a step ever left Pending, and left the `attempts &gt; 1` branch of
+// `AutopilotCorrection.Classify` unreachable through the driver. The two tests below run the actual
+// `AutopilotRunDriver` loop (not a hand-built state) to prove the branch is reachable.
 public class AutopilotRunDriverTests
 {
     private static AutopilotStep Step(string id, GateMode mode = GateMode.Skip) =>

@@ -3,10 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>
-/// On-disk shape of one <c>resources[]</c> row in <c>.cockpit/project.json</c> (AC-244). <see cref="Role"/> and
-/// <see cref="Portability"/> are plain strings, not enums — mirrors <c>ProjectResourceEntry.Role</c>'s own reasoning: a document-wide enum converter throws on an unrecognised value instead of failing just that row.
-/// </summary>
+// On-disk shape of one `resources[]` row in `.cockpit/project.json` (AC-244). `Role` and
+// `Portability` are plain strings, not enums — mirrors `ProjectResourceEntry.Role`'s own reasoning: a document-wide enum converter throws on an unrecognised value instead of failing just that row.
 public sealed class CockpitProjectResourceEntry
 {
     public string Role { get; set; } = string.Empty;
@@ -16,7 +14,7 @@ public sealed class CockpitProjectResourceEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Label { get; set; }
 
-    /// <summary>This row's <see cref="ProjectResourcePortability"/> wire value, as written by <see cref="Create"/>.</summary>
+    // This row's `ProjectResourcePortability` wire value, as written by `Create`.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Portability { get; set; }
 
@@ -25,7 +23,7 @@ public sealed class CockpitProjectResourceEntry
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
-    /// <summary>Builds a row for writing, or null when <paramref name="reference"/> is blank or not portable — a caller that needs to know *why* a row dropped (to tell the operator) wants <see cref="CockpitProjectResourceFilter.Apply"/> instead.</summary>
+    // Builds a row for writing, or null when `reference` is blank or not portable — a caller that needs to know *why* a row dropped (to tell the operator) wants `CockpitProjectResourceFilter.Apply` instead.
     public static CockpitProjectResourceEntry? Create(string role, string reference, string? label = null)
     {
         // A blank reference names nothing — not a path shape Classify should judge, a row with nothing to point at.

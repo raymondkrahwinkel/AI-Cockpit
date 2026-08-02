@@ -1,16 +1,12 @@
 namespace Cockpit.Plugin.LocalCi.Runtime;
 
-/// <summary>
-/// Probes Docker and act, and remembers the answer until something invalidates it.
-/// </summary>
-/// <remarks>
-/// Both probes run with a deadline. On Windows the Docker CLI talks to the engine over a named pipe, and a pipe
-/// whose engine has gone away does not answer "no" — it does not answer. A probe without a deadline would therefore
-/// hang the caller, which is the settings dialog.
-/// </remarks>
+// Probes Docker and act, and remembers the answer until something invalidates it.
+// Both probes run with a deadline. On Windows the Docker CLI talks to the engine over a named pipe, and a pipe
+// whose engine has gone away does not answer "no" — it does not answer. A probe without a deadline would therefore
+// hang the caller, which is the settings dialog.
 internal sealed class LocalCiRuntime(ICliRunner runner) : ILocalCiRuntime, IDisposable
 {
-    /// <summary>Generous enough for a cold Docker Desktop, short enough that a dead pipe is not a hang.</summary>
+    // Generous enough for a cold Docker Desktop, short enough that a dead pipe is not a hang.
     internal static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -43,11 +39,9 @@ internal sealed class LocalCiRuntime(ICliRunner runner) : ILocalCiRuntime, IDisp
 
     public void Dispose() => _gate.Dispose();
 
-    /// <summary>
-    /// One call answers both questions. <c>docker version</c> reaches through to the server, so a zero exit proves
-    /// the engine answered, and the same format string brings back which kind of containers it runs — asking twice
-    /// would only add a second way to hang.
-    /// </summary>
+    // One call answers both questions. `docker version` reaches through to the server, so a zero exit proves
+    // the engine answered, and the same format string brings back which kind of containers it runs — asking twice
+    // would only add a second way to hang.
     private async Task<DockerRuntimeStatus> _DetectDockerAsync(CancellationToken cancellationToken)
     {
         var result = await runner.RunAsync(
@@ -81,14 +75,14 @@ internal sealed class LocalCiRuntime(ICliRunner runner) : ILocalCiRuntime, IDisp
         return new ActRuntimeStatus(IsInstalled: true, _ReadActVersion(result.StandardOutput));
     }
 
-    /// <summary>"linux 29.5.3" — either half may be empty if the engine reported it as such.</summary>
+    // "linux 29.5.3" — either half may be empty if the engine reported it as such.
     private static (string? ContainerOs, string? ServerVersion) _SplitServerLine(string output)
     {
         var parts = output.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return (parts.ElementAtOrDefault(0), parts.ElementAtOrDefault(1));
     }
 
-    /// <summary>act prints "act version 0.2.89"; older builds print the bare number.</summary>
+    // act prints "act version 0.2.89"; older builds print the bare number.
     private static string? _ReadActVersion(string output)
     {
         var line = output.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

@@ -8,17 +8,14 @@ using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
-/// <summary>
-/// The flow editor's surface (#69), in n8n's visual language and with the cockpit's own steps: square icon tiles
-/// on a dotted grid, wires with arrowheads, a labelled branch on a decision, and a <c>+</c> on every way out that
-/// leads nowhere yet — click it and the picker asks what happens next.
-/// <para>
-/// Plain Avalonia, no node-editor library: none of them run on Avalonia 12 (see spikes/spike-node-editor). It
-/// renders a <see cref="Workflow"/> and writes straight back into it, so what you see and what gets saved cannot
-/// drift apart. What may be wired to what is the model's business, not the canvas's — the canvas asks, and reports
-/// the refusal.
-/// </para>
-/// </summary>
+// The flow editor's surface (#69), in n8n's visual language and with the cockpit's own steps: square icon tiles
+// on a dotted grid, wires with arrowheads, a labelled branch on a decision, and a `+` on every way out that
+// leads nowhere yet — click it and the picker asks what happens next.
+//
+// Plain Avalonia, no node-editor library: none of them run on Avalonia 12 (see spikes/spike-node-editor). It
+// renders a `Workflow` and writes straight back into it, so what you see and what gets saved cannot
+// drift apart. What may be wired to what is the model's business, not the canvas's — the canvas asks, and reports
+// the refusal.
 internal sealed class WorkflowCanvas : Border
 {
     private const double MinZoom = 0.3;
@@ -103,19 +100,19 @@ internal sealed class WorkflowCanvas : Border
 
     public Workflow Workflow { get; }
 
-    /// <summary>Raised when the canvas changed the workflow (a step moved, a wire was drawn, something was deleted) — the cue to save.</summary>
+    // Raised when the canvas changed the workflow (a step moved, a wire was drawn, something was deleted) — the cue to save.
     public event EventHandler? Changed;
 
-    /// <summary>Raised when the model refused a wire, carrying the reason, so it can be said out loud instead of the drag silently doing nothing.</summary>
+    // Raised when the model refused a wire, carrying the reason, so it can be said out loud instead of the drag silently doing nothing.
     public event EventHandler<string>? Refused;
 
-    /// <summary>Raised when a "+" on an unconnected way out was clicked — the dialog aims the picker at it.</summary>
+    // Raised when a "+" on an unconnected way out was clicked — the dialog aims the picker at it.
     public event EventHandler<(string NodeId, int Output)>? AddRequested;
 
-    /// <summary>Raised when a step was dragged out of the picker and dropped, carrying its type and where it landed.</summary>
+    // Raised when a step was dragged out of the picker and dropped, carrying its type and where it landed.
     public event EventHandler<(string TypeId, double X, double Y)>? DropRequested;
 
-    /// <summary>Raised when a step was double-clicked — the editor shows what it can be configured with.</summary>
+    // Raised when a step was double-clicked — the editor shows what it can be configured with.
     public event EventHandler<WorkflowNode>? OpenRequested;
 
     public WorkflowNode? Selected { get; private set; }
@@ -124,7 +121,7 @@ internal sealed class WorkflowCanvas : Border
 
     public double Zoom => _zoom.ScaleX;
 
-    /// <summary>Adds a step, optionally wired to the way out the "+" was clicked on — which is what makes the + worth having.</summary>
+    // Adds a step, optionally wired to the way out the "+" was clicked on — which is what makes the + worth having.
     public void Add(WorkflowNode node, string? fromNodeId = null, int fromOutput = 0)
     {
         Workflow.Nodes.Add(node);
@@ -142,7 +139,7 @@ internal sealed class WorkflowCanvas : Border
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>A free spot for a new step: to the right of the step it follows, or on an empty patch of canvas.</summary>
+    // A free spot for a new step: to the right of the step it follows, or on an empty patch of canvas.
     public (double X, double Y) PlaceAfter(string? fromNodeId)
     {
         if (fromNodeId is not null && Workflow.Node(fromNodeId) is { } from)
@@ -184,7 +181,7 @@ internal sealed class WorkflowCanvas : Border
         Avalonia.Threading.Dispatcher.UIThread.Post(_RefreshPlusButtons, DispatcherPriority.Loaded);
     }
 
-    /// <summary>Paints the last run onto the flow: where it succeeded, where it was passed by, and where it broke.</summary>
+    // Paints the last run onto the flow: where it succeeded, where it was passed by, and where it broke.
     public void ShowRun(Engine.WorkflowRun? run)
     {
         foreach (var control in _nodes.Values)
@@ -227,12 +224,10 @@ internal sealed class WorkflowCanvas : Border
         _RefreshPlusButtons();
     }
 
-    /// <summary>
-    /// Brings the flow into view: everything on the canvas, centred, at a zoom that fits. What a flow opens to has to
-    /// be the flow — a template lays its steps out where its author put them, and the canvas remembered where the last
-    /// flow was panned to, so an imported flow opened on an empty patch of dots with its steps somewhere off-screen.
-    /// A flow with nothing in it simply resets: there is nothing to fit.
-    /// </summary>
+    // Brings the flow into view: everything on the canvas, centred, at a zoom that fits. What a flow opens to has to
+    // be the flow — a template lays its steps out where its author put them, and the canvas remembered where the last
+    // flow was panned to, so an imported flow opened on an empty patch of dots with its steps somewhere off-screen.
+    // A flow with nothing in it simply resets: there is nothing to fit.
     public void FitToContent(Size viewport)
     {
         if (Workflow.Nodes.Count == 0 || viewport.Width <= 0 || viewport.Height <= 0)

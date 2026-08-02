@@ -3,12 +3,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// AC-212/AC-217: the YouTrack provider advertises the READ-tool MCP server(s) a consumer (Autopilot) scopes into a
-/// planning session — the JetBrains YouTrack MCP server for each fully-configured, opted-in instance, named exactly as
-/// <see cref="YouTrackMcpRegistration"/> mounts it. A source-triggered planning round adds these so the CEO can read the
-/// issue and pull an epic's children, while the tracker's write tools stay out of planning.
-/// </summary>
+// AC-212/AC-217: the YouTrack provider advertises the READ-tool MCP server(s) a consumer (Autopilot) scopes into a
+// planning session — the JetBrains YouTrack MCP server for each fully-configured, opted-in instance, named exactly as
+// `YouTrackMcpRegistration` mounts it. A source-triggered planning round adds these so the CEO can read the
+// issue and pull an epic's children, while the tracker's write tools stay out of planning.
 public class YouTrackTrackerReadToolsTests
 {
     [Fact]

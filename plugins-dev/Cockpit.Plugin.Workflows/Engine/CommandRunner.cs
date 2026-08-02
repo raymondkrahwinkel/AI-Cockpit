@@ -4,10 +4,8 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Runs a shell command and hands its output on. A command that fails is a step that fails — an exit code nobody
-/// looks at is how a flow ends up reporting green while nothing happened.
-/// </summary>
+// Runs a shell command and hands its output on. A command that fails is a step that fails — an exit code nobody
+// looks at is how a flow ends up reporting green while nothing happened.
 internal sealed class CommandRunner : IStepRunner
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);

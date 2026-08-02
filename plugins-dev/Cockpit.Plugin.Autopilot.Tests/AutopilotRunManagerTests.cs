@@ -5,11 +5,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The run manager (AC-174): it runs approved plans from the queue up to the concurrency cap, queues the rest, and
-/// starts the next as soon as a running one frees a slot. Starting a run is injected, so the concurrency logic is tested
-/// without live sessions.
-/// </summary>
+// The run manager (AC-174): it runs approved plans from the queue up to the concurrency cap, queues the rest, and
+// starts the next as soon as a running one frees a slot. Starting a run is injected, so the concurrency logic is tested
+// without live sessions.
 public class AutopilotRunManagerTests
 {
     private sealed class FakeStorage : IPluginStorage

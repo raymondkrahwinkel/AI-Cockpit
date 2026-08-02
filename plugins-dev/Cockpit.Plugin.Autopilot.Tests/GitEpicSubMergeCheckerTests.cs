@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// AC-346: whether an epic's sub is already merged, checked against a real <c>origin/main</c> — not a local branch or
-/// worktree, since a run's own worktree can carry a sub's commits before a human has actually merged its PR. Runs git
-/// for real on a throwaway bare "origin" plus a clone, the same style as <see cref="GitCliEvidenceSourceTests"/>.
-/// </summary>
+// AC-346: whether an epic's sub is already merged, checked against a real `origin/main` — not a local branch or
+// worktree, since a run's own worktree can carry a sub's commits before a human has actually merged its PR. Runs git
+// for real on a throwaway bare "origin" plus a clone, the same style as `GitCliEvidenceSourceTests`.
 public sealed class GitEpicSubMergeCheckerTests : IDisposable
 {
     private readonly string _origin = Path.Combine(Path.GetTempPath(), $"ac346-origin-{Guid.NewGuid():N}");

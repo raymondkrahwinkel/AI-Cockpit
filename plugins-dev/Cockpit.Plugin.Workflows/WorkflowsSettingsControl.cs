@@ -5,11 +5,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows;
 
-/// <summary>
-/// The Workflows settings view (opened from the plugin manager's gear): a single toggle for whether the plugin's MCP
-/// server is offered to sessions (AC-40). Implements <see cref="IPluginSettingsView"/> so the host dialog shows a
-/// Save button.
-/// </summary>
+// The Workflows settings view (opened from the plugin manager's gear): a single toggle for whether the plugin's MCP
+// server is offered to sessions (AC-40). Implements `IPluginSettingsView` so the host dialog shows a
+// Save button.
 internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly WorkflowsSettings _settings;

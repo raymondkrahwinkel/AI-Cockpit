@@ -2,10 +2,8 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// A flow has to survive being written and read back (#69) — to disk, to a file you can put in git, to a paste
-/// into someone else's cockpit. A workflow that cannot round-trip is a drawing.
-/// </summary>
+// A flow has to survive being written and read back (#69) — to disk, to a file you can put in git, to a paste
+// into someone else's cockpit. A workflow that cannot round-trip is a drawing.
 public class WorkflowJsonTests
 {
     [Fact]

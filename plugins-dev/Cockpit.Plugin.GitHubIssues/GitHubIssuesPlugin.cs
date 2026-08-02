@@ -5,13 +5,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// Example plugin (#14) proving the contract end-to-end: it registers a settings view (opened from the
-/// plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template) and a left-menu
-/// button that opens a dialog listing open issues (across all your repos via <c>gh</c>, or one repo over
-/// HTTP), where selecting one injects the rendered template into the active session so the agent opens and
-/// reviews it. Its settings live in the host's per-plugin storage, so <see cref="ConfigureServices"/> is empty.
-/// </summary>
+// Example plugin (#14) proving the contract end-to-end: it registers a settings view (opened from the
+// plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template) and a left-menu
+// button that opens a dialog listing open issues (across all your repos via `gh`, or one repo over
+// HTTP), where selecting one injects the rendered template into the active session so the agent opens and
+// reviews it. Its settings live in the host's per-plugin storage, so `ConfigureServices` is empty.
 public sealed class GitHubIssuesPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
