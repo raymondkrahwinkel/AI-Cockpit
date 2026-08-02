@@ -63,7 +63,10 @@ namespace Cockpit.Infrastructure.Assistant;
 /// that an operator who lets the assistant leave notes unasked has not thereby let it start work unasked.
 /// </para>
 /// </remarks>
-internal sealed class AssistantAgentMcpTools(IAssistantAgentGateway gateway, IConsentBroker? consent = null)
+internal sealed class AssistantAgentMcpTools(
+    IAssistantAgentGateway gateway,
+    IAssistantMemory memory,
+    IConsentBroker? consent = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -384,6 +387,27 @@ internal sealed class AssistantAgentMcpTools(IAssistantAgentGateway gateway, ICo
             return result.Ok
                 ? _Serialize(new { ok = true, paneId = result.PaneId, name = result.SessionName, result.Delivered })
                 : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "remember")]
+    [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
+    public async Task<string> RememberAsync(
+        [Description("The one thing to remember, in a full sentence that will still make sense on its own with no conversation around it.")] string text)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            await memory.RememberAsync(text).ConfigureAwait(false);
+            return _Serialize(new { ok = true, remembered = text.Trim() });
         }
         catch (Exception exception)
         {

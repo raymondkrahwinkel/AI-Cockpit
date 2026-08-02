@@ -374,7 +374,7 @@ public class AssistantSessionHostTests
     public void LaunchOptions_CarryTheProfilesOwnPermissionMode()
     {
         var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
-            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)), replacesStandingInstruction: false);
+            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)), replacesStandingInstruction: false, memory: null);
 
         Assert.Equal(
             SessionOptionCatalog.BypassPermissionModeValue,
@@ -390,7 +390,7 @@ public class AssistantSessionHostTests
         // the host does not (and must not) know what a provider's options mean.
         var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
             ("model", "opus"),
-            ("effort", "high")), replacesStandingInstruction: false);
+            ("effort", "high")), replacesStandingInstruction: false, memory: null);
 
         Assert.Equal("opus", options["model"]);
         Assert.Equal("high", options["effort"]);
@@ -404,7 +404,7 @@ public class AssistantSessionHostTests
         // in only when the options carry none — so an absent key is what makes today's behaviour survive this
         // change. A "helpful" default written here (say, always naming the mode) would silently move every
         // existing assistant.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false);
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
         Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
         Assert.False(options.ContainsKey("model"));
@@ -424,7 +424,7 @@ public class AssistantSessionHostTests
             with
         { SystemPrompt = "You are Olaf." };
 
-        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false);
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false, memory: null);
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.DoesNotContain("teapot", instruction, StringComparison.Ordinal);
@@ -438,7 +438,7 @@ public class AssistantSessionHostTests
         // it, so "your name is Zyra" silently cost the language rule and the whole permission paragraph.
         var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
 
-        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false);
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false, memory: null);
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
@@ -450,9 +450,37 @@ public class AssistantSessionHostTests
     {
         var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
 
-        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true);
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
 
         Assert.Equal("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+    }
+
+    [Fact]
+    public void LaunchOptions_CarryWhatTheAssistantWasAskedToRemember_UnderAHeadingOfItsOwn()
+    {
+        // AC-595. Last and labelled: it is the operator's material rather than the product's rules, and an
+        // assistant that cannot tell the two apart recites a remembered line back as if it were one.
+        var options = AssistantSessionHost._LaunchOptions(
+            _Profile() with { SystemPrompt = "Your name is Zyra." },
+            replacesStandingInstruction: false,
+            memory: "- 2026-08-02 — The operator is called Raymond.");
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
+        Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
+        Assert.EndsWith("The operator is called Raymond.", instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_WithNothingEverRemembered_CarryNoMemoryHeading()
+    {
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: "   ");
+
+        Assert.DoesNotContain(
+            AssistantStandingInstruction.MemoryHeading,
+            options[WellKnownPluginSessionOptions.AppendSystemPrompt],
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -462,7 +490,7 @@ public class AssistantSessionHostTests
         // otherwise start an assistant with no instruction at all.
         var profile = _Profile() with { SystemPrompt = "   " };
 
-        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true);
+        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
 
         Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
@@ -602,7 +630,8 @@ public class AssistantSessionHostTests
         IAssistantProfileStore? profiles = null,
         ISessionStateStore? sessionState = null,
         bool speakReplies = true,
-        CockpitViewModel? cockpit = null)
+        CockpitViewModel? cockpit = null,
+        IAssistantMemory? memory = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
@@ -622,7 +651,8 @@ public class AssistantSessionHostTests
 
         return new AssistantSessionHost(
             cockpit ?? new CockpitViewModel(), settings, profiles, sessionState,
-            catalog ?? _Catalog(), NullLogger<AssistantSessionHost>.Instance);
+            catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
+            NullLogger<AssistantSessionHost>.Instance);
     }
 
     private static SessionStateRecord _StateFor(string paneId, string conversationId) =>

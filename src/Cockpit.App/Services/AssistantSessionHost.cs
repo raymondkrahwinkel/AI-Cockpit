@@ -57,6 +57,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private readonly IAssistantProfileStore _profiles;
     private readonly ISessionStateStore _sessionState;
     private readonly IMcpServerCatalog _mcpServers;
+    private readonly IAssistantMemory _memory;
     private readonly ILogger<AssistantSessionHost> _logger;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
@@ -68,6 +69,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         IAssistantProfileStore profiles,
         ISessionStateStore sessionState,
         IMcpServerCatalog mcpServers,
+        IAssistantMemory memory,
         ILogger<AssistantSessionHost> logger)
     {
         _cockpit = cockpit;
@@ -75,6 +77,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _profiles = profiles;
         _sessionState = sessionState;
         _mcpServers = mcpServers;
+        _memory = memory;
         _logger = logger;
     }
 
@@ -304,7 +307,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             resume: await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
-            launchOptions: _LaunchOptions(profile, slot.ReplacesStandingInstruction),
+            launchOptions: _LaunchOptions(
+                profile,
+                slot.ReplacesStandingInstruction,
+                await _memory.ReadAsync(cancellationToken).ConfigureAwait(true)),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
         _ApplySpeech(session, settings);
@@ -555,14 +561,15 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // speak-don't-write rule, the honesty clause and the whole permission paragraph.
     internal static IReadOnlyDictionary<string, string> _LaunchOptions(
         Cockpit.Core.Profiles.SessionProfile profile,
-        bool replacesStandingInstruction)
+        bool replacesStandingInstruction,
+        string? memory)
     {
         var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
             ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] =
-            AssistantStandingInstruction.Compose(profile.SystemPrompt, replacesStandingInstruction);
+            AssistantStandingInstruction.Compose(profile.SystemPrompt, replacesStandingInstruction, memory);
 
         return options;
     }
