@@ -4,26 +4,21 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-/// <summary>
-/// The windows on a genuine X11 session (AC-330): <c>_NET_CLIENT_LIST_STACKING</c> for the stacking order and
-/// <c>XGetGeometry</c> plus <c>XTranslateCoordinates</c> for where each one sits on the screen.
-/// </summary>
-/// <remarks>
-/// Registered only for a real X11 session, never under XWayland. From inside an XWayland client this property
-/// lists other XWayland clients and nothing else — on Plasma 6 nearly every window is a native Wayland toplevel,
-/// so the picker would offer a handful of the operator's windows and silently omit the rest.
-/// <para>
-/// Unverified: there is no X11 session here to run it against. Written to the standard P/Invoke pattern and kept
-/// thin, with the decisions above it (<c>ScreenshotSelectionViewModel</c>) where they are tested — the same
-/// split <c>MacScreenLockMonitor</c> takes for the same reason.
-/// </para>
-/// </remarks>
+// The windows on a genuine X11 session (AC-330): `_NET_CLIENT_LIST_STACKING` for the stacking order and
+// `XGetGeometry` plus `XTranslateCoordinates` for where each one sits on the screen.
+// Registered only for a real X11 session, never under XWayland. From inside an XWayland client this property
+// lists other XWayland clients and nothing else — on Plasma 6 nearly every window is a native Wayland toplevel,
+// so the picker would offer a handful of the operator's windows and silently omit the rest.
+//
+// Unverified: there is no X11 session here to run it against. Written to the standard P/Invoke pattern and kept
+// thin, with the decisions above it (`ScreenshotSelectionViewModel`) where they are tested — the same
+// split `MacScreenLockMonitor` takes for the same reason.
 [SupportedOSPlatform("linux")]
 internal sealed class X11DesktopWindows : IDesktopWindows
 {
     private const string X11 = "libX11.so.6";
 
-    /// <summary>Enough for any desktop; the property is read in one go rather than paged.</summary>
+    // Enough for any desktop; the property is read in one go rather than paged.
     private const long MaxWindows = 1024;
 
     public bool IsSupported => true;
@@ -67,7 +62,7 @@ internal sealed class X11DesktopWindows : IDesktopWindows
         }
     }
 
-    /// <summary>Held as a field so the GC never collects the delegate while Xlib still holds the function pointer.</summary>
+    // Held as a field so the GC never collects the delegate while Xlib still holds the function pointer.
     private static readonly XErrorHandler _IgnoreError = (_, _) => 0;
 
     private static IReadOnlyList<IntPtr> _WindowsOf(IntPtr display, IntPtr root, IntPtr property)

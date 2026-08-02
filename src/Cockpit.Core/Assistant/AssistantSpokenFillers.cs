@@ -1,19 +1,14 @@
 namespace Cockpit.Core.Assistant;
 
-/// <summary>
-/// The short lines the cockpit speaks on the assistant's behalf when the model itself said nothing: that it is
-/// going to look something up (AC-597), and that it is still at it (AC-598).
-/// </summary>
-/// <remarks>
-/// <b>Why the cockpit says these rather than the model.</b> The standing instruction already asks for a lead-in and
-/// gets one about three turns in five, measured over a morning of transcripts. The other two go straight to a tool,
-/// and the operator is left listening to a room. Asking harder does not fix a habit; saying it ourselves does, on
-/// any provider and at any reasoning effort.
-/// <para>
-/// ponytail: two languages, and silence in any other. A filler in the wrong language is worse than none — the
-/// assistant answers in the language it was spoken to, and this would be the one sentence that did not.
-/// </para>
-/// </remarks>
+// The short lines the cockpit speaks on the assistant's behalf when the model itself said nothing: that it is
+// going to look something up (AC-597), and that it is still at it (AC-598).
+// *Why the cockpit says these rather than the model.* The standing instruction already asks for a lead-in and
+// gets one about three turns in five, measured over a morning of transcripts. The other two go straight to a tool,
+// and the operator is left listening to a room. Asking harder does not fix a habit; saying it ourselves does, on
+// any provider and at any reasoning effort.
+//
+// ponytail: two languages, and silence in any other. A filler in the wrong language is worse than none — the
+// assistant answers in the language it was spoken to, and this would be the one sentence that did not.
 public static class AssistantSpokenFillers
 {
     private static readonly IReadOnlyDictionary<string, string[]> GoingToLook = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -28,17 +23,15 @@ public static class AssistantSpokenFillers
         ["en"] = ["Still on it.", "Still working on it, bear with me.", "This one is taking a while — still going."],
     };
 
-    /// <summary>What to say before going quiet on a tool call, or empty for a language we have no words in.</summary>
+    // What to say before going quiet on a tool call, or empty for a language we have no words in.
     public static string GoingToLookUpSomething(string? language, int turn) => _Pick(GoingToLook, language, turn);
 
-    /// <summary>What to say while a turn is still running, or empty for a language we have no words in.</summary>
+    // What to say while a turn is still running, or empty for a language we have no words in.
     public static string StillAtIt(string? language, int repeat) => _Pick(StillWorking, language, repeat);
 
-    /// <summary>How long to stay quiet before saying it again (AC-598): half a minute, then wider each time.</summary>
-    /// <remarks>
-    /// Widening rather than a fixed beat, and capped. A sign of life every thirty seconds through a three-minute
-    /// wait is nagging; the first one is reassurance and the fourth is an interruption of the operator's own work.
-    /// </remarks>
+    // How long to stay quiet before saying it again (AC-598): half a minute, then wider each time.
+    // Widening rather than a fixed beat, and capped. A sign of life every thirty seconds through a three-minute
+    // wait is nagging; the first one is reassurance and the fourth is an interruption of the operator's own work.
     public static TimeSpan SignOfLifeDelay(int repeat)
     {
         var seconds = 30 * Math.Pow(1.5, Math.Max(0, repeat));

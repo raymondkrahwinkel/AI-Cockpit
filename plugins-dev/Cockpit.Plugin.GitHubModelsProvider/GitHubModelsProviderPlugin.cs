@@ -4,19 +4,17 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubModelsProvider;
 
-/// <summary>
-/// Provider-plugin (#63): registers "GitHub Models" as a selectable session provider, backed by the same
-/// <see cref="OpenAiCompatPluginSessionDriverFactory"/> the Gemini/OpenAI provider plugin (#45) uses — it
-/// differs only in which OpenAI-compatible base URL a profile targets (models.github.ai/inference) and in
-/// auth (a GitHub PAT with the models:read scope, not a vendor API key). Chat-only capabilities (no
-/// tools/permissions/live model switch/plan mode/thinking) — see
-/// <see cref="OpenAiCompatPluginSessionDriver.Capabilities"/>. This is GitHub Models, not GitHub Copilot —
-/// there is no officially supported "Copilot" chat model via this endpoint (see design doc #63a); naming and
-/// help text in this plugin deliberately avoid the "Copilot" label to prevent that confusion.
-/// </summary>
+// Provider-plugin (#63): registers "GitHub Models" as a selectable session provider, backed by the same
+// `OpenAiCompatPluginSessionDriverFactory` the Gemini/OpenAI provider plugin (#45) uses — it
+// differs only in which OpenAI-compatible base URL a profile targets (models.github.ai/inference) and in
+// auth (a GitHub PAT with the models:read scope, not a vendor API key). Chat-only capabilities (no
+// tools/permissions/live model switch/plan mode/thinking) — see
+// `OpenAiCompatPluginSessionDriver.Capabilities`. This is GitHub Models, not GitHub Copilot —
+// there is no officially supported "Copilot" chat model via this endpoint (see design doc #63a); naming and
+// help text in this plugin deliberately avoid the "Copilot" label to prevent that confusion.
 public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
 {
-    /// <summary>GitHub Models' OpenAI-compatible inference endpoint (docs.github.com/rest/models/inference).</summary>
+    // GitHub Models' OpenAI-compatible inference endpoint (docs.github.com/rest/models/inference).
     internal const string GitHubModelsDefaultBaseUrl = "https://models.github.ai/inference";
 
     public PluginMetadata Metadata { get; } = new(

@@ -8,11 +8,9 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-/// <summary>
-/// <see cref="IModelCatalog"/> over a local server's OpenAI-compatible <c>GET /v1/models</c> (works for
-/// both Ollama and LM Studio). Failures (server down, timeout, malformed body) map to an empty list so the
-/// Manage-profiles model picker simply shows no suggestions rather than surfacing an error.
-/// </summary>
+// `IModelCatalog` over a local server's OpenAI-compatible `GET /v1/models` (works for
+// both Ollama and LM Studio). Failures (server down, timeout, malformed body) map to an empty list so the
+// Manage-profiles model picker simply shows no suggestions rather than surfacing an error.
 internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<OpenAiCompatModelCatalog> logger)
     : IModelCatalog, ISingletonService
 {

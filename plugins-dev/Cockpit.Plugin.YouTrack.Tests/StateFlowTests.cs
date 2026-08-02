@@ -1,15 +1,12 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// Which way a ticket may move (#75). Read from the board, never invented — and the difference between the two kinds
-/// of board is the whole of it.
-/// <para>
-/// A state-machine project has a real transition graph and YouTrack hands it over; there is no "next column" to reason
-/// about, only the events it allows. An ordinary status field has no graph at all — YouTrack will happily put a ticket
-/// from Backlog straight to Released — so the only order there is is the order of the columns, which is what forward
-/// and back mean here. Inventing a rule and blaming YouTrack for it is the thing these tests exist to prevent.
-/// </para>
-/// </summary>
+// Which way a ticket may move (#75). Read from the board, never invented — and the difference between the two kinds
+// of board is the whole of it.
+//
+// A state-machine project has a real transition graph and YouTrack hands it over; there is no "next column" to reason
+// about, only the events it allows. An ordinary status field has no graph at all — YouTrack will happily put a ticket
+// from Backlog straight to Released — so the only order there is is the order of the columns, which is what forward
+// and back mean here. Inventing a rule and blaming YouTrack for it is the thing these tests exist to prevent.
 public class StateFlowTests
 {
     // A real board, read from the API: Stage, an ordinary field.

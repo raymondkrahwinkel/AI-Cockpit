@@ -1,5 +1,5 @@
 namespace Cockpit.Plugin.SessionReview.Tests;
 
-/// <summary>Marks the tests that need a platform; xunit builds the fixture once for the whole collection.</summary>
+// Marks the tests that need a platform; xunit builds the fixture once for the whole collection.
 [CollectionDefinition("avalonia")]
 public sealed class AvaloniaCollection : ICollectionFixture<HeadlessAvalonia>;

@@ -3,15 +3,13 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Parses a single JSON-lines stdout line from <c>claude --output-format stream-json</c> into zero-or-more
-/// <see cref="PluginSessionEvent"/>s (Fase 4, SDK route) — a port of the host's <c>ClaudeStreamJsonParser</c>
-/// onto the narrower plugin event vocabulary. Delta-based like the Codex plugin driver: the streaming
-/// <c>stream_event</c> text/thinking deltas carry the progressive output, so the <c>assistant</c> snapshot's own
-/// text and thinking blocks are not re-emitted (they would double-render, AC-213); only its tool_use blocks are,
-/// since the deltas do not carry those. Rate-limit and status-change lines the plugin vocabulary has no event for are handled off
-/// the parser (limits ride the driver's status feed); an unrecognised line yields nothing rather than throwing.
-/// </summary>
+// Parses a single JSON-lines stdout line from `claude --output-format stream-json` into zero-or-more
+// `PluginSessionEvent`s (Fase 4, SDK route) — a port of the host's `ClaudeStreamJsonParser`
+// onto the narrower plugin event vocabulary. Delta-based like the Codex plugin driver: the streaming
+// `stream_event` text/thinking deltas carry the progressive output, so the `assistant` snapshot's own
+// text and thinking blocks are not re-emitted (they would double-render, AC-213); only its tool_use blocks are,
+// since the deltas do not carry those. Rate-limit and status-change lines the plugin vocabulary has no event for are handled off
+// the parser (limits ride the driver's status feed); an unrecognised line yields nothing rather than throwing.
 internal static class ClaudeStreamJson
 {
     public static IEnumerable<PluginSessionEvent> ParseLine(string line)
@@ -64,15 +62,13 @@ internal static class ClaudeStreamJson
             }
             : [];
 
-    /// <summary>
-    /// The CLI's own ledger of work that outlived its turn (AC-276): sub-agents still running, shells still open.
-    /// It restates the <em>complete</em> set every time rather than sending deltas, which is why the host can
-    /// build a status on it — see <see cref="PluginBackgroundTasksChanged"/>. An entry whose <c>task_type</c> this
-    /// build does not recognise maps to <see cref="PluginBackgroundTaskKind.Unknown"/> rather than being dropped,
-    /// so the set stays a faithful record of what the provider reported. Note that the host deliberately acts on
-    /// neither the status nor the notification for an unknown kind — it cannot know which weighing applies — so
-    /// this preserves the information without letting it decide anything.
-    /// </summary>
+    // The CLI's own ledger of work that outlived its turn (AC-276): sub-agents still running, shells still open.
+    // It restates the *complete* set every time rather than sending deltas, which is why the host can
+    // build a status on it — see `PluginBackgroundTasksChanged`. An entry whose `task_type` this
+    // build does not recognise maps to `PluginBackgroundTaskKind.Unknown` rather than being dropped,
+    // so the set stays a faithful record of what the provider reported. Note that the host deliberately acts on
+    // neither the status nor the notification for an unknown kind — it cannot know which weighing applies — so
+    // this preserves the information without letting it decide anything.
     private static PluginBackgroundTasksChanged _ParseBackgroundTasks(JsonElement root, string? sessionId)
     {
         var tasks = new List<PluginBackgroundTask>();

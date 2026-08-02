@@ -11,50 +11,41 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-/// <summary>
-/// Forwards one loopback request to the OAuth-protected MCP server it stands for, swapping the local key on the way
-/// in for a freshly obtained OAuth token (AC-524).
-/// <para>
-/// This is not an MCP implementation and must not become one. It relays a method, a path, a query, the headers and
-/// the body, and streams the answer back; what any of it means is between the agent and the server. The single
-/// exception is the reply it composes when there is no credential to forward with, which has to be shaped like an
-/// answer the client will accept — see <see cref="_RespondUnavailableAsync"/> for why a 401 cannot be one.
-/// </para>
-/// </summary>
+// Forwards one loopback request to the OAuth-protected MCP server it stands for, swapping the local key on the way
+// in for a freshly obtained OAuth token (AC-524).
+//
+// This is not an MCP implementation and must not become one. It relays a method, a path, a query, the headers and
+// the body, and streams the answer back; what any of it means is between the agent and the server. The single
+// exception is the reply it composes when there is no credential to forward with, which has to be shaped like an
+// answer the client will accept — see `_RespondUnavailableAsync` for why a 401 cannot be one.
 internal sealed class McpOAuthProxyForwarder(
     McpServerConfig server,
     IMcpOAuthCoordinator coordinator,
     HttpClient upstream,
     ILogger<McpOAuthProxyForwarder> logger)
 {
-    /// <summary>
-    /// Headers that describe one hop of a connection rather than the message travelling over it (RFC 9110 §7.6.1),
-    /// plus the framing the two servers each decide for themselves. Relaying these would have this proxy assert
-    /// something about a connection it is not on.
-    /// </summary>
+    // Headers that describe one hop of a connection rather than the message travelling over it (RFC 9110 §7.6.1),
+    // plus the framing the two servers each decide for themselves. Relaying these would have this proxy assert
+    // something about a connection it is not on.
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "TE", "Trailer",
         "Transfer-Encoding", "Upgrade",
     };
 
-    /// <summary>
-    /// JSON-RPC reserves −32000 to −32099 for implementation-defined server errors. The agent never acts on the
-    /// number, only on the message, but a code outside the reserved band would be a claim about a standard meaning
-    /// this error does not have.
-    /// </summary>
+    // JSON-RPC reserves −32000 to −32099 for implementation-defined server errors. The agent never acts on the
+    // number, only on the message, but a code outside the reserved band would be a claim about a standard meaning
+    // this error does not have.
     private const int CredentialUnavailableCode = -32001;
 
-    /// <summary>How much of a request body is kept in memory before the buffer spills to a temp file. An MCP call is
-    /// a JSON document and almost always fits; the threshold is generous so the ordinary one never touches disk.</summary>
+    // How much of a request body is kept in memory before the buffer spills to a temp file. An MCP call is
+    // a JSON document and almost always fits; the threshold is generous so the ordinary one never touches disk.
     private const int MemoryBufferThreshold = 128 * 1024;
 
-    /// <summary>
-    /// How large a call may be and still be worth sending a second time after its credential was renewed. Beyond it
-    /// the body only exists as a temp file, and re-reading megabytes from disk to save one call is a poor trade for
-    /// a caller that has been told to send it again. A limit on the retry only — the first forward is never refused
-    /// for size.
-    /// </summary>
+    // How large a call may be and still be worth sending a second time after its credential was renewed. Beyond it
+    // the body only exists as a temp file, and re-reading megabytes from disk to save one call is a poor trade for
+    // a caller that has been told to send it again. A limit on the retry only — the first forward is never refused
+    // for size.
     private const long RepeatableBodyLimit = 8L * 1024 * 1024;
 
     public async Task ForwardAsync(HttpContext context, CancellationToken cancellationToken)
@@ -113,17 +104,14 @@ internal sealed class McpOAuthProxyForwarder(
         }
     }
 
-    /// <summary>
-    /// The one retry a refused credential gets. The cockpit judges a token on its own clock, and the server is the
-    /// only one who knows for certain — a grant revoked at the far end, or a rotation race lost to another session,
-    /// leaves something that looks healthy here and is dead there. Without this, every later call would present the
-    /// same dead token and the server would be gone for the rest of the session over a single renewal.
-    /// <para>
-    /// Exactly once, never a loop: a server that refuses everything must cost two round trips per call, not a storm.
-    /// The renewal itself is the coordinator's, and coalesces — a hundred calls refused at the same moment cause one.
-    /// </para>
-    /// </summary>
-    /// <returns>The response to relay, or <see langword="null"/> when this method has already answered the request.</returns>
+    // The one retry a refused credential gets. The cockpit judges a token on its own clock, and the server is the
+    // only one who knows for certain — a grant revoked at the far end, or a rotation race lost to another session,
+    // leaves something that looks healthy here and is dead there. Without this, every later call would present the
+    // same dead token and the server would be gone for the rest of the session over a single renewal.
+    //
+    // Exactly once, never a loop: a server that refuses everything must cost two round trips per call, not a storm.
+    // The renewal itself is the coordinator's, and coalesces — a hundred calls refused at the same moment cause one.
+    // The response to relay, or `null` when this method has already answered the request.
     private async Task<HttpResponseMessage?> _RetryWithARenewedCredentialAsync(
         HttpContext context,
         string rejectedAccessToken,
@@ -186,7 +174,7 @@ internal sealed class McpOAuthProxyForwarder(
         return second;
     }
 
-    /// <summary>Sends one attempt upstream, or answers the request itself and returns <see langword="null"/>.</summary>
+    // Sends one attempt upstream, or answers the request itself and returns `null`.
     private async Task<HttpResponseMessage?> _SendAsync(HttpContext context, string accessToken, CancellationToken cancellationToken)
     {
         try
@@ -308,13 +296,11 @@ internal sealed class McpOAuthProxyForwarder(
         }
     }
 
-    /// <summary>
-    /// The answer when there is no credential to forward with. Everything here is chosen so the client keeps the
-    /// server rather than dropping it: the measured behaviour is that a 401 makes the CLI report the server as
-    /// needing re-authorization and remove its tools from the session for good, and a session cannot get them back.
-    /// So the request is answered as a request, with the reason where the agent will read it out loud, and the next
-    /// call works the moment the operator has signed in again.
-    /// </summary>
+    // The answer when there is no credential to forward with. Everything here is chosen so the client keeps the
+    // server rather than dropping it: the measured behaviour is that a 401 makes the CLI report the server as
+    // needing re-authorization and remove its tools from the session for good, and a session cannot get them back.
+    // So the request is answered as a request, with the reason where the agent will read it out loud, and the next
+    // call works the moment the operator has signed in again.
     private async Task _RespondUnavailableAsync(HttpContext context, McpOAuthAttentionReason reason, CancellationToken cancellationToken)
     {
         if (context.Response.HasStarted)
@@ -404,11 +390,9 @@ internal sealed class McpOAuthProxyForwarder(
         }
     }
 
-    /// <summary>
-    /// Lends a stream out without lending out the right to close it. <see cref="HttpClient"/> disposes the content of
-    /// every request it sends, and this request's content is the caller's own buffered body — which still has to be
-    /// readable afterwards.
-    /// </summary>
+    // Lends a stream out without lending out the right to close it. `HttpClient` disposes the content of
+    // every request it sends, and this request's content is the caller's own buffered body — which still has to be
+    // readable afterwards.
     private sealed class BorrowedStream(Stream inner) : Stream
     {
         public override bool CanRead => inner.CanRead;

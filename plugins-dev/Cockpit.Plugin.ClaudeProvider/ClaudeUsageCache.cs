@@ -3,37 +3,29 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Reads the rolling allowances out of the CLI's own <c>.claude.json</c> — the SDK route's source for the figures
-/// the TTY route gets from its statusline (AC-549).
-/// <para>
-/// The SDK route cannot have a statusline: measured against CLI 2.1.220 by handing <c>claude -p</c> a
-/// <c>--settings</c> with a relay of its own, the command is never invoked. And <c>rate_limit_event</c>, the other
-/// candidate, carries the window but not always its fill — captured from a real stream,
-/// <c>{"status":"allowed","resetsAt":…,"rateLimitType":"five_hour"}</c> arrives with no <c>utilization</c> field at
-/// all while the account is nowhere near that limit.
-/// </para>
-/// <para>
-/// What does exist on this route is <c>cachedUsageUtilization</c> in <c>.claude.json</c>, which the CLI refreshes
-/// when asked for <c>/usage</c> — a request it answers locally, measured at 0 tokens, 0ms of API time and $0. So
-/// the percentage a terminal session shows is reachable here too; it just has to be asked for.
-/// </para>
-/// </summary>
+// Reads the rolling allowances out of the CLI's own `.claude.json` — the SDK route's source for the figures
+// the TTY route gets from its statusline (AC-549).
+//
+// The SDK route cannot have a statusline: measured against CLI 2.1.220 by handing `claude -p` a
+// `--settings` with a relay of its own, the command is never invoked. And `rate_limit_event`, the other
+// candidate, carries the window but not always its fill — captured from a real stream,
+// `{"status":"allowed","resetsAt":…,"rateLimitType":"five_hour"}` arrives with no `utilization` field at
+// all while the account is nowhere near that limit.
+//
+// What does exist on this route is `cachedUsageUtilization` in `.claude.json`, which the CLI refreshes
+// when asked for `/usage` — a request it answers locally, measured at 0 tokens, 0ms of API time and $0. So
+// the percentage a terminal session shows is reachable here too; it just has to be asked for.
 internal static class ClaudeUsageCache
 {
-    /// <summary>
-    /// How old a cached reading may be before it is dropped rather than shown. This is not a tidiness limit: found
-    /// in the wild at <em>68 hours</em> stale, because nothing on the SDK route had ever refreshed it. Rendering
-    /// that as the current figure is exactly the invented number AC-530 forbids, and a stale allowance is worse
-    /// than an absent one — it reads as headroom the operator does not have.
-    /// </summary>
+    // How old a cached reading may be before it is dropped rather than shown. This is not a tidiness limit: found
+    // in the wild at *68 hours* stale, because nothing on the SDK route had ever refreshed it. Rendering
+    // that as the current figure is exactly the invented number AC-530 forbids, and a stale allowance is worse
+    // than an absent one — it reads as headroom the operator does not have.
     public static readonly TimeSpan MaxAge = TimeSpan.FromMinutes(15);
 
-    /// <summary>
-    /// The windows this snapshot can vouch for, keyed by the same wire names <c>rate_limit_event</c> uses so the
-    /// two sources land in one dictionary. Empty for unreadable JSON, a missing section, or a snapshot older than
-    /// <see cref="MaxAge"/> — never a guess, and never a zero standing in for "unknown".
-    /// </summary>
+    // The windows this snapshot can vouch for, keyed by the same wire names `rate_limit_event` uses so the
+    // two sources land in one dictionary. Empty for unreadable JSON, a missing section, or a snapshot older than
+    // `MaxAge` — never a guess, and never a zero standing in for "unknown".
     public static IReadOnlyDictionary<string, PluginRateLimitWindow> Read(string json, DateTimeOffset now)
     {
         var windows = new Dictionary<string, PluginRateLimitWindow>(StringComparer.Ordinal);

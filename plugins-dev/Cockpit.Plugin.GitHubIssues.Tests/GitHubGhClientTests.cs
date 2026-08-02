@@ -2,13 +2,11 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The <c>gh</c> arguments this plugin builds (AC-519), asserted the same way <c>GitHubPrGhClientTests</c> asserts
-/// the pull-requests plugin's: without shelling out to a real <c>gh</c>. The real process path — a fake <c>gh</c> on
-/// PATH driving the actual <see cref="GitHubGhClient"/>, including failure and multi-repo scenarios — was measured
-/// separately in a disposable scratchpad harness; committed here is the query construction this repo keeps testing
-/// without a live process.
-/// </summary>
+// The `gh` arguments this plugin builds (AC-519), asserted the same way `GitHubPrGhClientTests` asserts
+// the pull-requests plugin's: without shelling out to a real `gh`. The real process path — a fake `gh` on
+// PATH driving the actual `GitHubGhClient`, including failure and multi-repo scenarios — was measured
+// separately in a disposable scratchpad harness; committed here is the query construction this repo keeps testing
+// without a live process.
 public class GitHubGhClientTests
 {
     [Fact]

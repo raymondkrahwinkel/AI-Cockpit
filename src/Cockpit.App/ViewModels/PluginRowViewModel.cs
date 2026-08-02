@@ -4,11 +4,9 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One row in the plugin manager (#14): the display fields plus the action affordances derived from the
-/// plugin's <see cref="PluginLoadDecision"/>. The manager owns the enable/disable/remove commands and
-/// takes the row as their parameter, so the row itself stays a passive projection of a discovered plugin.
-/// </summary>
+// One row in the plugin manager (#14): the display fields plus the action affordances derived from the
+// plugin's `PluginLoadDecision`. The manager owns the enable/disable/remove commands and
+// takes the row as their parameter, so the row itself stays a passive projection of a discovered plugin.
 public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, IReadOnlyList<PluginFailure>? failures = null, bool hiddenInMenu = false)
 {
     private readonly IReadOnlyList<PluginFailure> _failures = failures ?? [];
@@ -25,31 +23,31 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
 
     public DiscoveredPlugin Discovered => discovered;
 
-    /// <summary>Whether this plugin's left-menu contributions are hidden (#72). The plugin still runs — its shortcut and command-palette entry keep working — which is what separates this from disabling it.</summary>
+    // Whether this plugin's left-menu contributions are hidden (#72). The plugin still runs — its shortcut and command-palette entry keep working — which is what separates this from disabling it.
     public bool HiddenInMenu => hiddenInMenu;
 
-    /// <summary>The eye toggle's label, which has to name the action rather than the state: a toggle that reads "Hidden" leaves you guessing what clicking it does.</summary>
+    // The eye toggle's label, which has to name the action rather than the state: a toggle that reads "Hidden" leaves you guessing what clicking it does.
     public string MenuVisibilityLabel => hiddenInMenu ? "Show in menu" : "Hide from menu";
 
-    /// <summary>Spells out what hiding does and does not do, since "hidden" reading as "off" is the trap here.</summary>
+    // Spells out what hiding does and does not do, since "hidden" reading as "off" is the trap here.
     public string MenuVisibilityTip => hiddenInMenu
         ? "Show this plugin's buttons and sections in the left menu again."
         : "Keep this plugin's buttons and sections out of the left menu. The plugin keeps running: its shortcut and command-palette entry still work — that is the difference with disabling it.";
 
-    /// <summary>True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.</summary>
+    // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;
 
-    /// <summary>True when this plugin never became operative (load/configure/initialize), or is flagged for a compatibility concern.</summary>
+    // True when this plugin never became operative (load/configure/initialize), or is flagged for a compatibility concern.
     public bool HasFailure => _ActivationFailure is not null || _CompatibilityWarning is not null;
 
-    /// <summary>The load/init failure or compatibility warning for this plugin, if any (#14) — a contribution failing later (#184) is a separate fact, see <see cref="McpContributionFailureText"/>.</summary>
+    // The load/init failure or compatibility warning for this plugin, if any (#14) — a contribution failing later (#184) is a separate fact, see `McpContributionFailureText`.
     public string FailureText => _ActivationFailure switch
     {
         { } activation => $"Failed to load: {activation.Error}",
         null => _CompatibilityWarning?.Error ?? string.Empty,
     };
 
-    /// <summary>True when this plugin loaded but a contribution it registered afterwards failed (#184) — e.g. its MCP server upsert. Independent of <see cref="HasFailure"/>: the plugin is still running.</summary>
+    // True when this plugin loaded but a contribution it registered afterwards failed (#184) — e.g. its MCP server upsert. Independent of `HasFailure`: the plugin is still running.
     public bool HasMcpContributionFailure => _McpContributionFailure is not null;
 
     public string McpContributionFailureText => _McpContributionFailure is { } mcp
@@ -84,13 +82,13 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
         _ => string.Empty,
     };
 
-    /// <summary>The plugin can be enabled (it is disabled or awaiting consent) — enabling always shows the consent dialog.</summary>
+    // The plugin can be enabled (it is disabled or awaiting consent) — enabling always shows the consent dialog.
     public bool CanEnable => discovered.Decision is PluginLoadDecision.Disabled or PluginLoadDecision.NeedsConsent;
 
-    /// <summary>The plugin is enabled and consented, so the only state change offered is to disable it.</summary>
+    // The plugin is enabled and consented, so the only state change offered is to disable it.
     public bool CanDisable => discovered.Decision is PluginLoadDecision.Load;
 
-    /// <summary>A version-incompatible plugin cannot be enabled at all — the manager shows why instead of an Enable button.</summary>
+    // A version-incompatible plugin cannot be enabled at all — the manager shows why instead of an Enable button.
     public bool IsIncompatible =>
         discovered.Decision is PluginLoadDecision.AbstractionsMajorMismatch or PluginLoadDecision.HostTooOld;
 

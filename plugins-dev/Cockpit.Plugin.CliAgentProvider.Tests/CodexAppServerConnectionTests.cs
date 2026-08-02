@@ -2,12 +2,10 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexAppServerConnection"/> against a <see cref="FakeCliSubprocess"/> (#45 fase 3) — proves the
-/// JSON-RPC transport under the app-server driver: a request gets its correlated reply, a JSON-RPC error
-/// surfaces as an exception, notifications and server-initiated requests are routed to their own streams, and a
-/// request outstanding when the stream ends fails rather than hangs.
-/// </summary>
+// `CodexAppServerConnection` against a `FakeCliSubprocess` (#45 fase 3) — proves the
+// JSON-RPC transport under the app-server driver: a request gets its correlated reply, a JSON-RPC error
+// surfaces as an exception, notifications and server-initiated requests are routed to their own streams, and a
+// request outstanding when the stream ends fails rather than hangs.
 public class CodexAppServerConnectionTests
 {
     private static readonly Dictionary<string, string?> _NoEnv = new();

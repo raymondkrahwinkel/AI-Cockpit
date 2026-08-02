@@ -3,11 +3,9 @@ using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// <see cref="YouTrackClient.GetProjectStateFieldAsync"/> (AC-518): the state dropdown's own source, independent
-/// of whichever page of issues happened to load — a real HTTP round trip against the admin projects/customFields
-/// endpoint, same fail-open shape as <see cref="YouTrackClient.GetProjectsAsync"/>.
-/// </summary>
+// `YouTrackClient.GetProjectStateFieldAsync` (AC-518): the state dropdown's own source, independent
+// of whichever page of issues happened to load — a real HTTP round trip against the admin projects/customFields
+// endpoint, same fail-open shape as `YouTrackClient.GetProjectsAsync`.
 public class YouTrackClientStateFieldTests : IAsyncLifetime
 {
     private LoopbackHttpServer? _server;

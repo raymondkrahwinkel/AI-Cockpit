@@ -5,11 +5,9 @@ using Cockpit.Plugin.Docker.Settings;
 
 namespace Cockpit.Plugin.Docker.Engine;
 
-/// <summary>
-/// <see cref="IDockerEngine"/> backed by <c>Docker.DotNet</c>. The client is built lazily from the configured
-/// endpoint (blank = the local default socket: npipe on Windows, unix socket elsewhere) and cached; a settings save
-/// calls <see cref="Invalidate"/> so the next call rebuilds against the new endpoint.
-/// </summary>
+// `IDockerEngine` backed by `Docker.DotNet`. The client is built lazily from the configured
+// endpoint (blank = the local default socket: npipe on Windows, unix socket elsewhere) and cached; a settings save
+// calls `Invalidate` so the next call rebuilds against the new endpoint.
 internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDisposable
 {
     private readonly object _lock = new();
@@ -360,8 +358,8 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
             : (image, "latest");
     }
 
-    /// <summary>Parse "host:container[/proto]" (or bare "container[/proto]") publish specs into Docker's exposed-port
-    /// and port-binding shapes. A bare container port is exposed but not bound to a host port.</summary>
+    // Parse "host:container[/proto]" (or bare "container[/proto]") publish specs into Docker's exposed-port
+    // and port-binding shapes. A bare container port is exposed but not bound to a host port.
     private static (Dictionary<string, EmptyStruct> Exposed, Dictionary<string, IList<PortBinding>> Bindings) _Ports(
         IReadOnlyList<string>? publish)
     {

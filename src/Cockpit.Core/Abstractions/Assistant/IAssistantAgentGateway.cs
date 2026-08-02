@@ -131,14 +131,14 @@ public interface IAssistantAgentGateway
     Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What came of a message. Same shape and same reason as <see cref="AgentStopResult"/>.</summary>
-/// <param name="MessageId">The id the message is waiting under, so a repeat send can be recognised as the same one.</param>
-/// <param name="Deduplicated">True when the identical message was already waiting unread: this call added nothing, and <paramref name="MessageId"/> is the one that was already there.</param>
-/// <param name="DeliversAtTurnStart">
-/// Whether the recipient will see this without going to look. Reported because "delivered" on a pane with no passive
-/// delivery means the message is waiting, not that anyone has been told — and an assistant that then reports "I told
-/// them" to the operator has said something untrue on the strength of a field that read like success.
-/// </param>
+// What came of a message. Same shape and same reason as `AgentStopResult`.
+//
+// `MessageId`: The id the message is waiting under, so a repeat send can be recognised as the same one.
+// `Deduplicated`: True when the identical message was already waiting unread: this call added nothing, and `MessageId` is the one that was already there.
+// `DeliversAtTurnStart`:
+// Whether the recipient will see this without going to look. Reported because "delivered" on a pane with no passive
+// delivery means the message is waiting, not that anyone has been told — and an assistant that then reports "I told
+// them" to the operator has said something untrue on the strength of a field that read like success.
 public sealed record AgentMessageResult(
     bool Ok,
     string? PaneId,
@@ -154,13 +154,13 @@ public sealed record AgentMessageResult(
     public static AgentMessageResult Refused(string error) => new(false, null, null, null, false, false, error);
 }
 
-/// <summary>What came of a prompt. Same shape and same reason as <see cref="AgentStopResult"/>.</summary>
-/// <param name="Delivered">
-/// True when the turn was submitted on the spot. False means the session cannot take one yet — it is still coming up
-/// — and the turn is being held for it. Not an error, and not a delivery either: the difference is the whole reason
-/// this field exists, because an assistant that says "sent" for a turn that is still waiting has reported work that
-/// has not started.
-/// </param>
+// What came of a prompt. Same shape and same reason as `AgentStopResult`.
+//
+// `Delivered`:
+// True when the turn was submitted on the spot. False means the session cannot take one yet — it is still coming up
+// — and the turn is being held for it. Not an error, and not a delivery either: the difference is the whole reason
+// this field exists, because an assistant that says "sent" for a turn that is still waiting has reported work that
+// has not started.
 public sealed record AgentPromptResult(bool Ok, string? PaneId, string? SessionName, bool Delivered, string? Error)
 {
     public static AgentPromptResult Handed(string paneId, string sessionName, bool delivered) =>
@@ -169,8 +169,9 @@ public sealed record AgentPromptResult(bool Ok, string? PaneId, string? SessionN
     public static AgentPromptResult Refused(string error) => new(false, null, null, false, error);
 }
 
-/// <summary>What came of removing a workspace. Same shape and same reason as <see cref="AgentStopResult"/>.</summary>
-/// <param name="Name">The tab label the desk had, so the confirmation names what the operator will see disappear.</param>
+// What came of removing a workspace. Same shape and same reason as `AgentStopResult`.
+//
+// `Name`: The tab label the desk had, so the confirmation names what the operator will see disappear.
 public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error)
 {
     public static WorkspaceRemovalResult Removed(string name) => new(true, name, null);
@@ -178,27 +179,24 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
     public static WorkspaceRemovalResult Refused(string error) => new(false, null, error);
 }
 
-/// <summary>One session to start: where it goes, what it runs, and what it is handed to begin with.</summary>
-/// <param name="Target">The desk and the rule that chose it. See <see cref="SpawnTarget"/>.</param>
-/// <param name="ProfileLabel">
-/// The profile to run under, by its label. Required and never defaulted: which profile a session runs under decides
-/// its provider, its model and therefore its cost, and an agent that did not have to say so would spawn Opus workers
-/// by accident (AC-436 guardrail 6, which holds for whatever the assistant starts too).
-/// </param>
-/// <param name="Prompt">The first message to hand the session once it is up, or null to leave it waiting.</param>
-/// <param name="WorkingDirectory">The folder to run in, or null for the profile's own default.</param>
-/// <param name="SessionName">What to call the pane, or null to let the profile and the clock name it.</param>
-/// <param name="Kind">
-/// The route to start on — "sdk" or "tty" — or null for the one the profile is set to, which is what nearly every
-/// spawn should use.
-/// </param>
-/// <remarks>
-/// <b>Why the route is here at all.</b> The New-session dialog has a Kind toggle, so "the same profile, but as an
-/// SDK session" is an ordinary thing to want. Without a way to say it here, that request has nowhere to land — and
-/// what an assistant does with a request it has no tool for is reach for the nearest thing that sounds close. Asked
-/// for exactly this, it went looking through <c>cockpit-orchestrator</c>, which starts work with no pane, outside
-/// this ticket's consent gate and outside its trail. A missing parameter turned into a detour around the guardrail.
-/// </remarks>
+// One session to start: where it goes, what it runs, and what it is handed to begin with.
+//
+// `Target`: The desk and the rule that chose it. See `SpawnTarget`.
+// `ProfileLabel`:
+// The profile to run under, by its label. Required and never defaulted: which profile a session runs under decides
+// its provider, its model and therefore its cost, and an agent that did not have to say so would spawn Opus workers
+// by accident (AC-436 guardrail 6, which holds for whatever the assistant starts too).
+// `Prompt`: The first message to hand the session once it is up, or null to leave it waiting.
+// `WorkingDirectory`: The folder to run in, or null for the profile's own default.
+// `SessionName`: What to call the pane, or null to let the profile and the clock name it.
+// `Kind`:
+// The route to start on — "sdk" or "tty" — or null for the one the profile is set to, which is what nearly every
+// spawn should use.
+// *Why the route is here at all.* The New-session dialog has a Kind toggle, so "the same profile, but as an
+// SDK session" is an ordinary thing to want. Without a way to say it here, that request has nowhere to land — and
+// what an assistant does with a request it has no tool for is reach for the nearest thing that sounds close. Asked
+// for exactly this, it went looking through `cockpit-orchestrator`, which starts work with no pane, outside
+// this ticket's consent gate and outside its trail. A missing parameter turned into a detour around the guardrail.
 public sealed record AgentSpawnRequest(
     SpawnTarget Target,
     string ProfileLabel,
@@ -207,10 +205,8 @@ public sealed record AgentSpawnRequest(
     string? SessionName = null,
     string? Kind = null);
 
-/// <summary>
-/// What came of a spawn. A refusal carries <see cref="Error"/> and no pane; both are reported to the agent, so a
-/// spawn that could not happen is a sentence the operator hears rather than a session that silently is not there.
-/// </summary>
+// What came of a spawn. A refusal carries `Error` and no pane; both are reported to the agent, so a
+// spawn that could not happen is a sentence the operator hears rather than a session that silently is not there.
 public sealed record AgentSpawnResult(bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error)
 {
     public static AgentSpawnResult Started(string paneId, string sessionName, string? workingDirectory) =>
@@ -219,7 +215,7 @@ public sealed record AgentSpawnResult(bool Ok, string? PaneId, string? SessionNa
     public static AgentSpawnResult Refused(string error) => new(false, null, null, null, error);
 }
 
-/// <summary>What came of a stop. Same shape and same reason as <see cref="AgentSpawnResult"/>.</summary>
+// What came of a stop. Same shape and same reason as `AgentSpawnResult`.
 public sealed record AgentStopResult(bool Ok, string? PaneId, string? SessionName, string? Error)
 {
     public static AgentStopResult Stopped(string paneId, string sessionName) => new(true, paneId, sessionName, null);
@@ -227,10 +223,8 @@ public sealed record AgentStopResult(bool Ok, string? PaneId, string? SessionNam
     public static AgentStopResult Refused(string error) => new(false, null, null, error);
 }
 
-/// <summary>
-/// What came of a rename: the name that now stands, or the reason it does not. Same shape and same reason as
-/// <see cref="AgentStopResult"/> — a refusal is a sentence the assistant says, not an exception it fails on.
-/// </summary>
+// What came of a rename: the name that now stands, or the reason it does not. Same shape and same reason as
+// `AgentStopResult` — a refusal is a sentence the assistant says, not an exception it fails on.
 public sealed record AssistantRenameResult(bool Ok, string? Name, string? Error)
 {
     public static AssistantRenameResult Renamed(string name) => new(true, name, null);
@@ -238,19 +232,17 @@ public sealed record AssistantRenameResult(bool Ok, string? Name, string? Error)
     public static AssistantRenameResult Refused(string error) => new(false, null, error);
 }
 
-/// <summary>
-/// One desk, as the assistant may see it: enough to name it back to the operator and to spawn onto it.
-/// </summary>
-/// <param name="Id">The workspace id — what a spawn actually takes.</param>
-/// <param name="Name">The tab label the operator sees, which is the name they will say out loud.</param>
-/// <param name="Type">The workspace type id ("sessions", "dashboard", "projects", a plugin's own).</param>
-/// <param name="CanHostSessions">
-/// Whether a session may be placed here at all. Only a Sessions desk can show one — a dashboard would run it
-/// invisibly, which is worse than refusing — so this is reported rather than left for the assistant to infer from
-/// <paramref name="Type"/>.
-/// </param>
-/// <param name="SessionCount">How many agent sessions are on it right now.</param>
-/// <param name="IsActive">Whether this is the desk the operator is looking at.</param>
+// One desk, as the assistant may see it: enough to name it back to the operator and to spawn onto it.
+//
+// `Id`: The workspace id — what a spawn actually takes.
+// `Name`: The tab label the operator sees, which is the name they will say out loud.
+// `Type`: The workspace type id ("sessions", "dashboard", "projects", a plugin's own).
+// `CanHostSessions`:
+// Whether a session may be placed here at all. Only a Sessions desk can show one — a dashboard would run it
+// invisibly, which is worse than refusing — so this is reported rather than left for the assistant to infer from
+// `Type`.
+// `SessionCount`: How many agent sessions are on it right now.
+// `IsActive`: Whether this is the desk the operator is looking at.
 public sealed record AssistantWorkspaceRow(
     string Id,
     string Name,
@@ -259,10 +251,9 @@ public sealed record AssistantWorkspaceRow(
     int SessionCount,
     bool IsActive);
 
-/// <summary>
-/// One profile a spawn may name.
-/// </summary>
-/// <param name="Label">Exactly what <c>start_agent</c> takes — the label, not the display string.</param>
-/// <param name="Provider">Which provider it runs on ("Claude", "LM Studio"), so "a Claude one" can be resolved without guessing from the label's wording.</param>
-/// <param name="Model">The model, where the profile pins one. Null means the provider's own default, which is worth saying rather than showing as blank.</param>
+// One profile a spawn may name.
+//
+// `Label`: Exactly what `start_agent` takes — the label, not the display string.
+// `Provider`: Which provider it runs on ("Claude", "LM Studio"), so "a Claude one" can be resolved without guessing from the label's wording.
+// `Model`: The model, where the profile pins one. Null means the provider's own default, which is worth saying rather than showing as blank.
 public sealed record AssistantProfileRow(string Label, string Provider, string? Model);

@@ -2,25 +2,21 @@ using System.Reflection;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// The plugins this build ships, carried inside the executable rather than in a folder beside it.
-/// <para>
-/// A single-file build is one file — that is the whole promise, and a bundled-plugins directory that has to
-/// travel with it is a second thing to lose. So the same files are embedded as resources and unpacked to a temp
-/// directory at startup, from which the ordinary installer takes over: nothing downstream needs to know which
-/// kind of build it is running in.
-/// </para>
-/// <para>
-/// Only used when the folder is absent. A normal build keeps its folder, and the folder wins — it is what a
-/// developer edits and rebuilds, and an embedded copy quietly overriding it would be a mystery to debug.
-/// </para>
-/// </summary>
+// The plugins this build ships, carried inside the executable rather than in a folder beside it.
+//
+// A single-file build is one file — that is the whole promise, and a bundled-plugins directory that has to
+// travel with it is a second thing to lose. So the same files are embedded as resources and unpacked to a temp
+// directory at startup, from which the ordinary installer takes over: nothing downstream needs to know which
+// kind of build it is running in.
+//
+// Only used when the folder is absent. A normal build keeps its folder, and the folder wins — it is what a
+// developer edits and rebuilds, and an embedded copy quietly overriding it would be a mystery to debug.
 internal static class BundledPluginResources
 {
-    /// <summary>Every embedded plugin file is named <c>bundled-plugins/&lt;id&gt;/&lt;file&gt;</c> — the folder layout, kept as a name.</summary>
+    // Every embedded plugin file is named `bundled-plugins/&lt;id&gt;/&lt;file&gt;` — the folder layout, kept as a name.
     private const string Prefix = BundledPluginInstaller.BundledFolderName + "/";
 
-    /// <summary>Unpacks the embedded plugins and returns the directory, or null when this build has none embedded.</summary>
+    // Unpacks the embedded plugins and returns the directory, or null when this build has none embedded.
     public static string? TryExtract()
     {
         try

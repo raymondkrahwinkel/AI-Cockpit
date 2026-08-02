@@ -5,15 +5,13 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Consent;
 
-/// <summary>
-/// Appends the consent audit trail (#AC-47) to <c>consent-audit.jsonl</c> next to <c>cockpit.json</c>. The
-/// append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading
-/// the whole file — lives in <see cref="JsonlAuditLog{T}"/>; this only names the file and trims the action literal
-/// so the log stays a record of what was decided, not a copy of every command.
-/// </summary>
+// Appends the consent audit trail (#AC-47) to `consent-audit.jsonl` next to `cockpit.json`. The
+// append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading
+// the whole file — lives in `JsonlAuditLog{T}`; this only names the file and trims the action literal
+// so the log stays a record of what was decided, not a copy of every command.
 internal sealed class ConsentAuditLog : JsonlAuditLog<ConsentAuditEntry>, IConsentAuditLog, ISingletonService
 {
-    /// <summary>The action literal is trimmed: the log is for recognising a decision later, not for keeping a full copy of every command.</summary>
+    // The action literal is trimmed: the log is for recognising a decision later, not for keeping a full copy of every command.
     private const int MaxActionLength = 300;
 
     public ConsentAuditLog(ILogger<ConsentAuditLog> logger)
@@ -21,7 +19,7 @@ internal sealed class ConsentAuditLog : JsonlAuditLog<ConsentAuditEntry>, IConse
     {
     }
 
-    /// <summary>Test seam: point the log at an arbitrary file.</summary>
+    // Test seam: point the log at an arbitrary file.
     internal ConsentAuditLog(string logFilePath, ILogger<ConsentAuditLog> logger)
         : base(logFilePath, logger)
     {

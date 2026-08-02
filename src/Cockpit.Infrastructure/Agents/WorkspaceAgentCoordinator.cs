@@ -4,33 +4,27 @@ using Cockpit.Core.Abstractions.Agents;
 
 namespace Cockpit.Infrastructure.Agents;
 
-/// <summary>
-/// The concrete roster behind <see cref="IWorkspaceAgentCoordinator"/> (AC-391): one flat set of pane ids, each
-/// carrying whether that pane has agreed to be woken (AC-395) and when it last reached this server itself (AC-613).
-/// A <see cref="ConcurrentDictionary{TKey,TValue}"/> rather than a locked <see cref="HashSet{T}"/>, since MCP tool
-/// calls from several sessions' request threads land concurrently and none of these calls needs to observe the
-/// others atomically — each only ever touches its own key.
-/// </summary>
+// The concrete roster behind `IWorkspaceAgentCoordinator` (AC-391): one flat set of pane ids, each
+// carrying whether that pane has agreed to be woken (AC-395) and when it last reached this server itself (AC-613).
+// A `ConcurrentDictionary{TKey,TValue}` rather than a locked `HashSet{T}`, since MCP tool
+// calls from several sessions' request threads land concurrently and none of these calls needs to observe the
+// others atomically — each only ever touches its own key.
 internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, ISingletonService
 {
-    /// <summary>
-    /// What the roster holds about one pane. Key present = enrolled, so the host knows the pane exists; the two
-    /// fields are what the pane itself has said and done. One entry rather than three dictionaries, so a pane cannot
-    /// end up present in one and forgotten in another — <see cref="Forget"/> has to be able to take everything with
-    /// it in a single call, and that is the property the wake consent was put here for in the first place.
-    /// </summary>
-    /// <param name="WakeConsent">
-    /// This session's own answer, or null when it has not given one and the operator's default applies (AC-615).
-    /// Nullable rather than defaulted, because "has not said" and "said no" have to stay apart: the first follows
-    /// the operator's setting as it changes, the second does not.
-    /// </param>
+    // What the roster holds about one pane. Key present = enrolled, so the host knows the pane exists; the two
+    // fields are what the pane itself has said and done. One entry rather than three dictionaries, so a pane cannot
+    // end up present in one and forgotten in another — `Forget` has to be able to take everything with
+    // it in a single call, and that is the property the wake consent was put here for in the first place.
+    //
+    // `WakeConsent`:
+    // This session's own answer, or null when it has not given one and the operator's default applies (AC-615).
+    // Nullable rather than defaulted, because "has not said" and "said no" have to stay apart: the first follows
+    // the operator's setting as it changes, the second does not.
     private sealed record Entry(bool? WakeConsent, DateTimeOffset? LastContactUtc, DateTimeOffset? LastInboxReadUtc);
 
-    /// <summary>
-    /// How many departed panes are remembered (AC-614). Enough to cover a sender working from a listing it took a
-    /// while ago on a busy desk, and small enough that this is a courtesy rather than a log — the durable record of
-    /// what happened on the line is the append-only notify trail, and this is not trying to be it.
-    /// </summary>
+    // How many departed panes are remembered (AC-614). Enough to cover a sender working from a listing it took a
+    // while ago on a busy desk, and small enough that this is a courtesy rather than a log — the durable record of
+    // what happened on the line is the append-only notify trail, and this is not trying to be it.
     internal const int MaxRememberedDepartures = 100;
 
     private readonly ConcurrentDictionary<string, Entry> _roster = new(StringComparer.Ordinal);

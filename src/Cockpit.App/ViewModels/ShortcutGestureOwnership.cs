@@ -2,28 +2,21 @@ using Avalonia.Input;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// One gesture, one owner (AC-608). Deciding which rows have to give theirs up when another row takes it.
-/// </summary>
-/// <remarks>
-/// Nothing used to enforce this, and the dispatch does not either: <c>CockpitView._TryHandleShortcut</c> walks
-/// <c>ActiveShortcuts</c> in catalog order and invokes the <em>first</em> gesture that matches. Bind a chord that
-/// another action already holds and the winner is whichever sits earlier in the list — so the binding the operator
-/// just made silently never fires, or the one they forgot about silently stops. Ctrl+Shift+M is the case that was
-/// reported, because it is Toggle zoom's default and every row after it in the catalog loses to it.
-/// <para>
-/// Gestures are compared parsed rather than as text: "Ctrl+Shift+M" and "Shift+Ctrl+M" are one gesture written two
-/// ways, and a hand-edited <c>cockpit.json</c> can hold either. A string comparison would let the second one back
-/// in through exactly the door this closes.
-/// </para>
-/// </remarks>
+// One gesture, one owner (AC-608). Deciding which rows have to give theirs up when another row takes it.
+// Nothing used to enforce this, and the dispatch does not either: `CockpitView._TryHandleShortcut` walks
+// `ActiveShortcuts` in catalog order and invokes the *first* gesture that matches. Bind a chord that
+// another action already holds and the winner is whichever sits earlier in the list — so the binding the operator
+// just made silently never fires, or the one they forgot about silently stops. Ctrl+Shift+M is the case that was
+// reported, because it is Toggle zoom's default and every row after it in the catalog loses to it.
+//
+// Gestures are compared parsed rather than as text: "Ctrl+Shift+M" and "Shift+Ctrl+M" are one gesture written two
+// ways, and a hand-edited `cockpit.json` can hold either. A string comparison would let the second one back
+// in through exactly the door this closes.
 public static class ShortcutGestureOwnership
 {
-    /// <summary>
-    /// The positions in <paramref name="gestures"/> that must be cleared because the row at
-    /// <paramref name="claimantIndex"/> now holds their gesture. Empty when the claimant is unbound or its gesture
-    /// is unparseable — a half-typed value displaces nobody.
-    /// </summary>
+    // The positions in `gestures` that must be cleared because the row at
+    // `claimantIndex` now holds their gesture. Empty when the claimant is unbound or its gesture
+    // is unparseable — a half-typed value displaces nobody.
     public static IReadOnlyList<int> DisplacedBy(IReadOnlyList<string> gestures, int claimantIndex)
     {
         if (claimantIndex < 0 || claimantIndex >= gestures.Count || _Parse(gestures[claimantIndex]) is not { } claimed)

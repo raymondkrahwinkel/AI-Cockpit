@@ -10,13 +10,11 @@ using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// Renders the plugin-registered supervised-activity sources (<c>ICockpitHost.AddSupervisedActivityProvider</c>) in
-/// the status bar (AC-82): one counter button per source ("Port-forwards: 2"), shown only while it has activities,
-/// that opens a flyout listing each activity with its details and a Kill button. Kill is the operator's — it calls
-/// the plugin's <see cref="SupervisedActivity.StopAsync"/>; an agent has no path to it. Contributes nothing and
-/// takes no space when no plugin registers a source.
-/// </summary>
+// Renders the plugin-registered supervised-activity sources (`ICockpitHost.AddSupervisedActivityProvider`) in
+// the status bar (AC-82): one counter button per source ("Port-forwards: 2"), shown only while it has activities,
+// that opens a flyout listing each activity with its details and a Kill button. Kill is the operator's — it calls
+// the plugin's `SupervisedActivity.StopAsync`; an agent has no path to it. Contributes nothing and
+// takes no space when no plugin registers a source.
 internal sealed class PluginStatusBarHost : StackPanel
 {
     private readonly List<SourceEntry> _entries = [];

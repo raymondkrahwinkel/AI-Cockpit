@@ -3,13 +3,11 @@ using Cockpit.Plugin.Depot.Model;
 
 namespace Cockpit.Plugin.Depot.Settings;
 
-/// <summary>
-/// The plugin's settings, persisted through the host's per-plugin <see cref="IPluginStorage"/> (AC-243) — the
-/// client-local (not synced) half of AC-242, same storage seam <c>KubernetesSettings</c> uses for its cluster list.
-/// Nothing here is secret (see <see cref="DepotConnectionRegistration"/>), so this is plain JSON metadata; the
-/// credential the host acquires for each contributed server lives in the host's own OAuth store, never in this
-/// plugin's storage. Read fresh on every access, so a settings save takes effect on the next call without a restart.
-/// </summary>
+// The plugin's settings, persisted through the host's per-plugin `IPluginStorage` (AC-243) — the
+// client-local (not synced) half of AC-242, same storage seam `KubernetesSettings` uses for its cluster list.
+// Nothing here is secret (see `DepotConnectionRegistration`), so this is plain JSON metadata; the
+// credential the host acquires for each contributed server lives in the host's own OAuth store, never in this
+// plugin's storage. Read fresh on every access, so a settings save takes effect on the next call without a restart.
 internal sealed class DepotSettings(IPluginStorage storage)
 {
     // AC-499: a value saved before DepotUrlNormalizer existed (Depot's own docs tell the operator to paste the

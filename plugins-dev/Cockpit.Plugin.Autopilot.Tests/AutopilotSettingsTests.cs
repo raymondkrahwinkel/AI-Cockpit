@@ -3,13 +3,11 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// <see cref="AutopilotSettings"/>: every field resolves project override → global → default, and a change raises the
-/// signal a live surface listens to.
-/// </summary>
+// `AutopilotSettings`: every field resolves project override → global → default, and a change raises the
+// signal a live surface listens to.
 public class AutopilotSettingsTests
 {
-    /// <summary>An in-memory <see cref="IPluginStorage"/> that round-trips through JSON, the way the host's real storage does — so a null override reads back as "not set".</summary>
+    // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does — so a null override reads back as "not set".
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);

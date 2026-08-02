@@ -2,41 +2,35 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-/// <summary>
-/// Housekeeping for the <c>--mcp-config</c> files earlier cockpit versions wrote for a TTY session.
-/// <para>
-/// This host-side writer (<c>Write</c>/<c>Delete</c>) is gone (AC-380: it had no production caller once the
-/// provider plugins started building their own spawn config — e.g. <c>ClaudeMcpConfig</c> — from the servers the
-/// plugin adapter resolves, each writing and owning its own session-scoped file). What remains is the sweep: an
-/// operator who upgrades from a version that still wrote here, or whose machine still carries the pre-owner-only
-/// generation's leftovers, must not be left with a stale file holding a live token.
-/// </para>
-/// <para>
-/// Those files carried whatever the MCP registry carried — which includes <c>Authorization: Bearer</c> headers,
-/// i.e. real credentials. The oldest generation wrote to <see cref="Path.GetTempPath"/> at the umask's
-/// permissions and never deleted, so a live token could sit world-readable in a 1777 directory for as long as the
-/// machine stood; the next generation moved the write beside the rest of the cockpit's state, owner-only, deleted
-/// on session end. This sweep still claims both generations' leftovers on every start.
-/// </para>
-/// </summary>
+// Housekeeping for the `--mcp-config` files earlier cockpit versions wrote for a TTY session.
+//
+// This host-side writer (`Write`/`Delete`) is gone (AC-380: it had no production caller once the
+// provider plugins started building their own spawn config — e.g. `ClaudeMcpConfig` — from the servers the
+// plugin adapter resolves, each writing and owning its own session-scoped file). What remains is the sweep: an
+// operator who upgrades from a version that still wrote here, or whose machine still carries the pre-owner-only
+// generation's leftovers, must not be left with a stale file holding a live token.
+//
+// Those files carried whatever the MCP registry carried — which includes `Authorization: Bearer` headers,
+// i.e. real credentials. The oldest generation wrote to `Path.GetTempPath` at the umask's
+// permissions and never deleted, so a live token could sit world-readable in a 1777 directory for as long as the
+// machine stood; the next generation moved the write beside the rest of the cockpit's state, owner-only, deleted
+// on session end. This sweep still claims both generations' leftovers on every start.
 internal static class TtyMcpConfigFile
 {
     private const string FilePrefix = "tty-mcp-";
 
-    /// <summary>The name the previous implementation used, in the temp directory. Swept, never written.</summary>
+    // The name the previous implementation used, in the temp directory. Swept, never written.
     private const string LegacyTempPattern = "cockpit-tty-mcp-*.json";
 
-    /// <summary>Where these files used to live: beside the rest of the cockpit's state, not in the shared temp directory.</summary>
+    // Where these files used to live: beside the rest of the cockpit's state, not in the shared temp directory.
     internal static string DefaultDirectory => CockpitConfigPath.Root;
 
-    /// <summary>
-    /// Removes the config files that earlier runs left behind: an older cockpit's own file from a crash or a kill
-    /// (the delete on session end never ran), and the ones the oldest implementation wrote into the temp
-    /// directory, which are the ones actually holding a live token on an operator's machine right now.
-    /// </summary>
+    // Removes the config files that earlier runs left behind: an older cockpit's own file from a crash or a kill
+    // (the delete on session end never ran), and the ones the oldest implementation wrote into the temp
+    // directory, which are the ones actually holding a live token on an operator's machine right now.
     public static void SweepStale() => SweepStale(CockpitConfigPath.Root, Path.GetTempPath());
 
-    /// <summary>Overload taking both directories, so a test sweeps its own scratch space.</summary>
+    // Overload taking both directories, so a test sweeps its own scratch space.
     internal static void SweepStale(string configDirectory, string temporaryDirectory)
     {
         Sweep(configDirectory, $"{FilePrefix}*.json");

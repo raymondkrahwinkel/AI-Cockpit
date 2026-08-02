@@ -3,13 +3,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeTtyProvider.WatchConversationIdAsync"/> (AC-408): a bounded, one-shot scan for the transcript
-/// file this session's own launch created. Reports it exactly once, reports nothing when more than one new file
-/// shows up in the same poll (an unattributable race with another session starting under the same config dir),
-/// and gives up after its timeout instead of watching indefinitely — a standing watch would eventually see and
-/// misreport a later, unrelated session's transcript as this session's own.
-/// </summary>
+// `ClaudeTtyProvider.WatchConversationIdAsync` (AC-408): a bounded, one-shot scan for the transcript
+// file this session's own launch created. Reports it exactly once, reports nothing when more than one new file
+// shows up in the same poll (an unattributable race with another session starting under the same config dir),
+// and gives up after its timeout instead of watching indefinitely — a standing watch would eventually see and
+// misreport a later, unrelated session's transcript as this session's own.
 public class ClaudeTtyProviderConversationTests : IDisposable
 {
     private readonly string _stateDirectory = Directory.CreateTempSubdirectory("cockpit-claude-tty-conversation-tests-").FullName;
@@ -70,11 +68,9 @@ public class ClaudeTtyProviderConversationTests : IDisposable
         Assert.Empty(reported);
     }
 
-    /// <summary>
-    /// The stand-in for a <c>/clear</c>: a second transcript appears well after the first was already reported.
-    /// This TTY route deliberately does not catch it (see the method's remarks) — the watch has already stopped
-    /// by the time the second file exists, which is the accepted trade-off, not a bug.
-    /// </summary>
+    // The stand-in for a `/clear`: a second transcript appears well after the first was already reported.
+    // This TTY route deliberately does not catch it (see the method's remarks) — the watch has already stopped
+    // by the time the second file exists, which is the accepted trade-off, not a bug.
     [Fact]
     public async Task WatchConversationIdAsync_DoesNotReportAgain_ForATranscriptThatAppearsAfterItAlreadyReported()
     {

@@ -2,11 +2,9 @@ using Cockpit.Plugin.Kubernetes.Cluster;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-/// <summary>
-/// Exec-auth detection drives an operator-facing warning (a kubeconfig exec plugin runs an external process on
-/// connect), so it is security-relevant and pinned here: detected when present, absent for a plain token, and
-/// fail-safe (never throwing) on an unknown context or unparseable input.
-/// </summary>
+// Exec-auth detection drives an operator-facing warning (a kubeconfig exec plugin runs an external process on
+// connect), so it is security-relevant and pinned here: detected when present, absent for a plain token, and
+// fail-safe (never throwing) on an unknown context or unparseable input.
 public class KubeconfigInspectorTests
 {
     private const string ExecAuthKubeconfig = """

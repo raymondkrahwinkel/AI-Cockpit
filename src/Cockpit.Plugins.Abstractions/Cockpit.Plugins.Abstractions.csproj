@@ -13,6 +13,13 @@
          so it can be published as a NuGet for out-of-repo authoring; its Version's major must equal
          AbstractionsContract.Version (the manifest's abstractionsVersion the host gates on). XML docs
          ship for author IntelliSense; CS1591 is not enforced (the SDK guide is the reference). -->
+    <!-- AC-593: exempt from the "/// only on interface methods" sweep and its gate. Everywhere else in
+         the repo a /// on an implementation carries no reader beyond this codebase, so CodeQuality.md
+         §3 turns it into a plain comment. Here the /// on public SDK types (not just interfaces) is
+         the IntelliSense a plugin author sees when referencing the NuGet package above, and turning it
+         into // would remove that for every consumer outside this repo, which is a different kind of
+         loss than the sweep is written for. Decided with Raymond 2026-08-02: keep /// throughout this
+         assembly rather than apply the rule here. -->
     <!-- 1.1.0: members were added since 1.0.0 (AddWorkflowTemplate, ShowSettingsAsync, SuggestAsync, SetSecret/
          GetSecret) and nothing was taken away or changed. Additions are a minor — including the ones carrying a
          default implementation, which is precisely what keeps an existing plugin compiling. The major stays 1
@@ -315,7 +322,19 @@
          instead of treating every project the same. A project nothing ever claims resolves null and the editor is
          unchanged (acceptance criterion 4). Additions only — a minor; major and abstractionsVersion stay 1. No
          in-repo plugin calls this yet, so no minHostVersion bump accompanies it. -->
-    <Version>1.46.0</Version>
+    <!-- 1.47.0 (AC-609): added to IPluginTranscriptReader a statusFile-carrying ReadActivityAsync overload and
+         ReadEntries (with PluginTranscriptEntry / PluginTranscriptEntryKind / PluginTranscriptSlice) — both
+         default-implemented, the first forwarding to the existing overload and the second reporting nothing, so an
+         already-compiled plugin keeps its behaviour exactly. The overload exists because the older one has no way to
+         know which transcript is the session's: all it is given is what was on disk before the launch, so it must
+         take whichever artifact appears next — a race against every other invocation of the same CLI on the machine,
+         and one whose loss is silent and permanent (the reader tails a foreign file that then stops growing, so the
+         host is handed no activity at all and reports the session Idle for its whole life). A provider that can name
+         its own transcript — the CLI states it in the statusline snapshot the host already polls — now does.
+         ReadEntries is the same identity used for reading back: a TTY session's on-disk record is the only
+         transcript it has, so this is what lets a read surface answer for one instead of denying it exists.
+         Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.47.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

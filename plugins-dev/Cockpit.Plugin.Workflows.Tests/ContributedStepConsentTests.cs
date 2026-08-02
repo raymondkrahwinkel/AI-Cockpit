@@ -7,12 +7,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// A contributed step declares in its own code whether it needs consent (#AC-38), and the workflows plugin cannot
-/// override it. What these hold: the declared risk maps straight through to the runtime gate; an undeclared non-trigger
-/// step is left out of the engine rather than run ungated; and only a Dangerous step is kept from an agent's reach — a
-/// LowRisk one stays agent-buildable and is gated at run time instead.
-/// </summary>
+// A contributed step declares in its own code whether it needs consent (#AC-38), and the workflows plugin cannot
+// override it. What these hold: the declared risk maps straight through to the runtime gate; an undeclared non-trigger
+// step is left out of the engine rather than run ungated; and only a Dangerous step is kept from an agent's reach — a
+// LowRisk one stays agent-buildable and is gated at run time instead.
 public class ContributedStepConsentTests
 {
     [Theory]

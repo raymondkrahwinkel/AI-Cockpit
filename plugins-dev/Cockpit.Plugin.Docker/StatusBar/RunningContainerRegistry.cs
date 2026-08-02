@@ -4,13 +4,11 @@ using Cockpit.Plugin.Docker.Engine;
 
 namespace Cockpit.Plugin.Docker.StatusBar;
 
-/// <summary>
-/// Tracks the detached containers this plugin started (<c>docker run -d</c>) and surfaces them in the status bar
-/// (AC-82), mirroring the Kubernetes plugin's <c>PortForwardManager</c>. Each shows name · image · ports · session ·
-/// uptime with an <b>operator-only</b> Kill: the host renders the Kill button and invokes <c>StopAsync</c>; an agent
-/// has no path to it (there is no MCP tool that reaches this — the agent can only stop a container through the gated
-/// <c>stop_container</c>/<c>remove_container</c> tools, which ask for consent).
-/// </summary>
+// Tracks the detached containers this plugin started (`docker run -d`) and surfaces them in the status bar
+// (AC-82), mirroring the Kubernetes plugin's `PortForwardManager`. Each shows name · image · ports · session ·
+// uptime with an *operator-only* Kill: the host renders the Kill button and invokes `StopAsync`; an agent
+// has no path to it (there is no MCP tool that reaches this — the agent can only stop a container through the gated
+// `stop_container`/`remove_container` tools, which ask for consent).
 internal sealed class RunningContainerRegistry(IDockerEngine engine, Func<DateTimeOffset> clock) : ISupervisedActivitySource
 {
     private readonly ConcurrentDictionary<string, TrackedContainer> _containers = new(StringComparer.Ordinal);
@@ -19,7 +17,7 @@ internal sealed class RunningContainerRegistry(IDockerEngine engine, Func<DateTi
 
     public event Action? Changed;
 
-    /// <summary>Record a container this plugin just started, so it appears in the status bar.</summary>
+    // Record a container this plugin just started, so it appears in the status bar.
     public void Track(string id, string name, string image, string ports, string session)
     {
         _containers[id] = new TrackedContainer(id, name, image, ports, session, clock());

@@ -2,10 +2,8 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// The gh query behind the review-requested list (#74). Asserted here rather than by shelling out: a wrong
-/// filter would silently list the wrong pull requests, and <c>--review-requested @me</c> is the whole feature.
-/// </summary>
+// The gh query behind the review-requested list (#74). Asserted here rather than by shelling out: a wrong
+// filter would silently list the wrong pull requests, and `--review-requested @me` is the whole feature.
 public class GitHubPrGhClientTests
 {
     [Fact]

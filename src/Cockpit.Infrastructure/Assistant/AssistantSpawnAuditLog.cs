@@ -5,16 +5,14 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-/// <summary>
-/// Appends the assistant spawn trail (AC-545, criterion 5) to <c>assistant-spawn-audit.jsonl</c> next to
-/// <c>cockpit.json</c>. The append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the
-/// last N without loading the whole file — lives in <see cref="JsonlAuditLog{T}"/>, the same base the consent and
-/// delegation trails use; this only names the file and trims the one free-text field a refusal can put arbitrary
-/// length into, so the log stays a record of what was started (or refused), not a copy of every explanation.
-/// </summary>
+// Appends the assistant spawn trail (AC-545, criterion 5) to `assistant-spawn-audit.jsonl` next to
+// `cockpit.json`. The append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the
+// last N without loading the whole file — lives in `JsonlAuditLog{T}`, the same base the consent and
+// delegation trails use; this only names the file and trims the one free-text field a refusal can put arbitrary
+// length into, so the log stays a record of what was started (or refused), not a copy of every explanation.
 internal sealed class AssistantSpawnAuditLog : JsonlAuditLog<AssistantSpawnAuditEntry>, IAssistantSpawnAuditLog, ISingletonService
 {
-    /// <summary>The refusal reason is trimmed: the trail is for recognising what the gate stopped, not for keeping a full copy of every message a tool ever returned.</summary>
+    // The refusal reason is trimmed: the trail is for recognising what the gate stopped, not for keeping a full copy of every message a tool ever returned.
     private const int MaxRefusalLength = 300;
 
     public AssistantSpawnAuditLog(ILogger<AssistantSpawnAuditLog> logger)
@@ -22,7 +20,7 @@ internal sealed class AssistantSpawnAuditLog : JsonlAuditLog<AssistantSpawnAudit
     {
     }
 
-    /// <summary>Test seam: point the log at an arbitrary file.</summary>
+    // Test seam: point the log at an arbitrary file.
     internal AssistantSpawnAuditLog(string logFilePath, ILogger<AssistantSpawnAuditLog> logger)
         : base(logFilePath, logger)
     {

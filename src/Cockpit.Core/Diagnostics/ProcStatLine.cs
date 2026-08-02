@@ -1,12 +1,10 @@
 namespace Cockpit.Core.Diagnostics;
 
-/// <summary>
-/// One line of Linux's <c>/proc/&lt;pid&gt;/stat</c>, as far as a resource meter cares (#78): who the parent is,
-/// and how much processor time the process has burned. Pure, because parsing this file has one nasty trap and a
-/// test is the only honest way to prove we did not fall into it — field 2 is the executable name <em>in
-/// parentheses</em>, and it may itself contain spaces and parentheses (a process called "my prog (v2)" is legal),
-/// so counting fields from the left is wrong. The reliable trick is to start counting after the LAST ')'.
-/// </summary>
+// One line of Linux's `/proc/&lt;pid&gt;/stat`, as far as a resource meter cares (#78): who the parent is,
+// and how much processor time the process has burned. Pure, because parsing this file has one nasty trap and a
+// test is the only honest way to prove we did not fall into it — field 2 is the executable name *in
+// parentheses*, and it may itself contain spaces and parentheses (a process called "my prog (v2)" is legal),
+// so counting fields from the left is wrong. The reliable trick is to start counting after the LAST ')'.
 public sealed record ProcStatLine(string Name, int ParentProcessId, long UserTicks, long SystemTicks)
 {
     public long TotalTicks => UserTicks + SystemTicks;

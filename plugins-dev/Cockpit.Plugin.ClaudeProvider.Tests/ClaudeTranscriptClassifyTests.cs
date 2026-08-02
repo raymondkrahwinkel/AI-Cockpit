@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// The plugin's own transcript-line classification (ported from the host's former <c>TtyTranscriptStatus</c>,
-/// weg A): a user message or tool-result means the model owes a response (Busy); an assistant message is Busy
-/// while it streams or loops into a tool call and TurnComplete on a terminal stop_reason; metadata and
-/// unparseable lines carry no signal.
-/// </summary>
+// The plugin's own transcript-line classification (ported from the host's former `TtyTranscriptStatus`,
+// weg A): a user message or tool-result means the model owes a response (Busy); an assistant message is Busy
+// while it streams or loops into a tool call and TurnComplete on a terminal stop_reason; metadata and
+// unparseable lines carry no signal.
 public class ClaudeTranscriptClassifyTests
 {
     [Fact]

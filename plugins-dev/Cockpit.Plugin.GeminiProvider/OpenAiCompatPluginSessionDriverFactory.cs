@@ -6,13 +6,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GeminiProvider;
 
-/// <summary>
-/// <see cref="IPluginSessionDriverFactory"/> for this plugin's Gemini/OpenAI providers (#45): deserializes
-/// the profile's opaque config JSON into an <see cref="OpenAiCompatConfig"/> and builds an
-/// <see cref="IChatClient"/> against its base URL via the OpenAI SDK with a custom
-/// <see cref="OpenAIClientOptions.Endpoint"/> — the same construction
-/// <c>Cockpit.Infrastructure.Sessions.OpenAiCompatChatClientFactory</c> uses for Ollama/LM Studio.
-/// </summary>
+// `IPluginSessionDriverFactory` for this plugin's Gemini/OpenAI providers (#45): deserializes
+// the profile's opaque config JSON into an `OpenAiCompatConfig` and builds an
+// `IChatClient` against its base URL via the OpenAI SDK with a custom
+// `OpenAIClientOptions.Endpoint` — the same construction
+// `Cockpit.Infrastructure.Sessions.OpenAiCompatChatClientFactory` uses for Ollama/LM Studio.
 internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)

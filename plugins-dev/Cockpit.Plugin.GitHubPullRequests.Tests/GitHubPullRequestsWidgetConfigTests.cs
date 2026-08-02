@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// The dashboard widget's per-instance count (#AC-18): a dashboard pane is sized by hand, so how many pull
-/// requests it lists is its own, not the plugin-wide section count — and a stored value that has drifted out of
-/// range (an older config, a hand edit) must not leave the pane showing nothing or everything.
-/// </summary>
+// The dashboard widget's per-instance count (#AC-18): a dashboard pane is sized by hand, so how many pull
+// requests it lists is its own, not the plugin-wide section count — and a stored value that has drifted out of
+// range (an older config, a hand edit) must not leave the pane showing nothing or everything.
 public class GitHubPullRequestsWidgetConfigTests
 {
     [Fact]

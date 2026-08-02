@@ -2,16 +2,14 @@ using Cockpit.Core.Shortcuts;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of the app-action shortcuts, under the <c>shortcuts</c> section of <c>cockpit.json</c>: a map
-/// from <see cref="ShortcutAction"/> name to gesture string. Kept separate from <see cref="ShortcutSettings"/>
-/// so the persisted shape can evolve independently; unknown action names are ignored on load.
-/// </summary>
+// On-disk shape of the app-action shortcuts, under the `shortcuts` section of `cockpit.json`: a map
+// from `ShortcutAction` name to gesture string. Kept separate from `ShortcutSettings`
+// so the persisted shape can evolve independently; unknown action names are ignored on load.
 internal sealed class ShortcutSettingsEntry
 {
     public Dictionary<string, string> Gestures { get; set; } = [];
 
-    /// <summary>Per-plugin-shortcut gesture overrides, keyed by the plugin's shortcut id.</summary>
+    // Per-plugin-shortcut gesture overrides, keyed by the plugin's shortcut id.
     public Dictionary<string, string> PluginGestures { get; set; } = [];
 
     public static ShortcutSettingsEntry FromDomain(ShortcutSettings settings) => new()

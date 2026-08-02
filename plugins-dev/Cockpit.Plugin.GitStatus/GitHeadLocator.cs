@@ -1,12 +1,10 @@
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// Finds the HEAD file that governs the branch a working directory is on. It is not reliably
-/// <c>&lt;dir&gt;/.git/HEAD</c>: the session may be working in a subdirectory of the repository, or in a linked
-/// worktree, each of which git points at a different git directory. Asking git itself
-/// (<c>rev-parse --absolute-git-dir</c>) is the one way that stays correct across all of them — the header
-/// control watches the returned file so the branch badge follows a checkout made outside the session.
-/// </summary>
+// Finds the HEAD file that governs the branch a working directory is on. It is not reliably
+// `&lt;dir&gt;/.git/HEAD`: the session may be working in a subdirectory of the repository, or in a linked
+// worktree, each of which git points at a different git directory. Asking git itself
+// (`rev-parse --absolute-git-dir`) is the one way that stays correct across all of them — the header
+// control watches the returned file so the branch badge follows a checkout made outside the session.
 internal static class GitHeadLocator
 {
     public static async Task<string?> ResolveHeadFileAsync(string workingDirectory, CancellationToken cancellationToken)

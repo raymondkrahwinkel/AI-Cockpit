@@ -4,11 +4,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// AC-202: the YouTrack provider maps Autopilot's tracker-neutral lifecycle stages to the AC board's own "Stage"
-/// vocabulary (Backlog / Develop / Review / Test / Staging / Done), so a source-triggered run moves the issue itself
-/// instead of leaving it on Backlog. Merge-ready maps to Review, not Done — the merge is a human's.
-/// </summary>
+// AC-202: the YouTrack provider maps Autopilot's tracker-neutral lifecycle stages to the AC board's own "Stage"
+// vocabulary (Backlog / Develop / Review / Test / Staging / Done), so a source-triggered run moves the issue itself
+// instead of leaving it on Backlog. Merge-ready maps to Review, not Done — the merge is a human's.
 public class YouTrackTrackerStageMappingTests
 {
     [Theory]

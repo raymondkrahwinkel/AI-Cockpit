@@ -5,46 +5,39 @@ using Cockpit.Core.Abstractions.Agents;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>One attempt on the line, as the operator reads it back (AC-397).</summary>
+// One attempt on the line, as the operator reads it back (AC-397).
 public sealed record AgentLineMessageRow(string When, string From, string To, string Kind, string Outcome, string Body);
 
-/// <summary>One wake — fired or refused. Refusals are the half a success-only log would hide.</summary>
+// One wake — fired or refused. Refusals are the half a success-only log would hide.
 public sealed record AgentLineWakeRow(string When, string From, string To, string Outcome);
 
-/// <summary>One standing claim, with its age: an old one is the shape an agent that went away without releasing leaves.</summary>
+// One standing claim, with its age: an old one is the shape an agent that went away without releasing leaves.
 public sealed record AgentLineClaimRow(string Resource, string HeldBy, string Age);
 
-/// <summary>What one sender has spent against the rate limit inside the current window.</summary>
+// What one sender has spent against the rate limit inside the current window.
 public sealed record AgentLineBudgetRow(string PaneId, string Activity, string Spent);
 
-/// <summary>A pane the cockpit can see that has never called in — the AC-156 shape, made visible rather than left out.</summary>
+// A pane the cockpit can see that has never called in — the AC-156 shape, made visible rather than left out.
 public sealed record AgentLineGapRow(string PaneId, string Note);
 
-/// <summary>
-/// The desk being inspected: which workspace, and the agent panes on it.
-/// <para>
-/// Resolved by the caller rather than through <c>IWorkspaceAgentGateway</c>, which is what an earlier revision did
-/// and could not: that gateway is constructed <em>from</em> <see cref="CockpitViewModel"/>, so taking it as a
-/// constructor dependency of that same view model is a cycle the container follows until the stack runs out. The
-/// same reason <c>ISessionDialogService</c>'s worktrees and projects dialogs take their view models as parameters.
-/// </para>
-/// </summary>
+// The desk being inspected: which workspace, and the agent panes on it.
+//
+// Resolved by the caller rather than through `IWorkspaceAgentGateway`, which is what an earlier revision did
+// and could not: that gateway is constructed *from* `CockpitViewModel`, so taking it as a
+// constructor dependency of that same view model is a cycle the container follows until the stack runs out. The
+// same reason `ISessionDialogService`'s worktrees and projects dialogs take their view models as parameters.
 public sealed record AgentLineDesk(string WorkspaceId, IReadOnlySet<string> PaneIds);
 
-/// <summary>
-/// The operator's window on what agents are doing to each other (AC-397). Read-only by construction and not only by
-/// intent: this view model exposes no command that sends, wakes or releases anything, and the services it holds are
-/// the reading halves of the line's stores.
-/// <para>
-/// It exists because the operator is not a participant in the message path. Without it, agent-to-agent traffic is
-/// entirely invisible — the same blind spot AC-34 closed for the terminal MCP, one layer along.
-/// </para>
-/// <para>
-/// Scoped to one desk: the desk of the session in view. The workspace boundary the line enforces for agents is not
-/// something this quietly steps around — an operator can look at another desk by selecting a session on it, which is
-/// the same act as walking to another window, rather than by being handed every desk at once.
-/// </para>
-/// </summary>
+// The operator's window on what agents are doing to each other (AC-397). Read-only by construction and not only by
+// intent: this view model exposes no command that sends, wakes or releases anything, and the services it holds are
+// the reading halves of the line's stores.
+//
+// It exists because the operator is not a participant in the message path. Without it, agent-to-agent traffic is
+// entirely invisible — the same blind spot AC-34 closed for the terminal MCP, one layer along.
+//
+// Scoped to one desk: the desk of the session in view. The workspace boundary the line enforces for agents is not
+// something this quietly steps around — an operator can look at another desk by selecting a session on it, which is
+// the same act as walking to another window, rather than by being handed every desk at once.
 public sealed partial class AgentLineInspectorViewModel : ObservableObject
 {
     private readonly IAgentNotifyAuditLog? _trail;
@@ -52,10 +45,10 @@ public sealed partial class AgentLineInspectorViewModel : ObservableObject
     private readonly IAgentLineBudget? _budget;
     private readonly IWorkspaceAgentCoordinator? _roster;
 
-    /// <summary>How many trail entries one look back reads. Newest first, so this is a recent history and not an archive.</summary>
+    // How many trail entries one look back reads. Newest first, so this is a recent history and not an archive.
     internal const int MaxTrailEntries = 200;
 
-    /// <summary>The design-time and no-services shape: every list empty, and a line saying so rather than a blank panel.</summary>
+    // The design-time and no-services shape: every list empty, and a line saying so rather than a blank panel.
     public AgentLineInspectorViewModel()
     {
     }
@@ -72,11 +65,9 @@ public sealed partial class AgentLineInspectorViewModel : ObservableObject
         _roster = roster;
     }
 
-    /// <summary>
-    /// The desk in view, read fresh on every refresh. Assigned by <see cref="CockpitViewModel"/> after construction,
-    /// the same way the worktrees panel is given its live-session source: the answer changes with the operator's
-    /// selection, so a value captured once would go stale on the first tab switch.
-    /// </summary>
+    // The desk in view, read fresh on every refresh. Assigned by `CockpitViewModel` after construction,
+    // the same way the worktrees panel is given its live-session source: the answer changes with the operator's
+    // selection, so a value captured once would go stale on the first tab switch.
     public Func<AgentLineDesk?> Desk { get; set; } = static () => null;
 
     public ObservableCollection<AgentLineMessageRow> Messages { get; } = [];
@@ -89,14 +80,12 @@ public sealed partial class AgentLineInspectorViewModel : ObservableObject
 
     public ObservableCollection<AgentLineGapRow> Gaps { get; } = [];
 
-    /// <summary>
-    /// What the window says when there is nothing to show. Empty must look empty and not broken, and the two reasons
-    /// for empty — no desk in view, or a quiet desk — are different enough that the operator should be told which.
-    /// </summary>
+    // What the window says when there is nothing to show. Empty must look empty and not broken, and the two reasons
+    // for empty — no desk in view, or a quiet desk — are different enough that the operator should be told which.
     [ObservableProperty]
     private string _emptyNote = "Select a session to see the agent line for its desk.";
 
-    /// <summary>The desk being reported on, so it is never ambiguous which one the numbers belong to.</summary>
+    // The desk being reported on, so it is never ambiguous which one the numbers belong to.
     [ObservableProperty]
     private string _deskNote = string.Empty;
 

@@ -5,28 +5,23 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Backs the "Choose…" picker for a Memory row whose source can enumerate its own locations (AC-502) — a Depot
-/// connection's own projects, say. Loads on open, never blocking the project editor behind it (criterion 6: this
-/// runs on its own window, and the load itself is a plain awaited <see cref="Task"/>, never a synchronous wait).
-/// <para>
-/// Three states beyond "here is the list", each shown instead of an empty list rather than alongside one — an empty
-/// list must always mean "this source genuinely has nothing", never "something else is going on" (criteria 4/5):
-/// <see cref="NeedsSignIn"/>, <see cref="ErrorMessage"/>, and the plain loading state via <see cref="IsLoading"/>.
-/// </para>
-/// </summary>
+// Backs the "Choose…" picker for a Memory row whose source can enumerate its own locations (AC-502) — a Depot
+// connection's own projects, say. Loads on open, never blocking the project editor behind it (criterion 6: this
+// runs on its own window, and the load itself is a plain awaited `Task`, never a synchronous wait).
+//
+// Three states beyond "here is the list", each shown instead of an empty list rather than alongside one — an empty
+// list must always mean "this source genuinely has nothing", never "something else is going on" (criteria 4/5):
+// `NeedsSignIn`, `ErrorMessage`, and the plain loading state via `IsLoading`.
 public partial class MemorySourceLocationPickerViewModel : ViewModelBase
 {
     private readonly Func<CancellationToken, Task<ProjectMemorySourceLocationsResult>> _listLocationsAsync;
     private readonly Func<CancellationToken, Task<bool>>? _signInAsync;
 
-    /// <summary>
-    /// The row's own <c>Reference</c> at the moment this picker opened (AC-499) — bare, the same shape
-    /// <see cref="ProjectMemorySourceLocation.Value"/> is in, never a scheme-prefixed <c>ProjectMemoryRef</c>. Compared
-    /// ordinal against every loaded location's <see cref="ProjectMemorySourceLocation.Value"/> so the "Current" badge
-    /// in the list (bound to <see cref="CurrentValue"/> itself, not to <see cref="SelectedLocation"/>) never moves
-    /// off the row the operator actually came in on, even after they click a different one.
-    /// </summary>
+    // The row's own `Reference` at the moment this picker opened (AC-499) — bare, the same shape
+    // `ProjectMemorySourceLocation.Value` is in, never a scheme-prefixed `ProjectMemoryRef`. Compared
+    // ordinal against every loaded location's `ProjectMemorySourceLocation.Value` so the "Current" badge
+    // in the list (bound to `CurrentValue` itself, not to `SelectedLocation`) never moves
+    // off the row the operator actually came in on, even after they click a different one.
     private readonly string? _currentValue;
 
     // Review fix: LoadAsync has no re-entrancy guard of its own — SignIn calls it after a successful sign-in, Retry
@@ -38,10 +33,10 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
     // when its await returns is stale and writes nothing.
     private int _loadGeneration;
 
-    /// <summary>Raised when the operator confirms a pick (the location's bare <c>Value</c>) or cancels (null).</summary>
+    // Raised when the operator confirms a pick (the location's bare `Value`) or cancels (null).
     public event Action<string?>? CloseRequested;
 
-    /// <summary>What the picker is choosing from — the source's own <c>Title</c>, e.g. "Depot project — Wispslate".</summary>
+    // What the picker is choosing from — the source's own `Title`, e.g. "Depot project — Wispslate".
     public string SourceTitle { get; }
 
     public ObservableCollection<ProjectMemorySourceLocation> Locations { get; } = [];
@@ -57,23 +52,23 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSigningIn;
 
-    /// <summary>Whether the source reported it needs a sign-in before it can list anything (criterion 4).</summary>
+    // Whether the source reported it needs a sign-in before it can list anything (criterion 4).
     [ObservableProperty]
     private bool _needsSignIn;
 
-    /// <summary>Whether this source offers a sign-in at all — false hides the button and leaves the message plain.</summary>
+    // Whether this source offers a sign-in at all — false hides the button and leaves the message plain.
     public bool CanSignIn => _signInAsync is not null;
 
-    /// <summary>Set when the load failed outright (criterion 5) — never left as a bare empty list.</summary>
+    // Set when the load failed outright (criterion 5) — never left as a bare empty list.
     [ObservableProperty]
     private string? _errorMessage;
 
     public bool CanPick => SelectedLocation is not null;
 
-    /// <summary>Bound by the "Current" badge in the list's <c>DataTemplate</c> — see <see cref="_currentValue"/>.</summary>
+    // Bound by the "Current" badge in the list's `DataTemplate` — see `_currentValue`.
     public string? CurrentValue => _currentValue;
 
-    /// <summary>Design-time constructor for the Avalonia previewer.</summary>
+    // Design-time constructor for the Avalonia previewer.
     public MemorySourceLocationPickerViewModel()
         : this("Depot project — Synvolution", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([])))
     {
@@ -91,7 +86,7 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
         _currentValue = currentValue is { Length: > 0 } ? currentValue : null;
     }
 
-    /// <summary>Runs the source's own listing and settles into exactly one of the states above. Safe to call again (Retry, after sign-in).</summary>
+    // Runs the source's own listing and settles into exactly one of the states above. Safe to call again (Retry, after sign-in).
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         var generation = ++_loadGeneration;

@@ -12,11 +12,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Plugin.LocalCi;
 
-/// <summary>
-/// Local CI plugin entry point (AC-448). It works out whether this machine can run a workflow job at all, reads the
-/// project's workflows to say which jobs are worth trying, and runs one of them in a container on the session's own
-/// checkout — with the log while it happens and a way to stop it.
-/// </summary>
+// Local CI plugin entry point (AC-448). It works out whether this machine can run a workflow job at all, reads the
+// project's workflows to say which jobs are worth trying, and runs one of them in a container on the session's own
+// checkout — with the log while it happens and a way to stop it.
 public sealed class LocalCiPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

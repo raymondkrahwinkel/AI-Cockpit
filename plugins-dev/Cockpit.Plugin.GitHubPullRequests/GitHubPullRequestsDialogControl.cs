@@ -12,15 +12,13 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// The "GitHub Pull Requests" dialog opened from the side-menu badge (AC-517) or the widget's "View all open
-/// PRs" button: a search
-/// box and a sortable <see cref="DataGrid"/> of open pull requests (across all repos in GitHub CLI mode, or
-/// one repo in HTTP mode) on the left, and a details panel on the right showing the selected pull request's
-/// title, repository, author, body, a link, and a preview of the prompt it would produce (with a copy
-/// button). "Add to prompt" injects the prompt into the active session and only shows when one is active;
-/// the copy button always works. Built in code; the DataGrid theme is provided app-wide by the host.
-/// </summary>
+// The "GitHub Pull Requests" dialog opened from the side-menu badge (AC-517) or the widget's "View all open
+// PRs" button: a search
+// box and a sortable `DataGrid` of open pull requests (across all repos in GitHub CLI mode, or
+// one repo in HTTP mode) on the left, and a details panel on the right showing the selected pull request's
+// title, repository, author, body, a link, and a preview of the prompt it would produce (with a copy
+// button). "Add to prompt" injects the prompt into the active session and only shows when one is active;
+// the copy button always works. Built in code; the DataGrid theme is provided app-wide by the host.
 internal sealed class GitHubPullRequestsDialogControl : UserControl
 {
     private readonly GitHubPullRequestsSettings _settings;
@@ -329,7 +327,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         }
     }
 
-    /// <summary>The status line, and with it the way into settings when what it reports can only be fixed there.</summary>
+    // The status line, and with it the way into settings when what it reports can only be fixed there.
     private void _SetStatus(string text, bool needsConfiguration = false)
     {
         _status.Text = text;
@@ -374,7 +372,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             filtered.OrderByDescending(pullRequest => pullRequest.UpdatedAt ?? DateTimeOffset.MinValue));
     }
 
-    /// <summary>The row's own menu: add it to the prompt, open it, or set it aside — this pull request, or every one from its repository.</summary>
+    // The row's own menu: add it to the prompt, open it, or set it aside — this pull request, or every one from its repository.
     private ContextMenu _RowMenu(GitHubPullRequest pullRequest)
     {
         var addToPrompt = new MenuItem { Header = "Add to prompt" };
@@ -506,7 +504,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

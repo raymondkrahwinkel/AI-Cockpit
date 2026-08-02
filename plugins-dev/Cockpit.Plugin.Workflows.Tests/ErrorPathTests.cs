@@ -5,17 +5,14 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// What happens when a step fails (#69). Until now the answer was "the branch stops and the run is failed", which is
-/// right when nobody said otherwise and useless when they did: a push that fails should be able to tell Slack, and a
-/// notification nobody received should not stop a deploy that worked.
-/// <para>
-/// Three answers, in the order the operator meant them: a wire from the step's error way out (the failure goes
-/// somewhere, and the run is one that <em>handled</em> a failure rather than one that failed), "keep going" (carry on
-/// down the ordinary wire), and — failing both — stop, because a flow that quietly walked past a step that did not work
-/// would be worse than one that stopped.
-/// </para>
-/// </summary>
+// What happens when a step fails (#69). Until now the answer was "the branch stops and the run is failed", which is
+// right when nobody said otherwise and useless when they did: a push that fails should be able to tell Slack, and a
+// notification nobody received should not stop a deploy that worked.
+//
+// Three answers, in the order the operator meant them: a wire from the step's error way out (the failure goes
+// somewhere, and the run is one that *handled* a failure rather than one that failed), "keep going" (carry on
+// down the ordinary wire), and — failing both — stop, because a flow that quietly walked past a step that did not work
+// would be worse than one that stopped.
 public class ErrorPathTests
 {
     [Fact]

@@ -8,11 +8,9 @@ using Cockpit.Core.Delegation;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The cockpit's view on delegated work (#67): every task another session handed to a profile, what it is doing,
-/// what it answered, and a way to stop it. A delegated task runs a real session with no tab of its own, so this
-/// is the only place it is visible — and the operator keeps the final say over anything running in their name.
-/// </summary>
+// The cockpit's view on delegated work (#67): every task another session handed to a profile, what it is doing,
+// what it answered, and a way to stop it. A delegated task runs a real session with no tab of its own, so this
+// is the only place it is visible — and the operator keeps the final say over anything running in their name.
 public sealed partial class DelegatedTasksViewModel : ObservableObject, ISingletonService
 {
     private readonly IDelegationService? _delegation;
@@ -28,7 +26,7 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
         SelectedTask = Tasks[0];
     }
 
-    /// <summary>Design-time only: the detail pane has no engine to read output from in the previewer.</summary>
+    // Design-time only: the detail pane has no engine to read output from in the previewer.
     private readonly string? _designOutput;
 
     public DelegatedTasksViewModel(IDelegationService delegation)
@@ -43,29 +41,25 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
 
     public ObservableCollection<DelegatedTaskRowViewModel> Tasks { get; } = [];
 
-    /// <summary>
-    /// The tasks grouped by what they are doing — waiting for a slot, working, finished — so the list reads as a
-    /// picture of the work rather than one flat pile where a queued task looks the same as a finished one.
-    /// </summary>
+    // The tasks grouped by what they are doing — waiting for a slot, working, finished — so the list reads as a
+    // picture of the work rather than one flat pile where a queued task looks the same as a finished one.
     public ObservableCollection<DelegatedTaskGroupViewModel> Groups { get; } = [];
 
-    /// <summary>True while any delegated task is running or waiting for a slot — drives the "N background task(s)" hint.</summary>
+    // True while any delegated task is running or waiting for a slot — drives the "N background task(s)" hint.
     public bool HasActiveTasks => Tasks.Any(task => task.IsActive);
 
-    /// <summary>How many delegated tasks are running or queued right now.</summary>
+    // How many delegated tasks are running or queued right now.
     public int ActiveTaskCount => Tasks.Count(task => task.IsActive);
 
-    /// <summary>
-    /// Which brush the status bar's count reads in: the working blue while something is running, quiet grey while
-    /// nothing is. The count is always on screen — knowing that nothing is running on your behalf is worth as much as
-    /// knowing that something is — so it is the colour, not the presence, that says which.
-    /// </summary>
+    // Which brush the status bar's count reads in: the working blue while something is running, quiet grey while
+    // nothing is. The count is always on screen — knowing that nothing is running on your behalf is worth as much as
+    // knowing that something is — so it is the colour, not the presence, that says which.
     public string ActiveTaskBrushKey => HasActiveTasks ? "CockpitStatusBusyBrush" : "CockpitTextFaintBrush";
 
     [ObservableProperty]
     private DelegatedTaskRowViewModel? _selectedTask;
 
-    /// <summary>The selected task's output, read-only: what the sub-agent produced, for an operator checking on it.</summary>
+    // The selected task's output, read-only: what the sub-agent produced, for an operator checking on it.
     public string SelectedTaskOutput => SelectedTask is null
         ? string.Empty
         : _delegation is null ? _designOutput ?? string.Empty : _BuildOutput(SelectedTask.TaskId);
@@ -97,7 +91,7 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
         OnPropertyChanged(nameof(SelectedTaskOutput));
     }
 
-    /// <summary>Stops a delegated task on the operator's say-so — the same stop path the orchestrator's own stop_task takes.</summary>
+    // Stops a delegated task on the operator's say-so — the same stop path the orchestrator's own stop_task takes.
     [RelayCommand]
     private async Task StopAsync(DelegatedTaskRowViewModel? task)
     {

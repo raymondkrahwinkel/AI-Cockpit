@@ -21,9 +21,10 @@ internal interface ICliRunner
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>What a <see cref="ICliRunner.RunAsync"/> call produced.</summary>
-/// <param name="Started">False when the executable could not be launched — it is not installed or not on PATH.</param>
-/// <param name="TimedOut">True when it launched but did not finish within the timeout.</param>
+// What a `ICliRunner.RunAsync` call produced.
+//
+// `Started`: False when the executable could not be launched — it is not installed or not on PATH.
+// `TimedOut`: True when it launched but did not finish within the timeout.
 internal sealed record CliResult(
     bool Started,
     bool TimedOut,

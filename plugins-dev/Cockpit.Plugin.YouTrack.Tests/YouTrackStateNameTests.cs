@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// Which custom field is an issue's status, read off an already-parsed <c>customFields</c> array — the rule the issue
-/// grid and Autopilot's start gate (AC-345) now share. Asserted with xunit's own Assert rather than the
-/// FluentAssertions the older files in this project use: that package is commercially licensed from v8 on.
-/// </summary>
+// Which custom field is an issue's status, read off an already-parsed `customFields` array — the rule the issue
+// grid and Autopilot's start gate (AC-345) now share. Asserted with xunit's own Assert rather than the
+// FluentAssertions the older files in this project use: that package is commercially licensed from v8 on.
 public class YouTrackStateNameTests
 {
     [Theory]

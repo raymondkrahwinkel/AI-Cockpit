@@ -5,37 +5,33 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// <see cref="IPluginSessionDriver"/> for Codex over the persistent <c>codex app-server</c> JSON-RPC protocol
-/// (#45 fase 3) — the interactive route that replaces the headless <see cref="CliSubprocessPluginSessionDriver"/>.
-/// Unlike <c>codex exec</c>, the app-server can show a real approval dialog: it sends the client a request per
-/// shell command / file edit and blocks the turn until the operator answers, which is why this driver reports
-/// <see cref="PluginSessionCapabilities.SupportsPermissions"/> where the exec driver could not.
-/// </summary>
-/// <remarks>
-/// Lifecycle: <see cref="StartAsync(string?, string?, string?, IReadOnlyDictionary{string, string}?, IReadOnlyList{PluginMcpServer}?, CancellationToken)"/>
-/// spawns one long-lived process, does the <c>initialize</c>/<c>initialized</c> handshake, then <c>thread/start</c> (with the cwd the
-/// cockpit already knows, #45 D5) or <c>thread/resume</c>. The thread id comes from the start reply or the
-/// <c>thread/started</c> notification, whichever carries it. Each <see cref="SendUserMessageAsync"/> is a
-/// <c>turn/start</c>; the streaming <c>item/*</c> and <c>turn/*</c> notifications are mapped to plugin events
-/// by the notification pump, and the server's approval requests are surfaced as
-/// <see cref="PluginPermissionRequested"/> and answered by <see cref="RespondToPermissionAsync"/>.
-/// </remarks>
+// `IPluginSessionDriver` for Codex over the persistent `codex app-server` JSON-RPC protocol
+// (#45 fase 3) — the interactive route that replaces the headless `CliSubprocessPluginSessionDriver`.
+// Unlike `codex exec`, the app-server can show a real approval dialog: it sends the client a request per
+// shell command / file edit and blocks the turn until the operator answers, which is why this driver reports
+// `PluginSessionCapabilities.SupportsPermissions` where the exec driver could not.
+// Lifecycle: `StartAsync(string?, string?, string?, IReadOnlyDictionary{string, string}?, IReadOnlyList{PluginMcpServer}?, CancellationToken)`
+// spawns one long-lived process, does the `initialize`/`initialized` handshake, then `thread/start` (with the cwd the
+// cockpit already knows, #45 D5) or `thread/resume`. The thread id comes from the start reply or the
+// `thread/started` notification, whichever carries it. Each `SendUserMessageAsync` is a
+// `turn/start`; the streaming `item/*` and `turn/*` notifications are mapped to plugin events
+// by the notification pump, and the server's approval requests are surfaced as
+// `PluginPermissionRequested` and answered by `RespondToPermissionAsync`.
 internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 {
     private const string _ClientName = "cockpit";
     private const string _ClientVersion = "1.0.0";
 
-    /// <summary>Option key for the per-session sandbox choice, declared by the plugin and rendered by the dialog.</summary>
+    // Option key for the per-session sandbox choice, declared by the plugin and rendered by the dialog.
     public const string SandboxOptionKey = "sandbox";
 
-    /// <summary>Option key for the per-session model override — also a live control (#45 D4).</summary>
+    // Option key for the per-session model override — also a live control (#45 D4).
     public const string ModelOptionKey = "model";
 
-    /// <summary>Option key for the live reasoning-effort control (#45 D4), carried as <c>effort</c> on <c>turn/start</c>.</summary>
+    // Option key for the live reasoning-effort control (#45 D4), carried as `effort` on `turn/start`.
     public const string EffortOptionKey = "effort";
 
-    /// <summary>Option key for the live approval-policy control (#45 D4 inc2), carried as <c>approvalPolicy</c> on <c>turn/start</c>.</summary>
+    // Option key for the live approval-policy control (#45 D4 inc2), carried as `approvalPolicy` on `turn/start`.
     public const string ApprovalOptionKey = "approvalPolicy";
 
     // Codex's ReasoningEffort values — a fixed set, unlike the model list, so they need no live lookup.

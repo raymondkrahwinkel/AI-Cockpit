@@ -7,15 +7,13 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// <see cref="ISpeechToTextService"/> that runs Whisper in a child process (AC-174, Raymond 2026-07-22). Whisper.net loads
-/// a native runtime that can <c>abort()</c> on a bad model or a GPU backend it cannot really use — a native crash no
-/// managed handler can catch, which took the whole app down (a ggml_abort in whisper_model_load). Isolating it means a
-/// native crash kills only the worker; the desktop respawns it and stays up. The worker is warm: spawned on first use, it
-/// keeps the model loaded and takes clip after clip, and is killed after <see cref="IdleUnloadAfter"/> of no dictation to
-/// give the ~1.5 GB back. If it crashes while loading — the classic GPU-backend abort — the next attempt is forced onto
-/// the CPU backend, which does not abort, so dictation degrades to CPU instead of failing outright.
-/// </summary>
+// `ISpeechToTextService` that runs Whisper in a child process (AC-174, Raymond 2026-07-22). Whisper.net loads
+// a native runtime that can `abort()` on a bad model or a GPU backend it cannot really use — a native crash no
+// managed handler can catch, which took the whole app down (a ggml_abort in whisper_model_load). Isolating it means a
+// native crash kills only the worker; the desktop respawns it and stays up. The worker is warm: spawned on first use, it
+// keeps the model loaded and takes clip after clip, and is killed after `IdleUnloadAfter` of no dictation to
+// give the ~1.5 GB back. If it crashes while loading — the classic GPU-backend abort — the next attempt is forced onto
+// the CPU backend, which does not abort, so dictation degrades to CPU instead of failing outright.
 internal sealed class WhisperWorkerSpeechToTextService(
     IVoiceSettingsStore settingsStore,
     ILogger<WhisperWorkerSpeechToTextService> logger)
@@ -46,7 +44,7 @@ internal sealed class WhisperWorkerSpeechToTextService(
     private bool _disposed;
     private VoiceBackendPreference _lastBackend;
 
-    /// <summary>Not surfaced in worker mode — the loaded backend lives in the child process. Null is the documented "unknown".</summary>
+    // Not surfaced in worker mode — the loaded backend lives in the child process. Null is the documented "unknown".
     public WhisperRuntimeBackend? ActiveBackend => null;
 
     public event EventHandler<VoicePreparationProgress>? Preparing;
@@ -125,10 +123,8 @@ internal sealed class WhisperWorkerSpeechToTextService(
         }
     }
 
-    /// <summary>
-    /// Spawns the worker ahead of the clip that is coming (AC-603). Swallows its failure on purpose: nobody is
-    /// waiting on this call, and the transcription that follows reports the same problem where it can be seen.
-    /// </summary>
+    // Spawns the worker ahead of the clip that is coming (AC-603). Swallows its failure on purpose: nobody is
+    // waiting on this call, and the transcription that follows reports the same problem where it can be seen.
     public async Task WarmUpAsync(CancellationToken cancellationToken = default)
     {
         // The press counts as use, or the idle reaper still measures from the last clip: a worker warmed at
@@ -146,16 +142,14 @@ internal sealed class WhisperWorkerSpeechToTextService(
         }
     }
 
-    /// <summary>Ensures a live worker exists for the coming clip, returning whether this call had to spawn one
-    /// (a cold start, AC-535) rather than reuse an already-warm process.</summary>
-    /// <remarks>
-    /// Serialized on <c>_spawnGate</c> because it has two callers that hold nothing in common (AC-603): the clip's
-    /// own path under <c>_gate</c>, and <see cref="WarmUpAsync"/> from the hotkey press under nothing at all. Let
-    /// both past the health check below and the second one kills the process the first is still waiting on and
-    /// starts the cold start over — at the release, which is the exact wait warming up exists to remove. Holding
-    /// the gate across the spawn is the point: a release arriving mid-spawn waits for that worker rather than
-    /// replacing it.
-    /// </remarks>
+    // Ensures a live worker exists for the coming clip, returning whether this call had to spawn one
+    // (a cold start, AC-535) rather than reuse an already-warm process.
+    // Serialized on `_spawnGate` because it has two callers that hold nothing in common (AC-603): the clip's
+    // own path under `_gate`, and `WarmUpAsync` from the hotkey press under nothing at all. Let
+    // both past the health check below and the second one kills the process the first is still waiting on and
+    // starts the cold start over — at the release, which is the exact wait warming up exists to remove. Holding
+    // the gate across the spawn is the point: a release arriving mid-spawn waits for that worker rather than
+    // replacing it.
     private async Task<bool> _EnsureWorkerAsync(CancellationToken cancellationToken)
     {
         await _spawnGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -264,21 +258,19 @@ internal sealed class WhisperWorkerSpeechToTextService(
         _pending?.TrySetException(error);
     }
 
-    /// <summary>Folds the worker's remembered stderr tail into a failure message, so "exited unexpectedly" says why
-    /// (AC-534) — or leaves the message alone if the worker said nothing on stderr before it died.</summary>
+    // Folds the worker's remembered stderr tail into a failure message, so "exited unexpectedly" says why
+    // (AC-534) — or leaves the message alone if the worker said nothing on stderr before it died.
     private static string _WithStderrTail(string message, ProcessStderrTail stderrTail)
     {
         var tail = stderrTail.Snapshot();
         return tail.Length == 0 ? message : $"{message} Stderr tail:{Environment.NewLine}{tail}";
     }
 
-    /// <summary>
-    /// The dictation trace (AC-535): recording length, backend, transcription time and outcome length, as one line
-    /// per successful clip. The startup time is reported separately rather than as a flag beside the total, because
-    /// a cold start is the most expensive step there is and folding it into one number hides which of the two was
-    /// slow. A failed clip is already logged (Warning on the CPU retry, Error if that fails too) — this only covers
-    /// the path that had nothing to say about itself before.
-    /// </summary>
+    // The dictation trace (AC-535): recording length, backend, transcription time and outcome length, as one line
+    // per successful clip. The startup time is reported separately rather than as a flag beside the total, because
+    // a cold start is the most expensive step there is and folding it into one number hides which of the two was
+    // slow. A failed clip is already logged (Warning on the CPU retry, Error if that fails too) — this only covers
+    // the path that had nothing to say about itself before.
     private void _LogTranscribed(double recordingSeconds, long elapsedMs, long startupMs, bool coldStart, int textLength) =>
         logger.LogInformation(
             "Dictation transcribed {RecordingSeconds:F1}s of audio on {Backend} in {ElapsedMs} ms " +

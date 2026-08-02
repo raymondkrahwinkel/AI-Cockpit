@@ -5,22 +5,20 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// Fetches a store's <c>index.json</c> and downloads a version's zip (#14, AC-7). A store is resolved by its
-/// <see cref="PluginStoreConfig"/>: a local folder is read from disk; a public remote over a plain GET; a private
-/// remote with an <c>Authorization: Bearer</c> header — and a private <c>github.com</c> repo through the
-/// authenticated Contents API, since <c>raw.githubusercontent.com</c> will not serve a private repo with a token.
-/// A published SHA-256 is verified against the downloaded bytes before the zip is written; a mismatch is rejected.
-/// The zip then goes through the normal installer — the store never bypasses consent.
-/// </summary>
+// Fetches a store's `index.json` and downloads a version's zip (#14, AC-7). A store is resolved by its
+// `PluginStoreConfig`: a local folder is read from disk; a public remote over a plain GET; a private
+// remote with an `Authorization: Bearer` header — and a private `github.com` repo through the
+// authenticated Contents API, since `raw.githubusercontent.com` will not serve a private repo with a token.
+// A published SHA-256 is verified against the downloaded bytes before the zip is written; a mismatch is rejected.
+// The zip then goes through the normal installer — the store never bypasses consent.
 internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 {
     private static readonly HttpClient Http = new();
 
-    /// <summary>A store logo is a small image, not a payload — anything larger is refused rather than downloaded.</summary>
+    // A store logo is a small image, not a payload — anything larger is refused rather than downloaded.
     private const long MaxLogoBytes = 1_048_576;
 
-    /// <summary>One resolved fetch: a local file path or a remote URL, whether to ask GitHub for raw bytes, and the bearer token to send (only ever to the store's own host).</summary>
+    // One resolved fetch: a local file path or a remote URL, whether to ask GitHub for raw bytes, and the bearer token to send (only ever to the store's own host).
     private readonly record struct StoreTarget(bool IsLocal, string Value, bool GitHubRaw, string? Token);
 
     public async Task<PluginStoreFetchResult> FetchIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default)
@@ -220,7 +218,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         }
     }
 
-    /// <summary>Returns the token only when <paramref name="requestUrl"/> is the same origin (scheme, host, port) as the store; a store-index path that resolves to another host gets no credential.</summary>
+    // Returns the token only when `requestUrl` is the same origin (scheme, host, port) as the store; a store-index path that resolves to another host gets no credential.
     private static string? _TokenForSameOrigin(string requestUrl, string storeUrl, string? token)
     {
         if (string.IsNullOrWhiteSpace(token))
@@ -359,13 +357,11 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         return !string.Equals(PluginHash.Compute(bytes), expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// A non-fatal advisory when the store's index published no per-artifact SHA-256 (AC-46). The store URL is
-    /// fully operator-settable and a published hash, when present, rides in the same index as the payload — so the
-    /// checksum defends transit, not a compromised store. An index without one leaves the download's integrity
-    /// unverifiable. We still allow the install — plenty of simple/local stores publish no hash, and a mismatch on
-    /// a published one is already a hard reject — but say so rather than let an unverified artifact land silently.
-    /// </summary>
+    // A non-fatal advisory when the store's index published no per-artifact SHA-256 (AC-46). The store URL is
+    // fully operator-settable and a published hash, when present, rides in the same index as the payload — so the
+    // checksum defends transit, not a compromised store. An index without one leaves the download's integrity
+    // unverifiable. We still allow the install — plenty of simple/local stores publish no hash, and a mismatch on
+    // a published one is already a hard reject — but say so rather than let an unverified artifact land silently.
     private static string? _UnverifiedWarning(string? expectedSha256, string artifact) =>
         string.IsNullOrWhiteSpace(expectedSha256)
             ? $"The store published no checksum for this {artifact}, so its integrity could not be verified before install."

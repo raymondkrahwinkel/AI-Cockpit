@@ -1,14 +1,14 @@
 namespace Cockpit.Core.Notifications;
 
-/// <summary>Where a needs-attention notification is delivered, chosen by <see cref="NotificationRouter"/>.</summary>
+// Where a needs-attention notification is delivered, chosen by `NotificationRouter`.
 public enum NotificationChannel
 {
-    /// <summary>Notifications are disabled — deliver nothing.</summary>
+    // Notifications are disabled — deliver nothing.
     None,
 
-    /// <summary>Operator is present: an OS-native desktop notification (Windows toast).</summary>
+    // Operator is present: an OS-native desktop notification (Windows toast).
     Toast,
 
-    /// <summary>Operator is away: a Discord webhook POST.</summary>
+    // Operator is away: a Discord webhook POST.
     Webhook,
 }

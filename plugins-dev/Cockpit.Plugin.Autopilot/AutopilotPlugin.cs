@@ -7,12 +7,10 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// Autopilot (AC-94/AC-174): the operator-triggered "issue → merge-ready PR" plugin. The CEO plans the work, the
-/// operator approves it once, then an autonomous run drives each step — embedding an isolated session per step,
-/// validating it against its acceptance, and settling merge-ready or blocked. A tracker's "Plan in Autopilot" hands an
-/// issue to the CEO with its source to draft from.
-/// </summary>
+// Autopilot (AC-94/AC-174): the operator-triggered "issue → merge-ready PR" plugin. The CEO plans the work, the
+// operator approves it once, then an autonomous run drives each step — embedding an isolated session per step,
+// validating it against its acceptance, and settling merge-ready or blocked. A tracker's "Plan in Autopilot" hands an
+// issue to the CEO with its source to draft from.
 public sealed class AutopilotPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

@@ -10,17 +10,14 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
-/// <summary>
-/// One step on the canvas (#69). The interaction is n8n's, because it is proven; the look is the cockpit's, because
-/// a copy of someone else's app is not a product. So: a wide card, not a square icon tile — the same compact,
-/// hairline-bordered row the cockpit uses everywhere else, with the icon on the left, the name you gave it, and the
-/// type underneath in small print.
-/// <para>
-/// A coloured edge says what kind of step it is at a glance — accent for a trigger (where a run begins), a cool
-/// stripe for an action, an amber one for a decision. A trigger is also rounded on its leading edge, so the start of
-/// a flow has a shape and not just a colour.
-/// </para>
-/// </summary>
+// One step on the canvas (#69). The interaction is n8n's, because it is proven; the look is the cockpit's, because
+// a copy of someone else's app is not a product. So: a wide card, not a square icon tile — the same compact,
+// hairline-bordered row the cockpit uses everywhere else, with the icon on the left, the name you gave it, and the
+// type underneath in small print.
+//
+// A coloured edge says what kind of step it is at a glance — accent for a trigger (where a run begins), a cool
+// stripe for an action, an amber one for a decision. A trigger is also rounded on its leading edge, so the start of
+// a flow has a shape and not just a colour.
 internal sealed class WorkflowNodeControl : Border
 {
     public const double CardWidth = 172;
@@ -205,13 +202,13 @@ internal sealed class WorkflowNodeControl : Border
 
     public event EventHandler<PointerPressedEventArgs>? HeaderPressed;
 
-    /// <summary>The step was double-clicked: open what it can be configured with. Double-click is the gesture people already try on a node.</summary>
+    // The step was double-clicked: open what it can be configured with. Double-click is the gesture people already try on a node.
     public event EventHandler? Opened;
 
-    /// <summary>An output pin was pressed: the canvas starts drawing a wire and captures the pointer, so the drop lands wherever the operator lets go.</summary>
+    // An output pin was pressed: the canvas starts drawing a wire and captures the pointer, so the drop lands wherever the operator lets go.
     public event Action<WorkflowNodeControl, WorkflowPin, IPointer>? PinPressed;
 
-    /// <summary>Selection is a ring in the cockpit's accent, not a colour change — the card's own edge already says what kind of step it is.</summary>
+    // Selection is a ring in the cockpit's accent, not a colour change — the card's own edge already says what kind of step it is.
     public bool IsSelected
     {
         set
@@ -221,7 +218,7 @@ internal sealed class WorkflowNodeControl : Border
         }
     }
 
-    /// <summary>How the last run treated this step — a ring around the card, so a failed flow shows you where it broke without opening anything.</summary>
+    // How the last run treated this step — a ring around the card, so a failed flow shows you where it broke without opening anything.
     public void ShowRunStatus(string? statusKey)
     {
         if (statusKey is null)
@@ -239,7 +236,7 @@ internal sealed class WorkflowNodeControl : Border
         _card.BorderThickness = new Thickness(2);
     }
 
-    /// <summary>Lit while a wire is dragged over this step: the target of a drop should be obvious before you let go.</summary>
+    // Lit while a wire is dragged over this step: the target of a drop should be obvious before you let go.
     public bool IsDropTarget
     {
         set
@@ -254,16 +251,14 @@ internal sealed class WorkflowNodeControl : Border
 
     public WorkflowPin OutputPin(int index) => _outputs.FirstOrDefault(pin => pin.OutputIndex == index) ?? _outputs[0];
 
-    /// <summary>
-    /// The colour of a failure, on the pin and on the wire that leaves by it. A property rather than a once-computed
-    /// static: a static is resolved when the type first loads and keeps that brush for the life of the process,
-    /// which is the same freezing the host's own helper exists to avoid.
-    /// </summary>
+    // The colour of a failure, on the pin and on the wire that leaves by it. A property rather than a once-computed
+    // static: a static is resolved when the type first loads and keeps that brush for the life of the process,
+    // which is the same freezing the host's own helper exists to avoid.
     public static IBrush ErrorBrush => _Brush("CockpitStatusErrorBrush", "#D64545");
 
     public WorkflowPin InputPin() => _input ?? _outputs[0];
 
-    /// <summary>Lights the pin a dragged wire would attach to — null clears it.</summary>
+    // Lights the pin a dragged wire would attach to — null clears it.
     public void HighlightInput(bool lit)
     {
         if (_input is not null)
@@ -303,18 +298,15 @@ internal sealed class WorkflowNodeControl : Border
         return configured ?? node.Type?.Name ?? node.TypeId;
     }
 
-    /// <summary>
-    /// The stripe down a card's leading edge, saying what kind of step it is. A categorical palette, not a set of
-    /// meanings: the card's <em>border</em> is the channel that carries run status, so painting a kind in a status
-    /// colour would leave a decision node looking permanently blocked next to one that actually is.
-    /// <para>
-    /// A trigger takes the app's accent — a flow's starting point is the one thing on the canvas that should follow
-    /// the accent wherever it goes. That is why the other two have to stay clear of it, and why the plain-step
-    /// stripe is no longer <c>#5B7FA6</c>: against the old orange it was simply "blue", and against the accent's own
-    /// blue (AC-334) it became a slightly-faded copy of the trigger. It is a neutral slate now, with no hue to
-    /// confuse — a plain step should read as plain.
-    /// </para>
-    /// </summary>
+    // The stripe down a card's leading edge, saying what kind of step it is. A categorical palette, not a set of
+    // meanings: the card's *border* is the channel that carries run status, so painting a kind in a status
+    // colour would leave a decision node looking permanently blocked next to one that actually is.
+    //
+    // A trigger takes the app's accent — a flow's starting point is the one thing on the canvas that should follow
+    // the accent wherever it goes. That is why the other two have to stay clear of it, and why the plain-step
+    // stripe is no longer `#5B7FA6`: against the old orange it was simply "blue", and against the accent's own
+    // blue (AC-334) it became a slightly-faded copy of the trigger. It is a neutral slate now, with no hue to
+    // confuse — a plain step should read as plain.
     private static IBrush _KindBrush(WorkflowNodeKind kind) => kind switch
     {
         WorkflowNodeKind.Trigger => _Accent,
@@ -332,28 +324,24 @@ internal sealed class WorkflowNodeControl : Border
 
     private static IBrush _Accent => _Brush("CockpitAccentBrush", "#2563eb");
 
-    /// <summary>
-    /// A card's corner, from the theme's control radius, so a step on the canvas rounds like every other box in the
-    /// app. Taken as a single number rather than the <see cref="CornerRadius"/> itself because a trigger's card is
-    /// round down one side and needs the corners set one at a time.
-    /// </summary>
+    // A card's corner, from the theme's control radius, so a step on the canvas rounds like every other box in the
+    // app. Taken as a single number rather than the `CornerRadius` itself because a trigger's card is
+    // round down one side and needs the corners set one at a time.
     private static double _CardCorner =>
         Application.Current?.TryFindResource("CockpitControlRadius", out var value) == true && value is CornerRadius radius
             ? radius.TopLeft
             : 9;
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 }
 
-/// <summary>A connection point: pull a wire out of a way out, and drop it on the step it should run to.</summary>
+// A connection point: pull a wire out of a way out, and drop it on the step it should run to.
 internal sealed class WorkflowPin : Ellipse
 {
     public WorkflowPin(WorkflowNodeControl owner, bool isInput, int outputIndex)
@@ -383,14 +371,12 @@ internal sealed class WorkflowPin : Ellipse
 
     public bool IsInput { get; }
 
-    /// <summary>Which way out this is (a decision has two); -1 for an input.</summary>
+    // Which way out this is (a decision has two); -1 for an input.
     public int OutputIndex { get; }
 
-    /// <summary>
-    /// Lit while a wire is being dragged onto this pin: it grows and takes the accent, so the exact point the wire
-    /// will attach to is visible before you let go. The card lighting up says <em>which step</em>; this says
-    /// <em>where</em>.
-    /// </summary>
+    // Lit while a wire is being dragged onto this pin: it grows and takes the accent, so the exact point the wire
+    // will attach to is visible before you let go. The card lighting up says *which step*; this says
+    // *where*.
     public bool IsHighlighted
     {
         set
@@ -400,19 +386,17 @@ internal sealed class WorkflowPin : Ellipse
         }
     }
 
-    /// <summary>A pin nobody is dragging onto: the theme's faint text, the quietest ink the app owns.</summary>
+    // A pin nobody is dragging onto: the theme's faint text, the quietest ink the app owns.
     private static IBrush Idle => _Brush("CockpitTextFaintBrush", "#656c78");
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. A copy of the one on <see cref="WorkflowNodeControl"/> because
-    /// this is a type of its own; the fallback hex is only reached with no <see cref="Application"/> (designer,
-    /// headless test) and is held equal to its token by the repository's theme guard.
-    /// </summary>
+    // The host's theme brush, resolved at call time. A copy of the one on `WorkflowNodeControl` because
+    // this is a type of its own; the fallback hex is only reached with no `Application` (designer,
+    // headless test) and is held equal to its token by the repository's theme guard.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 
-    /// <summary>Where the wire attaches, in canvas coordinates — asked fresh on every redraw, because the pin moves with its step.</summary>
+    // Where the wire attaches, in canvas coordinates — asked fresh on every redraw, because the pin moves with its step.
     public Point AnchorOn(Visual surface) => this.TranslatePoint(new Point(Width / 2, Height / 2), surface) ?? default;
 }

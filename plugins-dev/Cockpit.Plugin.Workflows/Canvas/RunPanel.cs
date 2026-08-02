@@ -9,11 +9,9 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
-/// <summary>
-/// What a run did (#69), under the canvas: every step, in the order it ran, with what it produced and how long it
-/// took. This is the difference between a workflow tool and a drawing program — when a flow misbehaves, the answer
-/// to "why" has to be somewhere, and it is here.
-/// </summary>
+// What a run did (#69), under the canvas: every step, in the order it ran, with what it produced and how long it
+// took. This is the difference between a workflow tool and a drawing program — when a flow misbehaves, the answer
+// to "why" has to be somewhere, and it is here.
 internal sealed class RunPanel : Border
 {
     private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true };
@@ -178,17 +176,15 @@ internal sealed class RunPanel : Border
         return control;
     }
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

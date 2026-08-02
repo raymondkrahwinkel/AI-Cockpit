@@ -5,28 +5,23 @@ using Cockpit.Plugin.Kubernetes.Model;
 
 namespace Cockpit.Plugin.Kubernetes.Security;
 
-/// <summary>
-/// The one place the security policy lives (AC-80). Every MCP tool routes through here before it touches a cluster,
-/// so the rules are decided once, in one file, and tested without a real cluster. It asks the host's shared consent
-/// gate (<see cref="ICockpitHost.RequestConsentAsync"/>): the operator sees the literal action and chooses, the
-/// gate fails closed, and every decision is audited — none of which the plugin has to build.
-/// <para>
-/// The matrix: opening a cluster asks once and may be remembered for the session; a namespace on the cluster's
-/// allowed list is free, one outside it asks each session (reads included); a mutation asks afresh every time and
-/// is never remembered; cluster-scoped resources and exec/port-forward/attach are blocked outright until the
-/// operator turns them on per cluster, and even then a mutation or a danger action asks afresh.
-/// </para>
-/// </summary>
-/// <remarks>
-/// The consent surface renders the action verbatim, so callers pass a description built from the real verb and the
-/// real parameters (never agent-supplied free text): a delete tool that asks "delete pod …" cannot be talked into
-/// showing "get pod …", because the tool it came from chose the verb, not the agent.
-/// </remarks>
+// The one place the security policy lives (AC-80). Every MCP tool routes through here before it touches a cluster,
+// so the rules are decided once, in one file, and tested without a real cluster. It asks the host's shared consent
+// gate (`ICockpitHost.RequestConsentAsync`): the operator sees the literal action and chooses, the
+// gate fails closed, and every decision is audited — none of which the plugin has to build.
+//
+// The matrix: opening a cluster asks once and may be remembered for the session; a namespace on the cluster's
+// allowed list is free, one outside it asks each session (reads included); a mutation asks afresh every time and
+// is never remembered; cluster-scoped resources and exec/port-forward/attach are blocked outright until the
+// operator turns them on per cluster, and even then a mutation or a danger action asks afresh.
+// The consent surface renders the action verbatim, so callers pass a description built from the real verb and the
+// real parameters (never agent-supplied free text): a delete tool that asks "delete pod …" cannot be talked into
+// showing "get pod …", because the tool it came from chose the verb, not the agent.
 internal sealed class ClusterAccessGate(ICockpitHost host)
 {
     private const string SourceLabel = "Kubernetes";
 
-    /// <summary>A read against a namespaced resource: needs an open connection and the namespace to be in the jail (or consented).</summary>
+    // A read against a namespaced resource: needs an open connection and the namespace to be in the jail (or consented).
     public async Task<GateResult> AuthorizeNamespacedReadAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
     {
         var connection = await _AuthorizeConnectionAsync(cluster, paneId);
@@ -38,7 +33,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _AuthorizeNamespaceAsync(cluster, @namespace, operation, paneId);
     }
 
-    /// <summary>A change to a namespaced resource: connection, namespace jail, then an always-fresh Dangerous consent.</summary>
+    // A change to a namespaced resource: connection, namespace jail, then an always-fresh Dangerous consent.
     public async Task<GateResult> AuthorizeNamespacedMutationAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
     {
         var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);
@@ -50,11 +45,9 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _AuthorizeMutationAsync(cluster, operation, paneId);
     }
 
-    /// <summary>
-    /// A read against a cluster-scoped resource (nodes, PVs, namespaces): blocked unless the cluster opted in, then
-    /// consented. <paramref name="resourceKey"/> (group/plural) scopes a remembered approval to the kind that was
-    /// actually shown — approving "read nodes" must not silently authorize clusterroles or persistentvolumes too.
-    /// </summary>
+    // A read against a cluster-scoped resource (nodes, PVs, namespaces): blocked unless the cluster opted in, then
+    // consented. `resourceKey` (group/plural) scopes a remembered approval to the kind that was
+    // actually shown — approving "read nodes" must not silently authorize clusterroles or persistentvolumes too.
     public async Task<GateResult> AuthorizeClusterScopedReadAsync(ClusterRegistration cluster, string resourceKey, string operation, string? paneId)
     {
         if (!cluster.AllowClusterScoped)
@@ -80,7 +73,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             paneId: paneId);
     }
 
-    /// <summary>A change to a cluster-scoped resource: opt-in, connection, then an always-fresh Dangerous consent.</summary>
+    // A change to a cluster-scoped resource: opt-in, connection, then an always-fresh Dangerous consent.
     public async Task<GateResult> AuthorizeClusterScopedMutationAsync(ClusterRegistration cluster, string resourceKey, string operation, string? paneId)
     {
         var read = await AuthorizeClusterScopedReadAsync(cluster, resourceKey, operation, paneId);
@@ -92,11 +85,9 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _AuthorizeMutationAsync(cluster, operation, paneId);
     }
 
-    /// <summary>
-    /// exec, port-forward or attach: blocked unless the capability is on for the cluster, then the namespace jail
-    /// applies and the action asks afresh every time. These sit apart because they hand out a shell or a tunnel
-    /// that reaches past the namespace RBAC the read/mutate tools rely on.
-    /// </summary>
+    // exec, port-forward or attach: blocked unless the capability is on for the cluster, then the namespace jail
+    // applies and the action asks afresh every time. These sit apart because they hand out a shell or a tunnel
+    // that reaches past the namespace RBAC the read/mutate tools rely on.
     public async Task<GateResult> AuthorizeDangerAsync(ClusterRegistration cluster, DangerCapability capability, string @namespace, string operation, string? paneId)
     {
         if (!_IsCapabilityEnabled(cluster, capability))
@@ -120,11 +111,9 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             paneId: paneId);
     }
 
-    /// <summary>
-    /// A read of credential material (a secret) in a namespaced resource: the namespace jail applies, and then —
-    /// even inside an allowed namespace — reading the contents asks afresh as Dangerous and is never remembered, so
-    /// "free to read in an allowed namespace" does not silently include secrets (security review F2).
-    /// </summary>
+    // A read of credential material (a secret) in a namespaced resource: the namespace jail applies, and then —
+    // even inside an allowed namespace — reading the contents asks afresh as Dangerous and is never remembered, so
+    // "free to read in an allowed namespace" does not silently include secrets (security review F2).
     public async Task<GateResult> AuthorizeSensitiveNamespacedReadAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
     {
         var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);

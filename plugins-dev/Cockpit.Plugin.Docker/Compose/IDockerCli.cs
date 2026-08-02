@@ -13,5 +13,5 @@ internal interface IDockerCli
     Task<DockerCliResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken);
 }
 
-/// <summary>The result of a plain <c>docker</c> CLI invocation.</summary>
+// The result of a plain `docker` CLI invocation.
 internal sealed record DockerCliResult(int ExitCode, string Stdout, string Stderr);

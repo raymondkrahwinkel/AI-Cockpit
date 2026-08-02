@@ -1,14 +1,12 @@
 namespace Cockpit.Plugin.Workflows.Model;
 
-/// <summary>
-/// A flow copied into a new one, ids and all (#69). Three things need exactly this — duplicating a flow, starting one
-/// from a template, and importing one somebody sent you — and they need it for the same reason: two flows sharing a
-/// step id are one flow with two names, and the wires, which remember the steps they run between, would follow the
-/// wrong one.
-/// </summary>
+// A flow copied into a new one, ids and all (#69). Three things need exactly this — duplicating a flow, starting one
+// from a template, and importing one somebody sent you — and they need it for the same reason: two flows sharing a
+// step id are one flow with two names, and the wires, which remember the steps they run between, would follow the
+// wrong one.
 public static class WorkflowCopy
 {
-    /// <summary>A fresh flow with the same steps and wires, under <paramref name="name"/>. Never armed: a flow you have not read yet is not one that should already be running.</summary>
+    // A fresh flow with the same steps and wires, under `name`. Never armed: a flow you have not read yet is not one that should already be running.
     public static Workflow Of(Workflow source, string name)
     {
         var copy = new Workflow

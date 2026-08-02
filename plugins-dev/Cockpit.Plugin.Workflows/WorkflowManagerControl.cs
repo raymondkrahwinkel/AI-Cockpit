@@ -11,15 +11,12 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.Workflows;
 
-/// <summary>
-/// Where the flows live (#69): the list you land on, with everything you do <em>to</em> a flow rather than
-/// <em>in</em> one — open, rename, duplicate, delete, and arm it or leave it off. The editor is for building a
-/// flow; this is for keeping them.
-/// <para>
-/// The rows say what a flow is: how many steps, whether it is armed, and when you last touched it — the three
-/// things you need to pick one out of ten.
-/// </para>
-/// </summary>
+// Where the flows live (#69): the list you land on, with everything you do *to* a flow rather than
+// *in* one — open, rename, duplicate, delete, and arm it or leave it off. The editor is for building a
+// flow; this is for keeping them.
+//
+// The rows say what a flow is: how many steps, whether it is armed, and when you last touched it — the three
+// things you need to pick one out of ten.
 internal sealed class WorkflowManagerControl : UserControl
 {
     private readonly List<Workflow> _workflows;
@@ -91,7 +88,7 @@ internal sealed class WorkflowManagerControl : UserControl
         Refresh();
     }
 
-    /// <summary>Raised with the flow to open in the editor.</summary>
+    // Raised with the flow to open in the editor.
     public event EventHandler<Workflow>? OpenRequested;
 
     public void Refresh()
@@ -189,7 +186,7 @@ internal sealed class WorkflowManagerControl : UserControl
 
     private void _Duplicate(Workflow workflow) => _Add(WorkflowCopy.Of(workflow, $"{workflow.Name} (copy)"), open: false);
 
-    /// <summary>The templates, in a dialog you can search — a menu stops working the moment there are more than a handful.</summary>
+    // The templates, in a dialog you can search — a menu stops working the moment there are more than a handful.
     private async Task _ShowTemplatesAsync()
     {
         if (_templates.Count == 0)
@@ -233,7 +230,7 @@ internal sealed class WorkflowManagerControl : UserControl
         _Add(WorkflowCopy.Of(flow, template.Name), open: true);
     }
 
-    /// <summary>Reads a flow somebody sent you. It arrives switched off: a flow you have not read is not one that should already be running.</summary>
+    // Reads a flow somebody sent you. It arrives switched off: a flow you have not read is not one that should already be running.
     private async Task _ImportAsync()
     {
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
@@ -273,7 +270,7 @@ internal sealed class WorkflowManagerControl : UserControl
         }
     }
 
-    /// <summary>Writes a flow to a file — the way one is shared, and the same text a plugin ships a template as.</summary>
+    // Writes a flow to a file — the way one is shared, and the same text a plugin ships a template as.
     private async Task _ExportAsync(Workflow workflow)
     {
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
@@ -358,7 +355,7 @@ internal sealed class WorkflowManagerControl : UserControl
         return control;
     }
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

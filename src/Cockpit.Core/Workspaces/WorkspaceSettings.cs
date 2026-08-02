@@ -1,28 +1,22 @@
 namespace Cockpit.Core.Workspaces;
 
-/// <summary>
-/// The persisted workspace set and which one is active, under the <c>workspaces</c> section of
-/// <c>cockpit.json</c> (same store pattern as layout/shortcuts/voice). Immutable; the <c>With…</c> helpers
-/// return a new instance and the store persists it.
-/// </summary>
+// The persisted workspace set and which one is active, under the `workspaces` section of
+// `cockpit.json` (same store pattern as layout/shortcuts/voice). Immutable; the `With…` helpers
+// return a new instance and the store persists it.
 public sealed record WorkspaceSettings
 {
-    /// <summary>The workspaces, in tab-strip order.</summary>
+    // The workspaces, in tab-strip order.
     public IReadOnlyList<Workspace> Workspaces { get; init; } = [];
 
-    /// <summary>The active workspace's <see cref="Workspace.Id"/>. Null, or an id no workspace carries, resolves to the first one.</summary>
+    // The active workspace's `Workspace.Id`. Null, or an id no workspace carries, resolves to the first one.
     public string? ActiveWorkspaceId { get; init; }
 
-    /// <summary>
-    /// A Sessions workspace and the projects overview, with the sessions one active — so the cockpit still opens
-    /// on the grid it always opened on, with the overview a tab away rather than something to go and find.
-    /// </summary>
-    /// <remarks>
-    /// One instance, not a fresh one per access. As a getter that called <see cref="Workspace.Create"/> it
-    /// minted a new id every time it was read — so the view model's default and the store's default were two
-    /// different workspaces, and a session stamped with one of them belonged to a workspace nothing else knew
-    /// about. A default has to be the same default every time it is asked for.
-    /// </remarks>
+    // A Sessions workspace and the projects overview, with the sessions one active — so the cockpit still opens
+    // on the grid it always opened on, with the overview a tab away rather than something to go and find.
+    // One instance, not a fresh one per access. As a getter that called `Workspace.Create` it
+    // minted a new id every time it was read — so the view model's default and the store's default were two
+    // different workspaces, and a session stamped with one of them belonged to a workspace nothing else knew
+    // about. A default has to be the same default every time it is asked for.
     public static WorkspaceSettings Default { get; } = _CreateDefault();
 
     private static WorkspaceSettings _CreateDefault()
@@ -37,25 +31,19 @@ public sealed record WorkspaceSettings
 
     private static Workspace _CreateProjects() => Workspace.Create("Projects", WorkspaceType.Projects);
 
-    /// <summary>
-    /// The active workspace: the one <see cref="ActiveWorkspaceId"/> names, else the first. Null only when
-    /// there are no workspaces at all — which <see cref="Normalized"/> prevents for anything loaded from disk.
-    /// </summary>
+    // The active workspace: the one `ActiveWorkspaceId` names, else the first. Null only when
+    // there are no workspaces at all — which `Normalized` prevents for anything loaded from disk.
     public Workspace? Active =>
         Workspaces.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? Workspaces.FirstOrDefault();
 
-    /// <summary>
-    /// These settings made safe to bind to: at least one workspace, exactly one projects overview, an
-    /// <see cref="ActiveWorkspaceId"/> that actually resolves, and every dashboard layout clamped. Applied on
-    /// load, so a hand-edited or truncated <c>cockpit.json</c> yields a working cockpit instead of an empty window.
-    /// </summary>
-    /// <remarks>
-    /// The overview is a fixture rather than something to add (Raymond, 2026-07-24): it always exists, exactly
-    /// once, and cannot be closed. Guaranteeing it here rather than at the view model is what makes that true of
-    /// every cockpit — an older <c>cockpit.json</c> written before it existed, and a hand-edited one that removed
-    /// it or holds two, all come back with one. It sits at the end of the strip: the first workspace is what a
-    /// session with no workspace of its own falls back to, and that has to stay a desk which can show one.
-    /// </remarks>
+    // These settings made safe to bind to: at least one workspace, exactly one projects overview, an
+    // `ActiveWorkspaceId` that actually resolves, and every dashboard layout clamped. Applied on
+    // load, so a hand-edited or truncated `cockpit.json` yields a working cockpit instead of an empty window.
+    // The overview is a fixture rather than something to add (Raymond, 2026-07-24): it always exists, exactly
+    // once, and cannot be closed. Guaranteeing it here rather than at the view model is what makes that true of
+    // every cockpit — an older `cockpit.json` written before it existed, and a hand-edited one that removed
+    // it or holds two, all come back with one. It sits at the end of the strip: the first workspace is what a
+    // session with no workspace of its own falls back to, and that has to stay a desk which can show one.
     public WorkspaceSettings Normalized()
     {
         if (Workspaces.Count == 0)
@@ -82,21 +70,17 @@ public sealed record WorkspaceSettings
         return new WorkspaceSettings { Workspaces = ordered, ActiveWorkspaceId = active.Id };
     }
 
-    /// <summary>
-    /// These settings with <paramref name="workspace"/> appended and made active. Adding a second projects
-    /// overview is refused — there is one, always, and a second tab onto the same list is not a second desk.
-    /// </summary>
+    // These settings with `workspace` appended and made active. Adding a second projects
+    // overview is refused — there is one, always, and a second tab onto the same list is not a second desk.
     public WorkspaceSettings WithWorkspace(Workspace workspace) =>
         workspace.Type == WorkspaceType.Projects && Workspaces.Any(existing => existing.Type == WorkspaceType.Projects)
             ? this
             : new() { Workspaces = [.. Workspaces, workspace], ActiveWorkspaceId = workspace.Id };
 
-    /// <summary>
-    /// These settings with <paramref name="workspaceId"/> removed. Removing the active one selects its
-    /// neighbour (the next, else the previous), matching how closing a session picks the next selection.
-    /// Removing the last workspace is refused — a cockpit with no workspace has nothing to show — and so is
-    /// removing the projects overview, which is a fixture of the cockpit rather than one of the operator's desks.
-    /// </summary>
+    // These settings with `workspaceId` removed. Removing the active one selects its
+    // neighbour (the next, else the previous), matching how closing a session picks the next selection.
+    // Removing the last workspace is refused — a cockpit with no workspace has nothing to show — and so is
+    // removing the projects overview, which is a fixture of the cockpit rather than one of the operator's desks.
     public WorkspaceSettings WithoutWorkspace(string workspaceId)
     {
         var index = _IndexOf(workspaceId);
@@ -113,20 +97,18 @@ public sealed record WorkspaceSettings
         return new WorkspaceSettings { Workspaces = remaining, ActiveWorkspaceId = active };
     }
 
-    /// <summary>These settings with <paramref name="workspace"/> swapped in by id (a no-op when it holds no such workspace).</summary>
+    // These settings with `workspace` swapped in by id (a no-op when it holds no such workspace).
     public WorkspaceSettings WithUpdated(Workspace workspace) =>
         this with { Workspaces = [.. Workspaces.Select(existing => existing.Id == workspace.Id ? workspace : existing)] };
 
-    /// <summary>These settings with <paramref name="workspaceId"/> active (a no-op when it holds no such workspace).</summary>
+    // These settings with `workspaceId` active (a no-op when it holds no such workspace).
     public WorkspaceSettings WithActive(string workspaceId) =>
         _IndexOf(workspaceId) < 0 ? this : this with { ActiveWorkspaceId = workspaceId };
 
-    /// <summary>
-    /// These settings with <paramref name="workspaceId"/> moved to <paramref name="targetIndex"/> in the tab
-    /// strip, the rest closing the gap behind it. The selection is untouched — reordering rearranges the desks,
-    /// it does not walk you to a different one. Out-of-range targets are clamped rather than refused, so a drag
-    /// past either end lands on the end.
-    /// </summary>
+    // These settings with `workspaceId` moved to `targetIndex` in the tab
+    // strip, the rest closing the gap behind it. The selection is untouched — reordering rearranges the desks,
+    // it does not walk you to a different one. Out-of-range targets are clamped rather than refused, so a drag
+    // past either end lands on the end.
     public WorkspaceSettings WithMoved(string workspaceId, int targetIndex)
     {
         var from = _IndexOf(workspaceId);
@@ -147,11 +129,9 @@ public sealed record WorkspaceSettings
         return this with { Workspaces = reordered };
     }
 
-    /// <summary>
-    /// These settings with the active workspace stepped <paramref name="direction"/> places along the tab
-    /// strip, wrapping at both ends — the Ctrl+Shift+Left/Right switch (Raymond, 2026-07-15). Mirrors the
-    /// session switch's wrap-around so the two behave the same way on their own axis.
-    /// </summary>
+    // These settings with the active workspace stepped `direction` places along the tab
+    // strip, wrapping at both ends — the Ctrl+Shift+Left/Right switch (Raymond, 2026-07-15). Mirrors the
+    // session switch's wrap-around so the two behave the same way on their own axis.
     public WorkspaceSettings WithSteppedActive(int direction)
     {
         if (Workspaces.Count <= 1 || direction == 0)

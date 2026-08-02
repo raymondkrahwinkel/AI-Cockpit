@@ -1,16 +1,13 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The targeted spot-checks the harness computes for itself (AC-255) — chosen over deeply validating a fixed
-/// percentage of steps, which was the other candidate for this gate. The failure it guards against is an
-/// honest-but-wrong summary, not a lying one; against an honest mistake, sampling p% of steps catches p% of the
-/// mistakes, while these catch the shapes that are wrong in a way the harness can see without reading anything.
-/// <para>
-/// Every one of these raises a concern and never returns a verdict. They are heuristics: a false positive costs the CEO
-/// one look at the files — which is what it did for every step before this gate existed — and a step is never rejected
-/// on one. That asymmetry is why they may be as blunt as they are.
-/// </para>
-/// </summary>
+// The targeted spot-checks the harness computes for itself (AC-255) — chosen over deeply validating a fixed
+// percentage of steps, which was the other candidate for this gate. The failure it guards against is an
+// honest-but-wrong summary, not a lying one; against an honest mistake, sampling p% of steps catches p% of the
+// mistakes, while these catch the shapes that are wrong in a way the harness can see without reading anything.
+//
+// Every one of these raises a concern and never returns a verdict. They are heuristics: a false positive costs the CEO
+// one look at the files — which is what it did for every step before this gate existed — and a step is never rejected
+// on one. That asymmetry is why they may be as blunt as they are.
 internal static class AutopilotEvidenceSignals
 {
     public static IReadOnlyList<string> For(AutopilotWorktreeChange change, AutopilotStep step, IReadOnlyList<string> summaries)

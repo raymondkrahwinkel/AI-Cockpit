@@ -2,7 +2,7 @@ using Cockpit.Core.Delegation;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>One delegated task (#67) as the task list shows it: who is doing what, how far it is, and whether it can still be stopped.</summary>
+// One delegated task (#67) as the task list shows it: who is doing what, how far it is, and whether it can still be stopped.
 public sealed class DelegatedTaskRowViewModel
 {
     public DelegatedTaskRowViewModel(DelegatedTaskView task)
@@ -29,21 +29,19 @@ public sealed class DelegatedTaskRowViewModel
 
     public string StatusText => Status.ToString();
 
-    /// <summary>A task that is still running or waiting for a slot — the ones the operator may want to stop.</summary>
+    // A task that is still running or waiting for a slot — the ones the operator may want to stop.
     public bool IsActive => Status is DelegatedTaskStatus.Running or DelegatedTaskStatus.Queued;
 
-    /// <summary>Stop only makes sense while the task is still going; a finished task shows no button rather than a dead one.</summary>
+    // Stop only makes sense while the task is still going; a finished task shows no button rather than a dead one.
     public bool CanStop => IsActive;
 
     public string StartedText => StartedAt is { } startedAt ? startedAt.ToLocalTime().ToString("HH:mm") : "—";
 
-    /// <summary>How many turns the delegated session has completed — a follow-up shows up here as the count going up.</summary>
+    // How many turns the delegated session has completed — a follow-up shows up here as the count going up.
     public string TurnsText => TurnCount == 1 ? "1 turn" : $"{TurnCount} turns";
 
-    /// <summary>
-    /// The dot beside the task, in the same colours the session sidebar uses: working, waiting, done, or wrong.
-    /// Keyed rather than a brush so the view model stays free of Avalonia types, like the profile rows do.
-    /// </summary>
+    // The dot beside the task, in the same colours the session sidebar uses: working, waiting, done, or wrong.
+    // Keyed rather than a brush so the view model stays free of Avalonia types, like the profile rows do.
     public string StatusBrushKey => Status switch
     {
         DelegatedTaskStatus.Running => "CockpitStatusBusyBrush",

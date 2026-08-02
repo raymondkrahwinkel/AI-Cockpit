@@ -6,14 +6,12 @@ using Whisper.net.LibraryLoader;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// The line protocol between the calibration orchestrator (the desktop process) and a measurement child (AC-68).
-/// Whisper.net loads its native runtime once per process, so each backend has to be timed in its own process; the
-/// orchestrator spawns this exe with <see cref="BackendArgument"/>/<see cref="ModelsArgument"/> and reads these
-/// prefixed JSON lines back off stdout. The prefix keeps them apart from the native loader's own chatter. A child
-/// times one backend and, since the model is not pinned to the process the way the native is, every model in the
-/// comma-separated list on that one backend — one factory build per model.
-/// </summary>
+// The line protocol between the calibration orchestrator (the desktop process) and a measurement child (AC-68).
+// Whisper.net loads its native runtime once per process, so each backend has to be timed in its own process; the
+// orchestrator spawns this exe with `BackendArgument`/`ModelsArgument` and reads these
+// prefixed JSON lines back off stdout. The prefix keeps them apart from the native loader's own chatter. A child
+// times one backend and, since the model is not pinned to the process the way the native is, every model in the
+// comma-separated list on that one backend — one factory build per model.
 internal static class CalibrationChildProtocol
 {
     public const string BackendArgument = "--calibrate-backend";
@@ -29,8 +27,8 @@ internal static class CalibrationChildProtocol
             ? JsonSerializer.Deserialize<CalibrationChildMessage>(line[LinePrefix.Length..], Json)
             : null;
 
-    /// <summary>Pulls the forced backend and the models to time out of the process arguments, or false when this is
-    /// not a calibration child.</summary>
+    // Pulls the forced backend and the models to time out of the process arguments, or false when this is
+    // not a calibration child.
     public static bool TryReadRequest(string[] args, out VoiceBackendPreference backend, out string[] models)
     {
         backend = VoiceBackendPreference.Cpu;
@@ -56,17 +54,15 @@ internal static class CalibrationChildProtocol
     }
 }
 
-/// <summary>
-/// The public seam the app's entrypoint uses to run a calibration child (AC-68). Kept tiny and public so
-/// <c>Program.Main</c> can branch into headless measurement before it touches the single-instance guard, Avalonia,
-/// or the DI container — none of which a one-shot measurement should pay for or contend with.
-/// </summary>
+// The public seam the app's entrypoint uses to run a calibration child (AC-68). Kept tiny and public so
+// `Program.Main` can branch into headless measurement before it touches the single-instance guard, Avalonia,
+// or the DI container — none of which a one-shot measurement should pay for or contend with.
 public static class HeadlessCalibration
 {
-    /// <summary>Whether these process arguments ask for a headless backend measurement rather than a normal launch.</summary>
+    // Whether these process arguments ask for a headless backend measurement rather than a normal launch.
     public static bool IsRequested(string[] args) => CalibrationChildProtocol.TryReadRequest(args, out _, out _);
 
-    /// <summary>Runs the measurement for the backend/models named in the arguments and returns the process exit code.</summary>
+    // Runs the measurement for the backend/models named in the arguments and returns the process exit code.
     public static Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
         CalibrationChildProtocol.TryReadRequest(args, out var backend, out var models);
@@ -75,7 +71,7 @@ public static class HeadlessCalibration
     }
 }
 
-/// <summary>One line from a measurement child: a progress step, a per-model result, or an error.</summary>
+// One line from a measurement child: a progress step, a per-model result, or an error.
 internal sealed record CalibrationChildMessage(
     string Kind,
     string? Message = null,
@@ -89,20 +85,18 @@ internal sealed record CalibrationChildMessage(
     public const string KindError = "error";
 }
 
-/// <summary>
-/// The measurement half of the calibration, run headless in a child process (AC-68). It forces one backend onto
-/// Whisper.net, then for each requested model provisions and loads it, warms up, and times a few transcriptions of
-/// a synthetic clip — printing a per-model median latency back to the orchestrator. Desktop hitch is <em>not</em>
-/// measured here — the child has no desktop; the parent samples that while this runs, since GPU contention is
-/// system-wide.
-/// </summary>
+// The measurement half of the calibration, run headless in a child process (AC-68). It forces one backend onto
+// Whisper.net, then for each requested model provisions and loads it, warms up, and times a few transcriptions of
+// a synthetic clip — printing a per-model median latency back to the orchestrator. Desktop hitch is *not*
+// measured here — the child has no desktop; the parent samples that while this runs, since GPU contention is
+// system-wide.
 internal static class TranscriptionCalibrationProbe
 {
     private const int SampleRate = 16000;
     private const int ClipSeconds = 4;
     private const int MeasuredRuns = 3;
 
-    /// <summary>Runs the forced-backend measurement over every model and prints protocol lines to stdout.</summary>
+    // Runs the forced-backend measurement over every model and prints protocol lines to stdout.
     public static async Task<int> RunAsync(VoiceBackendPreference backend, string[] models, CancellationToken cancellationToken)
     {
         try

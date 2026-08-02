@@ -13,21 +13,19 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// The "GitHub Issues" dialog opened from the left-menu button: a repository filter, a label filter, a search box,
-/// and a sortable <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
-/// mode) on the left, and a details panel on the right — number, title, a repository chip, a rendered
-/// description, a fixed action toolbar and a collapsible preview of the prompt it would produce (with a copy
-/// button). The repository filter is populated from the owner's own repositories (gh mode) or the one repository
-/// the settings name (HTTP mode) plus an "All" entry — not from the distinct repositories among the loaded issues,
-/// which the active label filter narrows before this ever runs and would otherwise be able to drop a repository
-/// with no currently-matching issue, and its AC-317 preselection, out of the dropdown entirely; it filters the grid
-/// client-side. The label filter is populated from the labels of the repositories involved (AC-519) — not from the
-/// loaded issues, which would repeat the same gap the YouTrack status filter had — and narrows the fetch itself,
-/// since filtering client-side over a page GitHub may have capped would silently miss whatever was cut off. "Add to
-/// prompt" injects into the active session; "New session" (mirroring the YouTrack dialog) hands the same prompt to
-/// the cockpit's own New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
-/// </summary>
+// The "GitHub Issues" dialog opened from the left-menu button: a repository filter, a label filter, a search box,
+// and a sortable `DataGrid` of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
+// mode) on the left, and a details panel on the right — number, title, a repository chip, a rendered
+// description, a fixed action toolbar and a collapsible preview of the prompt it would produce (with a copy
+// button). The repository filter is populated from the owner's own repositories (gh mode) or the one repository
+// the settings name (HTTP mode) plus an "All" entry — not from the distinct repositories among the loaded issues,
+// which the active label filter narrows before this ever runs and would otherwise be able to drop a repository
+// with no currently-matching issue, and its AC-317 preselection, out of the dropdown entirely; it filters the grid
+// client-side. The label filter is populated from the labels of the repositories involved (AC-519) — not from the
+// loaded issues, which would repeat the same gap the YouTrack status filter had — and narrows the fetch itself,
+// since filtering client-side over a page GitHub may have capped would silently miss whatever was cut off. "Add to
+// prompt" injects into the active session; "New session" (mirroring the YouTrack dialog) hands the same prompt to
+// the cockpit's own New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
     private const string AllRepositoriesOption = "All";
@@ -45,7 +43,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
 
-    /// <summary>The repository the session's project is linked to (AC-317). Null until asked for, empty string once asked and there was none — so it is asked exactly once.</summary>
+    // The repository the session's project is linked to (AC-317). Null until asked for, empty string once asked and there was none — so it is asked exactly once.
     private string? _linkedRepository;
 
     // Whether the repo dropdown has been populated at least once — see _PopulateRepoFilter for why this, and not a
@@ -56,12 +54,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     // regression test before this field was added (RepoFilter_PreselectsTheLinkedProjectsRepository_OnFirstPopulation).
     private bool _repoOptionsPopulated;
 
-    /// <summary>
-    /// The label the settings' <see cref="GitHubIssuesSettings.InProgressLabel"/> names (AC-519), resolved once —
-    /// the label filter's one chance to open on it, the same way <see cref="_linkedRepository"/> gets the repository
-    /// filter's. After the first population the operator's own choice persists. Empty once resolved and there was
-    /// none, so it is asked exactly once.
-    /// </summary>
+    // The label the settings' `GitHubIssuesSettings.InProgressLabel` names (AC-519), resolved once —
+    // the label filter's one chance to open on it, the same way `_linkedRepository` gets the repository
+    // filter's. After the first population the operator's own choice persists. Empty once resolved and there was
+    // none, so it is asked exactly once.
     private string? _preferredLabel;
 
     // Whether the label dropdown has been populated at least once — see _PopulateLabelFilter for why this, and not
@@ -746,10 +742,8 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private async Task _PlanInAutopilotAsync(GitHubIssue issue) =>
         await _host.SendIntent("autopilot", "plan", PlanIntentPayload(issue, _IdentityOf(issue)));
 
-    /// <summary>
-    /// What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
-    /// stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
-    /// </summary>
+    // What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
+    // stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
     internal static Dictionary<string, string> PlanIntentPayload(GitHubIssue issue, string identity) => new()
     {
         ["tracker"] = "github-issues",
@@ -932,7 +926,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

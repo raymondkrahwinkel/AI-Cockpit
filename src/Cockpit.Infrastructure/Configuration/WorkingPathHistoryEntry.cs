@@ -2,11 +2,9 @@ using Cockpit.Core.WorkingPaths;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of the New-session dialog's remembered working directories, under the
-/// <c>workingPaths</c> section of <c>cockpit.json</c>. Kept separate from
-/// <see cref="WorkingPathHistory"/> so the persisted shape can evolve independently.
-/// </summary>
+// On-disk shape of the New-session dialog's remembered working directories, under the
+// `workingPaths` section of `cockpit.json`. Kept separate from
+// `WorkingPathHistory` so the persisted shape can evolve independently.
 internal sealed class WorkingPathHistoryEntry
 {
     public List<string> Recent { get; set; } = [];

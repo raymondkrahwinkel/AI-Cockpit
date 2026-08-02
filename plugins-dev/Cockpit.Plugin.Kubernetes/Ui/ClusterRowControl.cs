@@ -8,12 +8,10 @@ using Cockpit.Plugin.Kubernetes.Model;
 
 namespace Cockpit.Plugin.Kubernetes.Ui;
 
-/// <summary>
-/// One cluster's row in the settings view: label, a kubeconfig source (either a file path read live — e.g.
-/// <c>~/.kube/config</c> — or a pasted kubeconfig kept under the secret layer), a context picked from that file,
-/// allowed namespaces, and the off-by-default capability toggles. The pasted-kubeconfig box is never prefilled with
-/// a stored value — a blank box keeps what is already stored, a paste replaces it.
-/// </summary>
+// One cluster's row in the settings view: label, a kubeconfig source (either a file path read live — e.g.
+// `~/.kube/config` — or a pasted kubeconfig kept under the secret layer), a context picked from that file,
+// allowed namespaces, and the off-by-default capability toggles. The pasted-kubeconfig box is never prefilled with
+// a stored value — a blank box keeps what is already stored, a paste replaces it.
 internal sealed class ClusterRowControl : UserControl
 {
     private const string CurrentContextLabel = "(current-context)";
@@ -114,7 +112,7 @@ internal sealed class ClusterRowControl : UserControl
 
     public string Id => _id;
 
-    /// <summary>A row is blank — and dropped on Save — only when nothing was entered and nothing is already stored for it.</summary>
+    // A row is blank — and dropped on Save — only when nothing was entered and nothing is already stored for it.
     public bool IsBlank =>
         string.IsNullOrWhiteSpace(_label.Text)
         && string.IsNullOrWhiteSpace(_kubeconfigPath.Text)
@@ -122,10 +120,10 @@ internal sealed class ClusterRowControl : UserControl
         && string.IsNullOrWhiteSpace(_allowedNamespaces.Text)
         && !_hasStoredKubeconfig;
 
-    /// <summary>The kubeconfig file path, if the operator set one — stored as metadata and read live on connect.</summary>
+    // The kubeconfig file path, if the operator set one — stored as metadata and read live on connect.
     public string KubeconfigPath => (_kubeconfigPath.Text ?? string.Empty).Trim();
 
-    /// <summary>What was pasted into the kubeconfig box this session, if anything — the parent stores it through the secret layer.</summary>
+    // What was pasted into the kubeconfig box this session, if anything — the parent stores it through the secret layer.
     public string KubeconfigInput => _kubeconfig.Text ?? string.Empty;
 
     public ClusterRegistration ToRegistration() => new(
@@ -196,11 +194,9 @@ internal sealed class ClusterRowControl : UserControl
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard. The exec-auth warning used to be drawn in <c>Brushes.Orange</c>, which is nobody's amber.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard. The exec-auth warning used to be drawn in `Brushes.Orange`, which is nobody's amber.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush

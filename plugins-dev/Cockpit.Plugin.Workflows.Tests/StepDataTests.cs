@@ -4,11 +4,9 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// Using what the step before produced (#69). The cockpit's own syntax is one thing — a field name in braces — and
-/// its one rule is that a field which is not there is never quietly turned into nothing: a command with an empty
-/// string where a path should be is a worse outcome than a command that visibly did not resolve.
-/// </summary>
+// Using what the step before produced (#69). The cockpit's own syntax is one thing — a field name in braces — and
+// its one rule is that a field which is not there is never quietly turned into nothing: a command with an empty
+// string where a path should be is a worse outcome than a command that visibly did not resolve.
 public class StepDataTests
 {
     [Fact]

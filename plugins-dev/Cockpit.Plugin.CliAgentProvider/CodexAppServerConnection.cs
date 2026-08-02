@@ -5,20 +5,16 @@ using System.Threading.Channels;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// A newline-delimited JSON-RPC 2.0 client over one persistent <c>codex app-server</c> child process (Fase 3) —
-/// the transport under <see cref="CodexAppServerSessionDriver"/>, the plugin-local analogue of the host's own
-/// stream-json parsing for Claude. Unlike the proces-per-turn <see cref="CliSubprocessPluginSessionDriver"/>,
-/// the process here lives for the whole session and speaks a bidirectional protocol: the client sends requests
-/// and gets correlated replies, and the server sends its own requests (approvals) that the client must answer.
-/// </summary>
-/// <remarks>
-/// Message classification (app-server omits the <c>"jsonrpc"</c> field on the wire, same as MCP): a line with
-/// both <c>id</c> and <c>method</c> is a server-initiated request → <see cref="ServerRequests"/>; a line with
-/// only <c>id</c> is a reply to one of ours → resolves the pending call; a line with only <c>method</c> is a
-/// notification → <see cref="Notifications"/>. A single background read loop does this sorting so callers never
-/// race on the stream; stdin writes are serialized behind one lock so two turns can never interleave a message.
-/// </remarks>
+// A newline-delimited JSON-RPC 2.0 client over one persistent `codex app-server` child process (Fase 3) —
+// the transport under `CodexAppServerSessionDriver`, the plugin-local analogue of the host's own
+// stream-json parsing for Claude. Unlike the proces-per-turn `CliSubprocessPluginSessionDriver`,
+// the process here lives for the whole session and speaks a bidirectional protocol: the client sends requests
+// and gets correlated replies, and the server sends its own requests (approvals) that the client must answer.
+// Message classification (app-server omits the `"jsonrpc"` field on the wire, same as MCP): a line with
+// both `id` and `method` is a server-initiated request → `ServerRequests`; a line with
+// only `id` is a reply to one of ours → resolves the pending call; a line with only `method` is a
+// notification → `Notifications`. A single background read loop does this sorting so callers never
+// race on the stream; stdin writes are serialized behind one lock so two turns can never interleave a message.
 internal sealed class CodexAppServerConnection : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -39,20 +35,18 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
 
     public CodexAppServerConnection(ICliSubprocess subprocess) => _subprocess = subprocess;
 
-    /// <summary>The app-server process id once spawned, for the host's resource meter (D10); <see langword="null"/> before start.</summary>
+    // The app-server process id once spawned, for the host's resource meter (D10); `null` before start.
     public int? ProcessId => _subprocess.ProcessId;
 
-    /// <summary>Server-to-client notifications (the streaming transcript), completing when the process exits.</summary>
+    // Server-to-client notifications (the streaming transcript), completing when the process exits.
     public IAsyncEnumerable<CodexNotification> Notifications => _notifications.Reader.ReadAllAsync();
 
-    /// <summary>Server-initiated requests (approvals) that must be answered with <see cref="RespondAsync"/>.</summary>
+    // Server-initiated requests (approvals) that must be answered with `RespondAsync`.
     public IAsyncEnumerable<CodexServerRequest> ServerRequests => _serverRequests.Reader.ReadAllAsync();
 
-    /// <summary>
-    /// Spawns <c>codex app-server</c> and starts pumping its stdout. Call once before any send.
-    /// <paramref name="configArgs"/> are <c>-c key=value</c> overrides (the session's MCP servers, #26) placed
-    /// before the subcommand, where Codex expects global config flags.
-    /// </summary>
+    // Spawns `codex app-server` and starts pumping its stdout. Call once before any send.
+    // `configArgs` are `-c key=value` overrides (the session's MCP servers, #26) placed
+    // before the subcommand, where Codex expects global config flags.
     public void Start(string executablePath, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables, IReadOnlyList<string>? configArgs = null)
     {
         string[] arguments = configArgs is { Count: > 0 } ? [.. configArgs, "app-server"] : ["app-server"];
@@ -80,7 +74,7 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
         }
     }
 
-    /// <summary>Sends a request and awaits its correlated reply's <c>result</c>; throws <see cref="CodexAppServerException"/> on a JSON-RPC <c>error</c>.</summary>
+    // Sends a request and awaits its correlated reply's `result`; throws `CodexAppServerException` on a JSON-RPC `error`.
     public async Task<JsonElement> SendRequestAsync(string method, object? @params, CancellationToken cancellationToken = default)
     {
         var id = Interlocked.Increment(ref _nextId);
@@ -101,20 +95,18 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
         }
     }
 
-    /// <summary>Sends a notification (no reply expected), e.g. the <c>initialized</c> handshake acknowledgement.</summary>
+    // Sends a notification (no reply expected), e.g. the `initialized` handshake acknowledgement.
     public Task SendNotificationAsync(string method, object? @params, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { method, @params }, cancellationToken);
 
-    /// <summary>Answers a server-initiated request (an approval), echoing its <paramref name="id"/> back verbatim.</summary>
+    // Answers a server-initiated request (an approval), echoing its `id` back verbatim.
     public Task RespondAsync(JsonElement id, object? result, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { id, result }, cancellationToken);
 
-    /// <summary>
-    /// Answers a server-initiated request with a JSON-RPC error — the protocol-conform way to say "this client
-    /// cannot handle this request", used for request kinds the driver does not model. A structured error is a
-    /// valid response for any request regardless of its expected result shape, unlike a made-up result that the
-    /// server could fail to deserialize.
-    /// </summary>
+    // Answers a server-initiated request with a JSON-RPC error — the protocol-conform way to say "this client
+    // cannot handle this request", used for request kinds the driver does not model. A structured error is a
+    // valid response for any request regardless of its expected result shape, unlike a made-up result that the
+    // server could fail to deserialize.
     public Task RespondErrorAsync(JsonElement id, int code, string message, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { id, error = new { code, message } }, cancellationToken);
 

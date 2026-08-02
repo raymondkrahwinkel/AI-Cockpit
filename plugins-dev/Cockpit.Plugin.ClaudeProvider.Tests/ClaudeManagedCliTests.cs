@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// The Claude managed-CLI descriptor (AC-20): the platform-key mapping and the plan built from a release manifest.
-/// The manifest fixture mirrors the real <c>downloads.claude.ai/.../manifest.json</c> shape (verified live), so these
-/// assert the provider-specific knowledge without a network.
-/// </summary>
+// The Claude managed-CLI descriptor (AC-20): the platform-key mapping and the plan built from a release manifest.
+// The manifest fixture mirrors the real `downloads.claude.ai/.../manifest.json` shape (verified live), so these
+// assert the provider-specific knowledge without a network.
 public class ClaudeManagedCliTests
 {
     private const string Manifest = """

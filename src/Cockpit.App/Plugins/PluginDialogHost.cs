@@ -10,25 +10,21 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// Shows a plugin's content in a window beside the cockpit (#14), wrapped in the shared cockpit window
-/// chrome (<see cref="CockpitWindowChrome"/>) so a plugin dialog looks native to the app. The plugin owns
-/// the content control. The settings variant adds a host-provided Save/Close footer so every plugin's
-/// settings dialog behaves the same — Save calls the view's <see cref="IPluginSettingsView.Save"/> and
-/// closes the window on success.
-/// <para>
-/// These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and worked
-/// in for minutes, and as a modal it took every running session down with it.
-/// </para>
-/// <para>
-/// Reduced to one window apiece only where the plugin says so, through a key it supplies. The host cannot
-/// work that out on its own: all it is handed is a caption, and a caption is not an identity. The YouTrack
-/// and GitHub-Issues plugins both title theirs "Track an issue in this session" over different panes, and
-/// Transcript-search puts two different controls behind "Search transcripts" — the standalone search and the
-/// conversation picker that answers the New-session dialog. Keying on the caption linked an issue to the
-/// wrong session and left the picker's caller with a window that answers nothing.
-/// </para>
-/// </summary>
+// Shows a plugin's content in a window beside the cockpit (#14), wrapped in the shared cockpit window
+// chrome (`CockpitWindowChrome`) so a plugin dialog looks native to the app. The plugin owns
+// the content control. The settings variant adds a host-provided Save/Close footer so every plugin's
+// settings dialog behaves the same — Save calls the view's `IPluginSettingsView.Save` and
+// closes the window on success.
+//
+// These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and worked
+// in for minutes, and as a modal it took every running session down with it.
+//
+// Reduced to one window apiece only where the plugin says so, through a key it supplies. The host cannot
+// work that out on its own: all it is handed is a caption, and a caption is not an identity. The YouTrack
+// and GitHub-Issues plugins both title theirs "Track an issue in this session" over different panes, and
+// Transcript-search puts two different controls behind "Search transcripts" — the standalone search and the
+// conversation picker that answers the New-session dialog. Keying on the caption linked an issue to the
+// wrong session and left the picker's caller with a window that answers nothing.
 internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogHost, ISingletonService
 {
     public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null, string? singleInstanceKey = null)
@@ -87,31 +83,27 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         await surfaces.ShowAsync(key, window, owner);
     }
 
-    /// <summary>
-    /// The Save/Close footer every plugin settings dialog gets. Extracted so the failure branch below is directly
-    /// testable without the rest of <see cref="ShowSettingsDialogAsync"/>'s <c>Application.Current.ApplicationLifetime</c>
-    /// dependency (owner/sizing, in <see cref="_TryCreateWindow"/>) — this only touches the window and view it is handed.
-    /// <para>
-    /// <b>On a refused save (AC-499 review fix, follow-up finding):</b> <see cref="IPluginSettingsView.Save"/> answers
-    /// only <see langword="true"/>/<see langword="false"/>, with no channel back for a reason — a deliberate ABI-safe
-    /// surface every published plugin (11+ in this repo alone, plus whatever a third party has built against it)
-    /// implements today. Until AC-499 no settings view ever returned <see langword="false"/> for anything but "the
-    /// operator has not filled the form in yet" (silently doing nothing was tolerable there), so the gap was never
-    /// visible. Depot's own save now refuses the whole batch on a name collision instead of silently dropping one
-    /// row — a real, occupied failure that this footer used to say nothing about at all: the operator's click just
-    /// did not do anything.
-    /// </para>
-    /// <para>
-    /// Two ways to close that gap were weighed. <b>Widening <see cref="IPluginSettingsView"/></b> (even additively —
-    /// a default-implemented member, never a changed signature) would only help a plugin that adopts it; every
-    /// existing prebuilt plugin, and every plugin published before the widening, keeps answering with a bare bool and
-    /// the operator is back to a silent click until each one is rebuilt. A generic host-level line, chosen here
-    /// instead, helps every plugin the moment this ships — including the ones already out there — at the cost of not
-    /// being able to name the specific reason. A plugin that wants to say more (Depot's own per-row detail, e.g.
-    /// <c>DepotConnectionRowControl</c>'s "'\"{name}\" is used by another row above'") still can, in its own view —
-    /// this line only promises that a refusal is never silent, not that it is the operator's only answer.
-    /// </para>
-    /// </summary>
+    // The Save/Close footer every plugin settings dialog gets. Extracted so the failure branch below is directly
+    // testable without the rest of `ShowSettingsDialogAsync`'s `Application.Current.ApplicationLifetime`
+    // dependency (owner/sizing, in `_TryCreateWindow`) — this only touches the window and view it is handed.
+    //
+    // *On a refused save (AC-499 review fix, follow-up finding):* `IPluginSettingsView.Save` answers
+    // only `true`/`false`, with no channel back for a reason — a deliberate ABI-safe
+    // surface every published plugin (11+ in this repo alone, plus whatever a third party has built against it)
+    // implements today. Until AC-499 no settings view ever returned `false` for anything but "the
+    // operator has not filled the form in yet" (silently doing nothing was tolerable there), so the gap was never
+    // visible. Depot's own save now refuses the whole batch on a name collision instead of silently dropping one
+    // row — a real, occupied failure that this footer used to say nothing about at all: the operator's click just
+    // did not do anything.
+    //
+    // Two ways to close that gap were weighed. *Widening `IPluginSettingsView`* (even additively —
+    // a default-implemented member, never a changed signature) would only help a plugin that adopts it; every
+    // existing prebuilt plugin, and every plugin published before the widening, keeps answering with a bare bool and
+    // the operator is back to a silent click until each one is rebuilt. A generic host-level line, chosen here
+    // instead, helps every plugin the moment this ships — including the ones already out there — at the cost of not
+    // being able to name the specific reason. A plugin that wants to say more (Depot's own per-row detail, e.g.
+    // `DepotConnectionRowControl`'s "'\"{name}\" is used by another row above'") still can, in its own view —
+    // this line only promises that a refusal is never silent, not that it is the operator's only answer.
     internal static Border BuildSettingsFooter(Window window, Control view, Action? onSaved)
     {
         var status = new TextBlock

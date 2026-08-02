@@ -8,14 +8,12 @@ using SharpCompress.Readers;
 
 namespace Cockpit.Infrastructure.ManagedCli;
 
-/// <summary>
-/// The generic managed-CLI installer (AC-20). Holds the descriptors plugins register and turns any one of them into
-/// an on-disk executable: resolve latest version → build the download plan → download → verify SHA-256 → unpack →
-/// place atomically under <c>&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/</c>. Reuses the project's proven
-/// building blocks — <see cref="PluginHash"/> for the checksum (same as the plugin store), the download-to-temp-then-
-/// move discipline of the voice caches so a failed install never leaves a half copy, and SharpCompress for the same
-/// tar extraction the voice caches do. Names no provider: Claude and Codex differ only in the descriptor they hand in.
-/// </summary>
+// The generic managed-CLI installer (AC-20). Holds the descriptors plugins register and turns any one of them into
+// an on-disk executable: resolve latest version → build the download plan → download → verify SHA-256 → unpack →
+// place atomically under `&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/`. Reuses the project's proven
+// building blocks — `PluginHash` for the checksum (same as the plugin store), the download-to-temp-then-
+// move discipline of the voice caches so a failed install never leaves a half copy, and SharpCompress for the same
+// tar extraction the voice caches do. Names no provider: Claude and Codex differ only in the descriptor they hand in.
 internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 {
     // Owner rwx + group/other rx (0755) — a launcher the user runs; mirrors what the official installers set.

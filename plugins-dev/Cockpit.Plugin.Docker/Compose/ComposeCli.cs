@@ -2,11 +2,9 @@ using System.Diagnostics;
 
 namespace Cockpit.Plugin.Docker.Compose;
 
-/// <summary>
-/// <see cref="IComposeCli"/> backed by the real <c>docker compose</c> CLI via <see cref="Process"/>. Uses
-/// <see cref="ProcessStartInfo.ArgumentList"/> (argv, no shell), so nothing agent-supplied is ever interpreted by a
-/// shell.
-/// </summary>
+// `IComposeCli` backed by the real `docker compose` CLI via `Process`. Uses
+// `ProcessStartInfo.ArgumentList` (argv, no shell), so nothing agent-supplied is ever interpreted by a
+// shell.
 internal sealed class ComposeCli : IComposeCli
 {
     public async Task<ComposeResult> RunAsync(string workingDirectory, IReadOnlyList<string> args, CancellationToken cancellationToken)

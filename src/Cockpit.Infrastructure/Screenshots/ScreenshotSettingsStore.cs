@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-/// <summary>
-/// Persists <see cref="ScreenshotSettings"/> under the <c>screenshots</c> section of <c>cockpit.json</c> (same
-/// file/pattern as <c>VoiceSettingsStore</c>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched. When nothing was ever
-/// saved, <see cref="LoadAsync"/> returns the defaults (the global hotkey off).
-/// </summary>
+// Persists `ScreenshotSettings` under the `screenshots` section of `cockpit.json` (same
+// file/pattern as `VoiceSettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched. When nothing was ever
+// saved, `LoadAsync` returns the defaults (the global hotkey off).
 internal sealed class ScreenshotSettingsStore : IScreenshotSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class ScreenshotSettingsStore : IScreenshotSettingsStore, ISingl
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal ScreenshotSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

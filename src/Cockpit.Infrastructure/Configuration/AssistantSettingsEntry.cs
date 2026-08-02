@@ -2,7 +2,7 @@ using Cockpit.Core.Assistant;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="AssistantSettings"/> in the <c>assistant</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of `AssistantSettings` in the `assistant` section of `cockpit.json`.
 internal sealed class AssistantSettingsEntry
 {
     public bool IsEnabled { get; set; }
@@ -13,25 +13,20 @@ internal sealed class AssistantSettingsEntry
 
     public bool AlwaysOnCostAcknowledged { get; set; }
 
-    /// <summary>
-    /// The chat window's reading level (AC-138), stored as its enum name rather than the enum itself — same
-    /// defensive shape as <see cref="ProfileDefaultsEntry.DefaultReadingLevel"/>: a name a newer build wrote that
-    /// this one does not recognise (a fourth level, say) reads back as "no match" here, never as whichever value
-    /// happens to sit at ordinal 0.
-    /// </summary>
+    // The chat window's reading level (AC-138), stored as its enum name rather than the enum itself — same
+    // defensive shape as `ProfileDefaultsEntry.DefaultReadingLevel`: a name a newer build wrote that
+    // this one does not recognise (a fourth level, say) reads back as "no match" here, never as whichever value
+    // happens to sit at ordinal 0.
     public string? ReadingLevel { get; set; }
 
-    /// <summary>
-    /// The consent-bypass switches (#AC-575), on disk as two plain string lists rather than one enum per source.
-    /// Deliberate: an unknown enum value costs <c>JsonlAuditLog</c>'s reader the line it is on and this file's
-    /// reader the whole section, and the default of a non-nullable enum is ordinal 0 — so a three-state
-    /// <c>None/LowRisk/Everything</c> written by a newer build is exactly the shape that reads back as whichever
-    /// value happens to sit at 0 in an older one. A source name that means nothing to this build is simply a name
-    /// that matches no source, which is the least powerful thing it could mean.
-    /// </summary>
+    // The consent-bypass switches (#AC-575), on disk as two plain string lists rather than one enum per source.
+    // Deliberate: an unknown enum value costs `JsonlAuditLog`'s reader the line it is on and this file's
+    // reader the whole section, and the default of a non-nullable enum is ordinal 0 — so a three-state
+    // `None/LowRisk/Everything` written by a newer build is exactly the shape that reads back as whichever
+    // value happens to sit at 0 in an older one. A source name that means nothing to this build is simply a name
+    // that matches no source, which is the least powerful thing it could mean.
     public List<string> ConsentBypassSources { get; set; } = [];
 
-    /// <inheritdoc cref="ConsentBypassSources"/>
     public List<string> ConsentBypassDangerousSources { get; set; } = [];
 
     public static AssistantSettingsEntry FromDomain(AssistantSettings settings) => new()

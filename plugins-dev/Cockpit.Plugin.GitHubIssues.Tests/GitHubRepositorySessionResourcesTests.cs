@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// What a session started under a project carries about the repository that project is tracked in (AC-165). The
-/// point of the contribution is that the link the operator made in the project editor reaches the tools running
-/// inside the session, not just this plugin's dialogs.
-/// </summary>
+// What a session started under a project carries about the repository that project is tracked in (AC-165). The
+// point of the contribution is that the link the operator made in the project editor reaches the tools running
+// inside the session, not just this plugin's dialogs.
 public class GitHubRepositorySessionResourcesTests
 {
     private static (GitHubRepositorySessionResources Provider, FakeCockpitHost Host) Build(string? linkedRepository)

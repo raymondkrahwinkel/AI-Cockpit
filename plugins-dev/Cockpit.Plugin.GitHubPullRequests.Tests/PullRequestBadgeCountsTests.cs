@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// The counting rule behind the AC-517 badge: <see cref="PullRequestBadgeCounts.Compute"/> mirrors exactly what
-/// the old always-visible section computed for its "N open · M waiting on you" line, so the badge is provably the
-/// same truth rather than a second one that can drift from the dialog.
-/// </summary>
+// The counting rule behind the AC-517 badge: `PullRequestBadgeCounts.Compute` mirrors exactly what
+// the old always-visible section computed for its "N open · M waiting on you" line, so the badge is provably the
+// same truth rather than a second one that can drift from the dialog.
 public class PullRequestBadgeCountsTests
 {
     private static readonly GitHubPullRequest Mine = new(1, "Faster startup", "https://github.com/o/r/pull/1", null, "o/r", "me");

@@ -4,12 +4,10 @@ using Cockpit.Plugin.Kubernetes.Mcp;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-/// <summary>
-/// The schema-less shaping the tools lean on: the client deserializes any resource into <see cref="RawKubernetesObject"/>
-/// via the k8s serializer, and the tool serializes it back out — this must not lose fields. And the list summary must
-/// pull name/namespace out of each item. Both are exercised against literal payloads (the riskiest code the reviewers
-/// flagged as untested).
-/// </summary>
+// The schema-less shaping the tools lean on: the client deserializes any resource into `RawKubernetesObject`
+// via the k8s serializer, and the tool serializes it back out — this must not lose fields. And the list summary must
+// pull name/namespace out of each item. Both are exercised against literal payloads (the riskiest code the reviewers
+// flagged as untested).
 public class ResourceShapingTests
 {
     [Fact]

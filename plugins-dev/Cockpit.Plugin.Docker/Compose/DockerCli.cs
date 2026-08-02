@@ -2,11 +2,9 @@ using System.Diagnostics;
 
 namespace Cockpit.Plugin.Docker.Compose;
 
-/// <summary>
-/// <see cref="IDockerCli"/> backed by the real <c>docker</c> CLI via <see cref="Process"/>. Uses
-/// <see cref="ProcessStartInfo.ArgumentList"/> (argv, no shell), so nothing agent-supplied is ever interpreted by a
-/// shell. Mirrors <see cref="ComposeCli"/>, including the kill-the-tree-on-cancel handling.
-/// </summary>
+// `IDockerCli` backed by the real `docker` CLI via `Process`. Uses
+// `ProcessStartInfo.ArgumentList` (argv, no shell), so nothing agent-supplied is ever interpreted by a
+// shell. Mirrors `ComposeCli`, including the kill-the-tree-on-cancel handling.
 internal sealed class DockerCli : IDockerCli
 {
     public async Task<DockerCliResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)

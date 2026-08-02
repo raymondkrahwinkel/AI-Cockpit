@@ -1,6 +1,6 @@
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>Splits candidate resource rows into what a written definition keeps and what it drops, with the reason (AC-244) — the reporting <see cref="CockpitProjectResourceEntry.Create"/> alone throws away by returning null.</summary>
+// Splits candidate resource rows into what a written definition keeps and what it drops, with the reason (AC-244) — the reporting `CockpitProjectResourceEntry.Create` alone throws away by returning null.
 public static class CockpitProjectResourceFilter
 {
     public static CockpitProjectResourceFilterResult Apply(IEnumerable<(string Role, string Reference, string? Label)> rows)

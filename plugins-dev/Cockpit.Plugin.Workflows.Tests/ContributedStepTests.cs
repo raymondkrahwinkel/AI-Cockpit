@@ -5,11 +5,9 @@ using Material.Icons;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// A step another plugin contributed (#69). The contract's whole promise is that its author writes no workflow code:
-/// they declare what they ask for and do the work, and the engine deals in placeholders, items and branches on their
-/// behalf. These tests hold that promise open.
-/// </summary>
+// A step another plugin contributed (#69). The contract's whole promise is that its author writes no workflow code:
+// they declare what they ask for and do the work, and the engine deals in placeholders, items and branches on their
+// behalf. These tests hold that promise open.
 public class ContributedStepTests
 {
     [Fact]

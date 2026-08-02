@@ -4,7 +4,6 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <inheritdoc cref="IPluginSecretFieldStore"/>
 internal sealed class PluginSecretFieldStore : IPluginSecretFieldStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

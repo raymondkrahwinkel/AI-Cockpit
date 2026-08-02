@@ -4,13 +4,11 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The queue of approved runs waiting to execute (AC-174): it holds plans in run order, hands the front one out, lets the
-/// operator reorder or drop entries, and survives a restart because it persists through the plugin's storage.
-/// </summary>
+// The queue of approved runs waiting to execute (AC-174): it holds plans in run order, hands the front one out, lets the
+// operator reorder or drop entries, and survives a restart because it persists through the plugin's storage.
 public class AutopilotRunQueueTests
 {
-    /// <summary>An in-memory <see cref="IPluginStorage"/> that round-trips through JSON, the way the host's real storage does — so persistence is exercised for real.</summary>
+    // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does — so persistence is exercised for real.
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);

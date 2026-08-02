@@ -1,12 +1,10 @@
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// A Refresh or "Assigned to me" toggle reloads the grid from a fresh fetch, and that new list is a different
-/// collection of different <see cref="GitHubIssue"/> instances. <see cref="IssueSelection.Restore"/> is what
-/// <c>GitHubIssuesDialogControl</c> uses to find the same issue again, by repository + number rather than by
-/// object or structural equality — the same defect and fix as the YouTrack dialog's <c>IssueSelection</c>.
-/// </summary>
+// A Refresh or "Assigned to me" toggle reloads the grid from a fresh fetch, and that new list is a different
+// collection of different `GitHubIssue` instances. `IssueSelection.Restore` is what
+// `GitHubIssuesDialogControl` uses to find the same issue again, by repository + number rather than by
+// object or structural equality — the same defect and fix as the YouTrack dialog's `IssueSelection`.
 public class IssueSelectionTests
 {
     private static readonly GitHubIssue Selected = new(42, "Fix the login redirect", "https://github.com/octocat/hello-world/issues/42", null, "octocat/hello-world");

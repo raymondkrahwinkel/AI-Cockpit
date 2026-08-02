@@ -9,62 +9,50 @@ using Whisper.net;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// Fetches the GPU runtime this machine can actually use on first dictation and caches it next to the model
-/// cache — the same lazy shape as <see cref="WhisperModelCache"/>, and for the same reason: which GPU a
-/// machine has is not knowable at build time, so bundling every runtime shipped ~748 MB of CUDA and Vulkan
-/// natives to every install — 1.5 GB of publish, since a single-file build carried them twice — to serve
-/// whichever one is right for that one machine.
-/// <para>
-/// Only the first backend in the planner's order that <see cref="WhisperGpuProbe"/> calls usable is fetched —
-/// not all three. Nothing usable, or the fetch fails, and the bundled CPU runtime carries transcription. A
-/// missing GPU runtime is only ever slower, never fatal: nothing on this path may take dictation down with it.
-/// </para>
-/// </summary>
+// Fetches the GPU runtime this machine can actually use on first dictation and caches it next to the model
+// cache — the same lazy shape as `WhisperModelCache`, and for the same reason: which GPU a
+// machine has is not knowable at build time, so bundling every runtime shipped ~748 MB of CUDA and Vulkan
+// natives to every install — 1.5 GB of publish, since a single-file build carried them twice — to serve
+// whichever one is right for that one machine.
+//
+// Only the first backend in the planner's order that `WhisperGpuProbe` calls usable is fetched —
+// not all three. Nothing usable, or the fetch fails, and the bundled CPU runtime carries transcription. A
+// missing GPU runtime is only ever slower, never fatal: nothing on this path may take dictation down with it.
 internal static class WhisperRuntimeCache
 {
-    /// <summary>
-    /// One client for the process, like <c>WhisperGgmlDownloader.Default</c> keeps: a client per download
-    /// churns sockets. <see cref="HttpCompletionOption.ResponseHeadersRead"/> keeps this timeout on the
-    /// handshake instead of the body — a runtime is hundreds of megabytes and a slow line is not a failure.
-    /// </summary>
+    // One client for the process, like `WhisperGgmlDownloader.Default` keeps: a client per download
+    // churns sockets. `HttpCompletionOption.ResponseHeadersRead` keeps this timeout on the
+    // handshake instead of the body — a runtime is hundreds of megabytes and a slow line is not a failure.
     private static readonly HttpClient NuGetClient = new() { Timeout = TimeSpan.FromMinutes(2) };
 
-    /// <summary>
-    /// The runtime version to fetch, taken from the Whisper.net assembly that will load it, so the two can
-    /// never drift: a bump of the library moves this with it. Asking NuGet for the newest instead would
-    /// reintroduce the mismatch this whole split exists to avoid — and a mismatch fails silently on the CPU.
-    /// </summary>
+    // The runtime version to fetch, taken from the Whisper.net assembly that will load it, so the two can
+    // never drift: a bump of the library moves this with it. Asking NuGet for the newest instead would
+    // reintroduce the mismatch this whole split exists to avoid — and a mismatch fails silently on the CPU.
     private static readonly string RuntimeVersion = WhisperRuntimeCatalog.NormalizePackageVersion(
         typeof(WhisperFactory).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
         ?? typeof(WhisperFactory).Assembly.GetName().Version?.ToString(3)
         ?? throw new InvalidOperationException("The Whisper.net assembly carries no version to match its native runtimes against."));
 
-    /// <summary>What to hand Whisper.net as <c>RuntimeOptions.LibraryPath</c>.</summary>
+    // What to hand Whisper.net as `RuntimeOptions.LibraryPath`.
     public static string SearchPath => WhisperRuntimeCatalog.ToLibrarySearchPath(VersionRoot);
 
     private static string RuntimesRoot => Path.Combine(CockpitConfigPath.Root, "whisper-runtimes");
 
-    /// <summary>
-    /// Runtimes live under the Whisper.net version they were published for. Keeping the version in the path is
-    /// what makes a library bump safe without any migration: the old natives are not stale, they are simply not
-    /// where the new loader looks. <see cref="_RemoveOtherVersions"/> reclaims them afterwards.
-    /// </summary>
+    // Runtimes live under the Whisper.net version they were published for. Keeping the version in the path is
+    // what makes a library bump safe without any migration: the old natives are not stale, they are simply not
+    // where the new loader looks. `_RemoveOtherVersions` reclaims them afterwards.
     private static string VersionRoot => Path.Combine(RuntimesRoot, RuntimeVersion);
 
     private static string WhisperLibraryFileName => OperatingSystem.IsWindows() ? "whisper.dll" : "libwhisper.so";
 
-    /// <summary>
-    /// Makes sure the best runtime this machine can use is on disk before the factory is built. Walks the
-    /// planner's order and stops at the first backend that is both usable here and cached (or fetchable).
-    /// <para>
-    /// Returns whether a fetched GPU runtime now lives in the cache for this order. The caller needs that answer
-    /// because <c>RuntimeOptions.LibraryPath</c> may only point at the cache when there is genuinely something
-    /// there: Whisper.net searches <em>only</em> that path once it is set, so pointing it at a cache that holds no
-    /// runtime for the chosen order would hide the bundled CPU natives next to the exe and hard-fail dictation.
-    /// A CPU-only resolution (or a GPU whose fetch failed) returns <c>false</c> — the bundled CPU is the floor.
-    /// </para>
-    /// </summary>
+    // Makes sure the best runtime this machine can use is on disk before the factory is built. Walks the
+    // planner's order and stops at the first backend that is both usable here and cached (or fetchable).
+    //
+    // Returns whether a fetched GPU runtime now lives in the cache for this order. The caller needs that answer
+    // because `RuntimeOptions.LibraryPath` may only point at the cache when there is genuinely something
+    // there: Whisper.net searches *only* that path once it is set, so pointing it at a cache that holds no
+    // runtime for the chosen order would hide the bundled CPU natives next to the exe and hard-fail dictation.
+    // A CPU-only resolution (or a GPU whose fetch failed) returns `false` — the bundled CPU is the floor.
     public static async Task<bool> EnsureAvailableAsync(
         IReadOnlyList<WhisperRuntimeBackend> order,
         WhisperHostPlatform platform,
@@ -189,10 +177,8 @@ internal static class WhisperRuntimeCache
         }
     }
 
-    /// <summary>
-    /// A .nupkg is a zip, and <see cref="ZipArchive"/> needs to seek, which an HTTP response stream cannot —
-    /// so it goes to a file first rather than into several hundred megabytes of memory.
-    /// </summary>
+    // A .nupkg is a zip, and `ZipArchive` needs to seek, which an HTTP response stream cannot —
+    // so it goes to a file first rather than into several hundred megabytes of memory.
     private static async Task _DownloadPackageAsync(
         WhisperRuntimePackage package,
         string packageFile,
@@ -218,11 +204,9 @@ internal static class WhisperRuntimeCache
             .ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Flattens the package's native folder into <paramref name="staging"/>. The whole runtime comes over, not
-    /// just whisper itself: the loader opens a dependency chain (ggml-base, ggml-cpu, ggml-cuda, ggml, …) out of
-    /// the same directory, and a missing link there means it quietly moves on to the next backend.
-    /// </summary>
+    // Flattens the package's native folder into `staging`. The whole runtime comes over, not
+    // just whisper itself: the loader opens a dependency chain (ggml-base, ggml-cpu, ggml-cuda, ggml, …) out of
+    // the same directory, and a missing link there means it quietly moves on to the next backend.
     internal static int ExtractNatives(string packageFile, WhisperRuntimePackage package, string staging)
     {
         using var archive = ZipFile.OpenRead(packageFile);
@@ -244,11 +228,9 @@ internal static class WhisperRuntimeCache
         return extracted;
     }
 
-    /// <summary>
-    /// Drops runtimes cached for a Whisper.net version we no longer load. They are hundreds of megabytes each
-    /// and nothing reads them again — the version is baked into the path the loader searches. Takes the root
-    /// rather than reaching for it, so what it is about to delete recursively is always the caller's to name.
-    /// </summary>
+    // Drops runtimes cached for a Whisper.net version we no longer load. They are hundreds of megabytes each
+    // and nothing reads them again — the version is baked into the path the loader searches. Takes the root
+    // rather than reaching for it, so what it is about to delete recursively is always the caller's to name.
     internal static void RemoveOtherVersions(string runtimesRoot, string keepVersion, ILogger? logger)
     {
         if (!Directory.Exists(runtimesRoot))
@@ -278,11 +260,9 @@ internal static class WhisperRuntimeCache
         }
     }
 
-    /// <summary>
-    /// Which host the cockpit is on, or null on one Whisper.net publishes no runtimes for at all. The caller
-    /// resolves this once and hands it to both the planner and the cache, so the order that gets tried and the
-    /// runtime that gets fetched can never disagree about where they are.
-    /// </summary>
+    // Which host the cockpit is on, or null on one Whisper.net publishes no runtimes for at all. The caller
+    // resolves this once and hands it to both the planner and the cache, so the order that gets tried and the
+    // runtime that gets fetched can never disagree about where they are.
     public static WhisperHostPlatform? CurrentPlatform =>
         OperatingSystem.IsWindows() ? WhisperHostPlatform.Windows
         : OperatingSystem.IsLinux() ? WhisperHostPlatform.Linux
@@ -306,11 +286,9 @@ internal static class WhisperRuntimeCache
         }
     }
 
-    /// <summary>
-    /// Clears a scratch file or directory once the outcome is already decided. Best-effort by design: a locked
-    /// temp file — Windows Defender scanning a freshly written DLL is routine — must never become the result,
-    /// least of all of a fetch that succeeded, which a throwing <c>finally</c> would turn into a crash.
-    /// </summary>
+    // Clears a scratch file or directory once the outcome is already decided. Best-effort by design: a locked
+    // temp file — Windows Defender scanning a freshly written DLL is routine — must never become the result,
+    // least of all of a fetch that succeeded, which a throwing `finally` would turn into a crash.
     private static void _DeleteQuietly(string path, ILogger? logger)
     {
         try

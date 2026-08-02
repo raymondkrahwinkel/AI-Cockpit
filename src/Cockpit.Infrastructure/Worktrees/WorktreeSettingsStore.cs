@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-/// <summary>
-/// Persists <see cref="WorktreeSettings"/> under the <c>worktreeSettings</c> section of <c>cockpit.json</c>, going
-/// through <see cref="CockpitConfigFileAccess"/> so it leaves the other sections — including the worktree registry —
-/// untouched (same pattern as the terminal/layout settings stores).
-/// </summary>
+// Persists `WorktreeSettings` under the `worktreeSettings` section of `cockpit.json`, going
+// through `CockpitConfigFileAccess` so it leaves the other sections — including the worktree registry —
+// untouched (same pattern as the terminal/layout settings stores).
 internal sealed class WorktreeSettingsStore : IWorktreeSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class WorktreeSettingsStore : IWorktreeSettingsStore, ISingleton
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal WorktreeSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

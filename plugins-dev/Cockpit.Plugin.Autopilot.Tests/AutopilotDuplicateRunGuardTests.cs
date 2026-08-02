@@ -3,16 +3,14 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// AC-346 review, MEDIUM 6: a second click on an epic (or a plain issue) while its run is already in flight must not
-/// start a duplicate — a second worktree and a second PR on the same ticket. Exercises
-/// <see cref="AutopilotPlugin._HasRunInFlight"/> directly against real (not mocked) <see cref="AutopilotPlanController"/>
-/// and <see cref="AutopilotRunQueue"/> — the two places a not-yet-started run can be waiting, and the easiest to
-/// construct without a UI or a live embedded session. The third place (<see cref="AutopilotRunManager.Active"/> —
-/// a run genuinely executing right now) is covered by review rather than a direct test here: constructing an active
-/// coordinator needs a started run, which needs a host and an embedded session this project's other coordinator tests
-/// build through NSubstitute + AutopilotRunCoordinatorTests' own scaffolding rather than duplicating it here.
-/// </summary>
+// AC-346 review, MEDIUM 6: a second click on an epic (or a plain issue) while its run is already in flight must not
+// start a duplicate — a second worktree and a second PR on the same ticket. Exercises
+// `AutopilotPlugin._HasRunInFlight` directly against real (not mocked) `AutopilotPlanController`
+// and `AutopilotRunQueue` — the two places a not-yet-started run can be waiting, and the easiest to
+// construct without a UI or a live embedded session. The third place (`AutopilotRunManager.Active` —
+// a run genuinely executing right now) is covered by review rather than a direct test here: constructing an active
+// coordinator needs a started run, which needs a host and an embedded session this project's other coordinator tests
+// build through NSubstitute + AutopilotRunCoordinatorTests' own scaffolding rather than duplicating it here.
 public class AutopilotDuplicateRunGuardTests
 {
     private sealed class FakeStorage : IPluginStorage

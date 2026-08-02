@@ -1,6 +1,6 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>Kahn's algorithm over an epic's "depends on" links (AC-346), with a stable tie-break on issue id.</summary>
+// Kahn's algorithm over an epic's "depends on" links (AC-346), with a stable tie-break on issue id.
 public class EpicSubTopologicalOrderTests
 {
     private static IReadOnlyDictionary<string, IReadOnlyList<string>> Deps(params (string Id, string[] DependsOn)[] entries) =>

@@ -2,7 +2,7 @@ using Cockpit.Core.Layout;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of the main window's bounds, under the <c>windowBounds</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of the main window's bounds, under the `windowBounds` section of `cockpit.json`.
 internal sealed class WindowBoundsEntry
 {
     public int X { get; set; }

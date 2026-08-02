@@ -5,12 +5,10 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Notifications;
 
-/// <summary>
-/// Persists <see cref="NotificationSettings"/> under the <c>notifications</c> section of
-/// <c>cockpit.json</c> (same file/pattern as <c>SessionProfileStore</c>). Reads-modifies-writes the
-/// whole file via <see cref="CockpitConfigFileAccess"/> so it leaves the <c>profiles</c> section
-/// untouched. When no settings were ever saved, <see cref="LoadAsync"/> returns the defaults.
-/// </summary>
+// Persists `NotificationSettings` under the `notifications` section of
+// `cockpit.json` (same file/pattern as `SessionProfileStore`). Reads-modifies-writes the
+// whole file via `CockpitConfigFileAccess` so it leaves the `profiles` section
+// untouched. When no settings were ever saved, `LoadAsync` returns the defaults.
 internal sealed class NotificationSettingsStore : INotificationSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -20,7 +18,7 @@ internal sealed class NotificationSettingsStore : INotificationSettingsStore, IS
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal NotificationSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

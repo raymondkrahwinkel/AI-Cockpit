@@ -4,11 +4,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Keeps what happened (#69). "It did not work" is not something an operator can act on, so every run is written
-/// down — which step got what, what it produced, how long it took — and kept until the next twenty push it out.
-/// A run history that grows without bound is a config file that grows without bound.
-/// </summary>
+// Keeps what happened (#69). "It did not work" is not something an operator can act on, so every run is written
+// down — which step got what, what it produced, how long it took — and kept until the next twenty push it out.
+// A run history that grows without bound is a config file that grows without bound.
 internal sealed class RunStore(IPluginStorage storage)
 {
     private const string Key = "runs";
@@ -36,7 +34,7 @@ internal sealed class RunStore(IPluginStorage storage)
         }
     }
 
-    /// <summary>Adds a run and drops the oldest beyond <see cref="Keep"/>.</summary>
+    // Adds a run and drops the oldest beyond `Keep`.
     public IReadOnlyList<WorkflowRun> Add(WorkflowRun run)
     {
         var runs = Load().ToList();

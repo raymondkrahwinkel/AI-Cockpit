@@ -4,31 +4,25 @@ using System.Text;
 
 namespace Cockpit.Plugin.SessionReview;
 
-/// <summary>
-/// Reads the uncommitted changes of a working directory (AC-50) via <c>git diff HEAD</c>, plus the branch and repo
-/// root via <c>git rev-parse</c>, plus the untracked files via <c>git status</c> — all run in the directory, with
-/// <c>ArgumentList</c> (no shell). Fails soft: no git, not a repo, or no changes all yield an empty result rather
-/// than an error. Bounded by a per-call timeout.
-/// </summary>
-/// <remarks>
-/// A file that has never been staged does not appear in <c>git diff HEAD</c> at all, so the panel's promise to show
-/// "what this session changed before it lands" used to skip exactly the files a session most often adds. Each one is
-/// read here and appended to the diff as the all-added block git itself would have written, which keeps one parsing
-/// path for the panel and leaves the copied text a valid diff.
-/// </remarks>
+// Reads the uncommitted changes of a working directory (AC-50) via `git diff HEAD`, plus the branch and repo
+// root via `git rev-parse`, plus the untracked files via `git status` — all run in the directory, with
+// `ArgumentList` (no shell). Fails soft: no git, not a repo, or no changes all yield an empty result rather
+// than an error. Bounded by a per-call timeout.
+// A file that has never been staged does not appear in `git diff HEAD` at all, so the panel's promise to show
+// "what this session changed before it lands" used to skip exactly the files a session most often adds. Each one is
+// read here and appended to the diff as the all-added block git itself would have written, which keeps one parsing
+// path for the panel and leaves the copied text a valid diff.
 internal sealed class GitDiffReader
 {
-    /// <summary>A file this large is not something anyone reviews line by line; it is listed, not drawn.</summary>
+    // A file this large is not something anyone reviews line by line; it is listed, not drawn.
     private const int MaxUntrackedBytes = 1024 * 1024;
 
-    /// <summary>
-    /// The git arguments for the working-tree diff against the last commit. Internal so a test can assert them.
-    /// <c>core.quotePath=false</c> keeps non-ASCII paths readable instead of octal-escaped, and <c>--no-ext-diff</c>
-    /// stops a repository's own diff driver from replacing the unified output this panel has to parse.
-    /// </summary>
+    // The git arguments for the working-tree diff against the last commit. Internal so a test can assert them.
+    // `core.quotePath=false` keeps non-ASCII paths readable instead of octal-escaped, and `--no-ext-diff`
+    // stops a repository's own diff driver from replacing the unified output this panel has to parse.
     internal static readonly string[] DiffArguments = ["-c", "core.quotePath=false", "diff", "--no-ext-diff", "HEAD"];
 
-    /// <summary>The git arguments that list untracked files. Internal so a test can assert them.</summary>
+    // The git arguments that list untracked files. Internal so a test can assert them.
     internal static readonly string[] StatusArguments = ["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"];
 
     public async Task<GitDiffResult> ReadAsync(string workingDirectory, CancellationToken cancellationToken)
@@ -61,20 +55,16 @@ internal sealed class GitDiffReader
         return new GitDiffResult(true, branch, diffOut + untracked);
     }
 
-    /// <summary>
-    /// The paths <c>git status --porcelain</c> reports as untracked. Porcelain output is always relative to the
-    /// repository root, whichever directory git ran in. Internal so a test can pin the parsing.
-    /// </summary>
+    // The paths `git status --porcelain` reports as untracked. Porcelain output is always relative to the
+    // repository root, whichever directory git ran in. Internal so a test can pin the parsing.
     internal static IReadOnlyList<string> UntrackedPaths(string statusOutput) =>
         [.. statusOutput.Replace("\r\n", "\n").Split('\n')
             .Where(line => line.StartsWith("?? ", StringComparison.Ordinal))
             .Select(line => line[3..].Trim().Trim('"'))
             .Where(path => path.Length > 0)];
 
-    /// <summary>
-    /// The diff block git would have written for a new file: every line added, against <c>/dev/null</c>. Internal so
-    /// a test can pin the shape without touching a disk.
-    /// </summary>
+    // The diff block git would have written for a new file: every line added, against `/dev/null`. Internal so
+    // a test can pin the shape without touching a disk.
     internal static string UntrackedBlock(string path, string content)
     {
         var lines = content.Replace("\r\n", "\n").Split('\n');
@@ -98,7 +88,7 @@ internal sealed class GitDiffReader
         return block.ToString();
     }
 
-    /// <summary>The block for a file that is new but will not be drawn — binary, unreadable, or simply too large.</summary>
+    // The block for a file that is new but will not be drawn — binary, unreadable, or simply too large.
     internal static string UntrackedBinaryBlock(string path) =>
         $"diff --git a/{path} b/{path}\nnew file mode 100644\nBinary files /dev/null and b/{path} differ\n";
 

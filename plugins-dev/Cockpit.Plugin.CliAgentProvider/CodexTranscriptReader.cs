@@ -5,20 +5,17 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// The Codex plugin's own transcript reader (AC-171) for the host's TTY status dot (#39) — a TTY session runs the
-/// real interactive TUI, so there is no parsed event stream, but <c>codex</c> writes every session live to
-/// <c>&lt;CODEX_HOME&gt;/sessions/&lt;yyyy&gt;/&lt;MM&gt;/&lt;dd&gt;/rollout-&lt;timestamp&gt;-&lt;id&gt;.jsonl</c>
-/// (confirmed against real <c>codex-cli 0.144.4</c> rollout files, not assumed from Claude's shape). Without this
-/// reader <see cref="CodexTtyProvider"/> registers no <c>CreateTranscriptReader</c>, so every Codex TTY session's
-/// status dot is set to <c>Idle</c> once at launch and never moves again — the bug AC-171 reports.
-/// <para>
-/// Mirrors <c>ClaudeTranscriptReader</c>'s tail/poll/partial-line-buffer shape, minus the sub-agent handling: a
-/// Codex rollout carries no evidence of a sibling background-agent transcript, so <see cref="PluginSessionActivity.BackgroundBusy"/>
-/// is never emitted here — only <see cref="ReadActivityAsync"/>'s own two-state <c>task_started</c>/<c>task_complete</c>
-/// signal.
-/// </para>
-/// </summary>
+// The Codex plugin's own transcript reader (AC-171) for the host's TTY status dot (#39) — a TTY session runs the
+// real interactive TUI, so there is no parsed event stream, but `codex` writes every session live to
+// `&lt;CODEX_HOME&gt;/sessions/&lt;yyyy&gt;/&lt;MM&gt;/&lt;dd&gt;/rollout-&lt;timestamp&gt;-&lt;id&gt;.jsonl`
+// (confirmed against real `codex-cli 0.144.4` rollout files, not assumed from Claude's shape). Without this
+// reader `CodexTtyProvider` registers no `CreateTranscriptReader`, so every Codex TTY session's
+// status dot is set to `Idle` once at launch and never moves again — the bug AC-171 reports.
+//
+// Mirrors `ClaudeTranscriptReader`'s tail/poll/partial-line-buffer shape, minus the sub-agent handling: a
+// Codex rollout carries no evidence of a sibling background-agent transcript, so `PluginSessionActivity.BackgroundBusy`
+// is never emitted here — only `ReadActivityAsync`'s own two-state `task_started`/`task_complete`
+// signal.
 internal sealed class CodexTranscriptReader : IPluginTranscriptReader
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -84,20 +81,18 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    /// <summary>
-    /// Classifies one rollout-file JSONL line into a coarse turn-activity. A rollout line's top-level
-    /// <c>"type"</c> was observed as <c>"session_meta"</c>/<c>"turn_context"</c>/<c>"world_state"</c>/
-    /// <c>"response_item"</c>/<c>"event_msg"</c>/<c>"compacted"</c> across real transcripts — only
-    /// <c>"event_msg"</c> carries the turn-lifecycle signal this needs, in its own nested <c>payload.type</c>:
-    /// <c>"task_started"</c> opens a turn (Busy, confirmed to precede even the <c>"user_message"</c> event for
-    /// the same turn) and <c>"task_complete"</c> closes it (TurnComplete). Every other <c>payload.type</c>
-    /// (<c>agent_message</c>, <c>token_count</c>, <c>mcp_tool_call_end</c>, ...) and every non-<c>event_msg</c>
-    /// top-level type carries no signal — forward-compat with an unrecognized future value, same philosophy as
-    /// <c>CodexJsonlEventMapper</c>. Not exhaustively verified: a turn that ends by cancellation or crash rather
-    /// than a normal <c>task_complete</c> was not observed in the samples this reader was built against; the
-    /// host's own busy-safety-timeout (<c>TtyActivityStatusTracker</c>) is the backstop if that ever leaves a
-    /// session stuck on Busy.
-    /// </summary>
+    // Classifies one rollout-file JSONL line into a coarse turn-activity. A rollout line's top-level
+    // `"type"` was observed as `"session_meta"`/`"turn_context"`/`"world_state"`/
+    // `"response_item"`/`"event_msg"`/`"compacted"` across real transcripts — only
+    // `"event_msg"` carries the turn-lifecycle signal this needs, in its own nested `payload.type`:
+    // `"task_started"` opens a turn (Busy, confirmed to precede even the `"user_message"` event for
+    // the same turn) and `"task_complete"` closes it (TurnComplete). Every other `payload.type`
+    // (`agent_message`, `token_count`, `mcp_tool_call_end`, ...) and every non-`event_msg`
+    // top-level type carries no signal — forward-compat with an unrecognized future value, same philosophy as
+    // `CodexJsonlEventMapper`. Not exhaustively verified: a turn that ends by cancellation or crash rather
+    // than a normal `task_complete` was not observed in the samples this reader was built against; the
+    // host's own busy-safety-timeout (`TtyActivityStatusTracker`) is the backstop if that ever leaves a
+    // session stuck on Busy.
     internal static PluginSessionActivity ClassifyLine(string? jsonLine)
     {
         if (string.IsNullOrWhiteSpace(jsonLine))
@@ -134,7 +129,7 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    /// <summary>The state directory this profile's rollouts live under, from the plugin's own config JSON — a pinned <see cref="CliAgentConfig.ConfigDir"/>, else <c>CODEX_HOME</c>, else <c>~/.codex</c> (the CLI's own default).</summary>
+    // The state directory this profile's rollouts live under, from the plugin's own config JSON — a pinned `CliAgentConfig.ConfigDir`, else `CODEX_HOME`, else `~/.codex` (the CLI's own default).
     private static string _ResolveStateDirectory(string configJson)
     {
         var config = _DeserializeConfig(configJson);
@@ -166,21 +161,18 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    /// <summary>
-    /// Polls for a rollout file that was not present at launch — the one <c>codex</c> creates for this session
-    /// under its own auto-assigned id. The newest such file wins if more than one appears. Unlike Claude, whose
-    /// transcript appears within milliseconds of launch, <c>codex</c> does not create the rollout file until the
-    /// operator's first turn actually starts — the wait here can span the operator's entire idle time before
-    /// typing anything. Two Codex TTY sessions open at once therefore have a real window (not a rare race) in
-    /// which the first to start a turn "wins" a waiting reader on the other pane; this is a known, unresolved
-    /// limitation, not something this fix addresses.
-    /// <para>
-    /// Resume (<c>codex resume &lt;id&gt;</c>/<c>--last</c>) is unverified: whether it appends to the existing
-    /// rollout file (in which case this wait never fires — it is already in <paramref name="knownTranscriptsAtLaunch"/>
-    /// — and a resumed session's status never moves) or writes a fresh one was not confirmed against a real
-    /// resume run.
-    /// </para>
-    /// </summary>
+    // Polls for a rollout file that was not present at launch — the one `codex` creates for this session
+    // under its own auto-assigned id. The newest such file wins if more than one appears. Unlike Claude, whose
+    // transcript appears within milliseconds of launch, `codex` does not create the rollout file until the
+    // operator's first turn actually starts — the wait here can span the operator's entire idle time before
+    // typing anything. Two Codex TTY sessions open at once therefore have a real window (not a rare race) in
+    // which the first to start a turn "wins" a waiting reader on the other pane; this is a known, unresolved
+    // limitation, not something this fix addresses.
+    //
+    // Resume (`codex resume &lt;id&gt;`/`--last`) is unverified: whether it appends to the existing
+    // rollout file (in which case this wait never fires — it is already in `knownTranscriptsAtLaunch`
+    // — and a resumed session's status never moves) or writes a fresh one was not confirmed against a real
+    // resume run.
     private static async Task<string?> _WaitForNewTranscriptAsync(
         string configDir, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken)
     {
@@ -201,11 +193,9 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
         return null;
     }
 
-    /// <summary>
-    /// Every <c>&lt;configDir&gt;/sessions/yyyy/MM/dd/rollout-*.jsonl</c> transcript currently on disk — Codex
-    /// nests rollouts three directories deep by date, unlike Claude's flat <c>projects/&lt;hash&gt;/*.jsonl</c>,
-    /// so this recurses through the whole <c>sessions</c> tree rather than one directory level.
-    /// </summary>
+    // Every `&lt;configDir&gt;/sessions/yyyy/MM/dd/rollout-*.jsonl` transcript currently on disk — Codex
+    // nests rollouts three directories deep by date, unlike Claude's flat `projects/&lt;hash&gt;/*.jsonl`,
+    // so this recurses through the whole `sessions` tree rather than one directory level.
     internal static IEnumerable<string> EnumerateTranscripts(string configDir)
     {
         var sessionsDir = Path.Combine(configDir, "sessions");

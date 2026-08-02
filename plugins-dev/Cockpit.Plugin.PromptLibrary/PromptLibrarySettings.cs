@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
-/// <summary>
-/// Loads and saves the prompt-template list in the plugin's per-plugin storage (#2), seeding a handful of
-/// starter templates the first time the plugin runs so the library is never empty. Templates live under a
-/// single storage key as a JSON list; the dialog is the only writer.
-/// </summary>
+// Loads and saves the prompt-template list in the plugin's per-plugin storage (#2), seeding a handful of
+// starter templates the first time the plugin runs so the library is never empty. Templates live under a
+// single storage key as a JSON list; the dialog is the only writer.
 internal sealed class PromptLibrarySettings(IPluginStorage storage)
 {
     private const string TemplatesKey = "templates";

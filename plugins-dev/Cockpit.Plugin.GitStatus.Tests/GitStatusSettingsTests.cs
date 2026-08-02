@@ -1,12 +1,10 @@
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-/// <summary>
-/// <see cref="GitStatusSettings.ShowBranchName"/> (AC-36): defaults to on so the badge keeps showing the branch name
-/// until the operator turns it off, and round-trips a saved choice. Also covers AC-522's fourth acceptance
-/// criterion: an install from before that ticket may still carry the removed repository list under the old
-/// "repos" storage key, and loading must not choke on it.
-/// </summary>
+// `GitStatusSettings.ShowBranchName` (AC-36): defaults to on so the badge keeps showing the branch name
+// until the operator turns it off, and round-trips a saved choice. Also covers AC-522's fourth acceptance
+// criterion: an install from before that ticket may still carry the removed repository list under the old
+// "repos" storage key, and loading must not choke on it.
 public class GitStatusSettingsTests
 {
     [Fact]

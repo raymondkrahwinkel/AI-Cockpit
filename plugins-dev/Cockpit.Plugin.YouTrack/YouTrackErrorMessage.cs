@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The human half of a YouTrack error body. A refused update answers with JSON like
-/// <c>{"error":"Bad Request","error_description":"Value is not valid"}</c>; showing the operator that raw blob
-/// tells them less than the one sentence inside it. Falls back to the body as-is when it is not that shape.
-/// </summary>
+// The human half of a YouTrack error body. A refused update answers with JSON like
+// `{"error":"Bad Request","error_description":"Value is not valid"}`; showing the operator that raw blob
+// tells them less than the one sentence inside it. Falls back to the body as-is when it is not that shape.
 internal static class YouTrackErrorMessage
 {
     public static string From(string? body)

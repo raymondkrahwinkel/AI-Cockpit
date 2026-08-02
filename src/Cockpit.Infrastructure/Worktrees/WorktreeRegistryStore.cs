@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-/// <summary>
-/// Persists the worktree registry under the <c>worktrees</c> section of <c>cockpit.json</c>, going through
-/// <see cref="CockpitConfigFileAccess"/> so each mutation is a gated read-modify-write that never clobbers a
-/// sibling section — the same seam the profile and settings stores use.
-/// </summary>
+// Persists the worktree registry under the `worktrees` section of `cockpit.json`, going through
+// `CockpitConfigFileAccess` so each mutation is a gated read-modify-write that never clobbers a
+// sibling section — the same seam the profile and settings stores use.
 internal sealed class WorktreeRegistryStore : IWorktreeRegistry, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -19,7 +17,7 @@ internal sealed class WorktreeRegistryStore : IWorktreeRegistry, ISingletonServi
     {
     }
 
-    /// <summary>Test seam: point the registry at an arbitrary config file path.</summary>
+    // Test seam: point the registry at an arbitrary config file path.
     internal WorktreeRegistryStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

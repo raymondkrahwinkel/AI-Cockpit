@@ -3,18 +3,15 @@ using System.Text;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// The branch name for an issue (#77) — <c>42-fix-the-login-redirect</c>. The step that starts an issue is the only
-/// one that knows both its number and its title, so it hands the name on and the flow does not have to build it out of
-/// two fields and a guess about punctuation.
-/// <para>
-/// Git-safe by construction: lowercase, no spaces, no punctuation a shell or a ref would argue with, and no trailing
-/// dot or dash.
-/// </para>
-/// </summary>
+// The branch name for an issue (#77) — `42-fix-the-login-redirect`. The step that starts an issue is the only
+// one that knows both its number and its title, so it hands the name on and the flow does not have to build it out of
+// two fields and a guess about punctuation.
+//
+// Git-safe by construction: lowercase, no spaces, no punctuation a shell or a ref would argue with, and no trailing
+// dot or dash.
 internal static class GitHubBranchName
 {
-    /// <summary>What the operator gets unless they say otherwise.</summary>
+    // What the operator gets unless they say otherwise.
     public const string DefaultPattern = "{number}-{title}";
 
     private const int MaxWords = 60;

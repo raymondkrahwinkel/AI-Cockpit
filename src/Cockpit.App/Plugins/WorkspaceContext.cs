@@ -4,11 +4,9 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// The host's <see cref="IWorkspaceContext"/>: what one plugin workspace is handed, built per workspace so its
-/// storage and its refresh signal are its own. Embedding a session is routed to the shell's
-/// <see cref="IEmbeddedSessionHost"/>, which owns the session's lifetime; the body only places the view.
-/// </summary>
+// The host's `IWorkspaceContext`: what one plugin workspace is handed, built per workspace so its
+// storage and its refresh signal are its own. Embedding a session is routed to the shell's
+// `IEmbeddedSessionHost`, which owns the session's lifetime; the body only places the view.
 internal sealed class WorkspaceContext(
     string workspaceId,
     IPluginStorage pluginStorage,
@@ -38,12 +36,10 @@ internal sealed class WorkspaceContext(
         return embeddedSessions.Embed(workspaceId, request);
     }
 
-    /// <summary>
-    /// Asks this workspace to refresh — raised by the host (a workspace-wide refresh). Host-side only: a body
-    /// listens to <see cref="RefreshRequested"/>, it does not fire it.
-    /// </summary>
+    // Asks this workspace to refresh — raised by the host (a workspace-wide refresh). Host-side only: a body
+    // listens to `RefreshRequested`, it does not fire it.
     public void RequestRefresh() => RefreshRequested?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>Raised by the shell when this workspace is really closed (its tab dismissed), so a body can tear down a long-running job.</summary>
+    // Raised by the shell when this workspace is really closed (its tab dismissed), so a body can tear down a long-running job.
     public void RaiseClosed() => Closed?.Invoke(this, EventArgs.Empty);
 }

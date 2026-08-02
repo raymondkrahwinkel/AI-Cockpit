@@ -1,11 +1,9 @@
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// The prompt dropped into the active session (or the clipboard, with no active session) when a pull
-/// request is clicked. English by default (the cockpit's UI language) and editable in the plugin's
-/// settings; placeholders are substituted per pull request: <c>{number}</c>, <c>{title}</c>, <c>{url}</c>,
-/// <c>{owner}</c>, <c>{repo}</c>, <c>{body}</c>, <c>{author}</c>.
-/// </summary>
+// The prompt dropped into the active session (or the clipboard, with no active session) when a pull
+// request is clicked. English by default (the cockpit's UI language) and editable in the plugin's
+// settings; placeholders are substituted per pull request: `{number}`, `{title}`, `{url}`,
+// `{owner}`, `{repo}`, `{body}`, `{author}`.
 internal static class PromptTemplate
 {
     public const string Default =

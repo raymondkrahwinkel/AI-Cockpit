@@ -1,22 +1,25 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>What a run worktree can do about a pull request (AC-216) — probed once at merge-ready (and at preflight, AC-215).</summary>
-/// <param name="IsGitRun">The worktree is a git working tree with a branch (a git-repo run, not a plain folder).</param>
-/// <param name="HasRemote">The repository has at least one git remote to push to.</param>
-/// <param name="GhAvailable">The GitHub CLI (<c>gh</c>) is on PATH and can be used to open a pull request.</param>
+// What a run worktree can do about a pull request (AC-216) — probed once at merge-ready (and at preflight, AC-215).
+//
+// `IsGitRun`: The worktree is a git working tree with a branch (a git-repo run, not a plain folder).
+// `HasRemote`: The repository has at least one git remote to push to.
+// `GhAvailable`: The GitHub CLI (`gh`) is on PATH and can be used to open a pull request.
 internal sealed record AutopilotPrProbe(bool IsGitRun, bool HasRemote, bool GhAvailable);
 
-/// <summary>The work to publish for a merge-ready code run (AC-216).</summary>
-/// <param name="WorktreePath">The run worktree the branch lives in — where git/gh run.</param>
-/// <param name="Branch">The run branch to push and open the PR from.</param>
-/// <param name="Title">The pull request title (and the message for any leftover-work safety commit) — no AI/agent mention.</param>
-/// <param name="Body">The pull request body (the run's goal and source link).</param>
+// The work to publish for a merge-ready code run (AC-216).
+//
+// `WorktreePath`: The run worktree the branch lives in — where git/gh run.
+// `Branch`: The run branch to push and open the PR from.
+// `Title`: The pull request title (and the message for any leftover-work safety commit) — no AI/agent mention.
+// `Body`: The pull request body (the run's goal and source link).
 internal sealed record AutopilotPrRequest(string WorktreePath, string Branch, string Title, string Body);
 
-/// <summary>The outcome of publishing — what actually landed, for the operator-facing outcome line.</summary>
-/// <param name="Pushed">The run branch reached the remote.</param>
-/// <param name="PrUrl">The opened pull request's url, or null when none was opened (gh absent, or opening failed).</param>
-/// <param name="Error">Why publishing did not fully succeed, or null on success — recorded on the run, never thrown.</param>
+// The outcome of publishing — what actually landed, for the operator-facing outcome line.
+//
+// `Pushed`: The run branch reached the remote.
+// `PrUrl`: The opened pull request's url, or null when none was opened (gh absent, or opening failed).
+// `Error`: Why publishing did not fully succeed, or null on success — recorded on the run, never thrown.
 internal sealed record AutopilotPrPublishResult(bool Pushed, string? PrUrl, string? Error);
 
 /// <summary>

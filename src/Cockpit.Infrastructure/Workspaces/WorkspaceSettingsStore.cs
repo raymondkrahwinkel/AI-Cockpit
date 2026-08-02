@@ -5,13 +5,11 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Workspaces;
 
-/// <summary>
-/// Persists <see cref="WorkspaceSettings"/> under the <c>workspaces</c> section of <c>cockpit.json</c> (same
-/// file/pattern as <c>LayoutSettingsStore</c>). Reads-modifies-writes the whole file via
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the other sections untouched. When nothing was ever
-/// saved, <see cref="LoadAsync"/> returns the default single Sessions workspace — an operator who never
-/// touched workspaces gets the cockpit exactly as it behaves today.
-/// </summary>
+// Persists `WorkspaceSettings` under the `workspaces` section of `cockpit.json` (same
+// file/pattern as `LayoutSettingsStore`). Reads-modifies-writes the whole file via
+// `CockpitConfigFileAccess` so it leaves the other sections untouched. When nothing was ever
+// saved, `LoadAsync` returns the default single Sessions workspace — an operator who never
+// touched workspaces gets the cockpit exactly as it behaves today.
 internal sealed class WorkspaceSettingsStore : IWorkspaceSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -21,7 +19,7 @@ internal sealed class WorkspaceSettingsStore : IWorkspaceSettingsStore, ISinglet
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal WorkspaceSettingsStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

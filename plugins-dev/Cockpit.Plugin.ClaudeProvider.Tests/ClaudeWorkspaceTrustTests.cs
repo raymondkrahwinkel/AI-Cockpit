@@ -3,13 +3,11 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeWorkspaceTrust"/> — marking a working directory trusted in the shared <c>~/.claude.json</c>.
-/// The invariants that matter are the ones that broke MCP for a session started after a TTY: the write must be
-/// atomic (no zero-length middle state a concurrent claude could read and reset from), it must leave no temp files
-/// behind, it must preserve every other key/project, and it must not rewrite the file at all once the directory is
-/// already trusted (each needless rewrite races the live TTY claude writing the same file).
-/// </summary>
+// `ClaudeWorkspaceTrust` — marking a working directory trusted in the shared `~/.claude.json`.
+// The invariants that matter are the ones that broke MCP for a session started after a TTY: the write must be
+// atomic (no zero-length middle state a concurrent claude could read and reset from), it must leave no temp files
+// behind, it must preserve every other key/project, and it must not rewrite the file at all once the directory is
+// already trusted (each needless rewrite races the live TTY claude writing the same file).
 public class ClaudeWorkspaceTrustTests : IDisposable
 {
     private readonly string _configDir = Path.Combine(Path.GetTempPath(), "cockpit-trust-" + Guid.NewGuid().ToString("N"));

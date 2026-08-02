@@ -5,22 +5,18 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// Persists the <c>pluginStores</c> list of <c>cockpit.json</c> (#14, AC-7) via the shared read-modify-write, so
-/// it never clobbers a sibling section. A store is a <see cref="PluginStoreConfig"/> — remote (public or private)
-/// or local. Add replaces an entry at the same location (so a token can be updated) and is otherwise additive;
-/// remove drops the store at that location.
-/// </summary>
-/// <remarks>
-/// <see cref="LoadAsync"/> also owns the #43 seed-once behavior for <see cref="DefaultStoreUrl"/>: on a
-/// genuine first run (empty list, unmarked) it adds the default store and sets the marker; on an existing
-/// install that already had stores when this shipped (non-empty list, unmarked) it only sets the marker,
-/// so nothing is added behind the operator's back. Once marked, removing the default store is durable —
-/// the next load never re-adds it.
-/// </remarks>
+// Persists the `pluginStores` list of `cockpit.json` (#14, AC-7) via the shared read-modify-write, so
+// it never clobbers a sibling section. A store is a `PluginStoreConfig` — remote (public or private)
+// or local. Add replaces an entry at the same location (so a token can be updated) and is otherwise additive;
+// remove drops the store at that location.
+// `LoadAsync` also owns the #43 seed-once behavior for `DefaultStoreUrl`: on a
+// genuine first run (empty list, unmarked) it adds the default store and sets the marker; on an existing
+// install that already had stores when this shipped (non-empty list, unmarked) it only sets the marker,
+// so nothing is added behind the operator's back. Once marked, removing the default store is durable —
+// the next load never re-adds it.
 internal sealed class PluginStoreConfigStore : IPluginStoreConfigStore, ISingletonService
 {
-    /// <summary>Cockpit's own public plugin store (#43), seeded once so it is available out of the box.</summary>
+    // Cockpit's own public plugin store (#43), seeded once so it is available out of the box.
     internal const string DefaultStoreUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins";
 
     private readonly CockpitConfigFileAccess _configFile;
@@ -30,7 +26,7 @@ internal sealed class PluginStoreConfigStore : IPluginStoreConfigStore, ISinglet
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal PluginStoreConfigStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

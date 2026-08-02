@@ -7,15 +7,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// Asks every registered plugin what it gives a starting session and merges the answers (AC-165). The one place
-/// that knows both the plugin set and which project a pane belongs to, which is why the launch routes take the
-/// interface and this lives here.
-/// </summary>
-/// <remarks>
-/// Which project a pane belongs to comes from <see cref="ISessionProjectResolver"/> rather than being looked up
-/// here, so the one answer to that question serves every caller (AC-320).
-/// </remarks>
+// Asks every registered plugin what it gives a starting session and merges the answers (AC-165). The one place
+// that knows both the plugin set and which project a pane belongs to, which is why the launch routes take the
+// interface and this lives here.
+// Which project a pane belongs to comes from `ISessionProjectResolver` rather than being looked up
+// here, so the one answer to that question serves every caller (AC-320).
 internal sealed class SessionResourceResolver(
     ISessionResourceProviderRegistry registry,
     ISessionProjectResolver projects,

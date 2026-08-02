@@ -1,56 +1,42 @@
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// The system-wide claim that this is the only cockpit running (AC-4). A second start finds the claim taken and
-/// stands down before it touches anything the first one owns.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Two cockpits over one state directory is not a tidiness problem: they share <c>cockpit.json</c>, and each
-/// writes it whole. The second one's startup housekeeping deletes the <c>--mcp-config</c> files the first one's
-/// live sessions are still reading, and its bundled-plugin install deletes plugin directories the first one has
-/// loaded. This is why the guard runs before any of that, and not after.
-/// </para>
-/// <para>
-/// A named mutex rather than a PID lock-file because it is the only mechanism the kernel cleans up on all three
-/// platforms when a process is killed outright. A lock-file has to guess whether the PID in it is still alive,
-/// and a wrong guess leaves the app unstartable — worse than having no guard.
-/// </para>
-/// </remarks>
+// The system-wide claim that this is the only cockpit running (AC-4). A second start finds the claim taken and
+// stands down before it touches anything the first one owns.
+//
+// Two cockpits over one state directory is not a tidiness problem: they share `cockpit.json`, and each
+// writes it whole. The second one's startup housekeeping deletes the `--mcp-config` files the first one's
+// live sessions are still reading, and its bundled-plugin install deletes plugin directories the first one has
+// loaded. This is why the guard runs before any of that, and not after.
+//
+// A named mutex rather than a PID lock-file because it is the only mechanism the kernel cleans up on all three
+// platforms when a process is killed outright. A lock-file has to guess whether the PID in it is still alive,
+// and a wrong guess leaves the app unstartable — worse than having no guard.
 public sealed class SingleInstanceGuard : IDisposable
 {
-    /// <summary>
-    /// No <c>Global\</c> prefix: backslash is reserved in a mutex name, and the scope is set through
-    /// <see cref="NamedWaitHandleOptions"/> instead, which the prefix cannot express.
-    /// </summary>
+    // No `Global\` prefix: backslash is reserved in a mutex name, and the scope is set through
+    // `NamedWaitHandleOptions` instead, which the prefix cannot express.
     private const string ClaimName = "AI-Cockpit-single-instance";
 
-    /// <summary>Null for a development build, which holds no claim. See <see cref="TryAcquire(bool)"/>.</summary>
+    // Null for a development build, which holds no claim. See `TryAcquire(bool)`.
     private readonly Mutex? _claim;
 
     private SingleInstanceGuard(Mutex? claim) => _claim = claim;
 
-    /// <summary>
-    /// Claims the right to run, or reports that another cockpit already has it.
-    /// </summary>
-    /// <param name="isDevelopmentBuild">
-    /// A development build takes no claim and honours none: it is meant to run beside the production cockpit,
-    /// including the one hosting the session that is rebuilding it. Its state lives elsewhere
-    /// (<see cref="Cockpit.Core.Configuration.CockpitBuild.StateFolder"/>), so the two cannot collide anyway.
-    /// </param>
-    /// <returns>
-    /// Null when another cockpit holds the claim — the caller must not start. Otherwise a guard that holds the
-    /// claim until it is disposed.
-    /// </returns>
+    // Claims the right to run, or reports that another cockpit already has it.
+    //
+    // `isDevelopmentBuild`:
+    // A development build takes no claim and honours none: it is meant to run beside the production cockpit,
+    // including the one hosting the session that is rebuilding it. Its state lives elsewhere
+    // (`Cockpit.Core.Configuration.CockpitBuild.StateFolder`), so the two cannot collide anyway.
+    // Null when another cockpit holds the claim — the caller must not start. Otherwise a guard that holds the
+    // claim until it is disposed.
     public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild) => TryAcquire(isDevelopmentBuild, ClaimName);
 
-    /// <summary>
-    /// As <see cref="TryAcquire(bool)"/>, but waits up to <paramref name="claimWait"/> for the claim to come free
-    /// instead of giving up the instant it is taken. A restart hands the claim from the old cockpit to the new one
-    /// (<see cref="Cockpit.App.Services.AppRestartService"/>): the new process starts while the old one is still
-    /// shutting down and holding the claim, so without a wait it would lose the race and refuse to start. A plain
-    /// double-launch keeps the zero wait and still stands down at once.
-    /// </summary>
+    // As `TryAcquire(bool)`, but waits up to `claimWait` for the claim to come free
+    // instead of giving up the instant it is taken. A restart hands the claim from the old cockpit to the new one
+    // (`Cockpit.App.Services.AppRestartService`): the new process starts while the old one is still
+    // shutting down and holding the claim, so without a wait it would lose the race and refuse to start. A plain
+    // double-launch keeps the zero wait and still stands down at once.
     public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, TimeSpan claimWait) =>
         TryAcquire(isDevelopmentBuild, ClaimName, claimWait);
 

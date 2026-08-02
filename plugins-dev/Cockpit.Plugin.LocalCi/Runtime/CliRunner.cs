@@ -3,13 +3,11 @@ using System.Diagnostics;
 
 namespace Cockpit.Plugin.LocalCi.Runtime;
 
-/// <summary>
-/// <see cref="ICliRunner"/> backed by a real process. Mirrors the Docker plugin's CLI wrapper — argv via
-/// <see cref="ProcessStartInfo.ArgumentList"/> so nothing is interpreted by a shell, output read while the process
-/// runs so a chatty tool cannot fill a pipe and deadlock — and adds the timeout this plugin needs: probing Docker on
-/// Windows means talking to a named pipe, and a pipe whose engine is gone answers nothing at all rather than
-/// answering an error. Without a deadline that probe never returns.
-/// </summary>
+// `ICliRunner` backed by a real process. Mirrors the Docker plugin's CLI wrapper — argv via
+// `ProcessStartInfo.ArgumentList` so nothing is interpreted by a shell, output read while the process
+// runs so a chatty tool cannot fill a pipe and deadlock — and adds the timeout this plugin needs: probing Docker on
+// Windows means talking to a named pipe, and a pipe whose engine is gone answers nothing at all rather than
+// answering an error. Without a deadline that probe never returns.
 internal sealed class CliRunner : ICliRunner
 {
     public async Task<CliResult> RunAsync(

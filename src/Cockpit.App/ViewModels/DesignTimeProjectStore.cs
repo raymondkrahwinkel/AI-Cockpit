@@ -3,11 +3,9 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// A project store that remembers nothing, for the Avalonia previewer's parameterless
-/// <see cref="ProjectsViewModel"/>. The previewer has no DI container and must never touch the operator's real
-/// <c>cockpit.json</c> — rendering a design-time surface is not a reason to read or write their config.
-/// </summary>
+// A project store that remembers nothing, for the Avalonia previewer's parameterless
+// `ProjectsViewModel`. The previewer has no DI container and must never touch the operator's real
+// `cockpit.json` — rendering a design-time surface is not a reason to read or write their config.
 internal sealed class DesignTimeProjectStore : IProjectStore
 {
     private ProjectSettings _settings = ProjectSettings.Empty;

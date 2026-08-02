@@ -3,11 +3,9 @@ using k8s;
 
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-/// <summary>
-/// A schema-less Kubernetes list — the list counterpart of <see cref="RawKubernetesObject"/>, so the generic client
-/// can deserialize any <c>*List</c> response and the tool can summarize its <see cref="Items"/> without a typed list
-/// model per kind.
-/// </summary>
+// A schema-less Kubernetes list — the list counterpart of `RawKubernetesObject`, so the generic client
+// can deserialize any `*List` response and the tool can summarize its `Items` without a typed list
+// model per kind.
 internal sealed class RawKubernetesList : IKubernetesObject
 {
     [JsonPropertyName("apiVersion")]
@@ -23,10 +21,8 @@ internal sealed class RawKubernetesList : IKubernetesObject
     public List<RawKubernetesObject> Items { get; set; } = [];
 }
 
-/// <summary>
-/// The slice of a list response's <c>metadata</c> that tells whether the server capped the page: a non-empty
-/// <see cref="Continue"/> token (or a positive <see cref="RemainingItemCount"/>) means there is more beyond the limit.
-/// </summary>
+// The slice of a list response's `metadata` that tells whether the server capped the page: a non-empty
+// `Continue` token (or a positive `RemainingItemCount`) means there is more beyond the limit.
 internal sealed class RawListMetadata
 {
     [JsonPropertyName("continue")]

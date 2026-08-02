@@ -2,24 +2,21 @@ using Material.Icons;
 
 namespace Cockpit.Plugin.Workflows.Model;
 
-/// <summary>
-/// The node types the cockpit ships (#69). Deliberately cockpit-shaped rather than a general automation kit: the
-/// value here is in what only this app can do — start sessions, delegate work, watch what an agent says, put a
-/// ticket in progress. Anything that talks to a hundred SaaS products already exists, and the operator runs it elsewhere.
-/// <para>
-/// The built-in half of the list. The other half comes from plugins (<c>ICockpitHost.AddWorkflowStep</c>) and is
-/// handed to <see cref="Contribute"/> once, at startup: YouTrack knows how to move a ticket, and this plugin should
-/// never have to.
-/// </para>
-/// </summary>
+// The node types the cockpit ships (#69). Deliberately cockpit-shaped rather than a general automation kit: the
+// value here is in what only this app can do — start sessions, delegate work, watch what an agent says, put a
+// ticket in progress. Anything that talks to a hundred SaaS products already exists, and the operator runs it elsewhere.
+//
+// The built-in half of the list. The other half comes from plugins (`ICockpitHost.AddWorkflowStep`) and is
+// handed to `Contribute` once, at startup: YouTrack knows how to move a ticket, and this plugin should
+// never have to.
 public static class NodeCatalog
 {
     private static IReadOnlyList<NodeTypeDescriptor> _contributed = [];
 
-    /// <summary>Every step the picker offers: the cockpit's own, then whatever plugins added.</summary>
+    // Every step the picker offers: the cockpit's own, then whatever plugins added.
     public static IReadOnlyList<NodeTypeDescriptor> All => [.. BuiltIn, .. _contributed];
 
-    /// <summary>The steps plugins contributed, in the order they registered. Called once, when the plugin starts.</summary>
+    // The steps plugins contributed, in the order they registered. Called once, when the plugin starts.
     public static void Contribute(IReadOnlyList<NodeTypeDescriptor> types) => _contributed = types;
 
     public static IReadOnlyList<NodeTypeDescriptor> BuiltIn { get; } =
@@ -230,7 +227,7 @@ public static class NodeCatalog
     public static IEnumerable<IGrouping<NodeCategory, NodeTypeDescriptor>> ByCategory() =>
         All.GroupBy(type => type.Category);
 
-    /// <summary>What the picker shows for a search term — matched on what the operator would type: the name, or what it does.</summary>
+    // What the picker shows for a search term — matched on what the operator would type: the name, or what it does.
     public static IReadOnlyList<NodeTypeDescriptor> Search(string? term)
     {
         if (string.IsNullOrWhiteSpace(term))

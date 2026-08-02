@@ -5,14 +5,12 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>
-/// Drives the two-phase plugin lifecycle across the app's DI bootstrap (#14). Phase 1
-/// (<see cref="LoadAndConfigure"/>) runs before the container is built: it instantiates every
-/// load-decided plugin and lets each register its own services. Phase 2 (<see cref="Initialize"/>) runs
-/// once the container and UI exist: each plugin registers its contribution points through a host built
-/// for it. Instantiation is a delegate seam so the orchestration is testable without real assembly
-/// loading. One plugin that throws is logged and skipped — it never takes the app or its siblings down.
-/// </summary>
+// Drives the two-phase plugin lifecycle across the app's DI bootstrap (#14). Phase 1
+// (`LoadAndConfigure`) runs before the container is built: it instantiates every
+// load-decided plugin and lets each register its own services. Phase 2 (`Initialize`) runs
+// once the container and UI exist: each plugin registers its contribution points through a host built
+// for it. Instantiation is a delegate seam so the orchestration is testable without real assembly
+// loading. One plugin that throws is logged and skipped — it never takes the app or its siblings down.
 public sealed class PluginManager(
     ILogger<PluginManager> logger,
     PluginDiagnostics diagnostics,
@@ -20,16 +18,14 @@ public sealed class PluginManager(
     Version? hostAbstractionsVersion = null,
     Func<ICockpitPlugin, Version?>? builtAgainstResolver = null) : IDisposable
 {
-    /// <summary>
-    /// The command-line switch (AC-478) that starts the cockpit with no plugins loaded at all — reachable even
-    /// when a UI plugin is the thing crashing on load, since nothing gets as far as instantiating one. Read once
-    /// in <c>Program.Main</c> and handed to this manager's constructor; a restart via
-    /// <c>Cockpit.App.Services.AppRestartService.BuildLaunchArguments</c> strips it again so safe mode is always
-    /// a one-shot recovery, never a state the operator has to remember to turn off by hand.
-    /// </summary>
+    // The command-line switch (AC-478) that starts the cockpit with no plugins loaded at all — reachable even
+    // when a UI plugin is the thing crashing on load, since nothing gets as far as instantiating one. Read once
+    // in `Program.Main` and handed to this manager's constructor; a restart via
+    // `Cockpit.App.Services.AppRestartService.BuildLaunchArguments` strips it again so safe mode is always
+    // a one-shot recovery, never a state the operator has to remember to turn off by hand.
     public const string SafeModeArgument = "--safe-mode";
 
-    /// <summary>Whether this run skips the load phase entirely (AC-478) — read by the host to show the safe-mode marker.</summary>
+    // Whether this run skips the load phase entirely (AC-478) — read by the host to show the safe-mode marker.
     public bool SafeMode { get; } = safeMode;
 
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin Plugin)> _loaded = [];
@@ -43,15 +39,13 @@ public sealed class PluginManager(
 
     private readonly Func<ICockpitPlugin, Version?> _builtAgainst = builtAgainstResolver ?? _ReadBuiltAgainstAbstractions;
 
-    /// <summary>The plugins that actually loaded — their manifests, for the host to read what they declared (e.g. which storage keys hold a credential).</summary>
+    // The plugins that actually loaded — their manifests, for the host to read what they declared (e.g. which storage keys hold a credential).
     public IReadOnlyList<DiscoveredPlugin> Loaded => [.. _loaded.Select(entry => entry.Discovered)];
 
-    /// <summary>
-    /// Phase 1 — before <c>BuildServiceProvider</c>: instantiate each <see cref="PluginLoadDecision.Load"/>
-    /// plugin via <paramref name="activate"/> and run its <see cref="ICockpitPlugin.ConfigureServices"/>
-    /// against the still-open <paramref name="services"/>. Plugins that fail to instantiate or configure
-    /// are skipped (and disposed if they were created).
-    /// </summary>
+    // Phase 1 — before `BuildServiceProvider`: instantiate each `PluginLoadDecision.Load`
+    // plugin via `activate` and run its `ICockpitPlugin.ConfigureServices`
+    // against the still-open `services`. Plugins that fail to instantiate or configure
+    // are skipped (and disposed if they were created).
     public void LoadAndConfigure(
         IReadOnlyList<DiscoveredPlugin> discovered,
         IServiceCollection services,
@@ -186,15 +180,13 @@ public sealed class PluginManager(
             .FirstOrDefault(name => string.Equals(name.Name, "Cockpit.Plugins.Abstractions", StringComparison.Ordinal))?
             .Version;
 
-    /// <summary>
-    /// Phase 2 — after the container is built and the UI exists: give each loaded plugin the host built
-    /// for it (via <paramref name="hostFor"/>, which carries that plugin's own storage) so it can register
-    /// its contribution points. A plugin that throws here is logged and left out; the others still init.
-    /// <paramref name="hostFor"/> also receives the loaded <see cref="ICockpitPlugin"/> instance itself (AC-499) —
-    /// already sitting right here in <see cref="_loaded"/>, just not previously handed onward — so the caller can
-    /// build a host that knows its own plugin's runtime type (<c>CockpitHost.ownPluginType</c>), the identity its
-    /// MCP tool-call resolution scopes a fallback to.
-    /// </summary>
+    // Phase 2 — after the container is built and the UI exists: give each loaded plugin the host built
+    // for it (via `hostFor`, which carries that plugin's own storage) so it can register
+    // its contribution points. A plugin that throws here is logged and left out; the others still init.
+    // `hostFor` also receives the loaded `ICockpitPlugin` instance itself (AC-499) —
+    // already sitting right here in `_loaded`, just not previously handed onward — so the caller can
+    // build a host that knows its own plugin's runtime type (`CockpitHost.ownPluginType`), the identity its
+    // MCP tool-call resolution scopes a fallback to.
     public void Initialize(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor)
     {
         foreach (var (discovered, plugin) in _loaded)

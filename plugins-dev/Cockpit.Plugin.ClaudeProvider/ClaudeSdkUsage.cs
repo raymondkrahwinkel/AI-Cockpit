@@ -3,39 +3,29 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-/// <summary>
-/// Folds a Claude SDK session's stdout into the provider-neutral <see cref="PluginSessionStatus"/> the header's
-/// usage pill renders from (AC-530) — the SDK route's answer to what <see cref="ClaudeStatusLine"/> does for the
-/// TTY route. Measured against CLI 2.1.220: a <c>claude</c> started with <c>--output-format stream-json</c> never
-/// invokes the statusline command, so that relay is not merely unwired on this route but unavailable, and the two
-/// figures have to be read off the stream itself.
-/// <para>
-/// Both are the provider's own numbers rather than an estimate this class invents:
-/// </para>
-/// <list type="bullet">
-/// <item>
-/// The rolling allowances arrive whole on the CLI's <c>rate_limit_event</c> line, whose <c>utilization</c> is the
-/// very field the statusline multiplies by 100 for its own <c>used_percentage</c> — so a TTY and an SDK session
-/// looking at the same account report the same figure from the same origin.
-/// </item>
-/// <item>
-/// The context percentage is recomputed with the CLI's own formula over the CLI's own inputs: the token counts of
-/// the <em>last</em> API call, over the context window size the <c>result</c> line states for the model that
-/// answered. Deliberately <em>not</em> <c>result.usage</c>, which sums every API call in the turn — that total is
-/// what the turn cost, not how full the window is, and on a four-call turn the two differ by more than 3× (11%
-/// against the true 3%).
-/// </item>
-/// </list>
-/// <para>
-/// A figure the provider has not reported stays <see langword="null"/>/absent rather than reading as a zero, so the
-/// header hides the segment instead of claiming nothing has been spent.
-/// </para>
-/// </summary>
-/// <remarks>
-/// Threading matches the Codex driver's template: the stdout pump is the only writer of the component fields, and
-/// the immutable snapshot it builds is published to a volatile field so the host's poll — a different thread,
-/// reading at each turn boundary — never sees a half-updated set.
-/// </remarks>
+// Folds a Claude SDK session's stdout into the provider-neutral `PluginSessionStatus` the header's
+// usage pill renders from (AC-530) — the SDK route's answer to what `ClaudeStatusLine` does for the
+// TTY route. Measured against CLI 2.1.220: a `claude` started with `--output-format stream-json` never
+// invokes the statusline command, so that relay is not merely unwired on this route but unavailable, and the two
+// figures have to be read off the stream itself.
+//
+// Both are the provider's own numbers rather than an estimate this class invents:
+// -
+// The rolling allowances arrive whole on the CLI's `rate_limit_event` line, whose `utilization` is the
+// very field the statusline multiplies by 100 for its own `used_percentage` — so a TTY and an SDK session
+// looking at the same account report the same figure from the same origin.
+// -
+// The context percentage is recomputed with the CLI's own formula over the CLI's own inputs: the token counts of
+// the *last* API call, over the context window size the `result` line states for the model that
+// answered. Deliberately *not* `result.usage`, which sums every API call in the turn — that total is
+// what the turn cost, not how full the window is, and on a four-call turn the two differ by more than 3× (11%
+// against the true 3%).
+//
+// A figure the provider has not reported stays `null`/absent rather than reading as a zero, so the
+// header hides the segment instead of claiming nothing has been spent.
+// Threading matches the Codex driver's template: the stdout pump is the only writer of the component fields, and
+// the immutable snapshot it builds is published to a volatile field so the host's poll — a different thread,
+// reading at each turn boundary — never sees a half-updated set.
 internal sealed class ClaudeSdkUsage
 {
     // DateTimeOffset.FromUnixTimeSeconds' own accepted range, asserted against the constants below in the tests so
@@ -51,21 +41,16 @@ internal sealed class ClaudeSdkUsage
 
     private volatile PluginSessionStatus? _status;
 
-    /// <summary>
-    /// The latest snapshot, or <see langword="null"/> while the provider has reported neither figure — which is also
-    /// what a session reports before its first turn settles.
-    /// </summary>
+    // The latest snapshot, or `null` while the provider has reported neither figure — which is also
+    // what a session reports before its first turn settles.
     public PluginSessionStatus? Status => _status;
 
-    /// <summary>
-    /// Folds in the account-wide allowances read from the CLI's own cache (AC-549), which is where the SDK route
-    /// gets a percentage at all: <c>rate_limit_event</c> names the window but withholds its fill until the account
-    /// approaches it. Keyed on the same wire names, so a later event that <em>does</em> carry a figure replaces
-    /// this one rather than sitting beside it under a second label.
-    /// <para>
-    /// Called from the stdout pump, which is this class's only writer — see the threading note above.
-    /// </para>
-    /// </summary>
+    // Folds in the account-wide allowances read from the CLI's own cache (AC-549), which is where the SDK route
+    // gets a percentage at all: `rate_limit_event` names the window but withholds its fill until the account
+    // approaches it. Keyed on the same wire names, so a later event that *does* carry a figure replaces
+    // this one rather than sitting beside it under a second label.
+    //
+    // Called from the stdout pump, which is this class's only writer — see the threading note above.
     public void ObserveAccountWindows(IReadOnlyDictionary<string, PluginRateLimitWindow> windows)
     {
         var changed = false;
@@ -88,10 +73,8 @@ internal sealed class ClaudeSdkUsage
         }
     }
 
-    /// <summary>
-    /// Folds one already-parsed stdout line in. Lines this class has no use for are ignored, so it can be handed
-    /// every line without the caller classifying first.
-    /// </summary>
+    // Folds one already-parsed stdout line in. Lines this class has no use for are ignored, so it can be handed
+    // every line without the caller classifying first.
     public void Observe(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object

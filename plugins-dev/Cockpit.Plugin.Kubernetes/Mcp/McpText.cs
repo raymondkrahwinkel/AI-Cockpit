@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-/// <summary>JSON result helpers for the MCP tools — a uniform <c>{ ok, ... }</c> shape so an agent can tell success from a handled failure without exceptions crossing the boundary.</summary>
+// JSON result helpers for the MCP tools — a uniform `{ ok, ... }` shape so an agent can tell success from a handled failure without exceptions crossing the boundary.
 internal static class McpText
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = false };

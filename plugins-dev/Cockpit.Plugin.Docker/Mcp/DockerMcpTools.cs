@@ -8,16 +8,14 @@ using Cockpit.Plugin.Docker.StatusBar;
 
 namespace Cockpit.Plugin.Docker.Mcp;
 
-/// <summary>
-/// The <c>cockpit-docker</c> MCP tool surface (AC-84). Each <c>[McpServerTool]</c> method routes through the
-/// <see cref="DockerAccessGate"/> before touching the daemon and returns <see cref="McpText"/>-shaped JSON. The tools
-/// object is constructed with all its dependencies so the surface is testable against fakes without a running host.
-///
-/// <para>Policy: reads (<c>daemon_info</c>, <c>list_containers</c>, <c>compose_config</c>) need only the one-time
-/// daemon-connection consent. Changes (start/stop/restart/remove, compose up/down/build) are always Dangerous and
-/// never remembered. <c>exec</c> and <c>run</c> execute arbitrary code, so they sit behind the exec capability
-/// (off by default) and show the literal command in the consent.</para>
-/// </summary>
+// The `cockpit-docker` MCP tool surface (AC-84). Each `[McpServerTool]` method routes through the
+// `DockerAccessGate` before touching the daemon and returns `McpText`-shaped JSON. The tools
+// object is constructed with all its dependencies so the surface is testable against fakes without a running host.
+//
+// Policy: reads (`daemon_info`, `list_containers`, `compose_config`) need only the one-time
+// daemon-connection consent. Changes (start/stop/restart/remove, compose up/down/build) are always Dangerous and
+// never remembered. `exec` and `run` execute arbitrary code, so they sit behind the exec capability
+// (off by default) and show the literal command in the consent.
 internal sealed class DockerMcpTools(
     DockerSettings settings,
     DockerAccessGate gate,
@@ -823,8 +821,8 @@ internal sealed class DockerMcpTools(
         return args;
     }
 
-    /// <summary>Reconstruct a verbatim "docker run -d ..." command line for the consent prompt, so dangerous flags
-    /// (--privileged, -v binds) are shown literally to the operator.</summary>
+    // Reconstruct a verbatim "docker run -d ..." command line for the consent prompt, so dangerous flags
+    // (--privileged, -v binds) are shown literally to the operator.
     private static string _RunCommandLine(RunSpec spec)
     {
         var parts = new List<string> { "docker", "run", "-d" };
@@ -862,7 +860,7 @@ internal sealed class DockerMcpTools(
         return string.Join(' ', parts);
     }
 
-    /// <summary>Turn a daemon error into a short, safe message — never leak the raw endpoint or a stack trace to the agent.</summary>
+    // Turn a daemon error into a short, safe message — never leak the raw endpoint or a stack trace to the agent.
     private static string _Sanitize(Exception ex) =>
         $"The Docker daemon could not be reached or the request failed ({ex.GetType().Name}). Check that the daemon is running and the endpoint in the plugin settings is correct.";
 }

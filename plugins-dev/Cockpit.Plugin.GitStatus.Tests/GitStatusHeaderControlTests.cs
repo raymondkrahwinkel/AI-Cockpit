@@ -9,13 +9,11 @@ using Path = System.IO.Path;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-/// <summary>
-/// The session-header indicator — the one part of AC-522 Raymond called out as the real risk, since removing
-/// the plugin's dialog must leave this unchanged: colour, branch, the hover tooltip's uncommitted/unpushed
-/// counts, click-to-inject, and refresh after a git command. Runs against a real repository in a temp directory,
-/// same reasoning as <see cref="GitWorkflowStepsTests"/> — a faked git status would not prove what git itself
-/// reports.
-/// </summary>
+// The session-header indicator — the one part of AC-522 Raymond called out as the real risk, since removing
+// the plugin's dialog must leave this unchanged: colour, branch, the hover tooltip's uncommitted/unpushed
+// counts, click-to-inject, and refresh after a git command. Runs against a real repository in a temp directory,
+// same reasoning as `GitWorkflowStepsTests` — a faked git status would not prove what git itself
+// reports.
 [Collection("avalonia")]
 public class GitStatusHeaderControlTests : IDisposable
 {
@@ -158,13 +156,11 @@ public class GitStatusHeaderControlTests : IDisposable
     private string _Git(params string[] arguments) =>
         GitCommand.RunAsync(_repo, arguments, CancellationToken.None).GetAwaiter().GetResult();
 
-    /// <summary>
-    /// One header control under test, attached to a real (headless) window so its visual-tree lifecycle events
-    /// fire. Every member dispatches its own short round trip onto Avalonia's thread through
-    /// <see cref="HeadlessAvalonia.Run{T}"/> rather than the caller wrapping a whole test body in one — the
-    /// debounced-reload test needs the dispatcher's own loop to actually run between polls (real wall-clock
-    /// time behind a real <c>DispatcherTimer</c>), which one call spanning the whole wait would block.
-    /// </summary>
+    // One header control under test, attached to a real (headless) window so its visual-tree lifecycle events
+    // fire. Every member dispatches its own short round trip onto Avalonia's thread through
+    // `HeadlessAvalonia.Run{T}` rather than the caller wrapping a whole test body in one — the
+    // debounced-reload test needs the dispatcher's own loop to actually run between polls (real wall-clock
+    // time behind a real `DispatcherTimer`), which one call spanning the whole wait would block.
     private sealed class Harness
     {
         private Harness(Window window, GitStatusHeaderControl control, FakeSessionContext session, FakeCockpitActions actions)
@@ -218,19 +214,17 @@ public class GitStatusHeaderControlTests : IDisposable
         public IBrush? Brush(string key) => HeadlessAvalonia.Run(() =>
             Application.Current?.TryFindResource(key, out var value) == true ? value as IBrush : null);
 
-        /// <summary>Whether a read cycle has completed at least once (successfully or not) — see the field's own comment for why <c>IsVisible</c> alone cannot tell.</summary>
+        // Whether a read cycle has completed at least once (successfully or not) — see the field's own comment for why `IsVisible` alone cannot tell.
         public bool HasAttemptedLoad() => HeadlessAvalonia.Run(() =>
             (typeof(GitStatusHeaderControl).GetField("_current", BindingFlags.Instance | BindingFlags.NonPublic)
                 ?? throw new InvalidOperationException("GitStatusHeaderControl no longer has a '_current' field."))
             .GetValue(_control) is not null);
 
-        /// <summary>Waits for the initial async git-status read (a real "git status" subprocess) to land.</summary>
+        // Waits for the initial async git-status read (a real "git status" subprocess) to land.
         public void WaitUntilLoaded() => WaitUntilSettled(() => IsVisible);
 
-        /// <summary>
-        /// Polls <paramref name="condition"/> on this (xunit) thread, sleeping between checks rather than
-        /// blocking Avalonia's own thread for the whole wait — see the class comment for why.
-        /// </summary>
+        // Polls `condition` on this (xunit) thread, sleeping between checks rather than
+        // blocking Avalonia's own thread for the whole wait — see the class comment for why.
         public void WaitUntilSettled(Func<bool> condition, TimeSpan? timeout = null)
         {
             var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));

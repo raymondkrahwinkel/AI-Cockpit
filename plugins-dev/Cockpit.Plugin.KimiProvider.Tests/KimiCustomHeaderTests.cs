@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-/// <summary>Custom headers (AC-354) on the Kimi route, whose wire form is an array of name/value pairs.</summary>
+// Custom headers (AC-354) on the Kimi route, whose wire form is an array of name/value pairs.
 public class KimiCustomHeaderTests
 {
     private static readonly Dictionary<string, string?> NoEnvironment = [];

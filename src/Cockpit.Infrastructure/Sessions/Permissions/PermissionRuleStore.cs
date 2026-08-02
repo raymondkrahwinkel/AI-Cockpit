@@ -5,13 +5,11 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions.Permissions;
 
-/// <summary>
-/// Persists always-allow rules under the <c>permissionRules</c> section of <c>cockpit.json</c>,
-/// keyed by profile label (same file/pattern as <see cref="SessionProfileStore"/> and
-/// <c>NotificationSettingsStore</c>). Reads-modifies-writes the whole file through
-/// <see cref="CockpitConfigFileAccess"/> so it leaves the <c>profiles</c> and <c>notifications</c>
-/// sections — and every sibling profile's rules — untouched.
-/// </summary>
+// Persists always-allow rules under the `permissionRules` section of `cockpit.json`,
+// keyed by profile label (same file/pattern as `SessionProfileStore` and
+// `NotificationSettingsStore`). Reads-modifies-writes the whole file through
+// `CockpitConfigFileAccess` so it leaves the `profiles` and `notifications`
+// sections — and every sibling profile's rules — untouched.
 internal sealed class PermissionRuleStore : IPermissionRuleStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
@@ -21,7 +19,7 @@ internal sealed class PermissionRuleStore : IPermissionRuleStore, ISingletonServ
     {
     }
 
-    /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
+    // Test seam: point the store at an arbitrary config file path.
     internal PermissionRuleStore(string configFilePath)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);

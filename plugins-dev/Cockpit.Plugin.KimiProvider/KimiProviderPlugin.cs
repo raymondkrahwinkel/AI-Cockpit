@@ -4,12 +4,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// AC-268 provider-plugin sub [a]: registers "Kimi Code (ACP)" as a session provider backed by
-/// <see cref="KimiAcpSessionDriverFactory"/> — a persistent <c>kimi acp</c> subprocess speaking the Agent
-/// Client Protocol. No TTY route: the design deliberately keeps this ACP-only (Kimi-ACP-Provider-Design-2026-07-24.md §1)
-/// rather than doubling the surface with a second, parallel interactive pane.
-/// </summary>
+// AC-268 provider-plugin sub [a]: registers "Kimi Code (ACP)" as a session provider backed by
+// `KimiAcpSessionDriverFactory` — a persistent `kimi acp` subprocess speaking the Agent
+// Client Protocol. No TTY route: the design deliberately keeps this ACP-only (Kimi-ACP-Provider-Design-2026-07-24.md §1)
+// rather than doubling the surface with a second, parallel interactive pane.
 public sealed class KimiProviderPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

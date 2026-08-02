@@ -1,14 +1,12 @@
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The Autopilot templates this plugin contributes (AC-189/AC-216/AC-217): bug fix, feature, and the epic template that
-/// plans a YouTrack epic — an issue whose real work is its "parent for" child issues — as one coherent run to one PR.
-/// The code templates (bug fix, feature, epic) each carry the PR-delivery signal and, for bug fix/feature, a brief telling
-/// the agents to commit and push with commits kept clean of any Co-Authored-By trailer or AI/agent mention (a hard
-/// project rule). Asserted on the pure registration so the epic instruction (fetch the children via the links, one plan,
-/// one PR) and the PR-delivery signal do not drift.
-/// </summary>
+// The Autopilot templates this plugin contributes (AC-189/AC-216/AC-217): bug fix, feature, and the epic template that
+// plans a YouTrack epic — an issue whose real work is its "parent for" child issues — as one coherent run to one PR.
+// The code templates (bug fix, feature, epic) each carry the PR-delivery signal and, for bug fix/feature, a brief telling
+// the agents to commit and push with commits kept clean of any Co-Authored-By trailer or AI/agent mention (a hard
+// project rule). Asserted on the pure registration so the epic instruction (fetch the children via the links, one plan,
+// one PR) and the PR-delivery signal do not drift.
 public class YouTrackAutopilotTemplatesTests
 {
     [Fact]

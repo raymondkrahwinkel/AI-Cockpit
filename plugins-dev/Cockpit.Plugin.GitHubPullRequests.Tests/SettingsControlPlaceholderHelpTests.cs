@@ -5,15 +5,13 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// AC-521: a placeholder documented in the settings view that <see cref="PromptTemplate.Render"/> does not
-/// actually replace (or the reverse — one it replaces that stays undocumented) is exactly the gap this ticket
-/// closes. Both sides are read from the real thing rather than repeated by hand: the "documented" set comes off
-/// the actual rendered control (its visible label plus its "?" tooltip), and the "replaced" set is parsed out of
-/// <see cref="PromptTemplate"/>'s own <c>.Replace("{...}", ...)</c> calls — a hardcoded list here could carry the
-/// same mistake the production code does. This plugin has no branch-pattern field (a pull request is already a
-/// branch), so unlike the YouTrack/GitHub-Issues counterparts there is only the one placeholder set to pin.
-/// </summary>
+// AC-521: a placeholder documented in the settings view that `PromptTemplate.Render` does not
+// actually replace (or the reverse — one it replaces that stays undocumented) is exactly the gap this ticket
+// closes. Both sides are read from the real thing rather than repeated by hand: the "documented" set comes off
+// the actual rendered control (its visible label plus its "?" tooltip), and the "replaced" set is parsed out of
+// `PromptTemplate`'s own `.Replace("{...}", ...)` calls — a hardcoded list here could carry the
+// same mistake the production code does. This plugin has no branch-pattern field (a pull request is already a
+// branch), so unlike the YouTrack/GitHub-Issues counterparts there is only the one placeholder set to pin.
 [Collection("avalonia")]
 public class SettingsControlPlaceholderHelpTests
 {

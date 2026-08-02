@@ -1,8 +1,6 @@
 namespace Cockpit.Core.Profiles;
 
-/// <summary>
-/// A <see cref="SessionProfile"/> combined with its current login state, as observed by
-/// checking whether that profile's <c>.credentials.json</c> exists (existence only —
-/// its contents are never read).
-/// </summary>
+// A `SessionProfile` combined with its current login state, as observed by
+// checking whether that profile's `.credentials.json` exists (existence only —
+// its contents are never read).
 public sealed record SessionProfileStatus(SessionProfile Profile, bool IsLoggedIn);

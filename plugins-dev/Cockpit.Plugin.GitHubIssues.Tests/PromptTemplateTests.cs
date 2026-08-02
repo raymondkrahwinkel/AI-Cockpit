@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The template both "Add to prompt" and "New session" render from, via the dialog's own <c>_RenderPrompt</c> —
-/// one call, so what a session sees injected and what New session prefills its composer with are never two
-/// slightly different renderings.
-/// </summary>
+// The template both "Add to prompt" and "New session" render from, via the dialog's own `_RenderPrompt` —
+// one call, so what a session sees injected and what New session prefills its composer with are never two
+// slightly different renderings.
 public class PromptTemplateTests
 {
     private static readonly GitHubIssue Issue = new(42, "Fix the login redirect", "https://github.com/octocat/hello-world/issues/42", "Cold start takes 4s.", "octocat/hello-world");

@@ -2,8 +2,8 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Abstractions.Voice;
 
-/// <summary>The GPU brand, as far as the host could be identified. Drives the recommendation: an NVIDIA card with
-/// CUDA is the fast path, while an AMD/Intel card that also draws the screen is steered to the CPU.</summary>
+// The GPU brand, as far as the host could be identified. Drives the recommendation: an NVIDIA card with
+// CUDA is the fast path, while an AMD/Intel card that also draws the screen is steered to the CPU.
 public enum GpuVendor
 {
     Unknown,
@@ -13,38 +13,32 @@ public enum GpuVendor
     Apple,
 }
 
-/// <summary>
-/// What the host's display GPU is, beyond "can a runtime load" (AC-68 slice 2): the brand, a human description,
-/// whether that adapter also drives a monitor (so GPU transcription would fight the compositor for it), and its
-/// dedicated VRAM. All best-effort — a field the probe could not determine is left at its neutral default, and
-/// the recommender degrades to a safe CPU choice rather than guessing.
-/// </summary>
+// What the host's display GPU is, beyond "can a runtime load" (AC-68 slice 2): the brand, a human description,
+// whether that adapter also drives a monitor (so GPU transcription would fight the compositor for it), and its
+// dedicated VRAM. All best-effort — a field the probe could not determine is left at its neutral default, and
+// the recommender degrades to a safe CPU choice rather than guessing.
 public sealed record GpuHardware(GpuVendor Vendor, string? Description, bool DrivesDisplay, long VideoMemoryBytes)
 {
-    /// <summary>No GPU could be identified — the recommender then treats the machine as CPU-only.</summary>
+    // No GPU could be identified — the recommender then treats the machine as CPU-only.
     public static GpuHardware None { get; } = new(GpuVendor.Unknown, Description: null, DrivesDisplay: false, VideoMemoryBytes: 0);
 }
 
-/// <summary>
-/// The advisor's pick for this machine (AC-68 slice 2): a concrete model and backend plus the human reason and
-/// the short hardware badges the Transcribe page shows. <see cref="Backend"/> is what "Auto" resolves to — never
-/// <see cref="VoiceBackendPreference.Auto"/> itself.
-/// </summary>
+// The advisor's pick for this machine (AC-68 slice 2): a concrete model and backend plus the human reason and
+// the short hardware badges the Transcribe page shows. `Backend` is what "Auto" resolves to — never
+// `VoiceBackendPreference.Auto` itself.
 public sealed record TranscriptionRecommendation(
     string Model,
     VoiceBackendPreference Backend,
     string Reason,
     IReadOnlyList<string> Badges);
 
-/// <summary>
-/// The hardware-aware rule table (AC-68 slice 2). Pure so it is unit-testable without probing a real machine:
-/// given what can load, what the display GPU is, and the OS, it recommends a model + backend + reason. The
-/// governing insight is that a single GPU which also draws the screen should transcribe on the CPU, so a long
-/// dictation does not make the desktop stutter — the GPU is fast but it is busy being your display.
-/// </summary>
+// The hardware-aware rule table (AC-68 slice 2). Pure so it is unit-testable without probing a real machine:
+// given what can load, what the display GPU is, and the OS, it recommends a model + backend + reason. The
+// governing insight is that a single GPU which also draws the screen should transcribe on the CPU, so a long
+// dictation does not make the desktop stutter — the GPU is fast but it is busy being your display.
 public static class TranscriptionRecommender
 {
-    /// <summary>Below this, a discrete GPU is treated as too small to be worth the fast path even on NVIDIA.</summary>
+    // Below this, a discrete GPU is treated as too small to be worth the fast path even on NVIDIA.
     public const long MinGpuVramBytes = 6L * 1024 * 1024 * 1024;
 
     private const string FullModel = "large-v3-turbo";

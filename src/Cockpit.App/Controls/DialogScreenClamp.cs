@@ -2,15 +2,13 @@ using Avalonia.Controls;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// Shrinks a dialog to fit its screen when its designed size does not. Dialogs sized for a desktop (the
-/// plugin store's catalogue grid, the manage-profiles form) are larger than a small screen; a fixed size
-/// larger than the screen is not a bigger dialog — it is one whose buttons are past the bottom edge,
-/// centred on its owner with nothing to drag it back by.
-/// </summary>
+// Shrinks a dialog to fit its screen when its designed size does not. Dialogs sized for a desktop (the
+// plugin store's catalogue grid, the manage-profiles form) are larger than a small screen; a fixed size
+// larger than the screen is not a bigger dialog — it is one whose buttons are past the bottom edge,
+// centred on its owner with nothing to drag it back by.
 internal static class DialogScreenClamp
 {
-    /// <summary>How much of the screen's working area the dialog may take when its designed size does not fit.</summary>
+    // How much of the screen's working area the dialog may take when its designed size does not fit.
     private const double MaxScreenFraction = 0.9;
 
     public static void Apply(Window window) => window.Opened += (_, _) => _ClampToScreen(window);

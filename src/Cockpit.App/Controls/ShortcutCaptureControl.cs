@@ -8,27 +8,23 @@ using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>What a <see cref="ShortcutCaptureControl"/> records.</summary>
+// What a `ShortcutCaptureControl` records.
 public enum ShortcutCaptureMode
 {
-    /// <summary>A full chord, stored as an Avalonia gesture string ("Ctrl+Shift+P"). The default.</summary>
+    // A full chord, stored as an Avalonia gesture string ("Ctrl+Shift+P"). The default.
     Chord,
 
-    /// <summary>
-    /// A single key, stored as its bare Avalonia <see cref="Key"/> name ("F9"). For the push-to-talk key, which
-    /// is a key held rather than a chord and is read back with <c>Enum.TryParse&lt;Key&gt;</c>
-    /// (<see cref="Services.PushToTalkKeyGate"/>) — a gesture string would not round-trip through that.
-    /// </summary>
+    // A single key, stored as its bare Avalonia `Key` name ("F9"). For the push-to-talk key, which
+    // is a key held rather than a chord and is read back with `Enum.TryParse&lt;Key&gt;`
+    // (`Services.PushToTalkKeyGate`) — a gesture string would not round-trip through that.
     SingleKey,
 }
 
-/// <summary>
-/// A click-to-record keyboard field (#: shortcuts). Instead of typing "Ctrl+N", the operator clicks it and
-/// presses the keys; what they press becomes the bound <see cref="Gesture"/>. <see cref="ShortcutCaptureMode.Chord"/>
-/// records a full chord as an Avalonia gesture string ("Ctrl+Shift+P"); <see cref="ShortcutCaptureMode.SingleKey"/>
-/// records one bare key as its <see cref="Key"/> name ("F9"), for the push-to-talk key. Escape cancels the
-/// capture, and — in chord mode — the ✕ clears the binding. Two-way bindable so a row view model updates live.
-/// </summary>
+// A click-to-record keyboard field (#: shortcuts). Instead of typing "Ctrl+N", the operator clicks it and
+// presses the keys; what they press becomes the bound `Gesture`. `ShortcutCaptureMode.Chord`
+// records a full chord as an Avalonia gesture string ("Ctrl+Shift+P"); `ShortcutCaptureMode.SingleKey`
+// records one bare key as its `Key` name ("F9"), for the push-to-talk key. Escape cancels the
+// capture, and — in chord mode — the ✕ clears the binding. Two-way bindable so a row view model updates live.
 public sealed class ShortcutCaptureControl : UserControl
 {
     public static readonly StyledProperty<string> GestureProperty =
@@ -154,12 +150,10 @@ public sealed class ShortcutCaptureControl : UserControl
         e.Handled = true;
     }
 
-    /// <summary>
-    /// How a captured key is stored: single-key mode keeps the bare <see cref="Key"/> name ("F9"), which is what
-    /// <see cref="Services.PushToTalkKeyGate"/> parses back with <c>Enum.TryParse&lt;Key&gt;</c>; chord mode keeps
-    /// the full Avalonia gesture with its modifiers ("Ctrl+Shift+P"). Pulled out of the key handler so the stored
-    /// form is unit-testable without simulating focus and a key press through a window.
-    /// </summary>
+    // How a captured key is stored: single-key mode keeps the bare `Key` name ("F9"), which is what
+    // `Services.PushToTalkKeyGate` parses back with `Enum.TryParse&lt;Key&gt;`; chord mode keeps
+    // the full Avalonia gesture with its modifiers ("Ctrl+Shift+P"). Pulled out of the key handler so the stored
+    // form is unit-testable without simulating focus and a key press through a window.
     internal static string FormatCapturedKey(Key key, KeyModifiers modifiers, ShortcutCaptureMode mode) =>
         mode == ShortcutCaptureMode.SingleKey
             ? key.ToString()

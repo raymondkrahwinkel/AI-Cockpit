@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// The flows this plugin ships (#69). They are written as text rather than built with the workflows plugin's model —
-/// the two plugins cannot see each other — so nothing but a test stands between a typo in an id and a template that
-/// opens as a canvas of steps wired to nothing.
-/// </summary>
+// The flows this plugin ships (#69). They are written as text rather than built with the workflows plugin's model —
+// the two plugins cannot see each other — so nothing but a test stands between a typo in an id and a template that
+// opens as a canvas of steps wired to nothing.
 public class YouTrackWorkflowTemplateTests
 {
     [Fact]

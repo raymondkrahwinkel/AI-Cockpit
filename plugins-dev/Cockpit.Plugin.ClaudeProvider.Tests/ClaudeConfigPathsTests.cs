@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// <see cref="ClaudeConfigPaths"/> (Fase 4) — the config-dir rules ported from the host: a default-dir (or absent)
-/// config leaves CLAUDE_CONFIG_DIR unset (exporting it onto ~/.claude makes a logged-in CLI re-onboard), a
-/// non-default profile dir is exported and is the dir whose .claude.json the CLI reads.
-/// </summary>
+// `ClaudeConfigPaths` (Fase 4) — the config-dir rules ported from the host: a default-dir (or absent)
+// config leaves CLAUDE_CONFIG_DIR unset (exporting it onto ~/.claude makes a logged-in CLI re-onboard), a
+// non-default profile dir is exported and is the dir whose .claude.json the CLI reads.
 public class ClaudeConfigPathsTests
 {
     private static readonly string Home = Path.Combine(Path.GetTempPath(), "cockpit-claude-home");

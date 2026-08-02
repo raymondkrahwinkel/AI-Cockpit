@@ -2,23 +2,26 @@ using Cockpit.Plugin.LocalCi.Workflows;
 
 namespace Cockpit.Plugin.LocalCi.Execution;
 
-/// <summary>Whether a job may be attempted here, and — when it may — the runner label its image is chosen for.</summary>
-/// <param name="Reason">Completes "this job was not run because …". Empty when it was approved.</param>
-internal sealed record JobApproval(bool IsApproved, string? RunnerLabel, string Reason)
+// <summary>Whether a job may be attempted here, and — when it may — the runner label its image is chosen for.</summary>
+// `Reason`: Completes "this job was not run because …". Empty when it was approved.
+// `SetupActions`:
+// The `uses:` references this job declares (AC-617), so a failure in one of them can be told apart from a
+// failure in the project's own `run:` steps — see `SetupFailure`. Empty for a refusal, and for a
+// job that uses no actions at all.
+//
+internal sealed record JobApproval(bool IsApproved, string? RunnerLabel, string Reason, IReadOnlyList<string> SetupActions)
 {
-    public static JobApproval No(string reason) => new(IsApproved: false, null, reason);
+    public static JobApproval No(string reason) => new(IsApproved: false, null, reason, []);
 
-    public static JobApproval Yes(string runnerLabel) => new(IsApproved: true, runnerLabel, string.Empty);
+    public static JobApproval Yes(string runnerLabel, IReadOnlyList<string> setupActions) =>
+        new(IsApproved: true, runnerLabel, string.Empty, setupActions);
 }
 
-/// <summary>
-/// Asks the classification whether a job may run, and nothing more.
-/// <para>
-/// This is the rule the epic calls non-negotiable: a job runs whole or not at all. The executing side gets no
-/// opinion of its own — it re-reads the project's workflows and takes the verdict the classifier gives, reason
-/// included. A second, more permissive judgement here is exactly how a run that skipped steps ends up green.
-/// </para>
-/// </summary>
+// Asks the classification whether a job may run, and nothing more.
+//
+// This is the rule the epic calls non-negotiable: a job runs whole or not at all. The executing side gets no
+// opinion of its own — it re-reads the project's workflows and takes the verdict the classifier gives, reason
+// included. A second, more permissive judgement here is exactly how a run that skipped steps ends up green.
 internal static class LocalRunApproval
 {
     public static JobApproval For(LocalRunRequest request)
@@ -58,7 +61,7 @@ internal static class LocalRunApproval
         // read the label as if it must be there, and a classification that later grows more permissive would then
         // fail here as a crash rather than as an answer.
         return job.RunsOn.Label is { } runnerLabel
-            ? JobApproval.Yes(runnerLabel)
+            ? JobApproval.Yes(runnerLabel, [.. job.Steps.Select(step => step.Uses).OfType<string>()])
             : JobApproval.No($"{request.JobId} does not name a single runner to pick an image for.");
     }
 }

@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Core.Plugins;
 
-/// <summary>
-/// The parsed <c>plugin.json</c> a plugin folder carries. Read and validated before anything is loaded,
-/// so a malformed or version-mismatched plugin is rejected with a message rather than a
-/// <c>TypeLoadException</c> mid-load.
-/// </summary>
+// The parsed `plugin.json` a plugin folder carries. Read and validated before anything is loaded,
+// so a malformed or version-mismatched plugin is rejected with a message rather than a
+// `TypeLoadException` mid-load.
 public sealed record PluginManifest(
     string Id,
     string Name,
@@ -19,13 +17,11 @@ public sealed record PluginManifest(
     string? Author,
     IReadOnlyList<string>? SecretKeys = null)
 {
-    /// <summary>
-    /// The storage keys this plugin keeps a credential in (<c>"secretKeys": ["pat"]</c>). The host recognises the
-    /// usual names by itself (token, apiKey, secret, password, webhook); this is for the ones it cannot guess, and
-    /// it is read before the plugin loads — so a value stored under such a name is decrypted on the way in rather
-    /// than handed to the plugin as ciphertext. It also says, at install time, which credentials a plugin intends
-    /// to keep.
-    /// </summary>
+    // The storage keys this plugin keeps a credential in (`"secretKeys": ["pat"]`). The host recognises the
+    // usual names by itself (token, apiKey, secret, password, webhook); this is for the ones it cannot guess, and
+    // it is read before the plugin loads — so a value stored under such a name is decrypted on the way in rather
+    // than handed to the plugin as ciphertext. It also says, at install time, which credentials a plugin intends
+    // to keep.
     public IReadOnlyList<string> SecretKeys { get; } = SecretKeys ?? [];
 
     public static bool TryParse(string json, out PluginManifest? manifest, out string? error)

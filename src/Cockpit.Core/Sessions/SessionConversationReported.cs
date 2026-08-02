@@ -1,6 +1,7 @@
 namespace Cockpit.Core.Sessions;
 
-/// <summary>The payload of <see cref="SessionConversationTracker.Changed"/> — which pane, and its new conversation id.</summary>
-/// <param name="PaneId">The pane whose conversation id changed.</param>
-/// <param name="Conversation">Its new conversation id.</param>
+// The payload of `SessionConversationTracker.Changed` — which pane, and its new conversation id.
+//
+// `PaneId`: The pane whose conversation id changed.
+// `Conversation`: Its new conversation id.
 public sealed record SessionConversationReported(string PaneId, SessionConversationId Conversation);

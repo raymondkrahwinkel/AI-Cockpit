@@ -4,17 +4,13 @@ using System.Text;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// Real <see cref="ICliSubprocess"/> backed by <see cref="System.Diagnostics.Process"/> (AC-268) — a copy of
-/// <c>Cockpit.Plugin.CliAgentProvider.ProcessCliSubprocess</c>'s spawn/UTF-8/dispose discipline, adapted for
-/// a persistent <c>kimi acp</c> spawn rather than Codex's proces-per-turn one (the seam itself is identical:
-/// only <see cref="KimiAcpConnection"/> keeps this instance alive for the whole session instead of one turn).
-/// </summary>
-/// <remarks>
-/// Never exercised against a real <c>kimi</c> process in this environment — kept as a thin, mockable seam so
-/// <see cref="KimiAcpConnection"/>'s protocol logic is unit tested against <c>FakeCliSubprocess</c> instead;
-/// the live end-to-end run requires a machine with the <c>kimi</c> CLI installed and authenticated (sub [h]).
-/// </remarks>
+// Real `ICliSubprocess` backed by `System.Diagnostics.Process` (AC-268) — a copy of
+// `Cockpit.Plugin.CliAgentProvider.ProcessCliSubprocess`'s spawn/UTF-8/dispose discipline, adapted for
+// a persistent `kimi acp` spawn rather than Codex's proces-per-turn one (the seam itself is identical:
+// only `KimiAcpConnection` keeps this instance alive for the whole session instead of one turn).
+// Never exercised against a real `kimi` process in this environment — kept as a thin, mockable seam so
+// `KimiAcpConnection`'s protocol logic is unit tested against `FakeCliSubprocess` instead;
+// the live end-to-end run requires a machine with the `kimi` CLI installed and authenticated (sub [h]).
 internal sealed class ProcessCliSubprocess : ICliSubprocess
 {
     // P1-9a: a hard cap on a single stdout/stderr line — kimi acp's output is untrusted, and

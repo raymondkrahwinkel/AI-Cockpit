@@ -2,9 +2,7 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a <see cref="ScheduledResume"/> in the <c>scheduledResumes</c> section of <c>cockpit.json</c>.
-/// </summary>
+// On-disk shape of a `ScheduledResume` in the `scheduledResumes` section of `cockpit.json`.
 internal sealed class ScheduledResumeEntry
 {
     public string PaneId { get; set; } = string.Empty;

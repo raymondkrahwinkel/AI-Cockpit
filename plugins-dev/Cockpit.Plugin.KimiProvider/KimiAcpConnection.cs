@@ -6,27 +6,21 @@ using System.Threading.Channels;
 
 namespace Cockpit.Plugin.KimiProvider;
 
-/// <summary>
-/// A newline-delimited JSON-RPC 2.0 client over one persistent <c>kimi acp</c> child process (AC-268) — the
-/// transport under <see cref="KimiAcpSessionDriver"/>, copied from
-/// <c>Cockpit.Plugin.CliAgentProvider.CodexAppServerConnection</c> (D10: no shared JSON-RPC layer exists in
-/// <c>Cockpit.Plugins.Abstractions</c>, so each provider keeps its own).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Message classification: a line with both <c>id</c> and <c>method</c> is an agent-initiated request (e.g.
-/// <c>session/request_permission</c>) → <see cref="ServerRequests"/>; a line with only <c>id</c> is a reply to
-/// one of ours → resolves the pending call; a line with only <c>method</c> is a notification (almost always
-/// <c>session/update</c>) → <see cref="Notifications"/>. A single background read loop does this sorting so
-/// callers never race on the stream; stdin writes are serialized behind one lock so two calls can never
-/// interleave a message.
-/// </para>
-/// <para>
-/// Difference from the Codex app-server transport this was copied from: the Agent Client Protocol is strict
-/// JSON-RPC 2.0 (the protocol note's wire examples all carry <c>"jsonrpc":"2.0"</c>), where Codex's own
-/// app-server protocol omits that field — so every outgoing message here stamps it, unlike the Codex version.
-/// </para>
-/// </remarks>
+// A newline-delimited JSON-RPC 2.0 client over one persistent `kimi acp` child process (AC-268) — the
+// transport under `KimiAcpSessionDriver`, copied from
+// `Cockpit.Plugin.CliAgentProvider.CodexAppServerConnection` (D10: no shared JSON-RPC layer exists in
+// `Cockpit.Plugins.Abstractions`, so each provider keeps its own).
+//
+// Message classification: a line with both `id` and `method` is an agent-initiated request (e.g.
+// `session/request_permission`) → `ServerRequests`; a line with only `id` is a reply to
+// one of ours → resolves the pending call; a line with only `method` is a notification (almost always
+// `session/update`) → `Notifications`. A single background read loop does this sorting so
+// callers never race on the stream; stdin writes are serialized behind one lock so two calls can never
+// interleave a message.
+//
+// Difference from the Codex app-server transport this was copied from: the Agent Client Protocol is strict
+// JSON-RPC 2.0 (the protocol note's wire examples all carry `"jsonrpc":"2.0"`), where Codex's own
+// app-server protocol omits that field — so every outgoing message here stamps it, unlike the Codex version.
 internal sealed class KimiAcpConnection : IAsyncDisposable
 {
     private const string _JsonRpcVersion = "2.0";
@@ -57,16 +51,16 @@ internal sealed class KimiAcpConnection : IAsyncDisposable
 
     public KimiAcpConnection(ICliSubprocess subprocess) => _subprocess = subprocess;
 
-    /// <summary>The <c>kimi acp</c> process id once spawned; <see langword="null"/> before start.</summary>
+    // The `kimi acp` process id once spawned; `null` before start.
     public int? ProcessId => _subprocess.ProcessId;
 
-    /// <summary>Agent-to-client notifications (the streaming transcript), completing when the process exits.</summary>
+    // Agent-to-client notifications (the streaming transcript), completing when the process exits.
     public IAsyncEnumerable<KimiNotification> Notifications => _notifications.Reader.ReadAllAsync();
 
-    /// <summary>Agent-initiated requests (approvals) that must be answered with <see cref="RespondAsync"/>.</summary>
+    // Agent-initiated requests (approvals) that must be answered with `RespondAsync`.
     public IAsyncEnumerable<KimiServerRequest> ServerRequests => _serverRequests.Reader.ReadAllAsync();
 
-    /// <summary>Spawns <c>kimi acp</c> and starts pumping its stdout. Call once before any send.</summary>
+    // Spawns `kimi acp` and starts pumping its stdout. Call once before any send.
     public void Start(string executablePath, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables)
     {
         _subprocess.Start(executablePath, ["acp"], workingDirectory, environmentVariables);
@@ -93,7 +87,7 @@ internal sealed class KimiAcpConnection : IAsyncDisposable
         }
     }
 
-    /// <summary>Sends a request and awaits its correlated reply's <c>result</c>; throws <see cref="KimiAcpException"/> on a JSON-RPC <c>error</c>.</summary>
+    // Sends a request and awaits its correlated reply's `result`; throws `KimiAcpException` on a JSON-RPC `error`.
     public async Task<JsonElement> SendRequestAsync(string method, object? @params, CancellationToken cancellationToken = default)
     {
         var id = Interlocked.Increment(ref _nextId);
@@ -114,20 +108,18 @@ internal sealed class KimiAcpConnection : IAsyncDisposable
         }
     }
 
-    /// <summary>Sends a notification (no reply expected), e.g. <c>session/cancel</c>.</summary>
+    // Sends a notification (no reply expected), e.g. `session/cancel`.
     public Task SendNotificationAsync(string method, object? @params, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { jsonrpc = _JsonRpcVersion, method, @params }, cancellationToken);
 
-    /// <summary>Answers an agent-initiated request (a permission prompt), echoing its <paramref name="id"/> back verbatim.</summary>
+    // Answers an agent-initiated request (a permission prompt), echoing its `id` back verbatim.
     public Task RespondAsync(JsonElement id, object? result, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { jsonrpc = _JsonRpcVersion, id, result }, cancellationToken);
 
-    /// <summary>
-    /// Answers an agent-initiated request with a JSON-RPC error — the protocol-conform way to say "this client
-    /// cannot handle this request", used for request kinds the driver does not model. A structured error is a
-    /// valid response for any request regardless of its expected result shape, unlike a made-up result the
-    /// agent could fail to deserialize.
-    /// </summary>
+    // Answers an agent-initiated request with a JSON-RPC error — the protocol-conform way to say "this client
+    // cannot handle this request", used for request kinds the driver does not model. A structured error is a
+    // valid response for any request regardless of its expected result shape, unlike a made-up result the
+    // agent could fail to deserialize.
     public Task RespondErrorAsync(JsonElement id, int code, string message, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { jsonrpc = _JsonRpcVersion, id, error = new { code, message } }, cancellationToken);
 

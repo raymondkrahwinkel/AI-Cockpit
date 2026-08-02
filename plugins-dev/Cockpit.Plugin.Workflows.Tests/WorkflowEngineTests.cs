@@ -5,11 +5,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The engine (#69): what runs, in what order, and what each step is handed. Tested with runners that do nothing
-/// but record — the engine knows the shape of a flow and nothing about what a step means, and that is exactly what
-/// makes it testable without a cockpit.
-/// </summary>
+// The engine (#69): what runs, in what order, and what each step is handed. Tested with runners that do nothing
+// but record — the engine knows the shape of a flow and nothing about what a step means, and that is exactly what
+// makes it testable without a cockpit.
 public class WorkflowEngineTests
 {
     [Fact]
@@ -185,14 +183,14 @@ public class WorkflowEngineTests
     }
 }
 
-/// <summary>A runner that records what it was handed and passes on a marker saying it ran — enough to prove order and data flow.</summary>
+// A runner that records what it was handed and passes on a marker saying it ran — enough to prove order and data flow.
 internal sealed class RecordingRunner(string typeId) : IStepRunner
 {
     public string TypeId => typeId;
 
     public List<IReadOnlyList<WorkflowItem>> Inputs { get; } = [];
 
-    /// <summary>What each step could reach by name at the moment it ran — the engine's promise that a parameter can look further back than one step.</summary>
+    // What each step could reach by name at the moment it ran — the engine's promise that a parameter can look further back than one step.
     public List<IReadOnlyDictionary<string, IReadOnlyList<WorkflowItem>>> Reachable { get; } = [];
 
     public Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
@@ -204,7 +202,7 @@ internal sealed class RecordingRunner(string typeId) : IStepRunner
     }
 }
 
-/// <summary>A runner that fails the way a real one does: with a sentence the operator can act on.</summary>
+// A runner that fails the way a real one does: with a sentence the operator can act on.
 internal sealed class ThrowingRunner(string typeId) : IStepRunner
 {
     public string TypeId => typeId;
@@ -213,7 +211,7 @@ internal sealed class ThrowingRunner(string typeId) : IStepRunner
         throw new InvalidOperationException("This step has no message to send.");
 }
 
-/// <summary>A decision that always takes the branch it was told to.</summary>
+// A decision that always takes the branch it was told to.
 internal sealed class BranchingRunner(string typeId, string branch) : IStepRunner
 {
     public string TypeId => typeId;

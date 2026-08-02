@@ -2,10 +2,8 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>
-/// (De)serializes <see cref="CockpitProjectDefinition"/> — the one place that owns the JSON options, so a reader
-/// and a writer never quietly disagree on them (AC-244).
-/// </summary>
+// (De)serializes `CockpitProjectDefinition` — the one place that owns the JSON options, so a reader
+// and a writer never quietly disagree on them (AC-244).
 public static class CockpitProjectDefinitionJson
 {
     public const int CurrentSchemaVersion = 1;
@@ -15,7 +13,7 @@ public static class CockpitProjectDefinitionJson
     public static string Serialize(CockpitProjectDefinition definition) =>
         JsonSerializer.Serialize(definition, _Options);
 
-    /// <summary>Never throws, including for a null <paramref name="json"/> — a corrupt, truncated or empty MCP response costs this one call, not the caller (AC-244).</summary>
+    // Never throws, including for a null `json` — a corrupt, truncated or empty MCP response costs this one call, not the caller (AC-244).
     public static bool TryDeserialize(string? json, out CockpitProjectDefinition? definition, out string? error)
     {
         if (string.IsNullOrEmpty(json))

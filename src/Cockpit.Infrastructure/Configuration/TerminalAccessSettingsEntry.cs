@@ -2,7 +2,7 @@ using Cockpit.Core.Terminal;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="TerminalAccessSettings"/> in the <c>terminalAccess</c> section of <c>cockpit.json</c> (AC-34) — the master switch, off unless the operator turned it on.</summary>
+// On-disk shape of `TerminalAccessSettings` in the `terminalAccess` section of `cockpit.json` (AC-34) — the master switch, off unless the operator turned it on.
 internal sealed class TerminalAccessSettingsEntry
 {
     public bool Enabled { get; set; }

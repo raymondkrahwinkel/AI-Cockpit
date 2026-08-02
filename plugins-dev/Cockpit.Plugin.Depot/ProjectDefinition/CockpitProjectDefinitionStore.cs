@@ -4,9 +4,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>
-/// Reads and writes <c>.cockpit/project.json</c> in a Depot project through a connection's own MCP server (AC-244), the same <see cref="ICockpitHost.CallMcpToolAsync"/> seam <see cref="DepotMemorySource"/> already uses for <c>list_projects</c>.
-/// </summary>
+// Reads and writes `.cockpit/project.json` in a Depot project through a connection's own MCP server (AC-244), the same `ICockpitHost.CallMcpToolAsync` seam `DepotMemorySource` already uses for `list_projects`.
 // AC-244: a baseChecksum mismatch on write surfaces as an ordinary PluginMcpToolCallOutcome.Failed with Depot's own
 // error text — there is no separate conflict signal to detect, so WriteAsync does not invent one either.
 public static class CockpitProjectDefinitionStore
@@ -32,7 +30,7 @@ public static class CockpitProjectDefinitionStore
         };
     }
 
-    /// <param name="baseChecksum">From a prior <see cref="ReadAsync"/> — omit only for a project's first write.</param>
+    // `baseChecksum`: From a prior `ReadAsync` — omit only for a project's first write.
     public static async Task<CockpitProjectDefinitionWriteResult> WriteAsync(
         ICockpitHost host, string mcpServerName, string depotProjectSlug, CockpitProjectDefinition definition,
         string? baseChecksum, CancellationToken cancellationToken = default)

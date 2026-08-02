@@ -3,15 +3,12 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// Calls something over HTTP and carries the answer on. The status and the body both flow, so the next step can
-/// decide on either — <c>{= status != '200' }</c> is a decision this makes possible, and it is the whole reason the
-/// status is not merely logged.
-/// <para>
-/// A status the server calls an error fails the step. A flow that carries on with a 500 in hand, having reported
-/// green, is exactly the failure that is invisible until the day it matters.
-/// </para>
-/// </summary>
+// Calls something over HTTP and carries the answer on. The status and the body both flow, so the next step can
+// decide on either — `{= status != '200' }` is a decision this makes possible, and it is the whole reason the
+// status is not merely logged.
+//
+// A status the server calls an error fails the step. A flow that carries on with a 500 in hand, having reported
+// green, is exactly the failure that is invisible until the day it matters.
 internal sealed class HttpRunner : IStepRunner
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };

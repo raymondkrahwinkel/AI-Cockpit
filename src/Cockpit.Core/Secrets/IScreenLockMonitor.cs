@@ -30,32 +30,26 @@ public interface IScreenLockMonitor : IDisposable
     Task StartAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The fail-safe monitor: it observes nothing and raises nothing. Registered on platforms with no lock facility this
-/// build supports, so the runtime selection always yields a working object and the coordinator's gate simply never
-/// fires — the feature is absent, not broken.
-/// </summary>
+// The fail-safe monitor: it observes nothing and raises nothing. Registered on platforms with no lock facility this
+// build supports, so the runtime selection always yields a working object and the coordinator's gate simply never
+// fires — the feature is absent, not broken.
 public sealed class NullScreenLockMonitor : IScreenLockMonitor
 {
-    /// <inheritdoc />
-    /// <remarks>Never raised. Kept so the type satisfies the contract; the empty add/remove keep the analyzer quiet without a backing field that would read as "someone forgot to fire this".</remarks>
+    // Never raised. Kept so the type satisfies the contract; the empty add/remove keep the analyzer quiet without a backing field that would read as "someone forgot to fire this".
     public event EventHandler? Locked
     {
         add { }
         remove { }
     }
 
-    /// <inheritdoc />
     public event EventHandler? Unlocked
     {
         add { }
         remove { }
     }
 
-    /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    /// <inheritdoc />
     public void Dispose()
     {
         // Nothing was ever registered, so there is nothing to release.

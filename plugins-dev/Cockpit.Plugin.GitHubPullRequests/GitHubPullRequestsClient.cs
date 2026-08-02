@@ -3,12 +3,10 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-/// <summary>
-/// Fetches a single repository's open pull requests from the GitHub REST API over a plain
-/// <see cref="HttpClient"/> (the HTTP mode, used when the GitHub CLI is off). Unlike the issues endpoint,
-/// <c>/pulls</c> returns only pull requests, so nothing needs filtering out. A token is optional — it
-/// lifts the rate limit and allows private repositories.
-/// </summary>
+// Fetches a single repository's open pull requests from the GitHub REST API over a plain
+// `HttpClient` (the HTTP mode, used when the GitHub CLI is off). Unlike the issues endpoint,
+// `/pulls` returns only pull requests, so nothing needs filtering out. A token is optional — it
+// lifts the rate limit and allows private repositories.
 internal sealed class GitHubPullRequestsClient
 {
     private static readonly HttpClient Http = new();

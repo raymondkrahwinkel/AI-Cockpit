@@ -3,19 +3,15 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Pure presentation helpers for the Options → Voice → Transcribe page (AC-68): they turn detected
-/// <see cref="TranscriptionCapabilities"/> into the host-aware backend list, the hardware badge, and the
-/// one-line advice for a chosen backend. Kept out of the view model so the host-awareness — never offering
-/// CUDA where it cannot load — is unit-testable without an Avalonia platform.
-/// </summary>
+// Pure presentation helpers for the Options → Voice → Transcribe page (AC-68): they turn detected
+// `TranscriptionCapabilities` into the host-aware backend list, the hardware badge, and the
+// one-line advice for a chosen backend. Kept out of the view model so the host-awareness — never offering
+// CUDA where it cannot load — is unit-testable without an Avalonia platform.
 public static class TranscriptionOptions
 {
-    /// <summary>
-    /// The backend choices to offer on this host: always Auto and CPU, plus a single jargon-free "GPU" entry
-    /// only when a GPU runtime actually loads here — CUDA preferred over Vulkan when both are present. A
-    /// CPU-only host is never shown a GPU option, so a non-NVIDIA machine cannot be handed CUDA.
-    /// </summary>
+    // The backend choices to offer on this host: always Auto and CPU, plus a single jargon-free "GPU" entry
+    // only when a GPU runtime actually loads here — CUDA preferred over Vulkan when both are present. A
+    // CPU-only host is never shown a GPU option, so a non-NVIDIA machine cannot be handed CUDA.
     public static IReadOnlyList<VoiceBackendPreferenceOption> BackendChoices(TranscriptionCapabilities capabilities)
     {
         var choices = new List<VoiceBackendPreferenceOption>
@@ -36,7 +32,7 @@ public static class TranscriptionOptions
         return choices;
     }
 
-    /// <summary>A short badge describing the detected acceleration, so the choices read as host-aware.</summary>
+    // A short badge describing the detected acceleration, so the choices read as host-aware.
     public static string HardwareBadge(TranscriptionCapabilities capabilities) => capabilities switch
     {
         { CudaUsable: true } => "NVIDIA CUDA GPU available",
@@ -44,7 +40,7 @@ public static class TranscriptionOptions
         _ => "No GPU acceleration detected — CPU only",
     };
 
-    /// <summary>One line explaining what the chosen backend does on this machine.</summary>
+    // One line explaining what the chosen backend does on this machine.
     public static string Advice(VoiceBackendPreference selection, TranscriptionCapabilities capabilities) => selection switch
     {
         VoiceBackendPreference.Cpu =>

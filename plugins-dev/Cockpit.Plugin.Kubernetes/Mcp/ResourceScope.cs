@@ -1,13 +1,11 @@
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-/// <summary>
-/// Classifies a resource by its <em>real</em> REST scope, not by whether the agent left the namespace blank
-/// (AC-80, security review F1). The namespace jail depends on this: a namespaced kind (pods, secrets, deployments)
-/// must always carry a namespace and pass the jail, and must never fall through to a cluster-wide list; only the
-/// genuinely cluster-scoped kinds (nodes, namespaces, PVs, cluster roles) take the cluster-scoped path, which is
-/// opt-in per cluster. Anything unknown is treated as namespaced — the safe default: an unknown cluster-scoped CRD
-/// simply fails its namespaced call rather than escaping the jail.
-/// </summary>
+// Classifies a resource by its *real* REST scope, not by whether the agent left the namespace blank
+// (AC-80, security review F1). The namespace jail depends on this: a namespaced kind (pods, secrets, deployments)
+// must always carry a namespace and pass the jail, and must never fall through to a cluster-wide list; only the
+// genuinely cluster-scoped kinds (nodes, namespaces, PVs, cluster roles) take the cluster-scoped path, which is
+// opt-in per cluster. Anything unknown is treated as namespaced — the safe default: an unknown cluster-scoped CRD
+// simply fails its namespaced call rather than escaping the jail.
 internal static class ResourceScope
 {
     private static readonly HashSet<(string Group, string Plural)> ClusterScopedKinds =

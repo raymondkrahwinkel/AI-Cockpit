@@ -5,7 +5,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>An in-memory <see cref="IPluginStorage"/> for exercising <see cref="GitHubIssuesSettings"/> without the host's real per-plugin store.</summary>
+// An in-memory `IPluginStorage` for exercising `GitHubIssuesSettings` without the host's real per-plugin store.
 internal sealed class InMemoryPluginStorage : IPluginStorage
 {
     private readonly Dictionary<string, object?> _store = new(StringComparer.Ordinal);
@@ -15,7 +15,7 @@ internal sealed class InMemoryPluginStorage : IPluginStorage
     public void Set<T>(string key, T value) => _store[key] = value;
 }
 
-/// <summary>A <see cref="ICockpitSessionObserver"/> whose active pane, working directory and per-pane current-turn images the test sets directly (AC-116).</summary>
+// A `ICockpitSessionObserver` whose active pane, working directory and per-pane current-turn images the test sets directly (AC-116).
 internal sealed class FakeSessionObserver : ICockpitSessionObserver
 {
     public string? ActiveSessionWorkingDirectory { get; set; }
@@ -34,7 +34,7 @@ internal sealed class FakeSessionObserver : ICockpitSessionObserver
         ImagesByPane.TryGetValue(paneId, out var images) ? images : [];
 }
 
-/// <summary>A minimal <see cref="ICockpitHost"/> that supplies a <see cref="FakeSessionObserver"/> and records toasts; unused members throw so a test that reaches one is caught.</summary>
+// A minimal `ICockpitHost` that supplies a `FakeSessionObserver` and records toasts; unused members throw so a test that reaches one is caught.
 internal sealed class FakeCockpitHost : ICockpitHost
 {
     private TaskCompletionSource? _openDialog;
@@ -45,29 +45,27 @@ internal sealed class FakeCockpitHost : ICockpitHost
 
     public List<string> Toasts { get; } = [];
 
-    /// <summary>How many times the New-session dialog was asked for — what proves a second click cannot open a second one.</summary>
+    // How many times the New-session dialog was asked for — what proves a second click cannot open a second one.
     public int NewSessionDialogsOpened { get; private set; }
 
-    /// <summary>What the last New-session request asked the dialog to open with — the fields the operator is shown.</summary>
+    // What the last New-session request asked the dialog to open with — the fields the operator is shown.
     public NewSessionPrefill? LastPrefill { get; private set; }
 
-    /// <summary>The callbacks the last New-session request handed over, so a test can play the operator pressing Start or Cancel.</summary>
+    // The callbacks the last New-session request handed over, so a test can play the operator pressing Start or Cancel.
     public Action<string>? OnSessionStarted { get; private set; }
 
     public Action? OnSessionCancelled { get; private set; }
 
-    /// <summary>
-    /// What the markdown seam should throw instead of rendering, if anything. A <see cref="MissingMethodException"/>
-    /// stands in for a cockpit older than this plugin's <c>minHostVersion</c> — one whose contract has no
-    /// <c>CreateMarkdownView</c>, so the call the plugin compiled against finds no method to bind to. Any other
-    /// exception stands in for the rest of the ways rendering a body can fail (AC-304).
-    /// </summary>
+    // What the markdown seam should throw instead of rendering, if anything. A `MissingMethodException`
+    // stands in for a cockpit older than this plugin's `minHostVersion` — one whose contract has no
+    // `CreateMarkdownView`, so the call the plugin compiled against finds no method to bind to. Any other
+    // exception stands in for the rest of the ways rendering a body can fail (AC-304).
     public Exception? MarkdownFailure { get; set; }
 
-    /// <summary>What the operator linked the project to, keyed by project-field key — what the host would have stored from the project editor.</summary>
+    // What the operator linked the project to, keyed by project-field key — what the host would have stored from the project editor.
     public Dictionary<string, string> ProjectFieldValues { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The pane each <see cref="GetProjectFieldValueAsync"/> call asked about, so a test can prove a contribution asks about its own session rather than whichever pane is selected.</summary>
+    // The pane each `GetProjectFieldValueAsync` call asked about, so a test can prove a contribution asks about its own session rather than whichever pane is selected.
     public List<string?> ProjectFieldPanesAsked { get; } = [];
 
     public IServiceProvider Services => throw new NotSupportedException();
@@ -90,7 +88,7 @@ internal sealed class FakeCockpitHost : ICockpitHost
         return _openDialog.Task;
     }
 
-    /// <summary>Plays the operator closing the New-session dialog, which is what completes the task the caller awaited.</summary>
+    // Plays the operator closing the New-session dialog, which is what completes the task the caller awaited.
     public void CloseNewSessionDialog() => _openDialog?.TrySetResult();
 
     public Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null, CancellationToken cancellationToken = default)
@@ -115,10 +113,10 @@ internal sealed class FakeCockpitHost : ICockpitHost
         ? throw failure
         : new SelectableTextBlock { Text = markdown, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
 
-    /// <summary>The statusline each pane was last given (#AC-310) — an empty string is a pane whose line was cleared.</summary>
+    // The statusline each pane was last given (#AC-310) — an empty string is a pane whose line was cleared.
     public Dictionary<string, string> Statuslines { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The names proposed per pane. Kept apart from a name the plugin would have <em>set</em>: only the host decides whether a suggestion is taken, and the plugin must never be the one to overrule the operator.</summary>
+    // The names proposed per pane. Kept apart from a name the plugin would have *set*: only the host decides whether a suggestion is taken, and the plugin must never be the one to overrule the operator.
     public Dictionary<string, string> SuggestedNames { get; } = new(StringComparer.Ordinal);
 
     public Task SetSessionStatusline(string paneId, string statusline)

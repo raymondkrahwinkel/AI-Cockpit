@@ -7,12 +7,10 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-/// <summary>
-/// <see cref="IVoicePushToTalkService"/>: buffers microphone audio for the duration of a hold, then on
-/// release gates it through VAD and transcribes. Registered as a singleton — in this single-user desktop
-/// cockpit only one session can hold the push-to-talk hotkey at a time (the one with keyboard focus), so
-/// one shared hold/capture pipeline is all that is ever needed.
-/// </summary>
+// `IVoicePushToTalkService`: buffers microphone audio for the duration of a hold, then on
+// release gates it through VAD and transcribes. Registered as a singleton — in this single-user desktop
+// cockpit only one session can hold the push-to-talk hotkey at a time (the one with keyboard focus), so
+// one shared hold/capture pipeline is all that is ever needed.
 internal sealed class VoicePushToTalkService(
     IAudioCaptureService captureService,
     IVoiceActivityDetector vad,
@@ -28,17 +26,14 @@ internal sealed class VoicePushToTalkService(
 
     public event EventHandler<double>? AudioLevelSampled;
 
-    /// <summary>
-    /// Straight through from the STT service, so the views driving a hold do not each need their own handle on
-    /// it: they already have this interface, and this is one more thing a hold is doing.
-    /// </summary>
+    // Straight through from the STT service, so the views driving a hold do not each need their own handle on
+    // it: they already have this interface, and this is one more thing a hold is doing.
     public event EventHandler<VoicePreparationProgress>? Preparing
     {
         add => speechToText.Preparing += value;
         remove => speechToText.Preparing -= value;
     }
 
-    /// <inheritdoc/>
     public event EventHandler? Prepared
     {
         add => speechToText.Prepared += value;

@@ -5,22 +5,19 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The start gate as it is actually wired (AC-345): the "plan" intent a tracker sends, through the handler the plugin
-/// registers. <see cref="AutopilotReadyGateTests"/> covers the decision itself; this covers that the decision is
-/// consulted at all, and what a refusal does — without it, deleting the gate call leaves every test green.
-/// Asserted with xunit's own Assert rather than the FluentAssertions the older files in this project use: that
-/// package is commercially licensed from v8 on.
-/// <para>
-/// Every launch here is pointed at a throwaway origin+clone rather than at whatever directory the test process
-/// happens to run in. The plugin wires the real <see cref="GitEpicSubMergeChecker"/> against
-/// <c>host.Sessions.ActiveSessionWorkingDirectory</c>, falling back to <see cref="Directory.GetCurrentDirectory"/>;
-/// leaving that fallback in play made the epic tests depend on the ambient repository. Where git cannot answer at all
-/// — a copied tree whose <c>.git</c> points somewhere unreachable, as a container that receives the working directory
-/// rather than a checkout gets — <c>IsMerged</c> answers null for every sub and the epic-runner pauses the chain by
-/// design, so the epic test failed there while passing on a developer's machine. The repository is now the test's own.
-/// </para>
-/// </summary>
+// The start gate as it is actually wired (AC-345): the "plan" intent a tracker sends, through the handler the plugin
+// registers. `AutopilotReadyGateTests` covers the decision itself; this covers that the decision is
+// consulted at all, and what a refusal does — without it, deleting the gate call leaves every test green.
+// Asserted with xunit's own Assert rather than the FluentAssertions the older files in this project use: that
+// package is commercially licensed from v8 on.
+//
+// Every launch here is pointed at a throwaway origin+clone rather than at whatever directory the test process
+// happens to run in. The plugin wires the real `GitEpicSubMergeChecker` against
+// `host.Sessions.ActiveSessionWorkingDirectory`, falling back to `Directory.GetCurrentDirectory`;
+// leaving that fallback in play made the epic tests depend on the ambient repository. Where git cannot answer at all
+// — a copied tree whose `.git` points somewhere unreachable, as a container that receives the working directory
+// rather than a checkout gets — `IsMerged` answers null for every sub and the epic-runner pauses the chain by
+// design, so the epic test failed there while passing on a developer's machine. The repository is now the test's own.
 public class AutopilotPlanIntentTests : IDisposable
 {
     // A bare "origin" plus a clone pushed to it, the same shape GitEpicSubMergeCheckerTests uses — enough for

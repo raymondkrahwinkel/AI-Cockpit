@@ -6,16 +6,13 @@ using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// Puts the cockpit's credential-bearing files in order at startup: restricts the ones an earlier version wrote
-/// at the umask's permissions, and deletes the <c>--mcp-config</c> files an earlier version left behind.
-/// <para>
-/// This runs from <c>Program.Main</c> rather than from the constructor of whatever happens to touch these files,
-/// because both jobs must happen on every start whether or not anything triggers them. A container singleton is
-/// built lazily — an operator who opens no TTY session would never construct the launcher, and the stale token
-/// in the temp directory would simply stay there.
-/// </para>
-/// </summary>
+// Puts the cockpit's credential-bearing files in order at startup: restricts the ones an earlier version wrote
+// at the umask's permissions, and deletes the `--mcp-config` files an earlier version left behind.
+//
+// This runs from `Program.Main` rather than from the constructor of whatever happens to touch these files,
+// because both jobs must happen on every start whether or not anything triggers them. A container singleton is
+// built lazily — an operator who opens no TTY session would never construct the launcher, and the stale token
+// in the temp directory would simply stay there.
 public static class CredentialFileHousekeeping
 {
     public static void Run()
@@ -50,17 +47,14 @@ public static class CredentialFileHousekeeping
         }
     }
 
-    /// <summary>
-    /// Restricts the audit trails a version before AC-435 created at the umask — world-readable on a stock Fedora.
-    /// The trails are not credential files, but they are the record of what was approved, what a sub-agent was asked
-    /// to do and what one agent told another: free text nothing stops from naming a token, a path or a customer.
-    /// <para>
-    /// The write path was fixed to create them owner-only, and a create mode only applies to a file being created —
-    /// so every machine that ran an earlier build still has its trails lying open, and only a pass like this one
-    /// closes them. It walks the known trails (<see cref="AuditTrailFiles"/>) rather than everything in the state
-    /// root: a file the cockpit did not write is not ours to change the mode of.
-    /// </para>
-    /// </summary>
+    // Restricts the audit trails a version before AC-435 created at the umask — world-readable on a stock Fedora.
+    // The trails are not credential files, but they are the record of what was approved, what a sub-agent was asked
+    // to do and what one agent told another: free text nothing stops from naming a token, a path or a customer.
+    //
+    // The write path was fixed to create them owner-only, and a create mode only applies to a file being created —
+    // so every machine that ran an earlier build still has its trails lying open, and only a pass like this one
+    // closes them. It walks the known trails (`AuditTrailFiles`) rather than everything in the state
+    // root: a file the cockpit did not write is not ours to change the mode of.
     internal static void RestrictAuditTrails(string stateDirectory)
     {
         foreach (var trail in AuditTrailFiles.In(stateDirectory))
@@ -76,22 +70,18 @@ public static class CredentialFileHousekeeping
         }
     }
 
-    /// <summary>
-    /// Creates (truncating) the diagnostic log owner-only — the private-write treatment every file under the state
-    /// root gets (AC-46). No secret content flows to the log today, but it sits beside files that are all owner-only,
-    /// and a stock umask would otherwise leave it world-readable; defense-in-depth, not a fix for a known leak. The
-    /// <c>logs/</c> directory is created owner-only first, and the file is truncated so each run starts clean —
-    /// matching <c>FileLoggerProvider</c>'s own contract, which then only ever appends to this already-restricted file.
-    /// Lives here because this is the one public seam that reaches the file-permission logic (<c>CockpitConfigPath</c>).
-    /// </summary>
-    /// <remarks>
-    /// The run before this one is kept alongside as <c>&lt;name&gt;.previous</c> first. Truncating per run is what
-    /// makes the live log readable, but it also means the only run anyone can ever read is the one still going —
-    /// and "why did the cockpit disappear?" is always a question about the run that ended. Exactly one generation,
-    /// overwritten each start: enough to answer that, with no rolling policy or retention window to reason about.
-    /// A start that cannot move the old file (still held by an instance on its way out during a restart handoff)
-    /// carries on and simply loses that copy — a diagnostic convenience must never be what fails a launch.
-    /// </remarks>
+    // Creates (truncating) the diagnostic log owner-only — the private-write treatment every file under the state
+    // root gets (AC-46). No secret content flows to the log today, but it sits beside files that are all owner-only,
+    // and a stock umask would otherwise leave it world-readable; defense-in-depth, not a fix for a known leak. The
+    // `logs/` directory is created owner-only first, and the file is truncated so each run starts clean —
+    // matching `FileLoggerProvider`'s own contract, which then only ever appends to this already-restricted file.
+    // Lives here because this is the one public seam that reaches the file-permission logic (`CockpitConfigPath`).
+    // The run before this one is kept alongside as `&lt;name&gt;.previous` first. Truncating per run is what
+    // makes the live log readable, but it also means the only run anyone can ever read is the one still going —
+    // and "why did the cockpit disappear?" is always a question about the run that ended. Exactly one generation,
+    // overwritten each start: enough to answer that, with no rolling policy or retention window to reason about.
+    // A start that cannot move the old file (still held by an instance on its way out during a restart handoff)
+    // carries on and simply loses that copy — a diagnostic convenience must never be what fails a launch.
     public static void PrepareLogFile(string logPath)
     {
         var directory = Path.GetDirectoryName(logPath);
@@ -116,14 +106,12 @@ public static class CredentialFileHousekeeping
         CockpitConfigPath.WriteAllTextPrivate(logPath, string.Empty);
     }
 
-    /// <summary>Appended to the log path for the copy <see cref="PrepareLogFile"/> keeps of the previous run.</summary>
+    // Appended to the log path for the copy `PrepareLogFile` keeps of the previous run.
     public const string PreviousLogSuffix = ".previous";
 
-    /// <summary>
-    /// When <paramref name="configFilePath"/> is an encrypted config, deletes any <c>.bak</c>/<c>.damaged-*</c>
-    /// sidecar that still holds a credential in the clear. Reads whether encryption is on straight from the config
-    /// (the <c>Security</c> section is not itself a secret), so it works before anything is unlocked.
-    /// </summary>
+    // When `configFilePath` is an encrypted config, deletes any `.bak`/`.damaged-*`
+    // sidecar that still holds a credential in the clear. Reads whether encryption is on straight from the config
+    // (the `Security` section is not itself a secret), so it works before anything is unlocked.
     internal static void RemoveEncryptedConfigPlaintextSidecars(string configFilePath)
     {
         if (!IsEncryptionEnabled(configFilePath))

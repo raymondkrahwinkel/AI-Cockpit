@@ -1,12 +1,10 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// Builds the one shared fix step a review group's rejected gates are cleared through (AC-434) — read-parallel,
-/// write-serial: every gate in the group reads the diff concurrently in its own throwaway worktree (see
-/// <see cref="AutopilotRunCoordinator"/>), and this is the single step that ever writes to the run's real worktree in
-/// response to what they find. Not CEO-planned — <see cref="AutopilotRunDriver"/> inserts it into the running plan only
-/// when a gate actually rejects, so a clean pair of gates never pays for a fix pass at all.
-/// </summary>
+// Builds the one shared fix step a review group's rejected gates are cleared through (AC-434) — read-parallel,
+// write-serial: every gate in the group reads the diff concurrently in its own throwaway worktree (see
+// `AutopilotRunCoordinator`), and this is the single step that ever writes to the run's real worktree in
+// response to what they find. Not CEO-planned — `AutopilotRunDriver` inserts it into the running plan only
+// when a gate actually rejects, so a clean pair of gates never pays for a fix pass at all.
 internal static class AutopilotReviewFixStep
 {
     public static AutopilotStep Build(AutopilotStep lead, IReadOnlyList<AutopilotStep> openGates, int round)

@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The GitHub Issues Autopilot code templates (AC-216): "Bug fix" and "Feature" are code runs that must end with a
-/// merge-ready pull request, so each carries the PR-delivery signal and a brief telling the agents to commit and push —
-/// with commits kept clean of any Co-Authored-By trailer or AI/agent mention (a hard project rule).
-/// </summary>
+// The GitHub Issues Autopilot code templates (AC-216): "Bug fix" and "Feature" are code runs that must end with a
+// merge-ready pull request, so each carries the PR-delivery signal and a brief telling the agents to commit and push —
+// with commits kept clean of any Co-Authored-By trailer or AI/agent mention (a hard project rule).
 public class GitHubAutopilotTemplatesTests
 {
     [Theory]

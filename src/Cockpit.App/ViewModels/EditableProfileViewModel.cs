@@ -10,14 +10,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// A mutable, editable view over an immutable <see cref="SessionProfile"/> for the Manage-profiles
-/// dialog: the record's fields as editable properties plus its <see cref="ProfileDefaults"/> as three
-/// selected options, and the provider (#26). The provider can only be chosen while adding a profile
-/// (<see cref="CanChooseProvider"/>) — it is fixed afterwards so credentials/config never go inconsistent.
-/// <see cref="ToProfile"/> turns the edits back into a profile on save; empty executable/purpose/api-key
-/// collapse to <see langword="null"/> so an unset field stays unset.
-/// </summary>
+// A mutable, editable view over an immutable `SessionProfile` for the Manage-profiles
+// dialog: the record's fields as editable properties plus its `ProfileDefaults` as three
+// selected options, and the provider (#26). The provider can only be chosen while adding a profile
+// (`CanChooseProvider`) — it is fixed afterwards so credentials/config never go inconsistent.
+// `ToProfile` turns the edits back into a profile on save; empty executable/purpose/api-key
+// collapse to `null` so an unset field stays unset.
 public partial class EditableProfileViewModel : ViewModelBase
 {
     [ObservableProperty]
@@ -32,199 +30,178 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _purpose;
 
-    /// <summary>
-    /// The working directory a New session under this profile pre-fills (AC-130) — a per-project profile lands in
-    /// its project folder without picking one each time. Empty means no default (the folder field opens empty).
-    /// </summary>
+    // The working directory a New session under this profile pre-fills (AC-130) — a per-project profile lands in
+    // its project folder without picking one each time. Empty means no default (the folder field opens empty).
     [ObservableProperty]
     private string _defaultWorkingDirectory;
 
-    /// <summary>
-    /// Standing instructions every session under this profile starts with (AC-142) — who it is and where its
-    /// knowledge lives ("you are Olaf; look yourself up in the Depot MCP"). Appended to the provider's own system
-    /// prompt, never replacing it. Empty means none.
-    /// <para>
-    /// Deliberately not called <c>SystemPrompt</c>: that name is already taken in this editor by the local-LLM
-    /// provider config's own field (Ollama/LM Studio), which reaches only those two providers. This one is the
-    /// profile's, and rides the append-system-prompt option every provider honours.
-    /// </para>
-    /// </summary>
+    // Standing instructions every session under this profile starts with (AC-142) — who it is and where its
+    // knowledge lives ("you are Olaf; look yourself up in the Depot MCP"). Appended to the provider's own system
+    // prompt, never replacing it. Empty means none.
+    //
+    // Deliberately not called `SystemPrompt`: that name is already taken in this editor by the local-LLM
+    // provider config's own field (Ollama/LM Studio), which reaches only those two providers. This one is the
+    // profile's, and rides the append-system-prompt option every provider honours.
     [ObservableProperty]
     private string _profileSystemPrompt;
 
-    /// <summary>
-    /// Whether this profile pre-selects a specific set of MCP servers (AC-130). Off — the default — means no
-    /// restriction: a New session ticks every enabled server, as before. On reveals <see cref="McpServers"/> and
-    /// persists exactly the ticked ones, so a project profile need not re-toggle them each time.
-    /// </summary>
+    // Whether this profile pre-selects a specific set of MCP servers (AC-130). Off — the default — means no
+    // restriction: a New session ticks every enabled server, as before. On reveals `McpServers` and
+    // persists exactly the ticked ones, so a project profile need not re-toggle them each time.
     [ObservableProperty]
     private bool _restrictMcpServers;
 
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode;
 
-    /// <summary>The Claude model default, as free text with suggestions — an alias, or a pinned model/snapshot.</summary>
+    // The Claude model default, as free text with suggestions — an alias, or a pinned model/snapshot.
     [ObservableProperty]
     private string _claudeModel = SessionOptionCatalog.DefaultModel.Value;
 
     [ObservableProperty]
     private EffortOption _selectedEffort;
 
-    /// <summary>The three SDK reading levels (AC-138) offered by the "Default view" picker; provider-neutral, since any profile can launch an SDK session.</summary>
+    // The three SDK reading levels (AC-138) offered by the "Default view" picker; provider-neutral, since any profile can launch an SDK session.
     public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
 
-    /// <summary>The reading level a new SDK session under this profile opens with (AC-138) — the profile's "Default view".</summary>
+    // The reading level a new SDK session under this profile opens with (AC-138) — the profile's "Default view".
     [ObservableProperty]
     private ReadingLevelOption _selectedReadingLevel = SessionOptionCatalog.DefaultReadingLevel;
 
-    /// <summary>Whether a session under this profile starts with "allow all tools" already on (#26) — only meaningful for a local provider, which gates tool calls per-call rather than through Claude's permission modes.</summary>
+    // Whether a session under this profile starts with "allow all tools" already on (#26) — only meaningful for a local provider, which gates tool calls per-call rather than through Claude's permission modes.
     [ObservableProperty]
     private bool _autoApproveTools;
 
-    /// <summary>Whether another session may hand work to this profile (#67). Off by default: delegation spawns a process under this profile's login, so it is opted into.</summary>
+    // Whether another session may hand work to this profile (#67). Off by default: delegation spawns a process under this profile's login, so it is opted into.
     [ObservableProperty]
     private bool _allowedAsTarget;
 
-    /// <summary>What this profile is good for, told to a calling agent so it picks the right one — e.g. "cheap bulk refactors and summarising, no web access".</summary>
+    // What this profile is good for, told to a calling agent so it picks the right one — e.g. "cheap bulk refactors and summarising, no web access".
     [ObservableProperty]
     private string _delegationPurpose;
 
-    /// <summary>The kinds of work this profile accepts, comma-separated (e.g. "summarize, refactor"); empty accepts anything.</summary>
+    // The kinds of work this profile accepts, comma-separated (e.g. "summarize, refactor"); empty accepts anything.
     [ObservableProperty]
     private string _allowedTaskTypes;
 
-    /// <summary>
-    /// The directories a delegated task may run in, one per line. Empty means a caller may not choose one at all —
-    /// which is what made every delegation with a working directory fail: the policy existed, but nothing in this
-    /// dialog could grant it, so "allowed nowhere" was the only setting a profile could have.
-    /// </summary>
+    // The directories a delegated task may run in, one per line. Empty means a caller may not choose one at all —
+    // which is what made every delegation with a working directory fail: the policy existed, but nothing in this
+    // dialog could grant it, so "allowed nowhere" was the only setting a profile could have.
     [ObservableProperty]
     private string _allowedWorkingDirs;
 
-    /// <summary>How many delegated tasks may run on this profile at once — the guard on its provider's usage pot (and, for a local model, its GPU).</summary>
+    // How many delegated tasks may run on this profile at once — the guard on its provider's usage pot (and, for a local model, its GPU).
     [ObservableProperty]
     private int _maxConcurrentTasks;
 
-    /// <summary>Whether a task running on this profile may itself delegate. Off by default, or a sub-agent could start a chain of agents.</summary>
+    // Whether a task running on this profile may itself delegate. Off by default, or a sub-agent could start a chain of agents.
     [ObservableProperty]
     private bool _mayDelegateFurther;
 
-    /// <summary>How long a delegated task may run here before the cockpit stops it — nobody is watching a delegated session, so a model that loops would otherwise hold the slot forever. 0 = no limit.</summary>
+    // How long a delegated task may run here before the cockpit stops it — nobody is watching a delegated session, so a model that loops would otherwise hold the slot forever. 0 = no limit.
     [ObservableProperty]
     private int _delegationTimeoutMinutes;
 
-    /// <summary>The most permissive class of tool a delegated session on this profile may run unattended (AC-79): plan/default = read-only only, acceptEdits = also non-destructive writes, bypassPermissions = everything. Ignored when "Auto-Approve tool calls" is on (that allows everything).</summary>
+    // The most permissive class of tool a delegated session on this profile may run unattended (AC-79): plan/default = read-only only, acceptEdits = also non-destructive writes, bypassPermissions = everything. Ignored when "Auto-Approve tool calls" is on (that allows everything).
     [ObservableProperty]
     private string _permissionCeiling;
 
-    /// <summary>Tool names a delegated session may run unattended regardless of class/ceiling, one per line (AC-79) — the trust anchor for a tool whose MCP server gives no reliable read-only hint.</summary>
+    // Tool names a delegated session may run unattended regardless of class/ceiling, one per line (AC-79) — the trust anchor for a tool whose MCP server gives no reliable read-only hint.
     [ObservableProperty]
     private string _allowedTools;
 
-    /// <summary>The permission-ceiling values offered in the delegation dropdown (AC-79), least- to most-permissive.</summary>
+    // The permission-ceiling values offered in the delegation dropdown (AC-79), least- to most-permissive.
     public IReadOnlyList<string> PermissionCeilingChoices { get; } = ["plan", "default", "acceptEdits", "bypassPermissions"];
 
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;
 
-    /// <summary>Only a freshly added profile may pick its provider; an existing one is fixed (#26), so the dropdown is disabled.</summary>
+    // Only a freshly added profile may pick its provider; an existing one is fixed (#26), so the dropdown is disabled.
     [ObservableProperty]
     private bool _canChooseProvider;
 
-    /// <summary>Base URL of the local provider's OpenAI-compatible server (Ollama/LM Studio).</summary>
+    // Base URL of the local provider's OpenAI-compatible server (Ollama/LM Studio).
     [ObservableProperty]
     private string _baseUrl;
 
-    /// <summary>Model id for the local provider (as reported by <c>/v1/models</c>).</summary>
+    // Model id for the local provider (as reported by `/v1/models`).
     [ObservableProperty]
     private string _model;
 
-    /// <summary>Optional API key for LM Studio behind a key-protected proxy; unused for Ollama.</summary>
+    // Optional API key for LM Studio behind a key-protected proxy; unused for Ollama.
     [ObservableProperty]
     private string _apiKey;
 
-    /// <summary>Optional base system prompt sent as the first message of every conversation for a local provider.</summary>
+    // Optional base system prompt sent as the first message of every conversation for a local provider.
     [ObservableProperty]
     private string _systemPrompt;
 
-    /// <summary>Login status of this profile's config directory, evaluated once when the dialog loads.</summary>
+    // Login status of this profile's config directory, evaluated once when the dialog loads.
     [ObservableProperty]
     private bool _isLoggedIn;
 
-    /// <summary>
-    /// The plugin-provided "add/edit profile" config panel (#45), built from the registered provider's
-    /// <c>CreateConfigView</c> when <see cref="SelectedProvider"/> is a plugin provider; <see langword="null"/>
-    /// for a built-in provider, or when no <see cref="IPluginProviderRegistry"/> was supplied (e.g. design-time,
-    /// or a test that does not care about plugin providers).
-    /// </summary>
+    // The plugin-provided "add/edit profile" config panel (#45), built from the registered provider's
+    // `CreateConfigView` when `SelectedProvider` is a plugin provider; `null`
+    // for a built-in provider, or when no `IPluginProviderRegistry` was supplied (e.g. design-time,
+    // or a test that does not care about plugin providers).
     [ObservableProperty]
     private IPluginProviderConfigView? _pluginConfigView;
 
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
 
-    /// <summary>Resolves whether the selected provider has a TTY route at all (AC-139), the same question <see cref="Cockpit.App.ViewModels.SessionKindDefaults"/> answers for the New-session dialog — reused here rather than a second guess at the same fact.</summary>
+    // Resolves whether the selected provider has a TTY route at all (AC-139), the same question `Cockpit.App.ViewModels.SessionKindDefaults` answers for the New-session dialog — reused here rather than a second guess at the same fact.
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
 
-    /// <summary>
-    /// The profile's original <see cref="PluginProviderConfig"/> when it was loaded for a provider id that
-    /// did not resolve in <see cref="_pluginProviderRegistry"/> (the plugin is removed/disabled/failed to
-    /// load — a normal, lasting state, not a transient error). Carried through <see cref="ToProfile"/>
-    /// unchanged so an orphaned profile never loses its <c>ProviderId</c>/<c>ConfigJson</c> (and therefore
-    /// any API key inside it) just because nothing could build a <see cref="PluginConfigView"/> for it.
-    /// </summary>
+    // The profile's original `PluginProviderConfig` when it was loaded for a provider id that
+    // did not resolve in `_pluginProviderRegistry` (the plugin is removed/disabled/failed to
+    // load — a normal, lasting state, not a transient error). Carried through `ToProfile`
+    // unchanged so an orphaned profile never loses its `ProviderId`/`ConfigJson` (and therefore
+    // any API key inside it) just because nothing could build a `PluginConfigView` for it.
     private readonly PluginProviderConfig? _orphanedPluginConfig;
 
-    /// <summary>
-    /// Whether this row is a plugin-provider profile whose provider plugin is not currently resolvable
-    /// (removed, disabled, or failed to load) — the editor shows a "provider plugin not installed" state
-    /// instead of an empty settings region, and <see cref="ToProfile"/> preserves the original config as-is.
-    /// </summary>
+    // Whether this row is a plugin-provider profile whose provider plugin is not currently resolvable
+    // (removed, disabled, or failed to load) — the editor shows a "provider plugin not installed" state
+    // instead of an empty settings region, and `ToProfile` preserves the original config as-is.
     public bool IsPluginProviderMissing => IsPluginProvider && PluginConfigView is null;
 
     public IReadOnlyList<SessionProviderOption> Providers { get; }
 
-    /// <summary>Models the local server reported on the last refresh, offered as suggestions in the model picker.</summary>
+    // Models the local server reported on the last refresh, offered as suggestions in the model picker.
     public ObservableCollection<string> AvailableModels { get; } = [];
 
-    /// <summary>
-    /// Per-profile default editors for the selected plugin provider's own declared launch options (Claude's
-    /// permission mode/model/effort, Codex's sandbox) — rendered generically from the plugin's declaration, so the
-    /// host imposes no provider vocabulary. Empty for a built-in provider or a plugin that declares none.
-    /// </summary>
+    // Per-profile default editors for the selected plugin provider's own declared launch options (Claude's
+    // permission mode/model/effort, Codex's sandbox) — rendered generically from the plugin's declaration, so the
+    // host imposes no provider vocabulary. Empty for a built-in provider or a plugin that declares none.
     public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginOptionDefaults { get; } = [];
 
-    /// <summary>Whether the selected plugin provider declares any start-option defaults to edit.</summary>
+    // Whether the selected plugin provider declares any start-option defaults to edit.
     public bool HasPluginOptionDefaults => PluginOptionDefaults.Count > 0;
 
-    /// <summary>
-    /// The profile's spawn environment variables (AC-22), one editable row each. Only shown when the provider
-    /// supports injection (<see cref="SupportsEnvVars"/>).
-    /// </summary>
+    // The profile's spawn environment variables (AC-22), one editable row each. Only shown when the provider
+    // supports injection (`SupportsEnvVars`).
     public ObservableCollection<ProfileEnvironmentVariableViewModel> EnvironmentVariables { get; } = [];
 
-    /// <summary>
-    /// One checkbox row per available MCP server (registry + plugin-provided) for the profile's pre-selection
-    /// (AC-130). Ticked according to the profile's saved selection, or all-ticked when it has none. Only shown when
-    /// <see cref="RestrictMcpServers"/> is on; hidden entirely when there are no servers to choose from.
-    /// </summary>
+    // One checkbox row per available MCP server (registry + plugin-provided) for the profile's pre-selection
+    // (AC-130). Ticked according to the profile's saved selection, or all-ticked when it has none. Only shown when
+    // `RestrictMcpServers` is on; hidden entirely when there are no servers to choose from.
     public ObservableCollection<McpServerSelectionItemViewModel> McpServers { get; } = [];
 
-    /// <summary>Whether there are any MCP servers to pre-select — the gate is hidden entirely when the catalog is empty.</summary>
+    // Whether there are any MCP servers to pre-select — the gate is hidden entirely when the catalog is empty.
     public bool HasMcpServers => McpServers.Count > 0;
 
-    /// <summary>Saved pre-selected servers the catalog did not offer at load (disabled/absent), so the checklist can't represent them; preserved verbatim by <see cref="ToProfile"/> so a save never silently drops them.</summary>
+    // Saved pre-selected servers the catalog did not offer at load (disabled/absent), so the checklist can't represent them; preserved verbatim by `ToProfile` so a save never silently drops them.
     private readonly IReadOnlyList<string> _carriedOverMcpServerNames;
 
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
     private CancellationTokenSource? _tokenEstimateCts;
 
-    /// <summary>The AC-134 pre-flight summary line for the ticked MCP servers; shown only once the pre-selection is revealed and an estimator is available.</summary>
+    // The AC-134 pre-flight summary line for the ticked MCP servers; shown only once the pre-selection is revealed and an estimator is available.
     public bool HasMcpTokenSummary => _tokenEstimator is not null && RestrictMcpServers && McpServers.Count > 0;
 
-    /// <summary>The rolled-up tool-token estimate for the ticked MCP servers (AC-134), labelled as a tools-only estimate.</summary>
+    // The rolled-up tool-token estimate for the ticked MCP servers (AC-134), labelled as a tools-only estimate.
     public string McpToolTokenSummary => McpTokenEstimation.SummaryLabel(McpServers);
 
-    /// <summary>Re-enumerates every offered MCP server's tools and refreshes the estimate (AC-134).</summary>
+    // Re-enumerates every offered MCP server's tools and refreshes the estimate (AC-134).
     [RelayCommand]
     private Task RefreshMcpTokens() => _EstimateMcpTokensAsync(refresh: true);
 
@@ -271,42 +248,38 @@ public partial class EditableProfileViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) — the
-    /// plugin provider's declared capability, the single gate (Claude and Codex are plugins; the retired
-    /// Claude-CLI enum resolves to the Ollama fallback and never reaches here). False for the HTTP providers
-    /// (Ollama/LM Studio), which spawn nothing to inject into, so the editor never shows as a dead control.
-    /// </summary>
+    // Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) — the
+    // plugin provider's declared capability, the single gate (Claude and Codex are plugins; the retired
+    // Claude-CLI enum resolves to the Ollama fallback and never reaches here). False for the HTTP providers
+    // (Ollama/LM Studio), which spawn nothing to inject into, so the editor never shows as a dead control.
     public bool SupportsEnvVars =>
         SelectedProvider.Value == SessionProvider.Plugin
         && SelectedProvider.PluginProviderId is { } providerId
         && _pluginProviderRegistry?.Resolve(providerId)?.Capabilities.SupportsEnvVars == true;
 
-    /// <summary>The alias suggestions for the editable Claude model field (see <see cref="SessionOptionCatalog.ClaudeModelSuggestions"/>).</summary>
+    // The alias suggestions for the editable Claude model field (see `SessionOptionCatalog.ClaudeModelSuggestions`).
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
     public bool IsClaudeProvider => SelectedProvider.Value == SessionProvider.ClaudeCli;
 
-    /// <summary>The local OpenAI-compatible providers (Ollama/LM Studio) — a plugin provider (#45) is neither this nor <see cref="IsClaudeProvider"/>, so it gets its own <see cref="IsPluginProvider"/>.</summary>
+    // The local OpenAI-compatible providers (Ollama/LM Studio) — a plugin provider (#45) is neither this nor `IsClaudeProvider`, so it gets its own `IsPluginProvider`.
     public bool IsLocalProvider => SelectedProvider.Value is SessionProvider.Ollama or SessionProvider.LmStudio;
 
     public bool IsLmStudioProvider => SelectedProvider.Value == SessionProvider.LmStudio;
 
-    /// <summary>Whether the selected provider is registered by a plugin (#45) — swaps the fixed local-provider fields for <see cref="PluginConfigView"/>'s content.</summary>
+    // Whether the selected provider is registered by a plugin (#45) — swaps the fixed local-provider fields for `PluginConfigView`'s content.
     public bool IsPluginProvider => SelectedProvider.Value == SessionProvider.Plugin;
 
-    /// <summary>
-    /// Whether the selected provider has a TTY route at all (AC-139) — Claude always does, a plugin provider only
-    /// when it registered one, a local HTTP provider (Ollama/LM Studio) never does. Gates whether "Default kind"
-    /// offers a real choice at all: a provider with no TTY route always starts SDK regardless of what is picked
-    /// here, so the TTY side of the toggle is disabled rather than offering a setting that cannot take effect.
-    /// Built from a placeholder profile carrying only the selected provider's identity (label/config-body values do
-    /// not matter for this question) rather than <see cref="ToProfile"/>'s full validated result, so the answer is
-    /// available immediately while adding a profile, before its other fields are filled in.
-    /// </summary>
+    // Whether the selected provider has a TTY route at all (AC-139) — Claude always does, a plugin provider only
+    // when it registered one, a local HTTP provider (Ollama/LM Studio) never does. Gates whether "Default kind"
+    // offers a real choice at all: a provider with no TTY route always starts SDK regardless of what is picked
+    // here, so the TTY side of the toggle is disabled rather than offering a setting that cannot take effect.
+    // Built from a placeholder profile carrying only the selected provider's identity (label/config-body values do
+    // not matter for this question) rather than `ToProfile`'s full validated result, so the answer is
+    // available immediately while adding a profile, before its other fields are filled in.
     public bool HasTtyProvider => SessionKindDefaults.HasTtyRoute(_ToRouteCheckProfile(), _ttyProviderResolver);
 
-    /// <summary>A placeholder profile carrying only the selected provider's identity, for <see cref="HasTtyProvider"/> to ask <see cref="SessionKindDefaults.HasTtyRoute"/> without needing the rest of the row to be valid yet.</summary>
+    // A placeholder profile carrying only the selected provider's identity, for `HasTtyProvider` to ask `SessionKindDefaults.HasTtyRoute` without needing the rest of the row to be valid yet.
     private SessionProfile _ToRouteCheckProfile() => new(
         "route-check",
         SelectedProvider.Value switch
@@ -317,7 +290,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             _ => new ClaudeConfig(string.Empty, null),
         });
 
-    /// <summary>The New-session Kind toggle's pre-selection for this profile (AC-139) — the operator can still overrule it per session. Meaningless while <see cref="HasTtyProvider"/> is false, where it always resolves to SDK regardless.</summary>
+    // The New-session Kind toggle's pre-selection for this profile (AC-139) — the operator can still overrule it per session. Meaningless while `HasTtyProvider` is false, where it always resolves to SDK regardless.
     [ObservableProperty]
     private SessionKind _selectedDefaultKind = SessionKind.Tty;
 
@@ -325,8 +298,8 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     public bool IsDefaultKindTty => SelectedDefaultKind == SessionKind.Tty;
 
-    /// <summary>Whether a new session under this profile opens SDK by default, gating the SDK-only "Default view".</summary>
-    /// <remarks>True for a provider with no TTY route to run, where <see cref="SessionKindDefaults.ResolveDefaultKind"/> lands on SDK regardless of the toggle.</remarks>
+    // Whether a new session under this profile opens SDK by default, gating the SDK-only "Default view".
+    // True for a provider with no TTY route to run, where `SessionKindDefaults.ResolveDefaultKind` lands on SDK regardless of the toggle.
     public bool IsDefaultKindEffectivelySdk => IsDefaultKindSdk || !HasTtyProvider;
 
     [RelayCommand]
@@ -342,26 +315,22 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
     }
 
-    /// <summary>
-    /// Label shown in the profile list, with the provider (and local model) appended (#26). A plugin
-    /// provider (#45) uses <see cref="SelectedProvider"/>'s own display name directly — <see cref="ProfileDisplay"/>
-    /// has no registry access to look up a specific plugin's label from the bare enum value.
-    /// </summary>
+    // Label shown in the profile list, with the provider (and local model) appended (#26). A plugin
+    // provider (#45) uses `SelectedProvider`'s own display name directly — `ProfileDisplay`
+    // has no registry access to look up a specific plugin's label from the bare enum value.
     public string DisplayLabel => IsPluginProvider
         ? $"{Label} ({SelectedProvider.Label})"
         : ProfileDisplay.Format(Label, SelectedProvider.Value, Model);
 
-    /// <summary>Placeholder for the base-URL field, defaulting to the selected local provider's usual localhost address.</summary>
+    // Placeholder for the base-URL field, defaulting to the selected local provider's usual localhost address.
     public string BaseUrlPlaceholder => SessionProviderCatalog.DefaultBaseUrl(SelectedProvider.Value);
 
     public string LoginStatusLabel => IsLoggedIn ? "logged in" : "not logged in";
 
     public string LoginStatusBrushKey => IsLoggedIn ? "CockpitStatusDoneBrush" : "CockpitStatusWaitingBrush";
 
-    /// <summary>
-    /// Whether this row has the fields its provider needs to launch — a label always, plus a config
-    /// directory (Claude), a base URL and model (local), or a plugin config view that validates (#45).
-    /// </summary>
+    // Whether this row has the fields its provider needs to launch — a label always, plus a config
+    // directory (Claude), a base URL and model (local), or a plugin config view that validates (#45).
     public bool IsValid =>
         !string.IsNullOrWhiteSpace(Label)
         && _AreEnvironmentVariablesValid()
@@ -425,12 +394,10 @@ public partial class EditableProfileViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Rebuilds <see cref="PluginOptionDefaults"/> from the selected plugin provider's declared launch options,
-    /// each pre-filled from <paramref name="storedDefaults"/> (the profile's saved value) or the option's own
-    /// declared default. Rendered the same generic way the New-session dialog renders a plugin's options, so a
-    /// profile can remember its preferred permission mode/model/effort (Claude) or sandbox (Codex).
-    /// </summary>
+    // Rebuilds `PluginOptionDefaults` from the selected plugin provider's declared launch options,
+    // each pre-filled from `storedDefaults` (the profile's saved value) or the option's own
+    // declared default. Rendered the same generic way the New-session dialog renders a plugin's options, so a
+    // profile can remember its preferred permission mode/model/effort (Claude) or sandbox (Codex).
     private void _RefreshPluginOptionDefaults(IReadOnlyDictionary<string, string>? storedDefaults)
     {
         PluginOptionDefaults.Clear();
@@ -460,13 +427,13 @@ public partial class EditableProfileViewModel : ViewModelBase
         url == SessionProviderCatalog.DefaultBaseUrl(SessionProvider.Ollama)
         || url == SessionProviderCatalog.DefaultBaseUrl(SessionProvider.LmStudio);
 
-    /// <param name="profile">The profile to edit.</param>
-    /// <param name="isLoggedIn">Login status of the profile's config directory, evaluated once when the dialog loads.</param>
-    /// <param name="canChooseProvider">Only a freshly added profile may pick its provider (#26).</param>
-    /// <param name="providers">The full provider picker (#45) — built-ins plus any plugin-registered providers; falls back to <see cref="SessionProviderCatalog.Providers"/> (built-ins only) when not supplied.</param>
-    /// <param name="pluginProviderRegistry">Resolves a plugin provider's config view, for a <see cref="PluginProviderConfig"/> profile or when the operator picks a plugin provider while adding one; <see langword="null"/> when the caller does not care about plugin providers (design-time preview, most existing tests).</param>
-    /// <param name="availableMcpServerNames">The MCP servers (registry + plugin-provided) the profile may pre-select from (AC-130); <see langword="null"/>/empty hides the MCP pre-selection entirely (design-time preview, a caller that does not surface it).</param>
-    /// <param name="ttyProviderResolver">Resolves whether a provider has a TTY route at all (AC-139), for <see cref="HasTtyProvider"/>; <see langword="null"/> for a caller that does not care (design-time preview, most existing tests) treats every provider as SDK-only.</param>
+    // `profile`: The profile to edit.
+    // `isLoggedIn`: Login status of the profile's config directory, evaluated once when the dialog loads.
+    // `canChooseProvider`: Only a freshly added profile may pick its provider (#26).
+    // `providers`: The full provider picker (#45) — built-ins plus any plugin-registered providers; falls back to `SessionProviderCatalog.Providers` (built-ins only) when not supplied.
+    // `pluginProviderRegistry`: Resolves a plugin provider's config view, for a `PluginProviderConfig` profile or when the operator picks a plugin provider while adding one; `null` when the caller does not care about plugin providers (design-time preview, most existing tests).
+    // `availableMcpServerNames`: The MCP servers (registry + plugin-provided) the profile may pre-select from (AC-130); `null`/empty hides the MCP pre-selection entirely (design-time preview, a caller that does not surface it).
+    // `ttyProviderResolver`: Resolves whether a provider has a TTY route at all (AC-139), for `HasTtyProvider`; `null` for a caller that does not care (design-time preview, most existing tests) treats every provider as SDK-only.
     public EditableProfileViewModel(
         SessionProfile profile,
         bool isLoggedIn,
@@ -572,7 +539,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
+    // Rebuilds an immutable profile from the current edits, for persisting on save.
     public SessionProfile ToProfile()
     {
         // A plugin profile stores its start defaults only in the generic OptionDefaults map and writes the legacy

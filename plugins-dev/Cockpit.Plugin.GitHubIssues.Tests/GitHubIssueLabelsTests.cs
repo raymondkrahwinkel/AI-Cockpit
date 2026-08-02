@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// Reading an issue's labels out of either listing's payload — what Autopilot's start gate keys on (AC-345), since
-/// GitHub has no stage of its own. Asserted with xunit's own Assert rather than the FluentAssertions the older files
-/// in this project use: that package is commercially licensed from v8 on.
-/// </summary>
+// Reading an issue's labels out of either listing's payload — what Autopilot's start gate keys on (AC-345), since
+// GitHub has no stage of its own. Asserted with xunit's own Assert rather than the FluentAssertions the older files
+// in this project use: that package is commercially licensed from v8 on.
 public class GitHubIssueLabelsTests
 {
     [Fact]

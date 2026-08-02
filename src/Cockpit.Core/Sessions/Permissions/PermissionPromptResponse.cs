@@ -3,19 +3,15 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Core.Sessions.Permissions;
 
-/// <summary>
-/// Serializes a <see cref="PermissionDecision"/> into the JSON body the CLI's
-/// <c>--permission-prompt-tool</c> expects as the tool-result text:
-/// <c>{"behavior":"allow","updatedInput":{...}}</c> or
-/// <c>{"behavior":"deny","message":"..."}</c> (verified against claude.exe 2.1.197).
-/// </summary>
+// Serializes a `PermissionDecision` into the JSON body the CLI's
+// `--permission-prompt-tool` expects as the tool-result text:
+// `{"behavior":"allow","updatedInput":{...}}` or
+// `{"behavior":"deny","message":"..."}` (verified against claude.exe 2.1.197).
 public static class PermissionPromptResponse
 {
-    /// <summary>
-    /// Builds the behavior JSON for <paramref name="decision"/>. For an allow with no rewritten
-    /// input, <paramref name="proposedInputJson"/> is echoed back as <c>updatedInput</c> (the CLI
-    /// runs the tool with whatever <c>updatedInput</c> carries, so it must be the original input).
-    /// </summary>
+    // Builds the behavior JSON for `decision`. For an allow with no rewritten
+    // input, `proposedInputJson` is echoed back as `updatedInput` (the CLI
+    // runs the tool with whatever `updatedInput` carries, so it must be the original input).
     public static string Serialize(PermissionDecision decision, string proposedInputJson)
     {
         if (!decision.IsAllowed)

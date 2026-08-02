@@ -2,16 +2,15 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-/// <summary>
-/// Which issue, in which repository (#77). A flow refers to an issue the way a person writes one down, and people
-/// write it down in three ways: <c>42</c> with the repo in its own field, <c>owner/repo#42</c> in one, or the URL
-/// they copied from the browser. All three mean the same issue, and refusing two of them would be pedantry.
-/// </summary>
-/// <param name="Repository">Owner and repo, as <c>owner/repo</c>.</param>
-/// <param name="Number">The issue number.</param>
+// Which issue, in which repository (#77). A flow refers to an issue the way a person writes one down, and people
+// write it down in three ways: `42` with the repo in its own field, `owner/repo#42` in one, or the URL
+// they copied from the browser. All three mean the same issue, and refusing two of them would be pedantry.
+//
+// `Repository`: Owner and repo, as `owner/repo`.
+// `Number`: The issue number.
 public sealed partial record GitHubIssueReference(string Repository, int Number)
 {
-    /// <summary>Reads what the operator wrote. Throws with the three forms it accepts, rather than guessing at a fourth.</summary>
+    // Reads what the operator wrote. Throws with the three forms it accepts, rather than guessing at a fourth.
     public static GitHubIssueReference Parse(string issue, string repository)
     {
         var text = issue.Trim();

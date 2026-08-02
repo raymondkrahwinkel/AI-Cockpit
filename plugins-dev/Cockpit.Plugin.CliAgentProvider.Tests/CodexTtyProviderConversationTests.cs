@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-/// <summary>
-/// <see cref="CodexTtyProvider"/>'s conversation-id reporting (AC-408): whether Codex's own thread id can be read
-/// back reliably off disk has not been investigated, so this TTY route reports
-/// <see cref="PluginConversationId.Unsupported"/> honestly rather than guessing at a format.
-/// </summary>
+// `CodexTtyProvider`'s conversation-id reporting (AC-408): whether Codex's own thread id can be read
+// back reliably off disk has not been investigated, so this TTY route reports
+// `PluginConversationId.Unsupported` honestly rather than guessing at a format.
 public class CodexTtyProviderConversationTests
 {
     [Fact]

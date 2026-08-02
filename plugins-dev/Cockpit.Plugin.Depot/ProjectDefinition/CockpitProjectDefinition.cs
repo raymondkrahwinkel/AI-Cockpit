@@ -3,13 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-/// <summary>
-/// On-disk shape of <c>.cockpit/project.json</c> (AC-244) — the portable half of a project definition that lives
-/// in a Depot project. Mirrors <c>Cockpit.Infrastructure.Configuration.ProjectEntry</c>'s idiom without referencing it: a plugin project never references Cockpit.Core.
-/// </summary>
+// On-disk shape of `.cockpit/project.json` (AC-244) — the portable half of a project definition that lives
+// in a Depot project. Mirrors `Cockpit.Infrastructure.Configuration.ProjectEntry`'s idiom without referencing it: a plugin project never references Cockpit.Core.
 public sealed class CockpitProjectDefinition
 {
-    /// <summary>Forward-compat marker (AC-242): any value is accepted without failing deserialization.</summary>
+    // Forward-compat marker (AC-242): any value is accepted without failing deserialization.
     public int SchemaVersion { get; set; } = CockpitProjectDefinitionJson.CurrentSchemaVersion;
 
     public string Name { get; set; } = string.Empty;
@@ -31,7 +29,7 @@ public sealed class CockpitProjectDefinition
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<CockpitProjectResourceEntry>? Resources { get; set; }
 
-    /// <summary>Path of the shared logo blob relative to the Depot project root, e.g. <c>.cockpit/logo.png</c>.</summary>
+    // Path of the shared logo blob relative to the Depot project root, e.g. `.cockpit/logo.png`.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Logo { get; set; }
 

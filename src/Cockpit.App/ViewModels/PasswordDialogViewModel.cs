@@ -2,13 +2,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// Asks for a password: the new one twice (typing it wrong once and never finding out is how an operator locks
-/// themselves out), and the current one as well when the password is being changed.
-/// </summary>
+// Asks for a password: the new one twice (typing it wrong once and never finding out is how an operator locks
+// themselves out), and the current one as well when the password is being changed.
 public sealed partial class PasswordDialogViewModel : ObservableObject
 {
-    /// <summary>Design-time constructor for the previewer.</summary>
+    // Design-time constructor for the previewer.
     public PasswordDialogViewModel()
         : this("Encrypt your credentials", "Pick a password.", requiresCurrent: false)
     {

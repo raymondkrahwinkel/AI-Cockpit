@@ -1,13 +1,11 @@
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>
-/// The real <see cref="IAutopilotPrPublisher"/> (AC-216): drives the operator's own <c>git</c> and <c>gh</c> CLIs in the
-/// run worktree to push the run branch and open a pull request. Provider/host-neutral — it uses whatever remote and auth
-/// the operator's git/gh already have, and hard-codes no credentials. Every process runs in the worktree directory with a
-/// bounded timeout (see <see cref="GitCommandLine"/>); every failure is swallowed into a result (probe → false, publish →
-/// an error string) so a git/gh fault never crashes a run. It composes no "Co-Authored-By" trailer and no AI/agent
-/// mention in any commit it makes.
-/// </summary>
+// The real `IAutopilotPrPublisher` (AC-216): drives the operator's own `git` and `gh` CLIs in the
+// run worktree to push the run branch and open a pull request. Provider/host-neutral — it uses whatever remote and auth
+// the operator's git/gh already have, and hard-codes no credentials. Every process runs in the worktree directory with a
+// bounded timeout (see `GitCommandLine`); every failure is swallowed into a result (probe → false, publish →
+// an error string) so a git/gh fault never crashes a run. It composes no "Co-Authored-By" trailer and no AI/agent
+// mention in any commit it makes.
 internal sealed class GitCliPrPublisher : IAutopilotPrPublisher
 {
     public async Task<AutopilotPrProbe> ProbeAsync(string worktreePath, CancellationToken cancellationToken = default)

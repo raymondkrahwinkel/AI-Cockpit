@@ -5,33 +5,27 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Usage;
 
-/// <summary>
-/// Appends the usage trail (AC-251) to <c>usage-history.jsonl</c> next to <c>cockpit.json</c>. The append-only,
-/// never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading the whole
-/// file — lives in <see cref="JsonlAuditLog{T}"/>; this only names the file.
-/// <para>
-/// Deliberately not a section of <c>cockpit.json</c>: that file is settings, and every write to it rewrites the
-/// whole document. A record per turn belongs in something that is appended to, and appending is also what makes
-/// the trail survive the crash that loses an in-memory meter.
-/// </para>
-/// <para>
-/// Unlike the consent and delegation trails, this one is size-bounded (AC-399): a turn writes to it far more
-/// often than an operator approves a command or a task is delegated, so left append-only forever it is the one
-/// trail that actually grows to hundreds of MB a year. The base class stays append-only for everyone — the
-/// consent trail's whole point is that a record, once logged, cannot be erased — so the rollover lives here, one
-/// layer up, as a size check this class makes before every write rather than a change to the shared machinery.
-/// At <see cref="MaxSizeBytes"/> the live file is renamed to its ".1" rollover file (<c>usage-history.1.jsonl</c>),
-/// replacing whatever rollover file was already there — one generation of history kept beyond the live file, not
-/// an unbounded chain of them.
-/// </para>
-/// </summary>
+// Appends the usage trail (AC-251) to `usage-history.jsonl` next to `cockpit.json`. The append-only,
+// never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading the whole
+// file — lives in `JsonlAuditLog{T}`; this only names the file.
+//
+// Deliberately not a section of `cockpit.json`: that file is settings, and every write to it rewrites the
+// whole document. A record per turn belongs in something that is appended to, and appending is also what makes
+// the trail survive the crash that loses an in-memory meter.
+//
+// Unlike the consent and delegation trails, this one is size-bounded (AC-399): a turn writes to it far more
+// often than an operator approves a command or a task is delegated, so left append-only forever it is the one
+// trail that actually grows to hundreds of MB a year. The base class stays append-only for everyone — the
+// consent trail's whole point is that a record, once logged, cannot be erased — so the rollover lives here, one
+// layer up, as a size check this class makes before every write rather than a change to the shared machinery.
+// At `MaxSizeBytes` the live file is renamed to its ".1" rollover file (`usage-history.1.jsonl`),
+// replacing whatever rollover file was already there — one generation of history kept beyond the live file, not
+// an unbounded chain of them.
 internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHistory, ISingletonService
 {
-    /// <summary>
-    /// The live file rolls once it reaches this size. A named constant rather than a bare number so the trade-off
-    /// (disk footprint vs. how far back "recent usage" can reach) is visible at the call site and in one place to
-    /// change. 8 MB holds a comfortable multi-month tail of one-line-per-turn JSON before it rolls.
-    /// </summary>
+    // The live file rolls once it reaches this size. A named constant rather than a bare number so the trade-off
+    // (disk footprint vs. how far back "recent usage" can reach) is visible at the call site and in one place to
+    // change. 8 MB holds a comfortable multi-month tail of one-line-per-turn JSON before it rolls.
     internal const long MaxSizeBytes = 8 * 1024 * 1024;
 
     private readonly ILogger _logger;
@@ -55,13 +49,13 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
     {
     }
 
-    /// <summary>Test seam: point the trail at an arbitrary file.</summary>
+    // Test seam: point the trail at an arbitrary file.
     internal UsageHistoryLog(string logFilePath, ILogger<UsageHistoryLog> logger)
         : this(logFilePath, logger, MaxSizeBytes)
     {
     }
 
-    /// <summary>Test seam: a tiny <paramref name="maxSizeBytes"/> so a rollover can be exercised without writing 8 MB.</summary>
+    // Test seam: a tiny `maxSizeBytes` so a rollover can be exercised without writing 8 MB.
     internal UsageHistoryLog(string logFilePath, ILogger<UsageHistoryLog> logger, long maxSizeBytes)
         : this(logFilePath, logger, maxSizeBytes, buildRolloverReader: true)
     {
@@ -87,11 +81,9 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
     // Nothing here is free text, so there is nothing to trim before writing.
     protected override UsageSnapshot PrepareForWrite(UsageSnapshot entry) => entry;
 
-    /// <summary>
-    /// <c>usage-history.jsonl</c> rolled to <c>usage-history.1.jsonl</c> — the file name any rollover-aware reader
-    /// or startup housekeeping (AC-435) needs to know about, derived from the live path rather than hardcoded so a
-    /// test pointed at an arbitrary file gets a rollover file next to it, not next to the real one.
-    /// </summary>
+    // `usage-history.jsonl` rolled to `usage-history.1.jsonl` — the file name any rollover-aware reader
+    // or startup housekeeping (AC-435) needs to know about, derived from the live path rather than hardcoded so a
+    // test pointed at an arbitrary file gets a rollover file next to it, not next to the real one.
     internal static string RolloverPathFor(string logFilePath)
     {
         var directory = Path.GetDirectoryName(logFilePath);
@@ -101,13 +93,11 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
         return string.IsNullOrEmpty(directory) ? rolloverName : Path.Combine(directory, rolloverName);
     }
 
-    /// <summary>
-    /// Rolls the file over (if it is at or past <see cref="MaxSizeBytes"/>) and then appends — as one operation
-    /// under <see cref="_rotationLock"/>, so a rename can never land between another caller's size check and its
-    /// append. Hides (rather than overrides — the base method is not virtual, by design: nothing about the
-    /// append-only contract itself may vary per trail) <see cref="JsonlAuditLog{T}.RecordAsync"/>; the interface
-    /// dispatch that matters (<see cref="IUsageHistory.RecordAsync"/>) resolves to this one.
-    /// </summary>
+    // Rolls the file over (if it is at or past `MaxSizeBytes`) and then appends — as one operation
+    // under `_rotationLock`, so a rename can never land between another caller's size check and its
+    // append. Hides (rather than overrides — the base method is not virtual, by design: nothing about the
+    // append-only contract itself may vary per trail) `JsonlAuditLog{T}.RecordAsync`; the interface
+    // dispatch that matters (`IUsageHistory.RecordAsync`) resolves to this one.
     public new async Task RecordAsync(UsageSnapshot entry, CancellationToken cancellationToken = default)
     {
         await _rotationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -122,14 +112,12 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
         }
     }
 
-    /// <summary>
-    /// Reads the live file, then — if that alone did not fill <paramref name="limit"/> — continues into the
-    /// rollover file for the rest. "Recent usage history" is what an operator or the spending-ceiling planner
-    /// wants back regardless of exactly where the live file happens to have last rolled, so a tail-read that
-    /// simply stopped at the rollover boundary would make usage look like it dropped to zero right after every
-    /// rotation. The consent and delegation trails need none of this: they never roll, so their inherited
-    /// <see cref="JsonlAuditLog{T}.ReadRecentAsync"/> already reads everything there is.
-    /// </summary>
+    // Reads the live file, then — if that alone did not fill `limit` — continues into the
+    // rollover file for the rest. "Recent usage history" is what an operator or the spending-ceiling planner
+    // wants back regardless of exactly where the live file happens to have last rolled, so a tail-read that
+    // simply stopped at the rollover boundary would make usage look like it dropped to zero right after every
+    // rotation. The consent and delegation trails need none of this: they never roll, so their inherited
+    // `JsonlAuditLog{T}.ReadRecentAsync` already reads everything there is.
     public new async Task<IReadOnlyList<UsageSnapshot>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default)
     {
         var recent = await base.ReadRecentAsync(limit, cancellationToken).ConfigureAwait(false);

@@ -4,7 +4,7 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Converters;
 
-/// <summary>True only for <see cref="SessionStatus.NeedsAttention"/> — drives the sidebar's attention glyph.</summary>
+// True only for `SessionStatus.NeedsAttention` — drives the sidebar's attention glyph.
 public sealed class IsNeedsAttentionConverter : IValueConverter
 {
     public static readonly IsNeedsAttentionConverter Instance = new();

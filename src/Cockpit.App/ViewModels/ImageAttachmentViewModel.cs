@@ -3,20 +3,18 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// A pending image attached to the next user message, shown as a removable thumbnail chip above
-/// the input. Holds the PNG bytes for the wire plus a decoded <see cref="Thumbnail"/> for preview.
-/// </summary>
+// A pending image attached to the next user message, shown as a removable thumbnail chip above
+// the input. Holds the PNG bytes for the wire plus a decoded `Thumbnail` for preview.
 public partial class ImageAttachmentViewModel : ViewModelBase
 {
     private readonly Action<ImageAttachmentViewModel> _onRemove;
 
-    /// <summary>The pasted image as PNG bytes — sent to the session as a base64 image block.</summary>
+    // The pasted image as PNG bytes — sent to the session as a base64 image block.
     public byte[] PngBytes { get; }
 
     public string MediaType => "image/png";
 
-    /// <summary>Decoded preview bitmap for the chip; the same PNG bytes, decoded once for display.</summary>
+    // Decoded preview bitmap for the chip; the same PNG bytes, decoded once for display.
     public Bitmap Thumbnail { get; }
 
     public ImageAttachmentViewModel(byte[] pngBytes, Action<ImageAttachmentViewModel> onRemove)

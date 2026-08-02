@@ -4,11 +4,9 @@ using Cockpit.Plugin.Kubernetes.Settings;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-/// <summary>
-/// The connection factory's error strings reach the agent through the tools, so they must name the cluster by its
-/// label and never leak the host's kubeconfig path (which names the user/home) — the point of the path staying out
-/// of <c>list_clusters</c> (security review, AC-83).
-/// </summary>
+// The connection factory's error strings reach the agent through the tools, so they must name the cluster by its
+// label and never leak the host's kubeconfig path (which names the user/home) — the point of the path staying out
+// of `list_clusters` (security review, AC-83).
 public class ClusterConnectionFactoryTests
 {
     [Fact]

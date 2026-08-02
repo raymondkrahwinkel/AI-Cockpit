@@ -4,17 +4,14 @@ using Avalonia.Threading;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// An Avalonia runtime without a screen, so IL#9's "is the stale marker faint, does the list jump" checks are
-/// knowable without running the cockpit and looking. Same arrangement as the GitHub-issues and YouTrack plugins'
-/// own test projects, and <c>Cockpit.App.ViewTests</c> for the host's own views.
-/// <para>
-/// It owns a thread, and every test body runs on it (<see cref="Run"/>). Avalonia binds its dispatcher to the
-/// thread that set it up, and xunit hands each test whichever thread it pleases: setting the platform up once and
-/// then touching a control from a test thread fails with "a different thread owns it" — sometimes, depending on
-/// what else ran first, which is the worst way for a test to fail.
-/// </para>
-/// </summary>
+// An Avalonia runtime without a screen, so IL#9's "is the stale marker faint, does the list jump" checks are
+// knowable without running the cockpit and looking. Same arrangement as the GitHub-issues and YouTrack plugins'
+// own test projects, and `Cockpit.App.ViewTests` for the host's own views.
+//
+// It owns a thread, and every test body runs on it (`Run`). Avalonia binds its dispatcher to the
+// thread that set it up, and xunit hands each test whichever thread it pleases: setting the platform up once and
+// then touching a control from a test thread fails with "a different thread owns it" — sometimes, depending on
+// what else ran first, which is the worst way for a test to fail.
 public sealed class HeadlessAvalonia : IDisposable
 {
     private static readonly Lock Gate = new();
@@ -61,7 +58,7 @@ public sealed class HeadlessAvalonia : IDisposable
         }
     }
 
-    /// <summary>Runs a test body on the thread Avalonia belongs to, and hands its failure back to the test.</summary>
+    // Runs a test body on the thread Avalonia belongs to, and hands its failure back to the test.
     public static void Run(Action body) => Dispatcher.UIThread.Invoke(body);
 
     public void Dispose() => _stop?.Cancel();

@@ -2,7 +2,7 @@ using Cockpit.Core.Debugging;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of <see cref="DebugSettings"/> in the <c>debug</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of `DebugSettings` in the `debug` section of `cockpit.json`.
 internal sealed class DebugSettingsEntry
 {
     public bool ShowDebugControls { get; set; }

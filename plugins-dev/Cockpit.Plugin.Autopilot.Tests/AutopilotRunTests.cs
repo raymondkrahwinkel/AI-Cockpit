@@ -1,9 +1,7 @@
 using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// <see cref="AutopilotRun.FromIntent"/> — the trigger payload (AC-150) a tracker sends becomes the run the surface shows.
-/// </summary>
+// `AutopilotRun.FromIntent` — the trigger payload (AC-150) a tracker sends becomes the run the surface shows.
 public class AutopilotRunTests
 {
     private static PluginIntent Intent(IReadOnlyDictionary<string, string> data, string caller = "youtrack") =>

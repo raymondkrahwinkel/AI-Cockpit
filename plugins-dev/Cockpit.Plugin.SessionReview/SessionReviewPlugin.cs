@@ -5,12 +5,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.SessionReview;
 
-/// <summary>
-/// Per-session diff/review panel (AC-50): adds a "Review changes…" action to each session's header that opens a panel
-/// showing the uncommitted git diff of that session's working directory, with one click to ask the session to review
-/// its own changes. Makes the cockpit a review station — the quality guard before an agent's output lands. No local
-/// state, so <see cref="ConfigureServices"/> is empty.
-/// </summary>
+// Per-session diff/review panel (AC-50): adds a "Review changes…" action to each session's header that opens a panel
+// showing the uncommitted git diff of that session's working directory, with one click to ask the session to review
+// its own changes. Makes the cockpit a review station — the quality guard before an agent's output lands. No local
+// state, so `ConfigureServices` is empty.
 public sealed class SessionReviewPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

@@ -4,12 +4,10 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The HTTP-mode path (AC-519), driven against a real loopback <see cref="HttpListener"/> rather than the real
-/// GitHub API — <see cref="GitHubIssuesClient.BaseUrl"/> exists solely so this can point the real client at it. This
-/// is the "test per pad" the ticket asks for on the HTTP side: the actual request URL and response parsing run, not
-/// a stand-in for them.
-/// </summary>
+// The HTTP-mode path (AC-519), driven against a real loopback `HttpListener` rather than the real
+// GitHub API — `GitHubIssuesClient.BaseUrl` exists solely so this can point the real client at it. This
+// is the "test per pad" the ticket asks for on the HTTP side: the actual request URL and response parsing run, not
+// a stand-in for them.
 public class GitHubIssuesClientTests : IDisposable
 {
     private readonly string _originalBaseUrl = GitHubIssuesClient.BaseUrl;
@@ -246,7 +244,7 @@ public class GitHubIssuesClientTests : IDisposable
     private static string _IssuesJson(int count) =>
         "[" + string.Join(",", Enumerable.Range(1, count).Select(number => $$"""{ "number": {{number}}, "title": "Issue {{number}}", "html_url": "https://x/{{number}}" }""")) + "]";
 
-    /// <summary>A minimal loopback HTTP server for driving the real <see cref="GitHubIssuesClient"/> without the real GitHub API.</summary>
+    // A minimal loopback HTTP server for driving the real `GitHubIssuesClient` without the real GitHub API.
     private sealed class LoopbackServer : IDisposable
     {
         private readonly HttpListener _listener;

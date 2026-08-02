@@ -2,12 +2,10 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// What may be wired to what (#69). These tests are the record of a correction: an earlier version refused fan-out
-/// (one way out feeding several steps) and loops, on the assumption that they were mistakes. They are not — in n8n
-/// both are ordinary, and a loop with a decision as its stop condition is a normal thing to draw. So the tests
-/// below assert that the editor <em>allows</em> them, and only refuses wires the engine could never follow.
-/// </summary>
+// What may be wired to what (#69). These tests are the record of a correction: an earlier version refused fan-out
+// (one way out feeding several steps) and loops, on the assumption that they were mistakes. They are not — in n8n
+// both are ordinary, and a loop with a decision as its stop condition is a normal thing to draw. So the tests
+// below assert that the editor *allows* them, and only refuses wires the engine could never follow.
 public class WorkflowConnectionRulesTests
 {
     [Fact]

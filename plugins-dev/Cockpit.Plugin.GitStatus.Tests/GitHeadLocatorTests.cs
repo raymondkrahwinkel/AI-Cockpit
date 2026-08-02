@@ -2,11 +2,9 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-/// <summary>
-/// Locating HEAD against a real repository. What is worth proving is the two cases a naive
-/// <c>&lt;dir&gt;/.git/HEAD</c> gets wrong: a working directory that is a subdirectory of the repo (HEAD lives at
-/// the root, not next to the session), and a directory that is not a repository at all.
-/// </summary>
+// Locating HEAD against a real repository. What is worth proving is the two cases a naive
+// `&lt;dir&gt;/.git/HEAD` gets wrong: a working directory that is a subdirectory of the repo (HEAD lives at
+// the root, not next to the session), and a directory that is not a repository at all.
 public class GitHeadLocatorTests : IDisposable
 {
     private readonly string _repo = Path.Combine(Path.GetTempPath(), $"cockpit-head-{Guid.NewGuid():n}");

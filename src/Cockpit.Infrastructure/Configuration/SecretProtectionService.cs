@@ -6,24 +6,20 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// Turns credential encryption on and off, and unlocks it at startup.
-/// <para>
-/// It works on the raw JSON rather than the typed config model on purpose: a migration must convert every
-/// credential that is <em>in the file</em>, including the sections of plugins this build has never heard of and
-/// any field a future version adds. Round-tripping through the typed model would silently drop what it does not
-/// know about — and dropping a section during the one operation that rewrites every credential is exactly the
-/// data loss this is supposed to prevent.
-/// </para>
-/// <para>
-/// Every operation that rewrites the file (Enable/Disable/Reset/Dismiss/ChangePassword, and the startup sidecar
-/// sweep) takes the shared <see cref="CockpitConfigWriteGate"/> — the same lock the typed settings stores use — so
-/// a migration can never interleave with an ordinary save. The gate is non-reentrant, so each of these takes it
-/// exactly once and never calls another gated method while holding it: <c>ChangePasswordAsync</c> in particular
-/// re-encrypts in one gated pass rather than delegating to Disable+Enable, both because that would deadlock and
-/// because Disable would put every credential back in the clear on disk for the width of the window between them.
-/// </para>
-/// </summary>
+// Turns credential encryption on and off, and unlocks it at startup.
+//
+// It works on the raw JSON rather than the typed config model on purpose: a migration must convert every
+// credential that is *in the file*, including the sections of plugins this build has never heard of and
+// any field a future version adds. Round-tripping through the typed model would silently drop what it does not
+// know about — and dropping a section during the one operation that rewrites every credential is exactly the
+// data loss this is supposed to prevent.
+//
+// Every operation that rewrites the file (Enable/Disable/Reset/Dismiss/ChangePassword, and the startup sidecar
+// sweep) takes the shared `CockpitConfigWriteGate` — the same lock the typed settings stores use — so
+// a migration can never interleave with an ordinary save. The gate is non-reentrant, so each of these takes it
+// exactly once and never calls another gated method while holding it: `ChangePasswordAsync` in particular
+// re-encrypts in one gated pass rather than delegating to Disable+Enable, both because that would deadlock and
+// because Disable would put every credential back in the clear on disk for the width of the window between them.
 internal sealed class SecretProtectionService : ISecretProtectionService, ISingletonService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
@@ -33,11 +29,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
     private readonly string _configFilePath;
     private readonly SecretKeyHolder _keyHolder;
 
-    /// <summary>
-    /// Builds the protector for a derived key. A seam, not a constant, so a test can inject a protector whose
-    /// ciphertext does not decrypt back — which is the only way to exercise the verify-before-publish abort, since
-    /// the real AES-GCM protector always round-trips.
-    /// </summary>
+    // Builds the protector for a derived key. A seam, not a constant, so a test can inject a protector whose
+    // ciphertext does not decrypt back — which is the only way to exercise the verify-before-publish abort, since
+    // the real AES-GCM protector always round-trips.
     private readonly Func<byte[], ISecretProtector> _protectorFactory;
 
     public SecretProtectionService()
@@ -45,8 +39,8 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
     {
     }
 
-    /// <summary>Test seam: an arbitrary config file, a holder that is not the process-wide one, and — for the
-    /// round-trip-failure tests — a protector factory that stands in for the real AES-GCM one.</summary>
+    // Test seam: an arbitrary config file, a holder that is not the process-wide one, and — for the
+    // round-trip-failure tests — a protector factory that stands in for the real AES-GCM one.
     internal SecretProtectionService(
         string configFilePath,
         SecretKeyHolder keyHolder,
@@ -267,11 +261,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         Save(document);
     }
 
-    /// <summary>
-    /// Rewrites every credential in the document, reporting progress. All-or-nothing: one field that will not
-    /// convert (a wrong key, an altered value) aborts the whole migration with the file untouched, rather than
-    /// leaving a config half in the clear and half unreadable with no way to tell which fields are which.
-    /// </summary>
+    // Rewrites every credential in the document, reporting progress. All-or-nothing: one field that will not
+    // convert (a wrong key, an altered value) aborts the whole migration with the file untouched, rather than
+    // leaving a config half in the clear and half unreadable with no way to tell which fields are which.
     private void ConvertSecrets(JsonNode document, IProgress<SecretMigrationProgress>? progress, Func<string, string, string?> transform)
     {
         // Counting pass first: a progress bar that does not know its total cannot show progress. It runs on a
@@ -291,22 +283,18 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         });
     }
 
-    /// <summary>
-    /// The credential fields whose value is still in the clear — the set the awareness banner is about. Runs on a
-    /// clone because the walker rewrites in place and this only wants to read the shape; a value already encrypted
-    /// is not counted, so a half-migrated file does not keep the banner up over ciphertext.
-    /// </summary>
+    // The credential fields whose value is still in the clear — the set the awareness banner is about. Runs on a
+    // clone because the walker rewrites in place and this only wants to read the shape; a value already encrypted
+    // is not counted, so a half-migrated file does not keep the banner up over ciphertext.
     private IReadOnlyList<string> PlaintextSecretPaths(JsonNode document) =>
         SecretJsonWalker.Transform(
             document.DeepClone(),
             _keyHolder.Fields,
             (_, value) => SecretProtector.IsProtected(value) ? null : value);
 
-    /// <summary>
-    /// Encrypts <paramref name="plaintext"/> and proves it reads back in the same field before returning the
-    /// ciphertext — the verify-before-publish guard. A protector whose ciphertext will not decrypt to what it just
-    /// encrypted throws here, before anything is saved, so the on-disk file is left exactly as it was.
-    /// </summary>
+    // Encrypts `plaintext` and proves it reads back in the same field before returning the
+    // ciphertext — the verify-before-publish guard. A protector whose ciphertext will not decrypt to what it just
+    // encrypted throws here, before anything is saved, so the on-disk file is left exactly as it was.
     private static string ProtectVerified(ISecretProtector protector, string path, string plaintext)
     {
         var ciphertext = protector.Protect(path, plaintext);
@@ -319,11 +307,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         return ciphertext;
     }
 
-    /// <summary>
-    /// Whether <paramref name="protector"/> is built from the right password: decrypting the known verifier string
-    /// proves the key without touching — and risking mangling — the operator's actual credentials. A value that
-    /// will not decrypt (the wrong password) is a false, not a throw.
-    /// </summary>
+    // Whether `protector` is built from the right password: decrypting the known verifier string
+    // proves the key without touching — and risking mangling — the operator's actual credentials. A value that
+    // will not decrypt (the wrong password) is a false, not a throw.
     private static bool VerifierMatches(ISecretProtector protector, SecretProtectionEntry security)
     {
         try
@@ -404,10 +390,8 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         ScrubPlaintextSidecars(protector);
     }
 
-    /// <summary>
-    /// Re-encrypts any plaintext credential left in a sidecar, or removes a copy too damaged to read. Assumes the
-    /// write gate is already held (its callers take it), so it never races the atomic swap that also writes .bak.
-    /// </summary>
+    // Re-encrypts any plaintext credential left in a sidecar, or removes a copy too damaged to read. Assumes the
+    // write gate is already held (its callers take it), so it never races the atomic swap that also writes .bak.
     private void ScrubPlaintextSidecars(ISecretProtector protector)
     {
         // The .bak the atomic swap keeps is always valid JSON — a copy of a good config — so re-encrypt it in place.

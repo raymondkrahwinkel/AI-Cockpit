@@ -7,11 +7,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-/// <summary>
-/// The "add/edit profile" config panel for the Codex CLI provider (#45 fase B1): the CLI command/path, the
-/// working directory (also the sandbox root), the sandbox mode, an optional model override, and an optional
-/// API key — mirroring <c>OpenAiCompatProviderConfigView</c>'s shape from the Gemini/OpenAI provider plugin.
-/// </summary>
+// The "add/edit profile" config panel for the Codex CLI provider (#45 fase B1): the CLI command/path, the
+// working directory (also the sandbox root), the sandbox mode, an optional model override, and an optional
+// API key — mirroring `OpenAiCompatProviderConfigView`'s shape from the Gemini/OpenAI provider plugin.
 internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _command;
@@ -87,10 +85,8 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         _UpdateWorkingDirectoryStatus();
     }
 
-    /// <summary>
-    /// Resolves the command exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one line, what
-    /// will run and whether it is a cockpit-managed copy — so this never contradicts the managed panel below.
-    /// </summary>
+    // Resolves the command exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one line, what
+    // will run and whether it is a cockpit-managed copy — so this never contradicts the managed panel below.
     private void _UpdateCommandStatus()
     {
         var command = _command.Text?.Trim() ?? string.Empty;
@@ -122,7 +118,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         }
     }
 
-    /// <summary>Flags a non-empty working directory that does not exist (the one thing that blocks saving besides an empty command); an empty value is fine (SDK sessions fall back to the cockpit's own directory).</summary>
+    // Flags a non-empty working directory that does not exist (the one thing that blocks saving besides an empty command); an empty value is fine (SDK sessions fall back to the cockpit's own directory).
     private void _UpdateWorkingDirectoryStatus()
     {
         var directory = _workingDirectory.Text?.Trim() ?? string.Empty;
@@ -173,11 +169,9 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         return true;
     }
 
-    /// <summary>
-    /// Fills the Model field's suggestions from the models this codex offers (<c>model/list</c>), best-effort:
-    /// no codex, logged out, or a slow spawn just leaves it free text. Uses the profile's own command and
-    /// CODEX_HOME so a per-profile install/login lists its own models.
-    /// </summary>
+    // Fills the Model field's suggestions from the models this codex offers (`model/list`), best-effort:
+    // no codex, logged out, or a slow spawn just leaves it free text. Uses the profile's own command and
+    // CODEX_HOME so a per-profile install/login lists its own models.
     private async Task _PopulateModelSuggestionsAsync(string command, string? configDir)
     {
         try

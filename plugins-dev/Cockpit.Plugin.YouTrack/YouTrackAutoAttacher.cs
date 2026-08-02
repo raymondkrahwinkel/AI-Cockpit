@@ -5,14 +5,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Watches a session's tool calls (AC-116) and, when the agent creates or updates a YouTrack issue in a turn
-/// whose message carried images, attaches those images to that issue — the whole feature, with no per-session
-/// toggle or tracking. Gated by the global <see cref="YouTrackSettings.AutoAttachImages"/> setting. Reads the
-/// turn's images off the read/observe surface (host-managed and turn-scoped), so it never attaches a stale
-/// earlier turn's images; dedup is by the turn's image-set identity, so a create and an update to the same
-/// issue in one turn attach once, while a later turn attaches its own images again.
-/// </summary>
+// Watches a session's tool calls (AC-116) and, when the agent creates or updates a YouTrack issue in a turn
+// whose message carried images, attaches those images to that issue — the whole feature, with no per-session
+// toggle or tracking. Gated by the global `YouTrackSettings.AutoAttachImages` setting. Reads the
+// turn's images off the read/observe surface (host-managed and turn-scoped), so it never attaches a stale
+// earlier turn's images; dedup is by the turn's image-set identity, so a create and an update to the same
+// issue in one turn attach once, while a later turn attaches its own images again.
 internal sealed class YouTrackAutoAttacher
 {
     private readonly ICockpitHost _host;
@@ -25,7 +23,7 @@ internal sealed class YouTrackAutoAttacher
     // image bytes are held past the turn.
     private readonly ConditionalWeakTable<IReadOnlyList<SessionImageAttachment>, HashSet<string>> _attachedByTurn = new();
 
-    /// <param name="upload">How images are uploaded to an issue — defaults to the real HTTP multipart upload; overridden in tests to observe the gate/dedup without a network call.</param>
+    // `upload`: How images are uploaded to an issue — defaults to the real HTTP multipart upload; overridden in tests to observe the gate/dedup without a network call.
     public YouTrackAutoAttacher(
         ICockpitHost host,
         YouTrackSettings settings,

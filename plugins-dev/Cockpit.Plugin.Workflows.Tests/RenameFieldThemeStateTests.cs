@@ -10,15 +10,13 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// The flow name field asks for no fill and a transparent border. The Prompt Library's
-/// quick-pick search field and the command palette's query box get away with no border at all instead — each is
-/// the only input on its surface and grabs focus automatically on open (<c>PromptQuickPickControl.cs</c>,
-/// <c>CommandPaletteDialog.axaml.cs</c>), so there is no un-focused state left to tell a focused one apart from.
-/// This field sits in a toolbar next to Back and the Active toggle and is never auto-focused, so hover and focus
-/// need a border of their own to draw on. Measured against a rendered window, not asserted from reading the
-/// setters — a claimed state only proves itself in a real render (AC-336).
-/// </summary>
+// The flow name field asks for no fill and a transparent border. The Prompt Library's
+// quick-pick search field and the command palette's query box get away with no border at all instead — each is
+// the only input on its surface and grabs focus automatically on open (`PromptQuickPickControl.cs`,
+// `CommandPaletteDialog.axaml.cs`), so there is no un-focused state left to tell a focused one apart from.
+// This field sits in a toolbar next to Back and the Active toggle and is never auto-focused, so hover and focus
+// need a border of their own to draw on. Measured against a rendered window, not asserted from reading the
+// setters — a claimed state only proves itself in a real render (AC-336).
 [Collection("avalonia")]
 public class RenameFieldThemeStateTests
 {
@@ -64,7 +62,7 @@ public class RenameFieldThemeStateTests
         Assert.Equal(thickness, border.BorderThickness);
     }
 
-    /// <summary>The control in a shown, laid-out window, closed again even when an assertion below it fails.</summary>
+    // The control in a shown, laid-out window, closed again even when an assertion below it fails.
     private static Host _Shown(Control content)
     {
         var window = new Window { Width = 500, Height = 300, Content = content };

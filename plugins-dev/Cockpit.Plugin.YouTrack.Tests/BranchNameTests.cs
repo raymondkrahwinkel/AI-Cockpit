@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// <see cref="BranchName"/> (#75): the branch a ticket is started on — <c>[issue-id]-[short-name]</c>, all
-/// lowercase (the convention this repo follows), and safe to type, to push and to read back six months later.
-/// </summary>
+// `BranchName` (#75): the branch a ticket is started on — `[issue-id]-[short-name]`, all
+// lowercase (the convention this repo follows), and safe to type, to push and to read back six months later.
 public class BranchNameTests
 {
     [Fact]

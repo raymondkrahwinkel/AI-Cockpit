@@ -3,13 +3,11 @@ using Cockpit.Core.Abstractions.Plugins;
 
 namespace Cockpit.Core.Plugins;
 
-/// <summary>
-/// Implements the provisioning seam (AC-510[b]) over <see cref="IPluginStoreClient"/> and
-/// <see cref="IPluginInstaller"/> — the download-verify-install glue that used to live only inside
-/// <c>PluginManagerViewModel</c>. A fresh install's consent walk and a staged update's registration re-pin stay
-/// with the caller: both need UI (a dialog) or session state this service has no business holding, so this class
-/// stops at "here is what landed", which is exactly what a screen-less caller needs too.
-/// </summary>
+// Implements the provisioning seam (AC-510[b]) over `IPluginStoreClient` and
+// `IPluginInstaller` — the download-verify-install glue that used to live only inside
+// `PluginManagerViewModel`. A fresh install's consent walk and a staged update's registration re-pin stay
+// with the caller: both need UI (a dialog) or session state this service has no business holding, so this class
+// stops at "here is what landed", which is exactly what a screen-less caller needs too.
 public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IPluginInstaller installer)
     : IPluginProvisioningService, ISingletonService
 {

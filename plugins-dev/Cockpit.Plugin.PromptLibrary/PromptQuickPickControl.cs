@@ -11,13 +11,11 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
-/// <summary>
-/// A compact "insert a prompt fast" palette (#: prompt quick-inject): a search box over the saved templates
-/// and a list — type to filter, ↑/↓ to move, Enter or a click to inject the prompt into the active session and
-/// close. Opened from the "Insert prompt" left-menu button or its keyboard shortcut. Unlike the full Prompt
-/// Library dialog it does not prompt for <c>{{variable}}</c> values — it drops the template body straight in,
-/// leaving any placeholders for you to fill in the input — so it stays a one-keystroke action.
-/// </summary>
+// A compact "insert a prompt fast" palette (#: prompt quick-inject): a search box over the saved templates
+// and a list — type to filter, ↑/↓ to move, Enter or a click to inject the prompt into the active session and
+// close. Opened from the "Insert prompt" left-menu button or its keyboard shortcut. Unlike the full Prompt
+// Library dialog it does not prompt for `{{variable}}` values — it drops the template body straight in,
+// leaving any placeholders for you to fill in the input — so it stays a one-keystroke action.
 internal sealed class PromptQuickPickControl : UserControl
 {
     private readonly PromptLibrarySettings _settings;
@@ -107,19 +105,17 @@ internal sealed class PromptQuickPickControl : UserControl
             Dispatcher.UIThread.Post(() => _search.Focus(), DispatcherPriority.Loaded);
     }
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard. This replaced three hand-held fallbacks that were applied first and swapped for the real brushes on
-    /// attach — a two-step that left the palette's own accent frozen at the pre-AC-334 orange in the one place it
-    /// could still be seen.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard. This replaced three hand-held fallbacks that were applied first and swapped for the real brushes on
+    // attach — a two-step that left the palette's own accent frozen at the pre-AC-334 orange in the one place it
+    // could still be seen.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's inputs do.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's inputs do.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

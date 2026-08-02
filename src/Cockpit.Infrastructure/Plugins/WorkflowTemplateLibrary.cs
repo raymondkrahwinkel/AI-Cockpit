@@ -5,17 +5,14 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-/// <summary>
-/// The workflow templates installed from a store (#69), kept as files beside the plugins. A template is a flow as
-/// text, so installing one is writing a file — there is no assembly to load and nothing to consent to running. The
-/// cockpit reads them at startup and offers them in the editor's picker next to the ones the plugins ship, because to
-/// the operator they are the same thing: a flow somebody already drew.
-/// <para>
-/// Each one is stored with what the store said about it (name, description, who published it, which plugins its steps
-/// come from), so the picker can say where a template came from and refuse to open one whose steps this build does not
-/// have — rather than opening a canvas of nodes the editor cannot resolve.
-/// </para>
-/// </summary>
+// The workflow templates installed from a store (#69), kept as files beside the plugins. A template is a flow as
+// text, so installing one is writing a file — there is no assembly to load and nothing to consent to running. The
+// cockpit reads them at startup and offers them in the editor's picker next to the ones the plugins ship, because to
+// the operator they are the same thing: a flow somebody already drew.
+//
+// Each one is stored with what the store said about it (name, description, who published it, which plugins its steps
+// come from), so the picker can say where a template came from and refuse to open one whose steps this build does not
+// have — rather than opening a canvas of nodes the editor cannot resolve.
 internal sealed class WorkflowTemplateLibrary : IWorkflowTemplateLibrary, ISingletonService
 {
     private static readonly JsonSerializerOptions Options = new()
@@ -26,13 +23,13 @@ internal sealed class WorkflowTemplateLibrary : IWorkflowTemplateLibrary, ISingl
 
     private readonly string _root;
 
-    /// <summary>The templates live beside the plugins, under the cockpit's own config directory.</summary>
+    // The templates live beside the plugins, under the cockpit's own config directory.
     public WorkflowTemplateLibrary()
         : this(Path.Combine(Path.GetDirectoryName(CockpitConfigPath.Default)!, "workflow-templates"))
     {
     }
 
-    /// <summary>Test seam: a library rooted somewhere a test may write.</summary>
+    // Test seam: a library rooted somewhere a test may write.
     internal WorkflowTemplateLibrary(string root)
     {
         _root = root;

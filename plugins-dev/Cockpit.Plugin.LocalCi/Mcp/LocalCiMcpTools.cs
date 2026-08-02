@@ -9,15 +9,12 @@ using ModelContextProtocol.Server;
 
 namespace Cockpit.Plugin.LocalCi.Mcp;
 
-/// <summary>
-/// The <c>cockpit-local-ci</c> tool surface: how a session checks its own work before pushing it.
-/// <para>
-/// Neither tool takes a project or a path. Which checkout is acted on comes from
-/// <see cref="ICockpitHost.CurrentMcpCallerPaneId"/> — the pane the transport says made the call — so a session
-/// cannot ask for a run in somebody else's tree, and a prompt-injected one cannot be talked into it. That is the
-/// whole reason the signatures look narrower than they could be.
-/// </para>
-/// </summary>
+// The `cockpit-local-ci` tool surface: how a session checks its own work before pushing it.
+//
+// Neither tool takes a project or a path. Which checkout is acted on comes from
+// `ICockpitHost.CurrentMcpCallerPaneId` — the pane the transport says made the call — so a session
+// cannot ask for a run in somebody else's tree, and a prompt-injected one cannot be talked into it. That is the
+// whole reason the signatures look narrower than they could be.
 internal sealed class LocalCiMcpTools(
     ICockpitHost host,
     SessionCheckouts checkouts,
@@ -179,10 +176,8 @@ internal sealed class LocalCiMcpTools(
             .Where(read => read.Document is not null)
             .SelectMany(read => LocalRunClassifier.Classify(read.Document!).Select(verdict => (read.Path, verdict)));
 
-    /// <summary>
-    /// What goes back to the agent. The log travels only when the run failed, and only its tail: a whole build log
-    /// in a session's context is the waste this plugin exists to save, and on a pass there is nothing in it to read.
-    /// </summary>
+    // What goes back to the agent. The log travels only when the run failed, and only its tail: a whole build log
+    // in a session's context is the waste this plugin exists to save, and on a pass there is nothing in it to read.
     private static object _Report(LocalRunResult result) => new
     {
         ok = result.Outcome == LocalRunOutcome.Passed,
@@ -194,7 +189,13 @@ internal sealed class LocalCiMcpTools(
         summary = result.Headline,
         where = "this machine, in a container via act",
         note = "act's images are not GitHub's runner images. This predicts the check on GitHub; it does not replace it.",
-        logTail = result.Outcome == LocalRunOutcome.Failed && result.LogTail.Length > 0 ? result.LogTail : null,
+        // A failure, and also a run that fell over in its own setup (AC-617) — the latter needs it most: "it never
+        // got past setting the job up" is the classification, and the engine's own message underneath it is the
+        // only thing that says what to fix. Still never on a pass: a whole build log in a session's context is the
+        // waste this plugin exists to save, and there is nothing in a green one to read.
+        logTail = result.Outcome is LocalRunOutcome.Failed or LocalRunOutcome.CouldNotRun && result.LogTail.Length > 0
+            ? result.LogTail
+            : null,
     };
 }
 

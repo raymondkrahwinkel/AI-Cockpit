@@ -1,13 +1,11 @@
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// Recognises the YouTrack MCP tool calls whose completion should attach the message's images to an issue
-/// (AC-116): creating an issue, or updating an existing one. Matched loosely on the tool name — the
-/// "youtrack" the server this plugin registers ("YouTrack: {label}") carries, plus the verb — rather than an
-/// exact string, because each provider prefixes and sanitises MCP tool names its own way (Claude
-/// <c>mcp__youtrack_personal__create_issue</c>, Codex a TOML-safe variant). A draft (<c>create_draft_issue</c>)
-/// is left out: it is not yet an issue an attachment belongs on, and its name does not contain "create_issue".
-/// </summary>
+// Recognises the YouTrack MCP tool calls whose completion should attach the message's images to an issue
+// (AC-116): creating an issue, or updating an existing one. Matched loosely on the tool name — the
+// "youtrack" the server this plugin registers ("YouTrack: {label}") carries, plus the verb — rather than an
+// exact string, because each provider prefixes and sanitises MCP tool names its own way (Claude
+// `mcp__youtrack_personal__create_issue`, Codex a TOML-safe variant). A draft (`create_draft_issue`)
+// is left out: it is not yet an issue an attachment belongs on, and its name does not contain "create_issue".
 internal static class YouTrackToolActivity
 {
     public static bool IsIssueCreateOrUpdate(string toolName)

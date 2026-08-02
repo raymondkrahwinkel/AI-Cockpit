@@ -8,18 +8,14 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.SessionReview.Tests;
 
-/// <summary>
-/// The application the headless platform runs the review panel under. The panel is built in code and carries no
-/// styles of its own — the cockpit supplies the base theme, so a test host that leaves it out gets untemplated
-/// controls that measure to nothing and resolve every <c>Cockpit…Brush</c> lookup to nothing.
-/// </summary>
-/// <remarks>
-/// Loads the same styles, in the same order, as <c>src/Cockpit.App/App.axaml</c> (AC-338): Fluent, then the
-/// material icon set, then the DataGrid's own Fluent theme, then the cockpit's <c>Theme.axaml</c> read off disk
-/// (the plugin cannot reference <c>Cockpit.App</c>). This plugin has no DataGrid, but the theme file itself styles
-/// <c>DataGridRow</c> for the plugins that do, and XamlX cannot resolve that selector unless the assembly is
-/// already loaded — the same reason the other plugin test apps carry the reference.
-/// </remarks>
+// The application the headless platform runs the review panel under. The panel is built in code and carries no
+// styles of its own — the cockpit supplies the base theme, so a test host that leaves it out gets untemplated
+// controls that measure to nothing and resolve every `Cockpit…Brush` lookup to nothing.
+// Loads the same styles, in the same order, as `src/Cockpit.App/App.axaml` (AC-338): Fluent, then the
+// material icon set, then the DataGrid's own Fluent theme, then the cockpit's `Theme.axaml` read off disk
+// (the plugin cannot reference `Cockpit.App`). This plugin has no DataGrid, but the theme file itself styles
+// `DataGridRow` for the plugins that do, and XamlX cannot resolve that selector unless the assembly is
+// already loaded — the same reason the other plugin test apps carry the reference.
 public sealed class SessionReviewTestApp : Application
 {
     public override void Initialize()

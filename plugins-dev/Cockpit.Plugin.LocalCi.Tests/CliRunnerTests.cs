@@ -3,11 +3,9 @@ using Cockpit.Plugin.LocalCi.Runtime;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
 
-/// <summary>
-/// The real process wrapper, against real processes. The fakes elsewhere prove what the detection does with each
-/// answer; these prove the wrapper produces those answers rather than an exception or a wait with no end — which is
-/// the whole reason the three Docker states can be told apart at all.
-/// </summary>
+// The real process wrapper, against real processes. The fakes elsewhere prove what the detection does with each
+// answer; these prove the wrapper produces those answers rather than an exception or a wait with no end — which is
+// the whole reason the three Docker states can be told apart at all.
 public class CliRunnerTests
 {
     private static readonly TimeSpan Generous = TimeSpan.FromSeconds(30);
@@ -60,10 +58,8 @@ public class CliRunnerTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
     }
 
-    /// <summary>
-    /// Something that stays alive and is on every machine. Windows uses ping rather than <c>timeout</c>, which
-    /// refuses to run at all when stdin is redirected — and the runner redirects everything.
-    /// </summary>
+    // Something that stays alive and is on every machine. Windows uses ping rather than `timeout`, which
+    // refuses to run at all when stdin is redirected — and the runner redirects everything.
     private static (string FileName, string[] Arguments) _Sleeper(int seconds) =>
         OperatingSystem.IsWindows()
             ? ("cmd", ["/c", "ping", "-n", (seconds + 1).ToString(), "127.0.0.1"])

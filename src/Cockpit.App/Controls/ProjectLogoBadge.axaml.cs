@@ -5,11 +5,9 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// A project's logo in the shape every surface shows it in (AC-162): a rounded well holding the stored image, or
-/// the project's initial while it has none. One control because the overview's cards, the manager's rows and the
-/// editor's preview all draw the same thing, and three copies of it had already drifted apart in size and radius.
-/// </summary>
+// A project's logo in the shape every surface shows it in (AC-162): a rounded well holding the stored image, or
+// the project's initial while it has none. One control because the overview's cards, the manager's rows and the
+// editor's preview all draw the same thing, and three copies of it had already drifted apart in size and radius.
 public partial class ProjectLogoBadge : UserControl
 {
     public static readonly StyledProperty<double> SizeProperty =
@@ -18,15 +16,15 @@ public partial class ProjectLogoBadge : UserControl
     public static readonly StyledProperty<string?> LogoPathProperty =
         AvaloniaProperty.Register<ProjectLogoBadge, string?>(nameof(LogoPath));
 
-    /// <summary>The project's name, for the initial shown when it has no logo.</summary>
+    // The project's name, for the initial shown when it has no logo.
     public static readonly StyledProperty<string?> ProjectNameProperty =
         AvaloniaProperty.Register<ProjectLogoBadge, string?>(nameof(ProjectName));
 
-    /// <summary>Whether to fall back to the project's initial. Off for the editor's preview, where an empty well says "no logo yet" more honestly than a letter does.</summary>
+    // Whether to fall back to the project's initial. Off for the editor's preview, where an empty well says "no logo yet" more honestly than a letter does.
     public static readonly StyledProperty<bool> ShowsInitialProperty =
         AvaloniaProperty.Register<ProjectLogoBadge, bool>(nameof(ShowsInitial), true);
 
-    /// <summary>The well's fill, so the badge sits on whichever surface hosts it rather than carrying its own.</summary>
+    // The well's fill, so the badge sits on whichever surface hosts it rather than carrying its own.
     public static readonly StyledProperty<IBrush?> WellBackgroundProperty =
         AvaloniaProperty.Register<ProjectLogoBadge, IBrush?>(nameof(WellBackground));
 
@@ -63,7 +61,7 @@ public partial class ProjectLogoBadge : UserControl
         set => SetValue(WellBackgroundProperty, value);
     }
 
-    /// <summary>The initial scales with the well, so one badge does not need a font size set beside its size.</summary>
+    // The initial scales with the well, so one badge does not need a font size set beside its size.
     public double InitialFontSize => Math.Round(Size * 0.45);
 
     public ProjectLogoBadge()

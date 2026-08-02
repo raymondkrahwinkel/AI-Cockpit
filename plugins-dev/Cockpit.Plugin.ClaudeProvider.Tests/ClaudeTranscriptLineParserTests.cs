@@ -2,10 +2,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// The plugin's own transcript-line parser (weg A / Fase 4) — reads the turn-activity, usage and
-/// background-work signals a Claude JSONL transcript line carries for the host's status dot (#39).
-/// </summary>
+// The plugin's own transcript-line parser (weg A / Fase 4) — reads the turn-activity, usage and
+// background-work signals a Claude JSONL transcript line carries for the host's status dot (#39).
 public class ClaudeTranscriptLineParserTests
 {
     // --- TryExtractUsage (AC-398) --------------------------------------------------------------------------

@@ -10,18 +10,15 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Verify;
 
-/// <summary>
-/// The <c>cockpit-verify</c> MCP tool (AC-86): closes the visual verify loop so UI work is not delivered blind
-/// (Iron Law #9). The agent triggers the runner registered for its project; the tool runs that registered command
-/// behind an operator consent, then hands back the text snapshot it produced on the tool result — the channel every
-/// provider already reads — and, only for a screenshot a tool result cannot carry, feeds an image into the session.
-/// <para>
-/// The agent can only trigger a <em>registered</em> runner, never supply a command: the command lives in the
-/// registry the operator wrote, so "verify" cannot become a path to arbitrary command execution. Each run is still
-/// gated by the shared AC-47 consent broker (Dangerous, the verbatim command), which fails closed when no operator
-/// can be asked.
-/// </para>
-/// </summary>
+// The `cockpit-verify` MCP tool (AC-86): closes the visual verify loop so UI work is not delivered blind
+// (Iron Law #9). The agent triggers the runner registered for its project; the tool runs that registered command
+// behind an operator consent, then hands back the text snapshot it produced on the tool result — the channel every
+// provider already reads — and, only for a screenshot a tool result cannot carry, feeds an image into the session.
+//
+// The agent can only trigger a *registered* runner, never supply a command: the command lives in the
+// registry the operator wrote, so "verify" cannot become a path to arbitrary command execution. Each run is still
+// gated by the shared AC-47 consent broker (Dangerous, the verbatim command), which fails closed when no operator
+// can be asked.
 internal sealed class VerifyMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };

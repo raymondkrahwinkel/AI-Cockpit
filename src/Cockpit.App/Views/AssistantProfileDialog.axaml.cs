@@ -6,11 +6,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// The assistant's own profile editor. Closes when the view model raises
-/// <see cref="AssistantProfileDialogViewModel.CloseRequested"/>; the Browse buttons use the window's
-/// <see cref="Window.StorageProvider"/>, a view-layer facility, the same split the Manage-profiles dialog uses.
-/// </summary>
+// The assistant's own profile editor. Closes when the view model raises
+// `AssistantProfileDialogViewModel.CloseRequested`; the Browse buttons use the window's
+// `Window.StorageProvider`, a view-layer facility, the same split the Manage-profiles dialog uses.
 public partial class AssistantProfileDialog : Window
 {
     public AssistantProfileDialog()

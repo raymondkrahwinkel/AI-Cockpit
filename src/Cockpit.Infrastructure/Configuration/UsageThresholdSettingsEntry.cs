@@ -1,6 +1,6 @@
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>On-disk shape of the operator's usage thresholds in the <c>usageThresholds</c> section of <c>cockpit.json</c>.</summary>
+// On-disk shape of the operator's usage thresholds in the `usageThresholds` section of `cockpit.json`.
 internal sealed class UsageThresholdSettingsEntry
 {
     public Dictionary<string, Dictionary<string, double>> ByProvider { get; set; } = [];

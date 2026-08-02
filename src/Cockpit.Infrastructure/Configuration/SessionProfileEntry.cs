@@ -2,55 +2,50 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// On-disk shape of a single <see cref="SessionProfile"/> in the <c>profiles</c> section.
-/// <para>
-/// <see cref="ConfigDir"/> and <see cref="ExecutablePath"/> stay where they have always been — at the top of the
-/// entry, not inside the provider block. They are Claude's settings and the domain now models them that way
-/// (<see cref="ClaudeConfig"/>), but moving them on disk would rewrite every operator's config to gain nothing:
-/// the mapping below absorbs the difference, which is what a mapping is for. They move when Claude becomes a
-/// plugin and its settings become that plugin's config — one shape change, at the point where the shape actually
-/// changes.
-/// </para>
-/// </summary>
+// On-disk shape of a single `SessionProfile` in the `profiles` section.
+//
+// `ConfigDir` and `ExecutablePath` stay where they have always been — at the top of the
+// entry, not inside the provider block. They are Claude's settings and the domain now models them that way
+// (`ClaudeConfig`), but moving them on disk would rewrite every operator's config to gain nothing:
+// the mapping below absorbs the difference, which is what a mapping is for. They move when Claude becomes a
+// plugin and its settings become that plugin's config — one shape change, at the point where the shape actually
+// changes.
 internal sealed class SessionProfileEntry
 {
     public string Label { get; set; } = string.Empty;
 
-    /// <summary>Claude's config directory. Read for a Claude profile, ignored for any other.</summary>
+    // Claude's config directory. Read for a Claude profile, ignored for any other.
     public string ConfigDir { get; set; } = string.Empty;
 
-    /// <summary>Claude's executable override. Read for a Claude profile, ignored for any other.</summary>
+    // Claude's executable override. Read for a Claude profile, ignored for any other.
     public string? ExecutablePath { get; set; }
 
     public string? Purpose { get; set; }
 
     public ProfileDefaultsEntry? Defaults { get; set; }
 
-    /// <summary>
-    /// Which provider this profile runs under. Written for every profile, including Claude's — but an entry
-    /// without one is still read as Claude, because that is what an older cockpit wrote and an operator's config
-    /// is not a thing to invalidate. A profile saved by this version says so explicitly; one saved by an earlier
-    /// version is understood, and says so explicitly the next time it is saved.
-    /// </summary>
+    // Which provider this profile runs under. Written for every profile, including Claude's — but an entry
+    // without one is still read as Claude, because that is what an older cockpit wrote and an operator's config
+    // is not a thing to invalidate. A profile saved by this version says so explicitly; one saved by an earlier
+    // version is understood, and says so explicitly the next time it is saved.
     public ProviderConfigEntry? Provider { get; set; }
 
-    /// <summary>What this profile allows when another session delegates to it (#67); absent means it is not a target.</summary>
+    // What this profile allows when another session delegates to it (#67); absent means it is not a target.
     public DelegationPolicyEntry? Delegation { get; set; }
 
-    /// <summary>The profile's spawn environment variables (AC-22); absent means none.</summary>
+    // The profile's spawn environment variables (AC-22); absent means none.
     public List<ProfileEnvironmentVariableEntry>? EnvironmentVariables { get; set; }
 
-    /// <summary>The MCP servers a New session under this profile pre-selects (AC-130); absent means no restriction (all enabled servers). An explicit list — even empty — is the operator's chosen set.</summary>
+    // The MCP servers a New session under this profile pre-selects (AC-130); absent means no restriction (all enabled servers). An explicit list — even empty — is the operator's chosen set.
     public List<string>? EnabledMcpServers { get; set; }
 
-    /// <summary>The working directory a New session under this profile pre-fills (AC-130); absent/blank means no default.</summary>
+    // The working directory a New session under this profile pre-fills (AC-130); absent/blank means no default.
     public string? DefaultWorkingDirectory { get; set; }
 
-    /// <summary>Standing instructions every session under this profile starts with (AC-142); absent/blank appends nothing.</summary>
+    // Standing instructions every session under this profile starts with (AC-142); absent/blank appends nothing.
     public string? SystemPrompt { get; set; }
 
-    /// <summary>The New-session Kind toggle's pre-selection for this profile (AC-139); absent means TTY, the long-standing hard default (and what every profile saved before this setting existed still gets).</summary>
+    // The New-session Kind toggle's pre-selection for this profile (AC-139); absent means TTY, the long-standing hard default (and what every profile saved before this setting existed still gets).
     public string? DefaultKind { get; set; }
 
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()

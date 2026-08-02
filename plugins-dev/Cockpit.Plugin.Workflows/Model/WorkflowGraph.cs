@@ -1,16 +1,13 @@
 namespace Cockpit.Plugin.Workflows.Model;
 
-/// <summary>
-/// Questions about the shape of a flow (#69) — asked of the wires, not of the order things happened to run in.
-/// <para>
-/// The one that matters: which steps can this step actually reach? A step can only refer to the data of a step the
-/// wires lead back to. Listing every step that merely <em>ran</em> earlier is worse than listing none: it offers you
-/// a field that will never arrive, in a run where nothing warns you that it did not.
-/// </para>
-/// </summary>
+// Questions about the shape of a flow (#69) — asked of the wires, not of the order things happened to run in.
+//
+// The one that matters: which steps can this step actually reach? A step can only refer to the data of a step the
+// wires lead back to. Listing every step that merely *ran* earlier is worse than listing none: it offers you
+// a field that will never arrive, in a run where nothing warns you that it did not.
 public static class WorkflowGraph
 {
-    /// <summary>Every step upstream of <paramref name="nodeId"/> — the ones whose data can reach it, following the wires backwards, however far.</summary>
+    // Every step upstream of `nodeId` — the ones whose data can reach it, following the wires backwards, however far.
     public static IReadOnlyList<WorkflowNode> Ancestors(Workflow workflow, string nodeId)
     {
         var found = new List<WorkflowNode>();

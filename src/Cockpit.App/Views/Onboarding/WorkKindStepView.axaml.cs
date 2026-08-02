@@ -4,9 +4,9 @@ using Cockpit.App.ViewModels.Onboarding;
 
 namespace Cockpit.App.Views.Onboarding;
 
-/// <summary>The work-kind step's content (AC-511). Loads the store catalogues once it is on screen — the wizard
-/// builds every step's content up front, and reading the network for a step nobody has reached yet is work spent
-/// on a screen that may be skipped.</summary>
+// The work-kind step's content (AC-511). Loads the store catalogues once it is on screen — the wizard
+// builds every step's content up front, and reading the network for a step nobody has reached yet is work spent
+// on a screen that may be skipped.
 public partial class WorkKindStepView : UserControl
 {
     private bool _loadStarted;

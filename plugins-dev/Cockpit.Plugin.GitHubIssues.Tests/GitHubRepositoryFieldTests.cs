@@ -1,12 +1,10 @@
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-/// <summary>
-/// The repository field this plugin puts on a cockpit project (AC-317). Its key is shared with the Pull Requests
-/// plugin on purpose, and it only has a list to offer in CLI mode — the single-repository mode already knows its
-/// one repository and shelling out to <c>gh</c> for an operator who turned it off would answer a question they
-/// did not ask.
-/// </summary>
+// The repository field this plugin puts on a cockpit project (AC-317). Its key is shared with the Pull Requests
+// plugin on purpose, and it only has a list to offer in CLI mode — the single-repository mode already knows its
+// one repository and shelling out to `gh` for an operator who turned it off would answer a question they
+// did not ask.
 public class GitHubRepositoryFieldTests
 {
     private static GitHubIssuesSettings Settings(bool useGitHubCli) =>

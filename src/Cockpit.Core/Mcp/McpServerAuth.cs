@@ -1,14 +1,14 @@
 namespace Cockpit.Core.Mcp;
 
-/// <summary>How a (remote/HTTP) MCP server authenticates the cockpit (#26 tools/MCP).</summary>
+// How a (remote/HTTP) MCP server authenticates the cockpit (#26 tools/MCP).
 public enum McpServerAuth
 {
-    /// <summary>No authentication — a local stdio server, or an open HTTP server.</summary>
+    // No authentication — a local stdio server, or an open HTTP server.
     None,
 
-    /// <summary>A static bearer token / API key sent in the <c>Authorization</c> header.</summary>
+    // A static bearer token / API key sent in the `Authorization` header.
     ApiKey,
 
-    /// <summary>An OAuth 2.1 authorization-code flow (like the Depot project's), for servers that require a login.</summary>
+    // An OAuth 2.1 authorization-code flow (like the Depot project's), for servers that require a login.
     OAuth,
 }

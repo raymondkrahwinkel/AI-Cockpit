@@ -2,27 +2,21 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Core.Profiles;
 
-/// <summary>
-/// One environment variable a <see cref="SessionProfile"/> injects into its sessions at spawn, on both the
-/// TTY and the SDK route (AC-22). Lets the operator close a gap a GUI/AppImage launch leaves — a variable an
-/// interactive shell exports that the cockpit process never inherited — per profile, instead of leaning on
-/// shell startup. <see cref="IsSecret"/> marks the value as a credential: it persists encrypted and the
-/// profile editor masks it.
-/// </summary>
+// One environment variable a `SessionProfile` injects into its sessions at spawn, on both the
+// TTY and the SDK route (AC-22). Lets the operator close a gap a GUI/AppImage launch leaves — a variable an
+// interactive shell exports that the cockpit process never inherited — per profile, instead of leaning on
+// shell startup. `IsSecret` marks the value as a credential: it persists encrypted and the
+// profile editor masks it.
 public sealed partial record ProfileEnvironmentVariable(string Key, string Value, bool IsSecret = false)
 {
-    /// <summary>
-    /// Whether <paramref name="key"/> is a POSIX-style variable name (letters, digits and underscores, not
-    /// starting with a digit). The editor refuses anything else — a name a shell could not set either only
-    /// defers the failure to spawn time.
-    /// </summary>
+    // Whether `key` is a POSIX-style variable name (letters, digits and underscores, not
+    // starting with a digit). The editor refuses anything else — a name a shell could not set either only
+    // defers the failure to spawn time.
     public static bool IsValidKey(string? key) => !string.IsNullOrEmpty(key) && _KeyPattern().IsMatch(key);
 
-    /// <summary>
-    /// The profile's variables as a spawn overlay (key → value), the shape <c>TtyEnvironment.Compose</c> and
-    /// the SDK spawn paths consume. A later duplicate wins, matching what an operator expects from a list
-    /// edited top to bottom.
-    /// </summary>
+    // The profile's variables as a spawn overlay (key → value), the shape `TtyEnvironment.Compose` and
+    // the SDK spawn paths consume. A later duplicate wins, matching what an operator expects from a list
+    // edited top to bottom.
     public static IReadOnlyDictionary<string, string?> ToOverlay(IEnumerable<ProfileEnvironmentVariable> variables)
     {
         // Case-insensitive to match the spawn composition (TtyEnvironment, the drivers' environment maps): two

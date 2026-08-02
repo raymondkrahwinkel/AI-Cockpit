@@ -5,12 +5,10 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.GitHubModelsProvider.Tests;
 
-/// <summary>
-/// <see cref="OpenAiCompatPluginSessionDriver"/> against a fake <see cref="IChatClient"/> (#63, mirroring
-/// the Gemini/OpenAI provider plugin's #45 <c>OpenAiCompatPluginSessionDriverTests</c>) — same
-/// history/streaming/error-handling shape, minus the tool-loop (this driver has no tool source of its own,
-/// so <see cref="PluginSessionCapabilities.SupportsTools"/> is always false).
-/// </summary>
+// `OpenAiCompatPluginSessionDriver` against a fake `IChatClient` (#63, mirroring
+// the Gemini/OpenAI provider plugin's #45 `OpenAiCompatPluginSessionDriverTests`) — same
+// history/streaming/error-handling shape, minus the tool-loop (this driver has no tool source of its own,
+// so `PluginSessionCapabilities.SupportsTools` is always false).
 public class OpenAiCompatPluginSessionDriverTests
 {
     [Fact]

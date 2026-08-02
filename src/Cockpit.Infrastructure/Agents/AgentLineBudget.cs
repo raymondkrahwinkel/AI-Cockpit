@@ -3,46 +3,35 @@ using Cockpit.Core.Abstractions.Agents;
 
 namespace Cockpit.Infrastructure.Agents;
 
-/// <summary>
-/// The concrete rate limit behind <see cref="IAgentLineBudget"/> (AC-396): one sliding window per (sender, activity),
-/// holding the moments that are still inside it.
-/// <para>
-/// A sliding window rather than a counter reset on the hour, because a fixed window lets a sender spend its whole
-/// allowance at the end of one and the whole of the next immediately after — twice the limit back to back, which is
-/// precisely the burst this exists to catch. The queue costs no more than the counter would: it never grows past
-/// <see cref="MaxMessagesPerWindow"/> entries, since that is the point at which nothing more is added.
-/// </para>
-/// <para>
-/// Everything is behind one lock, like the inbox and the claims: charging is a check-then-act (is there room, and
-/// take it) and two MCP request threads for the same pane would otherwise both find the last slot free.
-/// </para>
-/// <para>
-/// <strong>The numbers are constructor parameters, not constants read at the use site.</strong> Raymond asked for a
-/// defensive default that can be adjusted, because the right value is not knowable in advance. What is not built here
-/// is a settings surface for the operator to turn them from — that hangs off one registration and is deliberately
-/// left until there is a reason to move them.
-/// </para>
-/// </summary>
+// The concrete rate limit behind `IAgentLineBudget` (AC-396): one sliding window per (sender, activity),
+// holding the moments that are still inside it.
+//
+// A sliding window rather than a counter reset on the hour, because a fixed window lets a sender spend its whole
+// allowance at the end of one and the whole of the next immediately after — twice the limit back to back, which is
+// precisely the burst this exists to catch. The queue costs no more than the counter would: it never grows past
+// `MaxMessagesPerWindow` entries, since that is the point at which nothing more is added.
+//
+// Everything is behind one lock, like the inbox and the claims: charging is a check-then-act (is there room, and
+// take it) and two MCP request threads for the same pane would otherwise both find the last slot free.
+//
+// <strong>The numbers are constructor parameters, not constants read at the use site.</strong> Raymond asked for a
+// defensive default that can be adjusted, because the right value is not knowable in advance. What is not built here
+// is a settings surface for the operator to turn them from — that hangs off one registration and is deliberately
+// left until there is a reason to move them.
 internal sealed class AgentLineBudget : IAgentLineBudget, ISingletonService
 {
-    /// <summary>
-    /// Messages one pane may send inside <see cref="DefaultWindow"/>. Generous against real use — an agent that tells
-    /// its neighbours what it is doing sends a handful over a session, not twenty a minute — and still tight enough
-    /// that a loop hits it within seconds rather than after the damage.
-    /// </summary>
+    // Messages one pane may send inside `DefaultWindow`. Generous against real use — an agent that tells
+    // its neighbours what it is doing sends a handful over a session, not twenty a minute — and still tight enough
+    // that a loop hits it within seconds rather than after the damage.
     internal const int MaxMessagesPerWindow = 20;
 
-    /// <summary>
-    /// Wakes one pane may attempt inside <see cref="DefaultWindow"/>. Far lower than the message cap because the two
-    /// cost different things: a message waits, a wake spends a turn belonging to somebody else's operator. Five in a
-    /// minute is already more urgency than any real situation has.
-    /// </summary>
+    // Wakes one pane may attempt inside `DefaultWindow`. Far lower than the message cap because the two
+    // cost different things: a message waits, a wake spends a turn belonging to somebody else's operator. Five in a
+    // minute is already more urgency than any real situation has.
     internal const int MaxWakesPerWindow = 5;
 
-    /// <summary>
-    /// How far back a count reaches. A minute is short enough that a sender refused once is sending again almost
-    /// immediately, which is what keeps this a guard rail rather than a lockout.
-    /// </summary>
+    // How far back a count reaches. A minute is short enough that a sender refused once is sending again almost
+    // immediately, which is what keeps this a guard rail rather than a lockout.
     internal static readonly TimeSpan DefaultWindow = TimeSpan.FromMinutes(1);
 
     private readonly object _lock = new();
@@ -56,16 +45,14 @@ internal sealed class AgentLineBudget : IAgentLineBudget, ISingletonService
     private readonly int _messagesPerWindow;
     private readonly int _wakesPerWindow;
 
-    /// <summary>The registered shape: the wall clock and the defaults above.</summary>
+    // The registered shape: the wall clock and the defaults above.
     public AgentLineBudget()
         : this(TimeProvider.System, DefaultWindow, MaxMessagesPerWindow, MaxWakesPerWindow)
     {
     }
 
-    /// <summary>
-    /// For tests, which need to move time rather than wait out a window, and to state a small limit instead of
-    /// sending twenty messages to reach the interesting case.
-    /// </summary>
+    // For tests, which need to move time rather than wait out a window, and to state a small limit instead of
+    // sending twenty messages to reach the interesting case.
     internal AgentLineBudget(TimeProvider time, TimeSpan window, int messagesPerWindow, int wakesPerWindow)
     {
         _time = time;
@@ -142,10 +129,8 @@ internal sealed class AgentLineBudget : IAgentLineBudget, ISingletonService
     private int _Limit(AgentLineActivity activity) =>
         activity == AgentLineActivity.Wake ? _wakesPerWindow : _messagesPerWindow;
 
-    /// <summary>
-    /// This pane's queue for this activity with everything older than the window dropped, creating it when the pane
-    /// has never spent anything. Always called under the lock.
-    /// </summary>
+    // This pane's queue for this activity with everything older than the window dropped, creating it when the pane
+    // has never spent anything. Always called under the lock.
     private Queue<DateTimeOffset> _Inside(string paneId, AgentLineActivity activity, DateTimeOffset now)
     {
         var key = (paneId, activity);
@@ -159,7 +144,7 @@ internal sealed class AgentLineBudget : IAgentLineBudget, ISingletonService
         return spent;
     }
 
-    /// <summary>Drops everything that has fallen out of the window and answers with what is left. Always called under the lock.</summary>
+    // Drops everything that has fallen out of the window and answers with what is left. Always called under the lock.
     private int _Expire(Queue<DateTimeOffset> spent, DateTimeOffset now)
     {
         while (spent.Count > 0 && spent.Peek() + _window <= now)

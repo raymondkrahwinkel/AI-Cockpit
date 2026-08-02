@@ -2,33 +2,29 @@ using Cockpit.Plugin.LocalCi.Execution;
 
 namespace Cockpit.Plugin.LocalCi.Gate;
 
-/// <summary>
-/// What the gate says about a checkout. Four answers rather than a boolean, because the difference between "there
-/// is a green run for this commit" and "nothing ran" is the whole point: this project has been bitten before by a
-/// guard that guarded nothing and stood green while doing it.
-/// </summary>
+// What the gate says about a checkout. Four answers rather than a boolean, because the difference between "there
+// is a green run for this commit" and "nothing ran" is the whole point: this project has been bitten before by a
+// guard that guarded nothing and stood green while doing it.
 internal enum GateStatus
 {
-    /// <summary>The gate is not switched on for this checkout. Nothing to say.</summary>
+    // The gate is not switched on for this checkout. Nothing to say.
     Off,
 
-    /// <summary>A local run passed, on the commit that is checked out now.</summary>
+    // A local run passed, on the commit that is checked out now.
     Passed,
 
-    /// <summary>The last local run failed.</summary>
+    // The last local run failed.
     Failed,
 
-    /// <summary>Nothing ran, or what ran reached no verdict, or it ran on a different commit.</summary>
+    // Nothing ran, or what ran reached no verdict, or it ran on a different commit.
     NotRun,
 }
 
-/// <param name="Reason">Completes "the pull request was held back because …". Empty when the gate is off or passed.</param>
+// `Reason`: Completes "the pull request was held back because …". Empty when the gate is off or passed.
 internal sealed record GateVerdict(GateStatus Status, string Reason)
 {
-    /// <summary>
-    /// Whether a pull request may go ahead without asking anybody. Only two of the four answers qualify, and
-    /// <see cref="GateStatus.NotRun"/> is deliberately not one of them.
-    /// </summary>
+    // Whether a pull request may go ahead without asking anybody. Only two of the four answers qualify, and
+    // `GateStatus.NotRun` is deliberately not one of them.
     public bool AllowsWithoutAsking => Status is GateStatus.Off or GateStatus.Passed;
 
     public static GateVerdict Off { get; } = new(GateStatus.Off, string.Empty);
@@ -36,11 +32,9 @@ internal sealed record GateVerdict(GateStatus Status, string Reason)
     public static GateVerdict Passed { get; } = new(GateStatus.Passed, string.Empty);
 }
 
-/// <summary>
-/// Answers whether a checkout has earned a pull request. Off unless the operator switched it on for that checkout,
-/// and it never invents a pass: a run that could not happen is "did not run", which is a different answer from
-/// "passed" and has to be treated as one by whoever asks.
-/// </summary>
+// Answers whether a checkout has earned a pull request. Off unless the operator switched it on for that checkout,
+// and it never invents a pass: a run that could not happen is "did not run", which is a different answer from
+// "passed" and has to be treated as one by whoever asks.
 internal sealed class PullRequestGate(LocalRunTracker tracker, PullRequestGateSettings settings, GitHead head)
 {
     public async Task<GateVerdict> JudgeAsync(string checkout, CancellationToken cancellationToken)

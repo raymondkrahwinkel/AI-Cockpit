@@ -6,12 +6,10 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-/// <summary>
-/// Manage-profiles dialog. Closes when the view model raises
-/// <see cref="ManageProfilesDialogViewModel.CloseRequested"/>. The Browse buttons use the window's
-/// <see cref="Window.StorageProvider"/> (a view-layer facility) to fill the selected profile's config
-/// directory and executable path.
-/// </summary>
+// Manage-profiles dialog. Closes when the view model raises
+// `ManageProfilesDialogViewModel.CloseRequested`. The Browse buttons use the window's
+// `Window.StorageProvider` (a view-layer facility) to fill the selected profile's config
+// directory and executable path.
 public partial class ManageProfilesDialog : Window
 {
     public ManageProfilesDialog()

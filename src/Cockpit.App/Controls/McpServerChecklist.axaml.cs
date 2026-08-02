@@ -9,32 +9,29 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Controls;
 
-/// <summary>
-/// The MCP-server checklist as one control, shared by the profile editor, the New-session dialog and the project
-/// editor (AC-140). The three used to carry their own copy of the same rows, which is how the project editor ended
-/// up listing servers the other two had long stopped offering.
-/// <para>
-/// Collapsed by default behind a live "N of M selected" count: the list runs to a dozen rows in a dialog that is
-/// about something else, and someone who is not a developer should not have to read past it to reach Save.
-/// </para>
-/// </summary>
+// The MCP-server checklist as one control, shared by the profile editor, the New-session dialog and the project
+// editor (AC-140). The three used to carry their own copy of the same rows, which is how the project editor ended
+// up listing servers the other two had long stopped offering.
+//
+// Collapsed by default behind a live "N of M selected" count: the list runs to a dozen rows in a dialog that is
+// about something else, and someone who is not a developer should not have to read past it to reach Save.
 public partial class McpServerChecklist : UserControl
 {
     public static readonly StyledProperty<IEnumerable?> ServersProperty =
         AvaloniaProperty.Register<McpServerChecklist, IEnumerable?>(nameof(Servers));
 
-    /// <summary>What the header calls the list, before the count — "MCP servers" everywhere so far.</summary>
+    // What the header calls the list, before the count — "MCP servers" everywhere so far.
     public static readonly StyledProperty<string> HeaderProperty =
         AvaloniaProperty.Register<McpServerChecklist, string>(nameof(Header), "MCP servers");
 
-    /// <summary>A line above the rows saying what ticking one means here; blank leaves it out.</summary>
+    // A line above the rows saying what ticking one means here; blank leaves it out.
     public static readonly StyledProperty<string?> HintProperty =
         AvaloniaProperty.Register<McpServerChecklist, string?>(nameof(Hint));
 
     public static readonly StyledProperty<bool> IsExpandedProperty =
         AvaloniaProperty.Register<McpServerChecklist, bool>(nameof(IsExpanded));
 
-    /// <summary>The pre-flight tool-token total for the ticked servers (AC-134); shown under the rows when <see cref="ShowTokenSummary"/>.</summary>
+    // The pre-flight tool-token total for the ticked servers (AC-134); shown under the rows when `ShowTokenSummary`.
     public static readonly StyledProperty<string?> TokenSummaryProperty =
         AvaloniaProperty.Register<McpServerChecklist, string?>(nameof(TokenSummary));
 
@@ -49,7 +46,7 @@ public partial class McpServerChecklist : UserControl
 
     private string _summaryText = string.Empty;
 
-    /// <summary>The rows this checklist shows — <see cref="McpServerSelectionItemViewModel"/>s owned by whichever dialog is hosting it.</summary>
+    // The rows this checklist shows — `McpServerSelectionItemViewModel`s owned by whichever dialog is hosting it.
     public IEnumerable? Servers
     {
         get => GetValue(ServersProperty);
@@ -92,7 +89,7 @@ public partial class McpServerChecklist : UserControl
         set => SetValue(RefreshCommandProperty, value);
     }
 
-    /// <summary>The header line: the name and how many of the rows are ticked, so a collapsed list still says what it holds.</summary>
+    // The header line: the name and how many of the rows are ticked, so a collapsed list still says what it holds.
     public string SummaryText
     {
         get => _summaryText;

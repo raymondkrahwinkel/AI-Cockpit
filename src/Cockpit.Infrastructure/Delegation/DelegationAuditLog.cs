@@ -5,15 +5,13 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-/// <summary>
-/// Appends the delegation audit trail (#67) to <c>delegation-audit.jsonl</c> next to <c>cockpit.json</c>. The
-/// append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading
-/// the whole file — lives in <see cref="JsonlAuditLog{T}"/>; this only names the file and trims the prompt so the
-/// log stays a record of what was handed out, not a copy of every transcript.
-/// </summary>
+// Appends the delegation audit trail (#67) to `delegation-audit.jsonl` next to `cockpit.json`. The
+// append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading
+// the whole file — lives in `JsonlAuditLog{T}`; this only names the file and trims the prompt so the
+// log stays a record of what was handed out, not a copy of every transcript.
 internal sealed class DelegationAuditLog : JsonlAuditLog<DelegationAuditEntry>, IDelegationAuditLog, ISingletonService
 {
-    /// <summary>Prompts are trimmed: the log is for recognising a task later, not for keeping a copy of every transcript.</summary>
+    // Prompts are trimmed: the log is for recognising a task later, not for keeping a copy of every transcript.
     private const int MaxPromptLength = 300;
 
     public DelegationAuditLog(ILogger<DelegationAuditLog> logger)
@@ -21,7 +19,7 @@ internal sealed class DelegationAuditLog : JsonlAuditLog<DelegationAuditEntry>, 
     {
     }
 
-    /// <summary>Test seam: point the log at an arbitrary file.</summary>
+    // Test seam: point the log at an arbitrary file.
     internal DelegationAuditLog(string logFilePath, ILogger<DelegationAuditLog> logger)
         : base(logFilePath, logger)
     {

@@ -3,11 +3,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// The AC-347 blockade-answer counter on <see cref="AutopilotPlanController"/>: <see cref="AutopilotPlanController.RecordBlockadeAnswer"/>
-/// is the only way it goes up, a fresh planning round resets it, and calling <see cref="AutopilotPlanController.ResumeRunning"/>
-/// alone — without the explicit record call — must not count anything.
-/// </summary>
+// The AC-347 blockade-answer counter on `AutopilotPlanController`: `AutopilotPlanController.RecordBlockadeAnswer`
+// is the only way it goes up, a fresh planning round resets it, and calling `AutopilotPlanController.ResumeRunning`
+// alone — without the explicit record call — must not count anything.
 public class AutopilotPlanControllerBlockadeTests
 {
     private static AutopilotStep Step(string id) => new(id, $"Step {id}", "desc", "Claude", "Sonnet", "brief", "acceptance");
@@ -55,9 +53,9 @@ public class AutopilotPlanControllerBlockadeTests
         Assert.Equal(0, controller.BlockadeAnswers);
     }
 
-    /// <summary>The one place an operator actually answers a blockade: through the coordinator, not the controller
-    /// directly. This is what proves AnswerBlockadeAsync itself calls RecordBlockadeAnswer, not just that the counter
-    /// works in isolation.</summary>
+    // The one place an operator actually answers a blockade: through the coordinator, not the controller
+    // directly. This is what proves AnswerBlockadeAsync itself calls RecordBlockadeAnswer, not just that the counter
+    // works in isolation.
     [Fact]
     public async Task AnswerBlockadeAsync_OnTheCoordinator_CountsAsABlockadeAnswer()
     {

@@ -3,23 +3,20 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Plugin.LocalCi.Gate;
 
-/// <summary>
-/// The gate as something another plugin can ask about (AC-95 intents). Whoever is about to open a pull request
-/// sends <see cref="Action"/> with the repository, and gets back whether to go ahead.
-/// <para>
-/// An intent rather than a tool an agent calls, because a gate an agent may skip is a suggestion. The two places
-/// that actually open a pull request ask this before they do, and a cockpit without this plugin installed answers
-/// nothing — <c>CanSendIntent</c> tells them so, and they carry on exactly as they did.
-/// </para>
-/// </summary>
+// The gate as something another plugin can ask about (AC-95 intents). Whoever is about to open a pull request
+// sends `Action` with the repository, and gets back whether to go ahead.
+//
+// An intent rather than a tool an agent calls, because a gate an agent may skip is a suggestion. The two places
+// that actually open a pull request ask this before they do, and a cockpit without this plugin installed answers
+// nothing — `CanSendIntent` tells them so, and they carry on exactly as they did.
 internal sealed class PullRequestGateIntent(ICockpitHost host, PullRequestGate gate)
 {
     public const string Action = "pr-gate";
 
-    /// <summary>The checkout the pull request would be opened from. Without it there is nothing to judge.</summary>
+    // The checkout the pull request would be opened from. Without it there is nothing to judge.
     public const string RepositoryKey = "repository";
 
-    /// <summary>"true" or "false" — the only key a caller has to read.</summary>
+    // "true" or "false" — the only key a caller has to read.
     public const string AllowedKey = "allowed";
 
     public const string StatusKey = "status";

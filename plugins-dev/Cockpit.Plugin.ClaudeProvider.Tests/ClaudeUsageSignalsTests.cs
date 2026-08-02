@@ -2,12 +2,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-/// <summary>
-/// What a Claude session reports it is running out of, read from the JSON Claude Code hands its statusline
-/// command (AC-229). That blob is the only machine-readable source for the five-hour and weekly allowances — they
-/// arrive in response headers the cockpit never sees, and appear in no transcript and no CLI subcommand. The
-/// reading lives here rather than in the host because the shape is Claude's and has moved between versions.
-/// </summary>
+// What a Claude session reports it is running out of, read from the JSON Claude Code hands its statusline
+// command (AC-229). That blob is the only machine-readable source for the five-hour and weekly allowances — they
+// arrive in response headers the cockpit never sees, and appear in no transcript and no CLI subcommand. The
+// reading lives here rather than in the host because the shape is Claude's and has moved between versions.
 public class ClaudeUsageSignalsTests
 {
     private const string FullBlob = """

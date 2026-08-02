@@ -3,11 +3,9 @@ using Avalonia.Layout;
 
 namespace Cockpit.Plugin.FanOut;
 
-/// <summary>
-/// One row of the set-up form: the profile this arm runs on and the angle it takes. Both are offered on every
-/// row because the two ways of fanning out — several providers on one brief, several angles on one provider —
-/// are the same run with a different column filled in, and the operator should not have to pick a mode first.
-/// </summary>
+// One row of the set-up form: the profile this arm runs on and the angle it takes. Both are offered on every
+// row because the two ways of fanning out — several providers on one brief, several angles on one provider —
+// are the same run with a different column filled in, and the operator should not have to pick a mode first.
 internal sealed class FanOutVariantEditor
 {
     private readonly ComboBox _profile;
@@ -46,13 +44,11 @@ internal sealed class FanOutVariantEditor
 
     public Control View { get; }
 
-    /// <summary>Raised when this row's ✕ is pressed; the form decides whether the row may actually go.</summary>
+    // Raised when this row's ✕ is pressed; the form decides whether the row may actually go.
     public event EventHandler? RemoveRequested;
 
-    /// <summary>
-    /// Fills the profile picker once the host has answered. Rows start on different profiles where there are
-    /// enough to go round, so a run that varies the provider is set up by typing nothing at all.
-    /// </summary>
+    // Fills the profile picker once the host has answered. Rows start on different profiles where there are
+    // enough to go round, so a run that varies the provider is set up by typing nothing at all.
     public void ShowProfiles(IReadOnlyList<string> profiles, int preferredIndex)
     {
         _profile.ItemsSource = profiles;

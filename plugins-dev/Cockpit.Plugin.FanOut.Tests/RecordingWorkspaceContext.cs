@@ -5,10 +5,8 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.FanOut.Tests;
 
-/// <summary>
-/// A workspace context that keeps what the body asked it to start. The requests are the whole point: they are
-/// what the host would act on, so asserting on them is asserting on the run.
-/// </summary>
+// A workspace context that keeps what the body asked it to start. The requests are the whole point: they are
+// what the host would act on, so asserting on them is asserting on the run.
 internal sealed class RecordingWorkspaceContext : IWorkspaceContext
 {
     private readonly List<EmbeddedSessionRequest> _requests = [];

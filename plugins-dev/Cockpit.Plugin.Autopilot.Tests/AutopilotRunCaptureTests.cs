@@ -1,15 +1,13 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-/// <summary>
-/// <see cref="AutopilotRunRecord.Capture"/> — the write path from live <see cref="AutopilotPlan"/> state to the
-/// persisted <see cref="AutopilotRunRecord"/> shape, extracted out of <c>AutopilotPlanWorkspaceBody._RecordAndNotify</c>
-/// so it is unit-testable without a UI. This is the one place these mappings were previously untested: a mutation
-/// replacing the <see cref="AutopilotCorrection.Classify"/> call with a fixed <see cref="AutopilotCorrectionKind.None"/>,
-/// dropping <see cref="AutopilotStep.Attempts"/> to 0, hard-coding <see cref="AutopilotCorrectionSource.Operator"/>, or
-/// blanking <c>Ticket</c>/<c>RunId</c>/<c>BlockadeAnswers</c>/<c>PullRequestMissing</c> all left every existing test
-/// green. Every fixture below gives each step and each field its own distinct, recognisable value, so a swapped or
-/// hard-coded value cannot hide behind two fixtures happening to share one.
-/// </summary>
+// `AutopilotRunRecord.Capture` — the write path from live `AutopilotPlan` state to the
+// persisted `AutopilotRunRecord` shape, extracted out of `AutopilotPlanWorkspaceBody._RecordAndNotify`
+// so it is unit-testable without a UI. This is the one place these mappings were previously untested: a mutation
+// replacing the `AutopilotCorrection.Classify` call with a fixed `AutopilotCorrectionKind.None`,
+// dropping `AutopilotStep.Attempts` to 0, hard-coding `AutopilotCorrectionSource.Operator`, or
+// blanking `Ticket`/`RunId`/`BlockadeAnswers`/`PullRequestMissing` all left every existing test
+// green. Every fixture below gives each step and each field its own distinct, recognisable value, so a swapped or
+// hard-coded value cannot hide behind two fixtures happening to share one.
 public class AutopilotRunCaptureTests
 {
     private static readonly DateTimeOffset FinishedAt = new(2026, 7, 28, 12, 30, 0, TimeSpan.Zero);

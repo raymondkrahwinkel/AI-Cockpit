@@ -2,11 +2,9 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-/// <summary>
-/// Copying a flow into a new one (#69) — what duplicating, starting from a template and importing a file all do. Two
-/// flows sharing a step id are one flow with two names, and the wires, which remember the steps they run between,
-/// would follow the wrong one.
-/// </summary>
+// Copying a flow into a new one (#69) — what duplicating, starting from a template and importing a file all do. Two
+// flows sharing a step id are one flow with two names, and the wires, which remember the steps they run between,
+// would follow the wrong one.
 public class WorkflowCopyTests
 {
     [Fact]

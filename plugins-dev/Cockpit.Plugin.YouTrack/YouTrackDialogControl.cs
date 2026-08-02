@@ -14,25 +14,23 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
 
-/// <summary>
-/// The "YouTrack Issues" dialog opened from the side-menu button (#48): an instance selector (which of the
-/// configured <see cref="YouTrackInstance"/>s to query), a project filter (plus "All", populated from the
-/// instance's admin API with a silent fallback to the projects already present in the fetched issues), a state
-/// filter (plus "All", populated the same way — from the selected project's own status field via the admin API,
-/// so a stage that never made it into the first <see cref="MaxResults"/> issues is still offered, AC-518 — with a
-/// silent fallback to the already-fetched issues' State/Stage value when there is no single project to ask, or
-/// the call fails) and a search box, driving a sortable <see cref="DataGrid"/> of open issues on the left plus a
-/// details panel on the right — summary, chips, a rendered description, a fixed action toolbar and a collapsible
-/// preview of the prompt it would produce (with a copy button). Switching instance or project re-fetches (a
-/// different instance is a different server; a specific project narrows the server-side query); switching state
-/// re-fetches too when the field behind it is known (server-side, so a stage is never limited to whatever page
-/// already loaded), otherwise re-filters client-side the same as before AC-518; typing a search term always only
-/// re-filters the already-fetched list, client-side. Every fetch is itself capped at <see cref="MaxResults"/>; a
-/// result landing at exactly that count says so in the status line rather than silently reading as the whole
-/// list (AC-518 follow-up, mirrors GitHub Issues' own notice, AC-519). "Add to prompt" injects into the active
-/// session; "New session" (AC-298) hands the same prompt to the cockpit's own New-session dialog instead. Built
-/// in code; the DataGrid theme is provided app-wide by the host.
-/// </summary>
+// The "YouTrack Issues" dialog opened from the side-menu button (#48): an instance selector (which of the
+// configured `YouTrackInstance`s to query), a project filter (plus "All", populated from the
+// instance's admin API with a silent fallback to the projects already present in the fetched issues), a state
+// filter (plus "All", populated the same way — from the selected project's own status field via the admin API,
+// so a stage that never made it into the first `MaxResults` issues is still offered, AC-518 — with a
+// silent fallback to the already-fetched issues' State/Stage value when there is no single project to ask, or
+// the call fails) and a search box, driving a sortable `DataGrid` of open issues on the left plus a
+// details panel on the right — summary, chips, a rendered description, a fixed action toolbar and a collapsible
+// preview of the prompt it would produce (with a copy button). Switching instance or project re-fetches (a
+// different instance is a different server; a specific project narrows the server-side query); switching state
+// re-fetches too when the field behind it is known (server-side, so a stage is never limited to whatever page
+// already loaded), otherwise re-filters client-side the same as before AC-518; typing a search term always only
+// re-filters the already-fetched list, client-side. Every fetch is itself capped at `MaxResults`; a
+// result landing at exactly that count says so in the status line rather than silently reading as the whole
+// list (AC-518 follow-up, mirrors GitHub Issues' own notice, AC-519). "Add to prompt" injects into the active
+// session; "New session" (AC-298) hands the same prompt to the cockpit's own New-session dialog instead. Built
+// in code; the DataGrid theme is provided app-wide by the host.
 internal sealed class YouTrackDialogControl : UserControl
 {
     private const string AllOption = "All";
@@ -735,17 +733,15 @@ internal sealed class YouTrackDialogControl : UserControl
         }
     }
 
-    /// <summary>
-    /// The server-side widen-search term (AC-518 follow-up): <c>#Unresolved</c> stays — this dialog shows open
-    /// work, a deliberate choice kept from #48/AC-518, not something a free-text search should see past — plus the
-    /// active state (when the field is known, so a search cannot surface issues from a stage the state filter
-    /// itself excludes — the same two-truths mistake AC-518's own state filter guarded against) plus the free
-    /// text as a double-quoted phrase, YouTrack's own literal-phrase syntax: a term containing a colon, brace, or
-    /// other query character then reads as text instead of being parsed as one. An embedded backslash or double
-    /// quote is escaped the same way a quoted string commonly is; unlike the rest of this query shape, that
-    /// specific escaping is not verified against a live YouTrack (flagged, same as the isResolved uncertainty
-    /// earlier in this ticket).
-    /// </summary>
+    // The server-side widen-search term (AC-518 follow-up): `#Unresolved` stays — this dialog shows open
+    // work, a deliberate choice kept from #48/AC-518, not something a free-text search should see past — plus the
+    // active state (when the field is known, so a search cannot surface issues from a stage the state filter
+    // itself excludes — the same two-truths mistake AC-518's own state filter guarded against) plus the free
+    // text as a double-quoted phrase, YouTrack's own literal-phrase syntax: a term containing a colon, brace, or
+    // other query character then reads as text instead of being parsed as one. An embedded backslash or double
+    // quote is escaped the same way a quoted string commonly is; unlike the rest of this query shape, that
+    // specific escaping is not verified against a live YouTrack (flagged, same as the isResolved uncertainty
+    // earlier in this ticket).
     internal static string BuildSearchTerm(string? stateFieldName, string? selectedState, string query)
     {
         var stateTerm = stateFieldName is { } fieldName && !string.IsNullOrEmpty(selectedState) && selectedState != AllOption
@@ -993,10 +989,8 @@ internal sealed class YouTrackDialogControl : UserControl
     private async Task _PlanInAutopilotAsync(YouTrackIssue issue) =>
         await _host.SendIntent("autopilot", "plan", PlanIntentPayload(issue, _BuildIssueUrl(issue)));
 
-    /// <summary>
-    /// What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
-    /// stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
-    /// </summary>
+    // What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
+    // stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
     internal static Dictionary<string, string> PlanIntentPayload(YouTrackIssue issue, string url) => new()
     {
         ["tracker"] = "youtrack",
@@ -1317,7 +1311,7 @@ internal sealed class YouTrackDialogControl : UserControl
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
 
-    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
             ? radius

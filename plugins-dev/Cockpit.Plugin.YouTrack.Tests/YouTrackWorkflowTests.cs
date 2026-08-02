@@ -1,11 +1,9 @@
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-/// <summary>
-/// <see cref="YouTrackWorkflow.FindStartTarget"/> (#75): "start this ticket" means something different on every
-/// board — a value called "In Progress" here, an event called "start progress" there — and on a board that has
-/// neither it means nothing, in which case Start must not be offered at all.
-/// </summary>
+// `YouTrackWorkflow.FindStartTarget` (#75): "start this ticket" means something different on every
+// board — a value called "In Progress" here, an event called "start progress" there — and on a board that has
+// neither it means nothing, in which case Start must not be offered at all.
 public class YouTrackWorkflowTests
 {
     [Fact]

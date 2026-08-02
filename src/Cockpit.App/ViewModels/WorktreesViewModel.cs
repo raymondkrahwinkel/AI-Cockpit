@@ -8,12 +8,10 @@ using Cockpit.Core.Worktrees;
 
 namespace Cockpit.App.ViewModels;
 
-/// <summary>
-/// The cockpit's view on the git worktrees it created (AC-85): which ones still exist, whether each is clean or
-/// holds work, and whether the session that owns it is still alive — so a crash-orphaned worktree can be reattached
-/// to a fresh session or removed, and no removal ever loses work without asking. Shared as a singleton so the
-/// status-bar counter and the dialog read the same list.
-/// </summary>
+// The cockpit's view on the git worktrees it created (AC-85): which ones still exist, whether each is clean or
+// holds work, and whether the session that owns it is still alive — so a crash-orphaned worktree can be reattached
+// to a fresh session or removed, and no removal ever loses work without asking. Shared as a singleton so the
+// status-bar counter and the dialog read the same list.
 public sealed partial class WorktreesViewModel : ObservableObject, ISingletonService
 {
     private readonly IWorktreeManager? _manager;
@@ -35,54 +33,46 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
 
     public ObservableCollection<ManagedWorktreeRowViewModel> Worktrees { get; } = [];
 
-    /// <summary>How many worktrees the cockpit manages right now — the status-bar counter.</summary>
+    // How many worktrees the cockpit manages right now — the status-bar counter.
     [ObservableProperty]
     private int _count;
 
     public bool HasWorktrees => Count > 0;
 
-    /// <summary>Quiet grey when there are none, the working colour when there are: knowing some are left behind is worth seeing at a glance.</summary>
+    // Quiet grey when there are none, the working colour when there are: knowing some are left behind is worth seeing at a glance.
     public string CountBrushKey => Count > 0 ? "CockpitStatusBusyBrush" : "CockpitTextFaintBrush";
 
-    /// <summary>
-    /// Why the last removal did not go through, in git's own words — null while nothing has failed. Shown in the
-    /// dialog because a row that stays put is otherwise indistinguishable from a button that does nothing (AC-342).
-    /// </summary>
+    // Why the last removal did not go through, in git's own words — null while nothing has failed. Shown in the
+    // dialog because a row that stays put is otherwise indistinguishable from a button that does nothing (AC-342).
     [ObservableProperty]
     private string? _removeFailure;
 
     public bool HasRemoveFailure => RemoveFailure is not null;
 
-    /// <summary>
-    /// What a successful removal left behind (AC-507) — for example a worktree folder abandoned on disk because its
-    /// repository was gone. Distinct from <see cref="RemoveFailure"/>: the removal went through, this is information
-    /// about it, not a reason it failed. Null when the last removal had nothing to mention.
-    /// </summary>
+    // What a successful removal left behind (AC-507) — for example a worktree folder abandoned on disk because its
+    // repository was gone. Distinct from `RemoveFailure`: the removal went through, this is information
+    // about it, not a reason it failed. Null when the last removal had nothing to mention.
     [ObservableProperty]
     private string? _removeNotice;
 
     public bool HasRemoveNotice => RemoveNotice is not null;
 
-    /// <summary>Supplied by the cockpit: the ids of the sessions alive right now, so each worktree's owner shows as live or gone.</summary>
+    // Supplied by the cockpit: the ids of the sessions alive right now, so each worktree's owner shows as live or gone.
     public Func<IReadOnlySet<string>>? LiveSessionIds { get; set; }
 
-    /// <summary>
-    /// Supplied by the cockpit (AC-520): the display names of the sessions, by pane id — the live pane's title,
-    /// else the persisted <c>WorkspacePane.Title</c> for one that no longer has a pane, so a row still names its
-    /// owner after the session has closed or crashed. Taken as one snapshot alongside <see cref="LiveSessionIds"/>,
-    /// on the same thread and at the same moment: both read the cockpit's live collections.
-    /// </summary>
+    // Supplied by the cockpit (AC-520): the display names of the sessions, by pane id — the live pane's title,
+    // else the persisted `WorkspacePane.Title` for one that no longer has a pane, so a row still names its
+    // owner after the session has closed or crashed. Taken as one snapshot alongside `LiveSessionIds`,
+    // on the same thread and at the same moment: both read the cockpit's live collections.
     public Func<IReadOnlyDictionary<string, string>>? SessionNames { get; set; }
 
-    /// <summary>
-    /// Supplied by the cockpit (AC-520 fix 6): the pane ids that currently show an open restore offer (AC-410) —
-    /// live only on the strength of that offer, with nothing actually running behind it. Taken as one snapshot
-    /// alongside <see cref="LiveSessionIds"/> and <see cref="SessionNames"/>, on the same thread and at the same
-    /// moment, so a row can never disagree with itself about why its owner counts as live.
-    /// </summary>
+    // Supplied by the cockpit (AC-520 fix 6): the pane ids that currently show an open restore offer (AC-410) —
+    // live only on the strength of that offer, with nothing actually running behind it. Taken as one snapshot
+    // alongside `LiveSessionIds` and `SessionNames`, on the same thread and at the same
+    // moment, so a row can never disagree with itself about why its owner counts as live.
     public Func<IReadOnlySet<string>>? RestoreOfferPaneIds { get; set; }
 
-    /// <summary>Raised when the operator reattaches to a gone worktree; the cockpit starts a new session in it.</summary>
+    // Raised when the operator reattaches to a gone worktree; the cockpit starts a new session in it.
     public event Action<WorktreeRecord>? ReattachRequested;
 
     partial void OnCountChanged(int value)
@@ -95,7 +85,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
 
     partial void OnRemoveNoticeChanged(string? value) => OnPropertyChanged(nameof(HasRemoveNotice));
 
-    /// <summary>The cheap refresh for the status-bar counter: how many worktrees exist, without asking git about each one's state.</summary>
+    // The cheap refresh for the status-bar counter: how many worktrees exist, without asking git about each one's state.
     public async Task RefreshCountAsync()
     {
         if (_manager is null)
@@ -106,7 +96,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         Count = (await _manager.ListAsync()).Count;
     }
 
-    /// <summary>The full refresh for the dialog: each worktree's git state and whether its owner is still alive.</summary>
+    // The full refresh for the dialog: each worktree's git state and whether its owner is still alive.
     [RelayCommand]
     public async Task RefreshAsync()
     {
@@ -130,12 +120,10 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         Count = Worktrees.Count;
     }
 
-    /// <summary>
-    /// Removes a worktree, always after a confirmation. A tree with uncommitted changes gets the stronger consent
-    /// that names the loss (its committed history stays on the branch; only unsaved edits go); a clean one gets a
-    /// plain confirm. Never removes a tree a live session is still on — that would pull the working directory out
-    /// from under a running session; close the session first.
-    /// </summary>
+    // Removes a worktree, always after a confirmation. A tree with uncommitted changes gets the stronger consent
+    // that names the loss (its committed history stays on the branch; only unsaved edits go); a clean one gets a
+    // plain confirm. Never removes a tree a live session is still on — that would pull the working directory out
+    // from under a running session; close the session first.
     [RelayCommand]
     private async Task RemoveAsync(ManagedWorktreeRowViewModel? row)
     {
@@ -176,7 +164,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         await RefreshAsync();
     }
 
-    /// <summary>Hands a gone worktree back to a fresh session (reattach); blocked for a live one.</summary>
+    // Hands a gone worktree back to a fresh session (reattach); blocked for a live one.
     [RelayCommand]
     private void Reattach(ManagedWorktreeRowViewModel? row)
     {
@@ -188,13 +176,11 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         ReattachRequested?.Invoke(row.Record);
     }
 
-    /// <summary>
-    /// Gives up a worktree's claim on a session that is only "live" because of an open restore offer with nothing
-    /// running behind it (AC-520 fix 6, Raymond's explicit choice over a time-based expiry on the offer itself: "ik
-    /// ben wel voor die geef vrij actie in het paneel ... legt de keuze bij de gebruiker neer"). Detaches ownership
-    /// only — no worktree is removed here — so the row becomes an ordinary orphan afterwards: Remove and Reattach
-    /// become available, and the operator picks from there.
-    /// </summary>
+    // Gives up a worktree's claim on a session that is only "live" because of an open restore offer with nothing
+    // running behind it (AC-520 fix 6, Raymond's explicit choice over a time-based expiry on the offer itself: "ik
+    // ben wel voor die geef vrij actie in het paneel ... legt de keuze bij de gebruiker neer"). Detaches ownership
+    // only — no worktree is removed here — so the row becomes an ordinary orphan afterwards: Remove and Reattach
+    // become available, and the operator picks from there.
     [RelayCommand]
     private async Task ReleaseAsync(ManagedWorktreeRowViewModel? row)
     {
@@ -218,7 +204,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         await RefreshAsync();
     }
 
-    /// <summary>Removes every worktree that is safe to remove — clean or already gone, no work to lose. Never touches one with unsaved changes.</summary>
+    // Removes every worktree that is safe to remove — clean or already gone, no work to lose. Never touches one with unsaved changes.
     [RelayCommand]
     private async Task CleanUpFinishedAsync()
     {

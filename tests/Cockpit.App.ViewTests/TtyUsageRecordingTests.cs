@@ -69,8 +69,8 @@ public class TtyUsageRecordingTests
     {
         var reader = Substitute.For<ISessionTranscriptReader>();
         reader.SnapshotTranscripts(Arg.Any<SessionProfile?>()).Returns(new HashSet<string>());
-        reader.ReadActivityAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => _YieldThenWaitForCancellation(readings, callInfo.ArgAt<CancellationToken>(2)));
+        reader.ReadActivityAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => _YieldThenWaitForCancellation(readings, callInfo.ArgAt<CancellationToken>(3)));
         return reader;
     }
 

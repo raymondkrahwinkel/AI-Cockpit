@@ -2,15 +2,12 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-/// <summary>
-/// Turning a poll into a change (#69). GitHub cannot tell a desktop app that something was merged, so it is asked —
-/// and an answer is the world, not the news in it.
-/// <para>
-/// The rule that matters is the first look. Every pull request the operator has ever merged is "new" to a process that
-/// has just started, and a flow that ran forty times the moment the cockpit opened would be the last time anyone armed
-/// it. So the first look remembers and fires nothing.
-/// </para>
-/// </summary>
+// Turning a poll into a change (#69). GitHub cannot tell a desktop app that something was merged, so it is asked —
+// and an answer is the world, not the news in it.
+//
+// The rule that matters is the first look. Every pull request the operator has ever merged is "new" to a process that
+// has just started, and a flow that ran forty times the moment the cockpit opened would be the last time anyone armed
+// it. So the first look remembers and fires nothing.
 public class MergedPullRequestsTests
 {
     [Fact]

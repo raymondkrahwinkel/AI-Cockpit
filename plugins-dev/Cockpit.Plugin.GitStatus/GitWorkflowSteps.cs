@@ -3,19 +3,15 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.GitStatus;
 
-/// <summary>
-/// What git lends the workflow editor (#69): the four things a flow does around a piece of work — cut a branch,
-/// commit, push, and go back to where you came from.
-/// <para>
-/// Every one of them names a working directory, and the flow's trigger hands it over ({directory}), so a step never
-/// has to guess which repository it is in. Guessing there would be a commit in the wrong repo, which is a mistake
-/// nobody notices until it is pushed.
-/// </para>
-/// <para>
-/// What is <b>not</b> here, on purpose: force-pushing, resetting, deleting branches, rewriting history. A workflow
-/// that can throw away work you did not know it had is not a convenience.
-/// </para>
-/// </summary>
+// What git lends the workflow editor (#69): the four things a flow does around a piece of work — cut a branch,
+// commit, push, and go back to where you came from.
+//
+// Every one of them names a working directory, and the flow's trigger hands it over ({directory}), so a step never
+// has to guess which repository it is in. Guessing there would be a commit in the wrong repo, which is a mistake
+// nobody notices until it is pushed.
+//
+// What is *not* here, on purpose: force-pushing, resetting, deleting branches, rewriting history. A workflow
+// that can throw away work you did not know it had is not a convenience.
 internal static class GitWorkflowSteps
 {
     public static IEnumerable<IWorkflowStep> All() =>
@@ -25,7 +21,7 @@ internal static class GitWorkflowSteps
         new PushStep(),
     ];
 
-    /// <summary>Switches to a branch, creating it when it is not there yet — which is what "start working on this ticket" means in git.</summary>
+    // Switches to a branch, creating it when it is not there yet — which is what "start working on this ticket" means in git.
     private sealed class SwitchBranchStep : IWorkflowStep
     {
         public string TypeId => "git.branch";
@@ -106,7 +102,7 @@ internal static class GitWorkflowSteps
         }
     }
 
-    /// <summary>Commits what is there. Stages everything by default, because a flow that committed a subset nobody chose would be the surprising thing.</summary>
+    // Commits what is there. Stages everything by default, because a flow that committed a subset nobody chose would be the surprising thing.
     private sealed class CommitStep : IWorkflowStep
     {
         public string TypeId => "git.commit";
@@ -174,7 +170,7 @@ internal static class GitWorkflowSteps
         private static bool _No(string value) => value.Trim() is "no" or "false" or "0" or "n";
     }
 
-    /// <summary>Pushes the current branch, setting its upstream the first time — never with force, and never a branch you did not name.</summary>
+    // Pushes the current branch, setting its upstream the first time — never with force, and never a branch you did not name.
     private sealed class PushStep : IWorkflowStep
     {
         public string TypeId => "git.push";

@@ -13,21 +13,17 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.SessionReview;
 
-/// <summary>
-/// The per-session review panel (AC-50): the uncommitted changes of the session's working directory as a tree of
-/// changed files on the left and one file's diff on the right, with one click to ask the session to review its own
-/// changes or to copy the whole diff. Read-only and operator-triggered — no consent gate.
-/// </summary>
-/// <remarks>
-/// The panel used to draw the entire diff as one flat list of coloured strings, headers and all, which made a review
-/// of more than one file an exercise in scrolling for the next <c>diff --git</c> line. <see cref="DiffParser"/> now
-/// recovers the structure git had already written into that text, and this control only lays it out.
-/// </remarks>
+// The per-session review panel (AC-50): the uncommitted changes of the session's working directory as a tree of
+// changed files on the left and one file's diff on the right, with one click to ask the session to review its own
+// changes or to copy the whole diff. Read-only and operator-triggered — no consent gate.
+// The panel used to draw the entire diff as one flat list of coloured strings, headers and all, which made a review
+// of more than one file an exercise in scrolling for the next `diff --git` line. `DiffParser` now
+// recovers the structure git had already written into that text, and this control only lays it out.
 internal sealed class SessionDiffDialogControl : UserControl
 {
-    /// <summary>A large file is for scanning, not for rendering ten thousand text blocks; cap what is drawn and say
-    /// so. The cap is per file now rather than over the whole diff, so one huge file no longer hides every file
-    /// after it.</summary>
+    // A large file is for scanning, not for rendering ten thousand text blocks; cap what is drawn and say
+    // so. The cap is per file now rather than over the whole diff, so one huge file no longer hides every file
+    // after it.
     private const int MaxRenderedLines = 2000;
 
     private const double GutterWidth = 46;
@@ -303,7 +299,7 @@ internal sealed class SessionDiffDialogControl : UserControl
         _ => "modified",
     };
 
-    /// <summary>One node of the tree: a folder label, or a file with its status glyph and its <c>+n −m</c>.</summary>
+    // One node of the tree: a folder label, or a file with its status glyph and its `+n −m`.
     private Control _NodeRow(TreeNode node)
     {
         if (node.File is null)
@@ -371,11 +367,9 @@ internal sealed class SessionDiffDialogControl : UserControl
         _ => _Brush("CockpitStatusWaitingBrush", "#E0A33E"),
     };
 
-    /// <summary>
-    /// A hunk header as a rule with its range and the enclosing declaration beside it. As a line of accent-coloured
-    /// text it was just another row to read past; as a separator it does what the <c>@@</c> line is actually for —
-    /// saying that the file jumps here.
-    /// </summary>
+    // A hunk header as a rule with its range and the enclosing declaration beside it. As a line of accent-coloured
+    // text it was just another row to read past; as a separator it does what the `@@` line is actually for —
+    // saying that the file jumps here.
     private Control _HunkSeparator(string header)
     {
         var (range, context) = DiffParser.SplitHunkHeader(header);
@@ -411,7 +405,7 @@ internal sealed class SessionDiffDialogControl : UserControl
         return panel;
     }
 
-    /// <summary>One diff line: old number, new number, then the code on a band that says what happened to it.</summary>
+    // One diff line: old number, new number, then the code on a band that says what happened to it.
     private Control _LineRow(DiffRow row, (int Start, int OldEnd, int NewEnd)? span)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions($"{GutterWidth},{GutterWidth},*") };
@@ -449,10 +443,8 @@ internal sealed class SessionDiffDialogControl : UserControl
         return new Border { Background = _Tint(row.Kind, strong: false), Child = grid };
     }
 
-    /// <summary>
-    /// Whether the computed span still addresses this row's text. The span is measured on the raw line but drawn on
-    /// the tab-expanded one, so a line with tabs before the change would slice at the wrong offsets.
-    /// </summary>
+    // Whether the computed span still addresses this row's text. The span is measured on the raw line but drawn on
+    // the tab-expanded one, so a line with tabs before the change would slice at the wrong offsets.
     private static bool _CanHighlight(string text, DiffRow row, (int Start, int OldEnd, int NewEnd) span)
     {
         var end = row.Kind == DiffLineKind.Added ? span.NewEnd : span.OldEnd;
@@ -521,10 +513,8 @@ internal sealed class SessionDiffDialogControl : UserControl
         }
     }
 
-    /// <summary>
-    /// A diff line's colour, taken from the theme rather than from git's own palette so the panel belongs to the
-    /// app it opens in.
-    /// </summary>
+    // A diff line's colour, taken from the theme rather than from git's own palette so the panel belongs to the
+    // app it opens in.
     private static IBrush _Colour(DiffLineKind kind) => kind switch
     {
         DiffLineKind.Added => _Brush("CockpitStatusDoneBrush", "#5AA576"),
@@ -532,10 +522,8 @@ internal sealed class SessionDiffDialogControl : UserControl
         _ => _Brush("CockpitTextSecondaryBrush", "#949aa5"),
     };
 
-    /// <summary>
-    /// The band behind a changed line, and the stronger tint behind the part of it that actually differs. Both come
-    /// from the status chip/ring tints the theme already defines, so the panel picks up a repaint for free.
-    /// </summary>
+    // The band behind a changed line, and the stronger tint behind the part of it that actually differs. Both come
+    // from the status chip/ring tints the theme already defines, so the panel picks up a repaint for free.
     private static IBrush? _Tint(DiffLineKind kind, bool strong) => (kind, strong) switch
     {
         (DiffLineKind.Added, false) => _Brush("CockpitStatusDoneChipTintBrush", "#145AA576"),
@@ -545,11 +533,9 @@ internal sealed class SessionDiffDialogControl : UserControl
         _ => null,
     };
 
-    /// <summary>
-    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
-    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
-    /// guard, so it cannot drift away from the colour it stands in for.
-    /// </summary>
+    // The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    // `Application` (designer, headless test) and is held equal to its token by the repository's theme
+    // guard, so it cannot drift away from the colour it stands in for.
     private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush

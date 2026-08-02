@@ -3,37 +3,29 @@ using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
-/// <summary>
-/// How a step uses the data of the steps before it (#69). Two forms, one pair of braces:
-/// <list type="bullet">
-///   <item><c>{output}</c> — a field of what the step immediately before handed over.</item>
-///   <item><c>{Run a command.output}</c> — a field of what <em>any</em> earlier step produced, by its name.</item>
-///   <item><c>{= output.split('\n').length }</c> — a computed value (see <see cref="Expressions"/>).</item>
-/// </list>
-/// <para>
-/// Two paths on purpose. Naming a value is what you want nine times out of ten, and it should cost nothing to learn:
-/// a field in braces, no language, no dollar signs. Computing one is the tenth time — and rather than a half-language
-/// that can compare but not count, that is real JavaScript behind its own marker, so plain text stays plain text and
-/// the easy case never pays for the hard one.
-/// </para>
-/// <para>
-/// The one rule that is not negotiable: a field that was asked for but never arrived is left exactly as written and
-/// reported, never quietly turned into an empty string. An empty path in the middle of a command is a worse outcome
-/// than a command that visibly did not resolve.
-/// </para>
-/// </summary>
+// How a step uses the data of the steps before it (#69). Two forms, one pair of braces:
+//   - `{output}` — a field of what the step immediately before handed over.
+//   - `{Run a command.output}` — a field of what *any* earlier step produced, by its name.
+//   - `{= output.split('\n').length }` — a computed value (see `Expressions`).
+//
+// Two paths on purpose. Naming a value is what you want nine times out of ten, and it should cost nothing to learn:
+// a field in braces, no language, no dollar signs. Computing one is the tenth time — and rather than a half-language
+// that can compare but not count, that is real JavaScript behind its own marker, so plain text stays plain text and
+// the easy case never pays for the hard one.
+//
+// The one rule that is not negotiable: a field that was asked for but never arrived is left exactly as written and
+// reported, never quietly turned into an empty string. An empty path in the middle of a command is a worse outcome
+// than a command that visibly did not resolve.
 public static partial class StepData
 {
-    /// <summary>
-    /// Fills the placeholders in <paramref name="text"/>. <paramref name="input"/> is what this step was handed;
-    /// <paramref name="produced"/> is what every step that has already run produced, by name.
-    /// </summary>
-    /// <param name="escapeValue">
-    /// Applied to each substituted value — a placeholder lookup or an expression result — before it is spliced in,
-    /// leaving the surrounding template untouched. The command step passes shell quoting here so untrusted step data
-    /// cannot break out of its argument (AC-39); callers that resolve into a non-shell context (a URL, a message, a
-    /// working directory handed to an API) pass nothing and get the raw value.
-    /// </param>
+    // Fills the placeholders in `text`. `input` is what this step was handed;
+    // `produced` is what every step that has already run produced, by name.
+    //
+    // `escapeValue`:
+    // Applied to each substituted value — a placeholder lookup or an expression result — before it is spliced in,
+    // leaving the surrounding template untouched. The command step passes shell quoting here so untrusted step data
+    // cannot break out of its argument (AC-39); callers that resolve into a non-shell context (a URL, a message, a
+    // working directory handed to an API) pass nothing and get the raw value.
     public static StepDataResult Resolve(
         string? text,
         IReadOnlyList<WorkflowItem> input,
@@ -96,7 +88,7 @@ public static partial class StepData
         _ => value.ToString() ?? string.Empty,
     };
 
-    /// <summary>The fields a step could refer to, given what it was handed — what the dialog lists so the operator does not have to guess the names.</summary>
+    // The fields a step could refer to, given what it was handed — what the dialog lists so the operator does not have to guess the names.
     public static IReadOnlyList<string> FieldsOf(IReadOnlyList<WorkflowItem> items) =>
         items.FirstOrDefault()?.Json.Select(field => field.Key).ToList() ?? [];
 
@@ -130,7 +122,7 @@ public static partial class StepData
     private static partial Regex Placeholder();
 }
 
-/// <summary>The text with its placeholders filled, the references that were asked for but not there, and the expressions that would not run.</summary>
+// The text with its placeholders filled, the references that were asked for but not there, and the expressions that would not run.
 public sealed record StepDataResult(string Text, IReadOnlyList<string> Missing, IReadOnlyList<string> Errors)
 {
     public StepDataResult(string text, IReadOnlyList<string> missing) : this(text, missing, []) { }

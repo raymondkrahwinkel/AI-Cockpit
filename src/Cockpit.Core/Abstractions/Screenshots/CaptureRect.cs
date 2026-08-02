@@ -1,30 +1,24 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
-/// <summary>
-/// A whole-number rectangle in one of a capture's two coordinate spaces — a display's place on the desktop, or
-/// its pixels in the composed image. Same caveat as <see cref="CapturePoint"/>: the space is the property's to
-/// name, not the type's.
-/// </summary>
+// A whole-number rectangle in one of a capture's two coordinate spaces — a display's place on the desktop, or
+// its pixels in the composed image. Same caveat as `CapturePoint`: the space is the property's to
+// name, not the type's.
 public readonly record struct CaptureRect(int X, int Y, int Width, int Height)
 {
-    /// <summary>One past the last column, the way <c>X + Width</c> reads everywhere else — exclusive.</summary>
+    // One past the last column, the way `X + Width` reads everywhere else — exclusive.
     public int Right => X + Width;
 
-    /// <summary>One past the last row — exclusive, like <see cref="Right"/>.</summary>
+    // One past the last row — exclusive, like `Right`.
     public int Bottom => Y + Height;
 
-    /// <summary>
-    /// Whether the point falls inside. Half-open on both axes, so two displays laid edge to edge claim a point on
-    /// the seam exactly once — the alternative is a pointer on the boundary belonging to both screens and the
-    /// crop landing on whichever was enumerated first.
-    /// </summary>
+    // Whether the point falls inside. Half-open on both axes, so two displays laid edge to edge claim a point on
+    // the seam exactly once — the alternative is a pointer on the boundary belonging to both screens and the
+    // crop landing on whichever was enumerated first.
     public bool Contains(CapturePoint point) =>
         point.X >= X && point.X < Right && point.Y >= Y && point.Y < Bottom;
 
-    /// <summary>
-    /// The part of this rectangle that also lies in the other one, or nothing where they do not meet. Half-open
-    /// like <see cref="Contains"/>, so two rectangles that merely touch along an edge share no area.
-    /// </summary>
+    // The part of this rectangle that also lies in the other one, or nothing where they do not meet. Half-open
+    // like `Contains`, so two rectangles that merely touch along an edge share no area.
     public CaptureRect? Overlap(CaptureRect other)
     {
         var left = Math.Max(X, other.X);
