@@ -29,11 +29,16 @@ internal sealed class LogTail(int maxLines, int maxCharacters)
         }
     }
 
-    public string Text()
+    public string Text() => string.Join(Environment.NewLine, Lines());
+
+    // The kept lines, oldest first, as a snapshot. Copied under the lock rather than handed out live: a run's two
+    // output streams are still writing while a caller reads this (AC-617's failure classification does, the
+    // moment the run ends), and enumerating the queue itself would race them.
+    public IReadOnlyList<string> Lines()
     {
         lock (_gate)
         {
-            return string.Join(Environment.NewLine, _lines);
+            return [.. _lines];
         }
     }
 }

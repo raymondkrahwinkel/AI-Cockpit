@@ -68,6 +68,46 @@ public class LocalJobRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ARunThatDiedSettingItselfUpIsNotReportedAsAFailedBuild()
+    {
+        // AC-617: Docker 29.7.0 refused to copy an action into the container, so every job on the machine went red
+        // in seconds without compiling a line. Reported as "build failed", that sends the operator into a diff that
+        // was never built — the reason it has to come back as an outcome that reached no verdict at all.
+        var act = FakeStreamingCliRunner.Exiting(
+            1,
+            "[CI/build]   ✅  Success - Main actions/checkout@v7",
+            "[CI/build]   ❌  Failure - Main actions/setup-dotnet@v6",
+            "[CI/build] failed to copy content to container: Error response from daemon: path escapes from parent");
+
+        var result = await _RunAsync(FakeLocalCiRuntime.Ready(), act, TemporaryProject.JobWithSetupActions, "build");
+
+        Assert.Equal(LocalRunOutcome.CouldNotRun, result.Outcome);
+        Assert.False(result.ReachedAVerdict);
+        Assert.Contains("actions/setup-dotnet@v6", result.Reason);
+
+        // The engine's own words travel with it: the classification says whose problem it is, the log says what to fix.
+        Assert.Contains("path escapes from parent", result.LogTail);
+    }
+
+    [Fact]
+    public async Task AJobWhoseOwnStepFailsIsStillAFailure()
+    {
+        // The other half of AC-617, on the same workflow that has setup actions in it — so the distinction is doing
+        // the work, rather than the test passing because there was nothing to confuse it with.
+        var act = FakeStreamingCliRunner.Exiting(
+            1,
+            "[CI/build]   ✅  Success - Main actions/setup-dotnet@v6",
+            "[CI/build] error CS0103: The name 'Foo' does not exist in the current context",
+            "[CI/build]   ❌  Failure - Main Build");
+
+        var result = await _RunAsync(FakeLocalCiRuntime.Ready(), act, TemporaryProject.JobWithSetupActions, "build");
+
+        Assert.Equal(LocalRunOutcome.Failed, result.Outcome);
+        Assert.True(result.ReachedAVerdict);
+        Assert.Null(result.Reason);
+    }
+
+    [Fact]
     public async Task EveryLineReachesTheCallerWhileTheRunIsHappening()
     {
         var seen = new List<string>();

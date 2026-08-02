@@ -189,7 +189,13 @@ internal sealed class LocalCiMcpTools(
         summary = result.Headline,
         where = "this machine, in a container via act",
         note = "act's images are not GitHub's runner images. This predicts the check on GitHub; it does not replace it.",
-        logTail = result.Outcome == LocalRunOutcome.Failed && result.LogTail.Length > 0 ? result.LogTail : null,
+        // A failure, and also a run that fell over in its own setup (AC-617) — the latter needs it most: "it never
+        // got past setting the job up" is the classification, and the engine's own message underneath it is the
+        // only thing that says what to fix. Still never on a pass: a whole build log in a session's context is the
+        // waste this plugin exists to save, and there is nothing in a green one to read.
+        logTail = result.Outcome is LocalRunOutcome.Failed or LocalRunOutcome.CouldNotRun && result.LogTail.Length > 0
+            ? result.LogTail
+            : null,
     };
 }
 

@@ -92,6 +92,20 @@ internal sealed class TemporaryProject : IDisposable
               - run: echo building
         """;
 
+    // A job whose steps include the two actions the classifier allows — the setup half of a real run (AC-617).
+    public const string JobWithSetupActions = """
+        name: CI
+        on: push
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v7
+              - uses: actions/setup-dotnet@v6
+              - name: Build
+                run: dotnet build
+        """;
+
     public const string MatrixJob = """
         name: CI
         on: push
