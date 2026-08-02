@@ -39,6 +39,9 @@ public partial class TtyView : UserControl
     private TtyLaunchRequest? _pendingLaunch;
     private bool _launchPending;
     private bool _wired;
+
+    /// <summary>Whether the last pointer press was a Ctrl+click we opened a link for, so its release is ours to swallow too (AC-560).</summary>
+    private bool _linkPressConsumed;
     private int _lastColumns;
     private int _lastRows;
     // The size actually last sent to the pty (initial launch or a settle-tick Resize) — #58's reference
@@ -136,6 +139,11 @@ public partial class TtyView : UserControl
         // is untouched. Handled only when a link is actually under the pointer, so every other click still reaches
         // claude. Not Windows-gated: the same Exclr8 control renders on every OS, so the gap and the fix are shared.
         AddHandler(InputElement.PointerPressedEvent, OnTerminalPointerPressedForLinks, RoutingStrategies.Tunnel);
+
+        // AC-560: and its release. The control reports a release to the pty on mouse-reporting mode without checking
+        // it saw the press, so swallowing only the press left the TUI a lone release over the link — which claude
+        // opens itself, giving two browser tabs for one click.
+        AddHandler(InputElement.PointerReleasedEvent, OnTerminalPointerReleasedForLinks, RoutingStrategies.Tunnel);
 
         // AC-34: reflect this pane's coupling on the "agent connected" bar, so it is always visible when an agent is
         // on the pane (the counterpart to both sides being able to type). Unsubscribed on unload.
@@ -482,6 +490,7 @@ public partial class TtyView : UserControl
     /// </summary>
     private void OnTerminalPointerPressedForLinks(object? sender, PointerPressedEventArgs e)
     {
+        _linkPressConsumed = false;
         var pointer = e.GetCurrentPoint(Terminal);
         if (!TerminalLinkGesture.Opens(
                 e.KeyModifiers.HasFlag(KeyModifiers.Control), pointer.Properties.IsLeftButtonPressed, e.ClickCount))
@@ -496,8 +505,25 @@ public partial class TtyView : UserControl
 
         if (_TryOpenLink(url))
         {
+            _linkPressConsumed = true;
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Swallows the release belonging to a Ctrl+click we already opened a link for (AC-560). TerminalControl reports
+    /// a release to the pty whenever mouse reporting is on without checking it saw the press, so the TUI received a
+    /// lone release over the link and opened it a second time.
+    /// </summary>
+    private void OnTerminalPointerReleasedForLinks(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_linkPressConsumed)
+        {
+            return;
+        }
+
+        _linkPressConsumed = false;
+        e.Handled = true;
     }
 
     /// <summary>

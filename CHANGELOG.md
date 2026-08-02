@@ -65,6 +65,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a Ctrl+click on a link in a terminal session opens one browser tab again instead of two. The cockpit
+  swallowed the click itself but not the release that belongs to it, and the terminal forwards a release to the
+  running program whether or not it saw the press — so the agent in the terminal received a stray click over the
+  same link and opened it a second time, on top of the tab the cockpit had already opened.
 - fixed: "Create backup…" no longer fails with "the process cannot access the file … because it is being used by
   another process". The backup is built as a temporary file and then moved to the place you picked, and on Windows
   that move happened the instant the archive was closed — the same instant a virus scanner opens a newly written
