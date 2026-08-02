@@ -2264,8 +2264,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// clear-and-rebuild tears down every row's container on any change, including one sitting under an open
     /// ContextMenu it had nothing to do with, and Avalonia's own ControlDetachedFromVisualTree handler quietly
     /// closes that popup.
+    /// <para>
+    /// Mutates <see cref="_visibleSessions"/> as a side effect of a property read, which the old fresh-<c>List</c>
+    /// shape made harmless to call reentrantly — this one is not: an Add/Remove/Move fires
+    /// <see cref="ObservableCollection{T}.CollectionChanged"/> synchronously, and a second subscriber that reads
+    /// <see cref="VisibleSessions"/> (or anything else that calls this) from inside that handler would re-enter
+    /// mid-diff and throw "Cannot change ObservableCollection during a CollectionChanged event". <see cref="_syncing"/>
+    /// turns that into a no-op instead: the outer call is already bringing the collection up to date, so a nested
+    /// call has nothing left to do.
+    /// </para>
     /// </summary>
+    private bool _syncing;
+
     private void _SyncVisibleSessions()
+    {
+        if (_syncing)
+        {
+            return;
+        }
+
+        _syncing = true;
+        try
+        {
+            _SyncVisibleSessionsCore();
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private void _SyncVisibleSessionsCore()
     {
         _ReconcileSidebarOrder();
         var target = _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();

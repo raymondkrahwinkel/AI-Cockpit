@@ -19,7 +19,7 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Measured (see AC-561-progress.md for the full log): a real headless mouse right-click, resolved through
+/// Measured, not assumed: a real headless mouse right-click, resolved through
 /// Avalonia's own hit-testing and <c>ContextRequested</c> pipeline (not a hand-picked sender), against a row picked
 /// out of the visual tree — repeated for a fresh list, after a full pointer-driven drag-reorder
 /// (<see cref="CockpitViewModel.MoveSessionToVisibleIndex"/>), and with a second Sessions workspace filtering
@@ -218,7 +218,7 @@ public class SessionContextMenuTargetViewTests
     // AC-2: not just Rename - every one of the nine actions must read the same, correctly-resolved target. All
     // nine already share one helper (_InvokeSessionCommand), which reads sender.DataContext - the row's own
     // MenuItem, not a separate CommandParameter (removed: it inherited through the exact same chain as
-    // DataContext, so it could never fail independently of it - see AC-561-progress.md).
+    // DataContext, so it could never fail independently of it).
     [Theory]
     [InlineData("Rename")]
     [InlineData("Duplicate")]
@@ -282,7 +282,8 @@ public class SessionContextMenuTargetViewTests
     /// session becomes active" half of the report). The fix (<see cref="CockpitViewModel"/>'s
     /// <c>_SyncVisibleSessions</c>) diffs into the same <c>ObservableCollection</c> instance the ItemsControl is
     /// bound to instead, so a row not part of the diff keeps its container - and its open Popup - alive.
-    /// Confirmed red against the pre-fix code and green against the fix (see AC-561-progress.md for the run).
+    /// Confirmed red against the pre-fix code and green against the fix, both by the builder and independently by
+    /// an adversarial review pass.
     /// </summary>
     [Fact]
     public void AnAlreadyOpenMenu_SurvivesAReorderOfARowItDoesNotOwn()
