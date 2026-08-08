@@ -46,6 +46,18 @@ public class AssistantChatWindowResizeAndFocusTests
     });
 
     /// <summary>
+    /// Criterion 3 again, for the pill. Reported by Raymond after the first fix: the voice overlay appearing —
+    /// listening, transcribing, preparing — also emptied the chat box. A different mechanism from the pane one and
+    /// a blunter one: showing a window activates it, and on Win32 that is a <c>SetFocus</c> + <c>SetForegroundWindow</c>
+    /// on the pill's own handle. Asserted on the property rather than on where the keyboard ends up, because this
+    /// backend never activates anything (see the class remarks) — the property is what Avalonia hands the platform,
+    /// and it is a single attribute an edit to this window could silently drop.
+    /// </summary>
+    [Fact]
+    public void TheVoicePill_IsShownWithoutTakingTheKeyboard() => HeadlessAvalonia.Run(() =>
+        Assert.False(new VoiceOverlayWindow().ShowActivated));
+
+    /// <summary>
     /// Criteria 2 and 3, the reproduction. The assistant closing a session moves <c>SelectedSession</c> to the next
     /// pane (left exactly as it was), and the view follows every selection change by focusing that pane's input —
     /// which, focus being application-wide, emptied the pop-out's composer mid-sentence.
