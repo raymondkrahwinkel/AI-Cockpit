@@ -10,6 +10,16 @@
         <local:ViewLocator/>
     </Application.DataTemplates>
 
+    <!-- Templates two views share. App-wide so both the session pane and the assistant's chat window resolve the
+         same one (AC-630) — a flyout's contents look resources up from here whichever window opened it. -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Cockpit.App/Views/Shared/BackgroundTaskTemplates.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
         <!-- Material icon styles, app-wide, so the host and every plugin draw from the same bundled icon set (AC-33). -->

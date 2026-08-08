@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -13,13 +14,24 @@ public sealed class BackgroundTaskViewModel : ObservableObject
     private string? _description;
     private bool _isSelected;
 
-    public BackgroundTaskViewModel(string taskId, BackgroundTaskKind kind, string? description, DateTimeOffset firstSeenAt)
+    public BackgroundTaskViewModel(
+        string taskId,
+        BackgroundTaskKind kind,
+        string? description,
+        DateTimeOffset firstSeenAt,
+        Action<BackgroundTaskViewModel>? onToggle = null)
     {
         TaskId = taskId;
         Kind = kind;
         _description = description;
         _firstSeenAt = firstSeenAt;
+        ToggleCommand = new RelayCommand(() => onToggle?.Invoke(this));
     }
+
+    // Expands (or collapses) this row's detail — the owning session decides what that does to the other rows.
+    // A command rather than the view's PointerPressed handler, because the row template is shared app-wide and a
+    // ResourceDictionary has no code-behind (AC-630). Same callback idiom as ImageAttachmentViewModel.RemoveCommand.
+    public RelayCommand ToggleCommand { get; }
 
     public string TaskId { get; }
 

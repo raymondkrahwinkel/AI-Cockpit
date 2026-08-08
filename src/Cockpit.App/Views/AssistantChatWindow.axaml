@@ -28,7 +28,7 @@
 
             <!-- Header: profile name, the read-aloud switch (criterion 9 — the same switch Options carries, via
                  IAssistantSpeakToggle), and Close. Nothing else — no reading-level picker, no live-control tune
-                 button, no background-work badge: those belong to a full session pane, and this window is a
+                 button: those belong to a full session pane, and this window is a
                  peephole, not one. Draggable by the bar, like every other chromeless window in this app
                  (Controls/CockpitWindowChrome does the same for dialogs; not reused here because it has no room
                  for a toggle button, only a title and caption buttons). -->
@@ -155,9 +155,10 @@
                 </Grid>
             </Border>
 
-            <!-- Footer: one text field, nothing else (COMMENT 6 / criterion 8 — no send button, no attachment,
-                 no screenshot: fully usable with a keyboard alone). Enter sends, Shift+Enter inserts a newline,
-                 same convention as the main session composer (SessionView._OnInputKeyDown). -->
+            <!-- Footer: the text field plus what a message can carry with it (AC-630 — queued chips, image
+                 attachments, the screenshot button). Still no send button: Enter sends, Shift+Enter inserts a
+                 newline, Ctrl+V attaches an image and Arrow-Up recalls the last queued message, so the whole
+                 composer stays reachable from the keyboard alone (criterion 8). -->
             <Border DockPanel.Dock="Bottom" Padding="10,6,10,10" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
                 <StackPanel Spacing="6">
                     <!-- Progress, read straight off the session the same way SessionView.axaml reads it. The window
@@ -193,20 +194,77 @@
 
                     <!-- Background work (AC-531): a detached sub-agent or shell outlives both indicators above, and
                          this count is what still says so. No badge at zero rather than a "0" one, the same rule the
-                         main view applies. The flyout with the detail stays in the main view — this window is a
-                         peephole, and its job here is that the work is not invisible, not to manage it. -->
-                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
-                                IsVisible="{Binding Session.HasBackgroundTasks, FallbackValue=False}">
-                        <TextBlock Text="Background" FontSize="11.5" VerticalAlignment="Center"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                        <Border Background="{StaticResource CockpitStatusBackgroundBrush}"
-                                CornerRadius="{StaticResource CockpitPillRadius}"
-                                Padding="6,1" MinWidth="18">
-                            <TextBlock Text="{Binding Session.BackgroundTaskCount}" FontSize="10.5" FontWeight="Bold"
-                                       Foreground="{StaticResource CockpitTextOnStatusBrush}"
-                                       HorizontalAlignment="Center"/>
-                        </Border>
-                    </StackPanel>
+                         main view applies. Clickable since AC-630: the detail used to be "in the main view", but the
+                         assistant has no pane in any workspace (BelongsToNoWorkspace), so there was nowhere at all to
+                         see what it was running. Same rows, same template as the session pane
+                         (Views/Shared/BackgroundTaskTemplates.axaml) — not a second copy. -->
+                    <Button Classes="Subtle Compact" HorizontalAlignment="Left" Padding="0"
+                            IsVisible="{Binding Session.HasBackgroundTasks, FallbackValue=False}"
+                            ToolTip.Tip="Sub-agents and shells still running in the background">
+                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                            <TextBlock Text="Background" FontSize="11.5" VerticalAlignment="Center"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <Border Background="{StaticResource CockpitStatusBackgroundBrush}"
+                                    CornerRadius="{StaticResource CockpitPillRadius}"
+                                    Padding="6,1" MinWidth="18">
+                                <TextBlock Text="{Binding Session.BackgroundTaskCount}" FontSize="10.5" FontWeight="Bold"
+                                           Foreground="{StaticResource CockpitTextOnStatusBrush}"
+                                           HorizontalAlignment="Center"/>
+                            </Border>
+                            <materialIcons:MaterialIcon Kind="ChevronUp" Width="11" Height="11"
+                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="TopEdgeAlignedLeft">
+                                <StackPanel Spacing="0" Width="330">
+                                    <DockPanel Margin="10,9,10,7">
+                                        <TextBlock DockPanel.Dock="Left" Text="Running now" FontWeight="SemiBold" FontSize="12.5"/>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Session.BackgroundTaskSummary}" FontSize="11.5"
+                                                   HorizontalAlignment="Right"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    </DockPanel>
+
+                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+
+                                    <!-- Work that finishes while the flyout is open empties the list rather than
+                                         closing it — same empty state the session pane's pop-out shows. -->
+                                    <TextBlock Text="No background work." FontSize="12.5" Margin="10,16"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding !Session.HasBackgroundTasks}"/>
+
+                                    <StackPanel IsVisible="{Binding Session.HasBackgroundTasks}" Margin="0,4,0,0">
+                                        <TextBlock Text="SUB-AGENTS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding Session.HasBackgroundSubAgents}"/>
+                                        <ItemsControl ItemsSource="{Binding Session.BackgroundSubAgents}"
+                                                      ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
+                                                      IsVisible="{Binding Session.HasBackgroundSubAgents}"/>
+
+                                        <TextBlock Text="SHELLS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding Session.HasBackgroundShells}"/>
+                                        <ItemsControl ItemsSource="{Binding Session.BackgroundShells}"
+                                                      ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
+                                                      IsVisible="{Binding Session.HasBackgroundShells}"/>
+
+                                        <TextBlock Text="OTHER" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding Session.HasBackgroundOtherTasks}"/>
+                                        <ItemsControl ItemsSource="{Binding Session.BackgroundOtherTasks}"
+                                                      ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
+                                                      IsVisible="{Binding Session.HasBackgroundOtherTasks}"/>
+                                    </StackPanel>
+
+                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                                            Padding="10,7" IsVisible="{Binding Session.HasBackgroundTasks}">
+                                        <TextBlock Text="Disappears from the list once the work finishes." FontSize="10.5"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    </Border>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
 
                     <!-- Criterion 9: read-aloud off is a text-assistant, said plainly rather than left to a
                          silent speaker icon — a switched-off toggle a few pixels up in the header is easy to miss
@@ -214,9 +272,82 @@
                     <TextBlock Text="Read-aloud is off — replies land here only." FontSize="10.5"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding !SpeakReplies}"/>
-                    <TextBox x:Name="InputBox" Text="{Binding InputText}"
-                             PlaceholderText="Type, or hold F10 to talk…"
-                             AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
+                    <!-- Queued messages (AC-630): typed while a turn was in flight, dispatched when it completes.
+                         Same chips as the session pane, on the same Session.QueuedMessages — without them the input
+                         box emptied, nothing appeared, and the message landed minutes later unannounced.
+                         Arrow-Up on an empty box pulls the last one back to edit (see the code-behind). -->
+                    <ItemsControl ItemsSource="{Binding Session.QueuedMessages}"
+                                  IsVisible="{Binding Session.HasQueuedMessages, FallbackValue=False}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:QueuedMessageViewModel">
+                                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource CockpitControlRadius}"
+                                        Padding="8,4" Margin="0,0,6,6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Queued" FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="{Binding DisplayText}" FontSize="12" VerticalAlignment="Center"
+                                                   MaxWidth="240" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <Button Command="{Binding RemoveCommand}" Classes="Subtle"
+                                                VerticalAlignment="Center" Padding="4,0"
+                                                ToolTip.Tip="Cancel this queued message">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Pasted/captured images waiting to go with the next message (AC-630) — the same chips and the
+                         same Session.PendingAttachments the session pane's composer shows. -->
+                    <ItemsControl ItemsSource="{Binding Session.PendingAttachments}"
+                                  IsVisible="{Binding Session.HasPendingAttachments, FallbackValue=False}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ImageAttachmentViewModel">
+                                <Border Background="{StaticResource CockpitPanelBgBrush}"
+                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource CockpitControlRadius}"
+                                        Padding="4" Margin="0,0,6,6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Image Source="{Binding Thumbnail}" Height="44" MaxWidth="72" Stretch="Uniform"/>
+                                        <Button Command="{Binding RemoveCommand}" Classes="Subtle"
+                                                VerticalAlignment="Top" Padding="4,0"
+                                                ToolTip.Tip="Remove image">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <DockPanel>
+                        <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
+                             its marking tools, landing as an attachment on the composer rather than a message of its
+                             own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
+                             where a session that cannot take an image says why. -->
+                        <Button DockPanel.Dock="Right" Command="{Binding Session.CaptureScreenshotCommand}"
+                                Classes="Compact" VerticalAlignment="Bottom" Margin="6,0,0,0" Padding="7,5"
+                                ToolTip.Tip="{Binding Session.ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
+                            <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14"/>
+                        </Button>
+                        <TextBox x:Name="InputBox" Text="{Binding InputText}"
+                                 PlaceholderText="Type, or hold F10 to talk…"
+                                 AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
+                    </DockPanel>
                 </StackPanel>
             </Border>
 

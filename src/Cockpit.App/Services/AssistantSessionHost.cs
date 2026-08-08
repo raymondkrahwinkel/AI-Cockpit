@@ -227,7 +227,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // which is what makes the assistant fully usable with no microphone at all.
     public async Task SendAsync(string text, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        // An image with no words is a message too (AC-630) — a pasted or captured attachment waiting on the
+        // composer is reason enough to send, and refusing here left it hanging with no way out.
+        if (string.IsNullOrWhiteSpace(text) && Session is not { HasPendingAttachments: true })
         {
             return;
         }
@@ -240,6 +242,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         if (await EnsureStartedAsync(cancellationToken).ConfigureAwait(true) is not { } session)
         {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            // Attachment only: InjectAndSubmit returns on empty text, so the composer's own send path takes it —
+            // which is the one that picks the pending attachments up.
+            session.SendCommand.Execute(null);
             return;
         }
 

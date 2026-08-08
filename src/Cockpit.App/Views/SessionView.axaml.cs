@@ -276,17 +276,6 @@ public partial class SessionView : UserControl
         return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
     }
 
-    // Whole-row click expands (or, on the selected row, collapses) a background task's detail in the
-    // pop-out (AC-531) — the clicked row's DataContext is the task itself, same idiom as the delegated-tasks
-    // dialog's row click.
-    private void _OnBackgroundTaskPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (sender is Control { DataContext: BackgroundTaskViewModel task } && DataContext is SessionViewModel vm)
-        {
-            vm.ToggleBackgroundTaskSelection(task);
-        }
-    }
-
     // Copies a tool result's formatted text to the clipboard (T6).
     private void _OnCopyResultClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.ResultDisplayText);
 

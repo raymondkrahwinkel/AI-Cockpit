@@ -164,7 +164,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     public string? UnavailableReason => _host.UnavailableReason;
 
-    public bool CanSend => !string.IsNullOrWhiteSpace(InputText);
+    // An image with no words is a message too (AC-630) — the same rule `SessionViewModel.CanSend` applies, or a
+    // pasted image would sit in the strip with no way to send it. Read live off the session on each CanExecute, so
+    // nothing has to be notified when the attachment strip changes.
+    public bool CanSend => !string.IsNullOrWhiteSpace(InputText) || Session is { HasPendingAttachments: true };
 
     // The spawn trail's most recent entries, newest first, for the flyout's `ItemsControl` — see
     // `LoadSpawnLogAsync` for why the trail and not the transcript is what answers "what has this
@@ -251,7 +254,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     private async Task SendAsync()
     {
         var text = InputText.Trim();
-        if (text.Length == 0)
+        if (text.Length == 0 && Session is not { HasPendingAttachments: true })
         {
             return;
         }
@@ -264,6 +267,22 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     }
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
+
+    // Arrow-Up recall (AC-630), bridged: `SessionViewModel.RecallLastQueuedMessage` puts the text back in the
+    // session's own composer, and this window types into its own `InputText` — so the text is moved across, where
+    // it can actually be edited. The recalled images stay on the session, which is where the attachment strip
+    // reads them. False when the queue is empty, so the key handler can let Arrow-Up do its normal thing.
+    public bool RecallLastQueuedMessage()
+    {
+        if (Session is not { } session || !session.RecallLastQueuedMessage())
+        {
+            return false;
+        }
+
+        InputText = session.InputText;
+        session.InputText = string.Empty;
+        return true;
+    }
 
     // Reads the spawn trail back for the flyout (AC-545 criterion 5), called only when the flyout actually opens
     // (`AssistantChatWindow._OnSpawnLogFlyoutOpened`) rather than every time this window does.

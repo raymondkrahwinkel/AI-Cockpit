@@ -16,44 +16,8 @@
         <vm:SessionViewModel/>
     </Design.DataContext>
 
-    <UserControl.Resources>
-        <!-- One row template shared by all three background-work groups (AC-531) — sub-agents, shells and any
-             kind this build does not recognise render identically bar their StatusBrushKey/KindLabel, so one
-             template avoids tripling the same markup. -->
-        <DataTemplate x:Key="BackgroundTaskRowTemplate" x:DataType="vm:BackgroundTaskViewModel">
-            <StackPanel Margin="6,1,6,3">
-                <Border Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
-                        Background="{StaticResource CockpitSecondaryBgBrush}"
-                        PointerPressed="_OnBackgroundTaskPressed">
-                    <Grid ColumnDefinitions="Auto,*,Auto">
-                        <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
-                                 Margin="0,0,8,0"
-                                 Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="12.5"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Grid.Column="2" Text="{Binding AgeText}" FontSize="11.5" VerticalAlignment="Center"
-                                   Margin="8,0,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                    </Grid>
-                </Border>
-
-                <!-- Expanded detail (AC-531 #4): the full, untruncated description plus the kind spelled out — the
-                     only things the collapsed row above does not already show in full. BackgroundTask carries no
-                     richer per-task activity than kind + description, so this shows what exists rather than
-                     inventing a feed the contract does not have (AC-531 #7). -->
-                <Border IsVisible="{Binding IsSelected}" Margin="0,3,0,0" Padding="9,7"
-                        Background="{StaticResource CockpitSecondaryBgBrush}"
-                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                        CornerRadius="{StaticResource CockpitControlRadius}">
-                    <StackPanel Spacing="3">
-                        <TextBlock Text="{Binding KindLabel}" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                        <TextBlock Text="{Binding Description}" FontSize="11.5" TextWrapping="Wrap"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </DataTemplate>
-    </UserControl.Resources>
+    <!-- BackgroundTaskRowTemplate used to live here; it is now app-wide (Views/Shared/BackgroundTaskTemplates.axaml)
+         so the assistant's chat window shows the same rows from the same template (AC-630). -->
 
     <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
     <Grid>
