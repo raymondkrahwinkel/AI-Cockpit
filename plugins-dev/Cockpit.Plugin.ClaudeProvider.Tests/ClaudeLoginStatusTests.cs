@@ -2,12 +2,8 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-// The login gate (AC-629). The payloads are verbatim from CLI 2.1.226 — `claude auth status --json` against a
-// logged-in profile and against an empty CLAUDE_CONFIG_DIR.
-//
-// What these mostly pin down is *not blocking*: the host calls this synchronously on the UI thread, once per
-// profile, and the CLI it asks costs ~575ms warm and 9.3s cold. Every test here therefore asserts on what comes
-// back before the ask has finished, not only on what it settles to.
+// The login gate (AC-629). Payloads verbatim from CLI 2.1.226. What most of these pin down is *not blocking*:
+// the host calls this synchronously on the UI thread and the CLI costs ~575ms warm, 9.3s cold.
 [Collection(nameof(ClaudeLoginStatusTests))]
 [CollectionDefinition(nameof(ClaudeLoginStatusTests), DisableParallelization = true)]
 public class ClaudeLoginStatusTests
@@ -43,9 +39,8 @@ public class ClaudeLoginStatusTests
     }
 
     [Theory]
-    // A CLI that could not run, or answered something this build does not understand, is not a logged-out
-    // account. Exit code is no help either: `auth status` exits 1 when logged out, which is what a missing binary
-    // does too — so only the payload decides, and an unreadable one decides nothing.
+    // Not a logged-out account. The exit code cannot tell these apart either: 1 means logged out and also
+    // means the binary was missing.
     [InlineData("")]
     [InlineData("not json")]
     [InlineData("{}")]
@@ -78,9 +73,8 @@ public class ClaudeLoginStatusTests
             // Cold, with credentials present: ready. That same call starts the refresh behind it.
             Assert.True(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)));
 
-            // And the CLI overrules it — this is the expired-token case the file check could never see. Waited
-            // for rather than forced with a second RefreshAsync: that one would collide with the in-flight
-            // refresh the line above started and quietly do nothing.
+            // And the CLI overrules it — the expired-token case the file check could never see. Waited for, not
+            // forced: a second RefreshAsync would collide with the in-flight one and quietly do nothing.
             await _UntilAsync(() => !ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)));
         }
         finally
@@ -89,9 +83,7 @@ public class ClaudeLoginStatusTests
         }
     }
 
-    // The cold answer is what the Manage-profiles list binds on first paint, and it never re-reads — so being
-    // wrong here is visible until the dialog is reopened. `.credentials.json` is a reliable negative everywhere
-    // except macOS, where the credentials are in the Keychain and the file simply never exists.
+    // The Manage-profiles list binds this on first paint and never re-reads, so a wrong guess stays visible.
     [Fact]
     public void AColdGateWithNoCredentialsFile_IsLoggedOutExceptOnMacOs()
     {
@@ -116,8 +108,7 @@ public class ClaudeLoginStatusTests
         }
     }
 
-    // An attempt that could not answer must not turn every dialog paint into another subprocess: a CLI too old
-    // for `auth status`, or none at all, never starts answering.
+    // A CLI that cannot answer must not become a subprocess per dialog paint.
     [Fact]
     public async Task AFailedAttempt_BacksOffInsteadOfSpawningPerCall()
     {
@@ -151,8 +142,8 @@ public class ClaudeLoginStatusTests
 
         try
         {
-            // The ask never completes. The whole point of the cache is that this still returns at once — on the UI
-            // thread this is the difference between a dialog that opens and one that freezes for 9 seconds.
+            // The ask never completes; the gate still returns at once. On the UI thread that is a dialog that
+            // opens versus one that freezes for 9 seconds.
             var clock = System.Diagnostics.Stopwatch.StartNew();
             ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(true, stuck));
             clock.Stop();
@@ -180,8 +171,7 @@ public class ClaudeLoginStatusTests
         await ClaudeLoginStatus.RefreshAsync(config, Now, null, counting, CancellationToken.None);
         Assert.Equal(1, asked);
 
-        // Inside the window: answered from the cache, no second subprocess. This is what keeps a ten-profile
-        // dialog from spawning ten CLIs.
+        // Inside the window: from the cache, no second subprocess — what keeps ten profiles from spawning ten CLIs.
         Assert.False(ClaudeLoginStatus.IsLoggedIn(config, Now, null, counting));
         Assert.False(ClaudeLoginStatus.IsLoggedIn(config, Now, null, counting));
         Assert.Equal(1, asked);
@@ -221,8 +211,7 @@ public class ClaudeLoginStatusTests
         Assert.True(ClaudeLoginStatus.IsLoggedIn(personal, Now, null, Answers(true)));
     }
 
-    // A second refresh while one is in flight must not spawn a second CLI — ten sessions on one profile are one
-    // subprocess between them, not ten.
+    // A second refresh while one is in flight must not spawn a second CLI.
     [Fact]
     public async Task ARefreshAlreadyInFlight_IsNotStartedTwice()
     {

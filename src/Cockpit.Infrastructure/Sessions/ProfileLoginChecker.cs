@@ -10,11 +10,9 @@ namespace Cockpit.Infrastructure.Sessions;
 // file. A profile whose provider declares no gate (a local model, or a plugin that self-manages auth) is treated
 // as always ready, so it is never falsely reported logged out.
 //
-// Both registries are consulted (AC-629). The gate started on `TtyProviderRegistration` alone, which a provider
-// registering *only* a session provider could not fill: Gemini, GitHub Models and Kimi resolved to nothing and
-// every profile under them read as ready. Claude only escaped that by registering both of its routes under one
-// id. The TTY registration keeps first say so a provider that fills both declares the pair once and gets the
-// same answer on either route.
+// Both registries are consulted (AC-629): the gate started on `TtyProviderRegistration` alone, so an SDK-only
+// provider (Gemini, GitHub Models, Kimi) could declare none and read as ready. TTY keeps first say, so a provider
+// filling both gets one answer rather than two gates disagreeing.
 internal sealed class ProfileLoginChecker(
     IPluginTtyProviderRegistry ttyProviderRegistry,
     IPluginProviderRegistry? sessionProviderRegistry = null)

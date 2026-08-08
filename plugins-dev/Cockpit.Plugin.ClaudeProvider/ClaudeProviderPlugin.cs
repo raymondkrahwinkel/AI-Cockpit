@@ -96,16 +96,12 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // session already reports the figures at each turn boundary, so this only says what they are.
             UsageSignals = ClaudeUsageSignals.Declarations,
 
-            // Declared on both routes (AC-629). Claude does not need it here — it registers a TTY provider under
-            // the same id, and the host's checker finds that one first — but a provider that registers only a
-            // session provider has nowhere else to put it, and leaving the SDK route silent would make this
-            // plugin the example that the seam is optional.
+            // Declared on both routes (AC-629). Claude is answered by the TTY one, but leaving this silent would
+            // make the plugin the example that an SDK-only provider need not declare a gate.
             IsLoggedIn = configJson => ClaudeProfileDiscovery.IsLoggedIn(configJson, host.ResolveManagedCliPath),
         });
 
-        // Take the first reading now, so the first dialog the operator opens has a real answer rather than the
-        // optimistic one a cold cache gives (AC-629). Per detected profile, off the startup thread — asking the
-        // CLI costs ~575ms warm and 9.3s cold, and nothing here waits for it.
+        // First reading now, so the first dialog has a real answer instead of a cold guess. Nothing waits for it.
         foreach (var profile in ClaudeProfileDiscovery.Detect())
         {
             ClaudeLoginStatus.Warm(profile.ConfigJson, host.ResolveManagedCliPath);

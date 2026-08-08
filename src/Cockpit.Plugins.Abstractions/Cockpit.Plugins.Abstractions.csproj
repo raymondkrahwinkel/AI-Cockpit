@@ -352,15 +352,12 @@
          a plugin's own on-disk shape (Depot's CockpitProjectDefinition never crosses this boundary). Major and
          abstractionsVersion stay 1. Consumed in-repo by Cockpit.Plugin.Depot, whose minHostVersion moves with it.
          Renumbered from a collision with 1.48.0 at merge time. -->
-    <!-- 1.50.0 (AC-629): added SessionProviderRegistration.IsLoggedIn — the SDK mirror of the gate that until now
-         lived on TtyProviderRegistration alone. A provider registering only a session provider (Gemini, GitHub
-         Models, Kimi) could not declare a login gate at all: the host resolved nothing for it and treated every
-         profile under it as ready, logged-out ones included. Claude only escaped that by registering both of its
-         routes under one id. Init-only with a null default, so an already-compiled plugin keeps its constructor
-         and simply reports no gate — which is still read as "manages its own auth", never as logged out. Note for
-         implementers: the host calls it synchronously on the UI thread, once per profile, so a provider whose real
-         check costs a subprocess answers from a cache and refreshes behind it. Additions only — a minor; major and
-         abstractionsVersion stay 1. -->
+    <!-- 1.50.0 (AC-629): added SessionProviderRegistration.IsLoggedIn — the SDK mirror of a gate that lived on
+         TtyProviderRegistration alone, so a provider registering only a session provider (Gemini, GitHub Models,
+         Kimi) could declare none and every profile under it read as ready. Init-only with a null default: an
+         already-compiled plugin reports no gate, still read as "manages its own auth". Implementers: the host
+         calls it synchronously on the UI thread, once per profile, so answer from a cache and refresh behind it.
+         Additions only — a minor; major and abstractionsVersion stay 1. -->
     <Version>1.50.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>

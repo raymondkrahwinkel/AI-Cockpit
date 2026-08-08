@@ -43,8 +43,6 @@ public class ClaudeProfileDiscoveryTests
         Assert.Empty(ClaudeProfileDiscovery.Detect([Path.Combine("fake-home", ".claude")], _ => false));
     }
 
-    // The gate moved to the CLI's own `auth status` (AC-629) — `.credentials.json` was absent on a logged-in
-    // macOS (Keychain) and present next to an expired token, so it answered wrongly in both directions. What it
-    // answers now lives in ClaudeLoginStatusTests, which drives the same decision with the CLI stubbed out.
-    // Nothing is asserted here: this call would spawn a real `claude` on a machine that has one.
+    // The gate moved to `auth status` (AC-629); it is covered in ClaudeLoginStatusTests, with the CLI stubbed
+    // out. Nothing here — calling it would spawn a real `claude` on a machine that has one.
 }
