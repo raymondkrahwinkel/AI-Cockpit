@@ -38,6 +38,43 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-539: a resume the CLI cannot resolve fails on the restored pane's first turn, and the offer must come back
+    // saying why — the provider's reason plus the directory it looked in, since Claude keeps its saved conversations
+    // per working directory and "No conversation found" alone is a dead end.
+    [Fact]
+    public async Task AFailedResumeTurn_BringsTheOfferBackNamingTheWorkingDirectory()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+
+        var pane = new Cockpit.Core.Workspaces.WorkspacePane(vm.PaneId, Cockpit.Core.Workspaces.PaneKind.AiSession) { ProfileId = "default" };
+        var state = new SessionStateRecord(vm.PaneId, "default", "claude", "conv-1", SessionConversationIdState.Known, @"C:\gone", null, null, "default", DateTimeOffset.UtcNow);
+        vm.RestoreOffer = new Cockpit.App.Services.SessionRestorePlan(
+            pane, Profile, Cockpit.App.Services.SessionRestoreAvailability.Known, "This session's earlier conversation can be resumed.") { State = state };
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1",
+            Subtype = "error_during_execution",
+            // An error_during_execution turn carries no result — the reason is only in errors[].
+            Result = null,
+            IsError = true,
+            Errors = ["No conversation found with session ID: conv-1"],
+        });
+
+        Assert.NotNull(vm.RestoreOffer);
+        Assert.Equal(Cockpit.App.Services.SessionRestoreAvailability.Gone, vm.RestoreOffer!.Availability);
+        Assert.False(vm.CanResumeConversation);
+        Assert.Contains("No conversation found with session ID: conv-1", vm.RestoreDegradedReason, StringComparison.Ordinal);
+        Assert.Contains(@"C:\gone", vm.RestoreDegradedReason, StringComparison.Ordinal);
+
+        await vm.DisposeAsync();
+    }
+
     [Fact]
     public async Task TurnCompleted_PullsTheDriversLimits_IntoTheHeaderBars()
     {

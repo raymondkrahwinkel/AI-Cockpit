@@ -311,9 +311,17 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
         finally
         {
+            // AC-539: a result line's publish is parked behind the usage poll, and a CLI that exits right after
+            // printing one (an unresolvable --resume) ends stdout while that task still waits — completing first
+            // drops the turn. Never throws: _PollUsageThenPublishAsync swallows its own poll failure.
+            await _pendingResultPublish.ConfigureAwait(false);
             _events.TryComplete();
         }
     }
+
+    // The in-flight _PollUsageThenPublishAsync, so the pump can wait for it before completing the stream. Only ever
+    // touched from the pump thread (_HandleLine runs on it), so plain assignment is enough.
+    private Task _pendingResultPublish = Task.CompletedTask;
 
     private void _HandleLine(string line)
     {
@@ -353,7 +361,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             // up this very pump. Hence a separate task that polls first and publishes after.
             if (string.Equals(type, "result", StringComparison.Ordinal))
             {
-                _ = _PollUsageThenPublishAsync(line);
+                _pendingResultPublish = _PollUsageThenPublishAsync(line);
                 return;
             }
 

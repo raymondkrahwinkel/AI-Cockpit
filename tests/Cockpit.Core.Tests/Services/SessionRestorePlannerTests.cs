@@ -102,11 +102,42 @@ public class SessionRestorePlannerTests
     public async Task ComposeAsync_AKnownConversationId_YieldsKnown()
     {
         var planner = Build(WorkProfile);
-        var state = new SessionStateRecord("pane-1", "work", "ClaudeCli", "conv-1", SessionConversationIdState.Known, "/repo", null, null, null, DateTimeOffset.UtcNow);
+        // A directory that exists: AC-539 refuses a resume into one that no longer does.
+        var state = new SessionStateRecord("pane-1", "work", "ClaudeCli", "conv-1", SessionConversationIdState.Known, Path.GetTempPath(), null, null, null, DateTimeOffset.UtcNow);
 
         var plan = await planner.ComposeAsync(Pane(), state);
 
         Assert.Equal(SessionRestoreAvailability.Known, plan.Availability);
+    }
+
+    // AC-539: the working directory a session ran in is where Claude keeps its saved conversation, and a session
+    // started in an agent-made worktree records that path with no WorktreePath — so the worktree check above never
+    // sees it. Offering the resume anyway launched into a directory that is not there and died silently.
+    [Fact]
+    public async Task ComposeAsync_AWorkingDirectoryThatNoLongerExistsOnDisk_YieldsWorktreeGone()
+    {
+        var planner = Build(WorkProfile);
+        var missingPath = Path.Combine(Path.GetTempPath(), $"cockpit-gone-{Guid.NewGuid():n}");
+        var state = new SessionStateRecord("pane-1", "work", "ClaudeCli", "conv-1", SessionConversationIdState.Known, missingPath, null, null, null, DateTimeOffset.UtcNow);
+
+        var plan = await planner.ComposeAsync(Pane(), state);
+
+        Assert.Equal(SessionRestoreAvailability.WorktreeGone, plan.Availability);
+        Assert.Contains(missingPath, plan.Explanation, StringComparison.Ordinal);
+    }
+
+    // Criterion 4: a provider that keeps no resumable conversation says so on its own account — a directory that has
+    // since been tidied away must not turn that honest "cannot" into a different one.
+    [Fact]
+    public async Task ComposeAsync_AnUnsupportedProviderInAMissingDirectory_StillYieldsUnsupported()
+    {
+        var planner = Build(WorkProfile);
+        var missingPath = Path.Combine(Path.GetTempPath(), $"cockpit-gone-{Guid.NewGuid():n}");
+        var state = new SessionStateRecord("pane-1", "work", "Ollama", null, SessionConversationIdState.Unsupported, missingPath, null, null, null, DateTimeOffset.UtcNow);
+
+        var plan = await planner.ComposeAsync(Pane(), state);
+
+        Assert.Equal(SessionRestoreAvailability.Unsupported, plan.Availability);
     }
 
     [Fact]

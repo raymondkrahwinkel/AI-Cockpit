@@ -60,6 +60,21 @@ public sealed class SessionRestorePlanner(ISessionProfileStore profiles) : ISing
             { State = state };
         }
 
+        // AC-539: the same question of the working directory itself — a worktree the cockpit did not mint is recorded
+        // there with no WorktreePath, so the check above never sees it, and Claude keys its saved conversations on the
+        // directory. Only where a resume would otherwise be offered, so Unsupported keeps stating its own fact.
+        if (state.ConversationState == SessionConversationIdState.Known
+            && state.WorkingDirectory is { Length: > 0 } workingDirectory
+            && !Directory.Exists(workingDirectory))
+        {
+            return new SessionRestorePlan(
+                pane,
+                profile,
+                SessionRestoreAvailability.WorktreeGone,
+                $"The directory this session ran in no longer exists ({workingDirectory}).")
+            { State = state };
+        }
+
         return state.ConversationState switch
         {
             SessionConversationIdState.Unsupported => new SessionRestorePlan(
