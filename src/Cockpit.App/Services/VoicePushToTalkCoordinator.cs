@@ -28,7 +28,6 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly CockpitViewModel _cockpit;
     private readonly VoiceOverlayCoordinator _overlayCoordinator;
     private readonly IVoicePushToTalkService _pushToTalk;
-    private readonly IOpenMicState? _openMicState;
     private readonly ILogger<VoicePushToTalkCoordinator> _logger;
 
     // Whether the hold in progress actually opened a microphone — see `HandleHoldStarted`.
@@ -39,14 +38,12 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         CockpitViewModel cockpit,
         VoiceOverlayCoordinator overlayCoordinator,
         IVoicePushToTalkService pushToTalk,
-        ILogger<VoicePushToTalkCoordinator> logger,
-        IOpenMicState? openMicState = null)
+        ILogger<VoicePushToTalkCoordinator> logger)
     {
         _hotkeys = hotkeys;
         _cockpit = cockpit;
         _overlayCoordinator = overlayCoordinator;
         _pushToTalk = pushToTalk;
-        _openMicState = openMicState;
         _logger = logger;
 
         // Subscribed once, for the life of the app: the hotkey coordinator re-arms in place rather than handing
@@ -84,16 +81,12 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     // Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.
     internal void HandleHoldStarted()
     {
-        // Open-mic is already capturing and transcribing continuously; routing a hold to the session on top of it
-        // would land the same speech twice. Open-mic wins — say why and start no hold. The local per-view path
-        // stands down the same way (see PushToTalkKeyGate).
-        if (_openMicState?.IsListening == true)
-        {
-            _isRecording = false;
-            _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Unavailable, "Open mic is on");
-            return;
-        }
-
+        // This used to stand down while open-mic was listening, on the grounds that both transcribe the same
+        // speech. AC-627 reversed it: they do not send it to the same place, so standing down did not drop a
+        // duplicate, it re-routed the sentence to the assistant and had it sent unread. The hold wins now, and
+        // open-mic steps aside for its duration — in `SessionPanelViewModel.BeginVoiceHold`, which is
+        // where both this route and the in-window one meet.
+        //
         // Detached first so this cannot stack, whatever the backend does with a repeated key. Today neither of
         // them repeats a hold, so the -= finds nothing — but that is a promise another class makes, and the one
         // subscription per hold this needs should not depend on it being kept.

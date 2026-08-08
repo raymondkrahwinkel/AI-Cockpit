@@ -104,6 +104,64 @@ public class VoiceInjectionTests
         voicePushToTalk.DidNotReceiveWithAnyArgs().BeginHold();
     }
 
+    /// <summary>
+    /// AC-627 criterion 6, and the reason the rule lives here rather than in either hotkey route: the in-window F9
+    /// handler and the desktop-wide one both come through this method, so open-mic stepping aside happens once for
+    /// both. Put in <c>VoicePushToTalkCoordinator</c> instead, the global key would take the microphone and the
+    /// in-window key would not — two doors, one of them still open, which is the shape AC-584 and AC-571/572/573
+    /// each arrived in.
+    /// </summary>
+    [Fact]
+    public async Task AHoldWhileOpenMicIsListening_TakesTheMicrophoneOffIt_AndGivesItBackWhenTheHoldEnds()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.BeginHold().Returns(true);
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the deployment notes");
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
+        var openMic = Substitute.For<IOpenMicState>();
+        openMic.IsListening.Returns(true);
+        var suspension = Substitute.For<IDisposable>();
+        openMic.SuspendForHold().Returns(suspension);
+
+        var vm = new SessionViewModel(
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore,
+            openMicState: openMic);
+        await _WaitForVoiceSettingsToLoadAsync(() => vm.VoiceEnabled);
+
+        Assert.True(vm.BeginVoiceHold());
+        openMic.Received(1).SuspendForHold();
+        suspension.DidNotReceive().Dispose();
+
+        await vm.EndVoiceHoldAsync();
+
+        suspension.Received(1).Dispose();
+
+        // And the words are where F9 promises they will be: in the composer, unsent, for the operator to read.
+        Assert.Equal("open the deployment notes", vm.InputText);
+    }
+
+    /// <summary>A hold that never started takes nothing off open-mic — and so has nothing to give back.</summary>
+    [Fact]
+    public async Task AHoldTheServiceDeclines_LeavesOpenMicListening()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.BeginHold().Returns(false);
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
+        var openMic = Substitute.For<IOpenMicState>();
+        openMic.IsListening.Returns(true);
+
+        var vm = new SessionViewModel(
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore,
+            openMicState: openMic);
+        await _WaitForVoiceSettingsToLoadAsync(() => vm.VoiceEnabled);
+
+        Assert.False(vm.BeginVoiceHold());
+
+        openMic.DidNotReceive().SuspendForHold();
+    }
+
     /// <summary>Resolves any profile (including none) to a fresh provider substitute — same as the real resolver does for a Claude profile or a profile-less session.</summary>
     private static ITtySessionProviderResolver _Resolver()
     {

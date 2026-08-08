@@ -278,7 +278,7 @@ public partial class TtyView : UserControl
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
         if (_viewModel is { } vm
-            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled, vm.OpenMicActive)
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
             && vm.BeginVoiceHold())
         {
             e.Handled = true;
@@ -289,7 +289,7 @@ public partial class TtyView : UserControl
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (_viewModel is { } vm
-            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled, vm.OpenMicActive))
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled))
         {
             e.Handled = true;
             _ = vm.EndVoiceHoldAsync();

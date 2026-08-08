@@ -1102,10 +1102,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private IOpenMicState? _openMicState;
 
-    // Whether open-mic dictation is listening right now — read live, since the operator toggles it at runtime.
-    // The push-to-talk key gate uses it to stand the local hotkey down while open-mic is on (see
-    // `PushToTalkKeyGate`), so a held key does not transcribe the same speech the open mic already is.
-    public bool OpenMicActive => _openMicState?.IsListening ?? false;
+    // Open-mic's claim on the microphone, held for the length of a push-to-talk hold and released when it ends
+    // (AC-627). Null when no hold is in progress, or when there is no open-mic to step aside.
+    private IDisposable? _openMicSuspension;
 
     // Mirrors the saved voice-input setting, loaded once via `InitializeVoice`. Gates `BeginVoiceHold` so a disabled operator's F9 does nothing.
     [ObservableProperty]
@@ -1285,6 +1284,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         if (started)
         {
             VoiceStatus = "Listening...";
+
+            // And the open microphone steps aside for the length of the hold (AC-627). Here rather than in
+            // `VoicePushToTalkCoordinator`, because the in-window F9 handler comes through this same
+            // method and would otherwise need its own copy of the rule — the two-doors mistake AC-584 and
+            // AC-571/572/573 each made in turn. `??=` because a hold that somehow starts twice must not
+            // strand the first claim, which would leave the microphone off for good.
+            _openMicSuspension ??= _openMicState?.SuspendForHold();
         }
 
         return started;
@@ -1298,6 +1304,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             return;
         }
+
+        // The key is up, so open-mic gets the microphone back (AC-627) — before the transcription rather than
+        // after it, since first use can spend minutes downloading a model and Always On would be off for all of it.
+        _openMicSuspension?.Dispose();
+        _openMicSuspension = null;
 
         VoiceStatus = "Transcribing...";
 

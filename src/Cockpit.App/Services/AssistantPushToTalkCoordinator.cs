@@ -130,11 +130,19 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _pushToTalkGeneration++;
 
         // Open-mic is already listening to the assistant continuously; a hold on top of it would send the same
-        // sentence twice. Open-mic wins and says so, exactly as the dictation path stands down for it.
+        // sentence twice, to the same place. Open-mic wins — unlike F9, which since AC-627 takes the microphone
+        // for the length of its hold, because there the two paths have different destinations and only one of
+        // them lets the operator read the words before they go. Here they do not differ, so there is nothing to
+        // take back.
+        //
+        // Silently, and the key stays armed (AC-627). A pill reading "the assistant is already listening" is an
+        // error message for something that is not a fault: the operator asked to talk to the assistant and the
+        // assistant is listening. The chip already says it listens continuously, which is the answer to "why did
+        // F10 do nothing". Not un-arming the hotkey either — an unregistered F10 falls through to whatever is
+        // underneath the cockpit, which trades this surprise for a stranger one.
         if (_openMicState?.IsListening == true)
         {
             _isRecording = false;
-            _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, "The assistant is already listening");
             return;
         }
 

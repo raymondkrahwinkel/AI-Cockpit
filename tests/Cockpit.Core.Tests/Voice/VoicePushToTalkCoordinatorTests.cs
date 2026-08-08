@@ -104,24 +104,57 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     /// <summary>
-    /// Open-mic dictation already captures and transcribes continuously; a push-to-talk hold on top would land
-    /// the same speech a second time (Raymond, out of habit, still pressing F9 while open-mic is on). The hold
-    /// stands down and the pill says why, instead of routing a second capture to the session.
+    /// AC-627. This used to assert the opposite: open-mic won, the hold stood down, and the pill said "Open mic
+    /// is on" — because both transcribe the same speech and a hold on top would land the dictation twice. What
+    /// that reasoning missed is that the two do not land in the same place. Open-mic sends every utterance to the
+    /// assistant, which answers it; a hold puts the words in the selected session's composer, where they can be
+    /// read before they go. So standing down did not suppress a duplicate, it quietly swapped the recipient and
+    /// dropped the review step — the operator held F9 to dictate into a session and was talking to the assistant.
+    /// The hold wins now, and open-mic steps aside for its duration.
     /// </summary>
     [Fact]
-    public void HandleHoldStarted_WhenOpenMicIsListening_StandsDown_AndStartsNoHold()
+    public void HandleHoldStarted_WhenOpenMicIsListening_TakesTheMicrophoneOffIt_RatherThanStandingDown()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
-        var session = _CreateSdkSession(voicePushToTalk);
-        var openMic = Substitute.For<IOpenMicState>();
-        openMic.IsListening.Returns(true);
-        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay, openMic);
+        voicePushToTalk.BeginHold().Returns(true);
+        var openMic = _ListeningOpenMic(out var suspension);
+        var session = _CreateSdkSession(voicePushToTalk, openMic);
+        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay);
 
         coordinator.HandleHoldStarted();
 
-        Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
-        Assert.Equal("Open mic is on", overlay.StatusText);
-        voicePushToTalk.DidNotReceive().BeginHold();
+        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
+        voicePushToTalk.Received(1).BeginHold();
+        openMic.Received(1).SuspendForHold();
+        suspension.DidNotReceive().Dispose();
+    }
+
+    /// <summary>
+    /// Criterion 2: and it comes back on its own when the key is released. A microphone the operator has to
+    /// switch on again after every dictation is not "Always On" — and nothing on screen would say why it stopped.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheHoldEnds_OpenMicGetsTheMicrophoneBack_WithoutTheOperatorDoingAnything()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        var openMic = _ListeningOpenMic(out var suspension);
+        var session = _CreateSdkSession(voicePushToTalk, openMic);
+        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out _);
+        _StartARecordingHold(coordinator, session, voicePushToTalk);
+
+        await coordinator.HandleHoldEndedAsync();
+
+        suspension.Received(1).Dispose();
+    }
+
+    /// <param name="suspension">The handle the hold holds until it ends — asserted on to tell "paused" from "paused and released".</param>
+    private static IOpenMicState _ListeningOpenMic(out IDisposable suspension)
+    {
+        var openMic = Substitute.For<IOpenMicState>();
+        openMic.IsListening.Returns(true);
+        suspension = Substitute.For<IDisposable>();
+        openMic.SuspendForHold().Returns(suspension);
+        return openMic;
     }
 
     /// <summary>
@@ -346,11 +379,14 @@ public class VoicePushToTalkCoordinatorTests
             TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()), cockpit, pushToTalk);
     }
 
-    private static SessionPanelViewModel _CreateSdkSession(IVoicePushToTalkService voicePushToTalk)
+    private static SessionPanelViewModel _CreateSdkSession(
+        IVoicePushToTalkService voicePushToTalk, IOpenMicState? openMicState = null)
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore);
+        return new SessionViewModel(
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore,
+            openMicState: openMicState);
     }
 
     private static SessionPanelViewModel _CreateTtySession(IVoicePushToTalkService voicePushToTalk)
@@ -382,8 +418,7 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     private static VoicePushToTalkCoordinator _CreateCoordinator(
-        SessionPanelViewModel? session, IVoiceOverlayPresenter overlayPresenter, out VoiceOverlayViewModel overlay,
-        IOpenMicState? openMicState = null)
+        SessionPanelViewModel? session, IVoiceOverlayPresenter overlayPresenter, out VoiceOverlayViewModel overlay)
     {
         var cockpit = NewCockpitViewModel();
         cockpit.SelectedSession = session;
@@ -393,8 +428,7 @@ public class VoicePushToTalkCoordinatorTests
             cockpit,
             new VoiceOverlayCoordinator(overlay, overlayPresenter),
             Substitute.For<IVoicePushToTalkService>(),
-            NullLogger<VoicePushToTalkCoordinator>.Instance,
-            openMicState);
+            NullLogger<VoicePushToTalkCoordinator>.Instance);
     }
 
     private static CockpitViewModel NewCockpitViewModel()

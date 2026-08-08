@@ -63,6 +63,97 @@ public class OpenMicCoordinatorTests
         await assistant.DidNotReceiveWithAnyArgs().SendAsync(default!, default);
     }
 
+    /// <summary>
+    /// AC-627 criterion 3, and the reason this ticket is not a one-line pause. The operator is half-way through a
+    /// sentence when they reach for F9. The voice-activity detector has already closed that utterance and handed
+    /// it to the transcriber; pausing the microphone does nothing about it, because it is past the paused check
+    /// and the capture loop is sitting inside the transcribe call waiting for the text. It arrives a moment later
+    /// and — before this — went straight to the assistant, which sent it. The assistant got the first half of the
+    /// sentence and the session's composer got the second.
+    /// </summary>
+    [Fact]
+    public async Task AnUtteranceAlreadyOnItsWay_WhenAHoldTakesTheMicrophone_NeverReachesTheAssistant()
+    {
+        var assistant = Substitute.For<IAssistantSessionHost>();
+        var coordinator = _CreateCoordinator(out var listener, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, assistant: assistant);
+        await coordinator.StartAsync();
+        coordinator.HandleSpeechStarted();
+
+        using (coordinator.SuspendForHold())
+        {
+            // The transcript of what was said before the key went down, landing after it did.
+            await coordinator.InjectUtteranceAsync("open the deployment notes");
+        }
+
+        await assistant.DidNotReceiveWithAnyArgs().SendAsync(default!, default);
+        listener.Received(1).Pause();
+    }
+
+    /// <summary>
+    /// Always On is off, so a hold has nothing to take: the microphone is not open and must not be touched.
+    /// Every hold asks — the caller has no business reading a flag and then acting on it — so the answer to
+    /// "nothing to suspend" belongs here, as a handle that does nothing coming and going.
+    /// </summary>
+    [Fact]
+    public async Task AHoldWhileOpenMicIsOff_DoesNotTouchTheListenerAtAll()
+    {
+        var coordinator = _CreateCoordinator(out var listener, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = false });
+        await coordinator.StartAsync();
+
+        coordinator.SuspendForHold().Dispose();
+
+        listener.DidNotReceiveWithAnyArgs().Pause();
+        listener.DidNotReceiveWithAnyArgs().Resume();
+    }
+
+    /// <summary>Criterion 2: the hold ends and the microphone comes back on its own.</summary>
+    [Fact]
+    public async Task OnceTheHoldIsOver_TheMicrophoneComesBack()
+    {
+        var coordinator = _CreateCoordinator(out var listener, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true });
+        await coordinator.StartAsync();
+
+        coordinator.SuspendForHold().Dispose();
+
+        listener.Received(1).Pause();
+        listener.Received(1).Resume();
+    }
+
+    /// <summary>And it is listening again for real — not merely un-paused with the drop still on.</summary>
+    [Fact]
+    public async Task AfterTheHold_TheNextUtteranceReachesTheAssistantAgain()
+    {
+        var assistant = Substitute.For<IAssistantSessionHost>();
+        var coordinator = _CreateCoordinator(out _, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, assistant: assistant);
+        await coordinator.StartAsync();
+        coordinator.SuspendForHold().Dispose();
+
+        await coordinator.InjectUtteranceAsync("what is the status of AC-627");
+
+        await assistant.Received(1).SendAsync("what is the status of AC-627", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// AC-9 stays intact: a hold that ends while read-aloud is still playing must not hand the microphone back —
+    /// the barge-in guard has its own reason to keep it paused, and the hold ending says nothing about that one.
+    /// </summary>
+    [Fact]
+    public async Task AHoldEndingWhileReadAloudPlays_LeavesTheBargeInPauseAlone()
+    {
+        var coordinator = _CreateCoordinator(out var listener, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true });
+        await coordinator.StartAsync();
+        coordinator.HandlePlaybackActiveChanged(true);
+
+        coordinator.SuspendForHold().Dispose();
+
+        listener.DidNotReceive().Resume();
+    }
+
     [Fact]
     public async Task StartAsync_OpenMicEnabled_PausesTheMicWhileReadAloudPlays()
     {
