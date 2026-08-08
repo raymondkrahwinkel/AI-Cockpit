@@ -429,7 +429,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         }
 
         // The result line is what closes the turn, and the host reads Status off the back of that event — so waiting
-        // for it is exactly the moment the header would look.
+        // for it is exactly the moment the header would look. Nothing answers the usage poll here, so this waits out
+        // the publish grace: the assertion below is about the rate-limit line the stream carried on its own.
         await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
 
         var status = driver.Status;
@@ -440,20 +441,23 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal(98d, window.UsedPercent, precision: 10);
     }
 
-    // The turn boundary is where the driver asks the CLI for the two figures the pill renders. This drives the whole
-    // round-trip through the real pump: the result line goes down stdout, the requests come back up stdin, their
-    // replies go down stdout again, and the property the host polls is read at the end. The subtypes are asserted by
-    // name because they are the wire contract with the CLI — a typo would leave the pill silently blank, which is
-    // exactly the failure this replaced.
+    // The turn boundary is where the driver asks the CLI for the two figures the pill renders, and this drives the
+    // whole round-trip through the real pump: the result line goes down stdout, the requests come back up stdin,
+    // their replies go down stdout again.
+    //
+    // What it pins down is the *ordering*. The host reads Status exactly once per turn, off the back of
+    // TurnCompleted (SessionViewModel._RefreshLimits — no timer, no second read), so the figures have to be in
+    // before that event goes out. Asserting them after the event would pass just as well with the poll landing a
+    // turn late, which is the bug this ordering exists to prevent. The subtypes are asserted by name because they
+    // are the wire contract with the CLI — a typo would leave the pill silently blank.
     [Fact]
-    public async Task AtTheTurnBoundary_TheDriverAsksTheCliForBothFiguresAndFoldsInTheReplies()
+    public async Task AtTheTurnBoundary_BothFiguresAreInBeforeTheTurnEventGoesOut()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
         await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
-        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
 
         var usageId = await _AwaitControlRequestAsync(fake, "get_usage");
         await fake.PushStdoutAsync(_ControlSuccess(usageId, """
@@ -463,10 +467,32 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage");
         await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"totalTokens":28981,"maxTokens":1000000,"percentage":3}"""));
 
-        var status = await _AwaitAsync(() => driver.Status is { ContextUsedPercent: not null, RateLimits.Count: 2 } ? driver.Status : null);
+        // Read at the very moment the header would look, not a poll later.
+        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+
+        var status = driver.Status;
+        Assert.NotNull(status);
         Assert.Equal(3d, status.ContextUsedPercent);
         Assert.Equal(["5h", "wk"], status.RateLimits.Select(window => window.Label));
         Assert.Equal(7d, status.RateLimits[0].UsedPercent, precision: 10);
+    }
+
+    // The turn must never be held hostage to a nicety: a CLI that answers neither request still completes the turn,
+    // just without fresh figures. Without the grace this would wait out `_UsageRequestTimeout` (15s) and the
+    // session would look stuck.
+    [Fact]
+    public async Task ACliThatNeverAnswersThePoll_StillCompletesTheTurn()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
+
+        var completed = await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+
+        Assert.IsType<PluginTurnCompleted>(completed);
+        Assert.Null(driver.Status);
     }
 
     // A refused request must release its awaiter rather than let the poll wait out its timeout — otherwise the

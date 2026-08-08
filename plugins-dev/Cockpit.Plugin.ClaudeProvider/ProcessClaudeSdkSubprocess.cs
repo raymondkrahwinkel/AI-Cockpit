@@ -63,11 +63,26 @@ internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess
         _started = true;
     }
 
+    // Serialises every write to the child's stdin. Two callers now write from different threads — the host's
+    // user-message/permission path and the driver's usage poll, whose continuation runs off the stdout pump — and
+    // `StreamWriter.WriteLineAsync` throws `InvalidOperationException` on a concurrent async write. Interleaved
+    // bytes would be worse still: this is a line protocol, so half of one JSON object inside another is a line the
+    // CLI cannot parse. The guard lives here rather than in each caller because every caller routes through here.
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
+
     public async Task WriteLineAsync(string line, CancellationToken cancellationToken = default)
     {
         var process = _RequireStartedProcess();
-        await process.StandardInput.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
-        await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await process.StandardInput.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
+            await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
     }
 
     public IAsyncEnumerable<string> ReadStdoutLinesAsync(CancellationToken cancellationToken = default) =>
