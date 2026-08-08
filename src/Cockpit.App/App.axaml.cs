@@ -384,6 +384,15 @@ public partial class App : Application
             ciWatcher.Start();
         }
 
+        // AC-643: and keep the worktree crash net ticking after the startup sweep, against the sessions that are
+        // live at that moment — a worktree whose owner crashed at noon is reconciled then, not at the next restart.
+        if (Program.Services.GetService<Services.WorktreeReconciler>() is { } worktreeReconciler)
+        {
+            worktreeReconciler.LiveSessionIds = () =>
+                cockpitViewModel.AllSessions().Select(session => session.PaneId).ToList();
+            worktreeReconciler.Start();
+        }
+
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
         if (Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore)
