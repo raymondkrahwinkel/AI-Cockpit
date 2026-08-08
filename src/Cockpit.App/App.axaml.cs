@@ -393,6 +393,19 @@ public partial class App : Application
             worktreeReconciler.Start();
         }
 
+        // AC-644: the same crash net one layer up, for the claims a session that never closed left standing.
+        if (Program.Services.GetService<Services.StaleClaimReaper>() is { } claimReaper)
+        {
+            claimReaper.LivePaneIds = () =>
+            [
+                // The assistant, which `AllSessions` does not carry, holds claims like anyone else: `cockpit-agents`
+                // is AlwaysMounted and reaches it too. Left out, its own claims would be reaped on the first tick.
+                Cockpit.Core.Assistant.AssistantIdentity.PaneId,
+                .. cockpitViewModel.AllSessions().Select(session => session.PaneId),
+            ];
+            claimReaper.Start();
+        }
+
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
         if (Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore)

@@ -7,6 +7,20 @@ namespace Cockpit.Core.Ci;
 public sealed record CiCheck(string Name, string Workflow, string Bucket, string Link)
 {
     public bool IsRed => string.Equals(Bucket, "fail", StringComparison.OrdinalIgnoreCase);
+
+    // A skipped check is a check that was never going to run, not one still to come — it blocks nothing.
+    public bool IsGreen =>
+        string.Equals(Bucket, "pass", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Bucket, "skipping", StringComparison.OrdinalIgnoreCase);
+}
+
+// What `gh pr view --json reviewDecision,mergeable` said about the merge itself (AC-645) — the half `gh pr checks`
+// does not answer. `reviewDecision` is empty when the repository requires no review.
+public sealed record PrMergeState(string ReviewDecision, string Mergeable)
+{
+    public bool IsReadyToMerge =>
+        string.Equals(Mergeable, "MERGEABLE", StringComparison.OrdinalIgnoreCase)
+        && (ReviewDecision.Length == 0 || string.Equals(ReviewDecision, "APPROVED", StringComparison.OrdinalIgnoreCase));
 }
 
 // What `gh pr checks` said, and which of it is news (AC-634). Kept apart from the watcher that runs gh so the
@@ -51,6 +65,33 @@ public static class RedChecks
     // replaces what was held rather than adding to it.
     public static IReadOnlySet<string> RedNames(IReadOnlyList<CiCheck> checks) =>
         checks.Where(check => check.IsRed).Select(check => check.Name).ToHashSet(StringComparer.Ordinal);
+
+    // AC-645: every check in and none of them red or still running. No checks at all is not green — it is a pull
+    // request whose CI has not started, or a directory gh could not read, and neither is something to call ready.
+    public static bool AllGreen(IReadOnlyList<CiCheck> checks) =>
+        checks.Count > 0 && checks.All(check => check.IsGreen);
+
+    // What `gh pr view` said about the merge. Unparseable is "nothing is known", which reads as not ready — the
+    // conservative way round, since the cost of a missed report is a nudge that comes five minutes later.
+    public static PrMergeState ParseMergeState(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new PrMergeState(string.Empty, string.Empty);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind != JsonValueKind.Object
+                ? new PrMergeState(string.Empty, string.Empty)
+                : new PrMergeState(_String(document.RootElement, "reviewDecision"), _String(document.RootElement, "mergeable"));
+        }
+        catch (JsonException)
+        {
+            return new PrMergeState(string.Empty, string.Empty);
+        }
+    }
 
     private static string _String(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

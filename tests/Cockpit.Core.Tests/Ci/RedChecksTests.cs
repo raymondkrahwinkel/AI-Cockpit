@@ -83,4 +83,33 @@ public class RedChecksTests
 
         Assert.Equal(["build"], newly.Select(check => check.Name));
     }
+
+    // AC-645. A skipped check ran on purpose and blocks nothing; a pending one is a run that can still go red.
+    [Theory]
+    [InlineData("""[{"bucket":"pass","name":"build"},{"bucket":"skipping","name":"docs"}]""", true)]
+    [InlineData("""[{"bucket":"pass","name":"build"},{"bucket":"pending","name":"docs"}]""", false)]
+    [InlineData("""[{"bucket":"pass","name":"build"},{"bucket":"cancel","name":"docs"}]""", false)]
+    [InlineData("""[{"bucket":"fail","name":"build"}]""", false)]
+    [InlineData("[]", false)]
+    public void AllGreen_IsEveryCheckInAndNoneOfThemRedOrStillRunning(string json, bool expected) =>
+        Assert.Equal(expected, RedChecks.AllGreen(RedChecks.Parse(json)));
+
+    // AC-645, criterion 4: green checks are one question, "may this be merged" is another.
+    [Theory]
+    [InlineData("""{"mergeable":"MERGEABLE","reviewDecision":""}""", true)]
+    [InlineData("""{"mergeable":"MERGEABLE","reviewDecision":"APPROVED"}""", true)]
+    [InlineData("""{"mergeable":"MERGEABLE","reviewDecision":"CHANGES_REQUESTED"}""", false)]
+    [InlineData("""{"mergeable":"MERGEABLE","reviewDecision":"REVIEW_REQUIRED"}""", false)]
+    [InlineData("""{"mergeable":"CONFLICTING","reviewDecision":"APPROVED"}""", false)]
+    [InlineData("""{"mergeable":"UNKNOWN","reviewDecision":"APPROVED"}""", false)]
+    public void IsReadyToMerge_MeansNothingIsBlockingIt(string json, bool expected) =>
+        Assert.Equal(expected, RedChecks.ParseMergeState(json).IsReadyToMerge);
+
+    // What gh prints when there is no pull request, no login, or nothing at all. Not ready, never a report.
+    [Theory]
+    [InlineData("")]
+    [InlineData("not json")]
+    [InlineData("[]")]
+    public void AMergeStateThatCannotBeRead_IsNotReady(string json) =>
+        Assert.False(RedChecks.ParseMergeState(json).IsReadyToMerge);
 }
