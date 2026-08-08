@@ -53,6 +53,55 @@ public class OpenMicListenerTests
         await speechToText.DidNotReceiveWithAnyArgs().TranscribeAsync(default!, default);
     }
 
+    /// <summary>
+    /// AC-628: starts landing together each opened a microphone. The settings load is held open rather than raced
+    /// on timing, so the second call is provably inside the window the guard used to leave open.
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_TwiceAtOnce_OpensOneCaptureDeviceAndSaysTheSecondStartDidNothing()
+    {
+        var settingsAreLoading = new TaskCompletionSource();
+        var settingsStore = Substitute.For<IVoiceSettingsStore>();
+        settingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => _SettingsHeldUntil(settingsAreLoading));
+        var capture = new FakeAudioCaptureService(_Windows(2));
+        var logger = new CapturingLogger<OpenMicListener>();
+        var listener = new OpenMicListener(
+            capture, Substitute.For<IVoiceActivityDetector>(), Substitute.For<ISpeechToTextService>(), settingsStore, logger);
+
+        var first = listener.StartAsync();
+        var second = listener.StartAsync();
+        settingsAreLoading.SetResult();
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(1, capture.CaptureCount);
+        Assert.Contains(logger.Messages, message => message.Contains("already listening", StringComparison.OrdinalIgnoreCase));
+        await listener.StopAsync();
+    }
+
+    /// <summary>The other half of AC-628: a stop has to close what is running, so "Always on" off leaves no open microphone behind.</summary>
+    [Fact]
+    public async Task StopAsync_ClosesTheCapture_SoNoMicrophoneIsLeftOpen()
+    {
+        var capture = new FakeAudioCaptureService(_Windows(2));
+        var settingsStore = Substitute.For<IVoiceSettingsStore>();
+        settingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
+        var listener = new OpenMicListener(
+            capture, Substitute.For<IVoiceActivityDetector>(), Substitute.For<ISpeechToTextService>(), settingsStore,
+            NullLogger<OpenMicListener>.Instance);
+
+        await listener.StartAsync();
+        await _WaitUntilAsync(() => capture.ActiveCaptures == 1);
+        await listener.StopAsync();
+
+        Assert.Equal(0, capture.ActiveCaptures);
+    }
+
+    private static async Task<VoiceSettings> _SettingsHeldUntil(TaskCompletionSource release)
+    {
+        await release.Task;
+        return new VoiceSettings();
+    }
+
     private static OpenMicListener _CreateListener(IVoiceActivityDetector vad, ISpeechToTextService speechToText, byte[][] frames)
     {
         var settingsStore = Substitute.For<IVoiceSettingsStore>();

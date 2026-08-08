@@ -31,8 +31,12 @@ internal sealed class OpenMicListener(
     private static readonly int WindowByteCount =
         (int)(CaptureFormat.SampleRate * AnalysisWindow.TotalSeconds) * (CaptureFormat.BitsPerSample / 8);
 
-    private CancellationTokenSource? _cancellation;
-    private Task? _loopTask;
+    // AC-628: the guard below only holds while this is held — without it, concurrent starts each opened a microphone.
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+
+    // AC-628: a set rather than the single pair it will always be, so a stop cannot silently close one of several.
+    private readonly List<(CancellationTokenSource Cancellation, Task Loop)> _running = [];
+
     private volatile bool _paused;
 
     public event EventHandler<string>? UtteranceTranscribed;
@@ -42,37 +46,62 @@ internal sealed class OpenMicListener(
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_loopTask is not null)
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return;
-        }
+            if (_running.Count > 0)
+            {
+                // AC-628: a start that does nothing left no trace, so four of them read exactly like one.
+                logger.LogInformation("Open-mic was already listening; this start was ignored.");
+                return;
+            }
 
-        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var silenceTimeout = TimeSpan.FromMilliseconds(settings.OpenMicSilenceTimeoutMs);
-        _cancellation = new CancellationTokenSource();
-        _loopTask = _ListenAsync(silenceTimeout, _cancellation.Token);
-        logger.LogInformation("Open-mic listening started (silence timeout {Timeout}ms)", settings.OpenMicSilenceTimeoutMs);
+            var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var silenceTimeout = TimeSpan.FromMilliseconds(settings.OpenMicSilenceTimeoutMs);
+            var cancellation = new CancellationTokenSource();
+            _running.Add((cancellation, _ListenAsync(silenceTimeout, cancellation.Token)));
+            logger.LogInformation("Open-mic listening started (silence timeout {Timeout}ms)", settings.OpenMicSilenceTimeoutMs);
+        }
+        finally
+        {
+            _startGate.Release();
+        }
     }
 
     public async Task StopAsync()
     {
-        if (_cancellation is null || _loopTask is null)
-        {
-            return;
-        }
-
-        await _cancellation.CancelAsync().ConfigureAwait(false);
+        await _startGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await _loopTask.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
+            if (_running.Count == 0)
+            {
+                return;
+            }
 
-        _cancellation.Dispose();
-        _cancellation = null;
-        _loopTask = null;
+            var running = _running.ToArray();
+            _running.Clear();
+
+            foreach (var (cancellation, loop) in running)
+            {
+                await cancellation.CancelAsync().ConfigureAwait(false);
+                try
+                {
+                    await loop.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+
+                cancellation.Dispose();
+            }
+
+            // AC-628: the log carried starts and no stops, so a mic left open read like one that was closed.
+            logger.LogInformation("Open-mic listening stopped ({Loops} loop(s) closed).", running.Length);
+        }
+        finally
+        {
+            _startGate.Release();
+        }
     }
 
     public void Pause() => _paused = true;
