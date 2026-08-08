@@ -1,3 +1,4 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Assistant;
@@ -153,7 +154,12 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         AssistantActivity.Transcribing => "Assistant",
         // The percentage, where the step has one. The step's own words are the headline above; this line is the
         // number, and a step without a total shows nothing here rather than a made-up one.
-        AssistantActivity.Preparing => PreparationProgress is { } fraction ? $"{fraction:P0}" : null,
+        // Written out rather than formatted with "P0": that one takes the running culture's percent pattern, which
+        // on the Linux CI puts a space before the sign ("63 %") and on this machine does not — a UI string that
+        // reads differently per machine, and a test that only passes where it was written.
+        AssistantActivity.Preparing => PreparationProgress is { } fraction
+            ? string.Create(CultureInfo.InvariantCulture, $"{fraction * 100:0}%")
+            : null,
         AssistantActivity.Thinking => "Assistant",
         AssistantActivity.Speaking => "Assistant",
         AssistantActivity.AwaitingOperator => "Open the chat to answer",
