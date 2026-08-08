@@ -2208,7 +2208,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                         RestoreOffer = restoredOffer with
                         {
                             Availability = SessionRestoreAvailability.Gone,
-                            Explanation = _DegradedTurnExplanation(turn),
+                            Explanation = _DegradedTurnExplanation(turn, restoredOffer.State?.WorkingDirectory),
                         };
                     }
                 }
@@ -2498,10 +2498,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // What a restored pane's degraded offer shows for why (AC-410) — the provider's own `errors[]` when it reported one, else the bare subtype, since `TurnCompleted.Result` is exactly what an error_during_execution turn does not carry.
-    private static string _DegradedTurnExplanation(TurnCompleted turn) =>
-        turn.Errors is { Count: > 0 } errors
+    //
+    // AC-539: the provider's reason ("No conversation found with session ID: …") names the id but not the one thing
+    // that decides whether it can be found — Claude keeps its saved conversations per working directory, so a pane
+    // that came back somewhere else gets exactly that message with nothing pointing at the cause. Naming the
+    // directory the resume was actually made in turns it from a dead end into something the operator can act on.
+    private static string _DegradedTurnExplanation(TurnCompleted turn, string? workingDirectory)
+    {
+        var reason = turn.Errors is { Count: > 0 } errors
             ? string.Join('\n', errors)
             : $"Claude could not resume the earlier conversation ({turn.Subtype}).";
+
+        return workingDirectory is { Length: > 0 } directory
+            ? $"{reason}\nThe resume was made in {directory} — Claude keeps its conversations per working directory, so one saved elsewhere is not found here."
+            : reason;
+    }
 
     // Pulls the driver's latest limits into the header bars. Read at each turn boundary rather than on a timer:
     // the provider reports how full the context window is when a turn ends, so that is when the numbers change —

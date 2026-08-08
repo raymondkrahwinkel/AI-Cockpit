@@ -217,7 +217,8 @@ public class SessionRestoreViewTests
         var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
 
-        var state = new SessionStateRecord("known-sdk", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, "/repo", null, null, "default", DateTimeOffset.UtcNow);
+        // A directory that exists: AC-539 refuses to offer a resume into one that no longer does.
+        var state = new SessionStateRecord("known-sdk", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, Path.GetTempPath(), null, null, "default", DateTimeOffset.UtcNow);
         var ttyState = state with { PaneId = "known-tty" };
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state, ttyState });
@@ -273,7 +274,7 @@ public class SessionRestoreViewTests
             var realStore = new SessionStateStore(path, NullLogger<SessionStateStore>.Instance);
             await realStore.RecordAsync(new SessionStateRecord(
                 "pane-1", "work", "ClaudeCli", "conv-old", SessionConversationIdState.Known,
-                "/repo", null, null, "default", DateTimeOffset.UtcNow));
+                Path.GetTempPath(), null, null, "default", DateTimeOffset.UtcNow));
 
             var pane = new WorkspacePane("pane-1", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Sdk };
             var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
@@ -582,7 +583,7 @@ public class SessionRestoreViewTests
         var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
 
-        var state = new SessionStateRecord("known-tty-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, "/repo", null, null, "default", DateTimeOffset.UtcNow);
+        var state = new SessionStateRecord("known-tty-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, Path.GetTempPath(), null, null, "default", DateTimeOffset.UtcNow);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
         stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
@@ -614,7 +615,7 @@ public class SessionRestoreViewTests
         var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
 
-        var state = new SessionStateRecord("known-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, "/repo", null, null, "default", DateTimeOffset.UtcNow);
+        var state = new SessionStateRecord("known-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, Path.GetTempPath(), null, null, "default", DateTimeOffset.UtcNow);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
         stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
@@ -661,7 +662,7 @@ public class SessionRestoreViewTests
         var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
 
-        var startedState = new SessionStateRecord("started-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, "/repo", null, null, "default", DateTimeOffset.UtcNow);
+        var startedState = new SessionStateRecord("started-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, Path.GetTempPath(), null, null, "default", DateTimeOffset.UtcNow);
         var unstartedState = startedState with { PaneId = "unstarted-pane" };
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { startedState, unstartedState });

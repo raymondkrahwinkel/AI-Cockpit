@@ -509,6 +509,32 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Empty(status.RateLimits);
     }
 
+    // AC-539: a resume the CLI cannot resolve ("No conversation found with session ID: …", measured against
+    // claude.exe) prints its result line and exits immediately — so stdout ends while the result's own publish is
+    // still parked behind the usage poll. Completing the stream there dropped that PluginTurnCompleted, and the
+    // host's restore banner (SessionViewModel, AC-410) only degrades to "Gone" on a TurnCompleted: the operator
+    // got a silently dead pane with no banner at all instead of the CLI's own reason.
+    [Fact]
+    public async Task AResultLineFollowedByTheProcessExiting_StillReachesTheHost()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: "gone", options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""
+        {"type":"result","subtype":"error_during_execution","session_id":"gone","is_error":true,"errors":["No conversation found with session ID: gone"]}
+        """);
+
+        // No control reply is ever pushed — a dead CLI answers nothing, so the usage poll waits out its grace.
+        fake.CompleteStdout();
+
+        var completed = (PluginTurnCompleted)await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+        Assert.True(completed.IsError);
+        Assert.Equal("error_during_execution", completed.Subtype);
+        Assert.NotNull(completed.Errors);
+        Assert.Equal("No conversation found with session ID: gone", Assert.Single(completed.Errors));
+    }
+
     // The CLI's reply envelope, verbatim from a live 2.1.226 session.
     private static string _ControlSuccess(string requestId, string payloadJson) =>
         $$$"""{"type":"control_response","response":{"subtype":"success","request_id":"{{{requestId}}}","response":{{{payloadJson.Trim()}}}}}""";
