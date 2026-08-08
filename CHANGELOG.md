@@ -40,6 +40,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   stay whatever the profile says and are refused outright when asked for. A session that needs to run with different
   access runs under a profile that says so.
 
+- added: the voice assistant is told when a session it started finishes, gets stuck or falls over, instead of asking
+  again and again whether it has. It can now put a watch on a session and be messaged when that session stops
+  working, when it is stopped on a permission nobody has clicked, when its pane disappears without ever having said
+  anything, when it has written nothing for a while, or when a line matching something it asked about shows up. Each
+  message carries the last few lines the session wrote, so "it stopped" arrives already saying whether that means
+  finished or waiting on an answer. Nothing is watched unless the assistant asks for it, and a watch on a session
+  that is quietly working costs nothing.
+
 - added: a session provider now states which options it understands and what values they take — Claude its permission
   mode, model and effort levels, Codex its own sandbox modes. Until now only the New-session dialog knew Claude's
   vocabulary and nothing knew Codex's, so anything else asking "what can I set for this provider?" had to guess. A

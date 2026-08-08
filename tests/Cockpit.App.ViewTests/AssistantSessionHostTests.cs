@@ -471,6 +471,25 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void LaunchOptions_CarryTheWatcherAndEveryEventItCanBeArmedFor()
+    {
+        // AC-640, asserted the way AC-639's test above is: off the instruction a launch actually delivers. Naming
+        // only the two tools would leave the assistant knowing it can watch something and not what it can watch
+        // for — and the point of the ticket is that it stops polling `list_sessions`, which it will not do for
+        // events it cannot name.
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains("watch_session", instruction, StringComparison.Ordinal);
+        Assert.Contains("unwatch_session", instruction, StringComparison.Ordinal);
+        Assert.Contains("busy-to-idle", instruction, StringComparison.Ordinal);
+        Assert.Contains("needs-attention", instruction, StringComparison.Ordinal);
+        Assert.Contains("gone", instruction, StringComparison.Ordinal);
+        Assert.Contains("stuck", instruction, StringComparison.Ordinal);
+        Assert.Contains("pattern", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LaunchOptions_TheAssistantsOwnInstruction_WinsOverAnythingTheProfileStoredOnThatKey()
     {
         // The profile's start defaults are copied first and the standing instruction is written last, on purpose:

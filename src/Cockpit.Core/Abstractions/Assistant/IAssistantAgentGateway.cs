@@ -129,6 +129,54 @@ public interface IAssistantAgentGateway
     /// </para>
     /// </remarks>
     Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Arms the host-side session watcher (AC-640) on <paramref name="paneId"/> for one or more of the five event
+    /// kinds, so the assistant is told when that session finishes, stalls, disappears or prints something it asked
+    /// to hear about — instead of polling <c>list_sessions</c> for it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why arming is per pane rather than automatic.</b> <c>CiWatcher</c> watches every live checkout because
+    /// every open checkout is worth checking; a session's status is not. The operator starts sessions the assistant
+    /// was never asked to follow, and reporting on those would be the cockpit answering a question nobody asked.
+    /// <para>
+    /// Refuses rather than throws, like everything else here: a pane id that resolves to nothing, <c>stuck</c> or
+    /// <c>pattern</c> on a pane that keeps no transcript in the cockpit, and a <c>pattern</c> that is not a valid
+    /// regular expression — the last one at arm time rather than on the first tick, where nobody would see it.
+    /// </para>
+    /// </remarks>
+    /// <param name="paneId">The session to watch, as <c>list_sessions</c> reports it.</param>
+    /// <param name="events">Which of the five kinds to watch for; an unknown one is refused.</param>
+    /// <param name="afterMinutes">How long without a new transcript row counts as stuck, or null for the default.</param>
+    /// <param name="pattern">The regular expression the <c>pattern</c> event matches new transcript rows against.</param>
+    Task<AssistantWatchResult> WatchSessionAsync(
+        string paneId,
+        IReadOnlyList<string>? events,
+        int? afterMinutes = null,
+        string? pattern = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Disarms the watch on <paramref name="paneId"/>. True when one was armed; false says there was nothing to
+    /// stop, which is worth reporting rather than dressing up as a stop that happened.
+    /// </summary>
+    /// <remarks>
+    /// A pane the watcher itself finds gone disarms on its own, so this is for the ordinary case — the assistant
+    /// stopping a session it started, or losing interest in one it armed.
+    /// </remarks>
+    Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default);
+}
+
+// What came of arming a watch. Same shape and same reason as `AgentStopResult`: a refusal is a sentence the
+// assistant says out loud, not an exception it fails on.
+//
+// `Name`: the watched session's title, so the confirmation names what is being watched rather than a pane id nobody
+// can check by ear.
+public sealed record AssistantWatchResult(bool Ok, string? Name, string? Error)
+{
+    public static AssistantWatchResult Watched(string name) => new(true, name, null);
+
+    public static AssistantWatchResult Refused(string error) => new(false, null, error);
 }
 
 // What came of a message. Same shape and same reason as `AgentStopResult`.

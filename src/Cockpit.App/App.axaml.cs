@@ -384,6 +384,14 @@ public partial class App : Application
             ciWatcher.Start();
         }
 
+        // AC-640: the same shape one layer along, for the sessions the assistant armed a watch on with
+        // `watch_session`. Started with nothing watched, unlike the CI one: it only ever follows what it was asked to.
+        if (Program.Services.GetService<Services.SessionWatcher>() is { } sessionWatcher)
+        {
+            sessionWatcher.Probe = Services.SessionWatcher.ProbeOf(cockpitViewModel);
+            sessionWatcher.Start();
+        }
+
         // AC-643: and keep the worktree crash net ticking after the startup sweep, against the sessions that are
         // live at that moment — a worktree whose owner crashed at noon is reconciled then, not at the next restart.
         if (Program.Services.GetService<Services.WorktreeReconciler>() is { } worktreeReconciler)

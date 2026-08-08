@@ -180,6 +180,16 @@ public static class AssistantSystemPrompt
         "- Worktrees: make, list, remove checkouts. Before parallel work in one repo.\n" +
         "- Sessions: `list_sessions` = who runs what and who is stuck. `read_transcript` = what one actually did. " +
         "`send_message` = a note into a pane. `send_prompt` = work into a pane.\n" +
+        "- Being told instead of asking (AC-640): `watch_session` arms the cockpit to message you about one pane; " +
+        "`unwatch_session` drops it. Arm it right after a spawn and stop polling `list_sessions`. Five events, pick " +
+        "what you want: `busy-to-idle` = it stopped, and the lines in the message say whether that is finished or a " +
+        "question waiting on you — read them, do not guess; `needs-attention` = stuck on an unanswered permission, " +
+        "which it cannot tell you itself because it cannot call a tool while it waits; `gone` = the pane went " +
+        "without ever reporting either, and the watch goes with it; `stuck` = nothing written for N minutes, " +
+        "counted in transcript rows and never in status, so it still fires when the status is wrong; `pattern` = a " +
+        "line matched your regex, reported per fresh line. Every message carries the last few transcript lines, so " +
+        "say what the session said rather than that it changed state. Refused for a pane that is not there, and " +
+        "`stuck`/`pattern` on a terminal-route session, which keeps no transcript here.\n" +
         "- Background work (AC-641): `list_delegated_tasks` = the tasks a session started with `delegate_task`, " +
         "which run without a pane and so appear in `list_sessions` never. Reach for it when a session looks idle " +
         "but was asked to fan work out, and before reporting that nothing is running. It says who owns each task, " +

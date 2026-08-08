@@ -390,6 +390,23 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Calls.Add($"SendPromptAsync({paneId})");
             return Task.FromResult(AgentPromptResult.Handed(paneId, "AC-545 tests", delivered: true));
         }
+
+        public Task<AssistantWatchResult> WatchSessionAsync(
+            string paneId,
+            IReadOnlyList<string>? events,
+            int? afterMinutes = null,
+            string? pattern = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"WatchSessionAsync({paneId})");
+            return Task.FromResult(AssistantWatchResult.Watched("AC-545 tests"));
+        }
+
+        public Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"UnwatchSessionAsync({paneId})");
+            return Task.FromResult(true);
+        }
     }
 
     /// <summary>
