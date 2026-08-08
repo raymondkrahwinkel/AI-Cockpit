@@ -46,7 +46,18 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // ConfinesFileAccessToWorkingDirectory (AC-174): Codex spawns its app-server in the session's working directory
             // and edits within that cwd, so an isolated Autopilot run stays in its worktree. Declared on the registration
             // because the host honours these, not the driver instance's own Capabilities.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true },
+            // DeclaredOptions (AC-649): Codex's own vocabulary, not Claude's — a sandbox policy, no permission mode and
+            // no effort. Model is read as well but has no fixed set: it is whatever this machine's codex lists.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)
+            {
+                SupportsEnvVars = true,
+                ConfinesFileAccessToWorkingDirectory = true,
+                DeclaredOptions =
+                [
+                    new(CodexAppServerSessionDriver.SandboxOptionKey, "Sandbox", [.. CodexSandbox.Choices.Select(choice => new PluginSessionOptionValue(choice, choice))], "read-only"),
+                    new(CodexAppServerSessionDriver.ModelOptionKey, "Model"),
+                ],
+            },
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson, host))
         {
             Options = [sdkSandbox, sdkModelFallback],

@@ -1243,6 +1243,24 @@ parameter yet, so a plugin can't actually back it (setting it true would be an u
 usable once that lands. There is deliberately nothing here for live model switch, plan mode, or thinking budget
 — a plugin driver couldn't back those, so the host always reports them unsupported for a plugin-driven session.
 
+`DeclaredOptions` is the schema behind the otherwise opaque options map: which keys this driver reads, what they
+mean and which values they take. It is init-only and empty by default, so an existing plugin keeps its constructor
+and simply declares nothing.
+
+```csharp
+Capabilities = new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)
+{
+    DeclaredOptions =
+    [
+        new("sandbox", "Sandbox", [new("read-only", "Read only"), new("workspace-write", "Workspace write")], "read-only"),
+        new("model", "Model"),   // no known values = free-form
+    ],
+};
+```
+
+Declare only what your driver actually reads. `PluginSessionLaunchOption` (on the registration) asks the
+New-session dialog to render a control; this one renders nothing and only states what exists.
+
 ### `IPluginProviderConfigView`
 
 ```csharp

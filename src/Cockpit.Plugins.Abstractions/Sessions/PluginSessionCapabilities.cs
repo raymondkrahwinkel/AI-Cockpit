@@ -77,4 +77,13 @@ public sealed record PluginSessionCapabilities(
     /// unconditional confinement contract unchanged.
     /// </summary>
     public bool ConfinesViaPermissionsOnly { get; init; }
+
+    /// <summary>
+    /// The session options this provider actually understands, in its own vocabulary (AC-649) — Claude's
+    /// <c>permission-mode</c>/<c>model</c>/<c>effort</c>, Codex's <c>sandbox</c> — so a consumer can read what a key
+    /// means and which values it takes instead of guessing at an opaque options map. Init-only for the same
+    /// back-compat reason as <see cref="SupportsLiveModelSwitch"/>; empty by default, and a provider that reads no
+    /// options leaves it empty rather than inheriting anyone else's keys.
+    /// </summary>
+    public IReadOnlyList<PluginSessionOptionDescriptor> DeclaredOptions { get; init; } = [];
 }
