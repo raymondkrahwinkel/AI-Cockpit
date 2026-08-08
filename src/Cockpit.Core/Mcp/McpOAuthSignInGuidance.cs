@@ -38,6 +38,12 @@ public static class McpOAuthSignInGuidance
             + "sign-in is still good could not be confirmed. Sending the same request again is the first thing to "
             + "try; only if it keeps being refused is the sign-in itself worth renewing from Settings ▸ MCP servers.",
 
+        McpOAuthAttentionReason.RenewalCouldNotBeConfirmed =>
+            $"the cockpit could not renew its sign-in for '{serverName}' just now, and '{serverName}' did not say the "
+            + "sign-in was the problem — so whether it is still good could not be confirmed. Sending the same request "
+            + "again is the first thing to try; only if it keeps failing is the sign-in itself worth renewing from "
+            + "Settings ▸ MCP servers.",
+
         // Not reached from a failure: None is what a successful acquire carries. Answering with a sentence rather
         // than throwing keeps a logging path from becoming the thing that breaks a session.
         _ => $"the cockpit cannot present a credential to '{serverName}'.",

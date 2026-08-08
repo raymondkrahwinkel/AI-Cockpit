@@ -479,4 +479,96 @@ public class McpOAuthProxyTests
             Assert.Null(await proxy.MountAsync(stdioServer));
         }
     }
+
+    /// <summary>
+    /// Answers each <c>AcquireAsync</c> with the next entry in <paramref name="answers"/>, repeating the last one
+    /// once they run out, and counts the asks — "exactly one second chance, never a loop" (AC-646) is a claim about
+    /// that count, so it has to be a number a test can read rather than a shape it hopes for.
+    /// </summary>
+    private static (IMcpOAuthCoordinator Coordinator, Func<int> Asks) _CoordinatorAnsweringInTurn(params McpOAuthAccess[] answers)
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var asks = 0;
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(_ => answers[Math.Min(Interlocked.Increment(ref asks) - 1, answers.Length - 1)]);
+
+        return (coordinator, () => Volatile.Read(ref asks));
+    }
+
+    [Fact]
+    public async Task WhenASilentRenewalFailsWithoutAVerdict_ItIsAskedAgainAndTheCallGoesThrough()
+    {
+        await using var upstream = await InProcessUpstreamServer.StartAsync((context, _) =>
+            context.Response.WriteAsync("""{"jsonrpc":"2.0","id":11,"result":{"tools":[]}}"""));
+
+        var (coordinator, asks) = _CoordinatorAnsweringInTurn(
+            McpOAuthAccess.AuthorizationRequired with { Reason = McpOAuthAttentionReason.RenewalCouldNotBeConfirmed },
+            McpOAuthAccess.Authorized(FreshToken));
+        var (proxy, key) = _Proxy(coordinator);
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":11,"method":"tools/list"}""", key));
+
+            // The measurement this exists for: one renewal failed, the very next one worked, and in between a call
+            // was lost and an agent was told to go and authorize something. Given a second chance the caller sees
+            // nothing at all — no error, no message, and the call it made simply happens.
+            Assert.Equal(2, asks());
+            Assert.Equal($"Bearer {FreshToken}", upstream.LastAuthorization);
+            Assert.Equal("""{"jsonrpc":"2.0","id":11,"result":{"tools":[]}}""", await response.Content.ReadAsStringAsync());
+        }
+    }
+
+    [Fact]
+    public async Task WhenASilentRenewalKeepsFailing_TheCallIsAnsweredWithTryAgain_AndNeverAskedAThirdTime()
+    {
+        await using var upstream = await InProcessUpstreamServer.StartAsync((context, _) => context.Response.WriteAsync("{}"));
+
+        var (coordinator, asks) = _CoordinatorAnsweringInTurn(
+            McpOAuthAccess.AuthorizationRequired with { Reason = McpOAuthAttentionReason.RenewalCouldNotBeConfirmed });
+        var (proxy, key) = _Proxy(coordinator);
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":12,"method":"tools/list"}""", key));
+            var message = (string)JsonNode.Parse(await response.Content.ReadAsStringAsync())!["error"]!["message"]!;
+
+            // Exactly once, the same discipline the refusal path already keeps: a server that fails everything must
+            // cost two renewals per call and not a storm. And what the caller is finally told is what is actually
+            // known — that it could not be confirmed — rather than a verdict on a sign-in nobody has examined.
+            Assert.Equal(2, asks());
+            Assert.Contains("again is the first thing to try", message, StringComparison.Ordinal);
+            Assert.DoesNotContain("revoked", message, StringComparison.Ordinal);
+            Assert.Null(upstream.LastMethod);
+        }
+    }
+
+    [Fact]
+    public async Task WhenTheSignInIsGenuinelyRevoked_TheCallIsNotRetriedAndTheOperatorIsToldToSignIn()
+    {
+        await using var upstream = await InProcessUpstreamServer.StartAsync((context, _) => context.Response.WriteAsync("{}"));
+
+        var (coordinator, asks) = _CoordinatorAnsweringInTurn(
+            McpOAuthAccess.AuthorizationRequired with { Reason = McpOAuthAttentionReason.SignInExpired });
+        var (proxy, key) = _Proxy(coordinator);
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":13,"method":"tools/list"}""", key));
+            var message = (string)JsonNode.Parse(await response.Content.ReadAsStringAsync())!["error"]!["message"]!;
+
+            // The mirror of the bug, and the easier mistake to make while fixing it. The shortest route to "never
+            // wrongly report a sign-out again" is to answer "try again" everywhere — and then the one genuinely dead
+            // grant says it too, forever, and nobody ever goes and signs in. A verdict the server gave is final:
+            // asked once, relayed as it stands.
+            Assert.Equal(1, asks());
+            Assert.Contains("press Sign in", message, StringComparison.Ordinal);
+        }
+    }
 }
