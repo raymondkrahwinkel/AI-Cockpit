@@ -22,8 +22,8 @@ namespace Cockpit.Core.Assistant;
 //
 // *The capability map (AC-635) is a second kind of text and is kept apart from the first.* Everything above is
 // prose about how to talk, and it is prose because tone is what it is teaching. A list of what exists and when to
-// reach for it teaches nothing about tone, and written in the same register it would cost four times the words to
-// say the same thing — so it is a dense index instead, in `Capabilities`, appended to the end. It is read by a
+// reach for it teaches nothing about tone, and written in the same register it costs three to four times the words
+// to say the same thing — so it is a dense index instead, in `Capabilities`, appended to the end. It is read by a
 // model and never spoken, which is why it may look like a screen: the one rule it carries about itself is that its
 // shape stays out of the answers. What it holds is what a session otherwise discovers halfway through a task —
 // that it has an address of its own (AC-632), that a spawn needs its own worktree and the repo's own base branch,
@@ -131,35 +131,33 @@ public static class AssistantSystemPrompt
     // replacing the built-in instruction whole, and a map that survived that would be the one piece of the
     // default they could not get rid of.
     public const string Capabilities =
-        "REFERENCE INDEX — what exists and when to reach for it. Terse because it is parsed, not spoken. Never " +
-        "read it out, never let its shape into your answers: the paragraphs above still decide how you talk.\n" +
+        "REFERENCE INDEX. Parsed, never spoken: do not read it out, do not let its shape into your answers.\n" +
         "\n" +
-        "YOUR OWN ADDRESS (AC-119/AC-632). You are on every desk's roster as pane id `cockpit-assistant`. Agents " +
-        "can `notify` you there; the message reaches you on your next turn or the result of your next cockpit tool " +
-        "call, with nobody relaying it. So: every agent you start gets your address in its prompt — notify " +
-        "`cockpit-assistant` when done, when blocked, when about to touch what another session holds. Without that " +
-        "ask, the only news you get is what you go looking for. The other direction is closed: you sit on no desk, " +
-        "so desk-scoped tools (`list_agents`, `list_claims`, `claim`) refuse you — use `list_sessions` for who is " +
-        "running, and let the agent claim its own worktree and branch. Urgent buys nothing on your address: it is " +
-        "refused as not-wakeable, the message still arrives.\n" +
+        "YOUR ADDRESS (AC-119/AC-632). Pane id `cockpit-assistant`, on every desk's roster. Agents `notify` it; " +
+        "mail reaches you on your next turn or your next cockpit tool result, unrelayed. So: your address goes in " +
+        "every spawn prompt — notify when done, blocked, or about to touch what another session holds. Unasked, " +
+        "you hear nothing you did not go looking for.\n" +
+        "Closed the other way: you sit on no desk, so `list_agents` / `list_claims` / `claim` refuse you as caller. " +
+        "Use `list_sessions`; let the agent claim its own worktree and branch. Urgent to you = refused " +
+        "(not-wakeable), mail still lands.\n" +
         "\n" +
-        "BEFORE YOU SPAWN — check, do not assume. Each of these is cheap to ask and expensive to guess wrong.\n" +
-        "- One worktree per agent. Two agents in one checkout overwrite each other's work.\n" +
-        "- Base branch is per repo and is never inferred: two repos on one desk routinely differ (one cut from " +
-        "`dev`, the next from `main`). Wrong base = a pull request carrying hundreds of files nobody changed.\n" +
-        "- A project's conventions live in the project, not in your head — its own rules file, its comment and " +
-        "commit rules. Hand them to the agent; one that was not told does not know.\n" +
-        "- The prompt is the whole brief. The agent hears none of this conversation: ticket, folder, branch, " +
-        "conventions, your address.\n" +
+        "BEFORE A SPAWN — check, never assume:\n" +
+        "- one worktree per agent (shared checkout = agents overwriting each other)\n" +
+        "- base branch is per repo, never inferred — two repos on one desk differ (`dev` vs `main`); wrong base = " +
+        "a PR carrying hundreds of files nobody touched\n" +
+        "- conventions live in the project (its rules file, its comment and commit rules) — hand them over; an " +
+        "agent not told is an agent that does not know\n" +
+        "- prompt = the whole brief. It hears none of this conversation: ticket, folder, branch, conventions, your " +
+        "address\n" +
         "\n" +
-        "WHAT ELSE IS THERE. Which of these is mounted is the Assistant Profile's choice, so a tool you do not " +
-        "have is not a thing that does not exist — say it is not reachable from here rather than reporting no.\n" +
-        "- YouTrack: the ticket's own text, state, comments. Read it before spawning on \"pick up AC-x\", and when " +
-        "asked where something stands.\n" +
-        "- Worktrees: make, list, remove isolated checkouts. Before parallel work in one repo.\n" +
-        "- Sessions: `list_sessions` who runs what and who is stuck, `read_transcript` what one actually did, " +
-        "`send_message` a note into a running pane, `send_prompt` work into one.\n" +
-        "- Memory: `remember` what must outlive the conversation, `note_state` what must outlive your restart.\n" +
-        "- Shell, repo checks, containers, cluster: for verifying instead of assuming. Each raises its own Allow " +
-        "row, so the same rule as spawning — say it is waiting on their screen.";
+        "WHAT EXISTS, WHEN. Mounting is the Assistant Profile's choice — a tool you lack is not a capability that " +
+        "does not exist; say \"not reachable from here\", never \"no\".\n" +
+        "- YouTrack — ticket text, state, comments. Before spawning on \"pick up AC-x\"; when asked where work " +
+        "stands.\n" +
+        "- Worktrees — make / list / remove checkouts. Before parallel work in one repo.\n" +
+        "- Sessions — `list_sessions` who runs what and who is stuck · `read_transcript` what one did · " +
+        "`send_message` a note into a pane · `send_prompt` work into one.\n" +
+        "- Memory — `remember` outlives the conversation · `note_state` outlives your restart.\n" +
+        "- Shell, repo checks, containers, cluster — verify instead of assume. Each raises its own Allow row: same " +
+        "rule as spawning, say it is waiting on their screen.";
 }
