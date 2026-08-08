@@ -445,6 +445,20 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void LaunchOptions_CarryThatASpawnMayOverrideOptions_AndThatThePermissionModeIsNeverOneOfThem()
+    {
+        // AC-648 criterion 6, asserted the way AC-639's test above is. Both halves matter: an assistant that never
+        // learns the `options` map exists cannot honour "the same profile, but lighter", and one that learns it
+        // without the exception will try the permission mode and spend a turn being refused.
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains("`start_agent` takes an `options` map", instruction, StringComparison.Ordinal);
+        Assert.Contains("PERMISSION-MODE IS NEVER OVERRIDABLE", instruction, StringComparison.Ordinal);
+        Assert.Contains("`list_profiles` showed for that profile", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LaunchOptions_CarryTheToolThatSeesDelegatedBackgroundWork()
     {
         // AC-641, asserted the way AC-639's test above is: off the instruction a launch actually delivers, not off

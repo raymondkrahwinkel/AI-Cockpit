@@ -166,6 +166,67 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
+    public async Task SpawnThatTriesToSetThePermissionMode_IsRefused_AndNothingIsStarted()
+    {
+        // AC-648 criterion 3 (Raymond, 2026-08-08), asserted on the whole spawn path rather than on the merge alone:
+        // the claim is that the request is turned away, not that the mode happened to survive it. A spawn that
+        // stripped the key and started anyway would leave the assistant reporting a session it never got.
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(desk), host: null, _PluginProfile(("permission-mode", "default")), _ClaudeRegistry()));
+        var before = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Count);
+
+        var result = await gateway.SpawnAsync(_Request(desk.Id) with
+        {
+            OptionOverrides = new Dictionary<string, string> { ["permission-mode"] = "bypassPermissions" },
+        });
+
+        Assert.False(result.Ok);
+        Assert.Null(result.PaneId);
+        Assert.Contains("not something a spawn may set", result.Error);
+        Assert.Equal(before, Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Count));
+        Assert.Equal(result.Error, Assert.Single(trail.Entries).Refusal);
+    }
+
+    [Fact]
+    public async Task SpawnThatOverridesAnOptionTheProviderDoesDeclare_IsNotRefused()
+    {
+        // The other side of the two refusals below: `effort` is Claude's own key, so it goes through. What the
+        // merged map then contains — criterion 4, every unnamed key still the profile's own — is pinned where the
+        // merging happens, in `SpawnOptionOverridesTests`; a started session keeps its launch options private.
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() => _Gateway(
+            _Settings(desk), host: null, _PluginProfile(("permission-mode", "bypassPermissions"), ("effort", "high")),
+            _ClaudeRegistry()));
+
+        var result = await gateway.SpawnAsync(_Request(desk.Id) with
+        {
+            OptionOverrides = new Dictionary<string, string> { ["effort"] = "low" },
+        });
+
+        Assert.True(result.Ok, result.Error);
+    }
+
+    [Fact]
+    public async Task SpawnWithAnOptionKeyTheProviderNeverDeclared_IsRefusedWithWhatItDoesTake()
+    {
+        // Criterion 2. The refusal is the whole point of AC-649 landing first: without a declared schema this would
+        // be accepted and handed to a CLI that has no such flag, and the session would come up wrong.
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(desk), host: null, _PluginProfile(), _ClaudeRegistry()));
+
+        var result = await gateway.SpawnAsync(_Request(desk.Id) with
+        {
+            OptionOverrides = new Dictionary<string, string> { ["sandbox-policy"] = "read-only" },
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("no option called 'sandbox-policy'", result.Error);
+        Assert.Contains("'effort'", result.Error);
+    }
+
+    [Fact]
     public async Task SpawnWithAProfileLabelTheCockpitDoesNotHave_IsRefused_NamesTheOnesItDoes_AndReachesTheTrail()
     {
         // By label and never by "the first one that looks close": the profile decides provider and model, so a
@@ -840,14 +901,19 @@ public class AssistantAgentGatewayTests
     /// the headless platform owns, and the gateway marshals onto that same thread when it is called.
     /// </summary>
     private static (AssistantAgentGateway Gateway, CockpitViewModel Cockpit, RecordingSpawnTrail Trail) _Gateway(
-        WorkspaceSettings settings, CockpitViewModel? host = null)
+        WorkspaceSettings settings,
+        CockpitViewModel? host = null,
+        // The profile a spawn runs under and the registry its provider is resolved through — defaulted to a plain
+        // Claude-config profile, which is what every test that is not about provider options wants.
+        SessionProfile? profile = null,
+        IPluginProviderRegistry? pluginProviders = null)
     {
         var cockpit = host ?? _Cockpit();
         cockpit.Workspaces.Settings = settings;
 
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(
-            [new SessionProfile(ProfileLabel, new ClaudeConfig(@"C:\fake\.claude"))]));
+            [profile ?? new SessionProfile(ProfileLabel, new ClaudeConfig(@"C:\fake\.claude"))]));
 
         var trail = new RecordingSpawnTrail();
         return (
@@ -858,7 +924,7 @@ public class AssistantAgentGatewayTests
                 Substitute.For<IWorkspaceAgentGateway>(),
                 Substitute.For<IAgentMessageInbox>(),
                 Substitute.For<IAgentNotifyAuditLog>(),
-                Substitute.For<IPluginProviderRegistry>()),
+                pluginProviders ?? Substitute.For<IPluginProviderRegistry>()),
             cockpit,
             trail);
     }
@@ -881,6 +947,32 @@ public class AssistantAgentGatewayTests
             Substitute.For<IAgentMessageInbox>(),
             Substitute.For<IAgentNotifyAuditLog>(),
             pluginProviders);
+    }
+
+    // A plugin-backed profile under the test's own label, with whatever start defaults the caller wants on it —
+    // the only shape that resolves to a provider registration, and so the only one an override can be checked against.
+    private static SessionProfile _PluginProfile(params (string Key, string Value)[] optionDefaults) =>
+        new(ProfileLabel, new PluginProviderConfig("claude", "{}"))
+        {
+            Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: false)
+            {
+                OptionDefaults = optionDefaults.ToDictionary(option => option.Key, option => option.Value),
+            },
+        };
+
+    // Claude's three declared options (AC-649), as the real plugin registers them.
+    private static IPluginProviderRegistry _ClaudeRegistry()
+    {
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("claude").Returns(_ProviderRegistration(
+            "claude",
+            "Claude",
+            new PluginSessionOptionDescriptor("permission-mode", "Permission mode",
+                [new PluginSessionOptionValue("default", "Ask permissions"), new PluginSessionOptionValue("bypassPermissions", "Bypass permissions")], "default"),
+            new PluginSessionOptionDescriptor("model", "Model"),
+            new PluginSessionOptionDescriptor("effort", "Effort",
+                [new PluginSessionOptionValue("low", "Low"), new PluginSessionOptionValue("high", "High")], "medium")));
+        return registry;
     }
 
     private static SessionProviderRegistration _ProviderRegistration(

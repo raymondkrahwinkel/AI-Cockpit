@@ -6278,7 +6278,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         string? sessionName,
         // The operator's own words override the profile's route, exactly as the New-session dialog's Kind toggle
         // does — "the same profile, but as an SDK session" is an ordinary request and this is where it lands.
-        SessionKind? requestedKind = null)
+        SessionKind? requestedKind = null,
+        // The provider options this one session starts with, already merged over the profile's own and already
+        // validated (AC-648) — null for "whatever the profile says", which is what every spawn but an overriding one
+        // hands in. Merging and refusing happen in `SpawnOptionOverrides`, before this is reached: what arrives here
+        // is a launch, not a request to be checked.
+        IReadOnlyDictionary<string, string>? launchOptions = null)
     {
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
@@ -6305,10 +6310,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SessionOptionCatalog.DefaultEffort,
             name,
             WorkingDirectory: directory,
-            // The provider's own declared start defaults, saved on the profile. Only ever for the kind that is
-            // actually starting: the two vocabularies never both apply.
-            PluginTtyOptions: isSdk ? null : profile.Defaults?.OptionDefaults,
-            SdkLaunchOptions: isSdk ? profile.Defaults?.OptionDefaults : null,
+            // The provider's own declared start defaults, saved on the profile — or those with this spawn's overrides
+            // already folded in. Only ever for the kind that is actually starting: the two vocabularies never both apply.
+            PluginTtyOptions: isSdk ? null : launchOptions ?? profile.Defaults?.OptionDefaults,
+            SdkLaunchOptions: isSdk ? launchOptions ?? profile.Defaults?.OptionDefaults : null,
             ReadingLevel: isSdk ? SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel).Value : null,
             // Nobody said which project this is for and there is no session it descends from, so the folder answers
             // (AC-320) — the same rule the plugin and embedded paths are placed by.

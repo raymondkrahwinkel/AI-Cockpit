@@ -197,13 +197,20 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
 // what an assistant does with a request it has no tool for is reach for the nearest thing that sounds close. Asked
 // for exactly this, it went looking through `cockpit-orchestrator`, which starts work with no pane, outside
 // this ticket's consent gate and outside its trail. A missing parameter turned into a detour around the guardrail.
+// `OptionOverrides`:
+// Provider option keys to start this one session with, on top of the profile's own defaults (AC-648) — "that profile,
+// but at low effort". Per key: what is not named keeps the profile's value, so naming `effort` never costs the profile
+// its own `permission-mode`. Validated against what the profile's provider declares (AC-649), and `permission-mode`
+// — with any other provider's word for the same launch-time access-control question — is refused outright, whoever
+// asks. See `SpawnOptionOverrides`.
 public sealed record AgentSpawnRequest(
     SpawnTarget Target,
     string ProfileLabel,
     string? Prompt = null,
     string? WorkingDirectory = null,
     string? SessionName = null,
-    string? Kind = null);
+    string? Kind = null,
+    IReadOnlyDictionary<string, string>? OptionOverrides = null);
 
 // What came of a spawn. A refusal carries `Error` and no pane; both are reported to the agent, so a
 // spawn that could not happen is a sentence the operator hears rather than a session that silently is not there.
