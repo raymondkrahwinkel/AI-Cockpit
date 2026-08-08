@@ -301,14 +301,16 @@ internal static class Screenshotter
         // stands (criteria 17/18) including the one-time AlwaysOn cost confirmation. Wrapped in a small fixed
         // Window rather than the default 1100x760 (the "tty"/"terminal" scenes' own approach) because this
         // control is a sidebar chip, not a full pane — a full-size render would show mostly empty background.
-        // The profile label is reused verbatim from ProfileDisplay.Format's own convention ("label (provider)")
-        // rather than a bespoke string invented for this one scene — the second line reads the same way here as
-        // everywhere else a profile is named.
-        ["assistant-indicator-ready"] = (_, _) => _AssistantIndicator(
-            Cockpit.Core.Assistant.AssistantActivity.Ready, profileLabel: "default (Claude CLI)"),
+        ["assistant-indicator-ready"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Ready),
         ["assistant-indicator-listening"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Listening),
         ["assistant-indicator-listening-continuously"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously),
         ["assistant-indicator-thinking"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Thinking),
+        // The two states that moved off the floating voice pill (2026-08-08). Preparing is rendered with a step
+        // and a percentage, which is the whole reason it is not a differently-worded Transcribing.
+        ["assistant-indicator-transcribing"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Transcribing),
+        ["assistant-indicator-preparing"] = (_, _) => _AssistantIndicator(
+            Cockpit.Core.Assistant.AssistantActivity.Preparing,
+            preparationStatus: "Downloading speech model", preparationProgress: 0.63),
         ["assistant-indicator-speaking"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Speaking),
         // Dictating (F9) beside Listening (F10) above is the pair criterion 6 exists for — amber vs cyan, and
         // "Dictating" vs "Listening" in words, never only the colour.
@@ -1583,19 +1585,25 @@ internal static class Screenshotter
         var column = new StackPanel { Spacing = 10, Margin = new Avalonia.Thickness(12) };
         foreach (var (activity, reason) in states)
         {
+            var indicator = new ViewModels.AssistantIndicatorViewModel
+            {
+                Activity = activity,
+                UnavailableReason = reason,
+                ListeningMode = activity == Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously
+                    ? Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn
+                    : Cockpit.Core.Assistant.AssistantListeningMode.Off,
+            };
+
+            // A level, so the arc around the badge is on screen at all: it is driven by captured audio, and a
+            // still render of a silent microphone would show the one part of this chip that moves as nothing.
+            // The states without a microphone drop it themselves, so this needs no condition here.
+            indicator.PushLevel(0.7);
+
             column.Children.Add(new Views.AssistantIndicator
             {
                 Width = SidebarContentWidth,
                 HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-                DataContext = new ViewModels.AssistantIndicatorViewModel
-                {
-                    Activity = activity,
-                    UnavailableReason = reason,
-                    ProfileLabel = "default (Claude CLI)",
-                    ListeningMode = activity == Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously
-                        ? Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn
-                        : Cockpit.Core.Assistant.AssistantListeningMode.Off,
-                },
+                DataContext = indicator,
             });
         }
 
@@ -1643,7 +1651,8 @@ internal static class Screenshotter
         Cockpit.Core.Assistant.AssistantListeningMode listeningMode = Cockpit.Core.Assistant.AssistantListeningMode.Off,
         bool collapsed = false,
         bool alwaysOnConfirmationPending = false,
-        string? profileLabel = null)
+        string? preparationStatus = null,
+        double? preparationProgress = null)
     {
         var viewModel = new ViewModels.AssistantIndicatorViewModel
         {
@@ -1652,8 +1661,12 @@ internal static class Screenshotter
             ListeningMode = listeningMode,
             IsCollapsed = collapsed,
             IsAlwaysOnConfirmationPending = alwaysOnConfirmationPending,
-            ProfileLabel = profileLabel,
+            PreparationStatus = preparationStatus,
+            PreparationProgress = preparationProgress,
         };
+
+        // See the all-states scene: without a level the arc has nothing to draw, and it is the moving part.
+        viewModel.PushLevel(0.7);
 
         return new Window
         {
@@ -1714,6 +1727,14 @@ internal static class Screenshotter
         public Task ApplySettingsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public void ReportHoldListening(bool listening)
+        {
+        }
+
+        public void ReportTranscribing(bool transcribing)
+        {
+        }
+
+        public void ReportPreparing(string? status, double? fraction)
         {
         }
     }

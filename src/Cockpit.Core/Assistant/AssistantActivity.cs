@@ -20,6 +20,18 @@ public enum AssistantActivity
     // Distinct from `Listening` so the indicator can show a stand rather than a moment.
     ListeningContinuously,
 
+    // The words are being turned into text. Between a hold ending (or open-mic hearing you stop) and the
+    // assistant getting anything to think about — a wait with nothing else on screen to explain it.
+    // Used to live on the floating voice pill; moved here (Raymond, 2026-08-08) because everything the assistant
+    // is doing belongs on the assistant's own chip. The pill still carries it for `F9` dictation into a session.
+    Transcribing,
+
+    // Speech-to-text is fetching what it needs before it can transcribe at all — on first use that is a ~1.6 GB
+    // model and a GPU runtime. Its own state rather than a differently-worded Transcribing: this one can last
+    // minutes and has a step and a percentage to show (`PreparationStatus`), and a chip that claimed to be
+    // transcribing for four minutes would be lying about which part is slow.
+    Preparing,
+
     // Your turn is over and the assistant is working. Its own state because an assistant that is silent after
     // your sentence is otherwise indistinguishable from one that never heard you — the same reason
     // `IEmbeddedSession` carries a separate activity signal.

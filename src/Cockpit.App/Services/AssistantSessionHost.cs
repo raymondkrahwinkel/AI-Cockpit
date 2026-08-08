@@ -102,13 +102,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     [ObservableProperty]
     private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Voice.";
 
-    // The Assistant Profile's provider/model, formatted with `ProfileDisplay.Format` — the same
-    // convention every other profile picker in the app already uses, rather than a bespoke string invented for
-    // this one chip. Fed to the indicator as its Ready-state subtitle (AC-543 vormgeving pass, criterion 3: the
-    // question a Ready chip answers is "which model am I about to talk to"). Null until a profile has actually
-    // been read — an unset/unreadable profile leaves the chip with no subtitle rather than a stale one.
-    [ObservableProperty]
-    private string? _profileLabel;
 
     // The assistant hotkey went down or came back up. Reported here rather than left for the indicator to infer
     // from the shared voice pill — see `IAssistantSessionHost.ReportHoldListening` for what that
@@ -134,6 +127,63 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             Activity = AssistantActivity.Ready;
         }
     }
+
+    // Speech-to-text is working on what was just said (AC-543, 2026-08-08 — this used to be a line on the shared
+    // voice pill). Guarded the same way as the hold above: it may not overwrite an Unavailable the operator still
+    // needs to read, and the end of it hands back to Ready rather than to whatever came before, because what comes
+    // next — SendAsync setting Thinking — is a beat later and the chip must not sit on a finished transcription.
+    public void ReportTranscribing(bool transcribing)
+    {
+        if (transcribing)
+        {
+            if (Activity is AssistantActivity.Ready or AssistantActivity.Listening)
+            {
+                Activity = AssistantActivity.Transcribing;
+            }
+
+            return;
+        }
+
+        PreparationStatus = null;
+        PreparationProgress = null;
+
+        if (Activity is AssistantActivity.Transcribing or AssistantActivity.Preparing)
+        {
+            Activity = AssistantActivity.Ready;
+        }
+    }
+
+    // The one-time model/runtime fetch in front of the first transcription. A step with no status ends it and
+    // hands back to Transcribing — preparation always precedes an actual transcription, never a resting chip.
+    public void ReportPreparing(string? status, double? fraction)
+    {
+        PreparationStatus = status;
+        PreparationProgress = status is null ? null : fraction;
+
+        if (status is null)
+        {
+            if (Activity == AssistantActivity.Preparing)
+            {
+                Activity = AssistantActivity.Transcribing;
+            }
+
+            return;
+        }
+
+        if (Activity is AssistantActivity.Ready or AssistantActivity.Listening or AssistantActivity.Transcribing
+            or AssistantActivity.Preparing)
+        {
+            Activity = AssistantActivity.Preparing;
+        }
+    }
+
+    // What speech-to-text is fetching right now, and how far along it is where that is known — shown on the chip
+    // beside `AssistantActivity.Preparing`. Null whenever nothing is being prepared.
+    [ObservableProperty]
+    private string? _preparationStatus;
+
+    [ObservableProperty]
+    private double? _preparationProgress;
 
     // Brings the assistant up if it is not already, and returns it. Idempotent, and the recovery path too: an
     // instance that died is replaced rather than handed back dead.
@@ -280,10 +330,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             {
                 Activity = AssistantActivity.Ready;
                 UnavailableReason = null;
-                // Reading the profile for display is not starting anything — no session, no model in memory —
-                // so it does not compromise the lazy start above; it only lets an idle Ready chip say which
-                // model it would talk to instead of leaving that blank until the first use.
-                await _RefreshProfileLabelAsync(cancellationToken).ConfigureAwait(true);
             }
 
             return;
@@ -326,7 +372,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         Activity = AssistantActivity.Thinking;
         UnavailableReason = null;
-        ProfileLabel = ProfileDisplay.Format(profile.Label, profile.Provider, ProfileDisplay.ModelOf(profile));
 
         await session.StartConfiguredAsync(
             profile,
@@ -723,19 +768,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     {
         Activity = AssistantActivity.Unavailable;
         UnavailableReason = reason;
-        // No profile is confirmed running once the chip says Unavailable — carrying the last one forward would
-        // outlive its truth the moment the assistant is switched off or the profile fails to load.
-        ProfileLabel = null;
-    }
-
-    // Reads the Assistant Profile purely for display — no session, no model load — so an idle Ready chip can
-    // name what it would talk to before the operator's first hold or click brings the assistant up.
-    private async Task _RefreshProfileLabelAsync(CancellationToken cancellationToken)
-    {
-        var slot = await _profiles.LoadAsync(cancellationToken).ConfigureAwait(true);
-        ProfileLabel = slot.Profile is { } profile
-            ? ProfileDisplay.Format(profile.Label, profile.Provider, ProfileDisplay.ModelOf(profile))
-            : null;
     }
 
     // Whether the instance is still usable. Asked of the session rather than remembered as a flag here: a runtime

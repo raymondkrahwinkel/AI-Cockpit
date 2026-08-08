@@ -38,8 +38,14 @@ public class AssistantIndicatorViewModelTests
         Assert.Equal(labels.Count, labels.Distinct().Count());
     }
 
+    /// <summary>
+    /// Every activity has its own colour, with one deliberate exception: Thinking, Transcribing and Preparing
+    /// share it (2026-08-08, when the last two moved off the voice pill). All three are the assistant working
+    /// through something you are waiting on, and three shades of "wait" would be three things to learn for one
+    /// meaning — the words are what tell them apart, which is what criterion 6 asks of a state anyway.
+    /// </summary>
     [Fact]
-    public void EveryActivity_HasItsOwnColorClass()
+    public void EveryActivity_HasItsOwnColorClass_ExceptTheThreeThatMeanWaiting()
     {
         var vm = new AssistantIndicatorViewModel();
         var classes = new List<string>();
@@ -49,7 +55,13 @@ public class AssistantIndicatorViewModelTests
             classes.Add(vm.ColorClass);
         }
 
-        Assert.Equal(classes.Count, classes.Distinct().Count());
+        var waiting = new[] { AssistantActivity.Thinking, AssistantActivity.Transcribing, AssistantActivity.Preparing };
+        Assert.Equal(classes.Count - waiting.Length + 1, classes.Distinct().Count());
+        Assert.All(waiting, activity =>
+        {
+            vm.Activity = activity;
+            Assert.Equal("thinking", vm.ColorClass);
+        });
     }
 
     /// <summary>
@@ -87,17 +99,16 @@ public class AssistantIndicatorViewModelTests
         Assert.Equal("No model on this machine", vm.Detail);
     }
 
-    /// <summary>AC-543 vormgeving pass: Ready's second line is the model it would talk to, not fixed text.</summary>
+    /// <summary>
+    /// Ready has no second line at all (Raymond, 2026-08-08). It used to name the provider/model; which model the
+    /// assistant runs on is a setting, not something the chip has to keep repeating.
+    /// </summary>
     [Fact]
-    public void Ready_CarriesTheProfileLabel_AsItsDetail()
+    public void Ready_HasNoSecondLine()
     {
-        var vm = new AssistantIndicatorViewModel
-        {
-            Activity = AssistantActivity.Ready,
-            ProfileLabel = "default (Claude CLI)",
-        };
+        var vm = new AssistantIndicatorViewModel { Activity = AssistantActivity.Ready };
 
-        Assert.Equal("default (Claude CLI)", vm.Detail);
+        Assert.Null(vm.Detail);
     }
 
     [Theory]
@@ -279,6 +290,98 @@ public class AssistantIndicatorViewModelTests
         var vm = new AssistantIndicatorViewModel { Activity = activity };
 
         Assert.Equal(expected, vm.IsMicIcon);
+    }
+
+    /// <summary>
+    /// The switch that replaced the Off / Always on row (2026-08-08) is the same two picks underneath — including
+    /// the one-time cost explanation, which a switch must not quietly skip.
+    /// </summary>
+    [Fact]
+    public void TogglingTheSwitch_MakesTheSamePicks_AndStillAsksBeforeTheFirstAlwaysOn()
+    {
+        var vm = new AssistantIndicatorViewModel { ListeningMode = AssistantListeningMode.Off, AlwaysOnCostAcknowledged = false };
+        var selected = new List<AssistantListeningMode>();
+        vm.ListeningModeSelected += (_, mode) => selected.Add(mode);
+
+        vm.ToggleListeningModeCommand.Execute(null);
+        Assert.True(vm.IsAlwaysOnConfirmationPending);
+        Assert.Empty(selected);
+
+        vm.ConfirmAlwaysOnCommand.Execute(null);
+        Assert.Equal([AssistantListeningMode.AlwaysOn], selected);
+
+        // The host applies the pick and feeds the stand back; toggling from there turns the microphone off again.
+        vm.ListeningMode = AssistantListeningMode.AlwaysOn;
+        vm.ToggleListeningModeCommand.Execute(null);
+        Assert.Equal([AssistantListeningMode.AlwaysOn, AssistantListeningMode.Off], selected);
+    }
+
+    /// <summary>
+    /// The level arc only moves in the states that have a microphone, and closes on the way out — so a chip that
+    /// is thinking never shows the tail of the hold before it. The decay between frames is what keeps a jittering
+    /// RMS from reading as flicker.
+    /// </summary>
+    [Fact]
+    public void PushLevel_OnlyDrawsInTheStatesWithAMicrophone_AndClosesOnLeaving()
+    {
+        var vm = new AssistantIndicatorViewModel { Activity = AssistantActivity.Thinking };
+
+        vm.PushLevel(1);
+        Assert.Equal(0, vm.Level);
+
+        vm.Activity = AssistantActivity.Listening;
+        vm.PushLevel(1);
+        Assert.Equal(1, vm.Level);
+        Assert.Equal(360, vm.LevelSweep);
+
+        // Silence does not drop the arc to nothing in one frame — it falls back.
+        vm.PushLevel(0);
+        Assert.Equal(0.85, vm.Level, 3);
+
+        vm.Activity = AssistantActivity.Thinking;
+        Assert.Equal(0, vm.Level);
+    }
+
+    /// <summary>
+    /// The two states that moved off the floating voice pill (2026-08-08). Preparing leads with the step, because
+    /// on first use it is a gigabyte-and-a-half download and "Preparing…" alone does not explain a four-minute
+    /// wait; the percentage rides the second line, and a step with no known total shows none rather than one it
+    /// made up.
+    /// </summary>
+    [Fact]
+    public void Preparing_LeadsWithTheStep_AndOnlyShowsAPercentageWhenThereIsATotal()
+    {
+        var vm = new AssistantIndicatorViewModel
+        {
+            Activity = AssistantActivity.Preparing,
+            PreparationStatus = "Downloading speech model",
+            PreparationProgress = 0.63,
+        };
+
+        Assert.Equal("Downloading speech model", vm.Label);
+        Assert.Equal("63%", vm.Detail);
+        Assert.True(vm.ShowsPreparationProgress);
+
+        vm.PreparationProgress = null;
+        Assert.Null(vm.Detail);
+        Assert.False(vm.ShowsPreparationProgress);
+    }
+
+    /// <summary>
+    /// Transcribing, Preparing and Thinking share one colour and one glyph — all three are the assistant working
+    /// through something you are waiting on — and are told apart by their words.
+    /// </summary>
+    [Theory]
+    [InlineData(AssistantActivity.Thinking, "Thinking…")]
+    [InlineData(AssistantActivity.Transcribing, "Transcribing…")]
+    public void TheWaitingStates_ShareAColourAndAGlyph_ButNotTheirWords(AssistantActivity activity, string label)
+    {
+        var vm = new AssistantIndicatorViewModel { Activity = activity };
+
+        Assert.Equal(label, vm.Label);
+        Assert.Equal("thinking", vm.ColorClass);
+        Assert.True(vm.IsWorking);
+        Assert.False(vm.ShowsLevel);
     }
 
     [Fact]

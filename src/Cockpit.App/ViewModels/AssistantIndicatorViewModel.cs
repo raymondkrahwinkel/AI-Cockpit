@@ -23,11 +23,18 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsListening))]
     [NotifyPropertyChangedFor(nameof(IsListeningContinuously))]
     [NotifyPropertyChangedFor(nameof(IsThinking))]
+    [NotifyPropertyChangedFor(nameof(IsTranscribing))]
+    [NotifyPropertyChangedFor(nameof(IsPreparing))]
+    [NotifyPropertyChangedFor(nameof(IsWorking))]
+    [NotifyPropertyChangedFor(nameof(ShowsPreparationProgress))]
     [NotifyPropertyChangedFor(nameof(IsSpeaking))]
     [NotifyPropertyChangedFor(nameof(IsAwaitingOperator))]
     [NotifyPropertyChangedFor(nameof(IsDictating))]
     [NotifyPropertyChangedFor(nameof(IsUnavailable))]
     [NotifyPropertyChangedFor(nameof(IsMicIcon))]
+    [NotifyPropertyChangedFor(nameof(ShowsLevel))]
+    [NotifyPropertyChangedFor(nameof(ShowsListeningSwitch))]
+    [NotifyPropertyChangedFor(nameof(ShowsKeyHint))]
     private AssistantActivity _activity = AssistantActivity.Unavailable;
 
     // Whether the assistant feature is switched on at all. `false` draws nothing: off means "no
@@ -49,13 +56,20 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(Detail))]
     private string? _unavailableReason;
 
-    // The provider/model the assistant runs on (e.g. what `ProfileDisplay` formats an
-    // Assistant Profile as), shown as the chip's secondary line while `AssistantActivity.Ready` — the
-    // one state whose second line is not fixed text, because it is the answer to "which model am I about to
-    // talk to". Null (no subtitle) until the host has actually read the profile.
+    // What speech-to-text is fetching before it can transcribe, and how far along — shown while
+    // `AssistantActivity.Preparing`, fed in by the host like every other line on this chip. Null when
+    // nothing is being prepared; the progress is null too whenever the step carries no total to measure against,
+    // and then the chip shows the words alone rather than a bar parked at an invented position.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Label))]
+    [NotifyPropertyChangedFor(nameof(Detail))]
+    private string? _preparationStatus;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Detail))]
-    private string? _profileLabel;
+    [NotifyPropertyChangedFor(nameof(ShowsPreparationProgress))]
+    [NotifyPropertyChangedFor(nameof(PreparationProgressValue))]
+    private double? _preparationProgress;
 
     // How much the assistant listens (criteria 17–19): off or always on. Fed in by the host — which derives it
     // from `VoiceSettings.OpenMicEnabled` rather than storing a second flag with the same meaning — so the
@@ -110,6 +124,11 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         AssistantActivity.Ready => "Assistant",
         AssistantActivity.Listening => "Listening",
         AssistantActivity.ListeningContinuously => "Listening continuously",
+        AssistantActivity.Transcribing => "Transcribing…",
+        // The step is the headline, not the word "Preparing": on first use this is a gigabyte-and-a-half download,
+        // and "Downloading speech model" is what makes the wait make sense. Falls back to the generic word only
+        // while a step has not named itself.
+        AssistantActivity.Preparing => PreparationStatus ?? "Preparing…",
         AssistantActivity.Thinking => "Thinking…",
         AssistantActivity.Speaking => "Speaking",
         // Phrased as the thing the operator has to do, not as the assistant's condition. "Awaiting operator" is
@@ -120,17 +139,21 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         _ => "Assistant",
     };
 
-    // The secondary line, or null when there is nothing to show yet. `AssistantActivity.Ready` gets
-    // `ProfileLabel` (which model it would talk to); every other assistant-side state names the
-    // assistant, so the chip still reads "the assistant" once the model name has scrolled out of view.
-    // `AssistantActivity.Dictating` spells out *who* is not listening (criterion 6 — the
-    // question this indicator answers is "who is listening", not "is something listening") and
+    // The secondary line, or null when there is nothing to show yet. `AssistantActivity.Ready` has none:
+    // it used to name the provider/model the assistant would talk to, and Raymond's call (2026-08-08) is that the
+    // chip is not the place for it — which model is a setting you chose in Options, not something a glance at the
+    // sidebar has to keep answering. Every other assistant-side state names the assistant, so the chip still reads
+    // "the assistant" rather than only a colour. `AssistantActivity.Dictating` spells out *who* is not listening
+    // (criterion 6 — the question this indicator answers is "who is listening", not "is something listening") and
     // `AssistantActivity.Unavailable` carries `UnavailableReason`.
     public string? Detail => Activity switch
     {
-        AssistantActivity.Ready => ProfileLabel,
         AssistantActivity.Listening => "Assistant",
         AssistantActivity.ListeningContinuously => "Assistant",
+        AssistantActivity.Transcribing => "Assistant",
+        // The percentage, where the step has one. The step's own words are the headline above; this line is the
+        // number, and a step without a total shows nothing here rather than a made-up one.
+        AssistantActivity.Preparing => PreparationProgress is { } fraction ? $"{fraction:P0}" : null,
         AssistantActivity.Thinking => "Assistant",
         AssistantActivity.Speaking => "Assistant",
         AssistantActivity.AwaitingOperator => "Open the chat to answer",
@@ -165,6 +188,11 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         AssistantActivity.Ready => "ready",
         AssistantActivity.Listening => "listening",
         AssistantActivity.ListeningContinuously => "listeningContinuously",
+        // Transcribing and Preparing share Thinking's colour on purpose: all three are the assistant working
+        // through something you are waiting on, and three shades of "wait" would be three things to learn for one
+        // meaning. The words tell them apart, which is what criterion 6 asks of a state in the first place.
+        AssistantActivity.Transcribing => "thinking",
+        AssistantActivity.Preparing => "thinking",
         AssistantActivity.Thinking => "thinking",
         AssistantActivity.Speaking => "speaking",
         AssistantActivity.AwaitingOperator => "awaitingOperator",
@@ -177,6 +205,18 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     public bool IsListening => Activity == AssistantActivity.Listening;
     public bool IsListeningContinuously => Activity == AssistantActivity.ListeningContinuously;
     public bool IsThinking => Activity == AssistantActivity.Thinking;
+    public bool IsTranscribing => Activity == AssistantActivity.Transcribing;
+    public bool IsPreparing => Activity == AssistantActivity.Preparing;
+
+    // The three states that share the thinking colour, for the one glyph they also share — see ColorClass.
+    public bool IsWorking => Activity is AssistantActivity.Thinking or AssistantActivity.Transcribing
+        or AssistantActivity.Preparing;
+
+    // Whether the chip draws the preparation bar: only while a step that knows its total is running.
+    public bool ShowsPreparationProgress => IsPreparing && PreparationProgress is not null;
+
+    // The bar's fraction as a plain double, since a bar cannot bind a nullable.
+    public double PreparationProgressValue => PreparationProgress ?? 0;
     public bool IsSpeaking => Activity == AssistantActivity.Speaking;
     public bool IsAwaitingOperator => Activity == AssistantActivity.AwaitingOperator;
     public bool IsDictating => Activity == AssistantActivity.Dictating;
@@ -188,6 +228,58 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
 
     public bool IsListeningModeOff => ListeningMode == AssistantListeningMode.Off;
     public bool IsListeningModeAlwaysOn => ListeningMode == AssistantListeningMode.AlwaysOn;
+
+    // The chip's right-hand corner holds one thing, because at the sidebar's ~164px there is room for one: the
+    // listening switch in the two resting stands, the key badge in the states that are mid-something. They never
+    // both apply — you do not change how much the assistant listens halfway through a held key, and Ready's "F10"
+    // is the least urgent hint on the chip while "Esc" (Speaking) and "F9" (Dictating) are the most.
+    public bool ShowsListeningSwitch => Activity is AssistantActivity.Ready or AssistantActivity.ListeningContinuously;
+
+    public bool ShowsKeyHint => !ShowsListeningSwitch && KeyHint is not null;
+
+    // Whether the chip draws its microphone line: only the three states where sound is actually going through the
+    // mic. A line under a chip that is thinking or speaking would be a flat line saying nothing, and a flat line
+    // still reads as a meter that is broken rather than as one that has nothing to measure.
+    public bool ShowsLevel => Activity is AssistantActivity.Listening
+        or AssistantActivity.ListeningContinuously or AssistantActivity.Dictating;
+
+    // The microphone level as one number (0..1), drawn as an arc growing around the badge (Raymond's pick,
+    // 2026-08-08: idea 6 over the bottom-edge bars of idea 5). One number rather than the pill's scrolling
+    // history, because the badge is a circle and because this is the one form that survives into the collapsed
+    // rail — where the badge is all there is left of the chip.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LevelSweep))]
+    private double _level;
+
+    // The arc's sweep in degrees, for the view to bind. A full circle is a level of 1.
+    public double LevelSweep => Level * 360;
+
+    // Feeds one captured microphone level (0..1) into the arc. Call on the UI thread. A level that arrives while
+    // the chip is in a state with no mic is dropped for the same reason the voice pill drops one: the capture
+    // event crosses threads, and a frame landing just after the hold ended would otherwise leave the arc standing.
+    public void PushLevel(double level)
+    {
+        if (!ShowsLevel)
+        {
+            return;
+        }
+
+        // Peak with decay rather than the raw frame. Raw RMS jitters several times a second, and an arc redrawn
+        // from it reads as flicker rather than as speech — where the pill's 13 bars carried their own smoothing in
+        // the fact that you see a shape rather than one value. It rises instantly (a peak must not be missed) and
+        // falls at 15% a frame, which is roughly a quarter-second tail at the capture rate.
+        Level = Math.Clamp(Math.Max(level, Level * 0.85), 0, 1);
+    }
+
+    partial void OnActivityChanged(AssistantActivity value)
+    {
+        // Leaving a state that had a microphone closes the arc, so the next one starts from silence rather than
+        // from the tail of the last.
+        if (!ShowsLevel)
+        {
+            Level = 0;
+        }
+    }
 
     [RelayCommand]
     private void Click() => Clicked?.Invoke(this, EventArgs.Empty);
@@ -228,5 +320,34 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
 
     // Dismisses the inline confirmation without picking AlwaysOn — the listening mode stays whatever it already was.
     [RelayCommand]
-    private void CancelAlwaysOnConfirmation() => IsAlwaysOnConfirmationPending = false;
+    private void CancelAlwaysOnConfirmation()
+    {
+        IsAlwaysOnConfirmationPending = false;
+        _RestateListeningMode();
+    }
+
+    // The switch on the chip: one control for the two stands the picker row used to spell out. It delegates to the
+    // two picks rather than raising `ListeningModeSelected` itself, so AlwaysOn's one-time confirmation
+    // (criterion 18) still stands in front of it — a switch that skipped the explanation would be a quieter
+    // control that gives away more than the two buttons did.
+    [RelayCommand]
+    private void ToggleListeningMode()
+    {
+        if (IsListeningModeAlwaysOn)
+        {
+            SelectListeningModeOff();
+        }
+        else
+        {
+            SelectListeningModeAlwaysOn();
+        }
+
+        _RestateListeningMode();
+    }
+
+    // Re-announces the stand that is actually in effect. The switch flips itself the moment it is clicked, but the
+    // pick only lands once the host has applied it — and it may not land at all (the AlwaysOn confirmation is
+    // waiting, or the operator cancels it). Without this the switch would sit in the on position over a
+    // microphone that is closed, which is the one lie this chip must not tell.
+    private void _RestateListeningMode() => OnPropertyChanged(nameof(IsListeningModeAlwaysOn));
 }

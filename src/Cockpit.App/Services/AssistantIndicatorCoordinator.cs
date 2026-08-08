@@ -69,6 +69,11 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // at a glance — "it is talking to me right now" — was dead from the day it was drawn.
         _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
 
+        // The microphone line on the chip. Same feed as the voice pill's waveform — all three capture sources
+        // already funnel through the overlay coordinator, and the chip drops what arrives in a state that has no
+        // microphone, so this needs no filtering of its own.
+        _overlay.LevelSampled += _OnLevelSampled;
+
         Indicator.Clicked += (_, _) => _ = _OpenChatAsync();
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
@@ -113,6 +118,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private void _OnSourceChanged(object? sender, PropertyChangedEventArgs e) =>
         Dispatcher.UIThread.Post(_Refresh);
 
+    // Capture runs off the UI thread, and the chip's line is a bound collection — marshalled like every other source.
+    private void _OnLevelSampled(object? sender, double level) =>
+        Dispatcher.UIThread.Post(() => Indicator.PushLevel(level));
+
     // Whether the playback queue is speaking right now — the chip's `AssistantActivity.Speaking`.
     // Kept as a field rather than asked of the queue in `_ResolveActivity`, because the queue reports
     // this by event and has no property to read back — and the event arrives on the playback thread, so the value
@@ -130,7 +139,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         Indicator.Activity = _ResolveActivity();
         Indicator.UnavailableReason = _assistant.UnavailableReason;
-        Indicator.ProfileLabel = _assistant.ProfileLabel;
+        Indicator.PreparationStatus = _assistant.PreparationStatus;
+        Indicator.PreparationProgress = _assistant.PreparationProgress;
 
         // Derived, not stored: what "always on" means is that the microphone is open, and that is already one
         // persisted flag on the open-mic coordinator. A second copy here would be a second thing to keep in step.
@@ -143,7 +153,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         if (_overlay.Overlay.State is VoiceOverlayState.Listening or VoiceOverlayState.Transcribing
             && !_openMic.IsListening
-            && _assistant.Activity is not (AssistantActivity.Listening or AssistantActivity.Thinking))
+            && _assistant.Activity is not (AssistantActivity.Listening or AssistantActivity.Thinking
+                or AssistantActivity.Transcribing or AssistantActivity.Preparing))
         {
             return AssistantActivity.Dictating;
         }

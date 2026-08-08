@@ -64,6 +64,20 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     /// here instead of leaving the question to be guessed from a signal it shares with two other paths.
     /// </remarks>
     void ReportHoldListening(bool listening);
+
+    /// <summary>
+    /// Speech-to-text is turning the words into text, or has finished doing so. Told for the same reason as
+    /// <see cref="ReportHoldListening"/>: the coordinator that ran the hold knows, and the chip must not have to
+    /// guess it off a signal that dictation writes to as well.
+    /// </summary>
+    void ReportTranscribing(bool transcribing);
+
+    /// <summary>
+    /// Speech-to-text is fetching what it needs before it can transcribe — <paramref name="status"/> names the
+    /// step ("Downloading speech model") and <paramref name="fraction"/> is 0..1 where a total is known, null
+    /// where the stream carries no length. A null <paramref name="status"/> ends the preparation.
+    /// </summary>
+    void ReportPreparing(string? status, double? fraction);
 }
 
 // Backs the pop-out chat window (AC-543 criteria 7, 8, 9): a peephole onto the assistant's own standing

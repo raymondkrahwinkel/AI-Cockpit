@@ -30,18 +30,21 @@
                 ToolTip.Tip="{Binding Label}">
             <!-- Pinned to the rail badge's 30px, clipping off — same reason as the chip's badge Panel. -->
             <Panel Width="30" Height="30" ClipToBounds="False">
-                <Ellipse Classes="assistantIndicatorPulseRingRail" IsVisible="{Binding IsListening}"/>
+                <!-- The level arc, which is why this idea was picked over the bottom-edge bars: in the rail the
+                     badge is the whole indicator, and an arc around it still says how loud it is there. -->
+                <Arc Classes="assistantIndicatorLevelArc rail" Classes.dictating="{Binding IsDictating}"
+                     IsVisible="{Binding ShowsLevel}" SweepAngle="{Binding LevelSweep}"/>
                 <Border Classes="assistantIndicatorRing"
                         Classes.listening="{Binding IsListening}"
                         Classes.listeningContinuously="{Binding IsListeningContinuously}"
-                        Classes.thinking="{Binding IsThinking}"
+                        Classes.thinking="{Binding IsWorking}"
                         Classes.speaking="{Binding IsSpeaking}"
                         Classes.dictating="{Binding IsDictating}"
                         Classes.awaitingOperator="{Binding IsAwaitingOperator}"
                         Classes.unavailable="{Binding IsUnavailable}">
                     <Grid>
                         <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding IsMicIcon}"/>
-                        <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsThinking}"/>
+                        <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsWorking}"/>
                         <materialIcons:MaterialIcon Kind="VolumeHigh" IsVisible="{Binding IsSpeaking}"/>
                         <materialIcons:MaterialIcon Kind="HandBackLeftOutline" IsVisible="{Binding IsAwaitingOperator}"/>
                         <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
@@ -73,7 +76,7 @@
             <Button Classes="assistantIndicatorChip"
                     Classes.listening="{Binding IsListening}"
                     Classes.listeningContinuously="{Binding IsListeningContinuously}"
-                    Classes.thinking="{Binding IsThinking}"
+                    Classes.thinking="{Binding IsWorking}"
                     Classes.speaking="{Binding IsSpeaking}"
                     Classes.dictating="{Binding IsDictating}"
                     Classes.awaitingOperator="{Binding IsAwaitingOperator}"
@@ -84,24 +87,34 @@
                      the star column collapsed — "Listening" and "Speaking" rendered with no label at all, and
                      "Dictating" broke one letter per line. The label is the one thing criterion 6 is about, so it
                      wins the width and the meter moves down beside the detail line, which has room to spare. -->
-                <Grid ColumnDefinitions="Auto,*,Auto">
+                <!-- Two rows rather than a StackPanel with Spacing: the preparation bar below is hidden in every
+                     state but one, and a StackPanel's spacing is reserved whether or not the child it separates is
+                     there — which left the chip 5px taller than its contents and everything in it sitting high.
+                     A collapsed row takes nothing, and the gap rides on the bar's own margin. -->
+                <Grid RowDefinitions="Auto,Auto">
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
                     <!-- Pinned to the badge's own size, with clipping off: the pulse ring grows past it and must
                          be free to do so visually while contributing nothing to measure. Without this the ring's
                          animation resizes this Panel every frame, which resizes the chip — the jumping that
                          reached Raymond twice. -->
                     <Panel Grid.Column="0" Width="26" Height="26" ClipToBounds="False">
-                        <Ellipse Classes="assistantIndicatorPulseRing" IsVisible="{Binding IsListening}"/>
+                        <!-- The microphone level, drawn as an arc around the badge rather than as bars along the
+                             chip's bottom edge (Raymond's pick, 2026-08-08). It replaces the pulse ring that used
+                             to sit here for Listening: the ring said "live", the arc says live *and* how loud,
+                             and two circles around one 26px badge is one too many. -->
+                        <Arc Classes="assistantIndicatorLevelArc" Classes.dictating="{Binding IsDictating}"
+                             IsVisible="{Binding ShowsLevel}" SweepAngle="{Binding LevelSweep}"/>
                         <Border Classes="assistantIndicatorRing small"
                                 Classes.listening="{Binding IsListening}"
                                 Classes.listeningContinuously="{Binding IsListeningContinuously}"
-                                Classes.thinking="{Binding IsThinking}"
+                                Classes.thinking="{Binding IsWorking}"
                                 Classes.speaking="{Binding IsSpeaking}"
                                 Classes.dictating="{Binding IsDictating}"
                                 Classes.awaitingOperator="{Binding IsAwaitingOperator}"
                                 Classes.unavailable="{Binding IsUnavailable}">
                             <Grid>
                                 <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding IsMicIcon}"/>
-                                <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsThinking}"/>
+                                <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsWorking}"/>
                                 <materialIcons:MaterialIcon Kind="VolumeHigh" IsVisible="{Binding IsSpeaking}"/>
                                 <materialIcons:MaterialIcon Kind="HandBackLeftOutline" IsVisible="{Binding IsAwaitingOperator}"/>
                                 <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
@@ -134,33 +147,40 @@
                         <TextBlock Classes="assistantIndicatorDetail" Text="{Binding Detail}" TextWrapping="Wrap"
                                    IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
-                    <!-- The key hint (mockup's .key badge): only the states that actually have a key bound to
-                         them right now get one — ViewModel.KeyHint returns null for the rest and the badge
-                         hides rather than showing empty. -->
+                    <!-- The chip's corner: switch or key badge, never both — see ViewModel.ShowsListeningSwitch
+                         for why one corner is all a 164px chip has, and which of the two each state gets. -->
                     <Border Grid.Column="2" Classes="assistantIndicatorKey" VerticalAlignment="Center"
-                            IsVisible="{Binding KeyHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            IsVisible="{Binding ShowsKeyHint}">
                         <TextBlock Text="{Binding KeyHint}"/>
                     </Border>
+                    <!-- The listening mode, as one switch instead of the Off / Always on row this used to carry
+                         below the chip (Raymond, 2026-08-08). A stand that is on or off is what CheckBox.Switch is
+                         for, and moving it into the chip drops a whole second line from the sidebar. Its click goes
+                         through ToggleListeningMode, so AlwaysOn's one-time cost explanation still stands in front
+                         of it; IsChecked is one-way because the stand is the host's answer, not the switch's. -->
+                    <CheckBox Grid.Column="2" Classes="Switch assistantIndicatorSwitch"
+                              IsVisible="{Binding ShowsListeningSwitch}"
+                              IsChecked="{Binding IsListeningModeAlwaysOn, Mode=OneWay}"
+                              Command="{Binding ToggleListeningModeCommand}"
+                              ToolTip.Tip="On: the microphone stays open and everything you say goes to the assistant. Off: only the held assistant hotkey opens it."/>
+                </Grid>
+                <!-- The first-use fetch, which is a ~1.6 GB model and can take minutes (AC-543, 2026-08-08 — this
+                     used to be the pill's own row). Only for a step that knows its total: one parked at an invented
+                     position is worse than the counting words alone, which the label above already carries. -->
+                <ProgressBar Grid.Row="1" Classes="assistantIndicatorPreparation" Margin="0,5,0,0"
+                             IsVisible="{Binding ShowsPreparationProgress}"
+                             Value="{Binding PreparationProgressValue}" Minimum="0" Maximum="1"/>
                 </Grid>
             </Button>
 
-            <!-- Listening mode (criteria 17/18/comment 5): the two reachable stands, readable without a click —
-                 Off and Always on. AlwaysOn's own confirmation lives inline below rather than in a separate
-                 dialog — the picker already put the operator's attention on this exact chip, and a modal for a
-                 one-line, one-time warning would be a bigger interruption than the thing it is warning about
-                 (motivated further in the ticket response). Vormgeving pass (2026-08-01): "Wake word" — the
-                 third stand this row used to show as a disabled "not set up yet" option — is gone; Raymond's
-                 call, 2026-08-01, is that showing an unreachable option earns its place less than a clean row of
-                 two. AssistantListeningMode.AlwaysOnWithWakeWord itself still exists (AssistantIndicatorCoordinator
-                 still refuses it), it is simply no longer offered here. -->
-            <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4">
-                <Button Content="Off" Classes="Compact assistantIndicatorModeButton" Classes.Accent="{Binding IsListeningModeOff}"
-                        Command="{Binding SelectListeningModeOffCommand}"
-                        ToolTip.Tip="Microphone closed. Only the held assistant hotkey opens it."/>
-                <Button Content="Always on" Classes="Compact assistantIndicatorModeButton" Classes.Accent="{Binding IsListeningModeAlwaysOn}"
-                        Command="{Binding SelectListeningModeAlwaysOnCommand}"
-                        ToolTip.Tip="Microphone stays open. Everything you say goes to the assistant."/>
-            </WrapPanel>
+            <!-- Listening mode (criteria 17/18/comment 5) is the switch inside the chip above, not a row of its
+                 own down here. The Off / Always on buttons this used to be said the same thing in two controls and
+                 a whole extra line of a 164px sidebar; Raymond's call, 2026-08-08. AlwaysOn's confirmation stays
+                 inline below rather than in a dialog — the switch already put the operator's attention on this
+                 exact chip, and a modal for a one-line, one-time warning would be a bigger interruption than the
+                 thing it warns about. SelectListeningModeOff/AlwaysOn are still the commands underneath (the
+                 switch delegates to them), and AssistantListeningMode.AlwaysOnWithWakeWord is still refused by
+                 AssistantIndicatorCoordinator rather than offered anywhere. -->
 
             <!-- The one-time AlwaysOn cost explanation (criterion 18) — shown once, on the pick, never again
                  once AlwaysOnCostAcknowledged is true (see AssistantIndicatorViewModel.SelectListeningModeAlwaysOn). -->

@@ -14,6 +14,7 @@
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF1A1D24  CockpitPanelBgColor
+#FF202430  CockpitInsetBgColor
 #FF22D3EE  CockpitStatusBusyColor
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
@@ -26,5 +27,7 @@
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0
 radius  13,13,13,13
+radius  20,20,20,20
+radius  3,3,3,3
 radius  4,4,4,4
 radius  9,9,9,9

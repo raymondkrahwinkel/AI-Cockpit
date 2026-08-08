@@ -1338,6 +1338,11 @@
              machine with larger text may genuinely need more, and clipping the reason off an unavailable chip to
              keep a number would trade away the wrong thing. -->
         <Setter Property="MinHeight" Value="62"/>
+        <!-- And the content centred in that floor. Without this it hangs from the top: a one-line state (Ready,
+             since the model name left the chip) drew 26px of badge with 26px of slack under it, which is what
+             Raymond saw as "not centred". Only visible once a state stopped filling the 62 — the two-line states
+             always had. -->
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.assistantIndicatorChip:pointerover /template/ ContentPresenter">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
@@ -1484,73 +1489,34 @@
         </Style.Animations>
     </Style>
 
-    <!-- Listening's own pulse ring (vormgeving pass, criterion 5 — the mockup's .achip.listening .mic::after /
-         .rail-chip.listening .mic::after): a second, larger circle that scales up and fades out on a loop,
-         layered behind the badge in AssistantIndicator.axaml's Panel rather than inside the ring's own Border,
-         because a Border clips its child to its own bounds and this ring is meant to grow past the badge's edge.
-         Only Listening gets it, not Dictating or Thinking — those already carry the opacity pulse above, and
-         ListeningContinuously (a stand, not a handeling — criterion 19) gets neither, the mode dot instead. The
-         chip's badge (26px) and the rail's (30px) get their own sizes via the .rail modifier, echoing the
-         mockup's own inset:-5px on each. Uses the theme's existing easing curve in spirit (a soft settle rather
-         than a linear scale) — Avalonia has no literal cubic-bezier(.16,1,.3,1) easing, so CubicEaseOut stands in
-         for the mockup's own ease token here. -->
-    <Style Selector="Ellipse.assistantIndicatorPulseRing">
+    <!-- The microphone level, as an arc around the badge (Raymond, 2026-08-08 — idea 6 of the chip mockups).
+         It replaces the pulse ring that used to sit here for Listening: that ring looped on a timer and said only
+         "live", where this one is driven by the captured level and says live *and* how loud. Two circles around
+         one 26px badge is one too many, so the ring went.
+         Sized past the badge (32 against 26, 36 against the rail's 30) and drawn in the Panel beside it rather
+         than inside the ring's Border, which would clip it. The Panel is pinned to the badge's own size with
+         ClipToBounds off, so this overflows it visually and contributes nothing to measure — the same reason the
+         pulse ring needed that Panel, and the reason the chip does not jump as the arc moves.
+         StartAngle -90 so it grows from the top, clockwise, like every other radial meter in the world. -->
+    <Style Selector="Arc.assistantIndicatorLevelArc">
         <Setter Property="Stroke" Value="{StaticResource CockpitStatusBusyBrush}"/>
-        <Setter Property="StrokeThickness" Value="1"/>
+        <Setter Property="StrokeThickness" Value="2"/>
+        <Setter Property="StrokeLineCap" Value="Round"/>
         <Setter Property="HorizontalAlignment" Value="Center"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
         <Setter Property="IsHitTestVisible" Value="False"/>
-        <Setter Property="Width" Value="26"/>
-        <Setter Property="Height" Value="26"/>
-        <Setter Property="Opacity" Value="0.6"/>
-        <!-- Grows its actual size, because this Avalonia has no keyframe animator for RenderTransform — a
-             scale() string only animates through the Transitions system, which needs a value change rather than a
-             loop. That would normally be a layout pass per frame, and a ring growing past its badge would drag
-             the chip's measurement with it (the jumping Raymond saw). It does not, because the Panel holding the
-             ring in AssistantIndicator.axaml is pinned to the badge's size with ClipToBounds off: the ring
-             overflows it visually and contributes nothing to measure. Fixing the container rather than the
-             property is what the mockup's "laat de layout rekenen terwijl er niets verschuift" is really about. -->
-        <Style.Animations>
-            <Animation Duration="0:0:1.6" IterationCount="INFINITE" Easing="CubicEaseOut">
-                <KeyFrame Cue="0%">
-                    <Setter Property="Width" Value="26"/>
-                    <Setter Property="Height" Value="26"/>
-                    <Setter Property="Opacity" Value="0.6"/>
-                </KeyFrame>
-                <KeyFrame Cue="100%">
-                    <Setter Property="Width" Value="40"/>
-                    <Setter Property="Height" Value="40"/>
-                    <Setter Property="Opacity" Value="0"/>
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
+        <Setter Property="StartAngle" Value="-90"/>
+        <Setter Property="Width" Value="32"/>
+        <Setter Property="Height" Value="32"/>
     </Style>
-    <!-- The rail badge is larger (30px vs the chip's 26px), so its pulse ring gets its own, larger sizes — a
-         fully separate style rather than a modifier on the one above: two Style.Animations blocks both matching
-         the same element would run two competing animations on the same properties, not blend into one. -->
-    <Style Selector="Ellipse.assistantIndicatorPulseRingRail">
-        <Setter Property="Stroke" Value="{StaticResource CockpitStatusBusyBrush}"/>
-        <Setter Property="StrokeThickness" Value="1"/>
-        <Setter Property="HorizontalAlignment" Value="Center"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="IsHitTestVisible" Value="False"/>
-        <Setter Property="Width" Value="30"/>
-        <Setter Property="Height" Value="30"/>
-        <Setter Property="Opacity" Value="0.6"/>
-        <Style.Animations>
-            <Animation Duration="0:0:1.6" IterationCount="INFINITE" Easing="CubicEaseOut">
-                <KeyFrame Cue="0%">
-                    <Setter Property="Width" Value="30"/>
-                    <Setter Property="Height" Value="30"/>
-                    <Setter Property="Opacity" Value="0.6"/>
-                </KeyFrame>
-                <KeyFrame Cue="100%">
-                    <Setter Property="Width" Value="46"/>
-                    <Setter Property="Height" Value="46"/>
-                    <Setter Property="Opacity" Value="0"/>
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
+    <Style Selector="Arc.assistantIndicatorLevelArc.rail">
+        <Setter Property="Width" Value="36"/>
+        <Setter Property="Height" Value="36"/>
+    </Style>
+    <!-- Dictating is not the assistant listening, and its arc says so in the same amber the rest of that state
+         already uses — a cyan arc around an amber badge would read as the assistant hearing you after all. -->
+    <Style Selector="Arc.assistantIndicatorLevelArc.dictating">
+        <Setter Property="Stroke" Value="{StaticResource CockpitStatusWaitingBrush}"/>
     </Style>
 
     <!-- Criterion 19's stand/handeling split: ListeningContinuously is a standing mode the operator switched on,
@@ -1609,13 +1575,40 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
-    <!-- Listening-mode picker buttons (Off / Always on): Button.Compact already carries the mockup's control
-         radius and hairline border (the base Button style both derive from); this only pulls the resting label
-         down to the faint tier the mockup's general vormtaal uses for secondary chrome text, rather than
-         Compact's own slightly brighter secondary tier used elsewhere. The active stand still reads via
-         Classes.Accent (Button.Accent above), which overrides this on the TextBlock it targets directly. -->
-    <Style Selector="Button.assistantIndicatorModeButton">
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    <!-- The preparation bar along the bottom of the chip: a hairline, in the same colour as the state it belongs
+         to, so it reads as part of the chip rather than as a control sitting on it. -->
+    <Style Selector="ProgressBar.assistantIndicatorPreparation">
+        <Setter Property="Height" Value="2"/>
+        <Setter Property="MinHeight" Value="2"/>
+        <Setter Property="CornerRadius" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusBusyBrush}"/>
+    </Style>
+
+    <!-- The listening switch in the chip's corner, where the Off / Always on picker row used to be (Raymond,
+         2026-08-08). CheckBox.Switch as the settings pages already use it, shrunk to sit beside a 12px label and
+         with the track's 11px right margin dropped — that margin separates it from a content label this one does
+         not have. Same shape the operator knows from Options, a third of the room the two buttons took. -->
+    <Style Selector="CheckBox.Switch.assistantIndicatorSwitch">
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="CheckBox.Switch.assistantIndicatorSwitch /template/ Border#Track">
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="15"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="CheckBox.Switch.assistantIndicatorSwitch /template/ Ellipse#Knob">
+        <Setter Property="Width" Value="11"/>
+        <Setter Property="Height" Value="11"/>
+    </Style>
+    <!-- The knob's travel is the track's width minus its own and the 2px inset on each side; the base style's
+         15px would carry it past the edge of this shorter track. -->
+    <Style Selector="CheckBox.Switch.assistantIndicatorSwitch:checked /template/ Ellipse#Knob">
+        <Setter Property="RenderTransform" Value="translateX(11px)"/>
     </Style>
 
     <!-- The one-time AlwaysOn cost explanation (criterion 18). Amber, the same token as F9 dictating above —
