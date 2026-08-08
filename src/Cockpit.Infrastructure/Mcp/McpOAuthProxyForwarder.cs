@@ -133,8 +133,9 @@ internal sealed class McpOAuthProxyForwarder(
         }
 
         logger.LogInformation(
-            "Renewing the authorization for MCP server {Server} did not succeed and did not say why; trying once more before this call is given up.",
-            server.Name);
+            "Renewing the authorization for MCP server {Server} did not succeed ({Reason}); asking once more before this call is given up.",
+            server.Name,
+            access.Reason);
 
         await Task.Delay(RenewalSecondChanceDelay, cancellationToken).ConfigureAwait(false);
         return await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
