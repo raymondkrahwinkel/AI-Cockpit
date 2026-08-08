@@ -1213,6 +1213,14 @@ public partial class CockpitView : UserControl
     // click path goes through the same helper and had the same hole.
     internal static void _FocusInputIn(Control container)
     {
+        // AC-636: never across windows — a selection change the operator did not make must not pull the caret out
+        // of the assistant's chat pop-out. Guarded here because the pane click path shares this helper, and a click
+        // cannot trip it: its window is already active by the time the handler runs.
+        if (AutoFocus.WouldTakeTheKeyboardFromAnotherWindow(container))
+        {
+            return;
+        }
+
         if (container.GetVisualDescendants().OfType<TerminalControl>().FirstOrDefault() is { } terminal)
         {
             terminal.Focus();

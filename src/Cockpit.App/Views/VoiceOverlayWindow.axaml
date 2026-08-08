@@ -9,6 +9,7 @@
         Topmost="True"
         ShowInTaskbar="False"
         CanResize="False"
+        ShowActivated="False"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual">
     <!-- Transcription of pill-mockup.html/.png: dark translucent pill, hairline border, accent
