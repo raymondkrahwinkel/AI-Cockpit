@@ -16,11 +16,8 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-633: the header's "⑂ isolated" badge reads <see cref="SessionPanelViewModel.WorktreeBranch"/>, which the UI's
-/// own start/reattach paths are the only writers of — so a session started in a worktree the assistant made through
-/// the <c>worktree_create</c> MCP tool showed no badge at all, even though it demonstrably ran in one. That worktree
-/// is registered to the pane that asked for it, so the fix matches the registry on the directory the session started
-/// in rather than on any session id.
+/// AC-633: a session started in a worktree the assistant made through <c>worktree_create</c> showed no badge,
+/// because that worktree is registered to the pane that asked for it and not to the session running there.
 /// </summary>
 [Collection("avalonia")]
 public class WorktreeBadgeAdoptionTests

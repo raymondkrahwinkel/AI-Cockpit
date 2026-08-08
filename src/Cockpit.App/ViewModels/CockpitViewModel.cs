@@ -4763,15 +4763,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             .FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), full, comparison));
     }
 
-    /// <summary>
-    /// Lights the header's "isolated" badge (AC-633) for a session that starts in a registered worktree nobody told
-    /// it about: the assistant creates one through the <c>worktree_create</c> MCP tool and then starts a session in
-    /// it, and that worktree is registered to the pane that asked for it, not to the session now running there — so
-    /// neither <see cref="_ResolveIsolatedWorkingDirectoryAsync"/> nor the per-pane lookup
-    /// <see cref="IWorktreeManager.ReleaseAsync"/> uses would ever see it. The folder is what is true on every route,
-    /// so the registry is matched on the directory the session actually started in. Display only: this changes
-    /// nothing about who owns the worktree or who tears it down.
-    /// </summary>
+    // AC-633: a `worktree_create`-made worktree is registered to the pane that asked for it, not to the session
+    // started in it, so neither the paths above nor a per-pane lookup finds it — the folder is what is true on
+    // every route. Display only: who owns the worktree and who tears it down is unchanged.
     internal async Task _AdoptWorktreeBadgeAsync(SessionPanelViewModel session, string? startedWorkingDirectory)
     {
         if (session.WorktreeBranch is not null || startedWorkingDirectory is not { Length: > 0 })
