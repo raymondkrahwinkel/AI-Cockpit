@@ -30,8 +30,7 @@ internal sealed class McpOAuthGrantRejectionWatcher : DelegatingHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        // Read before sending: afterwards the SDK owns the request's lifetime. Safe to read twice — the SDK builds
-        // this body as `FormUrlEncodedContent`, which is a byte array and not a stream that a read consumes.
+        // Decided before sending, because afterwards the SDK owns the request's lifetime.
         var isRefresh = await _IsRefreshGrantAsync(request, cancellationToken).ConfigureAwait(false);
 
         var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -46,7 +45,12 @@ internal sealed class McpOAuthGrantRejectionWatcher : DelegatingHandler
 
     private static async Task<bool> _IsRefreshGrantAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (request.Method != HttpMethod.Post || request.Content is null)
+        // Every MCP message this session sends travels over the same client, so the content type is checked before
+        // anything is read: a JSON-RPC call is `application/json` and must not have its body pulled into a string on
+        // the way past. A form post to this client is a token request and nothing else, and the SDK builds those as
+        // `FormUrlEncodedContent` — a byte array, so reading it here does not consume what is about to be sent.
+        if (request.Method != HttpMethod.Post
+            || request.Content?.Headers.ContentType?.MediaType != "application/x-www-form-urlencoded")
         {
             return false;
         }
