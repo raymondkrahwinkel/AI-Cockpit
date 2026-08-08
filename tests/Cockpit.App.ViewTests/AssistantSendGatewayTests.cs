@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -217,7 +218,8 @@ public class AssistantSendGatewayTests
             Substitute.For<IAssistantSpawnAuditLog>(),
             parts.Agents,
             parts.Inbox,
-            parts.NotifyAudit);
+            parts.NotifyAudit,
+            Substitute.For<IPluginProviderRegistry>());
 
         return (gateway, cockpit, parts);
     }

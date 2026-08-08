@@ -256,4 +256,24 @@ public sealed record AssistantWorkspaceRow(
 // `Label`: Exactly what `start_agent` takes — the label, not the display string.
 // `Provider`: Which provider it runs on ("Claude", "LM Studio"), so "a Claude one" can be resolved without guessing from the label's wording.
 // `Model`: The model, where the profile pins one. Null means the provider's own default, which is worth saying rather than showing as blank.
-public sealed record AssistantProfileRow(string Label, string Provider, string? Model);
+public sealed record AssistantProfileRow(string Label, string Provider, string? Model)
+{
+    // What this profile is actually configured to run at, in its provider's own vocabulary (AC-647) — read from
+    // the provider's declared option schema, so a raw settings dump never has to be guessed at. Empty for a
+    // provider that declares nothing; that is an answer, not a gap to fill with another provider's fields.
+    public IReadOnlyList<AssistantProfileOptionRow> Options { get; init; } = [];
+}
+
+// One option a profile's provider understands, with what this profile sets it to (AC-647).
+//
+// `Key`: The provider's own option key, e.g. `permission-mode` or `sandbox` — what `start_agent` will one day take.
+// `Label`: What the option is called in the provider's own words, for reading out loud.
+// `Value`: The raw value in force. Null when the profile sets none and the provider names no default.
+// `ValueLabel`: That value in the provider's own words ("Bypass permissions"), or the raw value when it has no friendlier one.
+// `SetOnProfile`: Whether the profile itself sets this, or it is only the provider's default — the difference between what was chosen and what merely applies.
+public sealed record AssistantProfileOptionRow(
+    string Key,
+    string Label,
+    string? Value,
+    string? ValueLabel,
+    bool SetOnProfile);

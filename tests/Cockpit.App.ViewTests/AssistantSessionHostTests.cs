@@ -431,6 +431,20 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void LaunchOptions_CarryWhereToLookBeforeAssumingWhatAProfileRunsAt()
+    {
+        // AC-647, asserted the same way as AC-639 above: on what a launch actually hands the session, because that
+        // the constant reads well is not the claim. The gap it closes is a spawn picked on a label — the profile
+        // that turned out to run in a bypass permission mode on the costly model was indistinguishable from one
+        // that did not, and both read "Plugin" as their provider.
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains("`list_profiles` carries an `Options` list", instruction, StringComparison.Ordinal);
+        Assert.Contains("Providers do not share a shape", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LaunchOptions_TheAssistantsOwnInstruction_WinsOverAnythingTheProfileStoredOnThatKey()
     {
         // The profile's start defaults are copied first and the standing instruction is written last, on purpose:

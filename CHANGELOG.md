@@ -37,6 +37,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   vocabulary and nothing knew Codex's, so anything else asking "what can I set for this provider?" had to guess. A
   provider that reads no options states none, instead of being handed another provider's.
 
+- added: the voice assistant can see what a profile is actually set to run at before it starts one — its permission
+  mode, model and effort for a Claude profile, its sandbox for a Codex one, each with a readable label and a note of
+  whether the profile chose it or the provider's default applies. It also names the provider a profile really runs on
+  ("Claude", "Codex") instead of calling every plugin-backed profile "Plugin". Until now the only way to find out that
+  a profile ran with permissions bypassed on the costliest model was to open `cockpit.json` yourself, which is not
+  something the assistant can do at all.
+
 - added: the voice assistant can rename a session and a desk. It could already name a session at the moment it
   started one, but not afterwards — so "call that one Luna" meant leaving the conversation and doing it yourself in
   the sidebar. Both renames ask for your approval first, the same as starting or stopping a session does, and a name
