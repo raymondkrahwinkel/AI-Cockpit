@@ -269,9 +269,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
 
     // Arrow-Up recall (AC-630), bridged: `SessionViewModel.RecallLastQueuedMessage` puts the text back in the
-    // session's own composer, and this window types into its own `InputText` — so the text is moved across, where
-    // it can actually be edited. The recalled images stay on the session, which is where the attachment strip
-    // reads them. False when the queue is empty, so the key handler can let Arrow-Up do its normal thing.
+    // session's own composer, which this window does not show — so it is moved into the box that is on screen.
+    // False on an empty queue, so the key handler can let Arrow-Up do its normal thing.
     public bool RecallLastQueuedMessage()
     {
         if (Session is not { } session || !session.RecallLastQueuedMessage())

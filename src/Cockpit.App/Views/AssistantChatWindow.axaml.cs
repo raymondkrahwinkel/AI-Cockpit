@@ -221,10 +221,9 @@ public partial class AssistantChatWindow : Window
         }
     }
 
-    // A bitmap on the clipboard becomes a PNG pending attachment on the session; anything else falls back to a
-    // normal text paste. The view owns the clipboard read and the view model only ever sees PNG bytes — the same
-    // split SessionView keeps. `SessionViewModel.AddPastedImage` does the vision gate itself, so a session whose
-    // provider cannot see images says so in the transcript instead of dropping the paste silently.
+    // The view owns the clipboard read and the view model only ever sees PNG bytes — the same split SessionView
+    // keeps. The vision gate stays `SessionViewModel.AddPastedImage`'s, so a provider that cannot see images says
+    // so in the transcript instead of dropping the paste silently.
     private async System.Threading.Tasks.Task _HandlePasteAsync()
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
