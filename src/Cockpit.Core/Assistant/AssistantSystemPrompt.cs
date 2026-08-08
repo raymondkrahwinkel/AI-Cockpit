@@ -27,7 +27,8 @@ namespace Cockpit.Core.Assistant;
 // model and never spoken, which is why it may look like a screen: the one rule it carries about itself is that its
 // shape stays out of the answers. What it holds is what a session otherwise discovers halfway through a task —
 // that it has an address of its own (AC-632), that a spawn needs its own worktree and the repo's own base branch,
-// that the agent it starts knows nothing it was not told.
+// that the agent it starts knows nothing it was not told — and that implementing is never its own job (AC-639),
+// which it learned by building straight in a checkout instead (AC-638).
 //
 // *The acting paragraph (AC-545) says almost nothing about how to spawn, and a great deal about the gate.*
 // How the tools work is in the tool descriptions, which is where a model looks when it is about to call one. What
@@ -126,7 +127,7 @@ public static class AssistantSystemPrompt
         "something as proof it is not running." +
         "\n\n" + Capabilities;
 
-    // The map (AC-635). Telegram-style on purpose — see the remarks above. Part of `Default` rather than a
+    // The map (AC-635, AC-639). Telegram-style on purpose — see the remarks above. Part of `Default` rather than a
     // separate block on `AssistantStandingInstruction.Compose`, because an operator who ticks "replace" is
     // replacing the built-in instruction whole, and a map that survived that would be the one piece of the
     // default they could not get rid of.
@@ -142,6 +143,11 @@ public static class AssistantSystemPrompt
         "- Outbound does not work: you sit on no desk, so `list_agents`, `list_claims` and `claim` refuse you as " +
         "the caller. Use `list_sessions` instead, and let the agent do its own claiming.\n" +
         "- A `notify` marked urgent is refused for you (not-wakeable). The message still arrives.\n" +
+        "\n" +
+        "YOU DO NOT IMPLEMENT (AC-639). Writing or changing code, running a build, running tests, editing a file " +
+        "in a repo: none of that is yours. Not for a one-line fix, not for a typo, not when doing it yourself " +
+        "would be quicker. Each one is a spawn instead: an agent, on its own worktree, briefed as below. Reading a " +
+        "repo to answer a question is still fine; changing one never is.\n" +
         "\n" +
         "BEFORE A SPAWN, CHECK THESE. Never assume them.\n" +
         "- Worktree: one per agent. Two agents in one checkout overwrite each other.\n" +
