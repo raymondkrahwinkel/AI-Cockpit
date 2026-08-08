@@ -2,7 +2,9 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Delegation;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Formatting;
 using Cockpit.Infrastructure.Mcp;
@@ -37,7 +39,7 @@ namespace Cockpit.Infrastructure.Assistant;
 // as it. That is a property the whole cockpit shares — the consent broker and the agent line included — and it is
 // not fixable from here. What this design buys is that reaching these tools takes deliberate theft off the
 // filesystem rather than a tool argument or an unticked checkbox.
-internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
+internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDelegationService delegation)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -141,6 +143,66 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
 
             var projects = await gateway.ListProjectsAsync().ConfigureAwait(false);
             return _Serialize(new { ok = true, projects });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "list_delegated_tasks")]
+    [Description("Lists the delegated tasks this cockpit is running — the background work a session started with delegate_task — newest first, across every owner pane. THIS IS THE HALF list_sessions CANNOT SEE: a delegated task runs without a pane, so it has no row there and no statusline however busy it is; a session that fanned its work out further looks idle in one list and is doing five things in the other. Each entry has the task id, the profile it runs under, its label and task type, its status (Queued, Running, Completed, Failed or Stopped), when it was created/started/finished, how many turns it has taken, its result or its error, and ownerPaneId — the session that started it, which is how you attribute background work to the agent you spawned. A null ownerPaneId means the task was started off the verified path (the operator or the cockpit itself), not that nobody owns it. Reading only: starting, stopping or following up on a task is not available here. Turn count is progress, not success — a task with turns and no result is still working, and one that is Failed says why in error.")]
+    public string ListDelegatedTasks(
+        [Description("Only tasks in this state: Queued, Running, Completed, Failed or Stopped. Omit it for every task. An unrecognised value is refused rather than quietly listing everything — a filter nobody applied reads exactly like nothing matching it.")] string? status = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            DelegatedTaskStatus? filter = null;
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                if (!Enum.TryParse<DelegatedTaskStatus>(status, ignoreCase: true, out var parsed))
+                {
+                    return _Serialize(new
+                    {
+                        ok = false,
+                        error = $"'{status}' is not a task status. Use one of: "
+                            + string.Join(", ", Enum.GetNames<DelegatedTaskStatus>()) + ", or omit it for every task.",
+                    });
+                }
+
+                filter = parsed;
+            }
+
+            // The null caller is the point of this tool: the assistant owns no tasks, so the scoped read every
+            // other caller gets would only ever return nothing.
+            var tasks = delegation.ListTasks(filter, callerPaneId: null);
+            return _Serialize(new
+            {
+                ok = true,
+                count = tasks.Count,
+                // Projected rather than handed over as the view: this file's serializer writes properties as
+                // declared and enums as numbers, and `"status": 3` is not something the assistant can read out.
+                tasks = tasks.Select(task => new
+                {
+                    taskId = task.TaskId,
+                    profileLabel = task.ProfileLabel,
+                    label = task.Label,
+                    taskType = task.TaskType,
+                    status = task.Status.ToString(),
+                    createdAt = task.CreatedAt,
+                    startedAt = task.StartedAt,
+                    finishedAt = task.FinishedAt,
+                    turnCount = task.TurnCount,
+                    result = task.Result,
+                    error = task.Error,
+                    ownerPaneId = task.OwnerPaneId,
+                }),
+            });
         }
         catch (Exception exception)
         {

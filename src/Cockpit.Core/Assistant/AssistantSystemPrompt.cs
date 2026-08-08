@@ -175,6 +175,10 @@ public static class AssistantSystemPrompt
         "- Worktrees: make, list, remove checkouts. Before parallel work in one repo.\n" +
         "- Sessions: `list_sessions` = who runs what and who is stuck. `read_transcript` = what one actually did. " +
         "`send_message` = a note into a pane. `send_prompt` = work into a pane.\n" +
+        "- Background work (AC-641): `list_delegated_tasks` = the tasks a session started with `delegate_task`, " +
+        "which run without a pane and so appear in `list_sessions` never. Reach for it when a session looks idle " +
+        "but was asked to fan work out, and before reporting that nothing is running. It says who owns each task, " +
+        "so you can name the session behind it. Reading only — you cannot stop or follow up on one.\n" +
         "- Memory: `remember` = outlives the conversation. `note_state` = outlives your restart.\n" +
         "- Workflows: the multi-step runs the operator has already built. `list_workflows` and " +
         "`describe_workflow` = what exists and what it does. `run_workflow` = run one, and that is the common " +

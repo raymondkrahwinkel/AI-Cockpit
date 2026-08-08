@@ -1,7 +1,9 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Assistant;
@@ -29,7 +31,9 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
     private readonly IAssistantReadGateway _gateway = Substitute.For<IAssistantReadGateway>();
 
-    private AssistantReadMcpTools _Tools() => new(_gateway);
+    private readonly IDelegationService _delegation = Substitute.For<IDelegationService>();
+
+    private AssistantReadMcpTools _Tools() => new(_gateway, _delegation);
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -296,6 +300,105 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
         Assert.False((bool)result["ok"]!);
         Assert.Contains("list_sessions", (string)result["error"]!);
+    }
+
+    // ── AC-641: the delegated work list_sessions cannot see ───────────────────────────────────────────────────
+
+    private static DelegatedTaskView _Task(
+        string taskId, DelegatedTaskStatus status = DelegatedTaskStatus.Running, string? ownerPaneId = "pane-1") =>
+        new(taskId, "Sonnet", "review the diff", "review", status, DateTimeOffset.Now, DateTimeOffset.Now, null, 2,
+            null, null, ownerPaneId);
+
+    [Fact]
+    public void ListDelegatedTasks_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheService()
+    {
+        McpRequestContext.Set(OrdinarySessionPane);
+
+        var result = _Json(_Tools().ListDelegatedTasks());
+
+        Assert.False((bool)result["ok"]!);
+        Assert.Contains("not available to an agent session", (string)result["error"]!);
+        _delegation.DidNotReceive().ListTasks(Arg.Any<DelegatedTaskStatus?>(), Arg.Any<string?>());
+    }
+
+    [Fact]
+    public void ListDelegatedTasks_ReadsUnscoped_SoItSeesEveryOwnersTasksAndNotTheAssistantsOwnNone()
+    {
+        // The whole point of the tool: passing the caller's pane through the way list_tasks does would scope the read
+        // to the assistant's own tasks, and the assistant creates none — so it would always answer "nothing running"
+        // while five delegated sessions worked.
+        _delegation.ListTasks(null, null).Returns([_Task("t1"), _Task("t2", ownerPaneId: "pane-2")]);
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(_Tools().ListDelegatedTasks());
+
+        Assert.True((bool)result["ok"]!);
+        Assert.Equal(2, (int)result["count"]!);
+        _delegation.Received(1).ListTasks(null, null);
+    }
+
+    [Fact]
+    public void ListDelegatedTasks_NamesTheOwnerPane_SoBackgroundWorkCanBeAttributed()
+    {
+        _delegation.ListTasks(null, null).Returns([_Task("t1", ownerPaneId: "pane-7")]);
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var task = _Json(_Tools().ListDelegatedTasks())["tasks"]!.AsArray()[0]!;
+
+        Assert.Equal("pane-7", (string)task["ownerPaneId"]!);
+        Assert.Equal("review the diff", (string)task["label"]!);
+        Assert.Equal(2, (int)task["turnCount"]!);
+
+        // The status by name, not as the number the default enum serialization would write: "3" is nothing the
+        // assistant can say out loud, and it reads as a count of something.
+        Assert.Equal("Running", (string)task["status"]!);
+    }
+
+    /// <summary>
+    /// The same lesson as <see cref="ListSessions_JsonShape_CoversEveryFieldOnAssistantSessionRow"/>, applied to the
+    /// projection this tool has to write by hand: a field added to <see cref="DelegatedTaskView"/> later and never
+    /// wired in here goes missing from the wire silently, and the description keeps promising it.
+    /// </summary>
+    [Fact]
+    public void ListDelegatedTasks_JsonShape_CoversEveryFieldOnDelegatedTaskView()
+    {
+        _delegation.ListTasks(null, null).Returns([_Task("t1")]);
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(_Tools().ListDelegatedTasks());
+        var actualKeys = ((JsonObject)result["tasks"]!.AsArray()[0]!).Select(field => field.Key).ToHashSet();
+
+        var expectedKeys = typeof(DelegatedTaskView).GetProperties()
+            .Select(property => char.ToLowerInvariant(property.Name[0]) + property.Name[1..])
+            .ToHashSet();
+
+        Assert.Equal(expectedKeys, actualKeys);
+    }
+
+    [Fact]
+    public void ListDelegatedTasks_WithAStatus_FiltersOnIt_CaseInsensitively()
+    {
+        _delegation.ListTasks(DelegatedTaskStatus.Failed, null).Returns([_Task("t1", DelegatedTaskStatus.Failed)]);
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(_Tools().ListDelegatedTasks("failed"));
+
+        Assert.True((bool)result["ok"]!);
+        _delegation.Received(1).ListTasks(DelegatedTaskStatus.Failed, null);
+    }
+
+    [Fact]
+    public void ListDelegatedTasks_WithAStatusThatIsNotOne_IsRefusedRatherThanListingEverything()
+    {
+        // A silently-dropped filter is the dangerous answer here: "are any tasks failed?" asked with a word that is
+        // not a status would come back as every task there is, and be read out as the failures.
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(_Tools().ListDelegatedTasks("broken"));
+
+        Assert.False((bool)result["ok"]!);
+        Assert.Contains("Failed", (string)result["error"]!, StringComparison.Ordinal);
+        _delegation.DidNotReceive().ListTasks(Arg.Any<DelegatedTaskStatus?>(), Arg.Any<string?>());
     }
 
     // ── Criterion 3: list_agents is unchanged, and still workspace-scoped ──────────────────────────────────────
