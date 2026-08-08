@@ -160,7 +160,7 @@ public class AssistantOptionsViewModelTests
     [Fact]
     public async Task TickingDangerous_PersistsOnlyDangerous_AndLeavesTheEverydaySwitchAlone()
     {
-        var store = new FakeSettingsStore(new AssistantSettings { IsEnabled = true });
+        var store = new FakeSettingsStore(new AssistantSettings { IsEnabled = true, ConsentBypassAll = false });
         var vm = new AssistantOptionsViewModel(store);
         await vm.RefreshAsync();
 
@@ -174,6 +174,54 @@ public class AssistantOptionsViewModelTests
         Assert.False(terminal.BypassLowRisk);
         Assert.True(vm.HasConsentBypass);
         Assert.True(store.Saved!.IsEnabled, "a bypass tick must not disturb the sibling fields");
+        Assert.False(store.Saved!.ConsentBypassAll, "ticking a row must not switch allow-all back on either");
+    }
+
+    // ── AC-637: the "allow all" switch above them ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Constructed_WithNoStores_HasAllowAllOn()
+    {
+        // The default the page shows before any store is asked has to be the one the settings record holds, or the
+        // dialog opens saying the opposite of what is in force.
+        var vm = new AssistantOptionsViewModel();
+
+        Assert.True(vm.ConsentBypassAll);
+        Assert.True(vm.HasConsentBypass);
+    }
+
+    [Fact]
+    public async Task SwitchingAllowAllOff_PersistsIt_AndKeepsTheRowsAsTheyWere()
+    {
+        // Off falls back to the granular list rather than to an empty one: the rows are hidden while allow-all is
+        // on, never cleared, so this is the operator getting back exactly what they ticked before.
+        var store = new FakeSettingsStore(new AssistantSettings
+        {
+            IsEnabled = true,
+            ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp],
+        });
+        var vm = new AssistantOptionsViewModel(store);
+        await vm.RefreshAsync();
+        Assert.True(vm.ConsentBypassAll);
+
+        vm.ConsentBypassAll = false;
+
+        Assert.False(store.Saved!.ConsentBypassAll);
+        Assert.Equal([ConsentSourceCatalog.TerminalMcp], store.Saved!.ConsentBypassSources);
+        Assert.True(vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp).BypassLowRisk);
+        Assert.True(store.Saved!.IsEnabled, "the allow-all switch must not disturb the sibling fields");
+    }
+
+    [Fact]
+    public async Task RefreshAsync_SeedsAllowAllFromDisk_WithoutSavingItBackOut()
+    {
+        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassAll = false });
+        var vm = new AssistantOptionsViewModel(store);
+
+        await vm.RefreshAsync();
+
+        Assert.False(vm.ConsentBypassAll);
+        Assert.Null(store.Saved);
     }
 
     [Fact]

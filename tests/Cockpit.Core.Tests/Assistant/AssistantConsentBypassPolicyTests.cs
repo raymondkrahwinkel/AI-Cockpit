@@ -6,10 +6,14 @@ using Cockpit.Core.Consent;
 namespace Cockpit.Core.Tests.Assistant;
 
 /// <summary>
-/// The four conditions of #AC-575, one test each and one for every way of failing them. This is the class that
-/// decides whether an operator's consent card appears, so what these hold shut is every path by which "the
-/// assistant, for this source" quietly becomes "somebody, for something".
+/// The conditions of #AC-575, one test each and one for every way of failing them, plus #AC-637's "allow all"
+/// above them. This is the class that decides whether an operator's consent card appears, so what these hold shut
+/// is every path by which "the assistant" quietly becomes "somebody".
 /// </summary>
+/// <remarks>
+/// Most of these run with allow-all off — see <see cref="Enabled"/> — because the per-source lists are what they
+/// are about, and it now takes an explicit off to reach them at all.
+/// </remarks>
 public sealed class AssistantConsentBypassPolicyTests
 {
     private const string Terminal = ConsentSourceCatalog.TerminalMcp;
@@ -28,6 +32,7 @@ public sealed class AssistantConsentBypassPolicyTests
         IReadOnlyList<string>? lowRisk = null, IReadOnlyList<string>? dangerous = null) => new()
         {
             IsEnabled = true,
+            ConsentBypassAll = false,
             ConsentBypassSources = lowRisk ?? [],
             ConsentBypassDangerousSources = dangerous ?? [],
         };
@@ -65,9 +70,11 @@ public sealed class AssistantConsentBypassPolicyTests
     public async Task WithTheAssistantSwitchedOff_NothingIsBypassed()
     {
         // Condition 2. A standing exemption belonging to a feature that is off is a permission nobody is watching.
+        // Allow-all left at its default here on purpose: the widest setting must still take the master switch with it.
         var policy = await PolicyAsync(new AssistantSettings { IsEnabled = false, ConsentBypassSources = [Terminal] });
 
         Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
+        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
     }
 
     [Fact]
@@ -114,12 +121,42 @@ public sealed class AssistantConsentBypassPolicyTests
     }
 
     [Fact]
-    public async Task DefaultSettings_BypassNothing()
+    public async Task DefaultSettings_BypassEverythingTheAssistantAsks()
     {
-        // A fresh install, and the state the snapshot starts in before its first load has landed.
+        // #AC-637 turned this one around: a fresh install has allow-all on, so both risk classes of every source —
+        // named by the catalogue or not — go through without a card. The condition above it still holds.
         var policy = await PolicyAsync(new AssistantSettings { IsEnabled = true });
 
-        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
+        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
+        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
+        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, "a-plugin-nobody-listed", dangerous: true));
+        Assert.False(policy.ShouldBypass("pane-ordinary", Terminal, dangerous: false));
+    }
+
+    [Fact]
+    public async Task WithAllowAllSwitchedOff_OnlyTheTickedSourcesAreBypassed()
+    {
+        // The other half of the switch: off is the granular list exactly as #AC-575 built it, not an empty one.
+        var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
+
+        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
+        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
+        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, "cockpit-kubernetes", dangerous: false));
+    }
+
+    [Fact]
+    public async Task SwitchingAllowAllOff_TakesEffectOnTheNextRequest()
+    {
+        // The snapshot is replaced on the save Options raises, so switching the widest setting off is not a
+        // permission that lingers until the next restart.
+        var store = new FakeStore(new AssistantSettings { IsEnabled = true });
+        var policy = new AssistantConsentBypassPolicy(store);
+        await policy.ApplySettingsAsync();
+        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
+
+        store.Settings = Enabled();
+        await policy.ApplySettingsAsync();
+
         Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
     }
 
@@ -143,8 +180,10 @@ public sealed class AssistantConsentBypassPolicyTests
     {
         public bool Throw { get; set; }
 
+        public AssistantSettings Settings { get; set; } = settings;
+
         public Task<AssistantSettings> LoadAsync(CancellationToken cancellationToken = default) =>
-            Throw ? Task.FromException<AssistantSettings>(new IOException("no")) : Task.FromResult(settings);
+            Throw ? Task.FromException<AssistantSettings>(new IOException("no")) : Task.FromResult(Settings);
 
         public Task SaveAsync(AssistantSettings value, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;

@@ -15,6 +15,7 @@
 #FF2A2F39  CockpitHairlineColor
 #FF656C78  CockpitTextFaintColor
 #FF949AA5  CockpitTextSecondaryColor
+#FFE0A33E  CockpitStatusWaitingColor
 #FFE8EAEF  CockpitTextPrimaryColor
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0

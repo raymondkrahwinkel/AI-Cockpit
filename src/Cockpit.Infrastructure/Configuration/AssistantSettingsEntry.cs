@@ -29,6 +29,10 @@ internal sealed class AssistantSettingsEntry
 
     public List<string> ConsentBypassDangerousSources { get; set; } = [];
 
+    // "Allow all" (#AC-637). Nullable so an `assistant` section written before this build — where the property is
+    // absent rather than false — can be told apart from an operator's deliberate off; see `ToDomain`.
+    public bool? ConsentBypassAll { get; set; }
+
     public static AssistantSettingsEntry FromDomain(AssistantSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -38,6 +42,7 @@ internal sealed class AssistantSettingsEntry
         ReadingLevel = settings.ReadingLevel.ToString(),
         ConsentBypassSources = [.. settings.ConsentBypassSources],
         ConsentBypassDangerousSources = [.. settings.ConsentBypassDangerousSources],
+        ConsentBypassAll = settings.ConsentBypassAll,
     };
 
     public AssistantSettings ToDomain() => new()
@@ -51,9 +56,15 @@ internal sealed class AssistantSettingsEntry
         ReadingLevel = Enum.TryParse<Cockpit.Core.Sessions.ReadingLevel>(ReadingLevel, out var readingLevel)
             ? readingLevel
             : Cockpit.Core.Sessions.ReadingLevel.Developer,
-        // A null from a hand-edited or older config is an empty list, never "everything": the whole point of this
-        // setting is that it is off until someone deliberately turned it on.
+        // A null from a hand-edited or older config is an empty list, never "every source": the per-source lists
+        // stay something the operator ticked one at a time. Skipping everything is `ConsentBypassAll`'s job, and
+        // it says so under its own name rather than by a list quietly reading as wider than it was written.
         ConsentBypassSources = [.. ConsentBypassSources ?? []],
         ConsentBypassDangerousSources = [.. ConsentBypassDangerousSources ?? []],
+        // Absent means a config that predates the switch, and that operator's cockpit was asking about everything:
+        // it keeps doing so. The default-on lives in `AssistantSettings` and so reaches a fresh install only, where
+        // there is no `assistant` section to read at all. Upgrading is not the moment to widen a permission nobody
+        // asked to widen.
+        ConsentBypassAll = ConsentBypassAll ?? false,
     };
 }
