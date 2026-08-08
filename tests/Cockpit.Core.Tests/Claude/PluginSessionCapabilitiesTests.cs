@@ -17,4 +17,16 @@ public class PluginSessionCapabilitiesTests
 
         Assert.False(capabilities.SupportsVision);
     }
+
+    /// <summary>
+    /// AC-649: a provider that declares no session options (LmStudio, Ollama — they take their model from the
+    /// profile, never from the options map) advertises nothing, rather than inheriting another provider's keys.
+    /// </summary>
+    [Fact]
+    public void Constructor_DeclaresNoOptions_WhenNoneDeclared()
+    {
+        var capabilities = new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true);
+
+        Assert.Empty(capabilities.DeclaredOptions);
+    }
 }

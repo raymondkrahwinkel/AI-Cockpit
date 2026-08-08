@@ -72,4 +72,17 @@ internal static class ClaudeOptionChoices
         ["xhigh"] = 48_000,
         ["max"] = 64_000,
     };
+
+    // The same three vocabularies as a schema the host can read (AC-649) — `effort` above all, which until now was a
+    // key only this plugin knew existed. Built from the lists above so the schema cannot drift from what the driver
+    // honours. Model stays free-form: the aliases are suggestions, a pinned snapshot is equally valid.
+    public static readonly IReadOnlyList<PluginSessionOptionDescriptor> DeclaredSessionOptions =
+    [
+        new(ClaudeSdkSessionDriver.PermissionModeOptionKey, "Permission mode", _Values(PermissionModes, PermissionModeLabels), "default"),
+        new(ClaudeSdkSessionDriver.ModelOptionKey, "Model"),
+        new(ClaudeSdkSessionDriver.EffortOptionKey, "Effort", _Values(EffortLevels, EffortLabels), "medium"),
+    ];
+
+    private static IReadOnlyList<PluginSessionOptionValue> _Values(IReadOnlyList<string> values, IReadOnlyDictionary<string, string> labels) =>
+        [.. values.Select(value => new PluginSessionOptionValue(value, labels.TryGetValue(value, out var label) ? label : value))];
 }

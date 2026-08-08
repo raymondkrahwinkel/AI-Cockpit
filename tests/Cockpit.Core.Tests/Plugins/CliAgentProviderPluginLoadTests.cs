@@ -61,6 +61,11 @@ public class CliAgentProviderPluginLoadTests
         // static options — asserted on the actual plugin object, since the dialog-side test only proves the
         // host renders a hand-rolled one. Not invoked here: doing so would spawn a real codex app-server.
         Assert.NotNull(registration.ResolveOptionsAsync);
+        // AC-649: Codex declares its own option vocabulary — a sandbox with its own values, no permission mode and no
+        // effort, proving the schema is not shaped around Claude's keys.
+        var sandbox = Assert.Single(registration.Capabilities.DeclaredOptions, option => option.Key == "sandbox");
+        Assert.Equal(new[] { "read-only", "workspace-write", "danger-full-access" }, sandbox.KnownValues!.Select(value => value.Value).ToArray());
+        Assert.DoesNotContain(registration.Capabilities.DeclaredOptions, option => option.Key is "permission-mode" or "effort");
 
         // The driver factory is usable through the narrow plugin contract without the host ever seeing this
         // plugin's concrete types. CreateConfigView is not exercised here — it builds a real Avalonia Control,

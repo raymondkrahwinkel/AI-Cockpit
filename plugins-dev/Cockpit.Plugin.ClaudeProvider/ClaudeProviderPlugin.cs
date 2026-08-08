@@ -79,7 +79,9 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // mapped confinement to false for a bypass session, and the fail-closed isolation gate refuses an isolated
             // Claude step that a bypass mode would leave free to write outside its worktree. Codex, confined by a real OS
             // sandbox, leaves this false and stays confined in every mode.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true },
+            // DeclaredOptions (AC-649): the three option keys this driver reads, stated rather than left for a caller
+            // to know — `effort` was a Claude-private key no consumer could discover at all.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true, DeclaredOptions = ClaudeOptionChoices.DeclaredSessionOptions },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =
