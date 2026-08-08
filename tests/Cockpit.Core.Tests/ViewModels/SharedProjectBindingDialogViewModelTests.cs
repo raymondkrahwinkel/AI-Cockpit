@@ -17,6 +17,12 @@ public class SharedProjectBindingDialogViewModelTests
 {
     private static readonly SharedProject _SharedProject = new("depot:handbook", "Handbook");
 
+    // AC-651: a machine-scoped reference is one `Path.IsPathFullyQualified` accepts, and that answer is per-OS — a
+    // POSIX path is fully qualified on this repo's Linux CI and not on a Windows dev box. Same seam as
+    // `ProjectResourcePathPortabilityTests`.
+    private static readonly string _OtherMachineHome = OperatingSystem.IsWindows() ? @"C:\Users\erik" : "/home/erik";
+    private static readonly string _ThisMachineHome = OperatingSystem.IsWindows() ? @"C:\Users\raymond" : "/home/raymond";
+
     private static ISessionProfileStore _ProfileStoreWith(params string[] labels)
     {
         var store = Substitute.For<ISessionProfileStore>();
@@ -109,7 +115,7 @@ public class SharedProjectBindingDialogViewModelTests
         // an older writer that predates AC-246's placeholder shape) — see the sibling test below for the case the
         // real write pipeline actually produces now (a blank reference).
         var resources = Enumerable.Range(1, 10)
-            .Select(i => new SharedProjectBindingResource("Reference", $"/home/erik/notes/{i}.md") { Label = $"Note {i}" })
+            .Select(i => new SharedProjectBindingResource("Reference", Path.Combine(_OtherMachineHome, "notes", $"{i}.md")) { Label = $"Note {i}" })
             .ToList();
         var binding = new SharedProjectBinding("Ten Absolute") { Resources = resources };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
@@ -234,7 +240,7 @@ public class SharedProjectBindingDialogViewModelTests
     {
         var binding = new SharedProjectBinding("Has Ask Row")
         {
-            Resources = [new SharedProjectBindingResource("Reference", "/home/erik/x.md") { Label = "Erik's notes" }],
+            Resources = [new SharedProjectBindingResource("Reference", Path.Combine(_OtherMachineHome, "x.md")) { Label = "Erik's notes" }],
         };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
@@ -247,10 +253,11 @@ public class SharedProjectBindingDialogViewModelTests
         var project = viewModel.ToProject();
         Assert.Single(project.Resources); // only the binding marker — the skipped row never made it
 
-        row.Reference = "/home/raymond/x.md";
+        var ownPath = Path.Combine(_ThisMachineHome, "x.md");
+        row.Reference = ownPath;
         var filled = viewModel.ToProject();
         Assert.Equal(2, filled.Resources.Count);
-        Assert.Contains(filled.Resources, r => r.Reference == "/home/raymond/x.md" && r.Label == "Erik's notes");
+        Assert.Contains(filled.Resources, r => r.Reference == ownPath && r.Label == "Erik's notes");
     }
 
     [Fact]
