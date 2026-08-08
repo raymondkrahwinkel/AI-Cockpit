@@ -63,11 +63,24 @@ internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess
         _started = true;
     }
 
+    // Serialises every write to stdin: the host's user-message path and the driver's usage poll now write from
+    // different threads, and `StreamWriter.WriteLineAsync` throws on a concurrent async write — or worse,
+    // interleaves bytes into what is a line protocol. Here rather than per caller: all of them route through.
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
+
     public async Task WriteLineAsync(string line, CancellationToken cancellationToken = default)
     {
         var process = _RequireStartedProcess();
-        await process.StandardInput.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
-        await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await process.StandardInput.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
+            await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
     }
 
     public IAsyncEnumerable<string> ReadStdoutLinesAsync(CancellationToken cancellationToken = default) =>
