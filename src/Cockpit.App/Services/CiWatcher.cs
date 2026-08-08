@@ -36,6 +36,9 @@ public sealed class CiWatcher(
     // The red checks already reported, per checkout, so a branch that stays red stays quiet.
     private readonly Dictionary<string, IReadOnlySet<string>> _reported = new(StringComparer.OrdinalIgnoreCase);
 
+    // The checkouts already reported ready (AC-645), so a pull request that sits green all afternoon is said once.
+    private readonly HashSet<string> _reportedReady = new(StringComparer.OrdinalIgnoreCase);
+
     private DispatcherTimer? _timer;
     private bool _looking;
     private bool _disposed;
@@ -47,6 +50,10 @@ public sealed class CiWatcher(
     // Runs `gh pr checks` in a directory and hands back what it printed. Replaced by the tests, which have no
     // repository, no network and no wish for either.
     public Func<string, CancellationToken, Task<string>> Probe { get; set; } = _AskGhAsync;
+
+    // AC-645: `gh pr view` for the merge itself. A second call because `gh pr checks --json` has no `reviewDecision`
+    // or `mergeable` to fold into — it only knows check fields — and only ever run once the checks are already green.
+    public Func<string, CancellationToken, Task<string>> MergeProbe { get; set; } = _AskGhMergeStateAsync;
 
     // Starts watching the clock. Idempotent, and built on the UI thread because that is where the session list is
     // read and where a DispatcherTimer has to be created to ever tick at all (AC-368).
@@ -126,12 +133,72 @@ public sealed class CiWatcher(
 
         _reported[checkout.Directory] = RedChecks.RedNames(checks);
 
-        if (newlyRed.Count == 0)
+        if (!RedChecks.AllGreen(checks))
+        {
+            // Back out of ready here rather than below, so a pull request that was reported ready, took a push and
+            // went red is news again when it comes back green — the red branch returns before ever getting there.
+            _reportedReady.Remove(checkout.Directory);
+        }
+
+        if (newlyRed.Count > 0)
+        {
+            await _ReportAsync(checkout, newlyRed, cancellationToken);
+            return;
+        }
+
+        await _LookAtReadinessAsync(checkout, checks, cancellationToken);
+    }
+
+    // AC-645: the mirror of a red check — nothing failing, nothing pending, nothing blocking the merge, and nobody
+    // pressing the button. Said once per crossing into ready, the same way red is said once per crossing into red.
+    private async Task _LookAtReadinessAsync(WatchedCheckout checkout, IReadOnlyList<CiCheck> checks, CancellationToken cancellationToken)
+    {
+        if (!RedChecks.AllGreen(checks))
         {
             return;
         }
 
-        await _ReportAsync(checkout, newlyRed, cancellationToken);
+        if (_reportedReady.Contains(checkout.Directory))
+        {
+            // Already said. Returning here is also what keeps a pull request left sitting ready at one gh process
+            // per tick rather than two — green but not yet mergeable is the one case that pays for the second.
+            return;
+        }
+
+        string output;
+        try
+        {
+            output = await MergeProbe(checkout.Directory, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "Asking gh about the merge state of {Directory} failed; the next look will try again.", checkout.Directory);
+            return;
+        }
+
+        if (!RedChecks.ParseMergeState(output).IsReadyToMerge)
+        {
+            return;
+        }
+
+        _reportedReady.Add(checkout.Directory);
+        await _ReportReadyAsync(checkout, cancellationToken);
+    }
+
+    private async Task _ReportReadyAsync(WatchedCheckout checkout, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("CI went green and the pull request is mergeable on {Title} ({Directory}).", checkout.Title, checkout.Directory);
+
+        await notifier.NotifyAttentionAsync(
+            new AttentionNotification(checkout.Title, "CI is green and the pull request is ready to merge"),
+            cancellationToken);
+
+        inbox.Deliver(
+            SenderPaneId,
+            AssistantIdentity.PaneId,
+            "ci",
+            $"CI is green on '{checkout.Title}' ({checkout.Directory}) and the pull request is mergeable with nothing "
+                + "blocking review. It is still unmerged. Nothing has been started about it.");
     }
 
     private async Task _ReportAsync(WatchedCheckout checkout, IReadOnlyList<CiCheck> red, CancellationToken cancellationToken)
@@ -164,6 +231,8 @@ public sealed class CiWatcher(
         {
             _reported.Remove(gone);
         }
+
+        _reportedReady.RemoveWhere(directory => !live.Contains(directory));
     }
 
     private async void _OnTick(object? sender, EventArgs e)
@@ -182,7 +251,15 @@ public sealed class CiWatcher(
 
     // `gh pr checks` for the pull request of whatever branch this directory is on. The exit code is ignored on
     // purpose: gh exits 8 while checks are pending and 1 when one failed, and writes the JSON either way.
-    private static async Task<string> _AskGhAsync(string workingDirectory, CancellationToken cancellationToken)
+    private static Task<string> _AskGhAsync(string workingDirectory, CancellationToken cancellationToken) =>
+        _RunGhAsync(workingDirectory, ["pr", "checks", "--json", "bucket,name,workflow,link"], cancellationToken);
+
+    // AC-645: the two fields that say whether anything is still blocking the merge. A merged or closed pull request
+    // makes this fail or answer nothing, which reads as not ready — so a branch already merged is never reported.
+    private static Task<string> _AskGhMergeStateAsync(string workingDirectory, CancellationToken cancellationToken) =>
+        _RunGhAsync(workingDirectory, ["pr", "view", "--json", "reviewDecision,mergeable"], cancellationToken);
+
+    private static async Task<string> _RunGhAsync(string workingDirectory, string[] arguments, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(workingDirectory))
         {
@@ -198,7 +275,7 @@ public sealed class CiWatcher(
             CreateNoWindow = true,
         };
 
-        foreach (var argument in new[] { "pr", "checks", "--json", "bucket,name,workflow,link" })
+        foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }

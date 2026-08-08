@@ -44,6 +44,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   a profile ran with permissions bypassed on the costliest model was to open `cockpit.json` yourself, which is not
   something the assistant can do at all.
 
+- added: a pull request that has gone green and is still sitting there gets mentioned, once. The cockpit already told
+  you when a branch went red; it stayed quiet about the opposite case, so a branch that passed everything and had
+  nothing blocking it could sit unmerged all afternoon because whoever was watching it moved on. It says so only when
+  the checks are all in, nothing is pending, no changes are requested and the merge itself is clear — and it says it
+  once, not every five minutes until you get to it.
+- added: a claim left behind by an agent session that crashed is cleaned up on its own. Agents mark the worktree or
+  branch they are working on so the others keep off it, and that mark is dropped when a session closes normally.
+  A session that never closed normally — a crash, a killed process — used to leave its mark standing, warning
+  everybody off work nobody was doing. The cockpit now notices the owner is gone, drops the mark and tells the
+  assistant it did, rather than quietly. A mark whose owner is still running is never touched, however old it is.
+
 - added: the voice assistant can rename a session and a desk. It could already name a session at the moment it
   started one, but not afterwards — so "call that one Luna" meant leaving the conversation and doing it yourself in
   the sidebar. Both renames ask for your approval first, the same as starting or stopping a session does, and a name
