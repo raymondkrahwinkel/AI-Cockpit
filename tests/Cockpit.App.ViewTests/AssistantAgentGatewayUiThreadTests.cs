@@ -203,7 +203,8 @@ public class AssistantAgentGatewayUiThreadTests
                 Substitute.For<IWorkspaceAgentGateway>(),
                 Substitute.For<IAgentMessageInbox>(),
                 Substitute.For<IAgentNotifyAuditLog>(),
-                Substitute.For<IPluginProviderRegistry>()),
+                Substitute.For<IPluginProviderRegistry>(),
+                new SessionWatcher(Substitute.For<IAgentMessageInbox>())),
             desk.Id);
     }
 }

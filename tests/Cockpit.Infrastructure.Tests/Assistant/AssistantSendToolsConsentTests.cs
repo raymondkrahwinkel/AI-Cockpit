@@ -238,6 +238,16 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
         public Task<AssistantRenameResult> RenameWorkspaceAsync(string workspaceId, string name, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<AssistantWatchResult> WatchSessionAsync(
+            string paneId,
+            IReadOnlyList<string>? events,
+            int? afterMinutes = null,
+            string? pattern = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
         {
             Calls.Add($"SendMessageAsync({paneId})");

@@ -40,7 +40,8 @@ internal sealed class AssistantAgentGateway(
     IWorkspaceAgentGateway agents,
     IAgentMessageInbox inbox,
     IAgentNotifyAuditLog notifyAudit,
-    IPluginProviderRegistry pluginProviders) : IAssistantAgentGateway, ISingletonService
+    IPluginProviderRegistry pluginProviders,
+    SessionWatcher watcher) : IAssistantAgentGateway, ISingletonService
 {
     public async Task<AgentSpawnResult> SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken = default)
     {
@@ -617,6 +618,20 @@ internal sealed class AssistantAgentGateway(
 
         return AgentStopResult.Refused(reason);
     }
+
+    // AC-640: the watcher decides everything — whether the pane resolves, whether it keeps a transcript, whether the
+    // pattern compiles — because it is the half that has to live with the answer every tick. What happens here is
+    // only getting onto the thread its probe reads the session list on.
+    public Task<AssistantWatchResult> WatchSessionAsync(
+        string paneId,
+        IReadOnlyList<string>? events,
+        int? afterMinutes = null,
+        string? pattern = null,
+        CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(() => Task.FromResult(watcher.Watch(paneId, events, afterMinutes, pattern)));
+
+    public Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(() => Task.FromResult(watcher.Unwatch(paneId)));
 
     private Task _RecordAsync(AssistantSpawnAuditEntry entry, CancellationToken cancellationToken) =>
         auditLog.RecordAsync(entry, cancellationToken);

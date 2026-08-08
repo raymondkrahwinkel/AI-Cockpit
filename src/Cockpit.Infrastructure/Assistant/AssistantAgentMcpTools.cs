@@ -382,6 +382,53 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "watch_session")]
+    [Description("Asks the cockpit to tell you when something happens in another session, so you stop calling list_sessions to find out. Arm it right after start_agent and then leave the session alone: the cockpit watches it for you and puts a message in your inbox when one of the events below happens, which reaches you on your next turn or your next tool result. Nothing is watched until you say so, and a watch costs nothing while nothing happens. THE FIVE EVENTS, and what each is actually for: `busy-to-idle` = it stopped working — which is either finished or a question waiting for an answer, and the transcript lines the message carries are how you tell those apart, so read them before reporting either. `needs-attention` = it is stopped on a permission nobody has clicked; this is the one an agent can never tell you itself, because it cannot call a tool while it waits. `gone` = the pane disappeared without ever having reported finishing or asking — the fell-over-quietly case — and the watch is dropped with it. `stuck` = it has written nothing for a while; counted in transcript rows and never in status, so it is the one that still fires when the status field itself is wrong. `pattern` = a line matching your regular expression appeared, reported every time a fresh one does. EVERY MESSAGE CARRIES THE LAST FEW TRANSCRIPT LINES, so you rarely need read_transcript afterwards — say what the session actually said, not that it 'changed state'. This starts nothing and changes nothing, so it needs no approval and nothing appears on the operator's screen. A REFUSAL IS NORMAL: a pane id that resolves to nothing, `stuck` or `pattern` on a terminal-route session (it keeps no transcript here), a pattern that is not a valid regular expression, or an event name that is not one of the five. Read the reason and carry on. Arming a pane again replaces what was armed on it, rather than adding a second watch.")]
+    public async Task<string> WatchSessionAsync(
+        [Description("The pane id of the session to watch, exactly as list_sessions or start_agent reports it. Never a name — two sessions can be called the same thing.")] string paneId,
+        [Description("Which of the five to watch for, one or more of: busy-to-idle, needs-attention, gone, stuck, pattern. Arming what you actually want to hear about is the whole point — a watch on all five for a session you only want the end of is noise you will have to read.")] string[] events,
+        [Description("For `stuck` only: how many minutes without a new transcript row counts as stuck. Left out, a sensible default applies. Pick it from the work — a long build writes nothing for minutes at a time and is not stuck.")] int? afterMinutes = null,
+        [Description("For `pattern` only: the regular expression matched against each NEW transcript line, .NET syntax. An error signature, a ticket number, a phrase an agent uses when it is blocked. Refused here and now if it does not compile.")] string? pattern = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.WatchSessionAsync(paneId, events, afterMinutes, pattern).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new { ok = true, paneId, name = result.Name, watching = events })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "unwatch_session")]
+    [Description("Stops watching a session you armed with watch_session — no further messages about it from the moment this returns. Call it when you stop a session, and when you have had the answer you were waiting for and the rest would only be noise. A pane the cockpit finds gone unwatches itself, so you never have to clean one of those up. `wasWatching` false means nothing was armed on that pane: not an error, and worth reading rather than reporting a stop that never happened. This changes nothing about the session itself — it keeps running, you simply stop being told about it.")]
+    public async Task<string> UnwatchSessionAsync(
+        [Description("The pane id whose watch is to be dropped, exactly as it was armed.")] string paneId)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var wasWatching = await gateway.UnwatchSessionAsync(paneId).ConfigureAwait(false);
+            return _Serialize(new { ok = true, paneId, wasWatching });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "remember")]
     [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(
