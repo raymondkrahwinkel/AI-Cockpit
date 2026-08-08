@@ -71,6 +71,13 @@ public class ClaudeProviderPluginLoadTests
         Assert.True(sessionRegistration.Capabilities.ConfinesViaPermissionsOnly);
         Assert.Contains(sessionRegistration.Options, option => option.Key == "permission-mode");
         Assert.Contains(sessionRegistration.Options, option => option.Key == "model");
+        // AC-649: the option schema the host can read. `effort` is the one that mattered — a Claude-private key with
+        // exactly five levels that nothing outside this plugin could discover before.
+        var effort = Assert.Single(sessionRegistration.Capabilities.DeclaredOptions, option => option.Key == "effort");
+        Assert.Equal(new[] { "low", "medium", "high", "xhigh", "max" }, effort.KnownValues!.Select(value => value.Value).ToArray());
+        Assert.Equal("medium", effort.CurrentValueHint);
+        Assert.Contains(sessionRegistration.Capabilities.DeclaredOptions, option => option.Key == "permission-mode");
+        Assert.Contains(sessionRegistration.Capabilities.DeclaredOptions, option => option.Key == "model");
         Assert.NotNull(sessionRegistration.CreateDriverFactory(host.Services));
         // CreateConfigView is not exercised here — it builds a real Avalonia Control (see CliAgentProviderPluginLoadTests).
 

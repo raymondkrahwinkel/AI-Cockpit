@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a session provider now states which options it understands and what values they take — Claude its permission
+  mode, model and effort levels, Codex its own sandbox modes. Until now only the New-session dialog knew Claude's
+  vocabulary and nothing knew Codex's, so anything else asking "what can I set for this provider?" had to guess. A
+  provider that reads no options states none, instead of being handed another provider's.
+
 - added: the voice assistant can rename a session and a desk. It could already name a session at the moment it
   started one, but not afterwards — so "call that one Luna" meant leaving the conversation and doing it yourself in
   the sidebar. Both renames ask for your approval first, the same as starting or stopping a session does, and a name
