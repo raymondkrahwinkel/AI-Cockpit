@@ -33,4 +33,8 @@ public sealed record DelegatedTaskView(
     DateTimeOffset? FinishedAt,
     int TurnCount,
     string? Result,
-    string? Error);
+    string? Error,
+    // The verified pane that created the task, or null off the verified path. Carried so an unscoped read
+    // (AC-641's list_delegated_tasks) can attribute background work to the session that started it; a scoped
+    // caller only ever sees its own pane here.
+    string? OwnerPaneId = null);

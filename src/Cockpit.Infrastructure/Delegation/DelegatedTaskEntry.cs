@@ -163,5 +163,6 @@ internal sealed class DelegatedTaskEntry
         FinishedAt,
         TurnCount,
         Result,
-        Error);
+        Error,
+        OwnerPaneId);
 }

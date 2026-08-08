@@ -445,6 +445,18 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void LaunchOptions_CarryTheToolThatSeesDelegatedBackgroundWork()
+    {
+        // AC-641, asserted the way AC-639's test above is: off the instruction a launch actually delivers, not off
+        // the constant. A tool the map never names is a tool the assistant does not know it has (AC-635), and this
+        // one is the only route to work that appears in no session list at all.
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains("list_delegated_tasks", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LaunchOptions_TheAssistantsOwnInstruction_WinsOverAnythingTheProfileStoredOnThatKey()
     {
         // The profile's start defaults are copied first and the standing instruction is written last, on purpose:
