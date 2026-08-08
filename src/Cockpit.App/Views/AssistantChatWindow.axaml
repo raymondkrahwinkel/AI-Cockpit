@@ -269,26 +269,23 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                                <Panel>
-                                <!-- Hand-over divider (AC-596 follow-up), same shape as the context-cleared one
-                                     SessionView.axaml draws: a hairline with its label in the middle, outside the
-                                     bubble border so it reads as a break rather than one more message. Without this
-                                     a Divider row rendered as an empty bubble — none of the IsVisible bindings below
-                                     match TranscriptEntryKind.Divider. -->
-                                <Grid IsVisible="{Binding IsDivider}" ColumnDefinitions="*,Auto,*" Margin="8,8">
-                                    <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
-                                            Background="{StaticResource CockpitHairlineBrush}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Text}" Margin="10,0" FontSize="10.5"
-                                               VerticalAlignment="Center" TextWrapping="Wrap"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                    <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
-                                            Background="{StaticResource CockpitHairlineBrush}"/>
-                                </Grid>
-
                                 <Border Classes="transcriptRow" Classes.userRow="{Binding IsUserRow}"
-                                        Padding="8,5" Margin="8,2" CornerRadius="{StaticResource CockpitControlRadius}"
-                                        IsVisible="{Binding !IsDivider}">
+                                        Padding="8,5" Margin="8,2" CornerRadius="{StaticResource CockpitControlRadius}">
                                     <StackPanel Spacing="4">
+
+                                        <!-- Hand-over divider (AC-638): this window drew no Divider row at all, so
+                                             it borrows the shape SessionView.axaml uses. MaxWidth is what makes the
+                                             label wrap — an Auto column measures its child unconstrained. -->
+                                        <Grid IsVisible="{Binding IsDivider}" ColumnDefinitions="*,Auto,*" Margin="0,8">
+                                            <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
+                                                    Background="{StaticResource CockpitHairlineBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Text}" Margin="10,0" FontSize="10.5"
+                                                       VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="220"
+                                                       TextAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                            <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
+                                                    Background="{StaticResource CockpitHairlineBrush}"/>
+                                        </Grid>
 
                                         <!-- The user's own message: right-aligned bubble, plain text. -->
                                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
@@ -381,7 +378,6 @@
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
-                                </Panel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

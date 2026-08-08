@@ -342,11 +342,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true)),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
-        // AC-596 follow-up: startFresh means the previous conversation was just abandoned mid-context-fill, not
-        // that this is the assistant's first-ever start — a window that goes from a full transcript to nothing
-        // with no line explaining why reads as "everything is gone" rather than "handed over". The note itself
-        // (what carries forward) is already in the system prompt via AssistantStandingInstruction.CurrentStateHeading;
-        // this only says, in the transcript the operator actually looks at, that the empty window is expected.
+        // AC-638: a hand-over leaves the operator looking at an empty window, so say why in the transcript itself —
+        // the note that carries forward only reaches the system prompt, which is nowhere they can see.
         if (startFresh)
         {
             session.Transcript.Add(new TranscriptEntryViewModel(

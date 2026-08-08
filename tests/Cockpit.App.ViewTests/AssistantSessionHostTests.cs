@@ -529,11 +529,8 @@ public class AssistantSessionHostTests
     }
 
     /// <summary>
-    /// A hand-over swaps in a whole new <c>SessionViewModel</c> with an empty in-memory transcript — the old one's
-    /// rows belonged to an instance that just got disposed. With nothing said about it, that reads to the operator
-    /// as "everything is gone" rather than "the assistant handed itself over"; the note that actually carries
-    /// forward (<see cref="AssistantStandingInstruction.CurrentStateHeading"/>) is in the system prompt, not
-    /// anywhere the chat window shows.
+    /// AC-638: a hand-over swaps in a new <c>SessionViewModel</c> whose transcript is empty, which reads as data
+    /// loss unless the new transcript says why.
     /// </summary>
     [Fact]
     public void HandingOver_LeavesADividerInTheNewSessionsTranscript_SoAnEmptyWindowIsNotReadAsDataLoss()
