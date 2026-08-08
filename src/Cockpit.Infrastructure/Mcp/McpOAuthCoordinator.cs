@@ -218,7 +218,7 @@ internal sealed class McpOAuthCoordinator(
         // An interactive sign-in stays outside the single-flight gate: the operator pressed the button, this method
         // already cleared the stored token so the flow would actually run, and joining somebody else's silent
         // renewal would make that button do nothing again.
-        var (stage, explained, unreachable) = interactive
+        var (stage, explained, unreachable, grantRejected) = interactive
             ? await _HandshakeAsync(server, interactive: true, cancellationToken).ConfigureAwait(false)
             : await _SharedRenewalAsync(server, cancellationToken).ConfigureAwait(false);
 
@@ -251,15 +251,7 @@ internal sealed class McpOAuthCoordinator(
                 stage);
         }
 
-        // Three different failures, and they are told apart here rather than lumped together, because the advice
-        // that follows from each is different and two of the three are actively misled by the other's. A renewal
-        // that worked and produced a token too short for the margin asked of it is not an expired sign-in: nothing
-        // expired, and signing in again yields another token exactly like it.
-        var reason = renewed
-            ? McpOAuthAttentionReason.TokenTooShortLived
-            : unreachable
-                ? McpOAuthAttentionReason.ServerUnreachable
-                : McpOAuthAttentionReason.SignInExpired;
+        var reason = _ReasonFor(renewed, unreachable, grantRejected, interactive);
 
         if (renewed)
         {
@@ -276,6 +268,28 @@ internal sealed class McpOAuthCoordinator(
             ? McpOAuthAccess.AuthorizationRequired with { SignInStage = stage, Reason = reason }
             : _Unauthorized(server, reason, stage);
     }
+
+    // Why a handshake that produced no usable credential produced none, told apart rather than lumped together
+    // because the advice that follows from each is different and every one of them is actively misled by the others'.
+    //
+    // A renewal that worked and produced a token too short for the margin asked of it is not an expired sign-in:
+    // nothing expired, and signing in again yields another token exactly like it.
+    //
+    // The last two are the whole of AC-646. "Expired" used to be everything left over once unreachable was ruled
+    // out — a verdict reached by elimination, from a code path that had never once seen an authorization server say
+    // so. One token endpoint having a bad second was enough to tell an operator their sign-in was revoked and to
+    // stop an agent that had nothing to wait for. So it is only said when the server said it (`invalid_grant`), and
+    // everything else is reported as what it is: not confirmed, and worth trying again. Not softened all the way
+    // down, either — the mirror of the same mistake is answering "try again" to a genuinely revoked grant and never
+    // telling anyone the sign-in is gone.
+    //
+    // An interactive sign-in keeps the old reading: the operator is standing in front of the browser flow that just
+    // failed, so "could not be confirmed, send it again" would be an answer to a question they did not ask.
+    private static McpOAuthAttentionReason _ReasonFor(bool renewed, bool unreachable, bool grantRejected, bool interactive) =>
+        renewed ? McpOAuthAttentionReason.TokenTooShortLived
+        : unreachable ? McpOAuthAttentionReason.ServerUnreachable
+        : grantRejected || interactive ? McpOAuthAttentionReason.SignInExpired
+        : McpOAuthAttentionReason.RenewalCouldNotBeConfirmed;
 
     // One silent renewal per server at a time (see `_renewals`). Callers that arrive while one runs
     // wait for its outcome rather than starting a second, and then re-read the store for themselves.
@@ -340,7 +354,7 @@ internal sealed class McpOAuthCoordinator(
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Renewing the authorization for MCP server {Server} ended unexpectedly.", server.Name);
-            return new HandshakeOutcome(McpSignInStage.NoBrowserLaunched, Explained: false, Unreachable: _IsUnreachable(exception));
+            return new HandshakeOutcome(McpSignInStage.NoBrowserLaunched, Explained: false, Unreachable: _IsUnreachable(exception), GrantRejected: false);
         }
     }
 
@@ -373,7 +387,16 @@ internal sealed class McpOAuthCoordinator(
         {
             var guidance = McpOAuthSignInGuidance.For(server.Name, reason);
             logger.LogWarning("MCP server {Server} is unavailable: {Guidance}", server.Name, guidance);
-            _NotifyOperator(server, guidance);
+
+            // The log line is written either way; the toast is not (AC-646). The operator is interrupted when
+            // something of theirs is needed, and a renewal that could not be confirmed is precisely the case where
+            // nothing is — the call retries itself, and the next one usually just works. "MCP server unavailable,
+            // go and sign in again" over a storm that lasted a second is how a fix for a wrong sentence would have
+            // kept the wrong interruption.
+            if (reason != McpOAuthAttentionReason.RenewalCouldNotBeConfirmed)
+            {
+                _NotifyOperator(server, guidance);
+            }
         }
 
         return McpOAuthAccess.AuthorizationRequired with { SignInStage = stage, Reason = reason };
@@ -464,19 +487,28 @@ internal sealed class McpOAuthCoordinator(
         {
             // No address to reach is a configuration gap, not an outage — an operator who is told to wait for the
             // server to come back would wait forever.
-            return new HandshakeOutcome(McpSignInStage.NoBrowserLaunched, Explained: false, Unreachable: false);
+            return new HandshakeOutcome(McpSignInStage.NoBrowserLaunched, Explained: false, Unreachable: false, GrantRejected: false);
         }
 
         var stageRecorder = new McpSignInStageRecorder();
+
+        // The transport's own HttpClient, made rather than left to the SDK, so the token endpoint's answer passes
+        // through something that can see it (AC-646). Owned by the transport and disposed with it — the SDK builds
+        // one per transport anyway, so this costs the same connection pool it already had.
+        var grantWatcher = new McpOAuthGrantRejectionWatcher { InnerHandler = new HttpClientHandler() };
         try
         {
-            var transport = new HttpClientTransport(new HttpClientTransportOptions
-            {
-                Name = server.Name,
-                Endpoint = new Uri(server.Url),
-                TransportMode = HttpTransportMode.AutoDetect,
-                OAuth = authorizer.CreateOptions(server, interactive, stageRecorder),
-            });
+            await using var transport = new HttpClientTransport(
+                new HttpClientTransportOptions
+                {
+                    Name = server.Name,
+                    Endpoint = new Uri(server.Url),
+                    TransportMode = HttpTransportMode.AutoDetect,
+                    OAuth = authorizer.CreateOptions(server, interactive, stageRecorder),
+                },
+                new HttpClient(grantWatcher),
+                loggerFactory: null,
+                ownsHttpClient: true);
 
             var clientOptions = interactive ? McpInteractiveOAuthClientOptions.Value : null;
             await using var client = await McpClient.CreateAsync(transport, clientOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -498,17 +530,17 @@ internal sealed class McpOAuthCoordinator(
                 server.Name,
                 stageRecorder.Reached);
 
-            return new HandshakeOutcome(stageRecorder.Reached, Explained: true, Unreachable: _IsUnreachable(exception));
+            return new HandshakeOutcome(stageRecorder.Reached, Explained: true, Unreachable: _IsUnreachable(exception), grantWatcher.GrantRejected);
         }
         catch (Exception exception)
         {
             // An expected outcome, not an anomaly: with nobody to ask, this is exactly what a refusal to hand a
             // sign-in to a browser looks like. The caller decides what it means by re-reading the store.
             logger.LogInformation(exception, "Could not renew authorization for MCP server {Server} without asking the operator.", server.Name);
-            return new HandshakeOutcome(stageRecorder.Reached, Explained: false, Unreachable: _IsUnreachable(exception));
+            return new HandshakeOutcome(stageRecorder.Reached, Explained: false, Unreachable: _IsUnreachable(exception), grantWatcher.GrantRejected);
         }
 
-        return new HandshakeOutcome(stageRecorder.Reached, Explained: false, Unreachable: false);
+        return new HandshakeOutcome(stageRecorder.Reached, Explained: false, Unreachable: false, grantWatcher.GrantRejected);
     }
 
     // Whether the handshake failed because nothing answered, rather than because what answered refused. Walked down
@@ -521,5 +553,7 @@ internal sealed class McpOAuthCoordinator(
     // `Stage`: How far a sign-in got, for telling the operator where it stopped (AC-457).
     // `Explained`: Whether the handshake already wrote the operator's line, so the caller supplies one only when it did not.
     // `Unreachable`: Whether nothing answered, as opposed to something answering with a refusal (AC-524).
-    private readonly record struct HandshakeOutcome(McpSignInStage Stage, bool Explained, bool Unreachable);
+    // `GrantRejected`: Whether the token endpoint refused the refresh grant itself, which is the only evidence there
+    // is that a sign-in really is gone (AC-646) — without it "expired" is a guess, and it was being made every time.
+    private readonly record struct HandshakeOutcome(McpSignInStage Stage, bool Explained, bool Unreachable, bool GrantRejected);
 }

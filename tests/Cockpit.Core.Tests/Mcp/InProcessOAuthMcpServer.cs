@@ -38,13 +38,43 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
 
     private readonly WebApplication _app;
     private readonly string?[] _lastRequestedScopeHolder;
+    private readonly int[] _refreshFailuresHolder;
+    private readonly int[] _refreshFailureStatusHolder;
+    private readonly int[] _refreshAttemptsHolder;
 
-    private InProcessOAuthMcpServer(WebApplication app, string baseUrl, string?[] lastRequestedScopeHolder)
+    private InProcessOAuthMcpServer(
+        WebApplication app,
+        string baseUrl,
+        string?[] lastRequestedScopeHolder,
+        int[] refreshFailuresHolder,
+        int[] refreshFailureStatusHolder,
+        int[] refreshAttemptsHolder)
     {
         _app = app;
         _lastRequestedScopeHolder = lastRequestedScopeHolder;
+        _refreshFailuresHolder = refreshFailuresHolder;
+        _refreshFailureStatusHolder = refreshFailureStatusHolder;
+        _refreshAttemptsHolder = refreshAttemptsHolder;
         BaseUrl = baseUrl;
         Url = $"{baseUrl}/mcp";
+    }
+
+    /// <summary>
+    /// How many refresh grants have reached the token endpoint. "Exactly one second chance, never a loop" (AC-646)
+    /// is a claim about this number.
+    /// </summary>
+    public int RefreshAttempts => Volatile.Read(ref _refreshAttemptsHolder[0]);
+
+    /// <summary>
+    /// Makes the next <paramref name="count"/> refresh grants fail with <paramref name="status"/> and a body that
+    /// says nothing about the grant — an authorization server having a bad minute, as opposed to one answering
+    /// <c>invalid_grant</c>. That difference is the whole of AC-646, and it is not observable unless a test can
+    /// produce both.
+    /// </summary>
+    public void FailNextRefreshes(int count, int status = StatusCodes.Status500InternalServerError)
+    {
+        Volatile.Write(ref _refreshFailureStatusHolder[0], status);
+        Volatile.Write(ref _refreshFailuresHolder[0], count);
     }
 
     /// <summary>The server's own origin — issuer, resource and authorization-server base all in one, as Depot is.</summary>
@@ -71,6 +101,9 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
         var app = builder.Build();
         var baseUrlHolder = new string[1];
         var lastRequestedScopeHolder = new string?[1];
+        var refreshFailuresHolder = new int[1];
+        var refreshFailureStatusHolder = new int[1];
+        var refreshAttemptsHolder = new int[1];
         var scopeByCode = new ConcurrentDictionary<string, string>();
 
         // Registered before any Map* call, exactly like InProcessMcpHttpServer's delay middleware — that ordering is
@@ -152,6 +185,16 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
             // refresh token; this one only recognises the exact one it issued.
             if (form["grant_type"] == "refresh_token")
             {
+                Interlocked.Increment(ref refreshAttemptsHolder[0]);
+
+                // A failure with no verdict in it (AC-646): the grant is never mentioned, so a client that concludes
+                // "revoked" from this concluded it from the absence of success and nothing else.
+                if (Volatile.Read(ref refreshFailuresHolder[0]) > 0)
+                {
+                    Interlocked.Decrement(ref refreshFailuresHolder[0]);
+                    return Results.StatusCode(Volatile.Read(ref refreshFailureStatusHolder[0]));
+                }
+
                 if (form["refresh_token"] != RefreshToken)
                 {
                     return Results.BadRequest(new { error = "invalid_grant" });
@@ -195,7 +238,13 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
             ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
         Volatile.Write(ref baseUrlHolder[0], addresses.Addresses.First().TrimEnd('/'));
 
-        return new InProcessOAuthMcpServer(app, Volatile.Read(ref baseUrlHolder[0]), lastRequestedScopeHolder);
+        return new InProcessOAuthMcpServer(
+            app,
+            Volatile.Read(ref baseUrlHolder[0]),
+            lastRequestedScopeHolder,
+            refreshFailuresHolder,
+            refreshFailureStatusHolder,
+            refreshAttemptsHolder);
     }
 
     public async ValueTask DisposeAsync()

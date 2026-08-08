@@ -12,7 +12,9 @@ public enum McpOAuthAttentionReason
     // No sign-in was ever made for this server (or the stored one belongs to a different address).
     NeverSignedIn,
 
-    // A sign-in exists but can no longer be renewed: the refresh grant was refused, revoked or has run out.
+    // A sign-in exists but can no longer be renewed: the authorization server refused the refresh grant itself
+    // (`invalid_grant`), or there is no refresh grant behind the stored token to renew from. Never concluded from a
+    // renewal that merely failed (AC-646) — that is the reason below.
     SignInExpired,
 
     // The renewal never got an answer — the server or its authorization server could not be reached.
@@ -34,4 +36,12 @@ public enum McpOAuthAttentionReason
     // Where the two cannot be told apart, what is reported is that it could not be confirmed — the same rule
     // `McpProbeOutcome.Failed` keeps.
     RenewedCredentialRefused,
+
+    // A silent renewal failed without the authorization server ever saying the grant was dead (AC-646) — the token
+    // endpoint answered with something other than `invalid_grant`, or the handshake ended in a way that yielded no
+    // credential and no verdict. Deliberately not `SignInExpired`: concluding "revoked" from the absence of success
+    // is what made one bad second read as an account to re-authorize, and stopped an agent that had nothing to wait
+    // for. The same rule `RenewedCredentialRefused` and `McpProbeOutcome.Failed` keep — where it cannot be told, what
+    // is reported is that it could not be confirmed.
+    RenewalCouldNotBeConfirmed,
 }

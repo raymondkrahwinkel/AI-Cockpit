@@ -48,6 +48,10 @@ internal sealed class McpOAuthProxyForwarder(
     // for size.
     private const long RepeatableBodyLimit = 8L * 1024 * 1024;
 
+    // How long to wait before asking for a credential a second time. Long enough that a rotation race or a token
+    // endpoint's bad second has passed, short enough to disappear inside a tool call the agent is already waiting on.
+    private static readonly TimeSpan RenewalSecondChanceDelay = TimeSpan.FromMilliseconds(500);
+
     public async Task ForwardAsync(HttpContext context, CancellationToken cancellationToken)
     {
         // Buffered so the body can be read more than once: to forward it, to send it again after a refused
@@ -57,7 +61,7 @@ internal sealed class McpOAuthProxyForwarder(
         // large call outright is a worse answer than relaying it and only giving up its retry.
         context.Request.EnableBuffering(bufferThreshold: MemoryBufferThreshold);
 
-        var access = await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+        var access = await _AcquireWithOneSecondChanceAsync(cancellationToken).ConfigureAwait(false);
         if (access.State != McpAuthState.Authorized || string.IsNullOrWhiteSpace(access.AccessToken))
         {
             await _RespondUnavailableAsync(context, access.Reason, cancellationToken).ConfigureAwait(false);
@@ -102,6 +106,38 @@ internal sealed class McpOAuthProxyForwarder(
         {
             response.Dispose();
         }
+    }
+
+    // The credential for this call, with the one second chance a failed silent renewal gets (AC-646).
+    //
+    // Measured: a renewal failed, the call came back telling the agent its sign-in was revoked, and the same call a
+    // few minutes later went through with nothing signed in or restarted. One bad second cost a call and stopped an
+    // agent — so the renewal is simply asked again, after a pause long enough for whatever it was to pass.
+    //
+    // Exactly once and never a loop, the same discipline as `_RetryWithARenewedCredentialAsync`, and only for the two
+    // reasons a second attempt can actually change: one that could not be told apart, and one where nothing answered.
+    // Retrying a sign-in the server itself declared dead, one that was never made, or a token that is structurally
+    // too short is a round trip spent on an answer that cannot change — and it would bury the one sentence the
+    // operator does need to read under a retry that never ends in anything.
+    //
+    // Safe on the shared path: the coordinator removes a finished renewal from its single-flight table before its
+    // completion can be observed, so the second ask starts a fresh one rather than joining the dead one. And the
+    // same table is what keeps this from multiplying — a hundred calls that all take their second chance coalesce
+    // onto one renewal, exactly as their first attempt did.
+    private async Task<McpOAuthAccess> _AcquireWithOneSecondChanceAsync(CancellationToken cancellationToken)
+    {
+        var access = await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+        if (access.Reason is not (McpOAuthAttentionReason.RenewalCouldNotBeConfirmed or McpOAuthAttentionReason.ServerUnreachable))
+        {
+            return access;
+        }
+
+        logger.LogInformation(
+            "Renewing the authorization for MCP server {Server} did not succeed and did not say why; trying once more before this call is given up.",
+            server.Name);
+
+        await Task.Delay(RenewalSecondChanceDelay, cancellationToken).ConfigureAwait(false);
+        return await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
     }
 
     // The one retry a refused credential gets. The cockpit judges a token on its own clock, and the server is the
