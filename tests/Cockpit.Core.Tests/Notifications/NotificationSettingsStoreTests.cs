@@ -47,6 +47,9 @@ public class NotificationSettingsStoreTests : IDisposable
             NotifyOnSessionFinished = false,
             NotifyOnSessionIdle = true,
             NotifyWhenAllSessionsIdle = true,
+            // Every flag here is set away from its default on purpose: Assert.Equivalent below cannot tell a value
+            // that round-tripped from one that was never written and came back as the default it already had.
+            NotifyOnCiFailure = false,
             SessionIdleThreshold = TimeSpan.FromMinutes(12),
         };
 

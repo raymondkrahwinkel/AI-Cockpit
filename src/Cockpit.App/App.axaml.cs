@@ -371,6 +371,19 @@ public partial class App : Application
         // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
         _ = _StartScheduledResumesAsync(cockpitViewModel);
 
+        // AC-634: watch the branches the sessions are on for a failing CI check. The watch set is the live sessions
+        // rather than a configured list, so a worktree opened later is followed without anyone saying so.
+        if (Program.Services.GetService<Services.CiWatcher>() is { } ciWatcher)
+        {
+            ciWatcher.Watching = () =>
+            [
+                .. cockpitViewModel.AllSessions()
+                    .Where(session => !string.IsNullOrWhiteSpace(session.WorkingDirectory))
+                    .Select(session => new Services.WatchedCheckout(session.PaneId, session.Title, session.WorkingDirectory!)),
+            ];
+            ciWatcher.Start();
+        }
+
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
         if (Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore)

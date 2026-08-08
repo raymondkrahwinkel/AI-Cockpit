@@ -1,0 +1,86 @@
+using Cockpit.Core.Ci;
+
+namespace Cockpit.Core.Tests.Ci;
+
+public class RedChecksTests
+{
+    private const string GhOutput = """
+        [
+          {"bucket":"pass","link":"https://github.com/o/r/actions/runs/1/job/1","name":"build","workflow":"CI"},
+          {"bucket":"fail","link":"https://github.com/o/r/actions/runs/1/job/2","name":"plugins","workflow":"CI"},
+          {"bucket":"pending","link":"","name":"xmldoc-scope","workflow":"CI"}
+        ]
+        """;
+
+    [Fact]
+    public void ReadsWhatGhSaid_AndCallsOnlyTheFailBucketRed()
+    {
+        var checks = RedChecks.Parse(GhOutput);
+
+        Assert.Equal(3, checks.Count);
+        Assert.Equal(["plugins"], checks.Where(check => check.IsRed).Select(check => check.Name));
+        Assert.Equal("https://github.com/o/r/actions/runs/1/job/2", checks.Single(check => check.IsRed).Link);
+    }
+
+    // Pending is the state a check spends most of its life in, and gh reports it with the same non-zero exit as a
+    // failure. Reading it as red would mean an alarm on every run that had merely started.
+    [Fact]
+    public void APendingCheck_IsNotRed()
+    {
+        var pending = RedChecks.Parse(GhOutput).Single(check => check.Name == "xmldoc-scope");
+
+        Assert.False(pending.IsRed);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not json at all")]
+    [InlineData("""{"message":"no pull requests found"}""")]
+    public void AnAnswerItCannotRead_IsNoChecksRatherThanAGuess(string output) =>
+        Assert.Empty(RedChecks.Parse(output));
+
+    [Fact]
+    public void ARedCheckIsNewsOnce_AndThenStaysQuietWhileItStaysRed()
+    {
+        var checks = RedChecks.Parse(GhOutput);
+
+        var first = RedChecks.NewlyRed(checks, new HashSet<string>(StringComparer.Ordinal));
+        Assert.Equal(["plugins"], first.Select(check => check.Name));
+
+        var second = RedChecks.NewlyRed(checks, RedChecks.RedNames(checks));
+        Assert.Empty(second);
+    }
+
+    // A check that was fixed and broke again is news a second time — which only holds because what is remembered is
+    // replaced by the current red set rather than added to.
+    [Fact]
+    public void ACheckThatGoesGreenAndFailsAgain_IsNewsAgain()
+    {
+        var red = RedChecks.Parse(GhOutput);
+        var green = RedChecks.Parse("""[{"bucket":"pass","link":"","name":"plugins","workflow":"CI"}]""");
+
+        var remembered = RedChecks.RedNames(red);
+        Assert.Equal(["plugins"], remembered);
+
+        remembered = RedChecks.RedNames(green);
+        Assert.Empty(remembered);
+
+        Assert.Equal(["plugins"], RedChecks.NewlyRed(red, remembered).Select(check => check.Name));
+    }
+
+    [Fact]
+    public void ADifferentCheckFailing_IsItsOwnNews()
+    {
+        var checks = RedChecks.Parse("""
+            [
+              {"bucket":"fail","link":"","name":"plugins","workflow":"CI"},
+              {"bucket":"fail","link":"","name":"build","workflow":"CI"}
+            ]
+            """);
+
+        var newly = RedChecks.NewlyRed(checks, new HashSet<string>(StringComparer.Ordinal) { "plugins" });
+
+        Assert.Equal(["build"], newly.Select(check => check.Name));
+    }
+}

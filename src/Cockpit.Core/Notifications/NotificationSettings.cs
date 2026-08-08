@@ -29,6 +29,10 @@ public sealed record NotificationSettings
     // Whether one message is sent the moment the last session goes idle, i.e. nothing is running any more.
     public bool NotifyWhenAllSessionsIdle { get; init; }
 
+    // AC-634: whether the branch a session is working on is watched for a failing CI check. Off means no `gh` is run
+    // at all, not merely that the answer is swallowed.
+    public bool NotifyOnCiFailure { get; init; } = true;
+
     // How long a finished session stays "done" before it counts as idle. Distinct from `IdleThreshold`,
     // which is about *you* being away from the PC — this is about a *session* having nothing to do.
     // `TimeSpan.Zero` turns the idle transition off.
