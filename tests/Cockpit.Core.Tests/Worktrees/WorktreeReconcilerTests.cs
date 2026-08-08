@@ -34,14 +34,23 @@ public class WorktreeReconcilerTests
             Arg.Any<CancellationToken>());
     }
 
-    // Criterion 1: a tick costs one `ReconcileAsync` and nothing else — no list of its own to keep, so nothing here
-    // grows over a long run.
+    // A sweep of a big registry can outlast the interval. Two of them at once is one sweep removing a worktree the
+    // other is still measuring, so the tick that lands on top of a running sweep has to be dropped.
     [Fact]
-    public async Task ATickWithNothingToDo_IsOneReconcileAndNoMore()
+    public async Task ATickOnTopOfARunningSweep_IsDropped()
     {
+        var firstSweep = new TaskCompletionSource();
+        var started = 0;
+        // Only the first sweep hangs; a second one returns at once. Handing out the same unfinished task twice would
+        // make a reconciler without the guard deadlock here instead of failing.
+        _worktrees.ReconcileAsync(Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ++started == 1 ? firstSweep.Task : Task.CompletedTask);
         using var reconciler = new WorktreeReconciler(_worktrees) { LiveSessionIds = () => ["pane-1"] };
 
+        var running = reconciler.RunOnceAsync();
         await reconciler.RunOnceAsync();
+        firstSweep.SetResult();
+        await running;
 
         await _worktrees.Received(1).ReconcileAsync(Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>());
     }
