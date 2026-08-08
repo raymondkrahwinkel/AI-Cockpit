@@ -44,12 +44,49 @@ internal static class ClaudeControlProtocol
     // a correlated reply could be matched (the driver only logs it, per F-C1 scope). `hooks:null` mirrors the SDK
     // when no hooks are registered.
     public static string BuildInitializeRequest(string requestId) =>
+        BuildRequest(requestId, new { subtype = "initialize", hooks = (object?)null });
+
+    // Any control_request line, carrying the `requestId` the CLI echoes back on its reply. The
+    // fire-and-forget requests (set_model, set_permission_mode) ignore that reply; the ones this driver waits for
+    // (`get_usage`, `get_context_usage`) correlate on it — see `TryParseResponse`.
+    public static string BuildRequest(string requestId, object request) =>
         JsonSerializer.Serialize(new
         {
             type = ControlRequestType,
             request_id = requestId,
-            request = new { subtype = "initialize", hooks = (object?)null },
+            request,
         });
+
+    // Recognises a `control_response` — the CLI's reply to one of *our* requests — and hands back the
+    // `request_id` it answers together with its payload. Wire shape, verbatim from a live 2.1.226 session:
+    // `{"type":"control_response","response":{"subtype":"success","request_id":"…","response":{…}}}`, and
+    // `{"…":{"subtype":"error","request_id":"…","error":"…"}}` when the CLI refuses. An error yields
+    // <see langword="false"/> with the id still set, so the caller can release its awaiter rather than let it
+    // hang for a reply that has already come and gone.
+    // The payload is cloned because the caller's `JsonDocument` is disposed the moment the line is handled, and
+    // this element outlives it on whichever thread was waiting.
+    public static bool TryParseResponse(JsonElement root, out string requestId, out JsonElement payload)
+    {
+        requestId = string.Empty;
+        payload = default;
+
+        if (!_TryGetString(root, "type", out var type) || type != ControlResponseType
+            || !root.TryGetProperty("response", out var response) || response.ValueKind != JsonValueKind.Object
+            || !_TryGetString(response, "request_id", out var id))
+        {
+            return false;
+        }
+
+        requestId = id;
+        if (!_TryGetString(response, "subtype", out var subtype) || subtype != "success"
+            || !response.TryGetProperty("response", out var inner) || inner.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        payload = inner.Clone();
+        return true;
+    }
 
     // Recognises an inbound `can_use_tool` control_request and extracts the fields the cockpit needs to surface a
     // prompt. Returns false for any other control line (initialize replies, cancels, hook callbacks we do not model),

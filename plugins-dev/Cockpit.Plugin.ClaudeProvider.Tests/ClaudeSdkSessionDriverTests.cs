@@ -435,10 +435,104 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var status = driver.Status;
         Assert.NotNull(status);
         Assert.True(status.HasAny);
-        Assert.Equal(3d, status.ContextUsedPercent);
         var window = Assert.Single(status.RateLimits);
         Assert.Equal("wk", window.Label);
         Assert.Equal(98d, window.UsedPercent, precision: 10);
+    }
+
+    // The turn boundary is where the driver asks the CLI for the two figures the pill renders. This drives the whole
+    // round-trip through the real pump: the result line goes down stdout, the requests come back up stdin, their
+    // replies go down stdout again, and the property the host polls is read at the end. The subtypes are asserted by
+    // name because they are the wire contract with the CLI — a typo would leave the pill silently blank, which is
+    // exactly the failure this replaced.
+    [Fact]
+    public async Task AtTheTurnBoundary_TheDriverAsksTheCliForBothFiguresAndFoldsInTheReplies()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
+        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage");
+        await fake.PushStdoutAsync(_ControlSuccess(usageId, """
+        {"rate_limits":{"five_hour":{"utilization":7,"resets_at":"2026-08-08T18:00:00.978410+00:00"},"seven_day":{"utilization":1,"resets_at":"2026-08-15T09:00:00.978430+00:00"}}}
+        """));
+
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage");
+        await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"totalTokens":28981,"maxTokens":1000000,"percentage":3}"""));
+
+        var status = await _AwaitAsync(() => driver.Status is { ContextUsedPercent: not null, RateLimits.Count: 2 } ? driver.Status : null);
+        Assert.Equal(3d, status.ContextUsedPercent);
+        Assert.Equal(["5h", "wk"], status.RateLimits.Select(window => window.Label));
+        Assert.Equal(7d, status.RateLimits[0].UsedPercent, precision: 10);
+    }
+
+    // A refused request must release its awaiter rather than let the poll wait out its timeout — otherwise the
+    // context figure behind it never gets asked for at all.
+    [Fact]
+    public async Task AControlRequestTheCliRefuses_DoesNotStallTheRestOfThePoll()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
+
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage");
+        await fake.PushStdoutAsync(_ControlError(usageId));
+
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage");
+        await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"percentage":42}"""));
+
+        var status = await _AwaitAsync(() => driver.Status?.ContextUsedPercent is not null ? driver.Status : null);
+        Assert.Equal(42d, status.ContextUsedPercent);
+        Assert.Empty(status.RateLimits);
+    }
+
+    // The CLI's reply envelope, verbatim from a live 2.1.226 session.
+    private static string _ControlSuccess(string requestId, string payloadJson) =>
+        $$$"""{"type":"control_response","response":{"subtype":"success","request_id":"{{{requestId}}}","response":{{{payloadJson.Trim()}}}}}""";
+
+    private static string _ControlError(string requestId) =>
+        $$$"""{"type":"control_response","response":{"subtype":"error","request_id":"{{{requestId}}}","error":"not supported in this context"}}""";
+
+    // The request_id of the newest control_request carrying `subtype`, once the fire-and-forget poll has written it.
+    private static async Task<string> _AwaitControlRequestAsync(FakeClaudeSdkSubprocess fake, string subtype) =>
+        await _AwaitAsync(() =>
+        {
+            foreach (var line in fake.WrittenLines.Reverse())
+            {
+                using var document = JsonDocument.Parse(line);
+                var root = document.RootElement;
+                if (root.TryGetProperty("request", out var request)
+                    && request.TryGetProperty("subtype", out var written)
+                    && written.GetString() == subtype)
+                {
+                    return root.GetProperty("request_id").GetString();
+                }
+            }
+
+            return null;
+        });
+
+    // Spins until the poll's own task has run. Polling rather than awaiting because the driver deliberately does not
+    // expose the fire-and-forget task — the pump must never block on it.
+    private static async Task<T> _AwaitAsync<T>(Func<T?> read) where T : class
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (read() is { } value)
+            {
+                return value;
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException("The driver never produced what the test was waiting for.");
     }
 
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>

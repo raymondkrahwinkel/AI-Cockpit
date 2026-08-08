@@ -3,29 +3,30 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Folds a Claude SDK session's stdout into the provider-neutral `PluginSessionStatus` the header's
+// Folds a Claude SDK session's own figures into the provider-neutral `PluginSessionStatus` the header's
 // usage pill renders from (AC-530) — the SDK route's answer to what `ClaudeStatusLine` does for the
-// TTY route. Measured against CLI 2.1.220: a `claude` started with `--output-format stream-json` never
-// invokes the statusline command, so that relay is not merely unwired on this route but unavailable, and the two
-// figures have to be read off the stream itself.
+// TTY route. A `claude` started with `--output-format stream-json` never invokes the statusline command, so that
+// relay is not merely unwired on this route but unavailable.
 //
-// Both are the provider's own numbers rather than an estimate this class invents:
+// Both figures are the CLI's own, asked for over the control channel the driver already has open, rather than
+// anything this class computes:
 // -
-// The rolling allowances arrive whole on the CLI's `rate_limit_event` line, whose `utilization` is the
-// very field the statusline multiplies by 100 for its own `used_percentage` — so a TTY and an SDK session
-// looking at the same account report the same figure from the same origin.
+// The rolling allowances come from `get_usage` (see `ClaudeUsageWindows`), the same numbers `/usage`
+// prints. `rate_limit_event` still feeds in whenever it happens to carry a `utilization`, which it only does
+// once the account approaches the window it names.
 // -
-// The context percentage is recomputed with the CLI's own formula over the CLI's own inputs: the token counts of
-// the *last* API call, over the context window size the `result` line states for the model that
-// answered. Deliberately *not* `result.usage`, which sums every API call in the turn — that total is
-// what the turn cost, not how full the window is, and on a four-call turn the two differ by more than 3× (11%
-// against the true 3%).
+// The context percentage comes from `get_context_usage` — the same breakdown `/context` renders. This
+// used to be recomputed here from the last assistant line's token counts over the window size the `result` line
+// stated for the answering model, which broke on 2.1.226: the assistant line says `claude-opus-5` where the
+// result line's `modelUsage` is keyed `claude-opus-5[1m]`, so any turn touching more than one model matched
+// nothing and reported no context at all. Asking the CLI removes the arithmetic *and* the model-name matching.
 //
-// A figure the provider has not reported stays `null`/absent rather than reading as a zero, so the
-// header hides the segment instead of claiming nothing has been spent.
-// Threading matches the Codex driver's template: the stdout pump is the only writer of the component fields, and
-// the immutable snapshot it builds is published to a volatile field so the host's poll — a different thread,
-// reading at each turn boundary — never sees a half-updated set.
+// A figure the CLI has not reported stays `null`/absent rather than reading as a zero, so the header hides the
+// segment instead of claiming nothing has been spent.
+//
+// Writers are the stdout pump (`rate_limit_event`) and the usage poll's continuation, which is a different
+// thread — hence the lock around the component fields. The immutable snapshot it builds is published to a
+// volatile field, so the host's poll at each turn boundary never sees a half-updated set.
 internal sealed class ClaudeSdkUsage
 {
     // DateTimeOffset.FromUnixTimeSeconds' own accepted range, asserted against the constants below in the tests so
@@ -33,42 +34,59 @@ internal sealed class ClaudeSdkUsage
     private const long _MinEpochSeconds = -62135596800;
     private const long _MaxEpochSeconds = 253402300799;
 
+    private readonly Lock _gate = new();
     private readonly Dictionary<string, PluginRateLimitWindow> _windows = new(StringComparer.Ordinal);
 
-    private long? _lastCallInputTokens;
-    private string? _lastCallModel;
-    private long? _contextWindowSize;
+    private double? _contextUsedPercent;
 
     private volatile PluginSessionStatus? _status;
 
-    // The latest snapshot, or `null` while the provider has reported neither figure — which is also
+    // The latest snapshot, or `null` while the CLI has reported neither figure — which is also
     // what a session reports before its first turn settles.
     public PluginSessionStatus? Status => _status;
 
-    // Folds in the account-wide allowances read from the CLI's own cache (AC-549), which is where the SDK route
-    // gets a percentage at all: `rate_limit_event` names the window but withholds its fill until the account
-    // approaches it. Keyed on the same wire names, so a later event that *does* carry a figure replaces
-    // this one rather than sitting beside it under a second label.
-    //
-    // Called from the stdout pump, which is this class's only writer — see the threading note above.
+    // Folds in the account-wide allowances from a `get_usage` reply. Keyed on the same wire names as
+    // `rate_limit_event`, so a later event that carries a figure of its own replaces this one rather than
+    // sitting beside it under a second label.
     public void ObserveAccountWindows(IReadOnlyDictionary<string, PluginRateLimitWindow> windows)
     {
-        var changed = false;
-        foreach (var (key, window) in windows)
+        lock (_gate)
         {
-            // An event-borne figure is the account's own reading for this very session and stays authoritative; the
-            // cache only fills the gap where no figure has arrived.
-            if (_windows.TryGetValue(key, out var existing) && existing == window)
+            var changed = false;
+            foreach (var (key, window) in windows)
             {
-                continue;
+                if (_windows.TryGetValue(key, out var existing) && existing == window)
+                {
+                    continue;
+                }
+
+                _windows[key] = window;
+                changed = true;
             }
 
-            _windows[key] = window;
-            changed = true;
+            if (changed)
+            {
+                _Publish();
+            }
+        }
+    }
+
+    // Folds in a `get_context_usage` reply — the CLI's own `percentage`, the figure `/context` prints. A reply
+    // without one leaves the previous reading standing rather than blanking the segment.
+    public void ObserveContextUsage(JsonElement response)
+    {
+        if (response.ValueKind != JsonValueKind.Object
+            || !response.TryGetProperty("percentage", out var percentage)
+            || percentage.ValueKind != JsonValueKind.Number
+            || !percentage.TryGetDouble(out var percent)
+            || !double.IsFinite(percent))
+        {
+            return;
         }
 
-        if (changed)
+        lock (_gate)
         {
+            _contextUsedPercent = Math.Clamp(percent, 0, 100);
             _Publish();
         }
     }
@@ -79,128 +97,17 @@ internal sealed class ClaudeSdkUsage
     {
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("type", out var type)
-            || type.ValueKind != JsonValueKind.String)
+            || type.ValueKind != JsonValueKind.String
+            || type.GetString() is not "rate_limit_event")
         {
             return;
         }
 
-        switch (type.GetString())
+        lock (_gate)
         {
-            case "assistant":
-                _ObserveAssistant(root);
-                break;
-            case "result":
-                _ObserveResult(root);
-                break;
-            case "rate_limit_event":
-                _ObserveRateLimit(root);
-                break;
-            default:
-                return;
+            _ObserveRateLimit(root);
+            _Publish();
         }
-
-        _Publish();
-    }
-
-    // One assistant line is one API response, and its usage is that single call's — which is exactly the "last API
-    // call" the CLI's own statusline measures the window with. A line stamped with parent_tool_use_id belongs to a
-    // sub-agent running under a Task call: its context is its own, not this session's, so letting it through would
-    // report a fresh sub-agent's near-empty window as the main conversation's. The CLI drops those lines from its
-    // own consumer stream for the same reason.
-    private void _ObserveAssistant(JsonElement root)
-    {
-        if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String)
-        {
-            return;
-        }
-
-        if (!root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object
-            || !message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
-        {
-            return;
-        }
-
-        // The three components of what was sent up for this call, the same sum the CLI forms. A usage object naming
-        // none of them is a shape this build does not understand: keep the previous reading rather than folding it in
-        // as a zero, which would render as "0% used".
-        var present = false;
-        var total = 0L;
-        foreach (var field in (ReadOnlySpan<string>)["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"])
-        {
-            // A negative count is not a number this can mean anything by, so it is read as "not reported" rather than
-            // folded in — clamping it to zero would turn nonsense into a confident "nothing spent".
-            if (usage.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.Number
-                && value.TryGetInt64(out var tokens) && tokens >= 0)
-            {
-                present = true;
-                total += tokens;
-            }
-        }
-
-        // total only goes negative by overflowing, which takes counts no real window could hold; treat that the same
-        // way as an unreadable figure rather than letting the wrap read as an empty context.
-        if (!present || total < 0)
-        {
-            return;
-        }
-
-        _lastCallInputTokens = total;
-        if (message.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String)
-        {
-            _lastCallModel = model.GetString();
-        }
-    }
-
-    // The result line is the only place the CLI states the window size it measured against. Its own usage block is
-    // read for nothing here on purpose (see the class remarks): that one is the turn's total.
-    private void _ObserveResult(JsonElement root)
-    {
-        if (!root.TryGetProperty("modelUsage", out var modelUsage) || modelUsage.ValueKind != JsonValueKind.Object)
-        {
-            return;
-        }
-
-        // This turn states its own models, so the window an earlier turn established has stopped speaking for it.
-        // Dropping it before the lookup is what stops a stale denominator meeting this turn's fresh token count: that
-        // pairing yields a percentage which is wrong and yet entirely plausible, which is worse than showing none.
-        // A turn whose models this build cannot match therefore reports no context figure rather than an old one.
-        _contextWindowSize = null;
-
-        if (!_TryFindModelUsage(modelUsage, out var entry)
-            || !entry.TryGetProperty("contextWindow", out var window) || window.ValueKind != JsonValueKind.Number
-            || !window.TryGetInt64(out var size) || size <= 0)
-        {
-            return;
-        }
-
-        _contextWindowSize = size;
-    }
-
-    // Keyed by the model that actually answered, since a turn may name more than one and their windows differ. With
-    // no such key — a model the result line spells differently from the assistant line — a single-entry map is still
-    // unambiguous; anything else is left alone rather than guessed at.
-    private bool _TryFindModelUsage(JsonElement modelUsage, out JsonElement entry)
-    {
-        if (_lastCallModel is { Length: > 0 } model
-            && modelUsage.TryGetProperty(model, out entry) && entry.ValueKind == JsonValueKind.Object)
-        {
-            return true;
-        }
-
-        entry = default;
-        var found = false;
-        foreach (var property in modelUsage.EnumerateObject())
-        {
-            if (found || property.Value.ValueKind != JsonValueKind.Object)
-            {
-                return false;
-            }
-
-            entry = property.Value;
-            found = true;
-        }
-
-        return found;
     }
 
     // The CLI restates a window whenever its figure changes, so the newest line for a type replaces the previous one
@@ -215,10 +122,9 @@ internal sealed class ClaudeSdkUsage
         }
 
         // utilization is absent on this line whenever the account is not near the window it names — captured from a
-        // real stream at 2% of the five-hour allowance, the event carries status, resetsAt and rateLimitType and no
-        // figure at all (AC-549). That used to drop the whole event, and with it the reset time, which is knowledge
-        // this line does have. The percentage then comes from ClaudeUsageCache instead; leaving whatever it already
-        // published in place is the point of returning rather than overwriting.
+        // real stream at 5% of the five-hour allowance, the event carries status, resetsAt and rateLimitType and no
+        // figure at all. The percentage then comes from `get_usage` instead; leaving whatever it already published
+        // in place is the point of returning rather than overwriting.
         if (!info.TryGetProperty("utilization", out var utilization) || utilization.ValueKind != JsonValueKind.Number
             || !utilization.TryGetDouble(out var fraction))
         {
@@ -254,23 +160,9 @@ internal sealed class ClaudeSdkUsage
             WindowMinutes: null);
     }
 
-    // The CLI's own statusline arithmetic (2.1.220), kept identical down to the rounding so the same session reads the
-    // same whichever route shows it: round half away from zero — .NET's default is banker's rounding, which would
-    // disagree with JavaScript's Math.round on every exact half — then clamp into 0-100.
-    private double? _ContextUsedPercent()
-    {
-        if (_lastCallInputTokens is not { } tokens || _contextWindowSize is not { } size)
-        {
-            return null;
-        }
-
-        var percent = Math.Round(tokens / (double)size * 100, MidpointRounding.AwayFromZero);
-        return Math.Clamp(percent, 0, 100);
-    }
-
     private void _Publish()
     {
-        // Ordered so the pill reads ctx · 5h · wk however the lines happened to arrive; a window this build has no
+        // Ordered so the pill reads ctx · 5h · wk however the replies happened to arrive; a window this build has no
         // declaration for sorts last rather than displacing the two the operator knows.
         var windows = _windows.Values
             .OrderBy(window => window.Label switch
@@ -282,7 +174,7 @@ internal sealed class ClaudeSdkUsage
             .ThenBy(window => window.Label, StringComparer.Ordinal)
             .ToArray();
 
-        var status = new PluginSessionStatus(_ContextUsedPercent(), windows);
+        var status = new PluginSessionStatus(_contextUsedPercent, windows);
         _status = status.HasAny ? status : null;
     }
 }

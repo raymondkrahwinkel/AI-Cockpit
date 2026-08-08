@@ -41,14 +41,19 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // object there would make the CLI run the tool with no arguments (Bash with no command, Write with no content, …).
     private readonly ConcurrentDictionary<string, (string RequestId, string InputJson)> _pendingApprovals = new();
 
-    // The limits feed (#45 D7, AC-530). Fed from the stdout pump with every line and read by the host's poll at each
-    // turn boundary; it publishes its own immutable snapshot, so no lock is needed on this side either.
+    // The limits feed (#45 D7, AC-530). Fed from the stdout pump and from the usage poll, and read by the host's
+    // poll at each turn boundary; it publishes its own immutable snapshot and locks its own fields.
     private readonly ClaudeSdkUsage _usage = new();
 
-    // Where this session's account keeps its cached allowances, and the config dir the refresher must spawn against
-    // so it reads the same profile (AC-549). Both are set at launch, since that is where the profile is resolved.
-    private string? _claudeJsonPath;
-    private string? _configDirOverride;
+    // request_id -> the awaiter for that control_request's reply. Only the requests this driver waits for land
+    // here; the fire-and-forget ones (initialize, set_model, set_permission_mode) never register an awaiter and
+    // their replies fall through the pump as before.
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement?>> _pendingControlResponses = new();
+
+    // Ticks of the last `get_usage` round-trip, so a session taking a hundred quick turns does not ask a hundred
+    // times for a figure that moves in minutes. The context breakdown is not throttled: it is answered from the
+    // CLI's own state and it is the one that changes every turn.
+    private long _lastAllowancePollTicks;
 
     private IClaudeSdkSubprocess? _subprocess;
     private Task? _stdoutPump;
@@ -128,9 +133,6 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             ? Environment.CurrentDirectory
             : workingDirectory);
         var configJsonDirectory = ClaudeConfigPaths.ResolveConfigJsonDirectory(_config.ConfigDir, userHome);
-        // The CLI keeps its cached allowances here — the SDK route's only source for a window's fill (AC-549).
-        _claudeJsonPath = Path.Combine(configJsonDirectory, ".claude.json");
-        _configDirOverride = ClaudeConfigPaths.ResolveSpawnOverride(_config.ConfigDir, userHome);
 
         // Trust must land before the process starts, or the headless CLI blocks on its interactive trust dialog with
         // nothing able to answer it — in the .claude.json the CLI reads for this spawn.
@@ -289,14 +291,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     private async Task _SendControlRequestAsync(object request, CancellationToken cancellationToken)
     {
-        var payload = new
-        {
-            type = ClaudeControlProtocol.ControlRequestType,
-            request_id = Guid.NewGuid().ToString(),
-            request,
-        };
-
-        await _RequireSubprocess().WriteLineAsync(JsonSerializer.Serialize(payload), cancellationToken).ConfigureAwait(false);
+        var line = ClaudeControlProtocol.BuildRequest(Guid.NewGuid().ToString(), request);
+        await _RequireSubprocess().WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task _PumpStdoutAsync(IClaudeSdkSubprocess subprocess, CancellationToken cancellationToken)
@@ -355,11 +351,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 : null;
 
             // At the turn boundary, and only there: the host reads Status off the back of the TurnCompleted this
-            // line produces, so a window folded in now is one the operator sees this turn. Doing it per line would
-            // read the file hundreds of times a turn for a figure that moves in minutes.
+            // line produces, so a figure asked for now is one the operator sees this turn. Doing it per line would
+            // ask hundreds of times a turn for numbers that move in minutes.
             if (string.Equals(type, "result", StringComparison.Ordinal))
             {
-                _FoldInAccountWindows();
+                _PollUsage();
             }
 
             // Control-protocol lines are the CLI's permission requests and the replies to our own control_requests —
@@ -376,6 +372,19 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                         ToolName = toolName,
                         InputJson = inputJson,
                     });
+                }
+                else if (ClaudeControlProtocol.TryParseResponse(root, out var responseId, out var payload))
+                {
+                    // A reply nobody is waiting for (the initialize handshake, a set_model ack) removes nothing and
+                    // is dropped, exactly as before.
+                    _CompleteControlResponse(responseId, payload);
+                }
+                else if (responseId.Length > 0)
+                {
+                    // A control_response the parse refused is the CLI answering `subtype:"error"` — it still names
+                    // the request. Release the awaiter with nothing rather than let it wait out its timeout for a
+                    // reply that has already come and gone.
+                    _CompleteControlResponse(responseId, null);
                 }
 
                 return;
@@ -415,33 +424,82 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // That is the whole of the graceful degradation this needs; no version sniffing required.
     private const string ForwardSubagentTextEnvironmentVariable = "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT";
 
-    // Reads the account's cached allowances into the usage feed, and asks the CLI to refresh them for next time
-    // (AC-549). Reading first and refreshing after is deliberate: the refresh is a subprocess, so awaiting it here
-    // would put a process start on the stdout pump. This turn shows the previous refresh's figures — at most
-    // `ClaudeUsageRefresh.Interval` old, and `ClaudeUsageCache` drops anything staler than
-    // its own limit rather than showing it.
-    private void _FoldInAccountWindows()
-    {
-        if (_claudeJsonPath is not { } path)
-        {
-            return;
-        }
+    // How long a `get_usage` figure stands before the next turn boundary asks again. The allowances move in
+    // minutes, and unlike the context breakdown this one can reach the account's own usage endpoint.
+    private static readonly TimeSpan _AllowancePollInterval = TimeSpan.FromMinutes(1);
 
+    // A reply that never comes must not keep an awaiter (or its captured payload) alive for the session's lifetime.
+    // Generous against ordinary CLI latency, which measured in milliseconds, and short enough that a wedged
+    // control channel costs one poll rather than every later one.
+    private static readonly TimeSpan _UsageRequestTimeout = TimeSpan.FromSeconds(15);
+
+    // Asks the CLI for the two figures the pill renders, over the control channel this driver already has open —
+    // `get_usage` for the rolling allowances (what `/usage` prints) and `get_context_usage` for the context
+    // percentage (what `/context` prints). Both are the CLI's own numbers, so nothing here computes a percentage.
+    //
+    // This replaces AC-549's `claude -p "/usage"` subprocess plus its `.claude.json` cache: on CLI 2.1.226 that
+    // call stopped being answered locally (measured at 35.8s, a real assistant turn, and the cache left
+    // untouched), which left the refresher timing out on every turn and the pills going blank once the cache aged
+    // out. No subprocess, no tokens and no staleness window here.
+    //
+    // Fire-and-forget from the stdout pump: awaiting a round-trip on the pump would stall every later line behind
+    // it, including the next turn's. A poll that fails leaves the previous reading standing.
+    private void _PollUsage() => _ = _PollUsageAsync();
+
+    private async Task _PollUsageAsync()
+    {
         try
         {
-            if (File.Exists(path))
+            var now = DateTimeOffset.UtcNow.Ticks;
+            var previous = Interlocked.Read(ref _lastAllowancePollTicks);
+            if (now - previous >= _AllowancePollInterval.Ticks
+                && Interlocked.CompareExchange(ref _lastAllowancePollTicks, now, previous) == previous
+                && await _RequestControlAsync(new { subtype = "get_usage" }).ConfigureAwait(false) is { } usage)
             {
-                _usage.ObserveAccountWindows(ClaudeUsageCache.Read(File.ReadAllText(path), DateTimeOffset.UtcNow));
+                _usage.ObserveAccountWindows(ClaudeUsageWindows.Read(usage));
+            }
+
+            if (await _RequestControlAsync(new { subtype = "get_context_usage" }).ConfigureAwait(false) is { } context)
+            {
+                _usage.ObserveContextUsage(context);
             }
         }
         catch (Exception)
         {
-            // A file caught mid-write by the CLI itself, or one this profile cannot read. The next turn tries again.
+            // A usage figure is a nicety: a session that ended mid-poll, or a CLI that answered something
+            // unexpected, must never surface as a session error.
         }
+    }
 
-        // Fire-and-forget, and self-throttling per account: ten sessions on one profile share one subprocess every
-        // five minutes between them, not ten each.
-        _ = ClaudeUsageRefresh.RefreshAsync(_executablePath, _configDirOverride, DateTimeOffset.UtcNow, _lifetime.Token);
+    // Sends a control_request and waits for the reply the CLI correlates on `request_id`. Null when the CLI
+    // answered with an error, the reply did not arrive in time, or the session is going away.
+    private async Task<JsonElement?> _RequestControlAsync(object request)
+    {
+        var requestId = Guid.NewGuid().ToString();
+        var awaiter = new TaskCompletionSource<JsonElement?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingControlResponses[requestId] = awaiter;
+
+        try
+        {
+            await _RequireSubprocess().WriteLineAsync(ClaudeControlProtocol.BuildRequest(requestId, request), _lifetime.Token).ConfigureAwait(false);
+            return await awaiter.Task.WaitAsync(_UsageRequestTimeout, _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+        finally
+        {
+            _pendingControlResponses.TryRemove(requestId, out _);
+        }
+    }
+
+    private void _CompleteControlResponse(string requestId, JsonElement? payload)
+    {
+        if (_pendingControlResponses.TryRemove(requestId, out var awaiter))
+        {
+            awaiter.TrySetResult(payload);
+        }
     }
 
     private Dictionary<string, string?> _BuildEnvironment(string userHome)
