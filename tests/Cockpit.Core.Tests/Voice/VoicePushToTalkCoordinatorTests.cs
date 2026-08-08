@@ -104,13 +104,8 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     /// <summary>
-    /// AC-627. This used to assert the opposite: open-mic won, the hold stood down, and the pill said "Open mic
-    /// is on" — because both transcribe the same speech and a hold on top would land the dictation twice. What
-    /// that reasoning missed is that the two do not land in the same place. Open-mic sends every utterance to the
-    /// assistant, which answers it; a hold puts the words in the selected session's composer, where they can be
-    /// read before they go. So standing down did not suppress a duplicate, it quietly swapped the recipient and
-    /// dropped the review step — the operator held F9 to dictate into a session and was talking to the assistant.
-    /// The hold wins now, and open-mic steps aside for its duration.
+    /// This used to assert the opposite: open-mic won and the hold stood down as a duplicate. AC-627 reversed it,
+    /// because the two do not send to the same place — standing down swapped the recipient and skipped the review.
     /// </summary>
     [Fact]
     public void HandleHoldStarted_WhenOpenMicIsListening_TakesTheMicrophoneOffIt_RatherThanStandingDown()
@@ -130,8 +125,8 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     /// <summary>
-    /// Criterion 2: and it comes back on its own when the key is released. A microphone the operator has to
-    /// switch on again after every dictation is not "Always On" — and nothing on screen would say why it stopped.
+    /// Criterion 2: the microphone comes back on release. One the operator has to switch on again after every
+    /// dictation is not "Always On".
     /// </summary>
     [Fact]
     public async Task WhenTheHoldEnds_OpenMicGetsTheMicrophoneBack_WithoutTheOperatorDoingAnything()

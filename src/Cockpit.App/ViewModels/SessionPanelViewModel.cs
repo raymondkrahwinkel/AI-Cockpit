@@ -1285,11 +1285,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             VoiceStatus = "Listening...";
 
-            // And the open microphone steps aside for the length of the hold (AC-627). Here rather than in
-            // `VoicePushToTalkCoordinator`, because the in-window F9 handler comes through this same
-            // method and would otherwise need its own copy of the rule — the two-doors mistake AC-584 and
-            // AC-571/572/573 each made in turn. `??=` because a hold that somehow starts twice must not
-            // strand the first claim, which would leave the microphone off for good.
+            // AC-627: and open-mic steps aside for the length of the hold. Here because both the global and the
+            // in-window F9 route come through this method; `??=` so a doubled hold cannot strand the first claim.
             _openMicSuspension ??= _openMicState?.SuspendForHold();
         }
 
@@ -1305,8 +1302,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
-        // The key is up, so open-mic gets the microphone back (AC-627) — before the transcription rather than
-        // after it, since first use can spend minutes downloading a model and Always On would be off for all of it.
+        // The key is up, so open-mic gets the microphone back — before the transcription, which on first use can
+        // spend minutes downloading a model (AC-627).
         _openMicSuspension?.Dispose();
         _openMicSuspension = null;
 

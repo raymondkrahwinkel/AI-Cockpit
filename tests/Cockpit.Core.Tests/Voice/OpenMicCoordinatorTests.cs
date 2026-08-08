@@ -64,12 +64,8 @@ public class OpenMicCoordinatorTests
     }
 
     /// <summary>
-    /// AC-627 criterion 3, and the reason this ticket is not a one-line pause. The operator is half-way through a
-    /// sentence when they reach for F9. The voice-activity detector has already closed that utterance and handed
-    /// it to the transcriber; pausing the microphone does nothing about it, because it is past the paused check
-    /// and the capture loop is sitting inside the transcribe call waiting for the text. It arrives a moment later
-    /// and — before this — went straight to the assistant, which sent it. The assistant got the first half of the
-    /// sentence and the session's composer got the second.
+    /// AC-627 criterion 3, and why this is not a one-line pause: an utterance the detector closed as the key went
+    /// down is already inside the transcribe call and arrives afterwards. Pausing does not reach it.
     /// </summary>
     [Fact]
     public async Task AnUtteranceAlreadyOnItsWay_WhenAHoldTakesTheMicrophone_NeverReachesTheAssistant()
@@ -91,9 +87,8 @@ public class OpenMicCoordinatorTests
     }
 
     /// <summary>
-    /// Always On is off, so a hold has nothing to take: the microphone is not open and must not be touched.
-    /// Every hold asks — the caller has no business reading a flag and then acting on it — so the answer to
-    /// "nothing to suspend" belongs here, as a handle that does nothing coming and going.
+    /// Always On is off, so a hold has nothing to take. Every hold asks anyway, so the answer belongs here — as a
+    /// handle that does nothing coming and going.
     /// </summary>
     [Fact]
     public async Task AHoldWhileOpenMicIsOff_DoesNotTouchTheListenerAtAll()
@@ -138,8 +133,8 @@ public class OpenMicCoordinatorTests
     }
 
     /// <summary>
-    /// AC-9 stays intact: a hold that ends while read-aloud is still playing must not hand the microphone back —
-    /// the barge-in guard has its own reason to keep it paused, and the hold ending says nothing about that one.
+    /// AC-9 stays intact: a hold ending while read-aloud plays must not hand the microphone back, since the
+    /// barge-in guard has its own reason to keep it paused.
     /// </summary>
     [Fact]
     public async Task AHoldEndingWhileReadAloudPlays_LeavesTheBargeInPauseAlone()

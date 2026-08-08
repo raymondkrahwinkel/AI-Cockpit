@@ -9,10 +9,8 @@ namespace Cockpit.Core.Tests.Voice;
 /// would fire twice.
 /// </summary>
 /// <remarks>
-/// Open-mic listening used to stand it down too, and a case here asserted that. AC-627 reversed the rule — the
-/// hold wins over open-mic now — and the reversal is deliberately not a second condition here: what open-mic does
-/// about a hold lives in <c>SessionPanelViewModel.BeginVoiceHold</c>, which is the one method both this route and
-/// the global one call. See <c>VoiceInjectionTests</c> for the in-window half of criterion 6.
+/// Open-mic listening used to stand it down too, and a case here asserted that; AC-627 reversed the rule and
+/// deliberately did not make it a second condition here. See <c>VoiceInjectionTests</c> for where it lives now.
 /// </remarks>
 public class PushToTalkKeyGateTests
 {

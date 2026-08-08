@@ -105,11 +105,8 @@ public class VoiceInjectionTests
     }
 
     /// <summary>
-    /// AC-627 criterion 6, and the reason the rule lives here rather than in either hotkey route: the in-window F9
-    /// handler and the desktop-wide one both come through this method, so open-mic stepping aside happens once for
-    /// both. Put in <c>VoicePushToTalkCoordinator</c> instead, the global key would take the microphone and the
-    /// in-window key would not — two doors, one of them still open, which is the shape AC-584 and AC-571/572/573
-    /// each arrived in.
+    /// AC-627 criterion 6: the in-window F9 handler and the desktop-wide one both come through this method, so
+    /// open-mic steps aside once for both. In either coordinator instead, one of the two doors stays open.
     /// </summary>
     [Fact]
     public async Task AHoldWhileOpenMicIsListening_TakesTheMicrophoneOffIt_AndGivesItBackWhenTheHoldEnds()

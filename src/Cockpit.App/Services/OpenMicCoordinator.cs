@@ -48,13 +48,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     // Whether read-aloud is playing right now — the only time a loud microphone means anything to this coordinator.
     private bool _isPlaying;
 
-    // True while a push-to-talk hold has the microphone (AC-627). The second reason the mic can be paused, next
-    // to read-aloud, and the one that also has to throw away what open-mic already heard: it is not a duplicate
-    // that is being suppressed, it is a sentence meant for the session's composer that must not reach the
-    // assistant instead.
-    // Volatile because the hold sets it on the UI thread and the capture thread reads it in
-    // `_OnUtteranceTranscribed` — the same reason `OpenMicListener`'s own paused flag is. A
-    // stale read there is the whole defect coming back for one utterance.
+    // True while a push-to-talk hold has the microphone (AC-627). Volatile because the hold sets it on the UI
+    // thread and the capture thread reads it in `_OnUtteranceTranscribed`.
     private volatile bool _suspendedForHold;
 
     // Read when listening starts rather than per frame: a level fires many times a second, and the silence
@@ -241,8 +236,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         Dispatcher.UIThread.Post(() => HandlePlaybackActiveChanged(active));
     }
 
-    // AC-627: the push-to-talk hold takes the microphone for its duration — see `IOpenMicState.SuspendForHold`
-    // for why the hold wins now, and why pausing on its own would leave half a sentence with the assistant.
+    // AC-627: the hold wins over open-mic and takes the microphone for its duration.
     public IDisposable SuspendForHold()
     {
         if (!IsListening)
@@ -254,10 +248,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _suspendedForHold = true;
         _listener.Pause();
 
-        // What the detector was half-way through is dropped by Pause itself. This is the other half: utterances it
-        // had already finished and queued for injection. They were spoken before the key went down, and the ticket
-        // is explicit that they go too — an operator who reaches for F9 mid-thought means the words to land in the
-        // composer, not to be sent by the assistant a moment later.
+        // Pause drops the half-formed utterance; these are the finished ones still queued, spoken before the key
+        // went down and so the composer's rather than the assistant's (AC-627).
         while (_injections.Reader.TryRead(out _))
         {
         }
@@ -337,10 +329,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     // Queue rather than inject inline: the injection is awaited one at a time by the consumer, so utterances
     // land in spoken order.
-    // Nothing is queued while a hold has the microphone (AC-627). `Pause` cannot stop this one: the capture loop
-    // awaits the transcriber inside the frame loop, so an utterance the detector closed just as the key went down
-    // is already past the paused check and arrives here regardless — which is exactly the half-caught sentence
-    // that used to reach the assistant while its other half went to the composer.
+    // Nothing is queued while a hold has the microphone: `Pause` cannot stop an utterance already inside the
+    // transcribe call, which arrives here after the key went down (AC-627).
     private void _OnUtteranceTranscribed(object? sender, string rawText)
     {
         if (_suspendedForHold)
@@ -389,10 +379,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         {
             // Nothing to do when the utterance filtered down to nothing (a throat-clear or a bare "um" the STT
             // noise filter removed) — sending empty text is exactly what "have a normal conversation" must not do.
-            //
-            // Nor while a hold has the microphone (AC-627): the consumer may already have taken this one out of the
-            // queue before the key went down, and it is on its way to the assistant with the operator's next words
-            // going to a session composer. This is the last point at which it can still be dropped.
+            // Nor while a hold has the microphone: the consumer may have taken this one out of the queue before the
+            // key went down, and this is the last point it can still be dropped (AC-627).
             if (string.IsNullOrWhiteSpace(rawText) || _suspendedForHold)
             {
                 return;

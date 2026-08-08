@@ -81,12 +81,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     // Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.
     internal void HandleHoldStarted()
     {
-        // This used to stand down while open-mic was listening, on the grounds that both transcribe the same
-        // speech. AC-627 reversed it: they do not send it to the same place, so standing down did not drop a
-        // duplicate, it re-routed the sentence to the assistant and had it sent unread. The hold wins now, and
-        // open-mic steps aside for its duration — in `SessionPanelViewModel.BeginVoiceHold`, which is
-        // where both this route and the in-window one meet.
-        //
+        // AC-627: no stand-down for open-mic any more — it steps aside in
+        // `SessionPanelViewModel.BeginVoiceHold`, where this route and the in-window one meet.
+
         // Detached first so this cannot stack, whatever the backend does with a repeated key. Today neither of
         // them repeats a hold, so the -= finds nothing — but that is a promise another class makes, and the one
         // subscription per hold this needs should not depend on it being kept.
