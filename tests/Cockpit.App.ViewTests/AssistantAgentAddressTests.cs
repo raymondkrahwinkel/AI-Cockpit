@@ -118,6 +118,25 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
+    /// <c>cockpit-session</c> is mounted for every session including this one, and <c>set_status</c> still refuses the
+    /// assistant: the statusline is written onto a session found in the grid's own list, which the assistant is
+    /// deliberately not in. Asserted because the capability map now tells the assistant so, and a map that says
+    /// "this one is not for you" about a tool that quietly starts working is worse than one that never mentioned it.
+    /// </summary>
+    [Fact]
+    public void TheAssistantsStatusline_CannotBeSet_BecauseItIsNotInTheListThatWritesThem()
+    {
+        var cockpit = Dispatcher.UIThread.Invoke(() =>
+        {
+            var viewModel = _Cockpit();
+            viewModel.CreateAssistantSession(AssistantIdentity.PaneId);
+            return viewModel;
+        });
+
+        Assert.False(Dispatcher.UIThread.Invoke(() => cockpit.SetSessionStatusline(AssistantIdentity.PaneId, "AC-635")));
+    }
+
+    /// <summary>
     /// A turn on the assistant is one spoken out loud to the operator, so an urgent notify does not get one. Refused
     /// truthfully: <c>PaneGone</c> would send a sender looking for a route it does not need.
     /// </summary>
