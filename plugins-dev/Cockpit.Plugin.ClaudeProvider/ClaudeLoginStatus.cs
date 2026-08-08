@@ -38,6 +38,11 @@ internal static class ClaudeLoginStatus
     // background task, so the only cost of waiting is a cache entry that stays stale a little longer.
     private static readonly TimeSpan _Timeout = TimeSpan.FromSeconds(30);
 
+    // How long an attempt that could not answer holds the next one off. Long enough that a CLI which will never
+    // answer (one too old for `auth status`, or not installed) costs one subprocess every few minutes instead of
+    // one per dialog paint; short enough that a CLI installed while the app is open is picked up.
+    private static readonly TimeSpan _RetryAfterFailure = TimeSpan.FromMinutes(5);
+
     // Keyed by the config directory, which is what decides whose login the CLI reports. Empty string is the
     // machine's own default profile.
     private static readonly ConcurrentDictionary<string, _Entry> _Cache = new(StringComparer.OrdinalIgnoreCase);
@@ -50,12 +55,21 @@ internal static class ClaudeLoginStatus
     private sealed class _Entry
     {
         private volatile _Reading? _reading;
+        private long _retryNotBeforeTicks;
         public int Refreshing;
 
         public _Reading? Reading
         {
             get => _reading;
             set => _reading = value;
+        }
+
+        // When the next attempt may run after one that could not answer. Ticks behind Interlocked for the same
+        // reason Reading is a single reference: written on a background task, read on the UI thread.
+        public DateTimeOffset RetryNotBefore
+        {
+            get => new(Interlocked.Read(ref _retryNotBeforeTicks), TimeSpan.Zero);
+            set => Interlocked.Exchange(ref _retryNotBeforeTicks, value.UtcTicks);
         }
     }
 
@@ -71,7 +85,8 @@ internal static class ClaudeLoginStatus
         Func<string, string?>? managedResolver,
         Func<string, string?, CancellationToken, Task<bool?>> ask)
     {
-        var entry = _Cache.GetOrAdd(_KeyFor(ClaudeProviderConfig.Parse(configJson)), _ => new _Entry());
+        var config = ClaudeProviderConfig.Parse(configJson);
+        var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
         var reading = entry.Reading;
 
         if (reading is not null && now - reading.AsOf <= MaxAge)
@@ -79,17 +94,52 @@ internal static class ClaudeLoginStatus
             return reading.LoggedIn;
         }
 
-        // Aged out or never taken: refresh behind the caller and answer with what is known. Nothing known at all
-        // answers "logged in" — see the class remarks on why the two ways to be wrong are not equal.
-        _ = RefreshAsync(configJson, now, managedResolver, ask, CancellationToken.None);
-        return reading?.LoggedIn ?? true;
+        // Aged out or never taken: refresh behind the caller and answer with what is known.
+        _Start(configJson, now, managedResolver, ask);
+        return reading?.LoggedIn ?? _ColdAnswer(config);
     }
+
+    // What to say before the CLI has ever answered for this profile.
+    //
+    // `.credentials.json` is a *reliable positive* everywhere — if it is there, this profile logged in at some
+    // point — but a reliable negative only off macOS, where the credentials sit in the Keychain and the file
+    // never appears at all. So off macOS the old check stands in until the CLI corrects it, which keeps a
+    // logged-out profile reading as logged out from the very first paint (the Manage-profiles list binds this
+    // answer once and never re-reads it). On macOS it says nothing, and there "logged in" is the safer guess: a
+    // false "logged out" locks the operator out of an account they are already signed in to, where a false
+    // "logged in" costs one session that reports an auth error.
+    private static bool _ColdAnswer(ClaudeProviderConfig config)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return true;
+        }
+
+        var stateDirectory = ClaudeConfigPaths.ResolveStateDirectory(
+            config.ConfigDir,
+            Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+        // Existence only — never the contents (Iron Law #8).
+        return File.Exists(Path.Combine(stateDirectory, ".credentials.json"));
+    }
+
+    // Off the calling thread on purpose. `RefreshAsync` runs synchronously until its first real await, and what
+    // sits before that is `ClaudeExecutableLocator.Resolve` (a PATH probe, one File.Exists per directory) and
+    // `Process.Start` on a 287MB binary. On the UI thread — which is exactly where the gate is called from —
+    // that is the freeze this whole cache exists to avoid, and a fire-and-forget `_ =` would not have moved it.
+    private static void _Start(
+        string configJson,
+        DateTimeOffset now,
+        Func<string, string?>? managedResolver,
+        Func<string, string?, CancellationToken, Task<bool?>> ask) =>
+        _ = Task.Run(() => RefreshAsync(configJson, now, managedResolver, ask, CancellationToken.None));
 
     // Starts a refresh for this profile without waiting for it — called at plugin start for every detected
     // profile, and by the gate whenever its answer has aged out. Self-throttling per profile: a second call while
     // one is in flight does nothing rather than spawning a second CLI.
     public static void Warm(string configJson, Func<string, string?>? managedResolver = null) =>
-        _ = RefreshAsync(configJson, DateTimeOffset.UtcNow, managedResolver, _AskCliAsync, CancellationToken.None);
+        _Start(configJson, DateTimeOffset.UtcNow, managedResolver, _AskCliAsync);
 
     // `now` stamps the reading rather than the wall clock, so a test driving the gate at a fixed time gets an
     // entry dated on that same clock — otherwise "has this aged out" compares two different clocks.
@@ -102,7 +152,9 @@ internal static class ClaudeLoginStatus
     {
         var config = ClaudeProviderConfig.Parse(configJson);
         var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
-        if (Interlocked.CompareExchange(ref entry.Refreshing, 1, 0) != 0)
+
+        // Backing off after a failure, or one already in flight — either way, not a second subprocess.
+        if (now < entry.RetryNotBefore || Interlocked.CompareExchange(ref entry.Refreshing, 1, 0) != 0)
         {
             return;
         }
@@ -117,17 +169,26 @@ internal static class ClaudeLoginStatus
                 config.ConfigDir,
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
-            if (await ask(executablePath, spawnOverride, cancellationToken).ConfigureAwait(false) is { } loggedIn)
+            var answer = await ask(executablePath, spawnOverride, cancellationToken).ConfigureAwait(false);
+            if (answer is { } loggedIn)
             {
                 entry.Reading = new _Reading(loggedIn, now);
+                entry.RetryNotBefore = default;
+                return;
             }
 
-            // A null answer (CLI missing, timed out, output this build cannot read) leaves the previous entry —
-            // and a cold one cold, so the next ask tries again instead of standing on a failure.
+            // A null answer (CLI missing, timed out, an output this build cannot read) leaves whatever was known
+            // in place — a failure is not a login status. But it does hold the next attempt off for a while: a
+            // CLI too old for `auth status` never starts answering, and without this every gate call from every
+            // dialog would spawn another subprocess against it, forever.
+            entry.RetryNotBefore = now + _RetryAfterFailure;
         }
         catch (Exception)
         {
-            // A login status is not worth failing a dialog over.
+            // A login status is not worth failing a dialog over. Backed off like any other failed attempt —
+            // a `claude` that is not there throws out of Process.Start rather than answering null, and that
+            // must not become a subprocess per dialog paint either.
+            entry.RetryNotBefore = now + _RetryAfterFailure;
         }
         finally
         {

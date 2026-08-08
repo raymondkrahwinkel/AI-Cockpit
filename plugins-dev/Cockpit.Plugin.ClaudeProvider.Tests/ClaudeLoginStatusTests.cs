@@ -54,24 +54,96 @@ public class ClaudeLoginStatusTests
     public void ReadLoggedIn_RubbishIsUnknown_NotLoggedOut(string json) =>
         Assert.Null(ClaudeLoginStatus.ReadLoggedIn(json));
 
-    [Fact]
-    public async Task AColdGate_AnswersReadyAndRefreshesBehindIt()
+    // A real directory, so the cold answer's `.credentials.json` probe has something to look at.
+    private static string ConfigInDirectory(string dir) =>
+        JsonSerializer.Serialize(new ClaudeProviderConfig(ConfigDir: dir), ClaudeProviderConfig.JsonOptions);
+
+    private static string NewDirectory()
     {
-        ClaudeLoginStatus.ResetForTests();
-        var config = ConfigFor("cold");
-
-        // Nothing known yet: "logged in" is the deliberate answer. A false "logged out" blocks the operator from
-        // starting a session at all and tells them to log in while they already are; a false "logged in" costs a
-        // session that starts and reports an auth error.
-        Assert.True(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)));
-
-        await ClaudeLoginStatus.RefreshAsync(config, Now, null, Answers(false), CancellationToken.None);
-
-        Assert.False(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)), "the CLI's answer now stands");
+        var dir = Path.Combine(Path.GetTempPath(), "claude-login-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
     }
 
     [Fact]
-    public async Task TheGateNeverWaitsForTheCli()
+    public async Task TheCliesAnswerReplacesTheColdOne()
+    {
+        ClaudeLoginStatus.ResetForTests();
+        var dir = NewDirectory();
+        try
+        {
+            var config = ConfigInDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, ".credentials.json"), "{}");
+
+            // Cold, with credentials present: ready. That same call starts the refresh behind it.
+            Assert.True(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)));
+
+            // And the CLI overrules it — this is the expired-token case the file check could never see. Waited
+            // for rather than forced with a second RefreshAsync: that one would collide with the in-flight
+            // refresh the line above started and quietly do nothing.
+            await _UntilAsync(() => !ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // The cold answer is what the Manage-profiles list binds on first paint, and it never re-reads — so being
+    // wrong here is visible until the dialog is reopened. `.credentials.json` is a reliable negative everywhere
+    // except macOS, where the credentials are in the Keychain and the file simply never exists.
+    [Fact]
+    public void AColdGateWithNoCredentialsFile_IsLoggedOutExceptOnMacOs()
+    {
+        ClaudeLoginStatus.ResetForTests();
+        var dir = NewDirectory();
+        try
+        {
+            var answer = ClaudeLoginStatus.IsLoggedIn(ConfigInDirectory(dir), Now, null, Answers(null));
+
+            if (OperatingSystem.IsMacOS())
+            {
+                Assert.True(answer, "the file says nothing on macOS, and locking the operator out is the worse error");
+            }
+            else
+            {
+                Assert.False(answer, "no credentials file and no CLI answer yet — the old check still stands in");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // An attempt that could not answer must not turn every dialog paint into another subprocess: a CLI too old
+    // for `auth status`, or none at all, never starts answering.
+    [Fact]
+    public async Task AFailedAttempt_BacksOffInsteadOfSpawningPerCall()
+    {
+        ClaudeLoginStatus.ResetForTests();
+        var config = ConfigFor("backoff");
+        var asked = 0;
+        Func<string, string?, CancellationToken, Task<bool?>> failing = (_, _, _) =>
+        {
+            Interlocked.Increment(ref asked);
+            return Task.FromResult<bool?>(null);
+        };
+
+        await ClaudeLoginStatus.RefreshAsync(config, Now, null, failing, CancellationToken.None);
+        Assert.Equal(1, asked);
+
+        await ClaudeLoginStatus.RefreshAsync(config, Now.AddSeconds(1), null, failing, CancellationToken.None);
+        await ClaudeLoginStatus.RefreshAsync(config, Now.AddMinutes(1), null, failing, CancellationToken.None);
+        Assert.Equal(1, Volatile.Read(ref asked));
+
+        // Past the backoff it tries again — a CLI installed while the app is open still gets picked up.
+        await ClaudeLoginStatus.RefreshAsync(config, Now.AddMinutes(10), null, failing, CancellationToken.None);
+        Assert.Equal(2, Volatile.Read(ref asked));
+    }
+
+    [Fact]
+    public void TheGateNeverWaitsForTheCli()
     {
         ClaudeLoginStatus.ResetForTests();
         var config = ConfigFor("slow");
@@ -82,7 +154,7 @@ public class ClaudeLoginStatusTests
             // The ask never completes. The whole point of the cache is that this still returns at once — on the UI
             // thread this is the difference between a dialog that opens and one that freezes for 9 seconds.
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            Assert.True(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(true, stuck)));
+            ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(true, stuck));
             clock.Stop();
 
             Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"the gate blocked for {clock.Elapsed}");
@@ -119,24 +191,20 @@ public class ClaudeLoginStatusTests
         await _UntilAsync(() => Volatile.Read(ref asked) == 2);
     }
 
+    // "Could not ask" is not an answer: a CLI that fails must never overwrite a reading it did give earlier.
     [Fact]
-    public async Task AnAnswerTheCliCouldNotGive_LeavesTheGateAskingAgainRatherThanStandingOnAFailure()
+    public async Task AFailedAttempt_DoesNotOverwriteWhatTheCliAlreadySaid()
     {
         ClaudeLoginStatus.ResetForTests();
         var config = ConfigFor("unknown");
 
-        await ClaudeLoginStatus.RefreshAsync(config, Now, null, Answers(null), CancellationToken.None);
+        await ClaudeLoginStatus.RefreshAsync(config, Now, null, Answers(false), CancellationToken.None);
+        Assert.False(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)));
 
-        // Still cold, so still ready — and the next ask retries instead of treating "could not ask" as an answer
-        // that expires an hour from now.
-        var asked = 0;
-        Assert.True(ClaudeLoginStatus.IsLoggedIn(config, Now, null, (_, _, _) =>
-        {
-            Interlocked.Increment(ref asked);
-            return Task.FromResult<bool?>(true);
-        }));
+        await ClaudeLoginStatus.RefreshAsync(config, Now.Add(ClaudeLoginStatus.MaxAge).AddMinutes(1), null, Answers(null), CancellationToken.None);
 
-        await _UntilAsync(() => Volatile.Read(ref asked) == 1);
+        // Still logged out, on the CLI's own word — not flipped to the optimistic cold answer by a failure.
+        Assert.False(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(null)));
     }
 
     [Fact]

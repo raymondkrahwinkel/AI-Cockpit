@@ -43,26 +43,8 @@ public class ClaudeProfileDiscoveryTests
         Assert.Empty(ClaudeProfileDiscovery.Detect([Path.Combine("fake-home", ".claude")], _ => false));
     }
 
-    // The gate no longer looks at `.credentials.json` at all (AC-629): that file is absent on a logged-in macOS
-    // (Keychain) and present next to an expired token, so it answered wrongly in both directions. What it answers
-    // now lives in ClaudeLoginStatusTests; this only pins down that the file has stopped deciding.
-    [Fact]
-    public void IsLoggedIn_DoesNotDependOnACredentialsFile()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "claude-login-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            var configJson = System.Text.Json.JsonSerializer.Serialize(
-                new ClaudeProviderConfig(ConfigDir: dir), ClaudeProviderConfig.JsonOptions);
-
-            // No credentials file, and the CLI has not answered yet — the old gate said "logged out" here, which
-            // is exactly what locked a logged-in macOS operator out of starting a session.
-            Assert.True(ClaudeProfileDiscovery.IsLoggedIn(configJson), "an unknown status must not read as logged out");
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
+    // The gate moved to the CLI's own `auth status` (AC-629) — `.credentials.json` was absent on a logged-in
+    // macOS (Keychain) and present next to an expired token, so it answered wrongly in both directions. What it
+    // answers now lives in ClaudeLoginStatusTests, which drives the same decision with the CLI stubbed out.
+    // Nothing is asserted here: this call would spawn a real `claude` on a machine that has one.
 }
