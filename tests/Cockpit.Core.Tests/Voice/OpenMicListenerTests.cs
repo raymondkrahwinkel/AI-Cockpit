@@ -54,10 +54,8 @@ public class OpenMicListenerTests
     }
 
     /// <summary>
-    /// AC-628: two starts landing together opened four microphones in the field, because the guard read
-    /// "not running" and the settings load sat between that read and the assignment that would have said
-    /// otherwise. The settings load is held open here rather than raced on timing, so the second call is
-    /// provably inside the window the guard used to leave open.
+    /// AC-628: starts landing together each opened a microphone. The settings load is held open rather than raced
+    /// on timing, so the second call is provably inside the window the guard used to leave open.
     /// </summary>
     [Fact]
     public async Task StartAsync_TwiceAtOnce_OpensOneCaptureDeviceAndSaysTheSecondStartDidNothing()

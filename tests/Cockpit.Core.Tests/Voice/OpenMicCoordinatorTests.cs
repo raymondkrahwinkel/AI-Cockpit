@@ -318,10 +318,8 @@ public class OpenMicCoordinatorTests
     }
 
     /// <summary>
-    /// AC-628, the coordinator's half: `IsListening` is only set after the listener has started, and two awaits
-    /// sit between the guard that reads it and that assignment — so two enables landing together each opened a
-    /// microphone. The settings load is held open rather than raced on timing, so the second enable is provably
-    /// inside the window. The duplicate says where it came from, which is what the log was missing.
+    /// AC-628, the coordinator's half: two enables landing together each opened a microphone. The settings load is
+    /// held open rather than raced on timing, and the duplicate has to name where it came from.
     /// </summary>
     [Fact]
     public async Task EnableTwiceAtOnce_StartsTheListenerOnce_AndNamesWhereTheDuplicateCameFrom()
@@ -337,9 +335,8 @@ public class OpenMicCoordinatorTests
         var first = coordinator.StartAsync();
         var second = coordinator.StartAsync();
 
-        // Both are now parked on the settings load, which is the window the guard used to leave open. Releasing it
-        // lets the first through to the listener, where it is held — so the second is asking while the first has
-        // started a microphone and not yet said so, which is exactly the state the field hit four times over.
+        // Releasing the load lets the first through to the listener, where it is held — so the second asks while
+        // the first has opened a microphone and not yet set IsListening.
         settingsAreLoading.SetResult();
         await _WaitUntilAsync(() => listener.StartCount >= 1);
         await _GiveASecondStartEveryChanceAsync(() => listener.StartCount >= 2);

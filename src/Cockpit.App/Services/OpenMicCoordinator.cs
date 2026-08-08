@@ -37,11 +37,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     private bool _wired;
 
-    // Serializes enabling and disabling. `IsListening` is only true once the listener has actually started, and
-    // two awaits sit between the guard that reads it and the assignment that sets it — so two toggles landing
-    // together each opened a microphone (AC-628). Two leaky guards are not two layers of protection, so this one
-    // is closed at the same time as the listener's own. `_DisableAsync` takes the same gate: a stop racing a
-    // start is the same defect with the halves swapped.
+    // AC-628: `IsListening` is set two awaits after the guard reads it, so enabling and disabling are serialized here.
     private readonly SemaphoreSlim _enableGate = new(1, 1);
 
     // What the overlay shows while read-aloud is synthesizing (text-to-sound) but not yet playing a word.
@@ -167,9 +163,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         await _voiceSettingsStore.SaveAsync(settings with { OpenMicEnabled = IsListening });
     }
 
-    // <paramref name="caller"/> is the instrumentation AC-628 asked for: four enables arrived within 16ms and
-    // nothing in the log said where from. A request that turns out to be a duplicate now names the path it came
-    // in on, so the next burst identifies its own source instead of being reconstructed from timestamps.
+    // AC-628: `caller` is there so a duplicate enable names the path it came in on rather than arriving anonymously.
     private async Task _EnableAsync(CancellationToken cancellationToken = default, [CallerMemberName] string caller = "")
     {
         await _enableGate.WaitAsync(cancellationToken);

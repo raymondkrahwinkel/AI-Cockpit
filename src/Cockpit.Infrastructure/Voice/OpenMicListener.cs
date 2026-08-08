@@ -31,15 +31,10 @@ internal sealed class OpenMicListener(
     private static readonly int WindowByteCount =
         (int)(CaptureFormat.SampleRate * AnalysisWindow.TotalSeconds) * (CaptureFormat.BitsPerSample / 8);
 
-    // Serializes starting and stopping. The guard in `StartAsync` used to be a check-then-act with a settings
-    // load between the check and the assignment, so two calls landing together both saw "not running" and both
-    // opened a microphone — and only the last one was reachable afterwards, which made the rest unstoppable
-    // (AC-628). Same shape as `Cockpit.App.Services.AssistantSessionHost._startGate`, for the same reason.
+    // AC-628: the guard below only holds while this is held — without it, concurrent starts each opened a microphone.
     private readonly SemaphoreSlim _startGate = new(1, 1);
 
-    // Every capture loop this listener has running — one, now that starts are serialized. Held as a set rather
-    // than as the single pair it will always be, because a `StopAsync` that silently closed one of four is
-    // exactly how the orphaned loops stayed invisible.
+    // AC-628: a set rather than the single pair it will always be, so a stop cannot silently close one of several.
     private readonly List<(CancellationTokenSource Cancellation, Task Loop)> _running = [];
 
     private volatile bool _paused;
@@ -56,8 +51,7 @@ internal sealed class OpenMicListener(
         {
             if (_running.Count > 0)
             {
-                // Said out loud rather than returned in silence. A start that does nothing left no trace at all,
-                // which is why four of them looked exactly like one until the transcripts arrived in fours.
+                // AC-628: a start that does nothing left no trace, so four of them read exactly like one.
                 logger.LogInformation("Open-mic was already listening; this start was ignored.");
                 return;
             }
@@ -101,8 +95,7 @@ internal sealed class OpenMicListener(
                 cancellation.Dispose();
             }
 
-            // The other half of the pair above: the log carried a start and no stop, so a microphone left open
-            // and a microphone closed on request read the same from the outside.
+            // AC-628: the log carried starts and no stops, so a mic left open read like one that was closed.
             logger.LogInformation("Open-mic listening stopped ({Loops} loop(s) closed).", running.Length);
         }
         finally

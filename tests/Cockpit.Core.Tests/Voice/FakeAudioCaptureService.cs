@@ -11,8 +11,7 @@ namespace Cockpit.Core.Tests.Voice;
 /// </summary>
 internal sealed class FakeAudioCaptureService(params byte[][] frames) : IAudioCaptureService
 {
-    // Interlocked, because the case these count is two starts running at once — a plain ++ from two threads can
-    // lose the increment that proves the second microphone was opened.
+    // Interlocked: these count concurrent starts, and a plain ++ can lose the second microphone it has to prove.
     private int _captureCount;
     private int _activeCaptures;
 
