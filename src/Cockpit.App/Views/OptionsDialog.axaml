@@ -92,6 +92,9 @@
                                       IsChecked="{Binding NotifyOnSessionIdle}"/>
                             <CheckBox Content="Tell me when every session is idle — nothing is running any more"
                                       IsChecked="{Binding NotifyWhenAllSessionsIdle}"/>
+                            <CheckBox Content="Tell me when CI goes red on a branch a session is working on"
+                                      IsChecked="{Binding NotifyOnCiFailure}"
+                                      ToolTip.Tip="Asks gh every five minutes whether the pull request of each session's branch has a failing check. Nothing is started about it — you decide."/>
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="Session goes idle after (minutes)"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"

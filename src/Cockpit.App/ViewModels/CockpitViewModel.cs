@@ -1200,6 +1200,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _notifyWhenAllSessionsIdle;
 
+    // AC-634: whether the branch a session is on is watched for a failing CI check.
+    [ObservableProperty]
+    private bool _notifyOnCiFailure = true;
+
     // Whether the cockpit window is the focused one. Set by the window itself (it is the only thing that knows),
     // and read by the finished-session notification: a session you are looking at does not need to announce itself.
     [ObservableProperty]
@@ -2741,6 +2745,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NotifyOnSessionFinished = settings.NotifyOnSessionFinished;
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle;
+        NotifyOnCiFailure = settings.NotifyOnCiFailure;
     }
 
     // Persists the notification settings edited in the Options flyout to `cockpit.json`.
@@ -2765,6 +2770,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             NotifyOnSessionFinished = NotifyOnSessionFinished,
             NotifyOnSessionIdle = NotifyOnSessionIdle,
             NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
+            NotifyOnCiFailure = NotifyOnCiFailure,
             // 0 is a real choice here ("never let a session go idle"), so it is saved as written rather than
             // being nudged back to the default the way the away-threshold is.
             SessionIdleThreshold = SessionIdleMinutes > 0 ? TimeSpan.FromMinutes(SessionIdleMinutes) : TimeSpan.Zero,

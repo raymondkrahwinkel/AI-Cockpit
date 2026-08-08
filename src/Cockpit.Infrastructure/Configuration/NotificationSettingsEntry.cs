@@ -22,6 +22,8 @@ internal sealed class NotificationSettingsEntry
 
     public bool NotifyWhenAllSessionsIdle { get; set; }
 
+    public bool NotifyOnCiFailure { get; set; } = true;
+
     // Minutes a finished session stays "done" before it counts as idle. 0 turns the idle transition off, so it round-trips as written rather than falling back to the default.
     public int SessionIdleMinutes { get; set; } = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
 
@@ -34,6 +36,7 @@ internal sealed class NotificationSettingsEntry
         NotifyOnSessionFinished = settings.NotifyOnSessionFinished,
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle,
+        NotifyOnCiFailure = settings.NotifyOnCiFailure,
         SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes,
     };
 
@@ -48,6 +51,7 @@ internal sealed class NotificationSettingsEntry
         NotifyOnSessionFinished = NotifyOnSessionFinished,
         NotifyOnSessionIdle = NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
+        NotifyOnCiFailure = NotifyOnCiFailure,
         SessionIdleThreshold = SessionIdleMinutes > 0
             ? TimeSpan.FromMinutes(SessionIdleMinutes)
             : TimeSpan.Zero,
