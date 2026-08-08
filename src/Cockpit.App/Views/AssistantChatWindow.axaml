@@ -21,12 +21,9 @@
     <!-- AC-543 criterion 5/7: a pop-out onto the assistant's own standing conversation, not a pane in the
          workspace grid — precedent is Autopilot's plan pop-out (AutopilotPlanWorkspaceBody._ShowPlanningPopoutAsync),
          a small floating window rather than another tab.
-         AC-636 reverses AC-543's "no 'bigger' affordance (COMMENT 6 #1, decided)": in live use a fixed 420x560
-         peephole was too small to read work in, and where a bigger window goes turned out to be an easy question —
-         wherever the operator drags its edge to. `BorderOnly` rather than a grip control of our own: it is what
-         `Controls/CockpitWindowChrome` already gives every dialog and the main window — no OS title bar, but the
-         OS's own resize border — so this window resizes exactly like the rest of the app and no grip has to be
-         drawn, hit-tested or kept out of the composer's way. MinWidth/MinHeight below stay the floor. -->
+         AC-636 reverses AC-543's "no 'bigger' affordance (COMMENT 6 #1, decided)": `BorderOnly` is the resize
+         border `Controls/CockpitWindowChrome` already gives every dialog, so no grip of our own has to be drawn
+         or kept out of the composer's way. MinWidth/MinHeight stay the floor. -->
 
     <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
         <Grid>

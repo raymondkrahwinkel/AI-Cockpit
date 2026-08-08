@@ -9,13 +9,9 @@ namespace Cockpit.App.Views;
 // `VoicePushToTalkCoordinator` for what drives its Show/Hide. Borderless, transparent,
 // always-on-top, bottom-centre of the primary screen, and (on Linux/X11) click-through so it never
 // steals focus or blocks the app underneath.
-//
-// AC-636: "never steals focus" was the intent from the start, but click-through only answers the pointer, and
-// only on X11. Showing a window activates it — `Window.Show()` passes `ShowActivated` down to the platform, and
-// on Win32 that runs `SetFocus` + `SetForegroundWindow` on the pill's own handle — so every state this pill
-// announces (listening, transcribing, preparing) took the keyboard off whatever the operator was typing in,
-// the assistant's chat box included. `ShowActivated="False"` in the markup is the whole fix: a pill that
-// reports on a hold the operator is already performing has nothing to do with the keyboard.
+// AC-636: and `ShowActivated="False"` in the markup, because click-through only ever answered the pointer —
+// showing a window activates it (on Win32: `SetFocus` + `SetForegroundWindow`), so the pill took the keyboard
+// off whatever the operator was typing in.
 // Ported from the KDE/KWin spike that proved topmost +
 // positioning + click-through work via XWayland (Iron Law #9: reuse the proven approach as the base
 // rather than reinventing it) — this window reuses that spike's window setup and click-through code
