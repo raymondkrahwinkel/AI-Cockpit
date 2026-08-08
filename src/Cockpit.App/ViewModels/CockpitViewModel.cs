@@ -6127,13 +6127,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // teaching it to would hand every other caller a session the cockpit keeps out of both collections on purpose.
     private SessionViewModel? _assistantSession;
 
-    // The live assistant, or null while there is none — for the one caller outside this class that needs to
-    // *describe* it rather than reach it: the agent line's roster (AC-632), which lists it on every desk so a
-    // session the assistant started can notify it back. Deliberately not folded into `FindSession` or
-    // `AllSessions`, for the reason those two say themselves: teaching them the assistant hands it to every
-    // caller of "every session", and the assistant is kept out of both collections on purpose. A separate,
-    // named property is the narrow version of that — and it is why waking the assistant stays impossible,
-    // since `TryWakeAsync` looks its target up in `AllSessions`.
+    // AC-632: the live assistant for the agent line's roster, which describes it rather than reaching it — kept
+    // out of `FindSession`/`AllSessions` on purpose, which is also what keeps it unwakeable.
     internal SessionPanelViewModel? AssistantPane => _assistantSession;
 
     // Mints the voice assistant's session panel and hands it over (AC-543). The *only* way one is made:

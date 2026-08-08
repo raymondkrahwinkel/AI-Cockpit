@@ -26,19 +26,9 @@ using Cockpit.Infrastructure.Mcp;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-632: the assistant is addressable on the agent line. It starts and coordinates the sessions on every desk, and
-/// until this it had no place on any roster — so a session it spawned could never <c>notify</c> it back, and the only
-/// route home was the assistant polling <c>list_sessions</c> or the operator relaying by hand. That is the same
-/// delivery gap AC-119 measured for ordinary panes, with the assistant on the receiving end of it.
+/// AC-632: the assistant is addressable on the agent line, so a session it spawned can <c>notify</c> it back.
+/// Here rather than with the <c>AgentsMcpTools</c> unit tests, which substitute the gateway that draws the roster.
 /// </summary>
-/// <remarks>
-/// This lives here rather than with the <c>AgentsMcpTools</c> unit tests for the reason
-/// <see cref="WorkspaceAgentGatewayTests"/> gives: those substitute the gateway, so they can prove the tools ask it
-/// the right question and never that it draws the roster correctly. The address is drawn by the gateway, against a
-/// real <see cref="CockpitViewModel"/> holding a real assistant session — which is also what lets the last test here
-/// run the whole line end to end (criterion 3) with no LLM in it: a real notify from a real pane, through the real
-/// inbox, onto the result of a real tool call by the assistant.
-/// </remarks>
 [Collection("avalonia")]
 public sealed class AssistantAgentAddressTests : IDisposable
 {
@@ -54,10 +44,8 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// Criterion 1. One assistant, and it is on every desk's roster — not because it sits on them (it sits on none,
-    /// and <see cref="SessionWorkspacePlacement"/> still says so) but because it is the one thing every desk's
-    /// sessions have in common. Two desks here rather than one: with a single desk this would pass on an
-    /// implementation that put the assistant on whichever desk happened to be first.
+    /// Criterion 1: one assistant, on every desk's roster. Two desks, or this passes on an implementation that put
+    /// it on whichever desk came first.
     /// </summary>
     [Fact]
     public void EveryDesksRoster_CarriesTheAssistantsAddress_WhileOneIsRunning()
@@ -87,9 +75,8 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// The other half, and the reason the row is conditional: an address with nobody behind it is mail delivered into
-    /// an inbox nothing will ever open, reported to the sender as success. The assistant starts lazily and can be
-    /// switched off entirely, so "no assistant" is an ordinary state and not an edge case.
+    /// Why the row is conditional: an address with nobody behind it is mail nothing will ever open, reported to the
+    /// sender as success. The assistant starts lazily and can be off, so this is an ordinary state.
     /// </summary>
     [Fact]
     public void WithNoAssistantRunning_NoRosterOffersItsAddress()
@@ -110,11 +97,8 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// Criterion 4, and the line this change deliberately does not cross. The assistant is now <em>addressable</em> on
-    /// every desk; it is still <em>placed</em> on none, so asking the gateway which desk it is on answers nothing —
-    /// which is what keeps every workspace-scoped tool (<c>list_agents</c>, <c>claim</c>, <c>notify</c>) scoped. Had
-    /// this started returning a desk, the assistant would have been handed one desk's roster out of the several it
-    /// manages, and AC-119's boundary would have become a coin toss rather than a rule.
+    /// Criterion 4: addressable on every desk, placed on none. A desk here would hand the assistant one roster out
+    /// of the several it manages, making AC-119's boundary a coin toss.
     /// </summary>
     [Fact]
     public void TheAssistantsOwnPaneId_StillResolvesToNoDesk()
@@ -134,11 +118,8 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// An address is not a session a neighbour may start a turn on. Being on the roster puts the assistant within
-    /// reach of an urgent <c>notify</c>, and a turn on the assistant is one spoken out loud to the operator — so the
-    /// wake is refused, and refused <em>truthfully</em>: without this it lands on <c>PaneGone</c> ("no longer a live
-    /// session") about a session that is live and did take the message, which is the sort of answer that makes a
-    /// sender go looking for another route it does not need.
+    /// A turn on the assistant is one spoken out loud to the operator, so an urgent notify does not get one. Refused
+    /// truthfully: <c>PaneGone</c> would send a sender looking for a route it does not need.
     /// </summary>
     [Fact]
     public void WakingTheAssistant_IsRefusedAsNotWakeable_RatherThanReportedGone()
@@ -160,14 +141,8 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// Criterion 3, end to end and without a model in it: an agent on a desk notifies the assistant, and the assistant
-    /// is handed the message on the result of the next tool call it makes — nobody polled, and nobody relayed.
-    /// <para>
-    /// Everything here is the real thing except the pane the assistant "calls" from, which is
-    /// <see cref="McpRequestContext"/> — the same seam the transport stamps. The notify goes through the real
-    /// <c>AgentsMcpTools</c> against the real gateway, so the address being on the roster is what makes it land
-    /// rather than a substitute agreeing that it should.
-    /// </para>
+    /// Criterion 3, end to end and with no model in it: an agent notifies the assistant, and the assistant is handed
+    /// it on its next tool result — nobody polled, nobody relayed. Real gateway, so the roster is what makes it land.
     /// </summary>
     [Fact]
     public async Task AnAgentNotifiesTheAssistant_AndItArrivesOnTheAssistantsNextToolResult()
