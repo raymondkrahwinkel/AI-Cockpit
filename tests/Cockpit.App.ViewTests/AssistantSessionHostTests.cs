@@ -415,6 +415,21 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void LaunchOptions_CarryTheRuleThatTheAssistantImplementsNothingItself()
+    {
+        // AC-639. The rule exists because the assistant built and fixed straight in a checkout rather than
+        // spawning for it (AC-638), and the capability map is the only place it is written down. Asserted on what
+        // a launch actually hands the session rather than on the constant: that the constant reads well is not the
+        // claim — that the rule arrives is. The other asserts in this file compare `Default` with itself and would
+        // pass just as happily with this paragraph deleted, which is exactly why this one names the text.
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains("YOU DO NOT IMPLEMENT", instruction, StringComparison.Ordinal);
+        Assert.Contains("on its own worktree", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LaunchOptions_TheAssistantsOwnInstruction_WinsOverAnythingTheProfileStoredOnThatKey()
     {
         // The profile's start defaults are copied first and the standing instruction is written last, on purpose:
