@@ -428,9 +428,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             await fake.PushStdoutAsync(line);
         }
 
-        // The result line is what closes the turn, and the host reads Status off the back of that event — so waiting
-        // for it is exactly the moment the header would look. Nothing answers the usage poll here, so this waits out
-        // the publish grace: the assertion below is about the rate-limit line the stream carried on its own.
+        // Nothing answers the usage poll here, so this waits out the publish grace; the assertion below is about
+        // the rate-limit line the stream carried on its own.
         await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
 
         var status = driver.Status;
@@ -441,15 +440,10 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal(98d, window.UsedPercent, precision: 10);
     }
 
-    // The turn boundary is where the driver asks the CLI for the two figures the pill renders, and this drives the
-    // whole round-trip through the real pump: the result line goes down stdout, the requests come back up stdin,
-    // their replies go down stdout again.
-    //
-    // What it pins down is the *ordering*. The host reads Status exactly once per turn, off the back of
-    // TurnCompleted (SessionViewModel._RefreshLimits — no timer, no second read), so the figures have to be in
-    // before that event goes out. Asserting them after the event would pass just as well with the poll landing a
-    // turn late, which is the bug this ordering exists to prevent. The subtypes are asserted by name because they
-    // are the wire contract with the CLI — a typo would leave the pill silently blank.
+    // The whole round-trip through the real pump, and specifically the *ordering*: the host reads Status once per
+    // turn, off the back of TurnCompleted, so the figures must be in before it goes out. Asserting after that
+    // event would pass just as well with the poll landing a turn late. The subtypes are named because they are
+    // the wire contract — a typo leaves the pill silently blank.
     [Fact]
     public async Task AtTheTurnBoundary_BothFiguresAreInBeforeTheTurnEventGoesOut()
     {
@@ -477,9 +471,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal(7d, status.RateLimits[0].UsedPercent, precision: 10);
     }
 
-    // The turn must never be held hostage to a nicety: a CLI that answers neither request still completes the turn,
-    // just without fresh figures. Without the grace this would wait out `_UsageRequestTimeout` (15s) and the
-    // session would look stuck.
+    // Without the grace this waits out `_UsageRequestTimeout` (15s) and the session looks stuck.
     [Fact]
     public async Task ACliThatNeverAnswersThePoll_StillCompletesTheTurn()
     {
@@ -543,8 +535,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             return null;
         });
 
-    // Spins until the poll's own task has run. Polling rather than awaiting because the driver deliberately does not
-    // expose the fire-and-forget task — the pump must never block on it.
+    // Polled rather than awaited: the driver does not expose the fire-and-forget task, by design.
     private static async Task<T> _AwaitAsync<T>(Func<T?> read) where T : class
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5);

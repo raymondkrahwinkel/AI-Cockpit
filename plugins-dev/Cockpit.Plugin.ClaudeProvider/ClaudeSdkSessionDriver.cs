@@ -45,14 +45,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // poll at each turn boundary; it publishes its own immutable snapshot and locks its own fields.
     private readonly ClaudeSdkUsage _usage = new();
 
-    // request_id -> the awaiter for that control_request's reply. Only the requests this driver waits for land
-    // here; the fire-and-forget ones (initialize, set_model, set_permission_mode) never register an awaiter and
-    // their replies fall through the pump as before.
+    // request_id -> the awaiter for that reply. The fire-and-forget requests register none.
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement?>> _pendingControlResponses = new();
 
-    // Ticks of the last `get_usage` round-trip, so a session taking a hundred quick turns does not ask a hundred
-    // times for a figure that moves in minutes. The context breakdown is not throttled: it is answered from the
-    // CLI's own state and it is the one that changes every turn.
+    // Ticks of the last successful `get_usage`. The context breakdown is not throttled — it is local, and it is
+    // the one that changes every turn.
     private long _lastAllowancePollTicks;
 
     private IClaudeSdkSubprocess? _subprocess;
@@ -350,12 +347,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 ? typeProp.GetString()
                 : null;
 
-            // At the turn boundary, and only there: the host reads Status exactly once per turn, off the back of
-            // the TurnCompleted this line produces (SessionViewModel._RefreshLimits — no timer, no second read).
-            // So the poll has to finish before those events go out, or every figure lands a turn late and a
-            // session that takes a single turn shows no pill at all. It cannot be awaited here: the replies come
-            // back up this very pump, which would then be sitting inside this call waiting for itself. Hence a
-            // separate task that polls first and publishes after.
+            // The host reads Status once per turn, off the back of this line's TurnCompleted
+            // (SessionViewModel._RefreshLimits — no timer, no second read), so the poll must finish before those
+            // events go out or every figure lands a turn late. It cannot be awaited here: the replies come back
+            // up this very pump. Hence a separate task that polls first and publishes after.
             if (string.Equals(type, "result", StringComparison.Ordinal))
             {
                 _ = _PollUsageThenPublishAsync(line);
@@ -379,15 +374,13 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 }
                 else if (ClaudeControlProtocol.TryParseResponse(root, out var responseId, out var payload))
                 {
-                    // A reply nobody is waiting for (the initialize handshake, a set_model ack) removes nothing and
-                    // is dropped, exactly as before.
+                    // A reply nobody waits for (the initialize handshake, a set_model ack) is dropped, as before.
                     _CompleteControlResponse(responseId, payload);
                 }
                 else if (responseId.Length > 0)
                 {
-                    // A control_response the parse refused is the CLI answering `subtype:"error"` — it still names
-                    // the request. Release the awaiter with nothing rather than let it wait out its timeout for a
-                    // reply that has already come and gone.
+                    // A refused parse is the CLI answering `subtype:"error"`, which still names the request:
+                    // release the awaiter rather than let it wait out its timeout.
                     _CompleteControlResponse(responseId, null);
                 }
 
@@ -432,26 +425,18 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // minutes, and unlike the context breakdown this one can reach the account's own usage endpoint.
     private static readonly TimeSpan _AllowancePollInterval = TimeSpan.FromMinutes(1);
 
-    // A reply that never comes must not keep an awaiter (or its captured payload) alive for the session's lifetime.
-    // Generous against ordinary CLI latency, which measured in milliseconds, and short enough that a wedged
-    // control channel costs one poll rather than every later one.
+    // A reply that never comes must not keep its awaiter alive for the session's lifetime.
     private static readonly TimeSpan _UsageRequestTimeout = TimeSpan.FromSeconds(15);
 
-    // Asks the CLI for the two figures the pill renders, over the control channel this driver already has open —
-    // `get_usage` for the rolling allowances (what `/usage` prints) and `get_context_usage` for the context
-    // percentage (what `/context` prints). Both are the CLI's own numbers, so nothing here computes a percentage.
-    //
-    // This replaces AC-549's `claude -p "/usage"` subprocess plus its `.claude.json` cache: on CLI 2.1.226 that
-    // call stopped being answered locally (measured at 35.8s, a real assistant turn, and the cache left
-    // untouched), which left the refresher timing out on every turn and the pills going blank once the cache aged
-    // out. No subprocess, no tokens and no staleness window here.
-    //
-    // How long the turn's own events wait for that poll. The round-trip measured in milliseconds, so this is
-    // slack rather than a budget — and it is deliberately far shorter than `_UsageRequestTimeout`, because the
-    // one thing worse than a stale pill is a session that looks stuck while a nicety is fetched. Past it the
-    // events go out regardless and the poll folds its answer in whenever it arrives, for the next turn to show.
+    // How long the turn's events wait for the poll. The round-trip measures in milliseconds, so this is slack,
+    // and far under `_UsageRequestTimeout` on purpose: worse than a stale pill is a session that looks stuck.
+    // Past it the events go out anyway and the answer lands for the next turn.
     private static readonly TimeSpan _UsagePublishGrace = TimeSpan.FromSeconds(2);
 
+    // Asks the CLI for the two figures the pill renders — `get_usage` (what `/usage` prints) and
+    // `get_context_usage` (what `/context` prints) — then publishes the turn's events. Replaces AC-549's
+    // `claude -p "/usage"` subprocess and its `.claude.json` cache, which on 2.1.226 became a 35.8s assistant
+    // turn that refreshed nothing.
     private async Task _PollUsageThenPublishAsync(string line)
     {
         try
@@ -477,9 +462,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 && await _RequestControlAsync(new { subtype = "get_usage" }).ConfigureAwait(false) is { } usage)
             {
                 _usage.ObserveAccountWindows(ClaudeUsageWindows.Read(usage));
-                // Stamped on success only, so a refused or timed-out request is retried on the next turn rather
-                // than costing the whole interval — the rule the deleted ClaudeUsageRefresh followed for the same
-                // reason.
+                // Stamped on success only, so a failed request is retried next turn instead of costing the interval.
                 Interlocked.Exchange(ref _lastAllowancePollTicks, DateTimeOffset.UtcNow.Ticks);
             }
 
@@ -490,14 +473,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
         catch (Exception)
         {
-            // A usage figure is a nicety: a session that ended mid-poll, or a CLI that answered something
-            // unexpected, must never surface as a session error.
+            // A usage figure is a nicety; it must never surface as a session error.
         }
     }
 
-    // True when the last *successful* allowance read is old enough to redo. Racy by design: two overlapping turns
-    // both seeing "yes" costs one extra round-trip, where a CAS held across the await would have to be released on
-    // every failure path anyway.
+    // Racy by design: two overlapping turns both seeing "yes" costs one extra round-trip.
     private bool _MayPollAllowances() =>
         DateTimeOffset.UtcNow.Ticks - Interlocked.Read(ref _lastAllowancePollTicks) >= _AllowancePollInterval.Ticks;
 

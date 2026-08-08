@@ -2,16 +2,10 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-// `ClaudeSdkUsage` — the SDK route's source for the header's usage pill (AC-530).
-//
-// Neither fixture is hand-written. `RealTurn` is a verbatim capture from CLI 2.1.220 driven with the exact flags
-// `ClaudeSdkArguments` builds (persistent `--input-format stream-json`, no `-p`), over a prompt that forced four
-// sequential tool calls; only the message `content` arrays were emptied. `RealContextUsage` is a live
-// `get_context_usage` control-response from 2.1.226. So a test passing here agrees with the real CLI rather than
-// with a fixture written to match the code.
-//
-// What the turn's own token counts are *not* used for is now itself asserted: the context percentage comes from
-// the CLI's `get_context_usage`, not from arithmetic over the stream.
+// `ClaudeSdkUsage` — the SDK route's source for the header's usage pill (AC-530). Neither fixture is
+// hand-written: `RealTurn` is a verbatim four-call turn captured from CLI 2.1.220 (only `content` emptied),
+// `RealContextUsage` a live `get_context_usage` reply from 2.1.226. So these agree with the real CLI rather
+// than with a fixture written to match the code.
 public class ClaudeSdkUsageTests
 {
     // Four assistant lines (one per API call), a rate-limit line, and the closing result line.

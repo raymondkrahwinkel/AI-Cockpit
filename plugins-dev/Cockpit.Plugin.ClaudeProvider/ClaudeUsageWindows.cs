@@ -3,23 +3,17 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Reads the rolling allowances out of the CLI's own `get_usage` control-response — the SDK route's source for
-// the figures the TTY route gets from its statusline.
-//
-// This replaces the `.claude.json` → `cachedUsageUtilization` route AC-549 built. That route leaned on
-// `claude -p "/usage"` to refresh the file, and on CLI 2.1.226 that stopped being a local answer: measured at
-// 35.8s, a real assistant turn, and the cache left untouched. The control channel gives the same numbers with no
-// subprocess, no tokens and no staleness window to guard — so there is nothing left to cache, and no
-// `fetchedAtMs` freshness limit to get wrong.
+// Reads the rolling allowances out of a `get_usage` control-response. Replaces AC-549's `.claude.json` →
+// `cachedUsageUtilization` route, which leaned on `claude -p "/usage"` to refresh the file — on 2.1.226 that
+// became a real assistant turn (35.8s) that left the cache untouched. No subprocess, no tokens, nothing to
+// cache, no freshness limit to get wrong.
 //
 // Shape, verbatim from a live 2.1.226 session:
-// `{"subscription_type":"max","rate_limits_available":true,
-//   "rate_limits":{"five_hour":{"utilization":7,"resets_at":"2026-08-08T18:00:00.978410+00:00"}, …}}`
+// `{"rate_limits":{"five_hour":{"utilization":7,"resets_at":"2026-08-08T18:00:00.978410+00:00"}, …}}`
 internal static class ClaudeUsageWindows
 {
-    // The windows this reply vouches for, keyed by the same wire names `rate_limit_event` uses so the two
-    // sources land in one dictionary. Empty for a reply that names none — never a guess, and never a zero
-    // standing in for "unknown".
+    // Keyed by the same wire names `rate_limit_event` uses, so both sources land in one dictionary. Empty for a
+    // reply that names none — never a zero standing in for "unknown".
     public static IReadOnlyDictionary<string, PluginRateLimitWindow> Read(JsonElement response)
     {
         var windows = new Dictionary<string, PluginRateLimitWindow>(StringComparer.Ordinal);

@@ -3,30 +3,18 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Folds a Claude SDK session's own figures into the provider-neutral `PluginSessionStatus` the header's
-// usage pill renders from (AC-530) — the SDK route's answer to what `ClaudeStatusLine` does for the
-// TTY route. A `claude` started with `--output-format stream-json` never invokes the statusline command, so that
-// relay is not merely unwired on this route but unavailable.
+// Folds a Claude SDK session's figures into the provider-neutral `PluginSessionStatus` the header's usage pill
+// renders from (AC-530) — the SDK route's answer to `ClaudeStatusLine`, which `--output-format stream-json`
+// never invokes.
 //
-// Both figures are the CLI's own, asked for over the control channel the driver already has open, rather than
-// anything this class computes:
-// -
-// The rolling allowances come from `get_usage` (see `ClaudeUsageWindows`), the same numbers `/usage`
-// prints. `rate_limit_event` still feeds in whenever it happens to carry a `utilization`, which it only does
-// once the account approaches the window it names.
-// -
-// The context percentage comes from `get_context_usage` — the same breakdown `/context` renders. This
-// used to be recomputed here from the last assistant line's token counts over the window size the `result` line
-// stated for the answering model, which broke on 2.1.226: the assistant line says `claude-opus-5` where the
-// result line's `modelUsage` is keyed `claude-opus-5[1m]`, so any turn touching more than one model matched
-// nothing and reported no context at all. Asking the CLI removes the arithmetic *and* the model-name matching.
+// Both figures are the CLI's own, asked for over the control channel: allowances from `get_usage` (see
+// `ClaudeUsageWindows`), context from `get_context_usage`. Nothing here computes a percentage. The context
+// figure used to be derived from the last assistant line's tokens over the result line's window size, which
+// broke on 2.1.226 — assistant says `claude-opus-5`, result keys its `modelUsage` `claude-opus-5[1m]`, so any
+// turn touching two models matched nothing. An unreported figure stays absent rather than reading as zero.
 //
-// A figure the CLI has not reported stays `null`/absent rather than reading as a zero, so the header hides the
-// segment instead of claiming nothing has been spent.
-//
-// Writers are the stdout pump (`rate_limit_event`) and the usage poll's continuation, which is a different
-// thread — hence the lock around the component fields. The immutable snapshot it builds is published to a
-// volatile field, so the host's poll at each turn boundary never sees a half-updated set.
+// Two writers on different threads (the stdout pump and the poll's continuation), hence the lock; the snapshot
+// goes to a volatile field so the host's turn-boundary read never sees half a set.
 internal sealed class ClaudeSdkUsage
 {
     // DateTimeOffset.FromUnixTimeSeconds' own accepted range, asserted against the constants below in the tests so
