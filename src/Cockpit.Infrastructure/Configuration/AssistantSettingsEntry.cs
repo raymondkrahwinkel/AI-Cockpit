@@ -29,6 +29,10 @@ internal sealed class AssistantSettingsEntry
 
     public List<string> ConsentBypassDangerousSources { get; set; } = [];
 
+    // "Allow all" (#AC-637). Initialised to true, so a section written before this build — where the property is
+    // simply absent — reads back on, the same as a fresh install rather than a second, quieter default.
+    public bool ConsentBypassAll { get; set; } = true;
+
     public static AssistantSettingsEntry FromDomain(AssistantSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -38,6 +42,7 @@ internal sealed class AssistantSettingsEntry
         ReadingLevel = settings.ReadingLevel.ToString(),
         ConsentBypassSources = [.. settings.ConsentBypassSources],
         ConsentBypassDangerousSources = [.. settings.ConsentBypassDangerousSources],
+        ConsentBypassAll = settings.ConsentBypassAll,
     };
 
     public AssistantSettings ToDomain() => new()
@@ -51,9 +56,11 @@ internal sealed class AssistantSettingsEntry
         ReadingLevel = Enum.TryParse<Cockpit.Core.Sessions.ReadingLevel>(ReadingLevel, out var readingLevel)
             ? readingLevel
             : Cockpit.Core.Sessions.ReadingLevel.Developer,
-        // A null from a hand-edited or older config is an empty list, never "everything": the whole point of this
-        // setting is that it is off until someone deliberately turned it on.
+        // A null from a hand-edited or older config is an empty list, never "every source": the per-source lists
+        // stay something the operator ticked one at a time. Skipping everything is `ConsentBypassAll`'s job, and
+        // it says so under its own name rather than by a list quietly reading as wider than it was written.
         ConsentBypassSources = [.. ConsentBypassSources ?? []],
         ConsentBypassDangerousSources = [.. ConsentBypassDangerousSources ?? []],
+        ConsentBypassAll = ConsentBypassAll,
     };
 }

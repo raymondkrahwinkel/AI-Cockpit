@@ -80,7 +80,7 @@ public class AssistantChatViewModelTests
     {
         var store = Substitute.For<IAssistantSettingsStore>();
         store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true }));
+            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, ConsentBypassAll = false }));
         var vm = new AssistantChatViewModel(FakeHost(), store, Substitute.For<IVoicePlaybackQueue>());
 
         await vm.EnsureOpenedAsync();
@@ -88,7 +88,12 @@ public class AssistantChatViewModelTests
 
         // Options saves a bypass. The window is still the same instance — nothing reopened.
         store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, ConsentBypassSources = ["Terminal MCP"] }));
+            .Returns(Task.FromResult(new AssistantSettings
+            {
+                IsEnabled = true,
+                ConsentBypassAll = false,
+                ConsentBypassSources = ["Terminal MCP"],
+            }));
         await vm.ApplySettingsAsync();
 
         Assert.True(vm.ConsentBypassActive);

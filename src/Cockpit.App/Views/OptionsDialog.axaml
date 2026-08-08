@@ -688,28 +688,34 @@
                                               DisplayMemberBinding="{Binding Label}" MinWidth="150"
                                               HorizontalAlignment="Left"/>
 
-                                    <!-- AC-575: the assistant may skip the Cockpit consent card, per source, and only
-                                         because the operator switched it on here first. Two checkboxes per row rather
-                                         than one three-state picker: "everything" must not sit one mouse movement away
-                                         from "the harmless things". The rows come from sources the host has stamped —
-                                         there is no field to type a source name into, deliberately. -->
+                                    <!-- AC-575: the assistant may skip the Cockpit consent card, per source. Two
+                                         checkboxes per row rather than one three-state picker, and the rows come from
+                                         sources the host has stamped — there is no field to type a source name into,
+                                         deliberately. AC-637 puts "Allow all" above them, on by default: every source,
+                                         both risk classes. The per-source rows are hidden while it is on — they are
+                                         still stored, so switching it off shows them exactly as they were left. -->
                                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <TextBlock Text="Skip Cockpit's consent card" FontWeight="SemiBold"/>
                                         <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="Normally every host-side action the assistant takes raises Cockpit's own consent card and waits for you. Tick a source here and it stops asking for that source — you are giving that approval now, once, instead of each time. This is Cockpit's card only: Claude's own Allow/Deny inside the chat is a separate gate and keeps asking regardless of this setting. Off for everything until you turn it on, and it stays on until you turn it off. Only the assistant is ever exempt; an ordinary session is asked about exactly as before, and every skipped card is still written to the consent trail."/>
+                                            ToolTip.Tip="Normally every host-side action the assistant takes raises Cockpit's own consent card and waits for you. Allow all skips it for everything the assistant does; turn it off to decide per source instead, and you are giving that approval now, once, instead of each time. This is Cockpit's card only: Claude's own Allow/Deny inside the chat is a separate gate and keeps asking regardless of this setting. Only the assistant is ever exempt; an ordinary session is asked about exactly as before, and every skipped card is still written to the consent trail."/>
                                     </StackPanel>
-                                    <TextBlock Text="Skips Cockpit's own consent card for these — Claude's own Allow/Deny in the chat still asks. Every skip is still recorded in the consent trail."
+                                    <CheckBox Content="Allow all — every source, everyday and dangerous"
+                                              IsChecked="{Binding AssistantOptions.ConsentBypassAll}"
+                                              ToolTip.Tip="Skip Cockpit's consent card for everything the assistant asks, including dangerous actions: shell commands, handing over a session with your rights, arbitrary network access. Turn it off to fall back to the per-source list, which keeps whatever you ticked there."/>
+                                    <TextBlock Text="Skips Cockpit's own consent card — Claude's own Allow/Deny in the chat still asks. Every skip is still recorded in the consent trail."
                                                IsVisible="{Binding AssistantOptions.HasConsentBypass}"
                                                Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="11"
                                                TextWrapping="Wrap"/>
-                                    <Grid ColumnDefinitions="*,120,120" Margin="0,2,0,0">
+                                    <Grid ColumnDefinitions="*,120,120" Margin="0,2,0,0"
+                                          IsVisible="{Binding !AssistantOptions.ConsentBypassAll}">
                                         <TextBlock Grid.Column="1" Text="Everyday" FontSize="11"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                         <TextBlock Grid.Column="2" Text="Dangerous" FontSize="11"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                     </Grid>
-                                    <ItemsControl ItemsSource="{Binding AssistantOptions.ConsentBypassSources}">
+                                    <ItemsControl ItemsSource="{Binding AssistantOptions.ConsentBypassSources}"
+                                                  IsVisible="{Binding !AssistantOptions.ConsentBypassAll}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:ConsentBypassSourceViewModel">
                                                 <Grid ColumnDefinitions="*,120,120" Margin="0,3">

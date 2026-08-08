@@ -42,9 +42,19 @@ public sealed record AssistantSettings
     // that returns every time is one that gets clicked away without being read.
     public bool AlwaysOnCostAcknowledged { get; init; }
 
+    // Skip Cockpit's consent card for every source and both risk classes (#AC-637). *On by default*, which is
+    // the one setting here that starts wide: the assistant asking about each of its own host-side actions was the
+    // friction the operator wanted gone, and half a bypass — everyday skipped, dangerous still asking — is the
+    // version that reads as "off" while still being on. Off falls back to the two per-source lists below, which
+    // keep their own defaults and are never touched by this switch: turning it off restores exactly what was
+    // ticked before it went on. The other three conditions in `AssistantConsentBypassPolicy` still hold, so this
+    // is "everything the assistant asks, while the assistant is on" and never anything an ordinary pane asks.
+    public bool ConsentBypassAll { get; init; } = true;
+
     // The sources whose `ConsentRisk.LowRisk` consent cards the assistant may skip (#AC-575), keyed the way
     // `ConsentService` keys them: the host-stamped plugin id, or the source label for a host-internal caller
-    // (`Consent.ConsentSourceCatalog`). Empty by default — nothing is bypassed until the operator says so.
+    // (`Consent.ConsentSourceCatalog`). Empty by default — with `ConsentBypassAll` off, nothing is bypassed
+    // until the operator says so, source by source.
     // *Nothing writes this but the operator.* There is deliberately no MCP tool anywhere that saves
     // `AssistantSettings`, so the assistant cannot widen its own permissions by being asked to, or by
     // being talked into it. A spoken "yes" is an answer to the SDK's own permission prompt, one layer above this,
@@ -57,13 +67,14 @@ public sealed record AssistantSettings
 
     // The sources whose `ConsentRisk.Dangerous` cards may be skipped too — a shell command, a session
     // hand-off with the operator's rights, arbitrary egress. A *second, separate* switch per source, off by
-    // default, and never implied by `ConsentBypassSources`.
+    // default, and never implied by `ConsentBypassSources` (`ConsentBypassAll` covers it wholesale instead).
     // Two switches rather than one three-state picker: a dropdown puts "everything" one mouse movement away from
     // "the harmless things", and the whole distinction this list draws is that those are not the same decision.
     public IReadOnlyList<string> ConsentBypassDangerousSources { get; init; } = [];
 
-    // Whether any source is switched on at all. What the chip and the chat window's header report, so the fact
-    // that some consent cards are being skipped is visible without opening Options — a security setting nobody
-    // can see from the surface it affects is one that gets left on by accident.
-    public bool HasConsentBypass => ConsentBypassSources.Count > 0 || ConsentBypassDangerousSources.Count > 0;
+    // Whether anything is switched on at all. What the chip and the chat window's header report, so the fact
+    // that some consent cards are being skipped is visible without opening Options — which matters more now
+    // that `ConsentBypassAll` starts on: this is the surface that says so without anyone having ticked anything.
+    public bool HasConsentBypass =>
+        ConsentBypassAll || ConsentBypassSources.Count > 0 || ConsentBypassDangerousSources.Count > 0;
 }

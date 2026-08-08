@@ -70,12 +70,18 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private string? _profileUnsetReason;
 
+    // "Allow all" (#AC-637): skip the card for every source and both risk classes, on by default. The per-source
+    // rows below are hidden while it is on rather than cleared — off puts back exactly what was ticked before.
+    [ObservableProperty]
+    private bool _consentBypassAll = true;
+
     // The consent-bypass switches, one row per source (#AC-575). Filled by `RefreshAsync` from names
     // the host stamps — never from anything the operator types — see `_RebuildConsentBypassRowsAsync`.
     public ObservableCollection<ConsentBypassSourceViewModel> ConsentBypassSources { get; } = [];
 
-    // Whether any source is switched on — the one-line summary above the list, so the page says so before the rows are read.
-    public bool HasConsentBypass => ConsentBypassSources.Any(row => row.BypassLowRisk || row.BypassDangerous);
+    // Whether anything is switched on — the one-line summary above the list, so the page says so before the rows are read.
+    public bool HasConsentBypass =>
+        ConsentBypassAll || ConsentBypassSources.Any(row => row.BypassLowRisk || row.BypassDangerous);
 
     // Loads the settings and the assistant's own profile. Safe to call with no stores wired (design-time/tests) — it then simply leaves the defaults in place.
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
@@ -90,6 +96,7 @@ public sealed partial class AssistantOptionsViewModel(
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
                 SelectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(_lastLoadedSettings.ReadingLevel);
+                ConsentBypassAll = _lastLoadedSettings.ConsentBypassAll;
                 await _RebuildConsentBypassRowsAsync(cancellationToken).ConfigureAwait(true);
             }
 
@@ -174,6 +181,8 @@ public sealed partial class AssistantOptionsViewModel(
         OnPropertyChanged(nameof(HasConsentBypass));
     }
 
+    partial void OnConsentBypassAllChanged(bool value) => _SaveSettings();
+
     partial void OnIsEnabledChanged(bool value) => _SaveSettings();
 
     partial void OnSpeakRepliesChanged(bool value) => _SaveSettings();
@@ -206,6 +215,7 @@ public sealed partial class AssistantOptionsViewModel(
             // removes the permission instead of leaving it on disk under a row that no longer shows it.
             ConsentBypassSources = [.. ConsentBypassSources.Where(row => row.BypassLowRisk).Select(row => row.Key)],
             ConsentBypassDangerousSources = [.. ConsentBypassSources.Where(row => row.BypassDangerous).Select(row => row.Key)],
+            ConsentBypassAll = ConsentBypassAll,
         };
 
         OnPropertyChanged(nameof(HasConsentBypass));

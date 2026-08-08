@@ -7,10 +7,12 @@ namespace Cockpit.App.Services;
 
 // The one implementation of `IConsentBypassPolicy` (#AC-575): the only place that knows both which
 // pane id is the assistant's and which sources the operator switched the consent card off for.
-// *Four conditions, all four required.* A request is bypassed only when the transport-verified pane is the
-// assistant's, the assistant is switched on at all, the source is in the operator's list, and — for a dangerous
-// action — in the second list as well. Any one of them failing shows the card exactly as before. They are checked
-// in that order because the first is the cheapest and the one an attacker would have to beat first.
+// *The first two conditions are always required.* A request is bypassed only when the transport-verified pane is
+// the assistant's and the assistant is switched on at all; either one failing shows the card exactly as before.
+// They are checked in that order because the first is the cheapest and the one an attacker would have to beat
+// first. What follows them is either the "allow all" switch (#AC-637, on by default — every source, both risk
+// classes) or, with that off, the per-source lists: the source in the operator's list, and — for a dangerous
+// action — in the second list as well.
 //
 // *The settings are a snapshot, not a read per request.* `IConsentBypassPolicy.ShouldBypass` is
 // synchronous — the broker calls it in the middle of deciding — and the store reads a file. The snapshot is loaded
@@ -75,20 +77,29 @@ public sealed class AssistantConsentBypassPolicy : IConsentBypassPolicy, ISingle
             return false;
         }
 
-        // 3/4. The source is on the operator's list — and a dangerous action needs the second list, which is not
+        // 3. "Allow all" (#AC-637): one switch for every source and both risk classes, so nothing below is reached.
+        if (current.All)
+        {
+            return true;
+        }
+
+        // 4/5. The source is on the operator's list — and a dangerous action needs the second list, which is not
         //      implied by the first. A source in neither list is asked about exactly as it is today.
         return dangerous
             ? current.Dangerous.Contains(sourceKey)
             : current.LowRisk.Contains(sourceKey);
     }
 
-    private sealed record _Switches(bool AssistantEnabled, IReadOnlySet<string> LowRisk, IReadOnlySet<string> Dangerous)
+    private sealed record _Switches(bool AssistantEnabled, bool All, IReadOnlySet<string> LowRisk, IReadOnlySet<string> Dangerous)
     {
+        // `All: false` even though the setting itself defaults to on: this is the snapshot for "no settings read
+        // yet" and "the config would not read", where the honest answer is to ask rather than to assume the wider one.
         public static readonly _Switches Empty =
-            new(AssistantEnabled: false, new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal));
+            new(AssistantEnabled: false, All: false, new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal));
 
         public static _Switches From(AssistantSettings settings) => new(
             settings.IsEnabled,
+            settings.ConsentBypassAll,
             new HashSet<string>(settings.ConsentBypassSources, StringComparer.Ordinal),
             new HashSet<string>(settings.ConsentBypassDangerousSources, StringComparer.Ordinal));
     }

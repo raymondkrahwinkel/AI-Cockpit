@@ -36,10 +36,13 @@ public class AssistantSettingsStoreTests : IDisposable
         // opens at, so turning the assistant on for the first time never shows a level nobody chose.
         Assert.Equal(ReadingLevel.Developer, settings.ReadingLevel);
 
-        // AC-575: nothing is exempt from the consent card until the operator says so.
+        // AC-575: no source is ticked one at a time until the operator says so. AC-637: allow-all is on above
+        // them, so a fresh install skips the card for everything the assistant asks — the surfaces that report
+        // `HasConsentBypass` say so from the first start rather than only once something was ticked.
         Assert.Empty(settings.ConsentBypassSources);
         Assert.Empty(settings.ConsentBypassDangerousSources);
-        Assert.False(settings.HasConsentBypass);
+        Assert.True(settings.ConsentBypassAll);
+        Assert.True(settings.HasConsentBypass);
     }
 
     [Fact]
@@ -56,6 +59,7 @@ public class AssistantSettingsStoreTests : IDisposable
             ReadingLevel = ReadingLevel.Simple,
             ConsentBypassSources = ["Terminal MCP", "cockpit-kubernetes"],
             ConsentBypassDangerousSources = ["cockpit-kubernetes"],
+            ConsentBypassAll = false,
         });
         var loaded = await store.LoadAsync();
 
@@ -66,6 +70,8 @@ public class AssistantSettingsStoreTests : IDisposable
         Assert.Equal(ReadingLevel.Simple, loaded.ReadingLevel);
         Assert.Equal(["Terminal MCP", "cockpit-kubernetes"], loaded.ConsentBypassSources);
         Assert.Equal(["cockpit-kubernetes"], loaded.ConsentBypassDangerousSources);
+        // Switched off against its default, so this round trip proves the off is stored rather than re-defaulted.
+        Assert.False(loaded.ConsentBypassAll);
     }
 
     /// <summary>
@@ -87,13 +93,13 @@ public class AssistantSettingsStoreTests : IDisposable
     }
 
     /// <summary>
-    /// A config written before #AC-575, or edited by hand, has no bypass lists at all. It must read as "nothing is
-    /// exempt" — the least powerful answer — rather than as a missing value some default fills in. Two string lists
+    /// A config written before #AC-575, or edited by hand, has no bypass lists at all. Those lists must read as
+    /// empty — a source is on them because someone ticked it, never because a value was missing. Two string lists
     /// were chosen over one enum per source precisely so this direction is the safe one: an absent list is empty,
     /// and a name this build does not recognise is a name that matches no source.
     /// </summary>
     [Fact]
-    public async Task LoadAsync_AConfigWithNoBypassSection_ExemptsNothing()
+    public async Task LoadAsync_AConfigWithNoBypassSection_TicksNoSourceOfItsOwn()
     {
         await File.WriteAllTextAsync(
             _configFilePath,
@@ -104,6 +110,37 @@ public class AssistantSettingsStoreTests : IDisposable
         Assert.True(loaded.IsEnabled);
         Assert.Empty(loaded.ConsentBypassSources);
         Assert.Empty(loaded.ConsentBypassDangerousSources);
+    }
+
+    /// <summary>
+    /// #AC-637's upgrade direction, written down because it is the one place this change is not visible: an
+    /// <c>assistant</c> section from before this build has no <c>ConsentBypassAll</c> property, and reads back
+    /// <em>on</em> — the same state a fresh install is in, rather than a second, quieter default for anyone who
+    /// happened to have the config already.
+    /// </summary>
+    [Fact]
+    public async Task LoadAsync_AConfigFromBeforeAllowAll_ReadsBackWithItOn()
+    {
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """{"Assistant":{"IsEnabled":true,"SpeakReplies":true,"PushToTalkKeyName":"F10","ConsentBypassSources":[]}}""");
+
+        var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
+
+        Assert.True(loaded.ConsentBypassAll);
+        Assert.True(loaded.HasConsentBypass);
+    }
+
+    [Fact]
+    public async Task SaveAsync_AllowAllSwitchedOff_StaysOff()
+    {
+        // The direction that matters: a default of true must not read an operator's deliberate off back as on.
+        var store = new AssistantSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new AssistantSettings { IsEnabled = true, ConsentBypassAll = false });
+
+        var loaded = await store.LoadAsync();
+        Assert.False(loaded.ConsentBypassAll);
         Assert.False(loaded.HasConsentBypass);
     }
 

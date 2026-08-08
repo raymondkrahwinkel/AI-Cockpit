@@ -1076,6 +1076,8 @@ internal static class Screenshotter
         // The design-time graph has no profile store, so the row would otherwise render an "Edit…" button with
         // nothing beside it — a state no real cockpit has (an unset slot fills in its reason instead).
         cockpit.AssistantOptions.ProfileLabel = "Claude (assistant) · claude · sonnet";
+        // "Allow all" off (#AC-637), because the per-source rows below are what this shot is of — it hides them.
+        cockpit.AssistantOptions.ConsentBypassAll = false;
         cockpit.AssistantOptions.ConsentBypassSources.Add(
             new ViewModels.ConsentBypassSourceViewModel(
                 Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp, Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp)
