@@ -106,4 +106,8 @@ public enum AgentWakeOutcome
     // rather than the recipient: everything else here says something about the pane being woken, and this says the
     // caller is going too fast. Appended last so the values already on the trail keep meaning what they meant.
     RateLimited,
+
+    // AC-632: the recipient is an address on the desk rather than a pane a turn can be started on — today the
+    // assistant. Unlike PaneGone it took the message and will read it; it just is not woken. Appended last.
+    NotWakeable,
 }

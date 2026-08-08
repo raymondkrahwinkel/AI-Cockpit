@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
@@ -19,7 +20,8 @@ namespace Cockpit.App.Services;
 // `SessionPanelViewModel.WorkspaceId` instead, the same live source `CockpitViewModel` itself
 // decides against — through `SessionWorkspacePlacement`, which is where that rule lives for every
 // consumer of it. A pane it places nowhere (the assistant, or an unassigned session at a moment when no
-// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk.
+// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk. AC-632: that is
+// about the caller — the assistant is refused a desk of its own and still listed on every desk, as an address.
 //
 // `CockpitViewModel.Sessions` is an `System.Collections.ObjectModel.ObservableCollection{T}`
 // that only ever mutates on the UI thread, but an MCP tool call lands on the endpoint's own request thread — the
@@ -48,6 +50,13 @@ internal sealed class WorkspaceAgentGateway(
 
     private AgentWakeOutcome _TryWake(string callerPaneId, string targetPaneId, string kind)
     {
+        // AC-632: the assistant is an address on the roster, not a pane a neighbour may start a turn on — and it is
+        // in neither collection `AllSessions` reads, so without this the refusal below would report it gone.
+        if (string.Equals(targetPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+        {
+            return AgentWakeOutcome.NotWakeable;
+        }
+
         if (cockpit.AllSessions().FirstOrDefault(session => string.Equals(session.PaneId, targetPaneId, StringComparison.Ordinal)) is not { } target)
         {
             return AgentWakeOutcome.PaneGone;
@@ -171,6 +180,18 @@ internal sealed class WorkspaceAgentGateway(
                 candidate.Statusline,
                 candidate.DeliversInboxAtTurnStart))
             .ToList();
+
+        // AC-632: the assistant, addressed on every desk it manages rather than placed on one, so a session it
+        // started can notify it back. Only while one is running — an address with nobody behind it is lost mail.
+        if (cockpit.AssistantPane is { } assistant)
+        {
+            panes.Add(new WorkspaceAgentPane(
+                assistant.PaneId,
+                assistant.Title,
+                assistant.ActiveProfileLabel,
+                assistant.Statusline,
+                assistant.DeliversInboxAtTurnStart));
+        }
 
         // AC-613: the host writing down the panes it knows about, which is what makes the roster measure presence
         // instead of tool use. Done here rather than at session start because this is the one place that already

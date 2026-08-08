@@ -6127,6 +6127,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // teaching it to would hand every other caller a session the cockpit keeps out of both collections on purpose.
     private SessionViewModel? _assistantSession;
 
+    // AC-632: the live assistant for the agent line's roster, which describes it rather than reaching it — kept
+    // out of `FindSession`/`AllSessions` on purpose, which is also what keeps it unwakeable.
+    internal SessionPanelViewModel? AssistantPane => _assistantSession;
+
     // Mints the voice assistant's session panel and hands it over (AC-543). The *only* way one is made:
     // `Services.AssistantSessionHost` calls this and keeps the sole reference, which is what makes the
     // assistant's identity established by construction — no agent can declare that it is the assistant, because
