@@ -83,7 +83,8 @@ internal sealed class AssistantAgentMcpTools(
         [Description("The first message to hand the session once it is up, in the words the work should be described in. Left out, the session comes up waiting for someone to type in it. Write it as a brief for an agent that cannot hear the conversation you are having — it gets this text and nothing else. IF YOU WANT TO HEAR BACK, ASK FOR IT HERE AND GIVE YOUR ADDRESS: you are on every desk's roster as the pane id `cockpit-assistant`, so tell the agent to notify that id when it is done, blocked, or about to touch something another session is holding. A message sent there reaches you on your next turn or your next tool call, with nobody having to pass it on — without asking, the only news you get is what you go looking for.")] string? prompt = null,
         [Description("The folder to run in. Left out, the profile's own default folder is used. Give a full path; a relative one means nothing here, since you are not standing in any directory.")] string? workingDirectory = null,
         [Description("What to call the pane, so the operator can find it in the sidebar. Left out, the profile and the clock name it. A name that says what the work is (\"AC-545 tests\") is worth far more than one that says what it runs on.")] string? name = null,
-        [Description("Which route to start on: \"tty\" for the provider's own terminal, \"sdk\" for the chat/SDK session. LEAVE THIS OUT unless the operator actually said which — the profile is already set to one and that is nearly always the right answer. It is here for exactly one request: \"the same profile, but as an SDK session\", which is a thing they can pick in the New-session dialog too. It is not a way to start work by another route: everything you can start goes through this tool, appears as a pane, and is written down.")] string? kind = null)
+        [Description("Which route to start on: \"tty\" for the provider's own terminal, \"sdk\" for the chat/SDK session. LEAVE THIS OUT unless the operator actually said which — the profile is already set to one and that is nearly always the right answer. It is here for exactly one request: \"the same profile, but as an SDK session\", which is a thing they can pick in the New-session dialog too. It is not a way to start work by another route: everything you can start goes through this tool, appears as a pane, and is written down.")] string? kind = null,
+        [Description("Provider options to start this one session with, as key/value — \"that profile, but at low effort\". LEAVE IT OUT unless the operator asked for something the profile is not set to; the profile's own values are the right answer nearly every time. ONLY THE KEYS YOU NAME CHANGE: everything else stays exactly what the profile says, so this never resets anything you did not mention. USE THE PROVIDER'S OWN KEYS, WHICH list_profiles SHOWS YOU under `Options` for that profile — a key that provider does not declare is refused with a reason, and so is a value it does not take, because Codex has no idea what `effort` means. PERMISSION-MODE IS NEVER YOURS TO SET, and neither is Codex's `sandbox`: what a session is allowed to do to the machine is whatever the profile was deliberately configured with, and naming it here is refused outright, not asked about. If a session needs to run differently in that respect, the answer is a different profile.")] Dictionary<string, string>? options = null)
     {
         try
         {
@@ -101,7 +102,8 @@ internal sealed class AssistantAgentMcpTools(
                 prompt,
                 workingDirectory,
                 name,
-                kind)).ConfigureAwait(false);
+                kind,
+                options)).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new

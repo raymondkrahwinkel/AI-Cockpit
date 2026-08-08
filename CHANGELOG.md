@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the voice assistant can start a session at settings the profile does not carry — "that profile, but at low
+  effort" — instead of only ever getting the profile's own. Only the options it names change; everything else stays
+  exactly what the profile was configured with. An option the profile's provider does not understand is refused with a
+  reason rather than quietly passed to a command line that has no such flag, and so is a value that provider does not
+  take. What a session is allowed to do to the machine is never part of this: the permission mode, and Codex's sandbox,
+  stay whatever the profile says and are refused outright when asked for. A session that needs to run with different
+  access runs under a profile that says so.
+
 - added: a session provider now states which options it understands and what values they take — Claude its permission
   mode, model and effort levels, Codex its own sandbox modes. Until now only the New-session dialog knew Claude's
   vocabulary and nothing knew Codex's, so anything else asking "what can I set for this provider?" had to guess. A

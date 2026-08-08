@@ -109,8 +109,26 @@ internal sealed class AssistantAgentGateway(
                     cancellationToken).ConfigureAwait(true);
             }
 
+            // Checked before anything starts, and against the provider's own declaration rather than a list kept here
+            // (AC-648/AC-649): a key this provider never heard of is refused with a reason instead of reaching the CLI
+            // as a flag it does not take. `permission-mode` is refused whatever the provider says — see
+            // `SpawnOptionOverrides.NeverOverridable`.
+            var registration = profile.ProviderConfig is PluginProviderConfig plugin
+                ? pluginProviders.Resolve(plugin.ProviderId)
+                : null;
+            var (launchOptions, optionRefusal) = SpawnOptionOverrides.Merge(
+                registration?.DisplayName ?? profile.Provider.ToString(),
+                registration?.Capabilities,
+                profile.Defaults?.OptionDefaults,
+                request.OptionOverrides);
+            if (optionRefusal is not null)
+            {
+                return await _RefuseSpawnAsync(request, workspace.Name, optionRefusal, cancellationToken).ConfigureAwait(true);
+            }
+
             var started = await cockpit.StartSessionOnWorkspaceAsync(
-                workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind).ConfigureAwait(true);
+                workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
+                launchOptions).ConfigureAwait(true);
 
             if (started is not { } pane)
             {
