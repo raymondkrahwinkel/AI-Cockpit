@@ -52,4 +52,24 @@ public sealed record SessionProviderRegistration(
     /// an already-compiled plugin that never sets it keeps its static options.
     /// </summary>
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>>? ResolveOptionsAsync { get; init; }
+
+    /// <summary>
+    /// Answers whether a profile under this provider is logged in, from its opaque <c>ConfigJson</c> — the SDK
+    /// mirror of <see cref="TtyProviderRegistration.IsLoggedIn"/>, so the host gates a session start and shows the
+    /// login prompt without knowing what "logged in" means for any provider.
+    /// <para>
+    /// Until this existed the gate lived on the TTY registration alone, which a provider registering *only* a
+    /// session provider (Gemini, GitHub Models, Kimi) could not fill: the host resolved nothing and treated every
+    /// such profile as ready. Claude only escaped that by registering both routes under one id.
+    /// </para>
+    /// <para>
+    /// ⚠️ Called on the UI thread, synchronously, once per profile whenever a profile list is built — so it must
+    /// answer immediately. A provider whose real check costs a subprocess or a network call answers from its own
+    /// cache and refreshes behind it; it must never block here.
+    /// </para>
+    /// Existence-only by contract (Iron Law #8 — never read a credential's contents). <see langword="null"/>
+    /// (the default) when the provider has no login concept, and the host treats such a profile as always ready.
+    /// Init-only, so an already-compiled plugin keeps its constructor and simply reports no login gate.
+    /// </summary>
+    public Func<string, bool>? IsLoggedIn { get; init; }
 }

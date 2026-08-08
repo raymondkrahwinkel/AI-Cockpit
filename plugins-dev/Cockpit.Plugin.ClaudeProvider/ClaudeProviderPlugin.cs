@@ -54,7 +54,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // the login gate checks its own .credentials.json, and self-detection finds its own config dirs — so
             // the core carries no Claude-format knowledge and Codex can fill the same seams for its own routes.
             CreateTranscriptReader = _ => new ClaudeTranscriptReader(),
-            IsLoggedIn = ClaudeProfileDiscovery.IsLoggedIn,
+            IsLoggedIn = configJson => ClaudeProfileDiscovery.IsLoggedIn(configJson, host.ResolveManagedCliPath),
             DetectProfiles = ClaudeProfileDiscovery.Detect,
             UsageSignals = ClaudeUsageSignals.Declarations,
             ReadUsage = ClaudeUsageSignals.Read,
@@ -95,7 +95,21 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // The same three things a Claude session runs out of, whichever route it opened through — an SDK
             // session already reports the figures at each turn boundary, so this only says what they are.
             UsageSignals = ClaudeUsageSignals.Declarations,
+
+            // Declared on both routes (AC-629). Claude does not need it here — it registers a TTY provider under
+            // the same id, and the host's checker finds that one first — but a provider that registers only a
+            // session provider has nowhere else to put it, and leaving the SDK route silent would make this
+            // plugin the example that the seam is optional.
+            IsLoggedIn = configJson => ClaudeProfileDiscovery.IsLoggedIn(configJson, host.ResolveManagedCliPath),
         });
+
+        // Take the first reading now, so the first dialog the operator opens has a real answer rather than the
+        // optimistic one a cold cache gives (AC-629). Per detected profile, off the startup thread — asking the
+        // CLI costs ~575ms warm and 9.3s cold, and nothing here waits for it.
+        foreach (var profile in ClaudeProfileDiscovery.Detect())
+        {
+            ClaudeLoginStatus.Warm(profile.ConfigJson, host.ResolveManagedCliPath);
+        }
     }
 
     public void Dispose()
