@@ -153,7 +153,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.19.0</VersionPrefix>
+    <VersionPrefix>0.20.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

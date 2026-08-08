@@ -63,6 +63,66 @@ public class ProviderDispatchFacadeTests
         Assert.True(checker.IsLoggedIn(profile), "a provider with no gate manages its own auth");
     }
 
+    private static IPluginProviderRegistry SessionRegistryWith(string providerId, Func<string, bool>? isLoggedIn)
+    {
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve(providerId).Returns(new SessionProviderRegistration(
+            providerId,
+            providerId,
+            _ => Substitute.For<IPluginSessionDriverFactory>(),
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: false),
+            _ => Substitute.For<IPluginProviderConfigView>())
+        {
+            IsLoggedIn = isLoggedIn,
+        });
+
+        return registry;
+    }
+
+    // AC-629: Gemini, GitHub Models and Kimi register only a session provider. Before the fallback the checker
+    // resolved nothing for them and every profile read as ready — a logged-out one included.
+    [Fact]
+    public void Login_SdkOnlyProvider_DispatchesToItsSessionRegistration()
+    {
+        var checker = new ProfileLoginChecker(RegistryWith(), SessionRegistryWith("gemini", _ => false));
+        var profile = new SessionProfile("p", new PluginProviderConfig("gemini", "{}"));
+
+        Assert.False(checker.IsLoggedIn(profile), "the SDK-only provider's own gate reported logged out");
+    }
+
+    [Fact]
+    public void Login_SdkOnlyProviderDeclaringNoGate_IsStillTreatedAsReady()
+    {
+        var checker = new ProfileLoginChecker(RegistryWith(), SessionRegistryWith("gemini", isLoggedIn: null));
+        var profile = new SessionProfile("p", new PluginProviderConfig("gemini", "{}"));
+
+        Assert.True(checker.IsLoggedIn(profile), "growing the contract must not invent a gate nobody declared");
+    }
+
+    // A provider filling both routes declares the pair once; the TTY side keeps first say so either route gives
+    // the same answer rather than two gates disagreeing.
+    [Fact]
+    public void Login_ProviderOnBothRoutes_UsesTheTtyGate()
+    {
+        var checker = new ProfileLoginChecker(
+            RegistryWith(Registration("claude", isLoggedIn: _ => false)),
+            SessionRegistryWith("claude", _ => true));
+        var profile = new SessionProfile("p", new PluginProviderConfig("claude", "{}"));
+
+        Assert.False(checker.IsLoggedIn(profile));
+    }
+
+    // The host resolves the checker from the container, where the session registry is always present — but the
+    // parameter is optional so the existing construction keeps compiling. That path must not throw.
+    [Fact]
+    public void Login_WithNoSessionRegistryAtAll_FallsBackToReady()
+    {
+        var checker = new ProfileLoginChecker(RegistryWith());
+        var profile = new SessionProfile("p", new PluginProviderConfig("gemini", "{}"));
+
+        Assert.True(checker.IsLoggedIn(profile));
+    }
+
     [Fact]
     public void Transcript_ProviderWithNoReader_SnapshotsEmpty()
     {

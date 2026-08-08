@@ -6,11 +6,16 @@ using Cockpit.Infrastructure.Sessions.Tty;
 namespace Cockpit.Infrastructure.Sessions;
 
 // The generic host-side login gate (Fase 4): dispatches a profile's login check to its provider plugin —
-// whichever registered a `Cockpit.Plugins.Abstractions.Sessions.TtyProviderRegistration.IsLoggedIn`
-// delegate — so the core carries no knowledge of any provider's credential file. A profile whose provider
-// declares no login gate (a local model, or a plugin that self-manages auth) is treated as always ready, so it
-// is never falsely reported logged out.
-internal sealed class ProfileLoginChecker(IPluginTtyProviderRegistry ttyProviderRegistry)
+// whichever registered an `IsLoggedIn` delegate — so the core carries no knowledge of any provider's credential
+// file. A profile whose provider declares no gate (a local model, or a plugin that self-manages auth) is treated
+// as always ready, so it is never falsely reported logged out.
+//
+// Both registries are consulted (AC-629): the gate started on `TtyProviderRegistration` alone, so an SDK-only
+// provider (Gemini, GitHub Models, Kimi) could declare none and read as ready. TTY keeps first say, so a provider
+// filling both gets one answer rather than two gates disagreeing.
+internal sealed class ProfileLoginChecker(
+    IPluginTtyProviderRegistry ttyProviderRegistry,
+    IPluginProviderRegistry? sessionProviderRegistry = null)
     : IProfileLoginChecker, ISingletonService
 {
     public bool IsLoggedIn(SessionProfile profile)
@@ -21,7 +26,8 @@ internal sealed class ProfileLoginChecker(IPluginTtyProviderRegistry ttyProvider
             return true;
         }
 
-        var isLoggedIn = ttyProviderRegistry.Resolve(plugin.ProviderId)?.IsLoggedIn;
+        var isLoggedIn = ttyProviderRegistry.Resolve(plugin.ProviderId)?.IsLoggedIn
+            ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.IsLoggedIn;
 
         // No gate declared → nothing to be logged out of; the provider manages its own auth.
         return isLoggedIn is null || isLoggedIn(plugin.ConfigJson);

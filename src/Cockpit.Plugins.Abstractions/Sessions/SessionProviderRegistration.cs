@@ -52,4 +52,17 @@ public sealed record SessionProviderRegistration(
     /// an already-compiled plugin that never sets it keeps its static options.
     /// </summary>
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>>? ResolveOptionsAsync { get; init; }
+
+    /// <summary>
+    /// Answers whether a profile under this provider is logged in, from its opaque <c>ConfigJson</c> — the SDK
+    /// mirror of <see cref="TtyProviderRegistration.IsLoggedIn"/>. Without it a provider registering only a
+    /// session provider could declare no gate at all, and every profile under it read as ready.
+    /// <para>
+    /// ⚠️ Called synchronously on the UI thread, once per profile. A provider whose real check costs a subprocess
+    /// answers from a cache and refreshes behind it; it must never block here.
+    /// </para>
+    /// Existence-only by contract (Iron Law #8). <see langword="null"/> (the default) when the provider has no
+    /// login concept, and the host treats such a profile as always ready.
+    /// </summary>
+    public Func<string, bool>? IsLoggedIn { get; init; }
 }

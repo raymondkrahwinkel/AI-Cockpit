@@ -51,10 +51,10 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
         {
             // The provider-specific behaviours the host used to hold in-tree, now owned here (weg A) and reached
             // through the generic registration seams: the status tail reads this plugin's own JSONL transcript,
-            // the login gate checks its own .credentials.json, and self-detection finds its own config dirs — so
+            // the login gate asks its own CLI's `auth status`, and self-detection finds its own config dirs — so
             // the core carries no Claude-format knowledge and Codex can fill the same seams for its own routes.
             CreateTranscriptReader = _ => new ClaudeTranscriptReader(),
-            IsLoggedIn = ClaudeProfileDiscovery.IsLoggedIn,
+            IsLoggedIn = configJson => ClaudeProfileDiscovery.IsLoggedIn(configJson, host.ResolveManagedCliPath),
             DetectProfiles = ClaudeProfileDiscovery.Detect,
             UsageSignals = ClaudeUsageSignals.Declarations,
             ReadUsage = ClaudeUsageSignals.Read,
@@ -95,7 +95,17 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // The same three things a Claude session runs out of, whichever route it opened through — an SDK
             // session already reports the figures at each turn boundary, so this only says what they are.
             UsageSignals = ClaudeUsageSignals.Declarations,
+
+            // Declared on both routes (AC-629). Claude is answered by the TTY one, but leaving this silent would
+            // make the plugin the example that an SDK-only provider need not declare a gate.
+            IsLoggedIn = configJson => ClaudeProfileDiscovery.IsLoggedIn(configJson, host.ResolveManagedCliPath),
         });
+
+        // First reading now, so the first dialog has a real answer instead of a cold guess. Nothing waits for it.
+        foreach (var profile in ClaudeProfileDiscovery.Detect())
+        {
+            ClaudeLoginStatus.Warm(profile.ConfigJson, host.ResolveManagedCliPath);
+        }
     }
 
     public void Dispose()

@@ -352,7 +352,13 @@
          a plugin's own on-disk shape (Depot's CockpitProjectDefinition never crosses this boundary). Major and
          abstractionsVersion stay 1. Consumed in-repo by Cockpit.Plugin.Depot, whose minHostVersion moves with it.
          Renumbered from a collision with 1.48.0 at merge time. -->
-    <Version>1.49.0</Version>
+    <!-- 1.50.0 (AC-629): added SessionProviderRegistration.IsLoggedIn — the SDK mirror of a gate that lived on
+         TtyProviderRegistration alone, so a provider registering only a session provider (Gemini, GitHub Models,
+         Kimi) could declare none and every profile under it read as ready. Init-only with a null default: an
+         already-compiled plugin reports no gate, still read as "manages its own auth". Implementers: the host
+         calls it synchronously on the UI thread, once per profile, so answer from a cache and refresh behind it.
+         Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.50.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

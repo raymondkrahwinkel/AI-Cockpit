@@ -10,18 +10,9 @@ namespace Cockpit.Plugin.ClaudeProvider;
 // seams.
 internal static class ClaudeProfileDiscovery
 {
-    // True when the profile's config directory holds a `.credentials.json`. Existence-only, never reading
-    // the file's contents (Iron Law #8 — do not print/inspect secret values). A blank/default profile resolves
-    // to `~/.claude`, where the CLI keeps credentials.
-    public static bool IsLoggedIn(string configJson)
-    {
-        var configDir = ClaudeConfigPaths.ResolveStateDirectory(
-            ClaudeProviderConfig.Parse(configJson).ConfigDir,
-            Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable),
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-
-        return File.Exists(Path.Combine(configDir, ".credentials.json"));
-    }
+    // Per the CLI's own `auth status` — see `ClaudeLoginStatus` for the cache that keeps this immediate (AC-629).
+    public static bool IsLoggedIn(string configJson, Func<string, string?>? managedResolver = null) =>
+        ClaudeLoginStatus.IsLoggedIn(configJson, managedResolver);
 
     // Discovers the well-known Claude config directories on this machine (`~/.claude`,
     // `~/.claude-personal`, `~/.claude-work`) that actually exist, minting a profile per surviving

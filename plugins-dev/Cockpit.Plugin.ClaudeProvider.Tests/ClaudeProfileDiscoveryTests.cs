@@ -43,24 +43,6 @@ public class ClaudeProfileDiscoveryTests
         Assert.Empty(ClaudeProfileDiscovery.Detect([Path.Combine("fake-home", ".claude")], _ => false));
     }
 
-    [Fact]
-    public void IsLoggedIn_TrueOnlyWhenCredentialsFileExists()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "claude-login-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            var configJson = System.Text.Json.JsonSerializer.Serialize(
-                new ClaudeProviderConfig(ConfigDir: dir), ClaudeProviderConfig.JsonOptions);
-
-            Assert.False(ClaudeProfileDiscovery.IsLoggedIn(configJson), "no credentials file yet");
-
-            File.WriteAllText(Path.Combine(dir, ".credentials.json"), "{}");
-            Assert.True(ClaudeProfileDiscovery.IsLoggedIn(configJson), "the credentials file now exists");
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
+    // The gate moved to `auth status` (AC-629); it is covered in ClaudeLoginStatusTests, with the CLI stubbed
+    // out. Nothing here — calling it would spawn a real `claude` on a machine that has one.
 }
