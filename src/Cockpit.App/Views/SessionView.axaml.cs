@@ -59,7 +59,16 @@ public partial class SessionView : UserControl
 
         // Focus the input as soon as a session panel appears, so a freshly created session is ready to
         // type in without a click (L10). Deferred so focus lands after the panel is laid out.
-        Dispatcher.UIThread.Post(() => InputBox.Focus());
+        // Not while the operator is in another window (AC-636): in single-pane/zoom mode a session closing swaps
+        // which pane is realised, and this attach would then take the keyboard out of the assistant's chat pop-out
+        // — the same steal as the selection path's, one control further down.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!AutoFocus.WouldTakeTheKeyboardFromAnotherWindow(this))
+            {
+                InputBox.Focus();
+            }
+        });
 
         TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
         // Tunnel, and handled events too: the ScrollViewer's own presenter marks the wheel handled while

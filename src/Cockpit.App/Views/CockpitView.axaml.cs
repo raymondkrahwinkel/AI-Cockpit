@@ -1213,6 +1213,17 @@ public partial class CockpitView : UserControl
     // click path goes through the same helper and had the same hole.
     internal static void _FocusInputIn(Control container)
     {
+        // AC-636: never across windows. Focus is application-wide (see `AutoFocus`), so a selection change the
+        // operator did not make — the assistant closing a session moves `SelectedSession` to the next pane — would
+        // otherwise pull the caret out of the assistant's chat pop-out while they are typing in it. Guarded here
+        // rather than at the selection-change caller, for the same reason the terminal/composer split is: the pane
+        // click path goes through this helper too, and a click cannot trip it (a window restores its own focused
+        // element as it is activated, so the keyboard is already here by the time the handler runs).
+        if (AutoFocus.WouldTakeTheKeyboardFromAnotherWindow(container))
+        {
+            return;
+        }
+
         if (container.GetVisualDescendants().OfType<TerminalControl>().FirstOrDefault() is { } terminal)
         {
             terminal.Focus();
