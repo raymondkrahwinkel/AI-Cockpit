@@ -21,6 +21,8 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -75,6 +77,42 @@ public class AssistantAgentGatewayTests
         Assert.Equal("no-such-desk", entry.WorkspaceId);
         Assert.Null(entry.PaneId);
         Assert.Equal(result.Error, entry.Refusal);
+    }
+
+    [Fact]
+    public async Task ListProfiles_NamesAPluginProfilesOwnProvider_AndWhatItIsConfiguredToRunAt()
+    {
+        // AC-647. Both halves were unreadable before: every plugin-backed profile reported the provider as the bare
+        // enum value "Plugin" — Claude and Codex indistinguishable — and what it ran at lived only in cockpit.json,
+        // which the in-app assistant cannot open at all.
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("claude").Returns(_ProviderRegistration("claude", "Claude", new PluginSessionOptionDescriptor(
+            "effort", "Effort", [new PluginSessionOptionValue("high", "High")], "medium")));
+
+        var gateway = Dispatcher.UIThread.Invoke(() => _GatewayOverProfiles(
+            registry,
+            new SessionProfile("work", new PluginProviderConfig("claude", "{}"))
+            {
+                Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: false)
+                {
+                    OptionDefaults = new Dictionary<string, string> { ["effort"] = "high" },
+                },
+            },
+            new SessionProfile("local", new LmStudioConfig("http://localhost:1234", "qwen2.5"))));
+
+        var profiles = await gateway.ListProfilesAsync();
+
+        var claude = profiles.Single(profile => profile.Label == "work");
+        Assert.Equal("Claude", claude.Provider);
+        var effort = Assert.Single(claude.Options);
+        Assert.Equal(("effort", "Effort", "high", "High", true),
+            (effort.Key, effort.Label, effort.Value, effort.ValueLabel, effort.SetOnProfile));
+
+        // And the provider with no declared options keeps its own shape: a model, and nothing borrowed from Claude.
+        var local = profiles.Single(profile => profile.Label == "local");
+        Assert.Equal("LmStudio", local.Provider);
+        Assert.Equal("qwen2.5", local.Model);
+        Assert.Empty(local.Options);
     }
 
     /// <summary>
@@ -819,10 +857,40 @@ public class AssistantAgentGatewayTests
                 trail,
                 Substitute.For<IWorkspaceAgentGateway>(),
                 Substitute.For<IAgentMessageInbox>(),
-                Substitute.For<IAgentNotifyAuditLog>()),
+                Substitute.For<IAgentNotifyAuditLog>(),
+                Substitute.For<IPluginProviderRegistry>()),
             cockpit,
             trail);
     }
+
+    /// <summary>
+    /// The gateway over a given set of profiles and provider registry — <see cref="AssistantAgentGateway.ListProfilesAsync"/>
+    /// reads only those two and never the desks, so this skips the workspace settings the spawn tests need.
+    /// </summary>
+    private static AssistantAgentGateway _GatewayOverProfiles(
+        IPluginProviderRegistry pluginProviders, params SessionProfile[] known)
+    {
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(known));
+
+        return new AssistantAgentGateway(
+            _Cockpit(),
+            profiles,
+            new RecordingSpawnTrail(),
+            Substitute.For<IWorkspaceAgentGateway>(),
+            Substitute.For<IAgentMessageInbox>(),
+            Substitute.For<IAgentNotifyAuditLog>(),
+            pluginProviders);
+    }
+
+    private static SessionProviderRegistration _ProviderRegistration(
+        string providerId, string displayName, params PluginSessionOptionDescriptor[] declaredOptions) =>
+        new(
+            providerId,
+            displayName,
+            _ => throw new NotSupportedException("Nothing here starts a session."),
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { DeclaredOptions = declaredOptions },
+            _ => throw new NotSupportedException("Nothing here opens the profile editor."));
 
     /// <summary>
     /// A host with no session factories behind it — the parameterless constructor's graph, which is the one

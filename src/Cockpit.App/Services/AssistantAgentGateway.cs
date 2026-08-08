@@ -5,7 +5,9 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -37,7 +39,8 @@ internal sealed class AssistantAgentGateway(
     IAssistantSpawnAuditLog auditLog,
     IWorkspaceAgentGateway agents,
     IAgentMessageInbox inbox,
-    IAgentNotifyAuditLog notifyAudit) : IAssistantAgentGateway, ISingletonService
+    IAgentNotifyAuditLog notifyAudit,
+    IPluginProviderRegistry pluginProviders) : IAssistantAgentGateway, ISingletonService
 {
     public async Task<AgentSpawnResult> SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken = default)
     {
@@ -395,15 +398,34 @@ internal sealed class AssistantAgentGateway(
         _OnUiThreadAsync(() => Task.FromResult(_ListWorkspaces()));
 
     // The profiles, straight off the store. No UI thread: this reads a file, not the cockpit's collections.
+    //
+    // *What each profile is configured to run at comes with it* (AC-647). The alternative — the assistant reading
+    // `cockpit.json` — is not a route it has at all: it holds MCP tools and nothing else. What is reported is the
+    // provider's own declared schema (AC-649) filled in from the profile, so Claude's permission mode/model/effort
+    // and Codex's sandbox each arrive in their own vocabulary rather than as a settings dump with three Claude-shaped
+    // slots to force them into.
     public async Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
     {
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
         return
         [
-            .. known.Select(profile => new AssistantProfileRow(
-                profile.Label,
-                profile.Provider.ToString(),
-                ProfileDisplay.ModelOf(profile))),
+            .. known.Select(profile =>
+            {
+                var registration = profile.ProviderConfig is PluginProviderConfig plugin
+                    ? pluginProviders.Resolve(plugin.ProviderId)
+                    : null;
+
+                return new AssistantProfileRow(
+                    profile.Label,
+                    // The plugin's own name ("Claude", "Codex"), not the bare `Plugin` enum value: every plugin-backed
+                    // profile reads as the same provider otherwise, and this is the field the tool tells the assistant
+                    // to resolve "a Claude one" by.
+                    registration?.DisplayName ?? profile.Provider.ToString(),
+                    ProfileDisplay.ModelOf(profile))
+                {
+                    Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
+                };
+            }),
         ];
     }
 

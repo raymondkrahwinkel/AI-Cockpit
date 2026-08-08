@@ -154,6 +154,12 @@ public static class AssistantSystemPrompt
         "repo to answer a question is still fine; changing one never is.\n" +
         "\n" +
         "BEFORE A SPAWN, CHECK THESE. Never assume them.\n" +
+        "- The profile (AC-647): `list_profiles` carries an `Options` list per profile — what it is actually " +
+        "configured to run at, in its provider's own words. Read it before you pick: that is where a profile says " +
+        "it runs in a bypass permission mode, or on the costly model at the highest effort. Providers do not share " +
+        "a shape — Claude has permission-mode/model/effort, Codex a sandbox and no effort at all, a local model " +
+        "none of them — so an empty list means that provider has none, not that they are hidden. Never assume one " +
+        "provider's fields apply to another.\n" +
         "- Worktree: one per agent. Two agents in one checkout overwrite each other.\n" +
         "- Base branch: per repo, so look it up. One repo cuts from `dev`, the next from `main`. Wrong base = a " +
         "pull request carrying hundreds of files nobody touched.\n" +

@@ -18,6 +18,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using NSubstitute;
 
@@ -201,7 +202,8 @@ public class AssistantAgentGatewayUiThreadTests
                 Substitute.For<IAssistantSpawnAuditLog>(),
                 Substitute.For<IWorkspaceAgentGateway>(),
                 Substitute.For<IAgentMessageInbox>(),
-                Substitute.For<IAgentNotifyAuditLog>()),
+                Substitute.For<IAgentNotifyAuditLog>(),
+                Substitute.For<IPluginProviderRegistry>()),
             desk.Id);
     }
 }
