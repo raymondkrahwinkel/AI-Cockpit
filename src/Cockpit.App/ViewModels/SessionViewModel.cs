@@ -2499,10 +2499,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // What a restored pane's degraded offer shows for why (AC-410) — the provider's own `errors[]` when it reported one, else the bare subtype, since `TurnCompleted.Result` is exactly what an error_during_execution turn does not carry.
     //
-    // AC-539: the provider's reason ("No conversation found with session ID: …") names the id but not the one thing
-    // that decides whether it can be found — Claude keeps its saved conversations per working directory, so a pane
-    // that came back somewhere else gets exactly that message with nothing pointing at the cause. Naming the
-    // directory the resume was actually made in turns it from a dead end into something the operator can act on.
+    // AC-539: that reason names the id but not what decides whether it can be found — Claude keeps its saved
+    // conversations per working directory, so a pane that came back somewhere else gets the message with nothing
+    // pointing at the cause. Naming the directory the resume was made in is what makes it actionable.
     private static string _DegradedTurnExplanation(TurnCompleted turn, string? workingDirectory)
     {
         var reason = turn.Errors is { Count: > 0 } errors

@@ -311,10 +311,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
         finally
         {
-            // AC-539: a result line's own publish is parked behind the usage poll (_PollUsageThenPublishAsync), and
-            // a CLI that exits right after printing one — an unresolvable --resume does exactly that — ends stdout
-            // while that task is still waiting. Completing here first would drop the turn, and with it the only
-            // signal the host degrades a restore offer on. Never throws: that task swallows its own poll failure.
+            // AC-539: a result line's publish is parked behind the usage poll, and a CLI that exits right after
+            // printing one (an unresolvable --resume) ends stdout while that task still waits — completing first
+            // drops the turn. Never throws: _PollUsageThenPublishAsync swallows its own poll failure.
             await _pendingResultPublish.ConfigureAwait(false);
             _events.TryComplete();
         }

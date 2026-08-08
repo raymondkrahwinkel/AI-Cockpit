@@ -509,11 +509,9 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Empty(status.RateLimits);
     }
 
-    // AC-539: a resume the CLI cannot resolve ("No conversation found with session ID: …", measured against
-    // claude.exe) prints its result line and exits immediately — so stdout ends while the result's own publish is
-    // still parked behind the usage poll. Completing the stream there dropped that PluginTurnCompleted, and the
-    // host's restore banner (SessionViewModel, AC-410) only degrades to "Gone" on a TurnCompleted: the operator
-    // got a silently dead pane with no banner at all instead of the CLI's own reason.
+    // AC-539: a resume the CLI cannot resolve prints its result line and exits immediately (measured against
+    // claude.exe), so stdout ends while that line's publish is still parked behind the usage poll. Completing the
+    // stream there dropped the turn — and the host's restore banner only degrades to "Gone" on a TurnCompleted.
     [Fact]
     public async Task AResultLineFollowedByTheProcessExiting_StillReachesTheHost()
     {

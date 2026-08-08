@@ -60,14 +60,9 @@ public sealed class SessionRestorePlanner(ISessionProfileStore profiles) : ISing
             { State = state };
         }
 
-        // AC-539: the same "the place is gone" question, asked of the working directory itself. A session started in
-        // a worktree the cockpit did not mint (one an agent made through the worktrees MCP server) records that path
-        // as WorkingDirectory with no WorktreePath, so the check above never sees it — and Claude keys its saved
-        // conversations on the working directory, so resuming one from a directory that is no longer there finds
-        // nothing. Saying which directory beats offering a resume that dies on its first turn.
-        //
-        // Only where a resume would otherwise be offered: a provider that reports Unsupported is stating a fact about
-        // itself and must keep saying so, not be overruled by a directory that happens to have been tidied away.
+        // AC-539: the same question of the working directory itself — a worktree the cockpit did not mint is recorded
+        // there with no WorktreePath, so the check above never sees it, and Claude keys its saved conversations on the
+        // directory. Only where a resume would otherwise be offered, so Unsupported keeps stating its own fact.
         if (state.ConversationState == SessionConversationIdState.Known
             && state.WorkingDirectory is { Length: > 0 } workingDirectory
             && !Directory.Exists(workingDirectory))

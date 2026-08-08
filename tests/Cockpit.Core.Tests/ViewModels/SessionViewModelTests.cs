@@ -38,10 +38,9 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
-    // AC-539: an SDK resume the CLI cannot resolve fails on the restored pane's very first turn, and the offer must
-    // come back saying why — the provider's own reason plus the one thing it leaves out. Claude keeps its saved
-    // conversations per working directory, so "No conversation found" without the directory it looked in is a dead
-    // end; naming it is what makes a pane that came back somewhere else diagnosable.
+    // AC-539: a resume the CLI cannot resolve fails on the restored pane's first turn, and the offer must come back
+    // saying why — the provider's reason plus the directory it looked in, since Claude keeps its saved conversations
+    // per working directory and "No conversation found" alone is a dead end.
     [Fact]
     public async Task AFailedResumeTurn_BringsTheOfferBackNamingTheWorkingDirectory()
     {
