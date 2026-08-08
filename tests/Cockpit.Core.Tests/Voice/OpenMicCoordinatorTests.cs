@@ -317,6 +317,66 @@ public class OpenMicCoordinatorTests
         Assert.True(coordinator.ToggleOpenMicCommand.CanExecute(null));
     }
 
+    /// <summary>
+    /// AC-628, the coordinator's half: `IsListening` is only set after the listener has started, and two awaits
+    /// sit between the guard that reads it and that assignment — so two enables landing together each opened a
+    /// microphone. The settings load is held open rather than raced on timing, so the second enable is provably
+    /// inside the window. The duplicate says where it came from, which is what the log was missing.
+    /// </summary>
+    [Fact]
+    public async Task EnableTwiceAtOnce_StartsTheListenerOnce_AndNamesWhereTheDuplicateCameFrom()
+    {
+        var settingsAreLoading = new TaskCompletionSource();
+        var startIsHeldOpen = new TaskCompletionSource();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => _SettingsHeldUntil(settingsAreLoading));
+        var listener = new FakeOpenMicListener { HoldStart = startIsHeldOpen };
+        var logger = new CapturingLogger<OpenMicCoordinator>();
+        var coordinator = _NewCoordinator(listener, voiceSettingsStore, logger);
+
+        var first = coordinator.StartAsync();
+        var second = coordinator.StartAsync();
+
+        // Both are now parked on the settings load, which is the window the guard used to leave open. Releasing it
+        // lets the first through to the listener, where it is held — so the second is asking while the first has
+        // started a microphone and not yet said so, which is exactly the state the field hit four times over.
+        settingsAreLoading.SetResult();
+        await _WaitUntilAsync(() => listener.StartCount >= 1);
+        await _GiveASecondStartEveryChanceAsync(() => listener.StartCount >= 2);
+        startIsHeldOpen.SetResult();
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(1, listener.StartCount);
+        Assert.True(coordinator.IsListening);
+        Assert.Contains(logger.Messages, message => message.Contains("already listening", StringComparison.OrdinalIgnoreCase)
+            && message.Contains(nameof(OpenMicCoordinator.StartAsync), StringComparison.Ordinal));
+    }
+
+    private static async Task<VoiceSettings> _SettingsHeldUntil(TaskCompletionSource release)
+    {
+        await release.Task;
+        return new VoiceSettings { IsEnabled = true, OpenMicEnabled = true };
+    }
+
+    private static async Task _WaitUntilAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 200 && !condition(); i++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition(), "the condition should become true within the poll window");
+    }
+
+    /// <summary>Waits out the moment a second start would land in, so the assertion that it did not is one the unfixed code fails.</summary>
+    private static async Task _GiveASecondStartEveryChanceAsync(Func<bool> landed)
+    {
+        for (var i = 0; i < 20 && !landed(); i++)
+        {
+            await Task.Delay(10);
+        }
+    }
+
     private static OpenMicCoordinator _NewCoordinator(
         IOpenMicListener listener,
         IVoiceSettingsStore voiceSettingsStore,

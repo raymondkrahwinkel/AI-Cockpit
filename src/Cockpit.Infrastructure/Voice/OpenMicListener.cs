@@ -31,8 +31,17 @@ internal sealed class OpenMicListener(
     private static readonly int WindowByteCount =
         (int)(CaptureFormat.SampleRate * AnalysisWindow.TotalSeconds) * (CaptureFormat.BitsPerSample / 8);
 
-    private CancellationTokenSource? _cancellation;
-    private Task? _loopTask;
+    // Serializes starting and stopping. The guard in `StartAsync` used to be a check-then-act with a settings
+    // load between the check and the assignment, so two calls landing together both saw "not running" and both
+    // opened a microphone — and only the last one was reachable afterwards, which made the rest unstoppable
+    // (AC-628). Same shape as `Cockpit.App.Services.AssistantSessionHost._startGate`, for the same reason.
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+
+    // Every capture loop this listener has running — one, now that starts are serialized. Held as a set rather
+    // than as the single pair it will always be, because a `StopAsync` that silently closed one of four is
+    // exactly how the orphaned loops stayed invisible.
+    private readonly List<(CancellationTokenSource Cancellation, Task Loop)> _running = [];
+
     private volatile bool _paused;
 
     public event EventHandler<string>? UtteranceTranscribed;
@@ -42,37 +51,64 @@ internal sealed class OpenMicListener(
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_loopTask is not null)
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return;
-        }
+            if (_running.Count > 0)
+            {
+                // Said out loud rather than returned in silence. A start that does nothing left no trace at all,
+                // which is why four of them looked exactly like one until the transcripts arrived in fours.
+                logger.LogInformation("Open-mic was already listening; this start was ignored.");
+                return;
+            }
 
-        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var silenceTimeout = TimeSpan.FromMilliseconds(settings.OpenMicSilenceTimeoutMs);
-        _cancellation = new CancellationTokenSource();
-        _loopTask = _ListenAsync(silenceTimeout, _cancellation.Token);
-        logger.LogInformation("Open-mic listening started (silence timeout {Timeout}ms)", settings.OpenMicSilenceTimeoutMs);
+            var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var silenceTimeout = TimeSpan.FromMilliseconds(settings.OpenMicSilenceTimeoutMs);
+            var cancellation = new CancellationTokenSource();
+            _running.Add((cancellation, _ListenAsync(silenceTimeout, cancellation.Token)));
+            logger.LogInformation("Open-mic listening started (silence timeout {Timeout}ms)", settings.OpenMicSilenceTimeoutMs);
+        }
+        finally
+        {
+            _startGate.Release();
+        }
     }
 
     public async Task StopAsync()
     {
-        if (_cancellation is null || _loopTask is null)
-        {
-            return;
-        }
-
-        await _cancellation.CancelAsync().ConfigureAwait(false);
+        await _startGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await _loopTask.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
+            if (_running.Count == 0)
+            {
+                return;
+            }
 
-        _cancellation.Dispose();
-        _cancellation = null;
-        _loopTask = null;
+            var running = _running.ToArray();
+            _running.Clear();
+
+            foreach (var (cancellation, loop) in running)
+            {
+                await cancellation.CancelAsync().ConfigureAwait(false);
+                try
+                {
+                    await loop.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+
+                cancellation.Dispose();
+            }
+
+            // The other half of the pair above: the log carried a start and no stop, so a microphone left open
+            // and a microphone closed on request read the same from the outside.
+            logger.LogInformation("Open-mic listening stopped ({Loops} loop(s) closed).", running.Length);
+        }
+        finally
+        {
+            _startGate.Release();
+        }
     }
 
     public void Pause() => _paused = true;

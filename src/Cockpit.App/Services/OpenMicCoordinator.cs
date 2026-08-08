@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -35,6 +36,13 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private readonly ILogger<OpenMicCoordinator> _logger;
 
     private bool _wired;
+
+    // Serializes enabling and disabling. `IsListening` is only true once the listener has actually started, and
+    // two awaits sit between the guard that reads it and the assignment that sets it — so two toggles landing
+    // together each opened a microphone (AC-628). Two leaky guards are not two layers of protection, so this one
+    // is closed at the same time as the listener's own. `_DisableAsync` takes the same gate: a stop racing a
+    // start is the same defect with the halves swapped.
+    private readonly SemaphoreSlim _enableGate = new(1, 1);
 
     // What the overlay shows while read-aloud is synthesizing (text-to-sound) but not yet playing a word.
     private const string PreparingStatus = "Preparing…";
@@ -159,28 +167,40 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         await _voiceSettingsStore.SaveAsync(settings with { OpenMicEnabled = IsListening });
     }
 
-    private async Task _EnableAsync(CancellationToken cancellationToken = default)
+    // <paramref name="caller"/> is the instrumentation AC-628 asked for: four enables arrived within 16ms and
+    // nothing in the log said where from. A request that turns out to be a duplicate now names the path it came
+    // in on, so the next burst identifies its own source instead of being reconstructed from timestamps.
+    private async Task _EnableAsync(CancellationToken cancellationToken = default, [CallerMemberName] string caller = "")
     {
-        if (IsListening)
+        await _enableGate.WaitAsync(cancellationToken);
+        try
         {
-            return;
+            if (IsListening)
+            {
+                _logger.LogInformation("Open-mic is already listening; the request from {Caller} was ignored.", caller);
+                return;
+            }
+
+            var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
+            _stopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
+            _stopReadAloudThreshold = settings.StopReadAloudLevelThreshold;
+
+            if (!_wired)
+            {
+                _listener.UtteranceTranscribed += _OnUtteranceTranscribed;
+                _listener.SpeechStarted += _OnSpeechStarted;
+                _listener.SpeechEnded += _OnSpeechEnded;
+                _listener.AudioLevelSampled += _OnAudioLevelSampled;
+                _wired = true;
+            }
+
+            await _listener.StartAsync(cancellationToken);
+            IsListening = true;
         }
-
-        var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
-        _stopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
-        _stopReadAloudThreshold = settings.StopReadAloudLevelThreshold;
-
-        if (!_wired)
+        finally
         {
-            _listener.UtteranceTranscribed += _OnUtteranceTranscribed;
-            _listener.SpeechStarted += _OnSpeechStarted;
-            _listener.SpeechEnded += _OnSpeechEnded;
-            _listener.AudioLevelSampled += _OnAudioLevelSampled;
-            _wired = true;
+            _enableGate.Release();
         }
-
-        await _listener.StartAsync(cancellationToken);
-        IsListening = true;
     }
 
     private void _Unwire()
@@ -199,16 +219,24 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     private async Task _DisableAsync()
     {
-        if (!IsListening)
+        await _enableGate.WaitAsync();
+        try
         {
-            return;
+            if (!IsListening)
+            {
+                return;
+            }
+
+            await _listener.StopAsync();
+            IsListening = false;
+
+            // Turned off mid-sentence, the pill would otherwise sit on whatever the last utterance left it.
+            _overlay.SetOpenMic(null);
         }
-
-        await _listener.StopAsync();
-        IsListening = false;
-
-        // Turned off mid-sentence, the pill would otherwise sit on whatever the last utterance left it.
-        _overlay.SetOpenMic(null);
+        finally
+        {
+            _enableGate.Release();
+        }
     }
 
     // Pause the mic while read-aloud plays so it never transcribes the cockpit's own speech — UNLESS the operator

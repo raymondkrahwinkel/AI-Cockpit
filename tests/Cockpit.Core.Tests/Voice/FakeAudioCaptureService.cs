@@ -11,14 +11,34 @@ namespace Cockpit.Core.Tests.Voice;
 /// </summary>
 internal sealed class FakeAudioCaptureService(params byte[][] frames) : IAudioCaptureService
 {
+    // Interlocked, because the case these count is two starts running at once — a plain ++ from two threads can
+    // lose the increment that proves the second microphone was opened.
+    private int _captureCount;
+    private int _activeCaptures;
+
+    /// <summary>How many times a capture was opened — one device per call, as the real service logs it.</summary>
+    public int CaptureCount => Volatile.Read(ref _captureCount);
+
+    /// <summary>How many captures are still running. Nonzero after a stop is a microphone left open (AC-628).</summary>
+    public int ActiveCaptures => Volatile.Read(ref _activeCaptures);
+
     public async IAsyncEnumerable<ReadOnlyMemory<byte>> CaptureAsync(
         AudioFormat format, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        foreach (var frame in frames)
+        Interlocked.Increment(ref _captureCount);
+        Interlocked.Increment(ref _activeCaptures);
+        try
         {
-            yield return frame;
-        }
+            foreach (var frame in frames)
+            {
+                yield return frame;
+            }
 
-        await Task.Delay(Timeout.Infinite, cancellationToken);
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeCaptures);
+        }
     }
 }
