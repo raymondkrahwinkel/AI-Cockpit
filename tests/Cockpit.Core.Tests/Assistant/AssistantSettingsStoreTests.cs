@@ -113,13 +113,14 @@ public class AssistantSettingsStoreTests : IDisposable
     }
 
     /// <summary>
-    /// #AC-637's upgrade direction, written down because it is the one place this change is not visible: an
+    /// #AC-637's upgrade direction, and the one place the default-on deliberately does not reach: an
     /// <c>assistant</c> section from before this build has no <c>ConsentBypassAll</c> property, and reads back
-    /// <em>on</em> — the same state a fresh install is in, rather than a second, quieter default for anyone who
-    /// happened to have the config already.
+    /// <em>off</em>. That cockpit was asking about everything, so it keeps asking — upgrading is not the moment to
+    /// widen a permission nobody asked to widen. Only a fresh install, with no section to read at all, gets the
+    /// record's own default.
     /// </summary>
     [Fact]
-    public async Task LoadAsync_AConfigFromBeforeAllowAll_ReadsBackWithItOn()
+    public async Task LoadAsync_AConfigFromBeforeAllowAll_KeepsAskingRatherThanWidening()
     {
         await File.WriteAllTextAsync(
             _configFilePath,
@@ -127,8 +128,24 @@ public class AssistantSettingsStoreTests : IDisposable
 
         var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
 
-        Assert.True(loaded.ConsentBypassAll);
-        Assert.True(loaded.HasConsentBypass);
+        Assert.False(loaded.ConsentBypassAll);
+        Assert.False(loaded.HasConsentBypass);
+    }
+
+    [Fact]
+    public async Task LoadAsync_AConfigFromBeforeAllowAll_KeepsTheSourcesItHadTicked()
+    {
+        // The other half of "keeps asking": an operator who had ticked two sources under #AC-575 must find those
+        // two still ticked and nothing else — not replaced by the wider switch, and not cleared by it either.
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """{"Assistant":{"IsEnabled":true,"ConsentBypassSources":["Terminal MCP"],"ConsentBypassDangerousSources":["Terminal MCP"]}}""");
+
+        var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
+
+        Assert.False(loaded.ConsentBypassAll);
+        Assert.Equal(["Terminal MCP"], loaded.ConsentBypassSources);
+        Assert.Equal(["Terminal MCP"], loaded.ConsentBypassDangerousSources);
     }
 
     [Fact]

@@ -49,6 +49,8 @@ public sealed record AssistantSettings
     // keep their own defaults and are never touched by this switch: turning it off restores exactly what was
     // ticked before it went on. The other three conditions in `AssistantConsentBypassPolicy` still hold, so this
     // is "everything the assistant asks, while the assistant is on" and never anything an ordinary pane asks.
+    // The default reaches a fresh install only: a config that predates the switch reads back off and keeps asking
+    // exactly as it did (`AssistantSettingsEntry.ToDomain`), because upgrading is not a decision to widen.
     public bool ConsentBypassAll { get; init; } = true;
 
     // The sources whose `ConsentRisk.LowRisk` consent cards the assistant may skip (#AC-575), keyed the way

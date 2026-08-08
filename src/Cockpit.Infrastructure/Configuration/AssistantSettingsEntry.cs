@@ -29,9 +29,9 @@ internal sealed class AssistantSettingsEntry
 
     public List<string> ConsentBypassDangerousSources { get; set; } = [];
 
-    // "Allow all" (#AC-637). Initialised to true, so a section written before this build — where the property is
-    // simply absent — reads back on, the same as a fresh install rather than a second, quieter default.
-    public bool ConsentBypassAll { get; set; } = true;
+    // "Allow all" (#AC-637). Nullable so an `assistant` section written before this build — where the property is
+    // absent rather than false — can be told apart from an operator's deliberate off; see `ToDomain`.
+    public bool? ConsentBypassAll { get; set; }
 
     public static AssistantSettingsEntry FromDomain(AssistantSettings settings) => new()
     {
@@ -61,6 +61,10 @@ internal sealed class AssistantSettingsEntry
         // it says so under its own name rather than by a list quietly reading as wider than it was written.
         ConsentBypassSources = [.. ConsentBypassSources ?? []],
         ConsentBypassDangerousSources = [.. ConsentBypassDangerousSources ?? []],
-        ConsentBypassAll = ConsentBypassAll,
+        // Absent means a config that predates the switch, and that operator's cockpit was asking about everything:
+        // it keeps doing so. The default-on lives in `AssistantSettings` and so reaches a fresh install only, where
+        // there is no `assistant` section to read at all. Upgrading is not the moment to widen a permission nobody
+        // asked to widen.
+        ConsentBypassAll = ConsentBypassAll ?? false,
     };
 }
