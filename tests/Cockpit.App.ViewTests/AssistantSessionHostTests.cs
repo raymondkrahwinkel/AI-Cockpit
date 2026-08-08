@@ -10,6 +10,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
@@ -542,6 +543,44 @@ public class AssistantSessionHostTests
         Assert.False(AssistantSessionHost.ShouldHandOver(null, isBusy: false, isWaitingOnOperator: false));
     }
 
+    /// <summary>
+    /// AC-638: a hand-over swaps in a new <c>SessionViewModel</c> whose transcript is empty, which reads as data
+    /// loss unless the new transcript says why.
+    /// </summary>
+    [Fact]
+    public void HandingOver_LeavesADividerInTheNewSessionsTranscript_SoAnEmptyWindowIsNotReadAsDataLoss()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyEvents());
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+
+        var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
+            () => new SessionViewModel(new SessionManager(factory))));
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit));
+
+        var first = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        Assert.NotNull(first);
+        Assert.DoesNotContain(first!.Transcript, entry => entry.IsDivider);
+
+        // The same signal production reads: a turn completes with the context past the hand-over threshold.
+        driver.CurrentStatus.Returns(new SessionStatusFeed(90, []));
+        Dispatcher.UIThread.Invoke(() => first.Apply(new TurnCompleted
+        {
+            SessionId = "S1",
+            Subtype = "success",
+            Result = "done",
+            IsError = false,
+            Usage = new TokenUsage(1_000, 2_000, 0, 0),
+            TotalCostUsd = 0.01,
+        }));
+
+        var second = host.Session;
+        Assert.NotSame(first, second);
+        var divider = Assert.Single(second!.Transcript, entry => entry.IsDivider);
+        Assert.Contains("Context was full", divider.Text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void LaunchOptions_WithNothingEverRemembered_CarryNoMemoryHeading()
     {
@@ -723,6 +762,45 @@ public class AssistantSessionHostTests
             cockpit ?? new CockpitViewModel(), settings, profiles, sessionState,
             catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
             NullLogger<AssistantSessionHost>.Instance);
+    }
+
+    // A cockpit whose sessions actually start (against a fake driver) rather than the no-factory default the rest
+    // of this file uses — needed only by the hand-over test, which has to observe a second, real SessionViewModel.
+    private static CockpitViewModel _CockpitWithSessionFactory(Func<SessionViewModel> sessionFactory)
+    {
+        var notifications = Substitute.For<Cockpit.Core.Abstractions.Notifications.INotificationSettingsStore>();
+        notifications.LoadAsync().Returns(new Cockpit.Core.Notifications.NotificationSettings());
+        var transcriptDisplay = Substitute.For<Cockpit.Core.Abstractions.TranscriptDisplay.ITranscriptDisplaySettingsStore>();
+        transcriptDisplay.LoadAsync().Returns(new Cockpit.Core.TranscriptDisplay.TranscriptDisplaySettings());
+        var sessionBehavior = Substitute.For<Cockpit.Core.Abstractions.SessionBehavior.ISessionBehaviorSettingsStore>();
+        sessionBehavior.LoadAsync().Returns(new Cockpit.Core.SessionBehavior.SessionBehaviorSettings());
+        var layout = Substitute.For<Cockpit.Core.Abstractions.Layout.ILayoutSettingsStore>();
+        layout.LoadAsync().Returns(new Cockpit.Core.Layout.LayoutSettings());
+        var voice = Substitute.For<Cockpit.Core.Abstractions.Voice.IVoiceSettingsStore>();
+        voice.LoadAsync().Returns(new Cockpit.Core.Voice.VoiceSettings());
+        var terminal = Substitute.For<Cockpit.Core.Abstractions.Terminal.ITerminalSettingsStore>();
+        terminal.LoadAsync().Returns(new Cockpit.Core.Terminal.TerminalSettings());
+
+        return new CockpitViewModel(
+            sessionFactory,
+            () => new TtyViewModel(),
+            Substitute.For<ISessionDialogService>(),
+            Substitute.For<Cockpit.Core.Abstractions.Audio.IAudioCaptureService>(),
+            Substitute.For<Cockpit.Core.Abstractions.Audio.IAudioPlaybackService>(),
+            Substitute.For<Cockpit.Core.Abstractions.Notifications.IAttentionNotifier>(),
+            notifications,
+            transcriptDisplay,
+            sessionBehavior,
+            layout,
+            voice,
+            terminal);
+    }
+
+    private static async IAsyncEnumerable<SessionEvent> _EmptyEvents(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 
     private static SessionStateRecord _StateFor(string paneId, string conversationId) =>

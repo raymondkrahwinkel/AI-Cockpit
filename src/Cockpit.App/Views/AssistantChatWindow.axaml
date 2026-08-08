@@ -407,6 +407,20 @@
                                         Padding="8,5" Margin="8,2" CornerRadius="{StaticResource CockpitControlRadius}">
                                     <StackPanel Spacing="4">
 
+                                        <!-- Hand-over divider (AC-638): this window drew no Divider row at all, so
+                                             it borrows the shape SessionView.axaml uses. MaxWidth is what makes the
+                                             label wrap — an Auto column measures its child unconstrained. -->
+                                        <Grid IsVisible="{Binding IsDivider}" ColumnDefinitions="*,Auto,*" Margin="0,8">
+                                            <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
+                                                    Background="{StaticResource CockpitHairlineBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Text}" Margin="10,0" FontSize="10.5"
+                                                       VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="220"
+                                                       TextAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                            <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
+                                                    Background="{StaticResource CockpitHairlineBrush}"/>
+                                        </Grid>
+
                                         <!-- The user's own message: right-aligned bubble, plain text. -->
                                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                              Classes="transcript" IsVisible="{Binding IsUserRow}"/>

@@ -352,6 +352,15 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true)),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
+        // AC-638: a hand-over leaves the operator looking at an empty window, so say why in the transcript itself —
+        // the note that carries forward only reaches the system prompt, which is nowhere they can see.
+        if (startFresh)
+        {
+            session.Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.Divider,
+                "Context was full — a new conversation starts here, picked up from a short note"));
+        }
+
         _ApplySpeech(session, settings);
         Session = session;
 
