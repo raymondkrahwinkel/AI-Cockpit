@@ -2,14 +2,10 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-// `ClaudeSdkUsage` — the SDK route's source for the header's usage pill (AC-530).
-//
-// `RealTurn` is not a hand-written shape: it is a verbatim capture from CLI 2.1.220 driven with the
-// exact flags `ClaudeSdkArguments` builds (persistent `--input-format stream-json`, no `-p`),
-// over a prompt that forced four sequential tool calls so the turn really does contain more than one API response.
-// Only the message `content` arrays were emptied, since this class never reads them. Every figure asserted
-// below was measured off that run, so a test passing here is a test agreeing with the real CLI rather than with a
-// fixture written to match the code.
+// `ClaudeSdkUsage` — the SDK route's source for the header's usage pill (AC-530). Neither fixture is
+// hand-written: `RealTurn` is a verbatim four-call turn captured from CLI 2.1.220 (only `content` emptied),
+// `RealContextUsage` a live `get_context_usage` reply from 2.1.226. So these agree with the real CLI rather
+// than with a fixture written to match the code.
 public class ClaudeSdkUsageTests
 {
     // Four assistant lines (one per API call), a rate-limit line, and the closing result line.
@@ -35,18 +31,42 @@ public class ClaudeSdkUsageTests
         return usage;
     }
 
-    [Fact]
-    public void ARealTurn_ReportsTheContextWindowFromTheLastApiCall_NotTheTurnsTotal()
+    // Feeds a `get_context_usage` control-response, the way the driver's usage poll does.
+    private static ClaudeSdkUsage Context(ClaudeSdkUsage usage, string json)
     {
+        using var document = JsonDocument.Parse(json);
+        usage.ObserveContextUsage(document.RootElement);
+        return usage;
+    }
+
+    // Verbatim from a live 2.1.226 reply (categories trimmed — this class reads only `percentage`).
+    private const string RealContextUsage = """
+    {"categories":[{"name":"System prompt","tokens":2604},{"name":"Messages","tokens":6111}],
+     "totalTokens":28981,"maxTokens":1000000,"rawMaxTokens":1000000,"autocompactSource":"auto","percentage":3}
+    """;
+
+    [Fact]
+    public void TheContextPercentIsTheCliesOwnFigure_NotOneComputedHere()
+    {
+        // The CLI states the percentage `/context` prints. This used to be recomputed from the last assistant
+        // line's token counts over the result line's window size, which broke when the assistant line said
+        // `claude-opus-5` and the result line keyed its modelUsage `claude-opus-5[1m]`.
+        var status = Context(new ClaudeSdkUsage(), RealContextUsage).Status;
+
+        Assert.NotNull(status);
+        Assert.Equal(3d, status.ContextUsedPercent);
+    }
+
+    [Fact]
+    public void TheTokenCountsOnTheStreamAreNotReadAsAContextFigure()
+    {
+        // A whole real turn — four assistant lines and a result line stating a window — says nothing about the
+        // context on its own any more. Only the rate-limit line in it produces anything.
         var status = Observe(RealTurn).Status;
 
         Assert.NotNull(status);
-
-        // Measured: the last API call sent 2 + 79 + 27046 = 27127 tokens into a 1,000,000-token window => 3%.
-        // The turn's own total (result.usage) is 8 + 11940 + 96086 = 108034 => 11%, because it counts every one of
-        // the four calls. Reading that one would overstate a nearly-empty window by more than 3x; this assertion is
-        // what keeps the two apart.
-        Assert.Equal(3d, status.ContextUsedPercent);
+        Assert.Null(status.ContextUsedPercent);
+        Assert.Single(status.RateLimits);
     }
 
     [Fact]
@@ -72,43 +92,23 @@ public class ClaudeSdkUsageTests
         Assert.Null(Observe("""{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-5"}""").Status);
     }
 
-    [Fact]
-    public void WithoutAResultLine_TheContextPercentStaysUnknownRatherThanGuessingAWindowSize()
+    [Theory]
+    // A shape this build does not recognise must not fold in as a zero — "0%" reads as "nothing spent", which is
+    // the one wrong answer worse than no answer. An errored or refused poll lands here too.
+    [InlineData("{}")]
+    [InlineData("""{"percentage":null}""")]
+    [InlineData("""{"percentage":"3"}""")]
+    [InlineData("[1,2,3]")]
+    public void AContextReplyWithoutAUsableFigure_LeavesTheLastGoodReadingAlone(string json)
     {
-        // Mid-turn there is a token count but no stated window size. Inventing a default (200k, say) would put a
-        // confident wrong number in the header on every model whose window is not that.
-        var status = Observe(RealTurn[0], RealTurn[1]).Status;
+        var usage = Context(new ClaudeSdkUsage(), RealContextUsage);
 
-        Assert.NotNull(status);
-        Assert.Null(status.ContextUsedPercent);
-        Assert.Single(status.RateLimits);
+        Assert.Equal(3d, Context(usage, json).Status!.ContextUsedPercent);
     }
 
     [Fact]
-    public void ASubAgentsApiCall_DoesNotBecomeTheSessionsContextReading()
-    {
-        // A Task sub-agent's assistant line carries parent_tool_use_id and its own, far smaller context. Folding it
-        // in would make the main conversation look like it had just been emptied.
-        const string subAgent = """{"type":"assistant","parent_tool_use_id":"toolu_01ABC","message":{"id":"msg_sub","type":"message","role":"assistant","model":"claude-opus-5","content":[],"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":120,"output_tokens":5}},"session_id":"65246f03-83f9-4251-8c14-9374300f83b6","uuid":"11111111-1111-1111-1111-111111111111"}""";
-
-        var withSubAgent = Observe([.. RealTurn, subAgent]).Status;
-
-        Assert.NotNull(withSubAgent);
-        Assert.Equal(3d, withSubAgent.ContextUsedPercent);
-    }
-
-    [Fact]
-    public void AUsageBlockNamingNoTokenFieldAtAll_LeavesTheLastGoodReadingAlone()
-    {
-        // A shape this build does not recognise must not fold in as a zero — "0%" reads as "nothing spent", which is
-        // the one wrong answer worse than no answer.
-        const string emptyUsage = """{"type":"assistant","message":{"id":"msg_x","type":"message","role":"assistant","model":"claude-opus-5","content":[],"usage":{"service_tier":"standard"}},"session_id":"s","uuid":"22222222-2222-2222-2222-222222222222"}""";
-
-        var status = Observe([.. RealTurn, emptyUsage]).Status;
-
-        Assert.NotNull(status);
-        Assert.Equal(3d, status.ContextUsedPercent);
-    }
+    public void AContextReplyBeforeAnyOther_ProducesNoFigureRatherThanAZero() =>
+        Assert.Null(Context(new ClaudeSdkUsage(), "{}").Status);
 
     [Fact]
     public void AWindowThisBuildHasNoDeclarationFor_IsCarriedUnderItsWireNameRatherThanDropped()
@@ -152,48 +152,14 @@ public class ClaudeSdkUsageTests
     }
 
     [Theory]
-    // The CLI rounds with JavaScript's Math.round — half away from zero. .NET's default is banker's rounding, which
-    // would answer 2 for the first of these and disagree with the TTY route on exactly the halves.
-    [InlineData(25_000, 1_000_000, 3d)]
-    [InlineData(35_000, 1_000_000, 4d)]
-    [InlineData(0, 1_000_000, 0d)]
-    // Beyond the window (an over-long prompt the CLI still counted) clamps to 100 rather than reading 104%.
-    [InlineData(1_040_000, 1_000_000, 100d)]
-    public void TheContextPercentUsesTheCliesOwnRoundingAndClamp(long tokens, long window, double expected)
-    {
-        var assistant = $$$"""{"type":"assistant","message":{"id":"m","type":"message","role":"assistant","model":"claude-opus-5","content":[],"usage":{"input_tokens":{{{tokens}}},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"session_id":"s","uuid":"u"}""";
-        var result = $$$"""{"type":"result","subtype":"success","session_id":"s","usage":{"input_tokens":0},"modelUsage":{"claude-opus-5":{"contextWindow":{{{window}}}}},"is_error":false}""";
-
-        var status = Observe(assistant, result).Status;
-
-        Assert.NotNull(status);
-        Assert.Equal(expected, status.ContextUsedPercent);
-    }
-
-    [Fact]
-    public void AModelUsageEntryWithNoUsableWindowSize_LeavesTheContextPercentUnknown()
-    {
-        const string assistant = """{"type":"assistant","message":{"id":"m","type":"message","role":"assistant","model":"claude-opus-5","content":[],"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"session_id":"s","uuid":"u"}""";
-
-        // A zero window would be a division by zero; an absent one is simply not reported.
-        Assert.Null(Observe(assistant, """{"type":"result","subtype":"success","session_id":"s","modelUsage":{"claude-opus-5":{"contextWindow":0}},"is_error":false}""").Status);
-        Assert.Null(Observe(assistant, """{"type":"result","subtype":"success","session_id":"s","modelUsage":{"claude-opus-5":{"maxOutputTokens":64000}},"is_error":false}""").Status);
-        Assert.Null(Observe(assistant, """{"type":"result","subtype":"success","session_id":"s","is_error":false}""").Status);
-    }
-
-    [Fact]
-    public void AResultNamingSeveralModels_TakesTheWindowOfTheOneThatAnswered()
-    {
-        // Two models in one turn have different windows; picking the wrong entry silently reports the wrong fill.
-        const string assistant = """{"type":"assistant","message":{"id":"m","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[],"usage":{"input_tokens":100000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"session_id":"s","uuid":"u"}""";
-        const string result = """{"type":"result","subtype":"success","session_id":"s","modelUsage":{"claude-opus-5":{"contextWindow":1000000},"claude-haiku-4-5":{"contextWindow":200000}},"is_error":false}""";
-
-        var status = Observe(assistant, result).Status;
-
-        Assert.NotNull(status);
-        // 100000/200000 = 50%, not 100000/1000000 = 10%.
-        Assert.Equal(50d, status.ContextUsedPercent);
-    }
+    // The CLI already rounds; this only refuses what is not a percentage at all. Beyond the window (an over-long
+    // prompt the CLI still counted) clamps to 100 rather than reading 104%.
+    [InlineData("3", 3d)]
+    [InlineData("0", 0d)]
+    [InlineData("104", 100d)]
+    [InlineData("-1", 0d)]
+    public void AContextFigureIsClampedIntoTheRangeAPillCanDraw(string percentage, double expected) =>
+        Assert.Equal(expected, Context(new ClaudeSdkUsage(), $$"""{"percentage":{{percentage}}}""").Status!.ContextUsedPercent);
 
     [Fact]
     public void ALineThatIsNotJsonThisClassUnderstands_IsIgnoredRatherThanThrowing()
@@ -269,61 +235,6 @@ public class ClaudeSdkUsageTests
         Assert.Null(Observe(line).Status);
     }
 
-    [Fact]
-    public void NegativeTokenCounts_AreReadAsNotReportedRatherThanAsAnEmptyWindow()
-    {
-        const string result = """{"type":"result","subtype":"success","session_id":"s","modelUsage":{"claude-opus-5":{"contextWindow":200000}},"is_error":false}""";
-
-        // Every component unusable means nothing was reported at all: summing them to a clamped zero would render a
-        // confident "0% used" off figures that were never percentages.
-        const string allNegative = """{"type":"assistant","message":{"id":"m","type":"message","role":"assistant","model":"claude-opus-5","content":[],"usage":{"input_tokens":-5000,"cache_creation_input_tokens":-1,"cache_read_input_tokens":-2,"output_tokens":1}},"session_id":"s","uuid":"u"}""";
-        Assert.Null(Observe(allNegative, result).Status);
-
-        // One bad component among genuine ones is dropped rather than subtracted: 0 + 0 + 50000 of 200000 is 25%,
-        // where folding the -5000 in would have understated a quarter-full window as 22%.
-        const string oneNegative = """{"type":"assistant","message":{"id":"m","type":"message","role":"assistant","model":"claude-opus-5","content":[],"usage":{"input_tokens":-5000,"cache_creation_input_tokens":0,"cache_read_input_tokens":50000,"output_tokens":1}},"session_id":"s","uuid":"u"}""";
-        var status = Observe(oneNegative, result).Status;
-        Assert.NotNull(status);
-        Assert.Equal(25d, status.ContextUsedPercent);
-    }
-
-    [Fact]
-    public void ATurnWhoseModelsCannotBeMatched_DropsTheWindowInsteadOfReusingTheLastOnesDenominator()
-    {
-        // Turn 1 settles a 200,000-token window. Turn 2 answers on a model the result line does not name — the one
-        // shape where a stale window would still be sitting there, and 100,000 tokens against it reads as a tidy,
-        // entirely believable 50% that belongs to neither turn. No window means no figure.
-        const string firstAssistant = """{"type":"assistant","message":{"id":"m1","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[],"usage":{"input_tokens":50000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"session_id":"s","uuid":"u1"}""";
-        const string firstResult = """{"type":"result","subtype":"success","session_id":"s","modelUsage":{"claude-haiku-4-5":{"contextWindow":200000}},"is_error":false}""";
-
-        var settled = Observe(firstAssistant, firstResult).Status;
-        Assert.NotNull(settled);
-        Assert.Equal(25d, settled.ContextUsedPercent);
-
-        const string secondAssistant = """{"type":"assistant","message":{"id":"m2","type":"message","role":"assistant","model":"claude-sonnet-9","content":[],"usage":{"input_tokens":100000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"session_id":"s","uuid":"u2"}""";
-        // Two entries, neither of them the model that answered — so the single-entry fallback cannot rescue it either.
-        const string secondResult = """{"type":"result","subtype":"success","session_id":"s","modelUsage":{"claude-haiku-4-5":{"contextWindow":200000},"claude-opus-5":{"contextWindow":1000000}},"is_error":false}""";
-        // Carried so the pill still has something to show, which keeps this an assertion about the context figure
-        // alone rather than about the snapshot disappearing wholesale.
-        const string limit = """{"type":"rate_limit_event","rate_limit_info":{"rateLimitType":"five_hour","utilization":0.4},"uuid":"u","session_id":"s"}""";
-
-        var status = Observe(firstAssistant, firstResult, secondAssistant, secondResult, limit).Status;
-
-        Assert.NotNull(status);
-        Assert.Null(status.ContextUsedPercent);
-        Assert.Equal("5h", Assert.Single(status.RateLimits).Label);
-    }
-
-    [Fact]
-    public void AResultLineNamingNoModelsAtAll_LeavesTheEstablishedWindowStanding()
-    {
-        // An errored turn carries no modelUsage. That is the CLI saying nothing about the window, not saying the
-        // window changed — so the last good reading survives instead of the pill blanking on a transient failure.
-        var status = Observe([.. RealTurn, """{"type":"result","subtype":"error_during_execution","session_id":"s","is_error":true,"errors":["boom"]}"""]).Status;
-
-        Assert.NotNull(status);
-        Assert.Equal(3d, status.ContextUsedPercent);
-    }
 
     // The real capture, exposed for the driver-level test that pushes it down an actual stdout pump.
     internal static IReadOnlyList<string> RealTurnLines => RealTurn;

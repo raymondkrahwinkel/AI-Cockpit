@@ -25,6 +25,7 @@ public partial class SessionView : UserControl
     // the fingerprint the old code called "a real user scroll". Three rounds of this ticket died on that
     // ambiguity. The wheel is a single event, so this is a one-shot flag; a scrollbar drag lasts as long as the
     // button is held, which is what `_pointerHeld` is for.
+    // "The next one to arrive" is the whole claim, and it needs an expiry to stay true — see _OnTranscriptWheel.
     private bool _wheelTurned;
 
     private bool _pointerHeld;
@@ -134,7 +135,19 @@ public partial class SessionView : UserControl
         ScrollToBottomButton.IsVisible = !_stickToBottom;
     }
 
-    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e) => _wheelTurned = true;
+    // A wheel turn at the bottom of the transcript moves nothing, so it raises no ScrollChanged at all — and the
+    // flag, cleared only in that handler, then stands until some later and entirely unrelated change comes to
+    // consume it. Measured (AC-621): park at the newest row, roll one click further down, send a message four
+    // lines or longer, and the row you just sent is read as the operator scrolling away from the tail — the
+    // follow stops, 62px short of the bottom at eight lines, 817px at sixty. Without the wheel turn first, the
+    // same message never breaks it. So expire the flag on the event that always happens, the end of this turn's
+    // layout work: Background is below Layout and Render, so every ScrollChanged the wheel genuinely did cause
+    // has already been raised — and one that never came can no longer be charged to the operator.
+    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e)
+    {
+        _wheelTurned = true;
+        Dispatcher.UIThread.Post(() => _wheelTurned = false, DispatcherPriority.Background);
+    }
 
     private void _OnTranscriptPointerPressed(object? sender, PointerPressedEventArgs e) => _pointerHeld = true;
 

@@ -10,7 +10,20 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
     private readonly Channel<string> _stdout = Channel.CreateUnbounded<string>();
     private readonly Channel<string> _stderr = Channel.CreateUnbounded<string>();
 
-    public List<string> WrittenLines { get; } = [];
+    private readonly List<string> _writtenLines = [];
+
+    // A snapshot, because the driver's usage poll writes from its own task while a test reads: the poll is
+    // fire-and-forget off the stdout pump, so a plain List would be enumerated mid-Add.
+    public IReadOnlyList<string> WrittenLines
+    {
+        get
+        {
+            lock (_writtenLines)
+            {
+                return [.. _writtenLines];
+            }
+        }
+    }
 
     public IReadOnlyDictionary<string, string?>? EnvironmentVariables { get; private set; }
 
@@ -31,7 +44,11 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)
     {
-        WrittenLines.Add(line);
+        lock (_writtenLines)
+        {
+            _writtenLines.Add(line);
+        }
+
         return Task.CompletedTask;
     }
 
