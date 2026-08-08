@@ -59,7 +59,17 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     // A microphone level for the waveform. Both dictation sources feed the same microphone, so whichever owns
     // the pill is the one being drawn — the view model already drops a level that arrives while the pill is not
     // listening, which is what keeps a late frame from a finished hold out of the next one.
-    public void PushLevel(double level) => overlay.PushLevel(level);
+    public void PushLevel(double level)
+    {
+        overlay.PushLevel(level);
+        LevelSampled?.Invoke(this, level);
+    }
+
+    // The same level, for anything that draws the microphone besides the pill — today the assistant chip's own
+    // line (AC-543). Announced from here rather than subscribed at each of the three sources, because all three
+    // already funnel through `PushLevel`: a second set of subscriptions would be three places to keep in step
+    // with what "the microphone is open" means.
+    public event EventHandler<double>? LevelSampled;
 
     // Preparing and Unavailable carry words; the view model drops them the moment the state moves on, so they
     // have to be re-applied every time this recomputes — a source's status must not evaporate because another

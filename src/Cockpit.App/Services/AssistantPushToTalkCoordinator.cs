@@ -162,9 +162,16 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _playbackQueue.StopAll();
 
         _isRecording = _pushToTalk.BeginHold();
-        _overlay.SetPushToTalk(
-            _isRecording ? VoiceOverlayState.Listening : VoiceOverlayState.Unavailable,
-            _isRecording ? null : "The microphone could not be opened");
+
+        // A hold that is actually recording says so on the chip (below) and nowhere else — the pill stopped
+        // carrying the assistant's own states on 2026-08-08, since the chip has a line for every one of them and
+        // two places saying the same thing is one place too many. A hold that could *not* open the microphone is
+        // the exception that stays: it is a failure with words, and those still belong on the floating pill, which
+        // is visible when the cockpit is not.
+        if (!_isRecording)
+        {
+            _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, "The microphone could not be opened");
+        }
 
         // Say out loud that the assistant is the one listening. The pill this coordinator just wrote to is shared
         // with dictation and open-mic, so without this the chip read a held F10 as dictation — and told the
@@ -208,10 +215,10 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
             return;
         }
 
-        _overlay.SetPushToTalk(VoiceOverlayState.Transcribing);
+        _assistant.ReportTranscribing(true);
 
-        // Only for as long as this hold: first use fetches gigabytes before it can transcribe, and the pill spent
-        // that time on a spinner that claimed to be transcribing.
+        // Only for as long as this hold: first use fetches gigabytes before it can transcribe, and the chip would
+        // otherwise spend that time on a word that claimed to be transcribing.
         _pushToTalk.Preparing += _OnPreparing;
         _pushToTalk.Prepared += _OnPrepared;
 
@@ -249,9 +256,11 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         {
             _pushToTalk.Preparing -= _OnPreparing;
             _pushToTalk.Prepared -= _OnPrepared;
-        }
 
-        _overlay.SetPushToTalk(null);
+            // Whatever happened — a transcript, an empty capture, an exception — transcription is over. A no-op
+            // once SendAsync has already moved the chip on to Thinking, which is the ordinary path.
+            _assistant.ReportTranscribing(false);
+        }
     }
 
     // Puts a failed hold's explanation on the pill and, after `MessageLinger`, clears it — unless a
@@ -282,8 +291,8 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     }
 
     private void _OnPreparing(object? sender, VoicePreparationProgress step) =>
-        Dispatcher.UIThread.Post(() => _overlay.SetPushToTalk(VoiceOverlayState.Preparing, step.Description, step.Fraction));
+        Dispatcher.UIThread.Post(() => _assistant.ReportPreparing(step.Description, step.Fraction));
 
     private void _OnPrepared(object? sender, EventArgs e) =>
-        Dispatcher.UIThread.Post(() => _overlay.SetPushToTalk(VoiceOverlayState.Transcribing));
+        Dispatcher.UIThread.Post(() => _assistant.ReportPreparing(null, null));
 }

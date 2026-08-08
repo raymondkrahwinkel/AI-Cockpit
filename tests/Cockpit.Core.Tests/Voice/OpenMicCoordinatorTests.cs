@@ -218,25 +218,25 @@ public class OpenMicCoordinatorTests
     }
 
     /// <summary>
-    /// Open-mic listens the whole time it is on, so the pill has to appear when the VAD hears speech start —
-    /// not when the feature is switched on, and not when the transcript lands, by which time the speaking is
-    /// over. Before this it never appeared at all: dictating with open-mic was completely invisible.
+    /// An open microphone is the assistant's, so what it is doing is said on the assistant's own chip and not on
+    /// the floating pill (2026-08-08). The chip already stands at "listening continuously" for as long as the mic
+    /// is open; the part it does not know by itself is the gap between you stopping and the assistant starting,
+    /// which is what the transcribing report is for. The pill stays out of it entirely — it is dictation's now.
     /// </summary>
     [Fact]
-    public async Task WhenTheVadHearsSpeechStart_ThePillAppears()
+    public async Task WhenTheVadHearsSpeech_TheAssistantIsTold_AndThePillStaysOut()
     {
         var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
+        var assistant = Substitute.For<IAssistantSessionHost>();
         var coordinator = _CreateCoordinator(out _, out _,
-            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator, assistant: assistant);
         await coordinator.StartAsync();
 
-        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
-
         coordinator.HandleSpeechStarted();
-        Assert.Equal(VoiceOverlayState.Listening, overlayCoordinator.Overlay.State);
-
         coordinator.HandleSpeechEnded();
-        Assert.Equal(VoiceOverlayState.Transcribing, overlayCoordinator.Overlay.State);
+
+        assistant.Received().ReportTranscribing(true);
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
     }
 
     /// <summary>The pill is released once the text lands, not when the speaking stopped — the cleanup pass runs in between.</summary>

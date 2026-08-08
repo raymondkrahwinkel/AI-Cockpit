@@ -9,6 +9,7 @@
 #FF0C0E12  CockpitSecondaryBgColor
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
 #FF1A1D24  CockpitPanelBgColor
+#FF202430  CockpitInsetBgColor
 #FF22D3EE  CockpitStatusBusyColor
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
@@ -19,4 +20,6 @@
 radius  0,0,0,0
 radius  13,13,13,13
 radius  16,16,16,16
+radius  20,20,20,20
+radius  3,3,3,3
 radius  9,9,9,9

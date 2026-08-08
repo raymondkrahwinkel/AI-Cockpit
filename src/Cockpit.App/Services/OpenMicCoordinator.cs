@@ -324,11 +324,14 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             _playbackQueue.StopAll();
         }
 
-        _overlay.SetOpenMic(VoiceOverlayState.Listening);
+        // Not the pill: an open microphone is the assistant's, and the chip already stands at "listening
+        // continuously" for as long as it is open (Raymond, 2026-08-08 — the assistant's states left the pill).
+        _assistant.ReportTranscribing(false);
     }
 
-    // Test seam: the utterance is over and about to be transcribed — the part worth a spinner.
-    internal void HandleSpeechEnded() => _overlay.SetOpenMic(VoiceOverlayState.Transcribing);
+    // Test seam: the utterance is over and about to be transcribed — the part worth saying out loud, because it is
+    // the gap between you stopping and the assistant starting.
+    internal void HandleSpeechEnded() => _assistant.ReportTranscribing(true);
 
     // Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — `HandleSpeakingStarted` flips it to speaking once audio actually plays.
     internal void HandlePlaybackActiveChanged(bool active)

@@ -40,6 +40,10 @@ public partial class ThemeTemplatePartTests
         ["CheckBox"] = () => (new CheckBox { Content = "x", IsChecked = true }, host => host),
         ["CheckBox.Switch"] = () =>
             (new CheckBox { Classes = { "Switch" }, Content = "x", IsChecked = true }, host => host),
+        // The chip's listening switch: the same template, shrunk. Both classes, because the parts it reaches for
+        // come from Switch and only the sizes come from its own class.
+        ["CheckBox.Switch.assistantIndicatorSwitch"] = () =>
+            (new CheckBox { Classes = { "Switch", "assistantIndicatorSwitch" }, IsChecked = true }, host => host),
         ["ComboBox"] = () => (new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 }, host => host),
         ["RadioButton"] = () => (new RadioButton { Content = "x", IsChecked = true }, host => host),
         ["TextBox"] = () => (new TextBox { Text = "x" }, host => host),
