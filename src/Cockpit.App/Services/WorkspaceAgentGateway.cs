@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
@@ -19,7 +20,9 @@ namespace Cockpit.App.Services;
 // `SessionPanelViewModel.WorkspaceId` instead, the same live source `CockpitViewModel` itself
 // decides against — through `SessionWorkspacePlacement`, which is where that rule lives for every
 // consumer of it. A pane it places nowhere (the assistant, or an unassigned session at a moment when no
-// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk.
+// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk. That is about
+// the *caller*: the assistant is still refused a desk of its own, and is still listed on every desk it manages, as
+// an address rather than as an occupant (AC-632) — see where the roster is built.
 //
 // `CockpitViewModel.Sessions` is an `System.Collections.ObjectModel.ObservableCollection{T}`
 // that only ever mutates on the UI thread, but an MCP tool call lands on the endpoint's own request thread — the
@@ -48,6 +51,17 @@ internal sealed class WorkspaceAgentGateway(
 
     private AgentWakeOutcome _TryWake(string callerPaneId, string targetPaneId, string kind)
     {
+        // AC-632: the assistant is on the roster as an address, not as a pane a neighbour may start a turn on. It
+        // is in neither collection `AllSessions` reads, so without this the refusal below would report PaneGone —
+        // "no longer a live session" — about a session that is live and did take the message. Said plainly
+        // instead, because a turn on the assistant is one spoken out loud to the operator, and nothing on this
+        // line gets to spend that. Its mail reaches it anyway, on its own next turn or on the result of its next
+        // tool call (AC-394/AC-527), which is why urgent buys nothing here rather than being needed.
+        if (string.Equals(targetPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+        {
+            return AgentWakeOutcome.NotWakeable;
+        }
+
         if (cockpit.AllSessions().FirstOrDefault(session => string.Equals(session.PaneId, targetPaneId, StringComparison.Ordinal)) is not { } target)
         {
             return AgentWakeOutcome.PaneGone;
@@ -171,6 +185,29 @@ internal sealed class WorkspaceAgentGateway(
                 candidate.Statusline,
                 candidate.DeliversInboxAtTurnStart))
             .ToList();
+
+        // AC-632: the assistant, on every desk it manages. It sits on no workspace of its own — that is what
+        // `SessionWorkspacePlacement` says about it and it stays true — so it is not *placed* here, it is
+        // *addressed* here: a row on each desk's roster so a session the assistant started can notify it back the
+        // way it would notify any neighbour, instead of the assistant having to poll `list_sessions` for news.
+        //
+        // The workspace boundary is untouched by this. Nothing about the assistant's own reach changes — it
+        // still resolves to no desk of its own, so it cannot call `list_agents` and be handed one, and a message
+        // it sends still goes through `AssistantAgentGateway`, which was already allowed to cross desks (AC-545).
+        // What is new is one address, and it is the same address on every desk because there is one assistant.
+        //
+        // Only while one is actually running: an address advertised with nobody behind it is mail delivered into
+        // an inbox that nothing will ever open, which is the exact failure AC-614's unreachable warning exists to
+        // stop a sender walking into.
+        if (cockpit.AssistantPane is { } assistant)
+        {
+            panes.Add(new WorkspaceAgentPane(
+                assistant.PaneId,
+                assistant.Title,
+                assistant.ActiveProfileLabel,
+                assistant.Statusline,
+                assistant.DeliversInboxAtTurnStart));
+        }
 
         // AC-613: the host writing down the panes it knows about, which is what makes the roster measure presence
         // instead of tool use. Done here rather than at session start because this is the one place that already
