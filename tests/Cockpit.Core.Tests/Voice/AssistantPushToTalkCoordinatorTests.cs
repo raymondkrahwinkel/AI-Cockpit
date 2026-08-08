@@ -97,9 +97,27 @@ public class AssistantPushToTalkCoordinatorTests
         Assert.Equal(VoiceOverlayState.Speaking, overlay.State);
     }
 
+    /// <summary>
+    /// AC-627 criterion 4: F10 during Always On still does nothing, since both paths end at the assistant anyway.
+    /// What changed is that it no longer reports a fault for something that is not one.
+    /// </summary>
+    [Fact]
+    public void WithAlwaysOnOn_F10DoesNothing_AndSaysNothingAboutIt()
+    {
+        var openMic = Substitute.For<IOpenMicState>();
+        openMic.IsListening.Returns(true);
+        var (coordinator, overlay, _, pushToTalk, _, _) = _Coordinator(openMic);
+
+        coordinator.HandleHoldStarted();
+
+        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
+        Assert.Empty(overlay.StatusText);
+        pushToTalk.DidNotReceive().BeginHold();
+    }
+
     private static (AssistantPushToTalkCoordinator Coordinator, VoiceOverlayViewModel Overlay,
         IAssistantSessionHost Assistant, IVoicePushToTalkService PushToTalk, IVoicePlaybackQueue Playback,
-        VoiceOverlayCoordinator OverlayCoordinator) _Coordinator()
+        VoiceOverlayCoordinator OverlayCoordinator) _Coordinator(IOpenMicState? openMicState = null)
     {
         var assistant = Substitute.For<IAssistantSessionHost>();
         assistant.Activity.Returns(AssistantActivity.Ready);
@@ -119,6 +137,7 @@ public class AssistantPushToTalkCoordinatorTests
             pushToTalk,
             NullLogger<AssistantPushToTalkCoordinator>.Instance,
             playback,
+            openMicState,
             messageLinger: TestLinger);
 
         return (coordinator, overlay, assistant, pushToTalk, playback, overlayCoordinator);

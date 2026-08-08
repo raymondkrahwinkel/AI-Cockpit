@@ -129,12 +129,12 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         // this hold's own state is what belongs on the pill from here on, not a delayed clear stepping on it.
         _pushToTalkGeneration++;
 
-        // Open-mic is already listening to the assistant continuously; a hold on top of it would send the same
-        // sentence twice. Open-mic wins and says so, exactly as the dictation path stands down for it.
+        // Open-mic already sends to the assistant, so unlike F9 there is nothing for a hold to take back. Silent
+        // and still armed (AC-627): it is not a fault, and an unregistered F10 would fall through to the app
+        // underneath.
         if (_openMicState?.IsListening == true)
         {
             _isRecording = false;
-            _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, "The assistant is already listening");
             return;
         }
 

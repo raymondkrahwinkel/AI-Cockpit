@@ -48,6 +48,10 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     // Whether read-aloud is playing right now — the only time a loud microphone means anything to this coordinator.
     private bool _isPlaying;
 
+    // True while a push-to-talk hold has the microphone (AC-627). Volatile because the hold sets it on the UI
+    // thread and the capture thread reads it in `_OnUtteranceTranscribed`.
+    private volatile bool _suspendedForHold;
+
     // Read when listening starts rather than per frame: a level fires many times a second, and the silence
     // timeout next to these is read once at the same point for the same reason.
     private bool _stopReadAloudWhenSpeaking;
@@ -222,13 +226,59 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             {
                 _listener.Pause();
             }
-            else
+            else if (!_suspendedForHold)
             {
+                // Read-aloud finishing is not this microphone's cue to come back while a hold still has it.
                 _listener.Resume();
             }
         }
 
         Dispatcher.UIThread.Post(() => HandlePlaybackActiveChanged(active));
+    }
+
+    // AC-627: the hold wins over open-mic and takes the microphone for its duration.
+    public IDisposable SuspendForHold()
+    {
+        if (!IsListening)
+        {
+            // Nothing to step aside from. Still a handle, so the caller's dispose is unconditional.
+            return new HoldSuspension(this);
+        }
+
+        _suspendedForHold = true;
+        _listener.Pause();
+
+        // Pause drops the half-formed utterance; these are the finished ones still queued, spoken before the key
+        // went down and so the composer's rather than the assistant's (AC-627).
+        while (_injections.Reader.TryRead(out _))
+        {
+        }
+
+        // The pill was showing open-mic's own state; the hold is about to claim it.
+        _overlay.SetOpenMic(null);
+
+        return new HoldSuspension(this);
+    }
+
+    private void _ResumeAfterHold()
+    {
+        if (!_suspendedForHold)
+        {
+            return;
+        }
+
+        _suspendedForHold = false;
+
+        // Unless read-aloud still has it paused for barge-in (AC-9) — the hold ending does not undo that.
+        if (!_isPlaying || _stopReadAloudWhenSpeaking)
+        {
+            _listener.Resume();
+        }
+    }
+
+    private sealed class HoldSuspension(OpenMicCoordinator owner) : IDisposable
+    {
+        public void Dispose() => owner._ResumeAfterHold();
     }
 
     private void _OnSpeakingStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeakingStarted);
@@ -279,7 +329,17 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     // Queue rather than inject inline: the injection is awaited one at a time by the consumer, so utterances
     // land in spoken order.
-    private void _OnUtteranceTranscribed(object? sender, string rawText) => _injections.Writer.TryWrite(rawText);
+    // Nothing is queued while a hold has the microphone: `Pause` cannot stop an utterance already inside the
+    // transcribe call, which arrives here after the key went down (AC-627).
+    private void _OnUtteranceTranscribed(object? sender, string rawText)
+    {
+        if (_suspendedForHold)
+        {
+            return;
+        }
+
+        _injections.Writer.TryWrite(rawText);
+    }
 
     private async Task _ConsumeInjectionsAsync()
     {
@@ -319,7 +379,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         {
             // Nothing to do when the utterance filtered down to nothing (a throat-clear or a bare "um" the STT
             // noise filter removed) — sending empty text is exactly what "have a normal conversation" must not do.
-            if (string.IsNullOrWhiteSpace(rawText))
+            // Nor while a hold has the microphone: the consumer may have taken this one out of the queue before the
+            // key went down, and this is the last point it can still be dropped (AC-627).
+            if (string.IsNullOrWhiteSpace(rawText) || _suspendedForHold)
             {
                 return;
             }

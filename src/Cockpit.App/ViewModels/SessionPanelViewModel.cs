@@ -1102,10 +1102,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private IOpenMicState? _openMicState;
 
-    // Whether open-mic dictation is listening right now — read live, since the operator toggles it at runtime.
-    // The push-to-talk key gate uses it to stand the local hotkey down while open-mic is on (see
-    // `PushToTalkKeyGate`), so a held key does not transcribe the same speech the open mic already is.
-    public bool OpenMicActive => _openMicState?.IsListening ?? false;
+    // Open-mic's claim on the microphone, held for the length of a push-to-talk hold and released when it ends
+    // (AC-627). Null when no hold is in progress, or when there is no open-mic to step aside.
+    private IDisposable? _openMicSuspension;
 
     // Mirrors the saved voice-input setting, loaded once via `InitializeVoice`. Gates `BeginVoiceHold` so a disabled operator's F9 does nothing.
     [ObservableProperty]
@@ -1285,6 +1284,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         if (started)
         {
             VoiceStatus = "Listening...";
+
+            // AC-627: and open-mic steps aside for the length of the hold. Here because both the global and the
+            // in-window F9 route come through this method; `??=` so a doubled hold cannot strand the first claim.
+            _openMicSuspension ??= _openMicState?.SuspendForHold();
         }
 
         return started;
@@ -1298,6 +1301,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             return;
         }
+
+        // The key is up, so open-mic gets the microphone back — before the transcription, which on first use can
+        // spend minutes downloading a model (AC-627).
+        _openMicSuspension?.Dispose();
+        _openMicSuspension = null;
 
         VoiceStatus = "Transcribing...";
 

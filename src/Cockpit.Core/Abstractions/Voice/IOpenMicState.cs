@@ -1,11 +1,20 @@
 namespace Cockpit.Core.Abstractions.Voice;
 
 /// <summary>
-/// Whether continuous open-mic dictation is actively listening right now. Push-to-talk reads this to stand
-/// down while open-mic is on: both capture and transcribe the same speech, so a push-to-talk hold on top of
-/// an open mic lands the dictation twice. Open-mic wins — the hold is suppressed.
+/// Whether continuous open-mic dictation is listening right now, and how a push-to-talk hold takes the
+/// microphone off it for the length of that hold (AC-627).
 /// </summary>
 public interface IOpenMicState
 {
     bool IsListening { get; }
+
+    /// <summary>
+    /// Pauses open-mic until the handle is disposed, dropping the utterance it was half-way through and anything
+    /// transcribed but not yet sent. A handle that does nothing when open-mic is not listening.
+    /// </summary>
+    /// <remarks>
+    /// Pausing alone leaks: an utterance closed as the key went down is already being transcribed and arrives
+    /// afterwards, which is why this is one call rather than the listener's own Pause/Resume (AC-627).
+    /// </remarks>
+    IDisposable SuspendForHold();
 }
