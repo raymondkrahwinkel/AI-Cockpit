@@ -342,7 +342,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var existing = group.FirstOrDefault(row => row.TaskId == task.TaskId);
             if (existing is null)
             {
-                group.Add(new BackgroundTaskViewModel(task.TaskId, task.Kind, task.Description, _backgroundTaskFirstSeen[task.TaskId]));
+                group.Add(new BackgroundTaskViewModel(
+                    task.TaskId, task.Kind, task.Description, _backgroundTaskFirstSeen[task.TaskId], ToggleBackgroundTaskSelection));
             }
             else
             {

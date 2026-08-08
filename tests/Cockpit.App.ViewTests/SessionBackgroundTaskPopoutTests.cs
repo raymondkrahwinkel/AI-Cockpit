@@ -227,6 +227,25 @@ public class SessionBackgroundTaskPopoutTests
         Assert.True(session.BackgroundSubAgents[1].IsSelected);
     });
 
+    /// <summary>
+    /// The row's own command is what the pop-out clicks (AC-630) — it replaced a PointerPressed handler in
+    /// SessionView's code-behind, because the row template is now shared app-wide and a ResourceDictionary has no
+    /// code-behind to hold one. Both windows resolve that one template; a second copy is what this must not become.
+    /// </summary>
+    [Fact]
+    public void TheRowsOwnCommand_ExpandsIt_AndTheTemplateItDrawsWithIsSharedAppWide() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel();
+        session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
+
+        session.BackgroundSubAgents[0].ToggleCommand.Execute(null);
+        Assert.True(session.BackgroundSubAgents[0].IsSelected);
+
+        Assert.True(Avalonia.Application.Current!.Resources.TryGetResource(
+            "BackgroundTaskRowTemplate", Avalonia.Styling.ThemeVariant.Dark, out var template));
+        Assert.IsAssignableFrom<Avalonia.Controls.Templates.IDataTemplate>(template);
+    });
+
     [Fact]
     public void SelectingTheSameTaskTwice_Collapses() => HeadlessAvalonia.Run(() =>
     {

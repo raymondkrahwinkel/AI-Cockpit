@@ -189,6 +189,26 @@ public partial class AssistantChatWindow : Window
 
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
     {
+        // CTRL+V taken over whole (AC-630), for the same reason SessionView does: the clipboard read is async
+        // while the TextBox's own paste is not, so leaving the default in place races binary content into the box.
+        if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true;
+            _ = _HandlePasteAsync();
+            return;
+        }
+
+        // Arrow-Up on an empty box pulls the most recently queued message back for editing — the session pane's
+        // gesture, on the same queue. Guarded on an empty box so it never clobbers what is being typed.
+        if (e.Key == Key.Up
+            && string.IsNullOrEmpty(InputBox.Text)
+            && DataContext is AssistantChatViewModel recallVm
+            && recallVm.RecallLastQueuedMessage())
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
             return;
@@ -199,6 +219,62 @@ public partial class AssistantChatWindow : Window
         {
             vm.SendCommand.Execute(null);
         }
+    }
+
+    // The view owns the clipboard read and the view model only ever sees PNG bytes — the same split SessionView
+    // keeps. The vision gate stays `SessionViewModel.AddPastedImage`'s, so a provider that cannot see images says
+    // so in the transcript instead of dropping the paste silently.
+    private async System.Threading.Tasks.Task _HandlePasteAsync()
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null || DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        try
+        {
+            var bitmap = await clipboard.TryGetBitmapAsync();
+            if (bitmap is not null)
+            {
+                using (bitmap)
+                {
+                    // No session yet (the assistant is unavailable, or its lazy start failed) means nothing to
+                    // attach to — the transcript notice AddPastedImage would give needs a transcript.
+                    if (vm.Session is { } session)
+                    {
+                        using var stream = new MemoryStream();
+                        bitmap.Save(stream);
+                        session.AddPastedImage(stream.ToArray());
+                    }
+                }
+
+                return;
+            }
+
+            var text = await clipboard.TryGetTextAsync();
+            if (!string.IsNullOrEmpty(text))
+            {
+                _InsertText(text);
+            }
+        }
+        catch (Exception)
+        {
+            // Clipboard unavailable (locked by another app, unsupported content): drop the paste rather than
+            // crash the UI thread.
+        }
+    }
+
+    // Inserts text at the caret, replacing any current selection — mirrors a normal paste.
+    private void _InsertText(string text)
+    {
+        var start = Math.Min(InputBox.SelectionStart, InputBox.SelectionEnd);
+        var end = Math.Max(InputBox.SelectionStart, InputBox.SelectionEnd);
+        var current = InputBox.Text ?? string.Empty;
+        InputBox.Text = current[..start] + text + current[end..];
+        InputBox.CaretIndex = start + text.Length;
+        InputBox.SelectionStart = InputBox.CaretIndex;
+        InputBox.SelectionEnd = InputBox.CaretIndex;
     }
 
     // Copies a tool result's formatted text to the clipboard — same idiom as SessionView._OnCopyResultClick.

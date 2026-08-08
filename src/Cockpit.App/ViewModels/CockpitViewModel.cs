@@ -1890,10 +1890,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     partial void OnScreenshotsChanged(ScreenshotCoordinator? value)
     {
-        foreach (var session in Sessions)
-        {
-            _WireScreenshots(session);
-        }
+        _WireScreenshotsEverywhere();
 
         if (value is { } screenshots)
         {
@@ -1909,9 +1906,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         await screenshots.SupportSettled.ConfigureAwait(true);
 
+        _WireScreenshotsEverywhere();
+    }
+
+    // Every session there is — the assistant included, which sits in neither collection and would otherwise keep a
+    // greyed-out button for the rest of the run (AC-630).
+    private void _WireScreenshotsEverywhere()
+    {
         foreach (var session in Sessions)
         {
             _WireScreenshots(session);
+        }
+
+        if (_assistantSession is { } assistant)
+        {
+            _WireScreenshots(assistant);
         }
     }
 
@@ -6185,6 +6194,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.BelongsToNoWorkspace = true;
         session.Title = Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName;
         _SeedSessionPreferences(session);
+
+        // The screenshot button in the chat window, with the region picker and its marking tools behind it
+        // (AC-630). Missing here is why the assistant was the one session that could not be shown anything.
+        _WireScreenshots(session);
 
         // Status changes still feed the shared status plumbing, so the indicator can read "thinking" off the same
         // signal every other session reports through — but no close wiring: the assistant is not closed by the
