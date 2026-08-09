@@ -7,10 +7,8 @@ using Cockpit.Infrastructure.Sessions;
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
 /// <summary>
-/// The session memory cap (AC-661): what a session is allowed to hold, and — on Windows — that the OS actually
-/// enforces it around the session's whole process tree while leaving this process (standing in for the cockpit)
-/// entirely alone. That last part is the whole ticket: a runaway <c>dotnet test</c> in a session took the cockpit
-/// down with it three times on this machine, and once on Fedora through the kernel OOM killer.
+/// The session memory cap (AC-661): what a session may hold, and — on Windows — that the OS enforces it around
+/// the session's whole tree while leaving this process (standing in for the cockpit) alone.
 /// </summary>
 public class SessionMemoryCapTests
 {
@@ -62,9 +60,7 @@ public class SessionMemoryCapTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            // The Linux half is the cgroup limiter, which needs a cgroup v2 machine to mean anything; macOS has no
-            // equivalent at all (AC-661 criterion 3). Windows is where this bug was reproduced, so it is where the
-            // mechanism is proven.
+            // Windows is where this bug was reproduced, so it is where the mechanism is proven live.
             return;
         }
 
@@ -87,9 +83,8 @@ public class SessionMemoryCapTests
             catch { exit 42 }
             """);
 
-        // cmd.exe is the direct child; the allocating powershell is its child. A cap that only bound what we
-        // assigned would leave this one untouched — which is exactly the shape of the bug (`claude` is fine, the
-        // `dotnet test` it started is not).
+        // cmd.exe is the direct child and the allocating powershell its child — the shape of the bug, where
+        // `claude` is fine and the `dotnet test` it started is not.
         using var parent = Process.Start(new ProcessStartInfo
         {
             FileName = "cmd.exe",
@@ -116,10 +111,8 @@ public class SessionMemoryCapTests
 
             Assert.True(parent.WaitForExit(60_000), "The capped tree never exited.");
 
-            // It was stopped, and stopped near its cap: 200 steps is 10 GB, which a machine with room would have
-            // handed over happily if nothing were enforcing anything.
-            // Non-zero proves the grandchild really ran and allocated — without it the two bounds below would pass
-            // on a tree that never started at all.
+            // Non-zero first: without it the two bounds below pass on a tree that never started. 200 steps is
+            // 10 GB, which a machine with room would have handed over happily.
             Assert.True(reached > 0, "The allocating grandchild never got going, so nothing was proven.");
             Assert.True(reached < 200, $"The tree allocated its full 10 GB (reached step {reached}); the cap did not bind.");
             Assert.True(reached * 50L * 1024 * 1024 < capBytes * 2, $"The tree reached {reached * 50} MB against a {capBytes / 1024 / 1024} MB cap.");
@@ -149,10 +142,8 @@ public class SessionMemoryCapTests
             return;
         }
 
-        // The test above proves the job object; this one proves it over the spawn a session really uses —
-        // `ConPtyHostFactory`, the same call `TtyLauncher` makes. A pseudo-console child is created by us with
-        // `CreateProcessW`, so it is an ordinary child of this process and joins the job like any other; that is
-        // the claim being checked rather than assumed.
+        // The same claim over the spawn a session really uses — `ConPtyHostFactory`, the call `TtyLauncher` makes.
+        // A pseudo-console child is an ordinary child of this process, so it joins the job like any other.
         const long capBytes = 512L * 1024 * 1024;
 
         var script = Path.Combine(Path.GetTempPath(), $"cockpit-hog-pty-{Guid.NewGuid():n}.ps1");
@@ -189,8 +180,7 @@ public class SessionMemoryCapTests
                 .Apply(pty.ProcessId, capBytes);
             Assert.NotNull(cap);
 
-            // The pty EOFs when the child tree is gone — reaching it is the tree having ended. Without a cap the
-            // hog would still be climbing towards 10 GB long after this returns.
+            // The pty EOFs when the child tree is gone; uncapped, the hog would still be climbing towards 10 GB.
             var buffer = new byte[4096];
             var read = Task.Run(() =>
             {

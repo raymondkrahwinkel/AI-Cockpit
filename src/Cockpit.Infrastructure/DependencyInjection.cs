@@ -229,7 +229,7 @@ public static class DependencyInjection
     }
 
     // The session memory cap (AC-661) is a different OS primitive per platform — a Job Object, a cgroup, and on
-    // macOS nothing at all. Registered by platform for the same reason as the pty host above.
+    // macOS a polling watchdog, since it has neither. Registered by platform, like the pty host above.
     private static void AddSessionMemoryLimiter(IServiceCollection services)
     {
 #pragma warning disable CA1416
@@ -243,7 +243,7 @@ public static class DependencyInjection
         }
         else
         {
-            services.AddSingleton<ISessionMemoryLimiter, UncappedSessionMemoryLimiter>();
+            services.AddSingleton<ISessionMemoryLimiter, PollingMemoryLimiter>();
         }
 #pragma warning restore CA1416
     }

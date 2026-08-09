@@ -6,16 +6,10 @@ using Cockpit.Core.Abstractions.Sessions;
 namespace Cockpit.Infrastructure.Sessions;
 
 // Windows `ISessionMemoryLimiter` (AC-661): one Job Object per session, `JOB_OBJECT_LIMIT_JOB_MEMORY` over the
-// whole job. Every process the session spawns joins the job automatically (a child cannot break away unless the
-// job allows it), so the ceiling covers the tree — the `dotnet test` an agent starts included.
-//
-// Over the limit, Windows fails the allocation rather than killing on the spot: the offending process gets an
-// out-of-memory error and normally dies of it. That is the accepted outcome; what matters is that the failure is
-// scoped to the job, which the cockpit is not in.
-//
-// No `JOB_OBJECT_LIMIT_BREAKAWAY_OK`: a child that asks to break away is refused rather than let out, so the cap
-// has no escape hatch. The cost is that a spawn using `CREATE_BREAKAWAY_FROM_JOB` fails — nothing an agent CLI or
-// its build tools do, and a hole in the cap would be worse than that.
+// whole job, which every process the session spawns joins automatically. Over the limit Windows fails the
+// allocation rather than killing outright — the offender normally dies of it, scoped to the job the cockpit is
+// not in. No `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, so the cap has no escape hatch; the cost is that a spawn using
+// `CREATE_BREAKAWAY_FROM_JOB` fails, which is nothing an agent CLI or its build tools do.
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsJobMemoryLimiter(ILogger<WindowsJobMemoryLimiter> logger) : ISessionMemoryLimiter
 {
@@ -24,8 +18,6 @@ internal sealed class WindowsJobMemoryLimiter(ILogger<WindowsJobMemoryLimiter> l
 
     private const uint ProcessSetQuota = 0x0100;
     private const uint ProcessTerminate = 0x0001;
-
-    public string Mechanism => "Windows Job Object";
 
     public IDisposable? Apply(int processId, long capBytes)
     {
@@ -78,9 +70,7 @@ internal sealed class WindowsJobMemoryLimiter(ILogger<WindowsJobMemoryLimiter> l
         return new JobHandle(job);
     }
 
-    // Holding the handle is what keeps the job named and inspectable for the session's lifetime; the limit itself
-    // survives the close as long as processes remain in it, and no kill-on-close flag is set, so releasing this
-    // never takes a running session with it.
+    // No kill-on-close flag is set, so releasing this never takes a running session with it.
     private sealed class JobHandle(IntPtr job) : IDisposable
     {
         private IntPtr _job = job;
