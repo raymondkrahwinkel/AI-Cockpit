@@ -1,7 +1,6 @@
 {
-  "category": "Automation",
-  "icon": "🧪",
-  "logoAsset": "local-ci.svg",
+  "category": "AI providers",
+  "logoAsset": "https://claude.ai/favicon.svg",
   "homepage": "https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/docs/plugins",
   "repository": "https://github.com/raymondkrahwinkel/AI-Cockpit",
   "featured": false

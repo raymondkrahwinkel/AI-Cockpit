@@ -6,9 +6,8 @@
 #1822D3EE  CockpitCategoryTintCyanColor
 #182563EB  CockpitCategoryTintBlueColor
 #18A67CD8  CockpitCategoryTintPurpleColor
-#66FFFFFF  off-palette
+#18E0A33E  CockpitCategoryTintAmberColor
 #99FFFFFF  off-palette
-#B30F1116  CockpitScrimColor
 #CCFFFFFF  off-palette
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
@@ -18,15 +17,11 @@
 #FF202430  CockpitInsetBgColor
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
-#FF5AA576  CockpitStatusDoneColor
 #FF656C78  CockpitTextFaintColor
 #FF949AA5  CockpitTextSecondaryColor
 #FFE8EAEF  CockpitTextPrimaryColor
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0
 radius  12,12,12,12
-radius  2,2,2,2
-radius  20,20,20,20
-radius  3,3,3,3
 radius  5,5,5,5
 radius  9,9,9,9

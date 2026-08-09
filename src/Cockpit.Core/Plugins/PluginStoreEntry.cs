@@ -10,6 +10,10 @@ namespace Cockpit.Core.Plugins;
 // recommendation. `Icon` is a single emoji/glyph, not an image path — see the #62 design doc
 // for why (no new download/cache layer needed for a text glyph the app already renders elsewhere, e.g.
 // the titlebar caption glyphs).
+//
+// `LogoAsset` (AC-553) is additive too: a bare file name resolves against the host's bundled assets, an
+// `http(s)` URL is fetched live from the vendor's own CDN (see NOTICE) — either falls back to `Icon`, then
+// the monogram, when it does not resolve.
 public sealed record PluginStoreEntry(
     string Id,
     string Name,
@@ -25,7 +29,8 @@ public sealed record PluginStoreEntry(
     string? Published = null,
     // AC-511: a free string, not the domain's own enum — an unrecognised value would otherwise fail the whole
     // index (see PluginWorkKinds' own remarks), and the placeholder set is not settled yet either way.
-    string? WorkKind = null)
+    string? WorkKind = null,
+    string? LogoAsset = null)
 {
     // The `Category` value that marks a plugin as an AI provider (AC-510[b] criterion 5). Measured
     // against the default store's live `index.json` (raymondkrahwinkel/AI-Cockpit-Plugins, 2026-08-02):

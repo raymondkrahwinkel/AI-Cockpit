@@ -11,6 +11,39 @@ models) are downloaded on first use and are NOT covered by AI-Cockpit's own lice
 their upstream licences apply. See "Third-party model licences" in README.md.
 
 
+Provider plugin logos (fetched at runtime, never bundled)
+-----------------------------------------------------------
+
+AC-553: the store tile for the three AI-provider plugins (Claude, Codex/CLI Agent Provider, Kimi) shows each
+vendor's own real mark rather than a lookalike drawn for this repo. Raymond's call, 2026-08-09 — option A over
+the neutral-letterform fallback (option B): direct recognisability in a store grid is worth more than avoiding
+a trademark, and the licence risk of showing someone else's mark is explicitly his to accept, not the
+builder's. None of the three image files are copied into this repo or the shipped app: each plugin's
+`store.json`/the store index's `logoAsset` field names the vendor's own hosting, fetched live
+(`PluginManagerViewModel._LoadPluginLogoAsync`, capped at 1 MB / 8 s, same as every other store-fetched image)
+and shown exactly as the vendor serves it — never redistributed, never recoloured.
+
+Claude (Anthropic)
+  Source:   https://claude.ai/favicon.svg — Anthropic's own domain.
+  Notice:   "Claude" and the Claude mark are trademarks of Anthropic PBC. Used here only as a live reference to
+            Anthropic's own hosted asset, identifying the Claude Code provider plugin; not an endorsement.
+
+Codex (OpenAI)
+  Source:   https://avatars.githubusercontent.com/openai — the OpenAI organisation's own chosen avatar on
+            GitHub, not openai.com directly: openai.com/favicon.svg carries the identical mark but sits
+            behind bot-protection that consistently 403s .NET's HttpClient (reproduced, not assumed — an
+            otherwise-identical browser fetch of the same URL succeeds) while passing an identical request
+            through unmodified. GitHub's own CDN serves the same official mark without that block.
+  Notice:   "OpenAI" and the OpenAI mark are trademarks of OpenAI. Used here only as a live reference to
+            OpenAI's own chosen asset, identifying the CLI Agent Provider (Codex) plugin; not an endorsement.
+
+Kimi (Moonshot AI)
+  Source:   https://moonshotai.github.io/Branding-Guide/scenarios/04-k-only/k-only-color.svg — Moonshot AI's
+            own published brand-guide repo (github.com/MoonshotAI).
+  Notice:   "Kimi" and the Kimi mark are trademarks of Beijing Moonshot AI. Used here only as a live reference
+            to Moonshot AI's own published asset, identifying the Kimi provider plugin; not an endorsement.
+
+
 Downloaded models
 -----------------
 

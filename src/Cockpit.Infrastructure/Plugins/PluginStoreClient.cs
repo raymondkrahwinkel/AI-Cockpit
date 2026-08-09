@@ -332,6 +332,9 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
     {
         var request = new HttpRequestMessage(HttpMethod.Get, target.Value);
         request.Headers.UserAgent.ParseAdd("Cockpit-PluginStore");
+        // AC-553: a request with no Accept header at all reads as a bot to some WAFs (measured against
+        // openai.com's own bot protection) — this is what a browser always sends.
+        request.Headers.Accept.ParseAdd("*/*");
 
         if (target.GitHubRaw)
         {

@@ -1,3 +1,5 @@
+using Avalonia.Media.Imaging;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Material.Icons;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
@@ -13,14 +15,17 @@ namespace Cockpit.App.ViewModels;
 // install-time gate and the load-time gate would reach is visible here — *before* a click that would
 // only fail. `hostAbstractionsMajor`/`hostVersion` default to the running
 // cockpit's own values; a caller only ever overrides them in a test.
-public sealed class StorePluginRowViewModel(
+//
+// ObservableObject/partial (AC-553) only for `RemoteLogo` — a vendor CDN logo arrives asynchronously, after
+// the row is already on screen, so it is the one property here that needs change notification.
+public sealed partial class StorePluginRowViewModel(
     PluginStoreEntry entry,
     PluginStoreConfig store,
     string? installedVersion,
     bool isEnabled = false,
     bool hasSettings = false,
     int hostAbstractionsMajor = AbstractionsContract.Version,
-    Version? hostVersion = null)
+    Version? hostVersion = null) : ObservableObject
 {
     private Version EffectiveHostVersion => hostVersion ?? HostVersionInfo.Current;
     public PluginStoreEntry Entry => entry;
@@ -110,6 +115,66 @@ public sealed class StorePluginRowViewModel(
 
     // Upper-cased first letter of `Name`, used as the icon fallback when `IconGlyphOrNull` is null.
     public string MonogramLetter => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
+
+    // Whether `entry.LogoAsset` names a vendor's own CDN rather than a bundled file (AC-553 option A) — decides
+    // which download path applies and keeps `LogoAssetUri` from resolving a URL as a bundled file name.
+    public bool IsRemoteLogoAsset =>
+        Uri.TryCreate(entry.LogoAsset, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    // A vendor CDN logo (tier 0), once PluginManagerViewModel's async fetch lands it — null until then, on a
+    // failed/oversize/undecodable fetch, or when `IsRemoteLogoAsset` is false. Shown as-is, in the mark's own
+    // colours: recolouring a trademarked logo to the app's foreground brush is not this ticket's call to make.
+    [ObservableProperty]
+    private Bitmap? _remoteLogo;
+
+    partial void OnRemoteLogoChanged(Bitmap? value)
+    {
+        OnPropertyChanged(nameof(HasRemoteLogo));
+        OnPropertyChanged(nameof(ShowsIconGlyph));
+        OnPropertyChanged(nameof(ShowsMonogram));
+    }
+
+    public bool HasRemoteLogo => RemoteLogo is not null;
+
+    // The bundled `avares://` URI for `entry.LogoAsset` (AC-553), or null when unset, a remote CDN URL, or not
+    // actually shipped by this host — falls through to `IconGlyphOrNull`/`MonogramLetter` rather than a broken image.
+    public string? LogoAssetUri => IsRemoteLogoAsset ? null : _ResolveLogoAssetUri(entry.LogoAsset);
+
+    public bool HasLogoAsset => LogoAssetUri is not null;
+
+    // Tier 2 (the emoji glyph) only shows once tiers 0 and 1 (a vendor CDN logo, then the bundled vector one) are unavailable.
+    public bool ShowsIconGlyph => !HasRemoteLogo && !HasLogoAsset && IconGlyphOrNull is not null;
+
+    // Tier 3, the final fallback: no vendor logo, no bundled logo, no glyph.
+    public bool ShowsMonogram => !HasRemoteLogo && !HasLogoAsset && IconGlyphOrNull is null;
+
+    // Which of the theme's five category tints (Theme.axaml) this tile's background wash uses.
+    public string CategoryTintBrushKey => PluginCategoryTint.BrushKeyFor(Category);
+
+    // A crafted or malformed asset name — a remote index is attacker-reachable input — must cost the logo, not
+    // the row, so this never throws: `Uri.TryCreate` guards a name with characters a URI cannot carry, and
+    // `AssetLoader.Exists` is itself wrapped since it is not documented not to throw on every malformed input.
+    private static string? _ResolveLogoAssetUri(string? asset)
+    {
+        if (string.IsNullOrWhiteSpace(asset))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate($"avares://Cockpit.App/Assets/PluginLogos/{asset}", UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Avalonia.Platform.AssetLoader.Exists(uri) ? uri.ToString() : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     public string? Homepage => entry.Homepage;
 

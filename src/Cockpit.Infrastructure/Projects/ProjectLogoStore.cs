@@ -1,11 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
-using SkiaSharp;
-using Svg.Skia;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Svg;
 
 namespace Cockpit.Infrastructure.Projects;
 
@@ -45,7 +44,7 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
             // An SVG is stored as the PNG it draws to. A logo is very often a vector — a company's own is almost
             // always one — but the surfaces that show it take a decoded bitmap, so converting here is what makes a
             // link to an .svg work at all rather than quietly falling back to the project's initial.
-            if (_IsSvg(bytes, extension) && _RasterisedSvg(bytes) is { } raster)
+            if (SvgRasterizer.LooksLikeSvg(bytes, extension) && SvgRasterizer.Rasterize(bytes, RasterSize) is { } raster)
             {
                 (bytes, extension) = (raster, ".png");
             }
@@ -133,50 +132,6 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         }
 
         return await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-    }
-
-    // Whether these bytes are an SVG: by extension, or by what the document actually starts with — a URL that serves one need not end in `.svg`.
-    private static bool _IsSvg(byte[] bytes, string extension)
-    {
-        if (string.Equals(extension, ".svg", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        var start = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 512));
-        return start.Contains("<svg", StringComparison.OrdinalIgnoreCase);
-    }
-
-    // The SVG drawn onto a PNG at `RasterSize` on its longest side, transparent behind it. Null when
-    // the document does not parse or draws nothing, which leaves the card on the project's initial rather than on
-    // an empty square.
-    private static byte[]? _RasterisedSvg(byte[] bytes)
-    {
-        using var stream = new MemoryStream(bytes);
-        using var svg = new SKSvg();
-        if (svg.Load(stream) is not { } picture || picture.CullRect is { Width: <= 0 } or { Height: <= 0 })
-        {
-            return null;
-        }
-
-        var source = picture.CullRect;
-        var scale = RasterSize / Math.Max(source.Width, source.Height);
-        var width = Math.Max(1, (int)Math.Round(source.Width * scale));
-        var height = Math.Max(1, (int)Math.Round(source.Height * scale));
-
-        using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
-        surface.Canvas.Clear(SKColors.Transparent);
-        surface.Canvas.Scale(scale);
-
-        // Drawn from the picture's own origin: an SVG whose contents start away from (0,0) would otherwise be
-        // rendered partly outside the surface.
-        surface.Canvas.Translate(-source.Left, -source.Top);
-        surface.Canvas.DrawPicture(picture);
-        surface.Canvas.Flush();
-
-        using var image = surface.Snapshot();
-        using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
-        return encoded?.ToArray();
     }
 
     // The file name this project's logo is stored under: its id when that is already nothing but letters, digits,

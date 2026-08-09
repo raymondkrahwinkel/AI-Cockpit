@@ -53,8 +53,8 @@ Add it under *Settings → Secrets and variables → Actions → New repository 
 ## Editorial metadata: optional `store.json`
 
 `plugin.json` carries what the app enforces (id, name, version, `minHostVersion`, …) but not the store's
-presentation fields — `category`, `icon`, `homepage`, `repository`, `featured`. The publish resolves those
-in this order:
+presentation fields — `category`, `icon`, `logoAsset`, `homepage`, `repository`, `featured`. The publish
+resolves those in this order:
 
 1. a **`store.json`** beside the plugin's `plugin.json`, if present;
 2. otherwise the values already on that plugin's entry in the store index (preserved across a version bump);
@@ -64,8 +64,12 @@ So a plugin already in the store keeps its polish across updates with no extra f
 listed with just its identity unless you add a `store.json`, e.g.:
 
 ```json
-{ "category": "Widgets", "icon": "📈", "homepage": "https://…", "repository": "https://…", "featured": false }
+{ "category": "Widgets", "icon": "📈", "logoAsset": "usage-trend.svg", "homepage": "https://…", "repository": "https://…", "featured": false }
 ```
+
+`logoAsset` (AC-553) names an SVG the *app itself* bundles under `Assets/PluginLogos/` — it only ever
+resolves for plugins this host ships with; it is meaningless (and harmlessly ignored, falling back to
+`icon`) for a third-party plugin the app does not carry an asset for.
 
 Any field `store.json` sets overrides the manifest/preserved value; `name`, `description` and `author` may be
 overridden there too, but default to the manifest.

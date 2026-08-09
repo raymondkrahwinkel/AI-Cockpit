@@ -3,6 +3,7 @@
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:views="using:Cockpit.App.Views"
         xmlns:core="using:Cockpit.Core.Plugins"
+        xmlns:conv="using:Cockpit.App.Converters"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -375,14 +376,21 @@
                             <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
                         </Button>
 
-                        <Border Width="56" Height="56" CornerRadius="12" Background="{StaticResource CockpitSecondaryBgBrush}"
+                        <Border Width="56" Height="56" CornerRadius="{StaticResource CockpitPanelRadius}"
+                                Background="{Binding CategoryTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                 HorizontalAlignment="Left">
                             <Panel>
+                                <Image Source="{Binding RemoteLogo}" Width="30" Height="30" Stretch="Uniform"
+                                       IsVisible="{Binding HasRemoteLogo}"/>
+                                <Viewbox Width="28" Height="28" IsVisible="{Binding HasLogoAsset}">
+                                    <Path Data="{Binding LogoAssetUri, Converter={x:Static conv:PluginLogoGeometryConverter.Instance}}"
+                                          Fill="{StaticResource CockpitTextPrimaryBrush}"/>
+                                </Viewbox>
                                 <TextBlock Text="{Binding IconGlyphOrNull}" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           IsVisible="{Binding IconGlyphOrNull, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                           IsVisible="{Binding ShowsIconGlyph}"/>
                                 <TextBlock Text="{Binding MonogramLetter}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                           IsVisible="{Binding IconGlyphOrNull, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                                           IsVisible="{Binding ShowsMonogram}"/>
                             </Panel>
                         </Border>
 
