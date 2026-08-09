@@ -201,7 +201,9 @@
                          assistant has no pane in any workspace (BelongsToNoWorkspace), so there was nowhere at all to
                          see what it was running. Same rows, same template as the session pane
                          (Views/Shared/BackgroundTaskTemplates.axaml) — not a second copy. -->
-                    <Button Classes="Subtle Compact" HorizontalAlignment="Left" Padding="0"
+                    <!-- Subtle alone: Button.Compact is declared after Button.Subtle, so it puts the filled
+                         28px surface back and Padding="0" then pushes the pill and chevron into its corners. -->
+                    <Button Classes="Subtle" HorizontalAlignment="Left" Padding="0"
                             IsVisible="{Binding Session.HasBackgroundTasks, FallbackValue=False}"
                             ToolTip.Tip="Sub-agents and shells still running in the background">
                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
@@ -342,8 +344,8 @@
                              its marking tools, landing as an attachment on the composer rather than a message of its
                              own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
                              where a session that cannot take an image says why. -->
-                        <Button DockPanel.Dock="Right" Command="{Binding Session.CaptureScreenshotCommand}"
-                                Classes="Compact" VerticalAlignment="Bottom" Margin="6,0,0,0" Padding="7,5"
+                        <Button x:Name="ScreenshotButton" DockPanel.Dock="Right" Command="{Binding Session.CaptureScreenshotCommand}"
+                                Classes="Compact composerAction" VerticalAlignment="Bottom" Margin="6,0,0,0" Padding="8,6"
                                 ToolTip.Tip="{Binding Session.ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
                             <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14"/>
                         </Button>
