@@ -1202,7 +1202,7 @@
                     <!-- Plugin quick-actions (AC-91) sit just left of the gear; both hug the right. -->
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
                         <controls:PluginToolbarHost VerticalAlignment="Center"/>
-                        <Button Padding="8,4"
+                        <Button x:Name="WorkspaceLayoutButton" Padding="8,4"
                                 ToolTip.Tip="How this workspace arranges its sessions">
                         <materialIcons:MaterialIcon Kind="Cog" Width="14" Height="14"/>
                         <Button.Flyout>
@@ -1220,6 +1220,9 @@
                                               IsEnabled="{Binding !WorkspaceFollowsGlobalLayout}"/>
                                     <CheckBox Content="Stack sessions vertically (one column)"
                                               IsChecked="{Binding WorkspaceStackSessionsVertically}"
+                                              IsEnabled="{Binding !WorkspaceFollowsGlobalLayout}"/>
+                                    <CheckBox Content="Focus + rail (one session large, the rest as a mini-rail)"
+                                              IsChecked="{Binding WorkspaceFocusRailLayout}"
                                               IsEnabled="{Binding !WorkspaceFollowsGlobalLayout}"/>
                                 </StackPanel>
                             </Flyout>

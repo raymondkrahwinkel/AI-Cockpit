@@ -497,6 +497,20 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public void ShowZoomButton_HidesInFocusRailLayout_LikeItDoesInSingleSessionLayout()
+    {
+        var vm = new CockpitViewModel();
+        var workspaceId = vm.Workspaces.Active!.Id;
+        vm.Sessions.Add(new SessionViewModel { Title = "S1", WorkspaceId = workspaceId });
+        vm.Sessions.Add(new SessionViewModel { Title = "S2", WorkspaceId = workspaceId });
+        Assert.True(vm.ShowZoomButton, "two sessions in the adaptive grid can be zoomed");
+
+        vm.GlobalFocusRailLayout = true;
+        Assert.True(vm.FocusRailLayout);
+        Assert.False(vm.ShowZoomButton, "focus+rail already shows one session large — Zoom would be a no-op (AC-445)");
+    }
+
+    [Fact]
     public async Task SessionCloseRequested_ClosesThatSessionThroughTheCockpit()
     {
         var vm = NewVm();
