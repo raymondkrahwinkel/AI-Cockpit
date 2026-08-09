@@ -378,16 +378,26 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             return;
         }
 
-        var sharedIds = sharedProjects.Select(project => project.Id).ToHashSet(StringComparer.Ordinal);
+        var byId = sharedProjects.ToDictionary(project => project.Id, StringComparer.Ordinal);
         foreach (var project in _settings.Projects)
         {
             var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
-            if (boundTo is { Length: > 0 } && sharedIds.Contains(boundTo))
+            if (boundTo is { Length: > 0 } && byId.TryGetValue(boundTo, out var sharedProject))
             {
-                // A geclaimed field is locked host-side regardless of IsEditable today — there is nowhere yet for
-                // an edit to be written back to (AC-247). See ProjectFieldOwnership's own remarks; not setting this
-                // true here is deliberate, not an oversight.
-                _ownership!.Register(new ProjectOwnershipRegistration(project.Id, new ProjectFieldOwnership(sourceName)));
+                // AC-247: every claimed field but Logo unlocks once the source itself says this role can write
+                // (SharedProject.CanWriteBack) — ProjectDialogViewModel.SaveAsync now has somewhere to send that
+                // edit (ISharedProjectSource.WriteBackAsync). Logo overrides back to locked regardless: no
+                // artifact-upload path exists yet for writing a shared logo back, so an "editable" claim there
+                // would still drop what the operator picked, silently, on save — the exact failure mode
+                // ProjectFieldOwnership.IsEditable's own contract exists to prevent.
+                _ownership!.Register(new ProjectOwnershipRegistration(
+                    project.Id, new ProjectFieldOwnership(sourceName, IsEditable: sharedProject.CanWriteBack))
+                {
+                    Overrides = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+                    {
+                        [HostProjectField.Logo] = new ProjectFieldOwnership(sourceName),
+                    },
+                });
             }
         }
     }
@@ -449,12 +459,29 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             return;
         }
 
-        if (await _dialogs.ShowProjectDialogAsync(project) is { } edited)
+        if (await _dialogs.ShowProjectDialogAsync(project, _ResolveSharedSource(project)) is { } edited)
         {
             var stored = await _WithStoredLogoAsync(edited);
             await _PersistAsync(_settings.WithUpdated(stored));
             SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
         }
+    }
+
+    // The source `project` is bound to (its own Memory-role resource names a SharedProject.Id this source listed),
+    // or null for a plain local project — same prefix-match FinishSettingUpAsync already uses to find a source by
+    // a SharedProject.Id it produced. AC-247: lets ShowProjectDialogAsync read a fresh checksum and decide whether
+    // this editor's Save can write back at all.
+    private ISharedProjectSource? _ResolveSharedSource(Project project)
+    {
+        if (_sharedSources is null)
+        {
+            return null;
+        }
+
+        var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
+        return boundTo is { Length: > 0 }
+            ? _sharedSources.Sources.FirstOrDefault(source => boundTo.StartsWith(source.Key + ":", StringComparison.Ordinal))
+            : null;
     }
 
     // Removes a project after confirming. Sessions already running under it keep running — a project is what a

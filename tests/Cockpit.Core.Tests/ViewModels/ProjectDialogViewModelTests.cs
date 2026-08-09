@@ -580,12 +580,11 @@ public class ProjectDialogViewModelTests
     }
 
     [Fact]
-    public async Task CreateAsync_AnEditableClaimedField_IsStillLockedUntilThereIsSomewhereToWriteBackTo()
+    public async Task CreateAsync_AnEditableClaimedField_UnlocksTheControl()
     {
-        // Regression (Raymond, review of the first render): ProjectFieldOwnership.IsEditable: true used to unlock
-        // the control while there was still nowhere for an edit to go — the operator's typing vanished on Save
-        // without a word about it. Until AC-247 gives an editable claim a write-back destination, every claimed
-        // field is locked regardless of IsEditable.
+        // AC-247: ProjectFieldOwnership.IsEditable: true now unlocks the control — the source that claimed this
+        // field also gave SaveAsync somewhere to write an edit back to (ISharedProjectSource.WriteBackAsync), so
+        // the pre-AC-247 regression (an edit vanishing on save with nowhere to go) no longer applies.
         var project = Project.Create("Cockpit");
         var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
         {
@@ -594,8 +593,8 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project, ProfileStore("personal"), Catalog(), fieldOwnership: fieldOwnership);
 
-        Assert.True(viewModel.BehaviorOrigin.IsLockedHere, "an editable claim must not offer an edit with nowhere to go");
-        Assert.Contains("Depot — Work", viewModel.BehaviorOrigin.ReadOnlyReason);
+        Assert.False(viewModel.BehaviorOrigin.IsLockedHere, "an editable claim now has somewhere to write an edit back to");
+        Assert.Null(viewModel.BehaviorOrigin.ReadOnlyReason);
     }
 
     [Fact]
@@ -614,11 +613,30 @@ public class ProjectDialogViewModelTests
     }
 
     [Fact]
-    public async Task ToProject_AClaimedField_CarriesTheOriginalValueRatherThanTheLocalEdit()
+    public async Task ToProject_AStillLockedClaimedField_CarriesTheOriginalValueRatherThanTheLocalEdit()
     {
-        // Acceptance criterion 3: an edit to a claimed field must never reach cockpit.json. Editable=true here on
-        // purpose — even a field the control lets the operator type into must not save that edit, since the write
-        // destination for an editable claim is the plugin, not cockpit.json (not built by this seam ticket).
+        // Acceptance criterion 3, narrowed by AC-247: an edit to a claimed field with nowhere to write back to
+        // must never reach cockpit.json. IsEditable: false here on purpose — this is the case _Carry still guards;
+        // the editable case below is what AC-247 changed.
+        var project = Project.Create("Cockpit") with { Name = "Original name" };
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Name] = new ProjectFieldOwnership("EVE Workbench — Team", IsEditable: false),
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), Catalog(), fieldOwnership: fieldOwnership);
+
+        viewModel.Name = "Edited locally";
+
+        Assert.Equal("Original name", viewModel.ToProject().Name);
+    }
+
+    [Fact]
+    public async Task ToProject_AnEditableClaimedField_SavesTheLocalEdit()
+    {
+        // AC-247: once a claim is editable, ToProject reflects the operator's own edit — SaveAsync only reaches
+        // ToProject after its own write-back already landed the edit at the source (or there is no write-back
+        // context at all, the pre-AC-247 shape), so nothing here bypasses the source's own write.
         var project = Project.Create("Cockpit") with { Name = "Original name" };
         var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
         {
@@ -629,7 +647,7 @@ public class ProjectDialogViewModelTests
 
         viewModel.Name = "Edited locally";
 
-        Assert.Equal("Original name", viewModel.ToProject().Name);
+        Assert.Equal("Edited locally", viewModel.ToProject().Name);
     }
 
     [Fact]

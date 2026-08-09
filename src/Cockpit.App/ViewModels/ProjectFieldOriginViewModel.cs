@@ -14,10 +14,11 @@ public sealed class ProjectFieldOriginViewModel
     // The negation of `IsClaimed` as its own property — a XAML class binding needs a direct bool path, not a negated one.
     public bool IsLocalOrigin => !IsClaimed;
 
-    // Whether the control is locked. Every claimed field is locked, regardless of
-    // `Plugins.Abstractions.Projects.ProjectFieldOwnership.IsEditable` — there is no write-back
-    // destination for an edit yet (AC-247), so a control that let the operator type would accept a value that
-    // disappears silently on save. Reconsider this once AC-247 gives an editable claim somewhere to write to.
+    // Whether the control is locked — the negation of the registration's own
+    // `Plugins.Abstractions.Projects.ProjectFieldOwnership.IsEditable` (AC-247). A claimed field with nowhere to
+    // write an edit back to still locks (the default, `isEditable: false`); one whose source claimed it editable
+    // unlocks, because `ProjectDialogViewModel.SaveAsync` now has a destination for that edit
+    // (`ISharedProjectSource.WriteBackAsync`) instead of silently dropping it on save.
     public bool IsLockedHere { get; private init; }
 
     public string? SourceName { get; private init; }
@@ -27,13 +28,10 @@ public sealed class ProjectFieldOriginViewModel
     // The reason shown under a locked field instead of leaving it silently disabled. Null when the field is not locked.
     public string? ReadOnlyReason => IsLockedHere ? $"Shared from {SourceName} — read-only here." : null;
 
-    // `isEditable`:
-    // Carried from the registration for when AC-247 adds a write-back path; not read here today — see
-    // `IsLockedHere`.
     public static ProjectFieldOriginViewModel Claimed(string sourceName, bool isEditable) => new()
     {
         IsClaimed = true,
-        IsLockedHere = true,
+        IsLockedHere = !isEditable,
         SourceName = sourceName,
     };
 }

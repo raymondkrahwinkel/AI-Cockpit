@@ -96,6 +96,9 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
             {
                 Description = definition.Description,
                 Role = role.ToDisplayString(),
+                // AC-247: Editor/Owner may write WriteBackAsync's target; Viewer/Unknown may not — the same
+                // minimum DepotProjectRoleParser's own remarks already earmarked this enum for.
+                CanWriteBack = role is DepotProjectRole.Editor or DepotProjectRole.Owner,
             });
         }
 
@@ -134,9 +137,89 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
                 definitionResult.Error is { Length: > 0 } error ? error : "Depot did not return a project definition.");
         }
 
+        return SharedProjectBindingResult.Success(_ToBinding(slug, definition, definitionResult.Checksum));
+    }
+
+    // AC-247. Re-reads id's current definition first — not for its own checksum (the caller's baseChecksum, from
+    // the read the operator's edit actually started from, is what CockpitProjectDefinitionStore.WriteAsync is
+    // asked to defend), but so GitUrl, Resources and Logo — every field SharedProjectDefinitionEdit does not
+    // mention — carry through byte-for-byte rather than being reconstructed from SharedProjectBinding's own lossy
+    // read shape (a resource row's Placeholder flag, in particular, does not survive a round trip through
+    // SharedProjectBindingResource — rebuilding one from just Role/Reference/Label would silently drop every
+    // placeholder row on write).
+    //
+    // This fresh read cannot substitute for baseChecksum: if nothing changed since the operator opened the editor,
+    // it is (by definition) identical to what that earlier read saw, so reusing it for pass-through fields changes
+    // nothing a conflict would have caught. If something did change, the write below still carries the operator's
+    // own, older baseChecksum — so the server-side check catches the change regardless of which fields it touched,
+    // exactly the guarantee optimistic concurrency exists for.
+    public async Task<SharedProjectWriteBackResult> WriteBackAsync(
+        string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken)
+    {
+        var prefix = $"{scheme}:";
+        if (!id.StartsWith(prefix, StringComparison.Ordinal) || id.Length <= prefix.Length)
+        {
+            return SharedProjectWriteBackResult.Failed($"'{id}' does not belong to this Depot connection.");
+        }
+
+        var slug = id[prefix.Length..];
+        var currentRead = await CockpitProjectDefinitionStore.ReadAsync(
+            host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
+
+        if (currentRead.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+        {
+            return SharedProjectWriteBackResult.Failed("Sign in to this Depot connection to save this project.");
+        }
+
+        if (currentRead.Outcome != PluginMcpToolCallOutcome.Success || currentRead.Definition is not { } current)
+        {
+            return SharedProjectWriteBackResult.Failed(
+                currentRead.Error is { Length: > 0 } error ? error : "Depot did not return a project definition.");
+        }
+
+        var merged = new CockpitProjectDefinition
+        {
+            Name = edit.Name,
+            Description = edit.Description,
+            GitUrl = current.GitUrl,
+            BehaviorPrompt = edit.BehaviorPrompt,
+            IsolateInWorktreeByDefault = edit.IsolateInWorktreeByDefault,
+            // Adversarial review finding: this used to fall back to `current.McpOverlay` on null, reading
+            // SharedProjectDefinitionEdit's own "null means no opinion, every server ticked" (the same idiom
+            // SharedProjectBinding.EnabledMcpServerNames already documents for the read direction) as "the operator
+            // didn't touch this." The two mean opposite things — an operator who re-ticks every server to clear a
+            // remote restriction sends null on purpose, and the old code silently kept the restriction Depot
+            // already had. Always reflect what edit actually says, never fall back to what was already there.
+            McpOverlay = edit.EnabledMcpServerNames is { } enabled ? new CockpitProjectMcpOverlayEntry { Enabled = [.. enabled] } : null,
+            Resources = current.Resources,
+            Logo = current.Logo,
+        };
+
+        var writeResult = await CockpitProjectDefinitionStore.WriteAsync(
+            host, connection.McpServerName, slug, merged, baseChecksum, callerRole: null, cancellationToken).ConfigureAwait(false);
+
+        return writeResult.Outcome switch
+        {
+            PluginMcpToolCallOutcome.Success => SharedProjectWriteBackResult.Success(writeResult.Checksum!),
+            _ when writeResult.FailureKind == CockpitProjectDefinitionWriteFailureKind.ChecksumConflict =>
+                // `current`/`currentRead.Checksum` — the read this call itself did, moments before the rejected
+                // write — is exactly "what Depot has now" a conflict view needs; no second read to show it.
+                SharedProjectWriteBackResult.Conflict(_ToBinding(slug, current, currentRead.Checksum)),
+            _ when writeResult.FailureKind == CockpitProjectDefinitionWriteFailureKind.PermissionDenied =>
+                SharedProjectWriteBackResult.PermissionDenied(
+                    writeResult.Error is { Length: > 0 } error ? error : "You do not have permission to write here."),
+            _ => SharedProjectWriteBackResult.Failed(
+                writeResult.Error is { Length: > 0 } error ? error : "Depot did not confirm the write."),
+        };
+    }
+
+    // Shared by PrepareBindingAsync and WriteBackAsync's own conflict snapshot — both ever have to turn a
+    // CockpitProjectDefinition into the plugin-shape-agnostic SharedProjectBinding the same way.
+    private static SharedProjectBinding _ToBinding(string slug, CockpitProjectDefinition definition, string? checksum)
+    {
         var name = definition.Name is { Length: > 0 } ? definition.Name : slug;
 
-        return SharedProjectBindingResult.Success(new SharedProjectBinding(name)
+        return new SharedProjectBinding(name)
         {
             Description = definition.Description,
             GitUrl = definition.GitUrl,
@@ -154,6 +237,7 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
                     .Where(resource => resource.Placeholder || !string.IsNullOrWhiteSpace(resource.Reference))
                     .Select(resource => new SharedProjectBindingResource(resource.Role, resource.Reference) { Label = resource.Label }),
             ],
-        });
+            Checksum = checksum,
+        };
     }
 }

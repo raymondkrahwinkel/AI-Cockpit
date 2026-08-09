@@ -47,4 +47,30 @@ public interface ISharedProjectSource
     /// </summary>
     /// <param name="id">A <see cref="SharedProject.Id"/> this source itself listed — never one <see cref="ListAsync"/> never returned.</param>
     Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Writes an edit to <paramref name="id"/>'s own claimed fields back to this source (AC-247) — called once,
+    /// when the operator saves the project editor for an already-bound project whose fields
+    /// <c>ProjectsViewModel._ClaimBoundProjects</c> claimed as this source's. Every field this source's own
+    /// portable definition carries but <see cref="SharedProjectDefinitionEdit"/> does not mention (<c>GitUrl</c>,
+    /// <c>Resources</c>, a logo) must be carried through untouched, never dropped just because this call did not
+    /// name them.
+    /// <para>
+    /// Must not throw for an ordinary failure — report it through <see cref="SharedProjectWriteBackResult.Failed"/>,
+    /// the same contract <see cref="ListAsync"/> and <see cref="PrepareBindingAsync"/> already keep for their own
+    /// failures. A permission failure and a checksum conflict are told apart
+    /// (<see cref="SharedProjectWriteBackOutcome.PermissionDenied"/> vs. <see cref="SharedProjectWriteBackOutcome.ChecksumConflict"/>)
+    /// wherever this source can tell them apart — a caller that cannot distinguish "no reason to retry" from "reread
+    /// and offer a merge" cannot honour AC-247's own "never silently overwrite" rule.
+    /// </para>
+    /// </summary>
+    /// <param name="id">A <see cref="SharedProject.Id"/> this source itself listed.</param>
+    /// <param name="edit">The operator's edited values.</param>
+    /// <param name="baseChecksum">
+    /// The <see cref="SharedProjectBinding.Checksum"/> from the read the operator's edit started from — sent
+    /// unmodified, however long the editor stayed open, so this source's own optimistic-concurrency check answers
+    /// the question it exists to answer: did anything change since the operator started editing, not since a
+    /// moment ago.
+    /// </param>
+    Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken);
 }

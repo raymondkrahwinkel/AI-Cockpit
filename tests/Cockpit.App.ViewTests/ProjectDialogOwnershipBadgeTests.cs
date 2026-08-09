@@ -138,10 +138,10 @@ public class ProjectDialogOwnershipBadgeTests
     }
 
     [Fact]
-    public async Task AnEditableClaimedField_TheRealTextBoxIsStillDisabled()
+    public async Task AnEditableClaimedField_TheRealTextBoxIsEnabled()
     {
-        // Review point 1, measured against the actual control rather than the view model: IsEditable: true must
-        // not leave the real TextBox enabled while there is nowhere for an edit to go.
+        // AC-247, measured against the actual control rather than the view model: IsEditable: true now enables
+        // the real TextBox — the source that claimed this field gave SaveAsync somewhere to write an edit back to.
         var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
         {
             [HostProjectField.Behavior] = new ProjectFieldOwnership("Depot — Work", IsEditable: true),
@@ -160,7 +160,34 @@ public class ProjectDialogOwnershipBadgeTests
             window.Close();
 
             Assert.NotNull(behaviorBox);
-            Assert.False(behaviorBox.IsEnabled, "an editable claim has nowhere to write an edit back to yet, so the control must stay locked");
+            Assert.True(behaviorBox.IsEnabled, "an editable claim now has somewhere to write an edit back to");
+        });
+    }
+
+    [Fact]
+    public async Task AReadOnlyClaimedField_TheRealTextBoxIsStillDisabled()
+    {
+        // The mirror of the test above: IsEditable: false is still the pre-AC-247 shape — nowhere to write an
+        // edit back to, so the control must stay locked.
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Behavior] = new ProjectFieldOwnership("EVE Workbench — Team", IsEditable: false),
+        };
+        var viewModel = await ViewModelAsync(Project.Create("Cockpit"), fieldOwnership);
+
+        HeadlessAvalonia.Run(() =>
+        {
+            var window = new ProjectDialog { DataContext = viewModel };
+            window.Show();
+            window.UpdateLayout();
+
+            var behaviorBox = window.GetVisualDescendants().OfType<TextBox>()
+                .FirstOrDefault(box => box.PlaceholderText != null
+                    && box.PlaceholderText.Contains("Follow the project conventions"));
+            window.Close();
+
+            Assert.NotNull(behaviorBox);
+            Assert.False(behaviorBox.IsEnabled, "a read-only claim has nowhere to write an edit back to, so the control must stay locked");
         });
     }
 }
