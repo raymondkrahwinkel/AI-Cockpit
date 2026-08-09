@@ -113,6 +113,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   it answers in your language, that it is being listened to rather than read, that it never treats a spoken "yes" as
   permission. If you do want to write its instructions from scratch, there is now an advanced tick-box for it that
   spells out what goes.
+- changed: Autopilot's per-step opening brief — resent in full to every fresh step session — dropped a sentence
+  repeated verbatim between its execution mandate and its closing instruction, and two filler transitions, without
+  touching the guidance that keeps lighter models from analysing a step instead of building it.
 
 ### Fixed
 
