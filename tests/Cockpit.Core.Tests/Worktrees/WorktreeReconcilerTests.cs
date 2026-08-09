@@ -1,5 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -65,6 +66,20 @@ public class WorktreeReconcilerTests
         await reconciler.RunOnceAsync();
 
         await _worktrees.DidNotReceiveWithAnyArgs().ReconcileAsync(default!, default);
+    }
+
+    // AC-654: the assistant owns every worktree `worktree_create` makes for it and is in no session list, so a live
+    // set that does not name it makes each of those an orphan the sweep removes under a working agent.
+    [Fact]
+    public async Task TheAssistant_IsLiveEvenWhenTheWiredSetLeavesItOut()
+    {
+        using var reconciler = new WorktreeReconciler(_worktrees) { LiveSessionIds = () => ["pane-1"] };
+
+        await reconciler.RunOnceAsync();
+
+        await _worktrees.Received(1).ReconcileAsync(
+            Arg.Is<IReadOnlyCollection<string>>(ids => ids.Contains(AssistantIdentity.PaneId) && ids.Contains("pane-1")),
+            Arg.Any<CancellationToken>());
     }
 
     // Asked of the container rather than of the class: an unregistered reconciler resolves to null in `App.axaml.cs`,
