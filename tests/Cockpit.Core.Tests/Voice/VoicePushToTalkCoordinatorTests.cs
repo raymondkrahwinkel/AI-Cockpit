@@ -29,7 +29,7 @@ namespace Cockpit.Core.Tests.Voice;
 /// <c>Dispatcher.UIThread.Post</c>. Driving a real Avalonia dispatcher loop from a unit test is not
 /// practical, so these tests call the internal test seam directly (see the class remarks) — everything
 /// past the dispatcher hop is exercised for real: the selected session's actual
-/// <see cref="IVoicePushToTalkService"/> and a fake overlay presenter.
+/// <see cref="IVoicePushToTalkService"/>, its own report into the pill, and a fake overlay presenter.
 /// </summary>
 public class VoicePushToTalkCoordinatorTests
 {
@@ -38,14 +38,14 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.BeginHold().Returns(true);
-        var session = _CreateSdkSession(voicePushToTalk);
-        var overlayPresenter = new FakeVoiceOverlayPresenter();
-        var coordinator = _CreateCoordinator(session, overlayPresenter, out var overlay);
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, pill: pill);
+        var coordinator = _CreateCoordinator(session, pill);
 
         coordinator.HandleHoldStarted();
 
-        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
-        Assert.Equal(1, overlayPresenter.ShowCallCount);
+        Assert.Equal(VoiceOverlayState.Listening, pill.Overlay.State);
+        Assert.Equal(1, pill.Presenter.ShowCallCount);
         voicePushToTalk.Received(1).BeginHold();
     }
 
@@ -58,16 +58,16 @@ public class VoicePushToTalkCoordinatorTests
     [Fact]
     public void HandleHoldStarted_NoSelectedSession_ShowsTheOverlaySayingSo_AndDoesNotThrow()
     {
-        var overlayPresenter = new FakeVoiceOverlayPresenter();
-        var coordinator = _CreateCoordinator(session: null, overlayPresenter, out var overlay);
+        var pill = _NewPill();
+        var coordinator = _CreateCoordinator(session: null, pill);
 
         var act = coordinator.HandleHoldStarted;
 
         act();
-        Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
-        Assert.Equal("No session selected", overlay.StatusText);
-        Assert.False(overlay.IsListening);
-        Assert.Equal(1, overlayPresenter.ShowCallCount);
+        Assert.Equal(VoiceOverlayState.Unavailable, pill.Overlay.State);
+        Assert.Equal("No session selected", pill.Overlay.StatusText);
+        Assert.False(pill.Overlay.IsListening);
+        Assert.Equal(1, pill.Presenter.ShowCallCount);
     }
 
     [Fact]
@@ -75,16 +75,56 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the file");
-        var session = _CreateSdkSession(voicePushToTalk);
-        var overlayPresenter = new FakeVoiceOverlayPresenter();
-        var coordinator = _CreateCoordinator(session, overlayPresenter, out var overlay);
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, pill: pill);
+        var coordinator = _CreateCoordinator(session, pill);
         _StartARecordingHold(coordinator, session, voicePushToTalk);
 
         await coordinator.HandleHoldEndedAsync();
 
         await voicePushToTalk.Received(1).EndHoldAsync(Arg.Any<CancellationToken>());
-        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
-        Assert.Equal(1, overlayPresenter.HideCallCount);
+        Assert.Equal(VoiceOverlayState.Hidden, pill.Overlay.State);
+        Assert.Equal(1, pill.Presenter.HideCallCount);
+    }
+
+    /// <summary>
+    /// AC-557, the reported defect: a long dictation that produced nothing hid the pill regardless and said
+    /// nothing anywhere. The reason now stays on screen — the hold's own report, which the coordinator no longer
+    /// paints over.
+    /// </summary>
+    [Fact]
+    public async Task HandleHoldEndedAsync_WhenNothingWasTranscribed_LeavesTheReasonOnThePill()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns(string.Empty);
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, pill: pill);
+        var coordinator = _CreateCoordinator(session, pill);
+        _StartARecordingHold(coordinator, session, voicePushToTalk);
+
+        await coordinator.HandleHoldEndedAsync();
+
+        Assert.Equal(VoiceOverlayState.Failed, pill.Overlay.State);
+        Assert.NotEmpty(pill.Overlay.StatusText);
+        Assert.Equal(0, pill.Presenter.HideCallCount);
+    }
+
+    /// <summary>The other way a dictation ends in nothing: the transcriber threw, and only the log knew.</summary>
+    [Fact]
+    public async Task HandleHoldEndedAsync_WhenTranscriptionThrows_SaysSoOnThePill()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>())
+            .Returns<string>(_ => throw new InvalidOperationException("the speech model could not be loaded"));
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, pill: pill);
+        var coordinator = _CreateCoordinator(session, pill);
+        _StartARecordingHold(coordinator, session, voicePushToTalk);
+
+        await coordinator.HandleHoldEndedAsync();
+
+        Assert.Equal(VoiceOverlayState.Failed, pill.Overlay.State);
+        Assert.Contains("the speech model could not be loaded", pill.Overlay.StatusText);
     }
 
     /// <summary>A session whose voice is switched off declines the hold just as silently — and just as invisibly.</summary>
@@ -93,14 +133,15 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.BeginHold().Returns(false);
-        var session = _CreateSdkSession(voicePushToTalk);
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, pill: pill);
         session.VoiceEnabled = false;
-        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay);
+        var coordinator = _CreateCoordinator(session, pill);
 
         coordinator.HandleHoldStarted();
 
-        Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
-        Assert.Equal("Voice is off for this session", overlay.StatusText);
+        Assert.Equal(VoiceOverlayState.Unavailable, pill.Overlay.State);
+        Assert.Equal("Voice is off for this session", pill.Overlay.StatusText);
     }
 
     /// <summary>
@@ -113,12 +154,13 @@ public class VoicePushToTalkCoordinatorTests
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.BeginHold().Returns(true);
         var openMic = _ListeningOpenMic(out var suspension);
-        var session = _CreateSdkSession(voicePushToTalk, openMic);
-        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay);
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, openMic, pill);
+        var coordinator = _CreateCoordinator(session, pill);
 
         coordinator.HandleHoldStarted();
 
-        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
+        Assert.Equal(VoiceOverlayState.Listening, pill.Overlay.State);
         voicePushToTalk.Received(1).BeginHold();
         openMic.Received(1).SuspendForHold();
         suspension.DidNotReceive().Dispose();
@@ -133,8 +175,9 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         var openMic = _ListeningOpenMic(out var suspension);
-        var session = _CreateSdkSession(voicePushToTalk, openMic);
-        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out _);
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, openMic, pill);
+        var coordinator = _CreateCoordinator(session, pill);
         _StartARecordingHold(coordinator, session, voicePushToTalk);
 
         await coordinator.HandleHoldEndedAsync();
@@ -159,63 +202,15 @@ public class VoicePushToTalkCoordinatorTests
     [Fact]
     public async Task HandleHoldEndedAsync_WhenNothingWasRecorded_NeverClaimsToTranscribe()
     {
-        var overlayPresenter = new FakeVoiceOverlayPresenter();
-        var coordinator = _CreateCoordinator(session: null, overlayPresenter, out var overlay);
+        var pill = _NewPill();
+        var coordinator = _CreateCoordinator(session: null, pill);
         coordinator.HandleHoldStarted();
 
         await coordinator.HandleHoldEndedAsync();
 
-        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
-        Assert.False(overlay.IsTranscribing);
-        Assert.Equal(1, overlayPresenter.HideCallCount);
-    }
-
-    /// <summary>
-    /// First use downloads the model and a GPU runtime inside the hold, and the pill spent that time on a
-    /// spinner reading "Transcribing…" — for minutes, while nothing was being transcribed. Each step both
-    /// names what is being waited on and claims the pill's state, because on every later run there is nothing
-    /// to prepare and the pill should go straight to the spinner.
-    /// </summary>
-    [Fact]
-    public void HandlePreparing_ShowsTheDownloadInsteadOfAFalseTranscribingSpinner()
-    {
-        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
-        overlay.State = VoiceOverlayState.Transcribing;
-
-        coordinator.HandlePreparing(new VoicePreparationProgress("Downloading Vulkan runtime — 43% of 151 MB", 0.43));
-
-        Assert.Equal(VoiceOverlayState.Preparing, overlay.State);
-        Assert.Equal("Downloading Vulkan runtime — 43% of 151 MB", overlay.StatusText);
-        Assert.True(overlay.HasProgress);
-        Assert.Equal(0.43, overlay.ProgressValue);
-    }
-
-    /// <summary>A step with nothing to measure against passes its missing fraction through, so the bar hides rather than invent one.</summary>
-    [Fact]
-    public void HandlePreparing_WithoutAFraction_LeavesTheOverlayWithNoBar()
-    {
-        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
-
-        coordinator.HandlePreparing(new VoicePreparationProgress("Downloading speech model — 412 MB"));
-
-        Assert.Equal(VoiceOverlayState.Preparing, overlay.State);
-        Assert.False(overlay.HasProgress);
-    }
-
-    /// <summary>
-    /// Without this the last download line would sit on the pill through the transcription itself, which moves
-    /// the lie one step along instead of ending it.
-    /// </summary>
-    [Fact]
-    public void HandlePrepared_HandsThePillBackToTheSpinnerThatIsNowTrue()
-    {
-        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
-        coordinator.HandlePreparing(new VoicePreparationProgress("Loading speech model…"));
-
-        coordinator.HandlePrepared();
-
-        Assert.Equal(VoiceOverlayState.Transcribing, overlay.State);
-        Assert.Empty(overlay.StatusText);
+        Assert.Equal(VoiceOverlayState.Hidden, pill.Overlay.State);
+        Assert.False(pill.Overlay.IsTranscribing);
+        Assert.Equal(1, pill.Presenter.HideCallCount);
     }
 
     [Fact]
@@ -223,8 +218,9 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the file");
-        var session = _CreateTtySession(voicePushToTalk);
-        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out _);
+        var pill = _NewPill();
+        var session = _CreateTtySession(voicePushToTalk, pill);
+        var coordinator = _CreateCoordinator(session, pill);
         _StartARecordingHold(coordinator, session, voicePushToTalk);
 
         await coordinator.HandleHoldEndedAsync();
@@ -232,19 +228,42 @@ public class VoicePushToTalkCoordinatorTests
         await voicePushToTalk.Received(1).EndHoldAsync(Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Criterion 2's other half: a terminal session says it too. The pill is one window for both kinds, and it is
+    /// the session — not the route — that reports into it, so there is one sentence rather than two that could
+    /// drift apart.
+    /// </summary>
+    [Fact]
+    public async Task HandleHoldEndedAsync_TtySession_WhenNothingWasTranscribed_SaysSoOnThePill()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns(string.Empty);
+        var pill = _NewPill();
+        var session = _CreateTtySession(voicePushToTalk, pill);
+        var coordinator = _CreateCoordinator(session, pill);
+        _StartARecordingHold(coordinator, session, voicePushToTalk);
+
+        await coordinator.HandleHoldEndedAsync();
+
+        Assert.Equal(VoiceOverlayState.Failed, pill.Overlay.State);
+        Assert.NotEmpty(pill.Overlay.StatusText);
+    }
+
     [Fact]
     public async Task HandleHoldEndedAsync_SetsTranscribingBeforeHiding()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
-        var session = _CreateSdkSession(voicePushToTalk);
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the file");
+        var pill = _NewPill();
+        var session = _CreateSdkSession(voicePushToTalk, pill: pill);
         var states = new List<VoiceOverlayState>();
-        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay);
+        var coordinator = _CreateCoordinator(session, pill);
         _StartARecordingHold(coordinator, session, voicePushToTalk);
-        overlay.PropertyChanged += (_, e) =>
+        pill.Overlay.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(VoiceOverlayViewModel.State))
             {
-                states.Add(overlay.State);
+                states.Add(pill.Overlay.State);
             }
         };
 
@@ -325,10 +344,13 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     private static VoicePushToTalkCoordinator _CreateCoordinatorOnHotkeys(
-        GlobalHotkeyCoordinator hotkeys, CockpitViewModel cockpit, IVoicePushToTalkService? pushToTalk = null) =>
+        GlobalHotkeyCoordinator hotkeys,
+        CockpitViewModel cockpit,
+        IVoicePushToTalkService? pushToTalk = null,
+        Pill? pill = null) =>
         new(hotkeys,
             cockpit,
-            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            (pill ?? _NewPill()).Coordinator,
             pushToTalk ?? Substitute.For<IVoicePushToTalkService>(),
             NullLogger<VoicePushToTalkCoordinator>.Instance);
 
@@ -368,27 +390,44 @@ public class VoicePushToTalkCoordinatorTests
     private static VoicePushToTalkCoordinator _CreateCoordinatorOn(IVoicePushToTalkService pushToTalk)
     {
         var cockpit = NewCockpitViewModel();
-        cockpit.SelectedSession = _CreateSdkSession(pushToTalk);
+        var pill = _NewPill();
+        cockpit.SelectedSession = _CreateSdkSession(pushToTalk, pill: pill);
 
         return _CreateCoordinatorOnHotkeys(
-            TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()), cockpit, pushToTalk);
+            TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()), cockpit, pushToTalk, pill);
+    }
+
+    /// <summary>
+    /// The overlay half of the graph, built before the session because the session reports its own hold into it —
+    /// which is what makes the in-window F9 route say the same things this one does (AC-557).
+    /// </summary>
+    internal sealed record Pill(
+        VoiceOverlayCoordinator Coordinator, VoiceOverlayViewModel Overlay, FakeVoiceOverlayPresenter Presenter);
+
+    internal static Pill _NewPill()
+    {
+        var overlay = new VoiceOverlayViewModel();
+        var presenter = new FakeVoiceOverlayPresenter();
+        return new Pill(new VoiceOverlayCoordinator(overlay, presenter), overlay, presenter);
     }
 
     private static SessionPanelViewModel _CreateSdkSession(
-        IVoicePushToTalkService voicePushToTalk, IOpenMicState? openMicState = null)
+        IVoicePushToTalkService voicePushToTalk, IOpenMicState? openMicState = null, Pill? pill = null)
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
         return new SessionViewModel(
             new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore,
-            openMicState: openMicState);
+            openMicState: openMicState, voiceOverlay: pill?.Coordinator);
     }
 
-    private static SessionPanelViewModel _CreateTtySession(IVoicePushToTalkService voicePushToTalk)
+    private static SessionPanelViewModel _CreateTtySession(IVoicePushToTalkService voicePushToTalk, Pill? pill = null)
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore);
+        return new TtyViewModel(
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore,
+            voiceOverlay: pill?.Coordinator);
     }
 
     /// <summary>Resolves any profile (including none) to a fresh provider substitute — same as the real resolver does for a Claude profile or a profile-less session.</summary>
@@ -412,16 +451,14 @@ public class VoicePushToTalkCoordinatorTests
         coordinator.HandleHoldStarted();
     }
 
-    private static VoicePushToTalkCoordinator _CreateCoordinator(
-        SessionPanelViewModel? session, IVoiceOverlayPresenter overlayPresenter, out VoiceOverlayViewModel overlay)
+    private static VoicePushToTalkCoordinator _CreateCoordinator(SessionPanelViewModel? session, Pill pill)
     {
         var cockpit = NewCockpitViewModel();
         cockpit.SelectedSession = session;
-        overlay = new VoiceOverlayViewModel();
         return new VoicePushToTalkCoordinator(
             TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()),
             cockpit,
-            new VoiceOverlayCoordinator(overlay, overlayPresenter),
+            pill.Coordinator,
             Substitute.For<IVoicePushToTalkService>(),
             NullLogger<VoicePushToTalkCoordinator>.Instance);
     }

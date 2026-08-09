@@ -24,15 +24,43 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     private string _status = string.Empty;
     private double? _progress;
 
+    // Bumped by every report a hold makes, so a linger started by an earlier one can tell it is stale and leave
+    // the pill a newer hold now owns alone — see `ShowPushToTalkThenClear`.
+    private int _pushToTalkGeneration;
+
     // The pill's view model — the overlay window binds to this.
     public VoiceOverlayViewModel Overlay => overlay;
 
     // What the push-to-talk hold has to say, or null once the hold is over.
     public void SetPushToTalk(VoiceOverlayState? state, string? status = null, double? progress = null)
     {
+        _pushToTalkGeneration++;
         _pushToTalk = state;
         _Remember(state, status, progress);
         _Apply();
+    }
+
+    // A hold's own explanation of why it produced nothing, which clears itself after `linger`. The one report
+    // nothing comes back to take off the pill: every other state ends when its source says so, and this one would
+    // sit there for good — masking read-aloud, which a hold's report outranks.
+    public void ShowPushToTalkThenClear(VoiceOverlayState state, string message, TimeSpan linger)
+    {
+        SetPushToTalk(state, message);
+        PendingPushToTalkClear = _ClearAfterLingerAsync(_pushToTalkGeneration, linger);
+    }
+
+    // Test seam: the linger the last self-clearing message started, so a test can await the clear rather than
+    // sleep for longer than it hopes it takes. Completed when there is none — the resting state.
+    public Task PendingPushToTalkClear { get; private set; } = Task.CompletedTask;
+
+    private async Task _ClearAfterLingerAsync(int generation, TimeSpan linger)
+    {
+        await Task.Delay(linger);
+
+        if (generation == _pushToTalkGeneration)
+        {
+            SetPushToTalk(null);
+        }
     }
 
     // What open-mic dictation has to say, or null while it is listening to nothing in particular.
@@ -71,12 +99,12 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     // with what "the microphone is open" means.
     public event EventHandler<double>? LevelSampled;
 
-    // Preparing and Unavailable carry words; the view model drops them the moment the state moves on, so they
-    // have to be re-applied every time this recomputes — a source's status must not evaporate because another
-    // source reported something unrelated.
+    // Some states carry words (`VoiceOverlayViewModel.CarriesWords`); the view model drops them the
+    // moment the state moves on, so they have to be re-applied every time this recomputes — a source's status must
+    // not evaporate because another source reported something unrelated.
     private void _Remember(VoiceOverlayState? state, string? status, double? progress)
     {
-        if (state is VoiceOverlayState.Preparing or VoiceOverlayState.Unavailable)
+        if (VoiceOverlayViewModel.CarriesWords(state))
         {
             _status = status ?? _status;
             _progress = progress;
@@ -99,7 +127,7 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
 
         // Before the state: the view model clears the text on any state that has nothing to say, so setting it
         // afterwards would be setting it into a state that just threw it away.
-        if (state is VoiceOverlayState.Preparing or VoiceOverlayState.Unavailable)
+        if (VoiceOverlayViewModel.CarriesWords(state))
         {
             overlay.StatusText = _status;
             overlay.Progress = _progress;

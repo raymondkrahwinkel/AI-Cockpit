@@ -1102,6 +1102,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private IOpenMicState? _openMicState;
 
+    // Where a hold reports what it is doing. This view model is where the in-window F9 handlers and the global
+    // `Services.VoicePushToTalkCoordinator` meet, so it is the one place that can say the same thing on
+    // both routes — the in-window one said nothing at all before AC-557.
+    private VoiceOverlayCoordinator? _voiceOverlay;
+
+    // How long a failed dictation's explanation stays on the pill. Long enough to read a sentence, short enough
+    // that it does not sit on top of whatever the operator does next.
+    private static readonly TimeSpan VoiceFailureLinger = TimeSpan.FromSeconds(5);
+
     // Open-mic's claim on the microphone, held for the length of a push-to-talk hold and released when it ends
     // (AC-627). Null when no hold is in progress, or when there is no open-mic to step aside.
     private IDisposable? _openMicSuspension;
@@ -1145,10 +1154,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // the point of that helper is that the rule has one home.
     public bool BelongsToNoWorkspace { get; internal set; }
 
-    // Transient status text ("Listening...", "Transcribing...") the view can surface next to the input while a hold is in progress.
-    [ObservableProperty]
-    private string _voiceStatus = string.Empty;
-
     // Mirrors `Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice`: when true a finished transcript is submitted right after injection (see `OnVoiceSubmitRequested`) instead of waiting for a manual send.
     [ObservableProperty]
     private bool _autoSubmitAfterVoice;
@@ -1185,12 +1190,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         IVoicePushToTalkService? voicePushToTalk,
         IVoiceSettingsStore? voiceSettingsStore,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        IOpenMicState? openMicState = null)
+        IOpenMicState? openMicState = null,
+        VoiceOverlayCoordinator? voiceOverlay = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
         _openMicState = openMicState;
+        _voiceOverlay = voiceOverlay;
 
         if (voiceSettingsStore is not null)
         {
@@ -1283,7 +1290,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         var started = _voicePushToTalk.BeginHold();
         if (started)
         {
-            VoiceStatus = "Listening...";
+            _voiceOverlay?.SetPushToTalk(VoiceOverlayState.Listening);
 
             // AC-627: and open-mic steps aside for the length of the hold. Here because both the global and the
             // in-window F9 route come through this method; `??=` so a doubled hold cannot strand the first claim.
@@ -1295,6 +1302,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // Ends the push-to-talk hold (KeyUp), transcribes it, and hands any resulting text to
     // `OnVoiceTextReady` for this session kind to inject. No-op when voice was never wired.
+    //
+    // Every way this can end is reported on the pill, including the two that used to end in silence: a capture
+    // with no speech in it, and a transcription that threw. Both routes into this method — the in-window KeyUp and
+    // the global `Services.VoicePushToTalkCoordinator` — get the same answer, which is the point of
+    // saying it here rather than at either caller (AC-557).
     public async Task EndVoiceHoldAsync()
     {
         if (_voicePushToTalk is null)
@@ -1307,34 +1319,43 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _openMicSuspension?.Dispose();
         _openMicSuspension = null;
 
-        VoiceStatus = "Transcribing...";
+        _voiceOverlay?.SetPushToTalk(VoiceOverlayState.Transcribing);
 
-        // First use downloads the model and a GPU runtime before it can transcribe a word, and this line said
-        // "Transcribing..." throughout — for minutes. Subscribed only for this hold: the service is shared by
+        // First use downloads the model and a GPU runtime before it can transcribe a word, and the pill said
+        // "Transcribing…" throughout — for minutes. Subscribed only for this hold: the service is shared by
         // every session, so a lasting subscription would narrate one session's download into all of them.
         void OnPreparing(object? _, VoicePreparationProgress step) =>
-            Dispatcher.UIThread.Post(() => VoiceStatus = step.Description);
+            Dispatcher.UIThread.Post(() => HandleVoicePreparing(step));
         void OnPrepared(object? _, EventArgs __) =>
-            Dispatcher.UIThread.Post(() => VoiceStatus = "Transcribing...");
+            Dispatcher.UIThread.Post(() => _voiceOverlay?.SetPushToTalk(VoiceOverlayState.Transcribing));
 
         _voicePushToTalk.Preparing += OnPreparing;
         _voicePushToTalk.Prepared += OnPrepared;
         try
         {
             var text = await _voicePushToTalk.EndHoldAsync();
-            VoiceStatus = string.Empty;
-            if (!string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text))
             {
-                OnVoiceTextReady(text);
-                if (AutoSubmitAfterVoice)
-                {
-                    OnVoiceSubmitRequested();
-                }
+                // The most common way this ends in nothing: a hold too short for the voice-activity detector to
+                // find speech in, discarded correctly and until now silently.
+                _ReportVoiceFailure("No speech heard — hold the key while you talk, then let go.");
+                return;
             }
+
+            OnVoiceTextReady(text);
+            if (AutoSubmitAfterVoice)
+            {
+                OnVoiceSubmitRequested();
+            }
+
+            _voiceOverlay?.SetPushToTalk(null);
         }
         catch (Exception ex)
         {
-            VoiceStatus = $"Voice error: {ex.Message}";
+            // Includes a release with no hold behind it: the service throws, and that used to land in a status
+            // property nothing rendered. Caught rather than guarded against, because a hold this view model did not
+            // start is still one somebody has to be told about.
+            _ReportVoiceFailure($"Dictation failed — {ex.Message}");
         }
         finally
         {
@@ -1342,6 +1363,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             _voicePushToTalk.Prepared -= OnPrepared;
         }
     }
+
+    // Test seam: the UI-thread half of a preparation step. Sets the state as well as the words — it cannot be set
+    // up front, because on every run after the first there is nothing to prepare and the pill should go straight
+    // to its spinner.
+    internal void HandleVoicePreparing(VoicePreparationProgress step) =>
+        _voiceOverlay?.SetPushToTalk(VoiceOverlayState.Preparing, step.Description, step.Fraction);
+
+    private void _ReportVoiceFailure(string message) =>
+        _voiceOverlay?.ShowPushToTalkThenClear(VoiceOverlayState.Failed, message, VoiceFailureLinger);
 
     // Injects text into this session's input surface (chat input box for SDK, raw pty bytes for TTY) —
     // the public seam plugins use via `ICockpitActions.InjectIntoActiveSessionAsync`, reusing the
