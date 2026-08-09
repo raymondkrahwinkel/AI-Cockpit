@@ -490,6 +490,21 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void LaunchOptions_SayTheAssistantIsWokenByItsOwnWaitingMail_NotRefusedAsNotWakeable()
+    {
+        // AC-656, asserted the way AC-639's test above is: off the instruction a launch actually delivers. The old
+        // line told the assistant an urgent notify would always be refused for it; that stopped being true, and a
+        // capability map that still said so would send the assistant looking for a route (polling, a relayed
+        // message) it no longer needs.
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Contains("AC-656", instruction, StringComparison.Ordinal);
+        Assert.Contains("no opt-in", instruction, StringComparison.Ordinal);
+        Assert.DoesNotContain("not-wakeable", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LaunchOptions_TheAssistantsOwnInstruction_WinsOverAnythingTheProfileStoredOnThatKey()
     {
         // The profile's start defaults are copied first and the standing instruction is written last, on purpose:

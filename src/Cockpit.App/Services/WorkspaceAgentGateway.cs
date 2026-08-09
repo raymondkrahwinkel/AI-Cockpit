@@ -45,19 +45,26 @@ internal sealed class WorkspaceAgentGateway(
 
     public Task<AgentWakeOutcome> TryWakeAsync(string callerPaneId, string targetPaneId, string kind) =>
         Dispatcher.UIThread.CheckAccess()
-            ? Task.FromResult(_TryWake(callerPaneId, targetPaneId, kind))
-            : Dispatcher.UIThread.InvokeAsync(() => _TryWake(callerPaneId, targetPaneId, kind)).GetTask();
+            ? Task.FromResult(_TryWake(callerPaneId, targetPaneId, kind, checkDesk: true, AgentWakeTrigger.UrgentNotify))
+            : Dispatcher.UIThread.InvokeAsync(() => _TryWake(callerPaneId, targetPaneId, kind, checkDesk: true, AgentWakeTrigger.UrgentNotify)).GetTask();
 
-    private AgentWakeOutcome _TryWake(string callerPaneId, string targetPaneId, string kind)
+    // AC-656: the host giving a pane its own already-delivered mail promptly, not a peer asking to interrupt it —
+    // so there is no caller desk to re-check here the way TryWakeAsync re-checks its sender's. The boundary already
+    // ran once, at the moment that mail was accepted into this pane's inbox.
+    public Task<AgentWakeOutcome> TryWakeForWaitingMailAsync(string fromPaneId, string targetPaneId, string kind) =>
+        Dispatcher.UIThread.CheckAccess()
+            ? Task.FromResult(_TryWake(fromPaneId, targetPaneId, kind, checkDesk: false, AgentWakeTrigger.WaitingMail))
+            : Dispatcher.UIThread.InvokeAsync(() => _TryWake(fromPaneId, targetPaneId, kind, checkDesk: false, AgentWakeTrigger.WaitingMail)).GetTask();
+
+    private AgentWakeOutcome _TryWake(string fromPaneId, string targetPaneId, string kind, bool checkDesk, AgentWakeTrigger trigger)
     {
-        // AC-632: the assistant is an address on the roster, not a pane a neighbour may start a turn on — and it is
-        // in neither collection `AllSessions` reads, so without this the refusal below would report it gone.
-        if (string.Equals(targetPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
-        {
-            return AgentWakeOutcome.NotWakeable;
-        }
+        // AC-632/AC-656: the assistant is in neither collection `AllSessions` reads (it sits on no desk of its own)
+        // but is a real session underneath — `AssistantPane` is where every other reach into it goes too.
+        var target = string.Equals(targetPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
+            ? cockpit.AssistantPane
+            : cockpit.AllSessions().FirstOrDefault(session => string.Equals(session.PaneId, targetPaneId, StringComparison.Ordinal));
 
-        if (cockpit.AllSessions().FirstOrDefault(session => string.Equals(session.PaneId, targetPaneId, StringComparison.Ordinal)) is not { } target)
+        if (target is null)
         {
             return AgentWakeOutcome.PaneGone;
         }
@@ -66,9 +73,12 @@ internal sealed class WorkspaceAgentGateway(
         // checked was taken on an earlier trip to this thread, and a pane can be moved to another desk — or its
         // sender's own session can end, which is what makes the snapshot come back null — in between. Everything
         // below this line starts a turn on someone else's session, so the last word on whether that session is a
-        // neighbour has to be spoken here, at the moment it happens.
-        if (_GetWorkspaceSnapshot(callerPaneId) is not { } desk
-            || !desk.Panes.Any(pane => string.Equals(pane.PaneId, targetPaneId, StringComparison.Ordinal)))
+        // neighbour has to be spoken here, at the moment it happens. Skipped for a host-triggered wake: there is no
+        // live sender to re-check a desk against, and the assistant's own address never resolves to one anyway
+        // (AC-632) — this is what lets the assistant be woken by its own waiting mail at all.
+        if (checkDesk
+            && (_GetWorkspaceSnapshot(fromPaneId) is not { } desk
+                || !desk.Panes.Any(pane => string.Equals(pane.PaneId, targetPaneId, StringComparison.Ordinal))))
         {
             return AgentWakeOutcome.NotOnDesk;
         }
@@ -111,7 +121,7 @@ internal sealed class WorkspaceAgentGateway(
 
         // Asked of the pane at the moment of waking, so the notice tells the truth about this turn rather than
         // about the pane as some earlier snapshot described it.
-        var notice = new AgentWakeTurnNotice(callerPaneId, kind, target.DeliversInboxAtTurnStart);
+        var notice = new AgentWakeTurnNotice(fromPaneId, kind, target.DeliversInboxAtTurnStart, trigger);
 
         // Deliberately not awaited, unlike the scheduled-resume path that shares this method. An SDK pane's send does
         // not complete until its whole turn does, and the caller here is an agent waiting on its own notify call —

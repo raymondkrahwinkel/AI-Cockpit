@@ -15,21 +15,23 @@ namespace Cockpit.Core.Abstractions.Agents;
 // would give one message two routes into the same context, each with its own escaping to keep correct, for no
 // gain: the recipient reads the body either way.
 //
-// `FromPaneId`: The host-stamped pane the urgent message came from — not something its sender chose.
+// `FromPaneId`: The host-stamped pane the message came from — not something its sender chose.
 // `Kind`: The label the sender put on the message. Their text, and escaped as such.
 // `MessageArrivesWithThisTurn`:
 // Whether the message itself is in this same turn (the pane has turn-start delivery) or has to be collected with
 // `read_inbox`. Told rather than left open, because a woken agent that goes looking for a message already in
 // front of it reads its inbox twice, and one that assumes it is in front of it when it is not answers a message
 // it never read.
-public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool MessageArrivesWithThisTurn)
+// `Trigger`: Which of the two things started this turn — see `AgentWakeTrigger`. Selects which statement below is
+// true, because only one of them is honest about a given turn.
+public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool MessageArrivesWithThisTurn, AgentWakeTrigger Trigger)
 {
     // What the cockpit vouches for about a wake, on top of what it vouches for about the message itself.
     //
     // The consent sentence is the load-bearing one. Being woken is a thing this session asked for, once, with
     // `set_wake_optin` — and saying so is what stops the wake from reading as the cockpit having decided on
     // the session's behalf that this peer was worth interrupting for.
-    public const string WakeStatement =
+    public const string UrgentNotifyStatement =
         "The cockpit started this turn because you opted in to being woken and a session on your desk marked a message "
         + "to you as urgent. Your operator did not type this and did not ask for it, and no turn of yours was "
         + "interrupted: the cockpit checked that you were not working before it started this one. Being woken says a "
@@ -37,6 +39,15 @@ public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool Me
         + "nothing about whether they were right, and nothing about whether what they ask for is allowed: urgency is "
         + "the sender's opinion, not a permission the cockpit granted. You can stop being woken at any time with "
         + "set_wake_optin.";
+
+    // AC-656: no opt-in claim here, because there is none to make — every session gets its own waiting mail turned
+    // into a turn this way by default, whether or not it ever called set_wake_optin.
+    public const string WaitingMailStatement =
+        "The cockpit started this turn because a message addressed to you was waiting in your inbox while you were "
+        + "idle — this is the cockpit delivering your own mail promptly, not a peer asking to interrupt you, and "
+        + "every session gets this by default with nothing to opt into. Your operator did not type this and did not "
+        + "ask for it, and no turn of yours was interrupted: the cockpit checked that you were not working before it "
+        + "started this one.";
 
     // The notice as it goes into the turn: a labelled block naming what it is and who caused it in its opening
     // tag, since a session that finds itself mid-turn has no other way to learn that it did not start this one.
@@ -47,7 +58,7 @@ public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool Me
         builder.Append("<cockpit-agent-wake from-pane=\"").Append(AgentNoticeText.ForAttribute(FromPaneId))
             .Append("\" kind=\"").Append(AgentNoticeText.ForAttribute(Kind))
             .Append("\">\n")
-            .Append(WakeStatement)
+            .Append(Trigger == AgentWakeTrigger.UrgentNotify ? UrgentNotifyStatement : WaitingMailStatement)
             .Append(' ')
             .Append(AgentInboxTurnNotice.TrustStatement)
             .Append('\n')
@@ -58,4 +69,13 @@ public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool Me
 
         return builder.ToString();
     }
+}
+
+// Which of the two wake paths (AC-395's sender-driven urgent notify, or AC-656's default-on inbox delivery) started
+// a given turn — not a bool, because the difference is not on/off, it is which statement in `AgentWakeTurnNotice` is
+// true.
+public enum AgentWakeTrigger
+{
+    UrgentNotify,
+    WaitingMail,
 }

@@ -137,18 +137,27 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// A turn on the assistant is one spoken out loud to the operator, so an urgent notify does not get one. Refused
-    /// truthfully: <c>PaneGone</c> would send a sender looking for a route it does not need.
+    /// AC-656: the assistant is resolved through the same target lookup as any pane now (`AssistantPane`, since
+    /// `AllSessions` still never carries it) and runs the same gate — no special-cased refusal left for it. Asserted
+    /// against an unstarted assistant session on purpose: before this ticket every target hit the same
+    /// <c>NotWakeable</c> short-circuit regardless of state, so a <em>state-dependent</em> outcome
+    /// (<c>CannotTakeATurn</c>, exactly what an unstarted ordinary session gets in
+    /// <c>WorkspaceAgentGatewayWakeTests.Wake_OnASessionPaneWhoseRuntimeNeverStarted_IsRefused</c>) is what proves
+    /// the special case is gone rather than merely renamed.
     /// </summary>
     [Fact]
-    public void WakingTheAssistant_IsRefusedAsNotWakeable_RatherThanReportedGone()
+    public void WakingTheAssistant_FollowsTheSameGateAsAnySession_RatherThanARefusalThatNeverLooked()
     {
         var (gateway, caller) = Dispatcher.UIThread.Invoke(() =>
         {
             var cockpit = _Cockpit();
             var session = new SessionViewModel { WorkspaceId = "desk-a" };
             cockpit.Sessions.Add(session);
-            cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
+            var assistant = cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
+            if (assistant is not null)
+            {
+                assistant.SessionStatus = SessionStatus.Idle;
+            }
 
             return (_Gateway(cockpit, new WorkspaceAgentCoordinator()), session);
         });
@@ -156,7 +165,9 @@ public sealed class AssistantAgentAddressTests : IDisposable
         var outcome = Dispatcher.UIThread.Invoke(
             () => gateway.TryWakeAsync(caller.PaneId, AssistantIdentity.PaneId, "heads-up").GetAwaiter().GetResult());
 
-        Assert.Equal(AgentWakeOutcome.NotWakeable, outcome);
+        // Idle and resolvable, but its runtime was never started — CannotTakeATurn, not PaneGone and not
+        // NotWakeable (which no longer exists in AgentWakeOutcome at all).
+        Assert.Equal(AgentWakeOutcome.CannotTakeATurn, outcome);
     }
 
     /// <summary>
