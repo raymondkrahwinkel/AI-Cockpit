@@ -32,10 +32,8 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 brand="$repo/brand"
 # The app already carries this render: the title bar and the About dialog draw it, and
-# scripts/generate-appicon.py builds the tile icon from it (AC-430). Reading it there rather than keeping
-# a second copy under brand/ means the repository holds the mark once. The dependency points the wrong
-# way round — a product asset ought to come out of brand/ rather than the other way about — but turning
-# it round means regenerating what generate-appicon.py writes, which is that script's business.
+# scripts/generate-appicon.sh builds the tile icon from it (AC-430). Reading it there rather than keeping
+# a second copy under brand/ means the repository holds the mark once.
 src="$repo/src/Cockpit.App/Assets/BrandMark.png"
 
 SRC_W=276
