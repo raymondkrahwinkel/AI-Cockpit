@@ -90,6 +90,9 @@ public interface ISessionRuntime : IAsyncDisposable
 
     Task InterruptAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Asks the provider to compact this conversation in place (AC-664). See <see cref="ISessionDriver.CompactContextAsync"/>.</summary>
+    Task CompactContextAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default);
 
     Task SetModelAsync(string? model, CancellationToken cancellationToken = default);

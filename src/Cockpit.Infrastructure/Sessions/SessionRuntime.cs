@@ -110,6 +110,9 @@ internal sealed class SessionRuntime : ISessionRuntime
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         _driver?.InterruptAsync(cancellationToken) ?? Task.CompletedTask;
 
+    public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
+        _driver?.CompactContextAsync(cancellationToken) ?? Task.CompletedTask;
+
     public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
         _driver?.SetPermissionModeAsync(mode, cancellationToken) ?? Task.CompletedTask;
 

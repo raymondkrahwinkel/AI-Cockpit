@@ -79,6 +79,14 @@ public sealed record PluginSessionCapabilities(
     public bool ConfinesViaPermissionsOnly { get; init; }
 
     /// <summary>
+    /// Whether this provider can compact its own conversation in place (AC-664), backed by
+    /// <see cref="IPluginSessionDriver.CompactContextAsync"/>. Init-only for the same back-compat reason as
+    /// <see cref="SupportsLiveModelSwitch"/>; <see langword="false"/> leaves the host its own fallback of starting a
+    /// fresh conversation.
+    /// </summary>
+    public bool SupportsContextCompaction { get; init; }
+
+    /// <summary>
     /// The session options this provider actually understands, in its own vocabulary (AC-649) — Claude's
     /// <c>permission-mode</c>/<c>model</c>/<c>effort</c>, Codex's <c>sandbox</c> — so a consumer can read what a key
     /// means and which values it takes instead of guessing at an opaque options map. Init-only for the same

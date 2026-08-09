@@ -407,6 +407,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
 
         _ApplySpeech(session, settings);
+
+        // A new instance has a new context, and a provider that reports no fill until its first turn would otherwise
+        // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.
+        _askedTheProviderToCompact = false;
         Session = session;
 
         // AC-602: the start is itself an interaction, and it is what arms the idle clock. Without this line the
@@ -485,19 +489,43 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             _NoteInteraction();
             _SyncActivityWithSession(session);
-            _HandOverIfTheContextIsFull(session);
+
+            // Whether this change carries a *new* fill figure or merely happens to be able to read the last one: the
+            // session refreshes the provider's limits after it has published IsBusy false, so the busy transition
+            // arrives with the previous turn's figure still standing. Why that matters: _HandOverIfTheContextIsFull.
+            _HandOverIfTheContextIsFull(
+                session,
+                fillWasJustRead: e.PropertyName is null or nameof(SessionPanelViewModel.ContextUsedPercent));
         }
     }
 
-    // Restarts the assistant on a fresh conversation once its context is nearly full (AC-596) — but only while
-    // nothing is running and nothing is waiting on the operator.
-    // It is the whole conversation that goes, so what carries across is the standing instruction, the memory file
-    // and whatever the assistant last wrote with `note_state`. Never mid-turn, and never over an unanswered
-    // permission: that row belongs to a session that would no longer exist to receive the answer.
-    private void _HandOverIfTheContextIsFull(SessionViewModel session)
+    // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
+    // the operator: that permission row belongs to a session that would no longer exist to receive the answer.
+    // AC-664: a provider that can summarise its own conversation is asked to, and the restart is what is left.
+    private void _HandOverIfTheContextIsFull(SessionViewModel session, bool fillWasJustRead)
     {
-        if (!ReferenceEquals(session, Session)
-            || !ShouldHandOver(
+        if (!ReferenceEquals(session, Session))
+        {
+            return;
+        }
+
+        // Once a compaction has been asked for, only a fresh reading may decide anything: its turn ends with the
+        // pre-compaction fill still standing, and judged there the hand-over would throw away the very conversation
+        // the compaction had just saved.
+        if (_askedTheProviderToCompact && !fillWasJustRead)
+        {
+            return;
+        }
+
+        // A fill that came back under the line re-arms the ask: this is the only place that can tell a compaction
+        // that worked from one that did not, and the next crossing is a new episode rather than a repeat of this one.
+        if (session.ContextUsedPercent < RestartAboveContextPercent)
+        {
+            _askedTheProviderToCompact = false;
+            return;
+        }
+
+        if (!ShouldHandOver(
                 session.ContextUsedPercent,
                 session.IsBusy,
                 session.HasPendingPermission || session.PendingConsent is not null))
@@ -505,13 +533,52 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             return;
         }
 
-        _logger.LogInformation(
-            "The assistant's context is {Fill:0}% full; restarting it on a fresh conversation.",
-            session.ContextUsedPercent);
+        // Not awaited: this runs off a property change with nowhere to put a failure, and both branches report their
+        // own — _StartOrReplaceAsync leaves the chip unavailable with the reason on it, and a compaction that could
+        // not be asked for falls through to that restart rather than being lost.
+        _ = _RelieveTheFullContextAsync(session);
+    }
 
-        // Not awaited: this runs off a property change with nowhere to put a failure, and _StartOrReplaceAsync
-        // already reports its own — a failed hand-over leaves the chip unavailable with the reason on it.
-        _ = _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: true, CancellationToken.None);
+    // Whether the provider has already been asked to compact this fill. Without it, every property change above the
+    // line would send another `/compact` at a provider that answered the first one with "nothing to compact" — and
+    // the ask is what makes the fill move, so the condition that triggered it is still true when the reply lands.
+    private bool _askedTheProviderToCompact;
+
+    private async Task _RelieveTheFullContextAsync(SessionViewModel session)
+    {
+        if (session.Capabilities.SupportsContextCompaction && !_askedTheProviderToCompact)
+        {
+            _askedTheProviderToCompact = true;
+            _logger.LogInformation(
+                "The assistant's context is {Fill:0}% full; asking the provider to compact it.",
+                session.ContextUsedPercent);
+
+            if (await session.CompactContextAsync().ConfigureAwait(true))
+            {
+                // AC-638's divider, for the case that keeps the conversation. A compaction is otherwise invisible
+                // here — the provider reports it as a system line the transcript does not render — so the assistant's
+                // memory of the early part would quietly thin out with nothing to say that it had.
+                session.Transcript.Add(new TranscriptEntryViewModel(
+                    TranscriptEntryKind.Divider,
+                    "Context was full — the conversation so far was summarised and continues here"));
+                return;
+            }
+        }
+
+        if (session.Capabilities.SupportsContextCompaction)
+        {
+            _logger.LogInformation(
+                "The assistant's context is {Fill:0}% full and compacting did not relieve it; restarting it on a fresh conversation.",
+                session.ContextUsedPercent);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "The assistant's context is {Fill:0}% full and this provider cannot compact; restarting it on a fresh conversation.",
+                session.ContextUsedPercent);
+        }
+
+        await _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: true, CancellationToken.None).ConfigureAwait(true);
     }
 
     // The rule itself, as a pure function so it can be asserted directly — the same shape as ActivityFor above.

@@ -110,6 +110,34 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     }
 
     [Fact]
+    public async Task CompactContext_WritesTheSlashCommandAsAUserMessage_NotAControlRequest()
+    {
+        // AC-664: the CLI has no compaction subtype on the control protocol — it parses `/compact` out of the
+        // stream-json user input itself, which is why this rides the ordinary user-message line rather than the
+        // control channel every other live switch uses. Measured against a live 2.1.226 spawn in this same mode.
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await driver.CompactContextAsync(CancellationToken.None);
+
+        var payload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
+        Assert.Equal("user", payload.GetProperty("type").GetString());
+        Assert.Equal("/compact", payload.GetProperty("message").GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public void Capabilities_VouchForCompactingTheConversation_SoTheHostAsksInsteadOfStartingAFreshOne()
+    {
+        // The capability is the whole gate: an assistant whose context fills up asks a provider that reports this
+        // to summarise, and throws the conversation away only on one that does not.
+        var fake = new FakeClaudeSdkSubprocess();
+        var driver = _CreateDriver(fake);
+
+        Assert.True(driver.Capabilities.SupportsContextCompaction);
+    }
+
+    [Fact]
     public async Task SendUserMessage_WithImages_WritesTextAndImageContentBlocks()
     {
         // Regression: moving Claude to a plugin must not lose image input the in-tree route had. With an attachment the

@@ -86,6 +86,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // Claude spawns in the session's working directory and edits with cwd-bound native tools, so an isolated
         // embedded run (Autopilot worktree) stays inside its worktree (AC-174).
         ConfinesFileAccessToWorkingDirectory = true,
+        // The CLI summarises its own conversation and carries on under the same session id (AC-664) — see
+        // CompactContextAsync for the channel and what was measured.
+        SupportsContextCompaction = true,
     };
 
     public string? SessionId => _sessionId;
@@ -253,6 +256,12 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         _SendControlRequestAsync(new { subtype = "interrupt" }, cancellationToken);
+
+    // AC-664: the CLI summarises the conversation and carries on under the same session id. It rides the user-message
+    // line because the control protocol has no compaction subtype (claude.exe 2.1.226) — the CLI parses `/compact`
+    // out of the stream-json input itself; measured against a live spawn in this mode, see the ticket.
+    public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
+        _SendUserMessageAsync("/compact", images: null, cancellationToken);
 
     public async Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
     {

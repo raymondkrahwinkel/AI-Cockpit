@@ -119,6 +119,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the voice assistant no longer forgets the conversation when its context fills up. It used to start over from
+  scratch at that point — everything you had said to it was gone, and all that carried across was its standing
+  instruction, its memory file and whatever note it last wrote itself. On a provider that can summarise its own
+  conversation (Claude), it now asks for exactly that instead, and carries on in the same conversation with the
+  transcript intact. Starting over stays as the fallback: for a provider with no such mechanism, and for the case
+  where summarising did not free enough room.
 - fixed: a resumed session's usage pill no longer sits empty until you send it a fresh message. The header only ever
   pulled the context/allowance figures at the end of a turn, so a reopened session — which already has real figures
   the moment it reconnects — showed nothing at all until you actually prompted it, indistinguishable from a provider
