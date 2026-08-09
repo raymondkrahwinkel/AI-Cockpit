@@ -289,6 +289,61 @@ public class WorkspaceAgentGatewayWakeTests
         Assert.Single(sent);
     }
 
+    /// <summary>
+    /// AC-656: the host-triggered path exists precisely because the boundary TryWakeAsync re-checks here does not
+    /// apply to it — the mail is already this pane's own, accepted into its inbox before this call, regardless of
+    /// where its sender now sits. A desk mismatch that would refuse TryWakeAsync as NotOnDesk must not refuse this.
+    /// </summary>
+    [Fact]
+    public async Task WakeForWaitingMail_AcrossAWorkspaceBoundary_StillWakes()
+    {
+        var (cockpit, sender, target, sent) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var vm = new CockpitViewModel();
+            var from = new TtyViewModel { WorkspaceId = "ws-1" };
+            var to = new TtyViewModel { WorkspaceId = "ws-2", SessionStatus = SessionStatus.Done };
+            var captured = new List<string>();
+            to.PromptSink = text => captured.Add(text);
+            vm.Sessions.Add(from);
+            vm.Sessions.Add(to);
+            return (vm, from, to, captured);
+        });
+
+        var outcome = await _Gateway(cockpit).TryWakeForWaitingMailAsync(sender.PaneId, target.PaneId, "branch");
+
+        Assert.Equal(AgentWakeOutcome.Woken, outcome);
+        var turn = Assert.Single(sent);
+        Assert.Contains("<cockpit-agent-wake", turn, StringComparison.Ordinal);
+        // No opt-in claim: this pane never agreed to anything, and the turn must not say it did.
+        Assert.DoesNotContain("opted in", turn, StringComparison.Ordinal);
+    }
+
+    /// <summary>Every other refusal TryWakeAsync has still applies — only the desk check is skipped.</summary>
+    [Theory]
+    [InlineData(SessionStatus.Busy)]
+    [InlineData(SessionStatus.WorkingBackground)]
+    [InlineData(SessionStatus.NeedsAttention)]
+    [InlineData(SessionStatus.WaitingForInput)]
+    public async Task WakeForWaitingMail_OnAPaneThatIsNotStandingStill_IsRefusedAndSendsNothing(SessionStatus status)
+    {
+        var (cockpit, sender, target, sent) = _Desk(status);
+
+        var outcome = await _Gateway(cockpit).TryWakeForWaitingMailAsync(sender.PaneId, target.PaneId, "branch");
+
+        Assert.NotEqual(AgentWakeOutcome.Woken, outcome);
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task WakeForWaitingMail_OnAPaneThatIsNoLongerThere_IsRefused()
+    {
+        var (cockpit, sender, _, _) = _Desk();
+
+        var outcome = await _Gateway(cockpit).TryWakeForWaitingMailAsync(sender.PaneId, "pane-that-never-existed", "branch");
+
+        Assert.Equal(AgentWakeOutcome.PaneGone, outcome);
+    }
+
     [Fact]
     public async Task Wake_WhoseTurnThrowsOnItsWayOut_LeavesATraceInsteadOfAnUnobservedFailure()
     {

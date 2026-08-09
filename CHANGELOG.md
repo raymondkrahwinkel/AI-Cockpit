@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: every session — including the voice assistant — now gets an active turn as soon as mail addressed to it is
+  waiting, instead of only picking it up on its own next turn or tool call. On by default for everyone, and it costs
+  nothing when nothing is waiting: a message no longer has to be marked urgent, and the recipient no longer has to
+  have opted in to being woken, for it to be delivered promptly. The voice assistant in particular can now be reached
+  this way at all — a spawned session that finishes, gets stuck or has something to report gives the assistant a
+  turn on its own, without the operator having to ask for a status update to get it a turn.
+
 - added: the voice assistant can start a session at settings the profile does not carry — "that profile, but at low
   effort" — instead of only ever getting the profile's own. Only the options it names change; everything else stays
   exactly what the profile was configured with. An option the profile's provider does not understand is refused with a

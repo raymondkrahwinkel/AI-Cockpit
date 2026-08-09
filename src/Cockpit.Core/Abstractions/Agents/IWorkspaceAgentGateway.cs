@@ -65,6 +65,17 @@ public interface IWorkspaceAgentGateway
     /// </para>
     /// </summary>
     Task<AgentWakeOutcome> TryWakeAsync(string callerPaneId, string targetPaneId, string kind);
+
+    /// <summary>
+    /// Starts a turn on <paramref name="targetPaneId"/> because mail from <paramref name="fromPaneId"/> is waiting
+    /// in its inbox (AC-656) — the host delivering a pane's own already-accepted mail, not a peer asking to
+    /// interrupt it. Checks everything <see cref="TryWakeAsync"/> checks about the target at the moment of waking
+    /// (busy, a question open for its operator, unable to take a turn at all) except the desk boundary: that was
+    /// already enforced when the mail was delivered, and re-checking it here would refuse delivering a pane's own
+    /// mail because the sender happened to have since left. Consent-free by design — see the ticket for why this is
+    /// not <see cref="TryWakeAsync"/> with the check skipped by a flag.
+    /// </summary>
+    Task<AgentWakeOutcome> TryWakeForWaitingMailAsync(string fromPaneId, string targetPaneId, string kind);
 }
 
 // What became of one wake — recorded on the append-only trail for every urgent message, and handed back to the
@@ -106,8 +117,4 @@ public enum AgentWakeOutcome
     // rather than the recipient: everything else here says something about the pane being woken, and this says the
     // caller is going too fast. Appended last so the values already on the trail keep meaning what they meant.
     RateLimited,
-
-    // AC-632: the recipient is an address on the desk rather than a pane a turn can be started on — today the
-    // assistant. Unlike PaneGone it took the message and will read it; it just is not woken. Appended last.
-    NotWakeable,
 }

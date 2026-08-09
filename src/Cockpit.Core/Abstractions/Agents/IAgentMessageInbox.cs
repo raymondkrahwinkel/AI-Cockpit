@@ -108,6 +108,14 @@ public interface IAgentMessageInbox
     AgentInboxBatch Drain(string paneId, int limit);
 
     /// <summary>
+    /// The oldest message waiting for <paramref name="paneId"/>, without taking it — for a caller that only needs
+    /// to know whether there is unread mail (AC-656's inbox-linked wake), not to hand it over. Null when nothing is
+    /// waiting. A message already in flight for a turn (<see cref="TakeForDelivery"/>) does not count: something has
+    /// already taken it and will report back on it.
+    /// </summary>
+    AgentMessage? PeekOldest(string paneId);
+
+    /// <summary>
     /// Takes up to <paramref name="limit"/> of <paramref name="paneId"/>'s waiting messages the way
     /// <see cref="Drain"/> does, but holds them <em>in flight</em> rather than dropping them: they stop being
     /// waiting — so a second call, and a concurrent <see cref="Drain"/>, cannot hand out the same message again —

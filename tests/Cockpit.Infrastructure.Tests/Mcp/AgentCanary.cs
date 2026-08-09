@@ -126,6 +126,9 @@ internal sealed class AgentCanaryDesk : IAsyncDisposable
         // be. Every wake-side assertion belongs to WorkspaceAgentGatewayWakeTests, against real session panels.
         public Task<AgentWakeOutcome> TryWakeAsync(string callerPaneId, string targetPaneId, string kind) =>
             Task.FromResult(AgentWakeOutcome.CannotTakeATurn);
+
+        public Task<AgentWakeOutcome> TryWakeForWaitingMailAsync(string fromPaneId, string targetPaneId, string kind) =>
+            Task.FromResult(AgentWakeOutcome.CannotTakeATurn);
     }
 }
 

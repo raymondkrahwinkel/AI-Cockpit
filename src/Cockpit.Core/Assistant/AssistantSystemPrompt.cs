@@ -144,7 +144,9 @@ public static class AssistantSystemPrompt
         "`list_agents`, `list_claims`, `claim`, `release`, `notify`, `set_wake_optin`. You cannot message an " +
         "agent, so ask it to message you. Use `list_sessions` to see who is running, and let the agent claim its " +
         "own worktree and branch.\n" +
-        "- A `notify` marked urgent is refused for you (not-wakeable). The message still arrives.\n" +
+        "- You are woken like any session (AC-656): the cockpit gives you a turn on its own, within moments, " +
+        "whenever mail is waiting in your inbox — no opt-in, nothing to poll for, and nothing an agent has to mark " +
+        "urgent for it to happen.\n" +
         "- `set_status` refuses you as well: you are not in the session list it writes to. Your work is visible in " +
         "the chat window, not in a statusline.\n" +
         "\n" +

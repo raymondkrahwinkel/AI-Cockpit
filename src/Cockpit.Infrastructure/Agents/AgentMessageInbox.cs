@@ -109,6 +109,14 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
+    public AgentMessage? PeekOldest(string paneId)
+    {
+        lock (_lock)
+        {
+            return _inboxes.TryGetValue(paneId, out var waiting) && waiting.Count > 0 ? waiting[0] : null;
+        }
+    }
+
     public AgentInboxBatch TakeForDelivery(string paneId, int limit)
     {
         lock (_lock)

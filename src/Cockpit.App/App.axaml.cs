@@ -392,6 +392,19 @@ public partial class App : Application
             sessionWatcher.Start();
         }
 
+        // AC-656: and give every pane a turn as soon as its own inbox has mail, instead of leaving it for that
+        // pane's next turn or tool call to notice. Unlike SessionWatcher this needs nothing armed — every live pane
+        // is checked, the assistant included (`AllSessions` does not carry it; `cockpit-agents` reaches it anyway).
+        if (Program.Services.GetService<Services.InboxWakeScheduler>() is { } inboxWakeScheduler)
+        {
+            inboxWakeScheduler.Panes = () =>
+            [
+                Cockpit.Core.Assistant.AssistantIdentity.PaneId,
+                .. cockpitViewModel.AllSessions().Select(session => session.PaneId),
+            ];
+            inboxWakeScheduler.Start();
+        }
+
         // AC-643: and keep the worktree crash net ticking after the startup sweep, against the sessions that are
         // live at that moment — a worktree whose owner crashed at noon is reconciled then, not at the next restart.
         if (Program.Services.GetService<Services.WorktreeReconciler>() is { } worktreeReconciler)
