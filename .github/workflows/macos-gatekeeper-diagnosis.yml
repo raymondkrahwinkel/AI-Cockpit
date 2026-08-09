@@ -17,6 +17,41 @@ on:
   workflow_dispatch:
 
 jobs:
+  # DataTray is the app this one is measured against: same stack (.NET desktop), same shape of GitHub
+  # release, and reported to "just work". Same probes, same runner, so the two verdicts are comparable.
+  datatray:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Measure Lionear/DataTray's published DMG the same way
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s\n' 't() { local rc=0; perl -e '"'"'alarm shift; exec @ARGV'"'"' "$@" 2>&1 || rc=$?; echo "[exit=$rc]"; }' > ~/t.sh
+          . ~/t.sh
+          sw_vers | head -2
+          mkdir -p ~/dt && cd ~/dt
+          gh release download v0.7.0 --repo Lionear/DataTray --pattern '*.dmg' --dir .
+          echo "=== xattrs after a CLI download ==="; xattr -l *.dmg || echo "(none at all)"
+          t 120 hdiutil attach -nobrowse -readonly *.dmg -mountpoint /tmp/dtdmg
+          app=/tmp/dtdmg/DataTray.app
+          echo "=== codesign -dv --verbose=4 ===" ; t 120 codesign -dv --verbose=4 "$app"
+          echo "=== codesign --verify --deep --strict ===" ; t 300 codesign --verify --deep --strict --verbose=2 "$app"
+          echo "=== spctl -a -vvv --type execute ===" ; t 120 spctl -a -vvv --type execute "$app"
+          echo "=== syspolicy_check distribution ===" ; t 120 syspolicy_check distribution "$app"
+
+          # Same three cases as the Cockpit job, so the comparison is like for like.
+          rm -rf /tmp/dtq && mkdir -p /tmp/dtq && cp -R "$app" /tmp/dtq/
+          hdiutil detach /tmp/dtdmg || true
+          q=/tmp/dtq/DataTray.app
+          echo "=== [B] quarantined as a browser download ==="
+          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Chrome;$(uuidgen)" "$q"
+          t 120 spctl -a -vvv --type execute "$q"
+          echo "=== [C] after the xattr -cr their release notes tell users to run ==="
+          xattr -cr "$q"
+          t 300 codesign --verify --deep --strict --verbose=2 "$q"
+          t 120 spctl -a -vvv --type execute "$q"
+
   diagnose:
     runs-on: macos-latest
     timeout-minutes: 25
