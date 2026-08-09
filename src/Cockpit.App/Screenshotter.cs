@@ -159,6 +159,10 @@ internal static class Screenshotter
         // "Choose…") is enough to prove the two universally-needed fields render; the row above already proves the
         // button that opens this exists on a shared-project card.
         ["shared-project-binding"] = (_, _) => new SharedProjectBindingDialog { DataContext = new ViewModels.SharedProjectBindingDialogViewModel() },
+        // AC-247, mockup section 6: the conflict window ProjectDialogViewModel.SaveAsync opens on a checksum
+        // mismatch — the design-time instance's own two rows (one collision, one one-sided remote change) prove
+        // both row shapes render and the warning note only shows for the collision.
+        ["project-conflict"] = (_, _) => new ProjectDefinitionConflictDialog { DataContext = new ViewModels.ProjectDefinitionConflictViewModel() },
         // AC-246 vormwaarschuwing: the "Paths that differ on your machine" block with rows in it — proves the
         // bounded, independently scrollable block actually renders and does not push Profile/Folder off the window
         // the one time an operator meets a shared project with several machine-specific references at once.

@@ -94,5 +94,8 @@ public class SharedProjectSourceRegistryTests
 
         public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
             Task.FromResult(SharedProjectBindingResult.Failed("not implemented by this fake"));
+
+        public Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectWriteBackResult.Failed("not implemented by this fake"));
     }
 }

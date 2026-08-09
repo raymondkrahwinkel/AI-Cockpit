@@ -295,7 +295,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         });
     }
 
-    public async Task<Project?> ShowProjectDialogAsync(Project? project)
+    public async Task<Project?> ShowProjectDialogAsync(Project? project, ISharedProjectSource? sharedSource = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -315,6 +315,26 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // retyping one. Read fresh rather than cached — this dialog opens far less often than the store changes.
         var knownCategories = (await _projectStore.LoadAsync()).CategoryOrder;
 
+        // AC-247: a fresh read, not the claim-time snapshot _ClaimBoundProjects made — that snapshot can be hours
+        // old by the time the operator presses Save, and its checksum has to be the one that read actually saw for
+        // WriteBackAsync's own optimistic-concurrency check to mean anything. Read failing (offline, no longer a
+        // member) leaves sharedWriteBack null below: the editor still opens, its claimed fields render locked (no
+        // ProjectFieldOwnership override to unlock them without a checksum to write against), same as a project
+        // whose source never claimed it editable at all.
+        ProjectSharedWriteBackContext? sharedWriteBack = null;
+        if (project is not null && sharedSource is not null)
+        {
+            var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
+            if (boundTo is { Length: > 0 })
+            {
+                var bindingResult = await sharedSource.PrepareBindingAsync(boundTo, CancellationToken.None).ConfigureAwait(true);
+                if (bindingResult is { Succeeded: true, Binding.Checksum.Length: > 0 } && bindingResult.Binding is { } baseline)
+                {
+                    sharedWriteBack = new ProjectSharedWriteBackContext(sharedSource, boundTo, baseline);
+                }
+            }
+        }
+
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources, _memorySources.Families,
             // AC-523: the "Servers…" flow re-reads the live registry through this rather than replaying the
@@ -323,7 +343,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             // AC-604: a new project has no id yet, so nothing could have claimed it — only an existing project is
             // resolved against the ownership registry.
             fieldOwnership: project is not null ? _projectOwnership.Resolve(project.Id) : null,
-            knownCategories: knownCategories);
+            knownCategories: knownCategories,
+            sharedWriteBack: sharedWriteBack);
 
         // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
         // window's own X both leave this null, which is the same answer.
@@ -339,7 +360,28 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own and the manager that runs it, both of which live on this service.
         viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
 
+        // AC-247: same split as cloning — SaveAsync raises the request, this service owns showing the window (a
+        // Func so SaveAsync can await the operator's answer and act on it, rather than firing an event and hoping
+        // something eventually calls back). `sharedWriteBack` is the same context CreateAsync above already
+        // received, so its own Baseline is exactly what the conflict view needs to tell "the operator touched
+        // this field" apart from "this only differs because Depot moved" — never re-derived, never re-read.
+        if (sharedWriteBack is { } writeBack)
+        {
+            viewModel.ConflictRequested += (edit, latest) => _ResolveConflictAsync(edit, writeBack.Baseline, latest, dialog);
+        }
+
         return await _surfaces.ShowAsync(key, dialog, owner, () => saved);
+    }
+
+    // Shows the conflict window over `owner` (the project editor itself, not the main window — AC-247 mirrors
+    // _CloneIntoProjectAsync's own nested-dialog shape) and returns the operator's resolution, or null when they
+    // cancelled it.
+    private static async Task<ProjectDefinitionConflictResolution?> _ResolveConflictAsync(
+        SharedProjectDefinitionEdit edit, SharedProjectBinding baseline, SharedProjectBinding latest, Window owner)
+    {
+        var viewModel = new ProjectDefinitionConflictViewModel(edit, baseline, latest);
+        var dialog = new ProjectDefinitionConflictDialog { DataContext = viewModel };
+        return await dialog.ShowDialog<ProjectDefinitionConflictResolution?>(owner);
     }
 
     public async Task<Project?> ShowSharedProjectBindingDialogAsync(SharedProject sharedProject, string sourceName, ISharedProjectSource source)

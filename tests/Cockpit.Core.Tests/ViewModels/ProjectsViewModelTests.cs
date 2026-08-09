@@ -587,6 +587,48 @@ public class ProjectsViewModelTests
         Assert.Equal("◆ Depot — Work", card.OriginBadge);
     }
 
+    [Fact]
+    public async Task ClaimBoundProjects_ARoleThatCanWriteBack_ClaimsEveryFieldEditableExceptLogo()
+    {
+        // AC-247: SharedProject.CanWriteBack (the source's own Editor/Owner check) drives IsEditable — Logo stays
+        // an override to locked regardless, since no artifact-upload path exists yet for writing it back.
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One") { CanWriteBack = true },
+        ]));
+        var (viewModel, ownership) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var claim = ownership.Resolve(bound.Id)!;
+        Assert.True(claim[HostProjectField.Name]!.IsEditable);
+        Assert.True(claim[HostProjectField.Description]!.IsEditable);
+        Assert.True(claim[HostProjectField.Behavior]!.IsEditable);
+        Assert.True(claim[HostProjectField.McpOverlay]!.IsEditable);
+        Assert.True(claim[HostProjectField.WorktreeSwitch]!.IsEditable);
+        Assert.False(claim[HostProjectField.Logo]!.IsEditable, "no write-back path exists yet for a shared logo");
+    }
+
+    [Fact]
+    public async Task ClaimBoundProjects_ARoleThatCannotWriteBack_ClaimsEveryFieldLocked()
+    {
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:one", "One") { CanWriteBack = false },
+        ]));
+        var (viewModel, ownership) = BuildWithSharedSources([source], bound);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var claim = ownership.Resolve(bound.Id)!;
+        Assert.False(claim[HostProjectField.Name]!.IsEditable);
+        Assert.False(claim[HostProjectField.Logo]!.IsEditable);
+    }
+
     /// <summary>Meet table edge case: editing the last project in a category out of it removes that category's group entirely — it does not linger as an empty one the way "Uncategorized" does.</summary>
     [Fact]
     public async Task ProjectCategoryGroups_TheLastProjectInACategory_EditedToDropIt_RemovesTheGroup()
@@ -673,5 +715,9 @@ public class ProjectsViewModelTests
         // — a fixed failure is enough to satisfy the interface without a fake result nothing here reads.
         public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
             Task.FromResult(SharedProjectBindingResult.Failed("not implemented by this fake"));
+
+        // AC-247: not exercised by any test in this file either (none of them call ProjectDialogViewModel.SaveAsync) — same reasoning as PrepareBindingAsync above.
+        public Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectWriteBackResult.Failed("not implemented by this fake"));
     }
 }

@@ -66,7 +66,13 @@ public interface ISessionDialogService
     /// and returns what the operator saved — null when they cancelled. Persisting is the caller's: this hands
     /// back an edited value the same way the New-session dialog hands back its choices.
     /// </summary>
-    Task<Project?> ShowProjectDialogAsync(Project? project);
+    /// <param name="sharedSource">
+    /// The <see cref="ISharedProjectSource"/> <paramref name="project"/> is bound to (AC-247), or null for a plain
+    /// local project — the caller's own <c>ProjectsViewModel._ResolveSharedSource</c> already knows this without
+    /// asking again. When set, this reads a fresh <see cref="SharedProjectBinding"/> (for its checksum) before
+    /// opening the editor, so Save has somewhere current to write a claimed field's edit back to.
+    /// </param>
+    Task<Project?> ShowProjectDialogAsync(Project? project, ISharedProjectSource? sharedSource = null);
 
     /// <summary>
     /// Shows the "Finish setting up…" bind step (AC-246) for <paramref name="sharedProject"/>, a project

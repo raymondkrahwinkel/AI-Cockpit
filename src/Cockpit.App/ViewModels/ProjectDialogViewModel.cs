@@ -24,6 +24,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // which cannot yet be claimed (a claim is keyed by an id nothing has assigned).
     private readonly Project? _originalProject;
 
+    // Where (AC-247) SaveAsync writes a claimed field's edit back to, or null for a new project, a project no
+    // source claims, or one whose fresh checksum read failed at open time — see CreateAsync's own remarks.
+    private ProjectSharedWriteBackContext? _writeBack;
+
     // Raised when the dialog is done: the saved project, or null when the operator cancelled.
     public event Action<Project?>? CloseRequested;
 
@@ -41,6 +45,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // `ProjectResourceRowViewModel.Reference` — carrying the row rather than a single dialog-wide value,
     // since AC-485 lets more than one row need a picker of its own.
     public event Action<ProjectResourceRowViewModel>? PickResourceRequested;
+
+    // Raised by SaveAsync when the write-back hits a checksum conflict (AC-247): the caller (SessionDialogService)
+    // owns opening the conflict window, the same split every other *Requested event here leaves to whoever can
+    // actually show a window. `edit` is the operator's own typed values, fixed for the whole resolve — never the
+    // merged retry SaveAsync may go on to build; `latest` is the fresh remote state the failed write's own re-read
+    // already fetched, so the window never has to ask Depot again just to show what changed. Returns the
+    // operator's choice, or null when they cancelled the window (back to editing this dialog, nothing written).
+    public event Func<SharedProjectDefinitionEdit, SharedProjectBinding, Task<ProjectDefinitionConflictResolution?>>? ConflictRequested;
 
     // Design-time constructor for the Avalonia previewer.
     public ProjectDialogViewModel()
@@ -96,11 +108,17 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)>? refreshMemorySources = null,
         IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? fieldOwnership = null,
         IReadOnlyList<string>? knownCategories = null,
+        // AC-247: null for a new project, a project no source claims, or a claimed project whose fresh checksum
+        // read failed — Save then behaves exactly as it did before AC-247 (a locked claimed field, if any, simply
+        // never reaches ToProject; see _Carry). Set only by the caller that already resolved the right
+        // ISharedProjectSource for this project and read a checksum to defend a write against.
+        ProjectSharedWriteBackContext? sharedWriteBack = null,
         CancellationToken cancellationToken = default)
     {
         var viewModel = new ProjectDialogViewModel(project)
         {
             HasFieldOwnership = fieldOwnership is not null,
+            _writeBack = sharedWriteBack,
             NameOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.Name),
             DescriptionOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.Description),
             LogoOrigin = _ResolveOrigin(fieldOwnership, HostProjectField.Logo),
@@ -259,6 +277,25 @@ public partial class ProjectDialogViewModel : ViewModelBase
         viewModel._carriedEnabledServerNames = [.. decided.Where(overlay.IsSelectedByDefault)];
         viewModel._carriedDisabledServerNames = [.. decided.Where(name => !overlay.IsSelectedByDefault(name))];
 
+        // AC-247, adversarial review finding: the fields above were populated from `project` — this machine's own,
+        // possibly stale, local copy — while `sharedWriteBack.Baseline` (when set) is a read taken moments ago.
+        // Opening the editor without reconciling the two would let SaveAsync send the stale local values back to
+        // Depot with a checksum that legitimately matches its current state, silently overwriting whatever a
+        // colleague changed before this editor ever opened — not a race, a guaranteed clobber on every edit to a
+        // project this machine had not looked at recently. Refreshing every write-back-eligible field from the
+        // fresh read closes that gap, and doubles as what the operator sees: the dialog opens showing Depot's own
+        // current values, not this machine's cache of them.
+        //
+        // ponytail: MCP names outside this machine's own catalog are not reconciled here — `_ApplyRemoteValues`
+        // only ticks rows `McpServers` already has, so a name `_carriedEnabledServerNames`/`_carriedDisabledServerNames`
+        // captured from the local project's overlay a moment ago can still diverge from the fresh baseline. Narrow
+        // (a project sharing an MCP name this machine has no row for) and self-healing (the next open re-reads);
+        // widen this if a real project hits it.
+        if (sharedWriteBack is not null)
+        {
+            viewModel._ApplyRemoteValues(sharedWriteBack.Baseline);
+        }
+
         return viewModel;
     }
 
@@ -409,6 +446,17 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // A project needs a name — it is what every other surface shows it by.
     public bool CanSave => !string.IsNullOrWhiteSpace(Name);
 
+    // AC-247: set while SaveAsync's own write-back call (and any conflict re-read/retry) is in flight — the view
+    // disables Save and shows a spinner rather than letting a second click start a second, overlapping write.
+    [ObservableProperty]
+    private bool _isSaving;
+
+    // AC-247: the reason a write-back failed outright (PermissionDenied or an unclassified Failed) — shown as a
+    // banner instead of closing the dialog. Null the rest of the time, including for a checksum conflict, which
+    // opens its own window (ConflictRequested) rather than showing text here.
+    [ObservableProperty]
+    private string? _saveError;
+
     // Assigns a folder chosen by the picker, dropping a stale clone URL when the operator points the project somewhere else.
     public void ApplyPickedDirectory(string directory, string? gitUrl = null)
     {
@@ -472,13 +520,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
         };
     }
 
-    // `edited` unless `origin` says this field is claimed (AC-604 acceptance
-    // criterion 3), in which case the value `_originalProject` already had wins instead — an edit to a
-    // field this project's ownership claims must never reach `cockpit.json`, whether or not the control was
-    // locked while the operator had it open. `_originalProject` is null only for a new project, which
-    // cannot yet be claimed, so falling back to `edited` there changes nothing.
+    // `edited` unless `origin` says this field is both claimed and still locked (AC-604 acceptance criterion 3,
+    // narrowed by AC-247), in which case the value `_originalProject` already had wins instead — an edit to a
+    // field with nowhere to write back to must never reach `cockpit.json`, whether or not the control let the
+    // operator type into it. A claimed field the source marked editable is no longer this case (AC-247): by the
+    // time ToProject runs, SaveAsync's own write-back either already landed the edit at the source (Success) or
+    // this call never happens at all (a conflict/error return closes nothing) — so `edited` is exactly what
+    // belongs in `cockpit.json` for it, the same as any local field. `_originalProject` is null only for a new
+    // project, which cannot yet be claimed, so falling back to `edited` there changes nothing.
     private T _Carry<T>(ProjectFieldOriginViewModel origin, T edited, Func<Project, T> original) =>
-        origin.IsClaimed && _originalProject is not null ? original(_originalProject) : edited;
+        origin.IsClaimed && origin.IsLockedHere && _originalProject is not null ? original(_originalProject) : edited;
 
     // What this project is linked to: the rows the operator filled in, plus the keys carried through from plugins
     // that are not installed. A row left empty is not written — clearing the box is how a link is removed, and an
@@ -604,11 +655,195 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void Clone() => CloneRequested?.Invoke();
 
+    // AC-247: for a project no source claims editable (the overwhelming majority — every project before this
+    // ticket, and every claimed field bar the five WriteBackAsync now supports), this is exactly the old
+    // synchronous Save: build the project, close. Only a project with a live `_writeBack` context takes the
+    // write-then-close path below, and only that path can come back with SaveError set or reopen this same dialog
+    // after a resolved conflict instead of closing it.
     [RelayCommand(CanExecute = nameof(CanSave))]
-    private void Save() => CloseRequested?.Invoke(ToProject());
+    private async Task SaveAsync()
+    {
+        if (_writeBack is not { } writeBack)
+        {
+            CloseRequested?.Invoke(ToProject());
+            return;
+        }
+
+        // Defensive: a second click while the first write (or its conflict window) is still in flight must not
+        // start a second, overlapping write.
+        if (IsSaving)
+        {
+            return;
+        }
+
+        SaveError = null;
+
+        // Fixed for the whole call: what the operator actually typed, compared against `writeBack.Baseline` (the
+        // read this editor opened with, which CreateAsync also used to populate these very fields — see its own
+        // remarks) to tell "I touched this field" apart from "I left it alone" — never against a later merged
+        // retry, which would make a field the operator touched once look untouched on a second conflict.
+        var operatorEdit = _BuildEdit();
+
+        // Nothing to write back: close exactly as a project with no write-back context does. Skipping the call
+        // outright — rather than sending an edit identical to the baseline and letting it round-trip harmlessly —
+        // is what actually matters here: CreateAsync's own fresh-baseline population (see its remarks) makes an
+        // accidental overwrite unlikely even without this guard, but a Save that touches nothing shared has no
+        // business spending an MCP round trip, and skips the conflict machinery entirely rather than only shrinking
+        // its odds.
+        if (_MatchesBaseline(operatorEdit, writeBack.Baseline))
+        {
+            CloseRequested?.Invoke(ToProject());
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            var pendingEdit = operatorEdit;
+            var baseChecksum = writeBack.Baseline.Checksum!;
+
+            while (true)
+            {
+                var result = await writeBack.Source.WriteBackAsync(writeBack.Id, pendingEdit, baseChecksum, CancellationToken.None)
+                    .ConfigureAwait(true);
+
+                if (result.Outcome == SharedProjectWriteBackOutcome.Success)
+                {
+                    // `pendingEdit` — not `operatorEdit` — is what actually landed at the source: on a merge retry
+                    // (below) they differ on every field the operator left alone, and cockpit.json must carry the
+                    // same values Depot just accepted, not what the operator's own untouched fields still show.
+                    _ApplyEditValues(pendingEdit);
+                    CloseRequested?.Invoke(ToProject());
+                    return;
+                }
+
+                if (result.Outcome != SharedProjectWriteBackOutcome.ChecksumConflict)
+                {
+                    // PermissionDenied or Failed: never retried automatically (AC-247 — a rejected write is not a
+                    // conflict to merge, it is a reason to stop and say why). The operator stays in this dialog;
+                    // SaveError is what the view shows instead of closing.
+                    SaveError = result.Error ?? "Could not save this project.";
+                    return;
+                }
+
+                if (ConflictRequested is null)
+                {
+                    // No one is listening to show the conflict window (a design-time instance, a test harness with
+                    // no dialog service wired) — fail closed rather than silently overwrite or silently drop the edit.
+                    SaveError = "This project changed elsewhere; reopen it to see the latest version.";
+                    return;
+                }
+
+                var resolution = await ConflictRequested.Invoke(operatorEdit, result.LatestSnapshot!).ConfigureAwait(true);
+                if (resolution is null)
+                {
+                    // The operator dismissed the conflict window — back to editing here, nothing written yet.
+                    return;
+                }
+
+                if (resolution.TakeTheirs)
+                {
+                    _ApplyRemoteValues(result.LatestSnapshot!);
+                    CloseRequested?.Invoke(ToProject());
+                    return;
+                }
+
+                // "Apply only my change": a field-by-field merge onto the fresh remote state — every field the
+                // operator actually touched keeps the operator's own value; every field the operator left alone
+                // takes whatever the fresh read just found, so a colleague's own unrelated edit is never lost
+                // just because it happened to land in the same conflict. Retried with the fresh checksum: if
+                // nothing has moved again since that re-read, this succeeds; the loop only runs a third time on
+                // another, even narrower race.
+                pendingEdit = _MergeOntoLatest(operatorEdit, writeBack.Baseline, result.LatestSnapshot!);
+                baseChecksum = result.LatestSnapshot!.Checksum!;
+            }
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
+
+    // What the operator typed for the five write-back-eligible fields (AC-247) — Logo is excluded (see
+    // ProjectFieldOwnership's own remarks in ProjectsViewModel._ClaimBoundProjects: no artifact-upload path yet).
+    private SharedProjectDefinitionEdit _BuildEdit() => new(
+        Name.Trim(),
+        _NullIfBlank(Description),
+        _NullIfBlank(BehaviorPrompt),
+        IsolateInWorktreeByDefault,
+        _ComputeEnabledMcpServerNames());
+
+    // The same "null means no opinion, otherwise every ticked name plus whatever this build has no row for"
+    // logic ToProject's own editedOverlay already computes for the local project — shared here rather than
+    // duplicated, since AC-247's remote edit needs the identical list.
+    private IReadOnlyList<string>? _ComputeEnabledMcpServerNames() =>
+        McpServers.Any(server => !server.IsEnabledForSession) || _carriedEnabledServerNames.Count > 0 || _carriedDisabledServerNames.Count > 0
+            ? [.. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name), .. _carriedEnabledServerNames]
+            : null;
+
+    // "Hun versie nemen" (AC-247): adopts the fresh remote state onto every claimed, editable field this dialog
+    // shows — the operator's own edit to any of them is discarded, exactly what that button promises. Local-only
+    // fields (Profile, Folder) are untouched; they were never part of the write-back to begin with.
+    private void _ApplyRemoteValues(SharedProjectBinding latest) => _ApplyValues(
+        latest.Name, latest.Description, latest.BehaviorPrompt, latest.IsolateInWorktreeByDefault, latest.EnabledMcpServerNames);
+
+    // SaveAsync's own success path (both the plain write and a resolved merge retry): what actually reached the
+    // source is what belongs on screen and in ToProject's own output — see SaveAsync's remarks on why `pendingEdit`,
+    // not `operatorEdit`, is what this is called with on a merge retry.
+    private void _ApplyEditValues(SharedProjectDefinitionEdit edit) => _ApplyValues(
+        edit.Name, edit.Description, edit.BehaviorPrompt, edit.IsolateInWorktreeByDefault, edit.EnabledMcpServerNames);
+
+    private void _ApplyValues(string name, string? description, string? behaviorPrompt, bool isolate, IReadOnlyList<string>? enabledMcpServerNames)
+    {
+        Name = name;
+        Description = description ?? string.Empty;
+        BehaviorPrompt = behaviorPrompt ?? string.Empty;
+        IsolateInWorktreeByDefault = isolate;
+
+        var enabled = enabledMcpServerNames?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var server in McpServers)
+        {
+            server.IsEnabledForSession = enabled is null || enabled.Contains(server.Name);
+        }
+    }
+
+    // Whether SaveAsync's own write-back can be skipped outright — every write-back-eligible field reads the same
+    // as `baseline`, the read this editor opened with (see CreateAsync's own remarks on why these fields start out
+    // equal to it). Compared with the same normalization `_NullIfBlank` applies everywhere else in this class
+    // (trim, blank-as-null) on both sides — `baseline`'s own strings come from Depot's JSON verbatim, not through
+    // this editor's own text boxes, so comparing them raw against a trimmed edit would read a stray trailing space
+    // in Depot's own copy as "the operator touched this," which is backwards for a guard whose whole job is
+    // recognising nothing happened.
+    private static bool _MatchesBaseline(SharedProjectDefinitionEdit edit, SharedProjectBinding baseline) =>
+        _FieldEquals(edit.Name, baseline.Name)
+        && _FieldEquals(edit.Description, baseline.Description)
+        && _FieldEquals(edit.BehaviorPrompt, baseline.BehaviorPrompt)
+        && edit.IsolateInWorktreeByDefault == baseline.IsolateInWorktreeByDefault
+        && _SameNames(edit.EnabledMcpServerNames, baseline.EnabledMcpServerNames);
+
+    // "Alleen mijn wijziging toepassen" (AC-247's own per-field merge): for each field, the operator's edit wins
+    // only where the operator actually changed it from what this editor opened with (`baseline`) — a field left
+    // alone takes whatever `latest` just found instead, so a colleague's unrelated change never gets silently
+    // discarded just because it happened to share a conflict with a field the operator did touch. Same
+    // normalization as `_MatchesBaseline`, and for the same reason: `baseline` is Depot's own raw JSON, `mine` is
+    // this editor's trimmed text boxes.
+    private static SharedProjectDefinitionEdit _MergeOntoLatest(
+        SharedProjectDefinitionEdit mine, SharedProjectBinding baseline, SharedProjectBinding latest) => new(
+        !_FieldEquals(mine.Name, baseline.Name) ? mine.Name : latest.Name,
+        !_FieldEquals(mine.Description, baseline.Description) ? mine.Description : latest.Description,
+        !_FieldEquals(mine.BehaviorPrompt, baseline.BehaviorPrompt) ? mine.BehaviorPrompt : latest.BehaviorPrompt,
+        mine.IsolateInWorktreeByDefault != baseline.IsolateInWorktreeByDefault ? mine.IsolateInWorktreeByDefault : latest.IsolateInWorktreeByDefault,
+        !_SameNames(mine.EnabledMcpServerNames, baseline.EnabledMcpServerNames) ? mine.EnabledMcpServerNames : latest.EnabledMcpServerNames);
+
+    private static bool _FieldEquals(string? left, string? right) =>
+        string.Equals(_NullIfBlank(left ?? string.Empty), _NullIfBlank(right ?? string.Empty), StringComparison.Ordinal);
+
+    private static bool _SameNames(IReadOnlyList<string>? left, IReadOnlyList<string>? right) =>
+        left is null && right is null
+        || left is not null && right is not null && left.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(right);
 
     partial void OnNameChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
 
@@ -896,3 +1131,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     private static string? _NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
+
+// Where SaveAsync writes a claimed field's edit back to (AC-247) — the source that claimed this project, the id
+// it knows this project by, and the read this editor opened with (its own Checksum is what the first write
+// attempt defends; its other fields are what SaveAsync's per-field merge compares an edit against to tell
+// "the operator touched this" apart from "this just came along for the ride").
+public sealed record ProjectSharedWriteBackContext(ISharedProjectSource Source, string Id, SharedProjectBinding Baseline);
+
+// The operator's choice on ProjectDialogViewModel's conflict window (AC-247) — `TakeTheirs` discards every edit to
+// a claimed field in favour of the fresh remote state; the other path (SaveAsync's own per-field merge) needs no
+// flag of its own; it is what happens whenever this record is not the answer.
+public sealed record ProjectDefinitionConflictResolution(bool TakeTheirs);

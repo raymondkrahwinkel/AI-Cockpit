@@ -42,6 +42,16 @@ public sealed record SharedProjectBinding(string Name)
     /// definition, or a future, less strict writer, is not this reader's problem to assume away.
     /// </summary>
     public IReadOnlyList<SharedProjectBindingResource> Resources { get; init; } = [];
+
+    /// <summary>
+    /// The source's own optimistic-concurrency token for the read this binding came from (AC-247) — null for a
+    /// source with no write-back path, or for the original AC-246 bind-time read this field did not exist for yet.
+    /// A caller that goes on to edit and save this project's claimed fields carries this forward as
+    /// <see cref="ISharedProjectSource.WriteBackAsync"/>'s <c>baseChecksum</c>, unmodified, for as long as the
+    /// editor stays open on the values this read produced — never refreshed quietly out from under an
+    /// in-progress edit, which is exactly what would defeat the point of an optimistic-concurrency token.
+    /// </summary>
+    public string? Checksum { get; init; }
 }
 
 /// <summary>One <see cref="SharedProjectBinding.Resources"/> row (AC-246) — <see cref="Role"/> a plain string, the same "not an enum across this boundary" idiom <see cref="SharedProject.Role"/> already uses.</summary>
