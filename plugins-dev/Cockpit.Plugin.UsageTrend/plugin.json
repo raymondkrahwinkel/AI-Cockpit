@@ -1,7 +1,7 @@
 {
   "id": "usage-trend",
   "name": "Usage Trend",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "entryAssembly": "Cockpit.Plugin.UsageTrend.dll",
   "entryType": "Cockpit.Plugin.UsageTrend.UsageTrendPlugin",
   "abstractionsVersion": 1,

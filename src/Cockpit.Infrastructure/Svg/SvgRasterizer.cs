@@ -21,11 +21,8 @@ public static class SvgRasterizer
     }
 
     // The SVG drawn onto a PNG at `maxSize` on its longest side, transparent behind it. Null when the document
-    // does not parse or draws nothing, which leaves the caller on its own fallback rather than an empty square.
-    // The try/catch is this method's own: `SKSvg.Load` throws (an XmlException, not a null/failed result) on
-    // bytes that merely look like an SVG by content-sniffing but are not well-formed XML — a caller downloading
-    // arbitrary bytes off a URL must be able to trust the "null on a bad document" contract this doc comment
-    // already promises, rather than every caller needing its own try/catch to make that true.
+    // does not parse or draws nothing — the try/catch is this method's own, since `SKSvg.Load` throws on
+    // malformed XML rather than returning a null/failed result.
     public static byte[]? Rasterize(byte[] bytes, float maxSize)
     {
         try

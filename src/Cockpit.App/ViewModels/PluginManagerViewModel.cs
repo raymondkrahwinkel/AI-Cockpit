@@ -802,12 +802,9 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    // Fetches a provider plugin's vendor-hosted logo (AC-553 option A) and hands it to its row as a Bitmap, the
-    // same best-effort shape as `_LoadStoreLogoAsync` above: an http error, an oversize image, or one this SVG
-    // rasteriser/decoder cannot read leaves `RemoteLogo` null and the row falls to its emoji glyph/monogram — a
-    // vendor's own hosting hiccup must never break browsing. Rasterises SVG bytes the same way a project's own
-    // logo does (Cockpit.Infrastructure.Svg.SvgRasterizer): `DownloadImageAsync` returns raw bytes regardless of
-    // format, and Avalonia's `Bitmap` only decodes raster images.
+    // Fetches a provider plugin's vendor-hosted logo (AC-553 option A), best-effort like `_LoadStoreLogoAsync`
+    // above: any failure leaves `RemoteLogo` null and the row falls to its glyph/monogram. Rasterises SVG bytes
+    // first (SvgRasterizer) since Avalonia's `Bitmap` only decodes raster images.
     private async Task _LoadPluginLogoAsync(StorePluginRowViewModel row, PluginStoreConfig store, string logoUrl)
     {
         if (_storeClient is null)

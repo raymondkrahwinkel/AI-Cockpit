@@ -6,12 +6,9 @@ using Avalonia.Platform;
 
 namespace Cockpit.App.Converters;
 
-// Loads a plugin's logo mark (AC-553) as a live vector Geometry rather than a rasterised bitmap, so its Fill
-// can bind to the theme's own foreground brush the same way MaterialIcon already does — "vector wins, coloured
-// by the app", not a colour baked into a bitmap at build time. Reads the asset's own single <path>, tolerating
-// fill-rule="evenodd" (needed for a ring/outline mark, e.g. the magnifier or the archive box). Parsed geometry
-// is cached by URI: the asset is a bundled, immutable resource for the process lifetime, so this needs none of
-// ProjectLogoConverter's mtime tracking for a file that can be replaced out from under it.
+// A plugin's logo (AC-553) as a live vector Geometry rather than a bitmap, so Fill can bind to the theme's
+// foreground brush like MaterialIcon does. Cached by URI — the asset is bundled and immutable for the
+// process's lifetime, unlike ProjectLogoConverter's mtime-tracked file.
 public sealed class PluginLogoGeometryConverter : IValueConverter
 {
     public static readonly PluginLogoGeometryConverter Instance = new();

@@ -181,13 +181,9 @@ internal static class Screenshotter
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
         ["plugin-store"] = (_, _) => _PluginStore(),
-        // AC-553: the eleven bundled plugins' real logo tiles, side by side (Iron Law #9's own "eyeball the
-        // grid" acceptance criterion) — its own scene rather than added to `_SampleStorePlugins` above, whose
-        // exact row count `PluginStoreBusyGateTests.EveryInstallButtonOnTheCatalogue_GoesDead_WhileAnInstallRuns`
-        // already asserts on.
-        // Height overridden past the dialog's own 820: twelve rows (the eleven bundled plugins plus the
-        // no-LogoAsset fallback sample) do not fit the resting size, and a scene that renders only what you
-        // cannot scroll to proves nothing about the row this ticket did not get to.
+        // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
+        // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
+        // rows do not fit at rest.
         ["plugin-store-logos"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreWithLogos(), Height = 1900 },
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
         ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),
@@ -1468,10 +1464,9 @@ internal static class Screenshotter
         };
     }
 
-    // AC-553: the real bundled-plugin ids and categories (matching plugins-dev/*/store.json) with their
-    // LogoAsset set, so the render actually exercises PluginLogoGeometryConverter/PluginCategoryTint rather than
-    // the emoji/monogram fallbacks — the thing this ticket has to be eyeballed on. No SelectedPlugin: the point
-    // of this scene is the catalogue grid, not the detail panel one card already covers in "plugin-store".
+    // AC-553: the real bundled-plugin ids/categories/LogoAsset (matching plugins-dev/*/store.json), so the
+    // render exercises the actual converter/tint instead of the glyph/monogram fallbacks. No SelectedPlugin —
+    // this scene is about the catalogue grid, not the detail panel "plugin-store" already covers.
     private static PluginStoreDialogViewModel _PluginStoreWithLogos()
     {
         static StorePluginRowViewModel Row(string id, string name, string category, string logoAsset, string icon)
@@ -1493,10 +1488,8 @@ internal static class Screenshotter
             Row("git-status", "Git status", "Productivity", "git-status.svg", "🌿"),
             Row("clock", "Clock", "Widgets", "clock.svg", "🕐"),
             Row("usage-trend", "Usage Trend", "Widgets", "usage-trend.svg", "📈"),
-            // AC-553 option A: these three point at the vendor's own CDN, fetched by
-            // PluginManagerViewModel._LoadPluginLogoAsync — not exercised by this offline scene (no network in a
-            // headless CI render), so they render on their glyph/monogram fallback here, same as any plugin
-            // whose fetch has not landed yet.
+            // AC-553 option A: these three point at the vendor's own CDN — not fetched by this offline scene
+            // (no network in a headless CI render), so they render on the glyph/monogram fallback here.
             Row("claude-provider", "Claude Code", "AI providers", "https://claude.ai/favicon.svg", null!),
             Row("cli-agent-provider", "CLI Agent Provider (Codex)", "AI providers", "https://avatars.githubusercontent.com/openai", null!),
             Row("kimi-provider", "Kimi", "AI providers", "https://moonshotai.github.io/Branding-Guide/scenarios/04-k-only/k-only-color.svg", "🌙"),

@@ -16,10 +16,8 @@ namespace Cockpit.App.ViewModels;
 // only fail. `hostAbstractionsMajor`/`hostVersion` default to the running
 // cockpit's own values; a caller only ever overrides them in a test.
 //
-// ObservableObject/partial (AC-553) only for `RemoteLogo` — a vendor CDN logo (option A's provider trio)
-// arrives asynchronously, after the row is already on screen (PluginManagerViewModel's own `logoLoads`,
-// mirroring how a store's own `IconUrl` already loads), so it is the one property here that is not settled at
-// construction and needs change notification. Everything else on this row stays a plain computed property.
+// ObservableObject/partial (AC-553) only for `RemoteLogo` — a vendor CDN logo arrives asynchronously, after
+// the row is already on screen, so it is the one property here that needs change notification.
 public sealed partial class StorePluginRowViewModel(
     PluginStoreEntry entry,
     PluginStoreConfig store,
@@ -118,11 +116,8 @@ public sealed partial class StorePluginRowViewModel(
     // Upper-cased first letter of `Name`, used as the icon fallback when `IconGlyphOrNull` is null.
     public string MonogramLetter => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
 
-    // Whether `entry.LogoAsset` names a vendor's own CDN rather than a file this host bundles (AC-553 option A:
-    // the three provider plugins point at Anthropic's/OpenAI's/Moonshot's own hosting, never a copy stored in
-    // this repo — a trademarked mark is shown exactly as its owner serves it, not redistributed). Decides which
-    // download path applies (PluginManagerViewModel's async fetch into `RemoteLogo` below) and keeps
-    // `LogoAssetUri` from ever trying to resolve a URL as a bundled file name.
+    // Whether `entry.LogoAsset` names a vendor's own CDN rather than a bundled file (AC-553 option A) — decides
+    // which download path applies and keeps `LogoAssetUri` from resolving a URL as a bundled file name.
     public bool IsRemoteLogoAsset =>
         Uri.TryCreate(entry.LogoAsset, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
@@ -141,10 +136,8 @@ public sealed partial class StorePluginRowViewModel(
 
     public bool HasRemoteLogo => RemoteLogo is not null;
 
-    // The bundled `avares://` URI for `entry.LogoAsset` (AC-553), or null when unset, a remote CDN URL
-    // (`IsRemoteLogoAsset`), or not actually shipped by this host — a third-party store's own `LogoAsset`, or
-    // one not yet added here, falls through to `IconGlyphOrNull`/`MonogramLetter` exactly as if it had never
-    // been set, rather than showing a broken image.
+    // The bundled `avares://` URI for `entry.LogoAsset` (AC-553), or null when unset, a remote CDN URL, or not
+    // actually shipped by this host — falls through to `IconGlyphOrNull`/`MonogramLetter` rather than a broken image.
     public string? LogoAssetUri => IsRemoteLogoAsset ? null : _ResolveLogoAssetUri(entry.LogoAsset);
 
     public bool HasLogoAsset => LogoAssetUri is not null;
