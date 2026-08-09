@@ -4,7 +4,9 @@ using Avalonia.LogicalTree;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
+using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -173,6 +175,94 @@ public sealed class TranscriptStreamingCostTests
             Assert.True(containers[0].IsVisible, "a visible pane must stay on screen");
             Assert.False(containers[1].IsVisible, "IsPaneVisible=false must still collapse the pane's container");
         });
+    }
+
+    /// <summary>
+    /// How many times a streamed reply is applied, which is what decides its cost: the row realises its whole text
+    /// per call and the binding reads it back on every change, so the split is the bill (AC-529).
+    /// </summary>
+    [Fact]
+    public async Task AReplyStreamedAtTheRateOneArrives_IsAppliedFarFewerTimesThanItHasDeltas()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            const int deltas = 400;
+            const int deltaChars = 40;
+
+            var applies = 0;
+            var text = new System.Text.StringBuilder();
+            var queue = new SessionEventQueue(evt =>
+            {
+                applies++;
+                text.Append(((AssistantTextDelta)evt).Text);
+            });
+
+            var chunk = new string('x', deltaChars);
+
+            // Paced, not flooded, and that pacing is the test: a tight producer outruns the dispatcher and batches
+            // even without a window, which is how the self-clocking version passed a test while doing nothing on a
+            // live session (AC-529).
+            var producing = System.Diagnostics.Stopwatch.StartNew();
+
+            await Task.Run(() =>
+            {
+                for (var i = 0; i < deltas; i++)
+                {
+                    queue.Enqueue(new AssistantTextDelta { Text = chunk, SessionId = "s", BlockIndex = 0 });
+                    Thread.Sleep(1);
+                }
+            });
+
+            producing.Stop();
+
+            await Task.Delay(200);
+            queue.Flush();
+
+            // Nothing may be lost, however the folding falls out.
+            Assert.Equal(deltas * deltaChars, text.Length);
+
+            // Measured against how long the producer actually took, not against a fraction of the delta count: the
+            // window folds per unit of time, so a fixed fraction is really an assertion about the host's timer
+            // resolution. Where Thread.Sleep(1) rounds up to ~15ms this run stretches to six seconds and a fifth of
+            // 400 is simply the wrong line — a red test about the machine rather than about the code. One apply per
+            // window is the ceiling the design promises; the slack covers the leading edge, the flush and a window
+            // that lands either side of the boundary.
+            const int windowMs = 33;
+            var ceiling = (int)(producing.ElapsedMilliseconds / windowMs) + 4;
+
+            Assert.True(
+                applies <= ceiling,
+                $"{deltas} deltas produced over {producing.ElapsedMilliseconds} ms were applied {applies} times, "
+                + $"more than the {ceiling} a {windowMs} ms window allows; they are not being folded, so each one "
+                + "still realises the whole reply");
+
+            // And folding has to be doing something at all, whatever the clock did.
+            Assert.True(applies < deltas, $"every one of {deltas} deltas was applied on its own");
+        });
+    }
+
+    /// <summary>
+    /// The price of the drain window: a pane that stops listening mid-window would drop what the queue was holding,
+    /// which is the property the self-clocking version got for free (AC-529).
+    /// </summary>
+    [Fact]
+    public void FlushingTheQueue_AppliesWhatTheDrainWindowWasStillHolding()
+    {
+        var applied = new List<string>();
+
+        // A pump that never runs anything — the state a pane detaching mid-window is in.
+        var queue = new SessionEventQueue(
+            evt => applied.Add(((AssistantTextDelta)evt).Text),
+            _ => { });
+
+        queue.Enqueue(new AssistantTextDelta { Text = "one", SessionId = "s", BlockIndex = 0 });
+        queue.Enqueue(new AssistantTextDelta { Text = "two", SessionId = "s", BlockIndex = 1 });
+
+        Assert.Empty(applied);
+
+        queue.Flush();
+
+        Assert.Equal(["one", "two"], applied);
     }
 
     // The template binds by reflection, so the grid only needs an object carrying IsPaneVisible; a real

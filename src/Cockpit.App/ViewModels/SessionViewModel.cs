@@ -981,19 +981,25 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        // A turn parked on a permission prompt has to be answered before its driver goes away, or the pane goes
-        // on asking for attention over a decision nothing is waiting for — half of the half-state AC-564 calls
-        // out. The tool never ran, and IsPendingPermission is what the chip and the status actually read.
         // The running turn itself needs nothing here: _StopRuntimeAsync tears down through the runtime, which
         // interrupts before it takes the process away (SessionRuntime.DisposeAsync) — a second interrupt from
         // this side would only be the same call again.
+        await _StopRuntimeAsync();
+
+        // A turn parked on a permission prompt is answered here, or the pane goes on asking for attention over a
+        // decision nothing is waiting for — half of the half-state AC-564 calls out. The tool never ran, and
+        // IsPendingPermission is what the chip and the status actually read.
+        //
+        // AC-529: after the teardown, not before. The teardown flushes what the drain window was still holding, so a
+        // permission request the window caught lands in the transcript after this point — swept first it would stay
+        // pending for the life of the pane, since _ResetForNewConversation deliberately leaves the transcript
+        // standing. Nothing in this loop talks to the driver, so waiting for the teardown costs it nothing.
         foreach (var pending in Transcript.Where(entry => entry.IsPendingPermission).ToList())
         {
             pending.PermissionDecision = "Cancelled — context cleared";
             pending.IsPendingPermission = false;
         }
 
-        await _StopRuntimeAsync();
         _ResetForNewConversation();
 
         Transcript.Add(new TranscriptEntryViewModel(
@@ -2567,12 +2573,30 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // hang shutdown with a live child claude (#32).
     private async Task _StopRuntimeAsync()
     {
+        if (_runtime is not null)
+        {
+            _runtime.EventAppended -= _OnSessionEvent;
+        }
+
+        // AC-529: ahead of the null guard, because a teardown that finds the runtime already gone still has the last
+        // window's events queued. `Flush` applies inline and `Transcript` is bound, so it owes the UI thread — but
+        // never by blocking on it. Every caller today is already on it and takes the first branch; an off-thread one
+        // would post rather than wait, because a blocking hop here sits in front of the child kill below and that
+        // dependency on a live dispatcher is exactly what hung shutdown before (#32).
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            _eventQueue.Flush();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(_eventQueue.Flush);
+        }
+
         if (_runtime is null)
         {
             return;
         }
 
-        _runtime.EventAppended -= _OnSessionEvent;
         var runtime = _runtime;
         _runtime = null;
         OnPropertyChanged(nameof(IsSessionReady));
