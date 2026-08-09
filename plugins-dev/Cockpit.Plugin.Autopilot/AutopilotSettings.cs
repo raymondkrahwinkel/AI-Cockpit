@@ -13,6 +13,8 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string MaxConsultsKey = "maxConsultsPerStep";
     private const string CeoProfileKey = "ceoProfileLabel";
     private const string CeoModelKey = "ceoModel";
+    private const string CeoValidationProfileKey = "ceoValidationProfileLabel";
+    private const string CeoValidationModelKey = "ceoValidationModel";
     private const string AutonomyModeKey = "autonomyMode";
     private const string CostStrategyKey = "costStrategy";
     private const string MaxConcurrentRunsKey = "maxConcurrentRuns";
@@ -60,6 +62,25 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     // The model the CEO planning session runs on where its profile offers a choice (AC-174, e.g. `opus`);
     // null uses the profile's own default model.
     public string? CeoModel(string? projectId = null) => _ReadString(projectId, CeoModelKey);
+
+    // The profile the CEO's per-step validation runs on (AC-254) — a cheaper model than planning's, since validation is
+    // the run's high-frequency, growing-context part. Same precedence as the AC-233 threshold resolver applied one
+    // level further: project override → global override → the planning profile above, so a run that never sets a
+    // validation override behaves exactly as it did before this split (one shared pair).
+    public string? CeoValidationProfileLabel(string? projectId = null) =>
+        _ReadString(projectId, CeoValidationProfileKey) is { Length: > 0 } value ? value : CeoProfileLabel(projectId);
+
+    // The model the CEO's validation session runs on (AC-254); falls back to the planning model on the same
+    // project/global → planning precedence as `CeoValidationProfileLabel`.
+    public string? CeoValidationModel(string? projectId = null) =>
+        _ReadString(projectId, CeoValidationModelKey) is { Length: > 0 } value ? value : CeoModel(projectId);
+
+    // The validation override as stored, without falling back to the planning pair — what the settings view shows so
+    // "blank" reads as "follows planning" rather than pre-filling today's planning value into a field that would then
+    // stop following it.
+    public string? CeoValidationProfileLabelOverride(string? projectId = null) => _ReadString(projectId, CeoValidationProfileKey);
+
+    public string? CeoValidationModelOverride(string? projectId = null) => _ReadString(projectId, CeoValidationModelKey);
 
     // The permission mode that turns off a permission-based (Claude) provider's worktree confinement (AC-209):
     // coerced out of an autonomous run's effective mode. Public callers read the coerced value through `AutonomyMode`.
@@ -112,6 +133,10 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public void SetCeoProfileLabel(string? label, string? projectId = null) => _Write(projectId, CeoProfileKey, label);
 
     public void SetCeoModel(string? model, string? projectId = null) => _Write(projectId, CeoModelKey, model);
+
+    public void SetCeoValidationProfileLabel(string? label, string? projectId = null) => _Write(projectId, CeoValidationProfileKey, label);
+
+    public void SetCeoValidationModel(string? model, string? projectId = null) => _Write(projectId, CeoValidationModelKey, model);
 
     public void SetAutonomyMode(string? mode, string? projectId = null) => _Write(projectId, AutonomyModeKey, mode);
 

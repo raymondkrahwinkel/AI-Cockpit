@@ -211,4 +211,37 @@ public class AutopilotRunContextTests
         Assert.Equal(AutopilotSettings.DefaultAutonomyMode, request.PermissionMode);
         Assert.NotEqual("bypassPermissions", request.PermissionMode);
     }
+
+    [Fact]
+    public void ValidatorCeoRequest_UsesThePlanningPair_WhenNoValidationOverrideIsSet()
+    {
+        // AC-254: unset, the validator behaves exactly as before the split — one shared pair.
+        var settings = new AutopilotSettings(new FakeStorage());
+        settings.SetCeoProfileLabel("work");
+        settings.SetCeoModel("opus");
+
+        var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", _SourcePlan(), "run-1");
+
+        Assert.Equal("work", request.ProfileId);
+        Assert.Equal("opus", request.Model);
+    }
+
+    [Fact]
+    public void ValidatorCeoRequest_UsesItsOwnModel_IndependentlyOfPlanning()
+    {
+        // AC-254's mutation proof from the wiring side: setting only the validation override changes what the
+        // validator asks for without moving planning's own pair — checked separately in AutopilotSettingsTests.
+        var settings = new AutopilotSettings(new FakeStorage());
+        settings.SetCeoProfileLabel("work");
+        settings.SetCeoModel("opus");
+        settings.SetCeoValidationModel("sonnet");
+
+        var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", _SourcePlan(), "run-1");
+
+        // The profile follows planning (no validation profile override set); only the model diverges.
+        Assert.Equal("work", request.ProfileId);
+        Assert.Equal("sonnet", request.Model);
+        Assert.Equal("work", settings.CeoProfileLabel());
+        Assert.Equal("opus", settings.CeoModel());
+    }
 }

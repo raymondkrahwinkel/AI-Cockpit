@@ -38,8 +38,10 @@ internal sealed class AutopilotRunContext
             // run (AC-251) — leaving it out would under-report exactly the context whose growth this run is measured on.
             RunId = runId,
             RunLabel = plan.Label,
-            ProfileId = settings.CeoProfileLabel(),
-            Model = settings.CeoModel(),
+            // AC-254: the validator's own profile/model, not planning's — it defaults to the planning pair until an
+            // operator sets a validation-specific override (AutopilotSettings.CeoValidationProfileLabel/Model).
+            ProfileId = settings.CeoValidationProfileLabel(),
+            Model = settings.CeoValidationModel(),
             McpServers = ValidatorCeoMcpServers,
             // Pre-authorize the CEO's own control tools (AC-215) so validating a step never stops mid-run to ask
             // the operator to allow autopilot_validate — an autonomous run must not need a hand on its own tools.

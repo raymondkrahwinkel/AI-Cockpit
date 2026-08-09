@@ -40,6 +40,10 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly AutopilotTemplateStore _templates;
     private readonly ComboBox _ceoProfile;
     private readonly AutoCompleteBox _ceoModel;
+    // Internal, not private: AC-254's settings tests drive these directly the way a real Save click would, rather
+    // than reach into Avalonia's visual tree to find them by row label.
+    internal readonly ComboBox CeoValidationProfileBox;
+    internal readonly AutoCompleteBox CeoValidationModelBox;
     private readonly ComboBox _costStrategy;
     private readonly NumericUpDown _maxAttempts;
     private readonly NumericUpDown _maxConcurrent;
@@ -83,6 +87,26 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             IsEnabled = false,
         };
 
+        // AC-254: the validator's own profile/model, independent of planning's — blank (no selection/text) means
+        // "same as planning" and stays that way even if the planning pair later changes.
+        CeoValidationProfileBox = new ComboBox
+        {
+            Width = 320,
+            PlaceholderText = "Same as planning",
+        };
+        CeoValidationProfileBox.SelectionChanged += (_, _) => _OnValidationProfileChanged();
+
+        CeoValidationModelBox = new AutoCompleteBox
+        {
+            Width = 320,
+            PlaceholderText = "Model — blank = same as planning",
+            Text = settings.CeoValidationModelOverride() ?? string.Empty,
+            FilterMode = AutoCompleteFilterMode.StartsWith,
+            MinimumPrefixLength = 0,
+            // Unlike the planning model box, this stays enabled with no profile picked: it still applies once the
+            // run falls back to whichever profile planning is on.
+        };
+
         // Items are in AutopilotCostStrategy declaration order (CostFirst, Balanced, QualityFirst), so SelectedIndex maps
         // straight to the enum value.
         _costStrategy = new ComboBox
@@ -118,6 +142,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         ceo.Children.Add(_Hint("The profile and model the CEO plans the work with. A strong reasoning model (Opus) is recommended. Blank model uses the profile's own default."));
         ceo.Children.Add(_Row("CEO profile", _ceoProfile));
         ceo.Children.Add(_Row("CEO model", _ceoModel));
+        ceo.Children.Add(_Hint("The profile and model the CEO validates each finished step with (AC-254) — the high-frequency, growing-context part of a run. A cheaper model here is a real lever; leave blank to keep following planning."));
+        ceo.Children.Add(_Row("Validation profile", CeoValidationProfileBox));
+        ceo.Children.Add(_Row("Validation model", CeoValidationModelBox));
 
         var cost = _Section("Cost & tokens");
         cost.Children.Add(_Hint("How hard the CEO leans on cost when it picks a model per step. Balanced is the recommended default; the CEO always fits the model to the work, this only moves where the line between a local free model and a paid one sits."));
@@ -434,6 +461,14 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             _ceoProfile.SelectedItem = !string.IsNullOrWhiteSpace(saved) && labels.Contains(saved)
                 ? saved
                 : labels.FirstOrDefault();
+
+            // Validation's profile picker, unlike planning's, has no "fall back to the first profile" default: an
+            // unset override leaves SelectedItem null so the placeholder keeps reading "same as planning".
+            CeoValidationProfileBox.ItemsSource = labels;
+            var savedValidation = _settings.CeoValidationProfileLabelOverride();
+            CeoValidationProfileBox.SelectedItem = !string.IsNullOrWhiteSpace(savedValidation) && labels.Contains(savedValidation)
+                ? savedValidation
+                : null;
         });
     }
 
@@ -456,10 +491,21 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         _ceoModel.ItemsSource = suggestions is { Count: > 0 } ? suggestions : null;
     }
 
+    // Same model-suggestions lookup as planning's, keyed to whichever profile validation would actually run on right
+    // now — its own pick, or planning's when validation has none, since that is what it falls back to at runtime.
+    private void _OnValidationProfileChanged()
+    {
+        var label = CeoValidationProfileBox.SelectedItem as string ?? _ceoProfile.SelectedItem as string;
+        var suggestions = _profiles.FirstOrDefault(profile => profile.Label == label)?.ModelSuggestions;
+        CeoValidationModelBox.ItemsSource = suggestions is { Count: > 0 } ? suggestions : null;
+    }
+
     public bool Save()
     {
         _settings.SetCeoProfileLabel(_ceoProfile.SelectedItem as string);
         _settings.SetCeoModel(_ceoModel.IsEnabled ? _Trimmed(_ceoModel.Text) : null);
+        _settings.SetCeoValidationProfileLabel(CeoValidationProfileBox.SelectedItem as string);
+        _settings.SetCeoValidationModel(_Trimmed(CeoValidationModelBox.Text));
         _settings.SetCostStrategy(_costStrategy.SelectedIndex >= 0 ? (AutopilotCostStrategy)_costStrategy.SelectedIndex : AutopilotCostStrategy.Balanced);
         _settings.SetMaxSelfFixAttempts((int)(_maxAttempts.Value ?? 2));
         _settings.SetMaxConcurrentRuns((int)(_maxConcurrent.Value ?? 1));

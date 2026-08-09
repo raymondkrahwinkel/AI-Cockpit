@@ -94,6 +94,59 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
+    public void CeoValidation_UnsetFallsBackToThePlanningPair()
+    {
+        // AC-254: before an operator ever touches the validation override, a run must behave exactly as it did when
+        // planning and validation shared one pair.
+        var settings = new AutopilotSettings(new FakeStorage());
+        settings.SetCeoProfileLabel("work");
+        settings.SetCeoModel("opus");
+
+        Assert.Equal("work", settings.CeoValidationProfileLabel());
+        Assert.Equal("opus", settings.CeoValidationModel());
+        Assert.Null(settings.CeoValidationProfileLabelOverride());
+        Assert.Null(settings.CeoValidationModelOverride());
+    }
+
+    [Fact]
+    public void CeoValidation_Override_WinsOverThePlanningPair_Independently()
+    {
+        // The mutation this ticket exists to prove: changing only the validation pair must not move planning, and
+        // changing only planning must not move an already-set validation override.
+        var settings = new AutopilotSettings(new FakeStorage());
+        settings.SetCeoProfileLabel("work-opus");
+        settings.SetCeoModel("opus");
+        settings.SetCeoValidationProfileLabel("work-sonnet");
+        settings.SetCeoValidationModel("sonnet");
+
+        Assert.Equal("work-opus", settings.CeoProfileLabel());
+        Assert.Equal("opus", settings.CeoModel());
+        Assert.Equal("work-sonnet", settings.CeoValidationProfileLabel());
+        Assert.Equal("sonnet", settings.CeoValidationModel());
+
+        // Changing planning afterwards must not touch the validation override already set.
+        settings.SetCeoModel("haiku");
+        Assert.Equal("sonnet", settings.CeoValidationModel());
+
+        // Changing validation afterwards must not touch planning.
+        settings.SetCeoValidationModel("opus");
+        Assert.Equal("haiku", settings.CeoModel());
+    }
+
+    [Fact]
+    public void CeoValidation_ProjectOverride_WinsOverGlobalOverride_ThenPlanning()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+        const string project = "/home/me/repo";
+        settings.SetCeoProfileLabel("work");
+        settings.SetCeoValidationProfileLabel("global-validation");
+        settings.SetCeoValidationProfileLabel("project-validation", project);
+
+        Assert.Equal("global-validation", settings.CeoValidationProfileLabel());
+        Assert.Equal("project-validation", settings.CeoValidationProfileLabel(project));
+    }
+
+    [Fact]
     public void AutonomyMode_DefaultsToAcceptEdits_ThenRoundTripsAConfiningMode()
     {
         var settings = new AutopilotSettings(new FakeStorage());
