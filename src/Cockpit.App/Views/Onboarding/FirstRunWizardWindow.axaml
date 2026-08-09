@@ -44,6 +44,8 @@
             <Button Grid.Column="0" Content="Skip" Command="{Binding SkipCommand}"
                     Background="Transparent" BorderThickness="0"
                     Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <TextBlock Grid.Column="1" Text="{Binding StepProgressLabel}" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
             <Button Grid.Column="2" Content="Back" Command="{Binding BackCommand}" Margin="0,0,8,0"/>
             <Button Grid.Column="3" Content="Next" Classes="Accent" Command="{Binding NextCommand}"/>
         </Grid>

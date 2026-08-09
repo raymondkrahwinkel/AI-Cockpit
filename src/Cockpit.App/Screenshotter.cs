@@ -360,12 +360,14 @@ internal static class Screenshotter
         ["screenshot-preview-wide"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(1600, 500), "personal - webshop"),
         ["screenshot-preview-narrow"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(500, 1400), "personal - webshop"),
 
-        // AC-509: the first-run wizard shell on its first (and, off this build, only registered) step — Iron
-        // Law #9. The design-time constructor already builds it against a single WelcomeStep, the same shape the
-        // real DI-discovered step list has today.
+        // AC-509: the first-run wizard shell on its first step, wired the way both production call sites build it
+        // — the epic's own four-slot plan, so this baseline is what "Step 1 of 4" and the Depot placeholder
+        // actually render as, not just the shell in isolation. Iron Law #9.
         ["first-run-wizard"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
         {
-            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(),
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
+                [new Views.Onboarding.WelcomeStep()],
+                ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
 
         // AC-510[b] criterion 6: the provider step's own catalogue, staged straight into the view model's

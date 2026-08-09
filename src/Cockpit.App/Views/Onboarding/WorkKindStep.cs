@@ -28,7 +28,8 @@ internal sealed class WorkKindStep : IFirstRunWizardStep, ISingletonService
     // this file having to know what they settled on.
     public int Order => 30;
 
-    public string Title => "What you do";
+    // Matches the epic's own label for this slot (AC-509's EpicPlan).
+    public string Title => "What you work on";
 
     // Nothing carries settings over into a fresh install yet — AC-540's Depot step is what would, and it is the
     // one line that flips here when it does.

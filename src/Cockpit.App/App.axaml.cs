@@ -122,7 +122,9 @@ public partial class App : Application
     private void _ShowOnboardingWizard(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
-        var viewModel = new FirstRunWizardViewModel([.. Program.Services.GetServices<IFirstRunWizardStep>()]);
+        var viewModel = new FirstRunWizardViewModel(
+            [.. Program.Services.GetServices<IFirstRunWizardStep>()],
+            FirstRunWizardViewModel.EpicPlan);
         var window = new FirstRunWizardWindow { DataContext = viewModel };
 
         window.Closing += (_, _) =>
