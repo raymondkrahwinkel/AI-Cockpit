@@ -29,6 +29,17 @@ Whisper (dictation / speech-to-text)
             OpenAI Whisper and the ggml project as applicable.
 
 
+Bundled fonts
+-------------
+
+Cascadia Mono (transcript/tool monospace typeface, embedded — AC-551)
+  Files:    src/Cockpit.App/Assets/Fonts/CascadiaMono/CascadiaMono.ttf
+  Licence:  SIL Open Font License, Version 1.1. Full text:
+            https://github.com/microsoft/cascadia-code/blob/main/LICENSE
+  Notice:   Copyright (c) 2019 - Present, Microsoft Corporation, with Reserved Font Name
+            Cascadia Code (which the Mono cut is derived from). https://github.com/microsoft/cascadia-code
+
+
 Bundled runtimes and libraries (NuGet)
 --------------------------------------
 

@@ -24,6 +24,12 @@ public enum VoiceOverlayState
     // The microphone closed and the transcript is being produced; the pill shows a spinner.
     Transcribing,
 
+    // The dictation is over and produced nothing — the transcription failed, or the capture held no speech — and
+    // the pill says which. Its own state next to `Unavailable`: that one is a hold that never opened a
+    // microphone, this one is a hold that did and came back empty. It is the answer to the only question the pill
+    // could not answer before, which is what an operator asks after talking into it for a minute (AC-557).
+    Failed,
+
     // Read-aloud is playing (Raymond, 2026-07-15: the pill is not only for what you say — it is also how you
     // see why your microphone just went quiet, since open-mic pauses itself while the cockpit speaks).
     // Yields to any dictation. No waveform: the playback queue reports *that* it is speaking, not how

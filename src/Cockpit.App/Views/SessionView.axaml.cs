@@ -62,8 +62,19 @@ public partial class SessionView : UserControl
         // Not while the operator is in another window (AC-636): in single-pane/zoom mode a session closing swaps
         // which pane is realised, and this attach would then take the keyboard out of the assistant's chat pop-out
         // — the same steal as the selection path's, one control further down.
+        // AC-650: and not for a pane that is not the selection. RestoreSessionPanesAsync attaches every
+        // restored pane's view in the same burst; every one of them used to post this same Focus() regardless
+        // of selection, so each attach tore the keyboard away from the last (Avalonia's TextBox teardown on
+        // that hand-off, TextBoxTextInputMethodClient.SetPresenter, is what became ruinously slow). Only the
+        // one CockpitView already means to focus (via SelectedSession) claims it here; the others still
+        // restore fully, they just do not fight over the caret.
         Dispatcher.UIThread.Post(() =>
         {
+            if (DataContext is SessionPanelViewModel { IsSelected: false })
+            {
+                return;
+            }
+
             if (!AutoFocus.WouldTakeTheKeyboardFromAnotherWindow(this))
             {
                 InputBox.Focus();
@@ -424,16 +435,24 @@ public partial class SessionView : UserControl
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
             && vm.BeginVoiceHold())
         {
+            _holdingKey = e.Key;
             e.Handled = true;
         }
     }
 
+    // The key whose press opened a microphone here, until its own release ends the hold — see `_OnPushToTalkKeyUp`.
+    private Key? _holdingKey;
+
     // KeyUp for the push-to-talk hotkey: ends the hold, transcribes, and appends the result to the input box.
+    // Ends only what this view's own KeyDown started (AC-557): a release also arrives for a press that started
+    // nothing — voice off for this session — and ending a hold that never began throws. Which is also why this
+    // asks the key that started it rather than the gate again: the gate's answer can change mid-hold, and a hold
+    // nobody ends holds the microphone for good.
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
-        if (DataContext is SessionViewModel vm
-            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled))
+        if (_holdingKey == e.Key && DataContext is SessionViewModel vm)
         {
+            _holdingKey = null;
             e.Handled = true;
             _ = vm.EndVoiceHoldAsync();
         }

@@ -839,7 +839,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
         SessionStateRecorder? sessionStateRecorder = null,
-        IPluginProviderRegistry? pluginProviderRegistry = null)
+        IPluginProviderRegistry? pluginProviderRegistry = null,
+        VoiceOverlayCoordinator? voiceOverlay = null)
     {
         _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
@@ -848,7 +849,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
     }
 
     // This is the pane kind turn-start delivery works on (AC-394): the host composes its turns as typed calls on a

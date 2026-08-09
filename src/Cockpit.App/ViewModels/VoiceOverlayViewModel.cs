@@ -50,9 +50,18 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
     // The hold is not recording, and `StatusText` says why.
     public bool IsUnavailable => State == VoiceOverlayState.Unavailable;
 
+    // The dictation produced nothing, and `StatusText` says what went wrong.
+    public bool IsFailed => State == VoiceOverlayState.Failed;
+
     public bool IsPreparing => State == VoiceOverlayState.Preparing;
 
     public bool IsTranscribing => State == VoiceOverlayState.Transcribing;
+
+    // The states whose row has words of its own to show — the rest of the pill says everything in its template.
+    // One home for the list, because `Services.VoiceOverlayCoordinator` has to remember and re-apply
+    // exactly the states this drops.
+    public static bool CarriesWords(VoiceOverlayState? state) =>
+        state is VoiceOverlayState.Preparing or VoiceOverlayState.Unavailable or VoiceOverlayState.Failed;
 
     // Whether the preparing row can show a bar at all — see `Progress`.
     public bool HasProgress => Progress is not null;
@@ -90,12 +99,13 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(IsListening));
         OnPropertyChanged(nameof(IsSpeaking));
         OnPropertyChanged(nameof(IsUnavailable));
+        OnPropertyChanged(nameof(IsFailed));
         OnPropertyChanged(nameof(IsPreparing));
         OnPropertyChanged(nameof(IsTranscribing));
 
         // A stale "Downloading speech model — 91%" behind the next hold's spinner would be a lie the moment
-        // this one ends, so the text never outlives the two states that have something to say.
-        if (value is not (VoiceOverlayState.Preparing or VoiceOverlayState.Unavailable))
+        // this one ends, so the text never outlives the states that have something to say.
+        if (!CarriesWords(value))
         {
             StatusText = string.Empty;
             Progress = null;
