@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Assistant;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -56,7 +57,10 @@ public sealed class WorktreeReconciler(
         _sweeping = true;
         try
         {
-            await worktrees.ReconcileAsync(LiveSessionIds(), cancellationToken);
+            // AC-654: the assistant owns every worktree it makes with `worktree_create` and is in no session list by
+            // construction, so it is added here rather than at the wiring — a live set that forgets it reads its
+            // worktrees as orphaned and sweeps them from under the agents working in them.
+            await worktrees.ReconcileAsync([AssistantIdentity.PaneId, .. LiveSessionIds()], cancellationToken);
         }
         finally
         {

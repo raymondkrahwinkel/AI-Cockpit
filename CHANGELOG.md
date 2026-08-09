@@ -104,6 +104,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a worktree is no longer emptied out from under the agent working in it. The periodic cleanup asks which
+  sessions are alive and clears up the worktrees of the ones that are not — but it asked only the session grid, and a
+  worktree the voice assistant made, or one belonging to a delegated task that runs without a pane, is owned by
+  something the grid has never listed. Every one of those read as abandoned on every quarter-hour sweep, so a worktree
+  with nothing uncommitted in it was handed back to git while an agent was still working there: the folder emptied, and
+  its branch deleted if the work had already landed on the main branch. Uncommitted work was kept — that part of the
+  rule always held — but committed and pushed work vanished from disk with no warning and nothing in the log naming a
+  removal, because none was asked for.
 - fixed: a session running the Claude terminal no longer sits on "Idle" while it is plainly working. The cockpit
   worked out which conversation file such a session was writing by taking whichever one appeared on disk after the
   launch — and every other Claude on the machine writes one too, several of which are written once and never again.

@@ -2505,7 +2505,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // pulls a running session's checkout out from under it, and neither offers to sweep a checkout the other
         // still considers taken. Without a registry (a graph built without one) the panel falls back to the panes,
         // which is what it read before.
-        IReadOnlySet<string> LivePaneIds() => Sessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
+        // AC-654: `_AllSessions()`, not `Sessions` — an embedded session (an Autopilot step, a plugin-run) is a full
+        // session that can own a worktree, and one missing here reads as dead to every guard that asks.
+        IReadOnlySet<string> LivePaneIds() => _AllSessions().Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
         liveSessions?.SetSource(LivePaneIds);
         Worktrees.LiveSessionIds = liveSessions is { } registry ? () => registry.LiveSessionIds : LivePaneIds;
         Worktrees.SessionNames = _SessionNames;

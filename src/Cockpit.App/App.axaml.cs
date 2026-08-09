@@ -396,8 +396,12 @@ public partial class App : Application
         // live at that moment — a worktree whose owner crashed at noon is reconciled then, not at the next restart.
         if (Program.Services.GetService<Services.WorktreeReconciler>() is { } worktreeReconciler)
         {
-            worktreeReconciler.LiveSessionIds = () =>
-                cockpitViewModel.AllSessions().Select(session => session.PaneId).ToList();
+            // AC-654: asked of the liveness registry rather than the grid, because a pane-only answer misses the
+            // sessions that run without one (a delegated task, AC-106) and sweeps the worktree out from under them.
+            var liveSessions = Program.Services.GetService<Cockpit.Core.Abstractions.Sessions.ILiveSessionRegistry>();
+            worktreeReconciler.LiveSessionIds = liveSessions is { } registry
+                ? () => registry.LiveSessionIds
+                : () => cockpitViewModel.AllSessions().Select(session => session.PaneId).ToList();
             worktreeReconciler.Start();
         }
 
