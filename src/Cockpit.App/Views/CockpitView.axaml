@@ -1013,94 +1013,115 @@
                         </Border>
                     </StackPanel>
 
-                    <ItemsControl ItemsSource="{Binding Projects.RecentProjects}" IsVisible="{Binding Projects.HasProjects}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel HorizontalAlignment="Center"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
+                    <!-- Grouped by category (AC-618/AC-655): the same `ProjectCategoryGroups` the Manage-projects
+                         dialog already builds, so this picker and that dialog agree on headings and order instead
+                         of each sorting the same projects its own way. -->
+                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}" IsVisible="{Binding Projects.HasProjects}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="projects:Project">
-                                <Border Width="278" Margin="8" Padding="16"
-                                        CornerRadius="{StaticResource CockpitPanelRadius}"
-                                        Background="{StaticResource CockpitPanelBgBrush}"
-                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                                    <StackPanel Spacing="10">
-                                        <!-- The logo carries the recognition: a colleague finds their project by its
-                                             picture before they have read a word. Without one the well shows the
-                                             project's initial, so every card is the same shape either way. -->
-                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                            <controls:ProjectLogoBadge Grid.Column="0" Size="34"
-                                                                       LogoPath="{Binding LogoPath}"
-                                                                       ProjectName="{Binding Name}"
-                                                                       WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
-                                                       VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                        </Grid>
-                                        <!-- The description carries the card: it is what a colleague reads to know
-                                             which one is theirs. A card without one closes up instead of holding
-                                             the space open — an empty gap reads as something that failed to load. -->
-                                        <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
-                                                   VerticalAlignment="Top"
-                                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                        <!-- Whatever else the operator keeps with this project (AC-295) — a
-                                             repository, a website, a contact. Here rather than only in the editor:
-                                             its whole point is being read and followed while working, and a link you
-                                             have to open a settings dialog to reach is a link you copy out by hand. -->
-                                        <controls:ProjectInfoList Fields="{Binding AdditionalInfo}"
-                                                                  IsVisible="{Binding HasAdditionalInfo}"/>
-                                        <TextBlock Text="{Binding LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
-                                                   FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <!-- Start only promises a start when the project can actually deliver one.
-                                             Without a profile it has nothing to run on and would fall through to
-                                             the dialog — the same thing the button below it does, which is exactly
-                                             how the two came to look identical. Then the card asks for the missing
-                                             piece instead. -->
-                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Center" Padding="12,7"
-                                                IsVisible="{Binding DefaultProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
-                                                CommandParameter="{Binding}">
-                                            <StackPanel Orientation="Horizontal" Spacing="7">
-                                                <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13"
-                                                                            VerticalAlignment="Center"/>
-                                                <TextBlock Text="Start" VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                        </Button>
-                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Center" Padding="12,7"
-                                                IsVisible="{Binding DefaultProfileLabel, Converter={x:Static StringConverters.IsNullOrEmpty}}"
-                                                ToolTip.Tip="This project has no profile yet, so there is nothing to start it on. Pick one and Start appears."
-                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
-                                                CommandParameter="{Binding}">
-                                            <StackPanel Orientation="Horizontal" Spacing="7">
-                                                <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"
-                                                                            VerticalAlignment="Center"/>
-                                                <TextBlock Text="Finish setting up" VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                        </Button>
-                                        <!-- The quieter half: everything that is not "carry on with this", kept
-                                             below the one button that is. -->
-                                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
-                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Open folder"
-                                                    ToolTip.ShowOnDisabled="True"
-                                                    ToolTip.Tip="{Binding SourceDirectory}"
-                                                    IsEnabled="{Binding SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).OpenProjectFolderCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Edit"
-                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Start with options…"
-                                                    ToolTip.Tip="Open the New-session dialog on this project, to change something before it starts"
-                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).NewSessionForProjectCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
+                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
+                                <StackPanel Spacing="4" Margin="0,10,0,0">
+                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                               IsVisible="{Binding HasHeader}"/>
+
+                                    <ItemsControl ItemsSource="{Binding Cards}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel HorizontalAlignment="Center"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                                <Border Width="278" Margin="8" Padding="16"
+                                                        CornerRadius="{StaticResource CockpitPanelRadius}"
+                                                        Background="{StaticResource CockpitPanelBgBrush}"
+                                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                                    <StackPanel Spacing="10">
+                                                        <!-- The logo carries the recognition: a colleague finds their project by its
+                                                             picture before they have read a word. Without one the well shows the
+                                                             project's initial, so every card is the same shape either way. -->
+                                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                                            <controls:ProjectLogoBadge Grid.Column="0" Size="34"
+                                                                                       LogoPath="{Binding Project.LogoPath}"
+                                                                                       ProjectName="{Binding Project.Name}"
+                                                                                       WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Project.Name}" FontSize="15" FontWeight="SemiBold"
+                                                                       VerticalAlignment="Center"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                        </Grid>
+                                                        <!-- The description carries the card: it is what a colleague reads to know
+                                                             which one is theirs. A card without one closes up instead of holding
+                                                             the space open — an empty gap reads as something that failed to load. -->
+                                                        <TextBlock Text="{Binding Project.Description}" FontSize="12" TextWrapping="Wrap"
+                                                                   VerticalAlignment="Top"
+                                                                   IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                        <!-- Whatever else the operator keeps with this project (AC-295) — a
+                                                             repository, a website, a contact. Here rather than only in the editor:
+                                                             its whole point is being read and followed while working, and a link you
+                                                             have to open a settings dialog to reach is a link you copy out by hand. -->
+                                                        <controls:ProjectInfoList Fields="{Binding Project.AdditionalInfo}"
+                                                                                  IsVisible="{Binding Project.HasAdditionalInfo}"/>
+                                                        <TextBlock Text="{Binding Project.LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        <!-- Start only promises a start when the project can actually deliver one.
+                                                             Without a profile it has nothing to run on and would fall through to
+                                                             the dialog — the same thing the button below it does, which is exactly
+                                                             how the two came to look identical. Then the card asks for the missing
+                                                             piece instead. -->
+                                                        <!-- $parent[UserControl], not $parent[ItemsControl]: this card sits inside two
+                                                             nested ItemsControls (categories, then cards), so the nearest ItemsControl
+                                                             ancestor is the inner one — DataContext ProjectCategoryGroupViewModel, not
+                                                             CockpitViewModel. CockpitView itself is the nearest ancestor typed right
+                                                             (same fix as ProjectsDialog.axaml's own nested-groups row). -->
+                                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
+                                                                HorizontalContentAlignment="Center" Padding="12,7"
+                                                                IsVisible="{Binding Project.DefaultProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
+                                                                CommandParameter="{Binding Project}">
+                                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                                <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13"
+                                                                                            VerticalAlignment="Center"/>
+                                                                <TextBlock Text="Start" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
+                                                                HorizontalContentAlignment="Center" Padding="12,7"
+                                                                IsVisible="{Binding Project.DefaultProfileLabel, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                                                ToolTip.Tip="This project has no profile yet, so there is nothing to start it on. Pick one and Start appears."
+                                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
+                                                                CommandParameter="{Binding Project}">
+                                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                                <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"
+                                                                                            VerticalAlignment="Center"/>
+                                                                <TextBlock Text="Finish setting up" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <!-- The quieter half: everything that is not "carry on with this", kept
+                                                             below the one button that is. -->
+                                                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Open folder"
+                                                                    ToolTip.ShowOnDisabled="True"
+                                                                    ToolTip.Tip="{Binding Project.SourceDirectory}"
+                                                                    IsEnabled="{Binding Project.SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenProjectFolderCommand}"
+                                                                    CommandParameter="{Binding Project}"/>
+                                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Edit"
+                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
+                                                                    CommandParameter="{Binding Project}"/>
+                                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Start with options…"
+                                                                    ToolTip.Tip="Open the New-session dialog on this project, to change something before it starts"
+                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).NewSessionForProjectCommand}"
+                                                                    CommandParameter="{Binding Project}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
