@@ -336,11 +336,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isPaneVisible = true;
 
-    // The factor this pane is *drawn* at; 1 is full size. It never changes the size the pane is laid out
-    // at, so the session's pty keeps the grid it has whatever this says (AC-442, `MiniatureHost`). The rail
-    // that sets it to a miniature scale is AC-443's; until then every pane is full size.
+    // This pane's position in the sidebar's own order (AC-444), stamped by
+    // `CockpitViewModel._SyncVisibleSessionsCore` whenever that order is reconciled. Read by
+    // `Controls.SessionTilePanel`'s rail arrangement as the tie-breaker behind `RequestsAttention` —
+    // "then the sidebar order" (AC-444 #2) — via the `RailSortKey` it feeds.
     [ObservableProperty]
-    private double _miniatureScale = 1.0;
+    private int _sidebarIndex;
 
     // Coarse status for the sidebar/grid overview — see `ViewModels.SessionStatus`.
     [ObservableProperty]
@@ -1643,6 +1644,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _ => "CockpitTextFaintBrush",
     };
 
+    // Needs eyes on it: stuck waiting on the operator, or a consent prompt is open (AC-444 #2). The single
+    // predicate `SessionWatcher` also probes on, so the rail's ordering and the OS-notification decision
+    // never drift apart into two answers for the same question.
+    public bool RequestsAttention => SessionStatus is SessionStatus.NeedsAttention or SessionStatus.WaitingForInput || PendingConsent is not null;
+
+    // Sort key for the focus-rail's tile order (AC-444 #2): attention-needing sessions first, then the
+    // sidebar's own order. A single int rather than two separate comparisons — `Controls.SessionTilePanel`
+    // reads this off a plain attached property and stays unaware of what `SessionPanelViewModel` even is.
+    public int RailSortKey => (RequestsAttention ? 0 : 1) * 1_000_000 + SidebarIndex;
+
     // Keeps the derived status label/brush in sync whenever `SessionStatus` changes, and
     // records the moment as this session's last activity so the cockpit can tell how long it has been quiet.
     partial void OnSessionStatusChanged(SessionStatus value)
@@ -1651,7 +1662,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(SessionStatusLabel));
         OnPropertyChanged(nameof(SessionStatusBrushKey));
         OnPropertyChanged(nameof(RequiresCloseConfirmation));
+        OnPropertyChanged(nameof(RequestsAttention));
+        OnPropertyChanged(nameof(RailSortKey));
     }
+
+    partial void OnPendingConsentChanged(ConsentPromptViewModel? value)
+    {
+        OnPropertyChanged(nameof(RequestsAttention));
+        OnPropertyChanged(nameof(RailSortKey));
+    }
+
+    partial void OnSidebarIndexChanged(int value) => OnPropertyChanged(nameof(RailSortKey));
 
     public async ValueTask DisposeAsync()
     {

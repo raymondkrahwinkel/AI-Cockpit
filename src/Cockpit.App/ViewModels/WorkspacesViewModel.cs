@@ -373,7 +373,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // global setting (Raymond, 2026-07-15). All three are written together because they are one decision made
     // on one ⚙: a desk either arranges itself or it follows, and a half-override is a state nothing in the UI
     // can express. Ignored for a Dashboard, which has its own grid.
-    public Task SetSessionLayoutAsync(string workspaceId, bool? singleSession, bool? stackVertically, double? focusRailWeight)
+    public Task SetSessionLayoutAsync(string workspaceId, bool? singleSession, bool? stackVertically, double? focusRailWeight, bool? focusRailLayout)
     {
         if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } sessions || sessions.Type != WorkspaceType.Sessions)
         {
@@ -385,6 +385,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             SingleSessionLayout = singleSession,
             StackSessionsVertically = stackVertically,
             FocusRailWeight = focusRailWeight,
+            FocusRailLayout = focusRailLayout,
         }));
     }
 

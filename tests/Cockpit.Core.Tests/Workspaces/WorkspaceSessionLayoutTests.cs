@@ -19,10 +19,12 @@ public class WorkspaceSessionLayoutTests
         vm.GlobalSingleSessionLayout = true;
         vm.GlobalStackSessionsVertically = true;
         vm.GlobalFocusRailWeight = 0.5;
+        vm.GlobalFocusRailLayout = true;
 
         Assert.True(vm.SingleSessionLayout);
         Assert.True(vm.StackSessionsVertically);
         Assert.Equal(0.5, vm.FocusRailWeight);
+        Assert.True(vm.FocusRailLayout);
         Assert.True(vm.WorkspaceFollowsGlobalLayout);
     }
 
@@ -31,13 +33,16 @@ public class WorkspaceSessionLayoutTests
     {
         var vm = _CreateWithSessionsWorkspace();
         vm.GlobalSingleSessionLayout = true;
+        vm.GlobalFocusRailLayout = false;
 
         vm.WorkspaceFollowsGlobalLayout = false;
         vm.WorkspaceSingleSessionLayout = false;
         vm.WorkspaceFocusRailWeight = 0.6;
+        vm.WorkspaceFocusRailLayout = true;
 
         Assert.False(vm.SingleSessionLayout);
         Assert.Equal(0.6, vm.FocusRailWeight);
+        Assert.True(vm.FocusRailLayout);
         Assert.False(vm.WorkspaceFollowsGlobalLayout);
     }
 
@@ -52,12 +57,14 @@ public class WorkspaceSessionLayoutTests
         vm.GlobalSingleSessionLayout = true;
         vm.GlobalStackSessionsVertically = true;
         vm.GlobalFocusRailWeight = 0.5;
+        vm.GlobalFocusRailLayout = true;
 
         vm.WorkspaceFollowsGlobalLayout = false;
 
         Assert.True(vm.SingleSessionLayout);
         Assert.True(vm.StackSessionsVertically);
         Assert.Equal(0.5, vm.FocusRailWeight);
+        Assert.True(vm.FocusRailLayout);
     }
 
     /// <summary>
@@ -118,11 +125,12 @@ public class WorkspaceSessionLayoutTests
         await vm.Workspaces.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
         var dashboard = vm.Workspaces.Active!;
 
-        await vm.Workspaces.SetSessionLayoutAsync(dashboard.Id, singleSession: true, stackVertically: true, focusRailWeight: 0.5);
+        await vm.Workspaces.SetSessionLayoutAsync(dashboard.Id, singleSession: true, stackVertically: true, focusRailWeight: 0.5, focusRailLayout: true);
 
         Assert.Null(vm.Workspaces.Active!.SingleSessionLayout);
         Assert.Null(vm.Workspaces.Active!.StackSessionsVertically);
         Assert.Null(vm.Workspaces.Active!.FocusRailWeight);
+        Assert.Null(vm.Workspaces.Active!.FocusRailLayout);
     }
 
     private static CockpitViewModel _CreateWithSessionsWorkspace()
