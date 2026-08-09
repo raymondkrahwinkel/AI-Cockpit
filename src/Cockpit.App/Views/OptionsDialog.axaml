@@ -232,6 +232,19 @@
                                     ToolTip.Tip="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Focus + rail (one session large, the rest as a mini-rail)"
+                                          IsChecked="{Binding GlobalFocusRailLayout}">
+                                    <CheckBox.IsEnabled>
+                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                            <Binding Path="!GlobalSingleSessionLayout"/>
+                                            <Binding Path="!GlobalStackSessionsVertically"/>
+                                        </MultiBinding>
+                                    </CheckBox.IsEnabled>
+                                </CheckBox>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Shows one session large (the focus) with the rest as a live miniature rail beside it — drag the divider between them to resize. No effect when showing one session at a time or stacking vertically."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <CheckBox Content="Minimize to tray when closing the window"
                                           IsChecked="{Binding MinimizeToTrayOnClose}"/>
                                 <materialIcons:MaterialIcon Classes="hint"

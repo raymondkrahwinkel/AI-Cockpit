@@ -117,6 +117,29 @@ public class WorkspaceSessionLayoutTests
         Assert.True(vm.WorkspaceFollowsGlobalLayout);
     }
 
+    /// <summary>The three per-workspace modes exclude each other (AC-445): turning one on turns the other two off.</summary>
+    [Fact]
+    public void WorkspaceLayoutModes_ExcludeEachOther()
+    {
+        var vm = _CreateWithSessionsWorkspace();
+        vm.WorkspaceFollowsGlobalLayout = false;
+
+        vm.WorkspaceSingleSessionLayout = true;
+        Assert.True(vm.WorkspaceSingleSessionLayout);
+        Assert.False(vm.WorkspaceStackSessionsVertically);
+        Assert.False(vm.WorkspaceFocusRailLayout);
+
+        vm.WorkspaceStackSessionsVertically = true;
+        Assert.False(vm.WorkspaceSingleSessionLayout);
+        Assert.True(vm.WorkspaceStackSessionsVertically);
+        Assert.False(vm.WorkspaceFocusRailLayout);
+
+        vm.WorkspaceFocusRailLayout = true;
+        Assert.False(vm.WorkspaceSingleSessionLayout);
+        Assert.False(vm.WorkspaceStackSessionsVertically);
+        Assert.True(vm.WorkspaceFocusRailLayout);
+    }
+
     /// <summary>A dashboard has its own grid; these two are not its to set, and it must not be able to hold them.</summary>
     [Fact]
     public async Task ADashboard_IgnoresTheSessionLayoutOverrides()

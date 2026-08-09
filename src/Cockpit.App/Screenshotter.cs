@@ -68,6 +68,12 @@ internal static class Screenshotter
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
+        // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions
+        // tab, not the Notifications tab "options" opens on.
+        ["session-layout"] = (_, _) => _OptionsOnTab("Sessions"),
+        // AC-445: the workspace ⚙'s own Layout flyout, opened the way session-settings-flyout already proves
+        // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
+        ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),
         // AC-546 follow-up: Voice dropped from three sub-pages to two once "Read-aloud" merged into "Assistant" —
         // its own scenes rather than reusing "options", since neither sub-page renders on the tab that scene opens
         // on (Notifications) and a layout change to a page nothing captures is a layout change nobody would see
@@ -441,6 +447,7 @@ internal static class Screenshotter
     {
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
@@ -1035,6 +1042,14 @@ internal static class Screenshotter
         // section sits below the fold of a default-sized editor, and a scene that renders only the part above the
         // fold proves nothing about the part this change actually touched.
         return new ManageProfilesDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // A main window with one session running, so `ShowSessionGrid` shows the toolbar the workspace ⚙ lives in.
+    private static MainWindow _MainWindowWithOneSession(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.Sessions.Add(new ViewModels.SessionViewModel { Title = "Session", WorkspaceId = cockpit.Workspaces.Active!.Id });
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
     // Renders the Options dialog with one of its tabs selected, so a tab other than the first one can be

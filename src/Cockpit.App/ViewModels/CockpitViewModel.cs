@@ -656,8 +656,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Counts the workspace now showing, not every session alive: a second desk with one session must lay out as one, however full the first desk is.
     public int GridColumns => VisibleSessions.Count() <= 1 ? 1 : 2;
 
-    // The Zoom toggle only makes sense in the grid layout with more than one session — a single session already fills the pane, and single-session layout has no grid to zoom out of.
-    public bool ShowZoomButton => !SingleSessionLayout && VisibleSessions.Count() > 1;
+    // The Zoom toggle only makes sense in the grid layout with more than one session — a single session
+    // already fills the pane, single-session layout has no grid to zoom out of, and focus+rail (AC-445)
+    // already shows one session large with no grid underneath either.
+    public bool ShowZoomButton => !SingleSessionLayout && !FocusRailLayout && VisibleSessions.Count() > 1;
 
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
@@ -677,8 +679,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _globalStackSessionsVertically;
 
-    // Options' focus+rail layout (AC-441/444) — the cockpit-wide default. The effective value is `FocusRailLayout`.
-    // No ⚙-flyout/Options control writes this yet (AC-445); until then it is reachable only from `cockpit.json` or a test.
+    // Options' focus+rail layout (AC-441/444/445) — the cockpit-wide default. The effective value is `FocusRailLayout`.
     [ObservableProperty]
     private bool _globalFocusRailLayout;
 
@@ -735,7 +736,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // Two-way for the Sessions ⚙'s own "show one session at a time" — writes this workspace's override, never Options.
+    // Two-way for the Sessions ⚙'s own "show one session at a time" — writes this workspace's override, never
+    // Options. The three layout modes exclude each other (AC-445): turning this on turns the other two off,
+    // the same way `WorkspaceFollowsGlobalLayout` already resets all three.
     public bool WorkspaceSingleSessionLayout
     {
         get => SingleSessionLayout;
@@ -746,12 +749,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, value, StackSessionsVertically, FocusRailWeight, FocusRailLayout);
+            _ = Workspaces.SetSessionLayoutAsync(
+                sessions.Id, value, value ? false : StackSessionsVertically, FocusRailWeight, value ? false : FocusRailLayout);
             _OnEffectiveLayoutChanged();
         }
     }
 
-    // Two-way for the Sessions ⚙'s own "stack sessions vertically" — writes this workspace's override, never Options.
+    // Two-way for the Sessions ⚙'s own "stack sessions vertically" — writes this workspace's override, never
+    // Options. Mutually exclusive with the other two modes (AC-445), see `WorkspaceSingleSessionLayout`.
     public bool WorkspaceStackSessionsVertically
     {
         get => StackSessionsVertically;
@@ -762,7 +767,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, value, FocusRailWeight, FocusRailLayout);
+            _ = Workspaces.SetSessionLayoutAsync(
+                sessions.Id, value ? false : SingleSessionLayout, value, FocusRailWeight, value ? false : FocusRailLayout);
             _OnEffectiveLayoutChanged();
         }
     }
@@ -783,9 +789,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // Two-way for the Sessions ⚙'s own focus+rail choice (AC-444) — writes this workspace's override, never
-    // Options. No ⚙ checkbox reads/writes this yet (AC-445 wires the flyout and Options); this is the plumbing
-    // that checkbox will call, exercised for now by a test or a hand-edited `cockpit.json`.
+    // Two-way for the Sessions ⚙'s own focus+rail choice (AC-441/444/445) — writes this workspace's override,
+    // never Options. Mutually exclusive with the other two modes (AC-445), see `WorkspaceSingleSessionLayout`.
     public bool WorkspaceFocusRailLayout
     {
         get => FocusRailLayout;
@@ -796,7 +801,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, StackSessionsVertically, FocusRailWeight, value);
+            _ = Workspaces.SetSessionLayoutAsync(
+                sessions.Id, value ? false : SingleSessionLayout, value ? false : StackSessionsVertically, FocusRailWeight, value);
             _OnEffectiveLayoutChanged();
         }
     }
