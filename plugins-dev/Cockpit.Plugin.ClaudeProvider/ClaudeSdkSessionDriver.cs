@@ -193,6 +193,24 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
 
         _liveOptions = _BuildLiveOptions(effectiveModel, permissionMode);
+
+        // AC-660: a resumed conversation already has real context/allowance figures the CLI can report right
+        // away — asking for them here, instead of waiting for this process's first turn to complete, is what
+        // keeps a reopened pane's usage pill from reading as empty (indistinguishable from "not supported")
+        // until the operator sends a fresh message. Same grace as the per-turn poll (_UsagePublishGrace): worse
+        // than a stale pill is a resume that looks stuck starting. A fresh (non-resumed) session has nothing
+        // worth asking for yet, so this is scoped to resumeSessionId.
+        if (!string.IsNullOrEmpty(resumeSessionId))
+        {
+            try
+            {
+                await _PollUsageAsync().WaitAsync(_UsagePublishGrace, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Slow, refused, or a session going away — a usage figure is a nicety, same tolerance the per-turn poll gives it.
+            }
+        }
     }
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>

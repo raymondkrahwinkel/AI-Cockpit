@@ -111,6 +111,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a resumed session's usage pill no longer sits empty until you send it a fresh message. The header only ever
+  pulled the context/allowance figures at the end of a turn, so a reopened session — which already has real figures
+  the moment it reconnects — showed nothing at all until you actually prompted it, indistinguishable from a provider
+  that does not report usage. It now asks for those figures once as it reconnects, so the pill reflects the resumed
+  conversation right away.
 - fixed: a worktree is no longer emptied out from under the agent working in it. The periodic cleanup asks which
   sessions are alive and clears up the worktrees of the ones that are not — but it asked only the session grid, and a
   worktree the voice assistant made, or one belonging to a delegated task that runs without a pane, is owned by

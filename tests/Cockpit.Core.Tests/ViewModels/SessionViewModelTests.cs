@@ -96,6 +96,33 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-660: reported as "the usage pill is missing entirely" on 3 of 4 open SDK panes. Root cause — a resumed
+    // pane's driver can already know the resumed conversation's real usage the moment it starts (ClaudeSdkSessionDriver
+    // now polls for it on resume), but before this fix the header only ever pulled CurrentStatus at a TurnCompleted
+    // boundary, so a resumed pane the operator had not yet sent a fresh message to showed no pill at all — not even
+    // though the driver already had real figures — until its first turn in this process finished. Only the one pane
+    // the operator had actually prompted looked normal.
+    [Fact]
+    public async Task AResumedSession_ShowsTheDriversAlreadyKnownLimits_BeforeAnyTurnCompletes()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var reset = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+        session.CurrentStatus.Returns(new SessionStatusFeed(37, [new SessionRateWindow("5h", 12, reset)]));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort,
+            resume: new SessionResume(SessionResumeMode.BySessionId, "conv-1"));
+
+        // No TurnCompleted here — this is the resumed pane sitting idle, exactly what the operator sees on reopen.
+        Assert.Equal(37, vm.ContextUsedPercent);
+        Assert.Equal(new[] { new SessionRateWindow("5h", 12, reset) }, vm.RateLimits);
+        Assert.True(vm.HasUsagePillRegion);
+
+        await vm.DisposeAsync();
+    }
+
     // AC-536: measured root cause was neither of the two candidates the ticket itself named (a dropped Usage, or
     // the "Connected (…)" status text crowding the meter out of the layout) — both were fine. The actual break was
     // a third one: SessionViewModel.SuppressCostMeter vetoed the standalone meter at every non-Developer reading

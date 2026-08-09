@@ -471,6 +471,52 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal(7d, status.RateLimits[0].UsedPercent, precision: 10);
     }
 
+    // AC-660: a resumed conversation already has real figures the CLI can report before any turn runs — measured
+    // against the reported bug (3 of 4 open panes showing no pill at all, the one difference being that the
+    // operator had actually prompted the fourth). Proven red before the fix: StartAsync only ever wrote the
+    // initialize/set_max_thinking_tokens lines, so Status stayed null for a resumed-but-idle pane until its first
+    // turn completed in this process.
+    [Fact]
+    public async Task Resuming_PollsUsageDuringStart_SoStatusIsKnownBeforeAnyTurn()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        var startTask = driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: "conv-1", options: null, mcpServers: null, CancellationToken.None);
+
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage");
+        await fake.PushStdoutAsync(_ControlSuccess(usageId, """
+        {"rate_limits":{"five_hour":{"utilization":12,"resets_at":"2026-08-08T18:00:00.978410+00:00"}}}
+        """));
+
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage");
+        await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"totalTokens":1000,"maxTokens":100000,"percentage":37}"""));
+
+        await startTask;
+
+        var status = driver.Status;
+        Assert.NotNull(status);
+        Assert.Equal(37d, status.ContextUsedPercent);
+        var window = Assert.Single(status.RateLimits);
+        Assert.Equal("5h", window.Label);
+        Assert.Equal(12d, window.UsedPercent, precision: 10);
+    }
+
+    // A fresh (non-resumed) session has no prior conversation to ask about — StartAsync must not block on a poll
+    // that has nothing to report, matching CanUseTool_SurfacesPermissionRequested_ThenRespondEchoesRequestId's
+    // assertion that a plain start writes only the initialize/effort lines.
+    [Fact]
+    public async Task ANonResumedStart_PollsNothing_AndStatusStaysNull()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        Assert.Null(driver.Status);
+        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("get_usage") || line.Contains("get_context_usage"));
+    }
+
     // Without the grace this waits out `_UsageRequestTimeout` (15s) and the session looks stuck.
     [Fact]
     public async Task ACliThatNeverAnswersThePoll_StillCompletesTheTurn()
