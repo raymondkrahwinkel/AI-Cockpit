@@ -40,9 +40,18 @@ public static class ConsentSourceCatalog
     // See `AssistantMessage` for why these are two labels and not one.
     public const string AssistantPrompt = "Assistant prompt";
 
+    // The assistant exporting its own memory files (AC-657) to a path it names. Read-only towards the assistant's
+    // own state, so it is the lighter of the pair — same reasoning as AssistantMessage vs AssistantPrompt: being
+    // fine with a copy going out is not the same as being fine with the live memory being overwritten.
+    public const string AssistantMemoryExport = "Assistant memory export";
+
+    // The assistant importing its memory files (AC-657) from an archive, replacing what is live. See
+    // `AssistantMemoryExport`.
+    public const string AssistantMemoryImport = "Assistant memory import";
+
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
     public static IReadOnlyList<string> HostSources { get; } =
-        [TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt, Debug];
+        [TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt, AssistantMemoryExport, AssistantMemoryImport, Debug];
 
     // The bypass key for one source: the host-stamped `pluginId` under a `plugin:` prefix, or
     // the `label` — a constant above — for a host-internal caller that has no plugin id.

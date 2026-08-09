@@ -204,7 +204,9 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Assert.True((bool)result["ok"]!, $"{tool.Name} refused the assistant itself.");
         }
 
-        Assert.Equal(tools.Count, _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count);
+        Assert.Equal(
+            tools.Count,
+            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count);
     }
 
     [Fact]

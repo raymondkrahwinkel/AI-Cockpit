@@ -13,6 +13,10 @@ internal sealed class RecordingAssistantMemory : IAssistantMemory
 
     public List<string> Noted { get; } = [];
 
+    public List<string> Exported { get; } = [];
+
+    public List<string> Imported { get; } = [];
+
     public Task<string> ReadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Contents);
 
     public Task RememberAsync(string text, CancellationToken cancellationToken = default)
@@ -29,5 +33,17 @@ internal sealed class RecordingAssistantMemory : IAssistantMemory
         Noted.Add(text);
         CurrentState = text;
         return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<string>> ExportAsync(string archivePath, CancellationToken cancellationToken = default)
+    {
+        Exported.Add(archivePath);
+        return Task.FromResult<IReadOnlyList<string>>(["assistant-memory.md", "assistant-state.md"]);
+    }
+
+    public Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default)
+    {
+        Imported.Add(archivePath);
+        return Task.FromResult<IReadOnlyList<string>>(["assistant-memory.md", "assistant-state.md"]);
     }
 }

@@ -471,6 +471,68 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "export_assistant_memory")]
+    [Description("Writes the assistant's own memory (what the operator asked it to remember) and its current-state note to a single .zip archive at a path the operator chooses — separate from, and much lighter than, a full cockpit backup: no settings, no plugins, no secrets scrubbing, just these two files, whichever of them exist. Use it when the operator wants to carry the assistant's memory to another machine or keep a copy before clearing it out. THE PATH IS THE OPERATOR'S OWN CHOICE, never guessed — ask where they want it written, a full path, and say that it overwrites whatever file is already there." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: nothing to export yet (the assistant has never remembered anything), or a path it cannot write to — read the reason out and carry on.")]
+    public async Task<string> ExportAssistantMemoryAsync(
+        [Description("Full path to write the archive to, e.g. \"C:\\Users\\operator\\Desktop\\assistant-memory.zip\". Chosen by the operator, never guessed. Overwrites whatever file is already there.")] string path)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (await _ApprovedAsync(
+                    "The assistant wants to export its memory to a file",
+                    $"Write assistant-memory.md and assistant-state.md to {path}",
+                    ConsentSourceCatalog.AssistantMemoryExport,
+                    "assistant.memory-backup.export",
+                    ConsentRisk.LowRisk).ConfigureAwait(false) is { } denial)
+            {
+                return denial;
+            }
+
+            var written = await memory.ExportAsync(path).ConfigureAwait(false);
+            return _Serialize(new { ok = true, path, files = written });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "import_assistant_memory")]
+    [Description("Puts the assistant's memory and current-state note back from an archive export_assistant_memory made — its own restore, separate from a full cockpit restore. Whatever is currently at assistant-memory.md and assistant-state.md is copied aside with a timestamp first, never deleted — an import that turns out wrong is not a memory that is simply gone. Only whichever of the two files the archive actually carries is restored. Takes effect the next time this session restarts or a fresh one starts; it does not rewrite the memory already in this conversation." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: a path that is not a zip this tool made, or one that carries neither file — read the reason out and carry on.")]
+    public async Task<string> ImportAssistantMemoryAsync(
+        [Description("Full path to the archive to restore from, as export_assistant_memory wrote it. Chosen by the operator, never guessed.")] string path)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (await _ApprovedAsync(
+                    "The assistant wants to replace its memory from a file",
+                    $"Restore assistant-memory.md and assistant-state.md from {path}",
+                    ConsentSourceCatalog.AssistantMemoryImport,
+                    "assistant.memory-backup.import",
+                    ConsentRisk.Dangerous).ConfigureAwait(false) is { } denial)
+            {
+                return denial;
+            }
+
+            var restored = await memory.ImportAsync(path).ConfigureAwait(false);
+            return _Serialize(new { ok = true, path, files = restored });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     // Asks the operator, and returns the tool result to hand back when they said no — or null when they said yes.
     // `action` is passed straight through to `ConsentRequest.Action`, which is rendered
     // verbatim, and is composed at each call site out of the literal arguments rather than out of a sentence about
