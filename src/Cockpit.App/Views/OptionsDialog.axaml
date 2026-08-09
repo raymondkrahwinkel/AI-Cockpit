@@ -984,6 +984,25 @@
 
                             <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                            <Separator Margin="0,16,0,8"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Assistant memory only" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Just assistant-memory.md and assistant-state.md — what the assistant was told to remember and where a conversation last stood. Loose from the backup above: no settings, no plugins, nothing to scrub."/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <Button Content="Export…" Click="OnExportAssistantMemory" IsEnabled="{Binding CanBackUpAssistantMemory}"/>
+                                <Button Content="Import…" Click="OnImportAssistantMemory" IsEnabled="{Binding CanBackUpAssistantMemory}"/>
+                            </StackPanel>
+
+                            <TextBlock Text="Importing replaces the assistant's memory. What is in place now is moved aside rather than deleted."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <TextBlock Text="{Binding AssistantMemoryBackupStatus}" IsVisible="{Binding AssistantMemoryBackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

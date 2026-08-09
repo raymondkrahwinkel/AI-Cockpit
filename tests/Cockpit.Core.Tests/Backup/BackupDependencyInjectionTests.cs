@@ -51,4 +51,15 @@ public class BackupDependencyInjectionTests
         Assert.True(cockpit.CanBackUp);
         Assert.False(cockpit.BackupIncludesCredentials, "an archive you can drop anywhere must not be a key ring");
     }
+
+    /// <summary>Same shape, same risk, for the assistant-memory-only export/import buttons (AC-657).</summary>
+    [Fact]
+    public async Task TheCockpit_IsBuiltWithAssistantMemory_SoItsOwnBackupButtonsAreNotDeadControls()
+    {
+        await using var provider = BuildProvider();
+
+        var cockpit = provider.GetRequiredService<CockpitViewModel>();
+
+        Assert.True(cockpit.CanBackUpAssistantMemory);
+    }
 }
