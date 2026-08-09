@@ -8,21 +8,10 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-442's route decision, measured rather than argued (not a pass/fail test — a repeatable ruler, like
-/// <see cref="TerminalRenderAllocationBenchmark"/>). Six live sessions drawn as miniatures, once per route:
-/// <list type="bullet">
-/// <item><b>live</b> — every frame draws all six panes at full size through a scale transform, which is what
-/// <see cref="Cockpit.App.Controls.MiniatureHost"/> makes the compositor do.</item>
-/// <item><b>snapshot</b> — the same draw, but only at <see cref="SnapshotHz"/>; the other frames blit the six
-/// cached tiles 1:1.</item>
-/// </list>
-/// Both routes are fed byte-identical output at the same rate — a session's pty pumps whether or not anyone
-/// redraws — so the only difference measured is the drawing.
-/// <para>
-/// Software rasterisation (headless Skia), so these are CPU-side draw costs, not what a GPU compositor ends
-/// up paying. That is the honest half to measure here: for a terminal the CPU side — glyph shaping and draw
-/// call construction — is the part that scales with pane count, and it is the part the route choice moves.
-/// </para>
+/// AC-442's route decision, measured rather than argued (a repeatable ruler, not a pass/fail test, like
+/// <see cref="TerminalRenderAllocationBenchmark"/>). Six sessions as miniatures, drawn every frame against
+/// drawn at <see cref="SnapshotHz"/> and blitted, on identical output so only the drawing differs. Software
+/// rasterisation: the CPU-side cost, which for a terminal is what scales with pane count.
 /// </summary>
 [Collection("avalonia")]
 public class MiniatureFrameCostBenchmark

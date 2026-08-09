@@ -1263,11 +1263,9 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:SessionPanelViewModel">
-                            <!-- The miniature host sits here permanently at scale 1 rather than being wrapped
-                                 around a pane on the way into the rail (AC-442): switching is then one number
-                                 and the pane below it is never rebuilt — the failure the grid comment above
-                                 describes. It lays its child out at full size and only draws it small, so the
-                                 TerminalControl keeps reporting the grid its pty already has. -->
+                            <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
+                                 rail (AC-442): switching is then one number and never the rebuild the grid
+                                 comment above describes. Draws the pane small without laying it out small. -->
                             <controls:MiniatureHost Scale="{Binding MiniatureScale}">
                             <!-- The active panel carries the accent edge (Theme "panel.active") so the
                                  session you're driving jumps out of the grid; others keep the hairline. -->

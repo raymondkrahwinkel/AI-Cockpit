@@ -7,16 +7,10 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-442 #5, on a render rather than on a claim: the miniature of a running session shows that session's
-/// content, not an empty box or a stale one. Compared as a band profile — the image split into horizontal
-/// bands, each band's mean ink — because the two frames are rasterised at different sizes and only the
-/// structure can be compared, which is also all a miniature is read for (activity, shape, colour).
-/// <para>
-/// The negative control is what makes the number mean anything: a second session with different output has
-/// to profile *worse* against the miniature than its own pane does, or the comparison would pass on any two
-/// terminals that merely look like terminals.
-/// </para>
-/// <para>Both PNGs are written to <see cref="OutputDirectory"/> for the eyeball half of the check.</para>
+/// AC-442 #5, on a render rather than on a claim. Compared as a band profile (each horizontal band's mean
+/// ink): the frames rasterise at different sizes, so only structure compares — all a miniature is read for
+/// anyway. The negative control is what makes the number mean anything: a different session has to profile
+/// worse than its own pane. Both PNGs go to <see cref="OutputDirectory"/> for the eyeball half.
 /// </summary>
 [Collection("avalonia")]
 public class MiniatureShowsTheSameContentTests
@@ -50,10 +44,8 @@ public class MiniatureShowsTheSameContentTests
             different = Correlation(full.Bands, other.Bands);
         });
 
-        // The two panes have to be the same session before their pictures are worth comparing — and this is
-        // the invariant itself, seen from the render side. Compared against each other rather than against a
-        // written-down grid: the cell size is the machine's font's business, and a container measures a
-        // different one.
+        // The invariant seen from the render side, and the precondition for comparing the pictures at all.
+        // Against each other rather than a written-down grid: cell size is the machine's font's business.
         Assert.Equal(fullGrid, miniGrid);
 
         File.WriteAllText(Path.Combine(OutputDirectory, "correlation.txt"),

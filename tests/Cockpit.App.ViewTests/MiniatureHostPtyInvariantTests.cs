@@ -6,17 +6,9 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-442's invariant: a pane shown as a miniature keeps the grid its pty already has. The terminal derives
-/// columns/rows from its own <c>Bounds</c> and the host forwards them to <c>pty.Resize</c>, so a tile-sized
-/// layout would put the session on ~30 columns and reflow the agent's output permanently — including after
-/// the pane is full size again.
-/// <para>
-/// The two tests are a pair and only mean something together:
-/// <see cref="APaneGoingInAndOutOfMiniature_NeverChangesTheGridThePtyGets"/> pins the invariant, and
-/// <see cref="WithoutTheHost_TheSameTileReshapesThePty"/> is the mutation kept in the suite — it lays the
-/// same terminal out in the same tile with the scaling removed and shows the grid collapsing, so the first
-/// test is known to be red without the fix rather than green on a terminal that never resized anyway.
-/// </para>
+/// AC-442's invariant: a pane shown as a miniature keeps the grid its pty already has. The two tests only
+/// mean something together — the first pins the invariant, the second is the mutation kept runnable, so the
+/// first is known to be red without the fix rather than green on a terminal that never resized anyway.
 /// </summary>
 [Collection("avalonia")]
 public class MiniatureHostPtyInvariantTests
