@@ -573,10 +573,8 @@ public sealed class SessionTilePanel : Panel
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        // The rail auto-fits and has no column/row gutters of its own (AC-444 #1) — nothing here to hover
-        // or drag. ponytail: `RailWeight` is one-way from Options/the workspace override for now, not a
-        // live pointer drag; wire one (`StackPaneMath.Resize`, as `FocusRailPanel`'s own divider already
-        // proves) if the fixed split becomes something operators actually want to hand-tune in place.
+        // No column/row gutters in the rail (AC-444 #1). ponytail: RailWeight has no live drag yet; wire one
+        // (FocusRailPanel's own divider already proves the math) if operators want to hand-tune the split.
         if (FocusRailLayout)
         {
             return;
