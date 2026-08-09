@@ -119,4 +119,41 @@ public class FirstRunWizardViewModelTests
 
         Assert.True(raised);
     });
+
+    // The epic's own plan (AC-509's sharpened criteria, 2026-08-01): the step bar shows every planned slot, even
+    // one nothing is registered for yet (the Depot step, AC-540), and "Step N of 4" counts against the plan
+    // rather than only the steps that happen to exist today.
+    [Fact]
+    public void WithPlannedSlots_ShowsAPlaceholder_ForASlotNothingIsRegisteredFor() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new FirstRunWizardViewModel(
+            [new StubFirstRunWizardStep(0, "What this is", isSkipped: false)],
+            [new WizardPlannedSlot(0, "What this is"), new WizardPlannedSlot(10, "Your account")]);
+
+        Assert.Equal(2, viewModel.StepBar.Count);
+        Assert.False(viewModel.StepBar[0].NotBuiltYet);
+        Assert.True(viewModel.StepBar[1].NotBuiltYet);
+        Assert.Null(viewModel.StepBar[1].TextDecorations); // dim, but never struck through — nobody skipped it
+        Assert.Equal("Step 1 of 2", viewModel.StepProgressLabel);
+    });
+
+    [Fact]
+    public void WithPlannedSlots_NumbersTheCurrentStep_ByItsSlotRatherThanItsRegisteredPosition() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new FirstRunWizardViewModel(
+            [
+                new StubFirstRunWizardStep(0, "What this is", isSkipped: false),
+                new StubFirstRunWizardStep(20, "What you have", isSkipped: false),
+            ],
+            [
+                new WizardPlannedSlot(0, "What this is"),
+                new WizardPlannedSlot(10, "Your account"),
+                new WizardPlannedSlot(20, "What you have"),
+            ]);
+
+        viewModel.NextCommand.Execute(null);
+
+        Assert.Equal("Step 3 of 3", viewModel.StepProgressLabel);
+        Assert.True(viewModel.StepBar[2].IsCurrent);
+    });
 }

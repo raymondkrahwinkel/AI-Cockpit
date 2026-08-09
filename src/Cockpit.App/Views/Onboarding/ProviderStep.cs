@@ -18,7 +18,9 @@ internal sealed class ProviderStep(
 {
     public int Order => 20;
 
-    public string Title => "AI providers";
+    // The epic's own label for this slot (AC-509's EpicPlan) — "AI providers" would read fine alone, but the step
+    // bar's four labels are written as one sentence read left to right.
+    public string Title => "What you have";
 
     public bool IsSkipped => false;
 

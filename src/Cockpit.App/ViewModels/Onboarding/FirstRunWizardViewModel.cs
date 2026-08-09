@@ -6,17 +6,36 @@ using Cockpit.App.Views.Onboarding;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
+// One of the epic's fixed step-bar slots (AC-509's sharpened criteria, 2026-08-01): an `Order` a step registers
+// under to claim it, and the label to show while nothing has claimed it yet.
+public sealed record WizardPlannedSlot(int Order, string Title);
+
 // Drives the first-run wizard shell (AC-509): the step bar, and Back/Next/Skip across whatever steps are handed
 // in. A step whose `IFirstRunWizardStep.IsSkipped` is true stays in the bar, struck through, but
-// Back/Next step over it — shown, not silently dropped, the same way a step that was never registered at all
-// (the Depot step, AC-540) is silently absent rather than shown broken.
+// Back/Next step over it — shown, not silently dropped.
 public sealed partial class FirstRunWizardViewModel : ObservableObject
 {
+    // The epic's own plan (AC-508's four subs), so the step bar reads "Step 1 of 4" from the first screen even
+    // before the Depot step (AC-540) exists to fill its slot — a slot nothing has registered for yet is shown
+    // dim rather than left out, the same honesty AC-510's "Found ≠ works" already applies to a provider. The two
+    // production call sites (the startup gate and the Help menu's "Run setup again") share this single literal
+    // rather than each carrying their own copy of the plan.
+    public static readonly IReadOnlyList<WizardPlannedSlot> EpicPlan =
+    [
+        new(0, "What this is"),
+        new(10, "Your account"),
+        new(20, "What you have"),
+        new(30, "What you work on"),
+    ];
+
     private readonly IReadOnlyList<Control> _stepContents;
     private readonly IReadOnlyList<int> _navigableIndexes;
+    private readonly IReadOnlyList<int> _stepBarIndexByOrderedIndex;
+    private readonly IReadOnlyList<int> _stepNumberByOrderedIndex;
+    private readonly int _totalStepCount;
     private int _position;
 
-    public FirstRunWizardViewModel(IReadOnlyList<IFirstRunWizardStep> steps)
+    public FirstRunWizardViewModel(IReadOnlyList<IFirstRunWizardStep> steps, IReadOnlyList<WizardPlannedSlot>? plannedSlots = null)
     {
         if (steps.Count == 0)
         {
@@ -26,9 +45,41 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         var ordered = steps.OrderBy(step => step.Order).ToList();
         _stepContents = [.. ordered.Select(step => step.BuildContent())];
 
-        foreach (var step in ordered)
+        if (plannedSlots is { Count: > 0 })
         {
-            StepBar.Add(new WizardStepBarItemViewModel(step.Title, step.IsSkipped));
+            var slots = plannedSlots.OrderBy(slot => slot.Order).ToList();
+            var stepBarIndexByOrderedIndex = new int[ordered.Count];
+            var stepNumberByOrderedIndex = new int[ordered.Count];
+
+            for (var slotIndex = 0; slotIndex < slots.Count; slotIndex++)
+            {
+                var orderedIndex = ordered.FindIndex(step => step.Order == slots[slotIndex].Order);
+                if (orderedIndex >= 0)
+                {
+                    StepBar.Add(new WizardStepBarItemViewModel(ordered[orderedIndex].Title, ordered[orderedIndex].IsSkipped));
+                    stepBarIndexByOrderedIndex[orderedIndex] = slotIndex;
+                    stepNumberByOrderedIndex[orderedIndex] = slotIndex + 1;
+                }
+                else
+                {
+                    StepBar.Add(new WizardStepBarItemViewModel(slots[slotIndex].Title, isSkipped: false, notBuilt: true));
+                }
+            }
+
+            _stepBarIndexByOrderedIndex = stepBarIndexByOrderedIndex;
+            _stepNumberByOrderedIndex = stepNumberByOrderedIndex;
+            _totalStepCount = slots.Count;
+        }
+        else
+        {
+            for (var index = 0; index < ordered.Count; index++)
+            {
+                StepBar.Add(new WizardStepBarItemViewModel(ordered[index].Title, ordered[index].IsSkipped));
+            }
+
+            _stepBarIndexByOrderedIndex = [.. Enumerable.Range(0, ordered.Count)];
+            _stepNumberByOrderedIndex = [.. Enumerable.Range(1, ordered.Count)];
+            _totalStepCount = ordered.Count;
         }
 
         // Skipped steps stay visible in the bar above but are never landed on — Back/Next only ever stop on one
@@ -60,6 +111,9 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isLastStep;
+
+    [ObservableProperty]
+    private string _stepProgressLabel = "";
 
     // Raised when the operator is done with the wizard — Skip, or Next on the last step. The window closes on this.
     public event EventHandler? RequestClose;
@@ -97,10 +151,13 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         CurrentStepContent = _stepContents[stepIndex];
         CanGoBack = _position > 0;
         IsLastStep = _position == _navigableIndexes.Count - 1;
+        StepProgressLabel = $"Step {_stepNumberByOrderedIndex[stepIndex]} of {_totalStepCount}";
 
         for (var index = 0; index < StepBar.Count; index++)
         {
-            StepBar[index].IsCurrent = index == stepIndex;
+            StepBar[index].IsCurrent = false;
         }
+
+        StepBar[_stepBarIndexByOrderedIndex[stepIndex]].IsCurrent = true;
     }
 }

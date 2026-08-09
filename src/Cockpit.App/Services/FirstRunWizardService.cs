@@ -19,7 +19,7 @@ internal sealed class FirstRunWizardService(IEnumerable<IFirstRunWizardStep> ste
 {
     public async Task ShowAsync(CancellationToken cancellationToken = default)
     {
-        var viewModel = new FirstRunWizardViewModel([.. steps]);
+        var viewModel = new FirstRunWizardViewModel([.. steps], FirstRunWizardViewModel.EpicPlan);
         var window = new FirstRunWizardWindow { DataContext = viewModel };
 
         var completion = new TaskCompletionSource();
