@@ -76,7 +76,7 @@ target="/Applications"
 mkdir -p "$target"
 app="$target/AI-Cockpit.app"
 
-echo "Installing into $target…"
+echo "Installing into ${target}…"
 rm -rf "$app"
 mv "$tmp/unpacked/AI-Cockpit.app" "$app"
 
