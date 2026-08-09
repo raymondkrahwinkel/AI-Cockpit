@@ -281,16 +281,24 @@ public partial class TtyView : UserControl
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
             && vm.BeginVoiceHold())
         {
+            _holdingKey = e.Key;
             e.Handled = true;
         }
     }
 
+    // The key whose press opened a microphone here, until its own release ends the hold — see `_OnPushToTalkKeyUp`.
+    private Key? _holdingKey;
+
     // KeyUp for the push-to-talk hotkey: ends the hold and transcribes — see `TtyViewModel.OnVoiceTextReady`.
+    // Ends only what this view's own KeyDown started (AC-557): a release also arrives for a press that started
+    // nothing — voice off for this session — and ending a hold that never began throws. Which is also why this
+    // asks the key that started it rather than the gate again: the gate's answer can change mid-hold, and a hold
+    // nobody ends holds the microphone for good.
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
-        if (_viewModel is { } vm
-            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled))
+        if (_holdingKey == e.Key && _viewModel is { } vm)
         {
+            _holdingKey = null;
             e.Handled = true;
             _ = vm.EndVoiceHoldAsync();
         }

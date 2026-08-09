@@ -111,6 +111,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: dictation that produces nothing now says so instead of leaving you looking at a cockpit where nothing
+  happened. Hold the key, talk, let go, and if the transcription failed or no speech was heard, the floating voice pill
+  says which for a few seconds and then goes away on its own — where before it simply vanished the moment the answer
+  came back empty, whichever of the two ways that happened. The same is true whichever key route you use: the in-window
+  key had no way to report anything at all, so a first dictation that spent minutes downloading its speech model showed
+  nothing while it did, and neither did one that failed at the end of it. Releasing the key without having started a
+  recording — voice switched off for that session — no longer tries to end a hold that never began.
+
 - fixed: a worktree is no longer emptied out from under the agent working in it. The periodic cleanup asks which
   sessions are alive and clears up the worktrees of the ones that are not — but it asked only the session grid, and a
   worktree the voice assistant made, or one belonging to a delegated task that runs without a pane, is owned by

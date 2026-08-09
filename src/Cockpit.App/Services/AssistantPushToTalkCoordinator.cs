@@ -50,10 +50,6 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     // behind it for good — see `_ShowThenClear`.
     private readonly TimeSpan _messageLinger;
 
-    // Bumped at the start of every hold (`HandleHoldStarted`), so a linger from an earlier, unrelated
-    // hold can tell it is stale and skip clearing a pill a newer hold now owns.
-    private int _pushToTalkGeneration;
-
     // `messageLinger`:
     // Overridden only by the tests, which cannot wait four seconds to watch a linger clear — same reasoning as
     // `ScheduledResumeCoordinator`'s tick interval.
@@ -125,10 +121,6 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     // Test seam: the UI-thread logic for a hold starting.
     internal void HandleHoldStarted()
     {
-        // Invalidates any linger still pending from an earlier hold's failure message (see _ShowThenClearAsync):
-        // this hold's own state is what belongs on the pill from here on, not a delayed clear stepping on it.
-        _pushToTalkGeneration++;
-
         // Open-mic already sends to the assistant, so unlike F9 there is nothing for a hold to take back. Silent
         // and still armed (AC-627): it is not a fault, and an unregistered F10 would fall through to the app
         // underneath.
@@ -263,32 +255,18 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         }
     }
 
-    // Puts a failed hold's explanation on the pill and, after `MessageLinger`, clears it — unless a
-    // newer hold has since taken the pill over (see `_pushToTalkGeneration`). Without the clear this
-    // message never went away on its own: read-aloud starting afterwards is masked
-    // (`VoiceOverlayCoordinator` puts a hold's own report ahead of read-aloud's) and stayed that way for
-    // good, since nothing else in this file writes to the pill until the next hold.
-    private void _ShowThenClear(string message)
-    {
-        var generation = _pushToTalkGeneration;
-        _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, message);
-        PendingLingerClear = _ClearAfterLingerAsync(generation);
-    }
+    // Puts a failed hold's explanation on the pill and clears it after `_messageLinger` — unless a newer report
+    // has since taken the pill over. Without the clear this message never went away on its own: read-aloud
+    // starting afterwards is masked (`VoiceOverlayCoordinator` puts a hold's own report ahead of
+    // read-aloud's) and stayed that way for good, since nothing else in this file writes to the pill until the
+    // next hold.
+    private void _ShowThenClear(string message) =>
+        _overlay.ShowPushToTalkThenClear(VoiceOverlayState.Unavailable, message, _messageLinger);
 
     // Test seam: the linger started by the last failed hold, so a test can await the clear itself instead of
     // sleeping for longer than it hopes the linger takes. Completed when there is none — the resting state, and
     // what a test that never triggered a failure message awaits.
-    internal Task PendingLingerClear { get; private set; } = Task.CompletedTask;
-
-    private async Task _ClearAfterLingerAsync(int generation)
-    {
-        await Task.Delay(_messageLinger);
-
-        if (generation == _pushToTalkGeneration)
-        {
-            _overlay.SetPushToTalk(null);
-        }
-    }
+    internal Task PendingLingerClear => _overlay.PendingPushToTalkClear;
 
     private void _OnPreparing(object? sender, VoicePreparationProgress step) =>
         Dispatcher.UIThread.Post(() => _assistant.ReportPreparing(step.Description, step.Fraction));

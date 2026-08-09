@@ -4,14 +4,15 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
 // Routes the desktop-wide push-to-talk key to the currently selected session and the floating voice
 // overlay (#34): a hold starts, the overlay shows "Listening" and the selected session's microphone capture
-// begins; the hold ends, the overlay flips to "Transcribing", the session's own STT+cleanup pipeline runs,
-// and the overlay hides once the text has been injected.
+// begins; the hold ends, the session's own STT pipeline runs, and the overlay hides once the text has been
+// injected. What the pill says from the release onwards — the spinner, a first-use download, or why the
+// dictation produced nothing — is the session's to report, since the in-window F9 handlers end their hold
+// through that same method and would otherwise have nothing to say at all (AC-557).
 // Whether the key is armed at all is `GlobalHotkeyCoordinator`'s: it registers only what the
 // operator switched on, so with global push-to-talk off nothing arrives here and the per-view local F9
 // handlers keep doing the job untouched.
@@ -100,9 +101,13 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         var blocked = capturing ? null : _WhyNothingIsBeingRecorded(session);
         _isRecording = blocked is null;
 
-        _overlayCoordinator.SetPushToTalk(
-            blocked is null ? VoiceOverlayState.Listening : VoiceOverlayState.Unavailable,
-            blocked);
+        // Only what this coordinator alone knows. A hold that did start says "Listening" from the session itself
+        // (`SessionPanelViewModel.BeginVoiceHold`), which is also the in-window F9 route's only way to
+        // say it — and saying it in both places would show the pill twice for one hold.
+        if (blocked is not null)
+        {
+            _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Unavailable, blocked);
+        }
 
         // AC-603: the press is the promise that a transcription is coming, and the sentence spoken into it is the
         // only window in which the model can load for free. Not awaited, and a failure is first use's to report.
@@ -154,49 +159,22 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             return;
         }
 
-        _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Transcribing);
-
-        // Only for as long as this hold: first use fetches gigabytes before it can transcribe, and the pill
-        // spent that time on a spinner that said "Transcribing…". Subscribed here rather than for the
-        // coordinator's lifetime so a step can never repaint the pill after its hold is over.
-        _pushToTalk.Preparing += _OnPreparing;
-        _pushToTalk.Prepared += _OnPrepared;
-
-        try
+        var session = _cockpit.SelectedSession;
+        if (session is null)
         {
-            var session = _cockpit.SelectedSession;
-            if (session is not null)
-            {
-                await session.EndVoiceHoldAsync();
-            }
-        }
-        finally
-        {
-            _pushToTalk.Preparing -= _OnPreparing;
-            _pushToTalk.Prepared -= _OnPrepared;
+            // Nothing to report the release to — the session went away while the key was held.
+            _overlayCoordinator.SetPushToTalk(null);
+            return;
         }
 
-        // The hold has nothing left to say. Whether the pill goes away is not this coordinator's call: read-aloud
-        // may have started while the transcript was being produced, and it gets the pill once dictation is done.
-        _overlayCoordinator.SetPushToTalk(null);
+        // What the hold is doing from here — the spinner, a first-use download, and what it produced — is the
+        // session's own report (`SessionPanelViewModel.EndVoiceHoldAsync`), because the in-window F9
+        // handlers end their hold through that same method and had no way to say any of it.
+        //
+        // Which is also why the pill is not taken down here any more. It was, unconditionally, and that is the
+        // defect: a dictation that failed or heard no speech had its explanation hidden the instant it appeared,
+        // leaving an operator who had just talked for a minute with nothing at all (AC-557). The session hides it
+        // on a transcript and leaves its own reason standing when there was none; that message clears itself.
+        await session.EndVoiceHoldAsync();
     }
-
-    // Fires off the UI thread (the download's own), so it marshals like the level feed does. Each step both
-    // puts the pill into `VoiceOverlayState.Preparing` and names what it is waiting on — the
-    // state cannot be set up front, because on every run after the first there is nothing to prepare and the
-    // pill should go straight to transcribing.
-    private void _OnPreparing(object? sender, VoicePreparationProgress step) =>
-        Dispatcher.UIThread.Post(() => HandlePreparing(step));
-
-    private void _OnPrepared(object? sender, EventArgs e) =>
-        Dispatcher.UIThread.Post(HandlePrepared);
-
-    // Test seam, like the hold handlers above: the UI-thread half of a preparation step. Each step sets the
-    // state as well as the text — it cannot be set up front, because on every run after the first there is
-    // nothing to prepare and the pill should go straight to its spinner.
-    internal void HandlePreparing(VoicePreparationProgress step) =>
-        _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Preparing, step.Description, step.Fraction);
-
-    // Test seam: preparation is over, so the pill goes back to the plain spinner — which is now telling the truth.
-    internal void HandlePrepared() => _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Transcribing);
 }

@@ -51,6 +51,16 @@
                 <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
+            <!-- The dictation produced nothing and says what went wrong (AC-557). Unlike Unavailable's hollow grey
+                 dot: that row is a key held over a microphone that never opened, this one is a minute of talking
+                 that came back empty, and the operator has to be able to tell those apart at a glance. Clears
+                 itself after a few seconds — see VoiceOverlayCoordinator.ShowPushToTalkThenClear. -->
+            <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsFailed}">
+                <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
+                        Background="{StaticResource CockpitStatusErrorBrush}"/>
+                <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+            </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsTranscribing}">
                 <Ellipse Width="16" Height="16" VerticalAlignment="Center" StrokeThickness="2"
                          Stroke="{StaticResource CockpitTextSecondaryBrush}" Opacity="0.5"/>

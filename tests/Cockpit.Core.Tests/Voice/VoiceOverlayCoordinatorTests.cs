@@ -139,6 +139,37 @@ public class VoiceOverlayCoordinatorTests
         Assert.Equal(0.41, overlay.ProgressValue);
     }
 
+    /// <summary>
+    /// A failed hold's explanation is the one report nothing comes back to take off the pill — the hold is over.
+    /// Left standing it would sit there for good, on top of whatever the operator did next (AC-557).
+    /// </summary>
+    [Fact]
+    public async Task AFailedHoldsExplanation_TakesItselfOffThePill()
+    {
+        var coordinator = _Create(out var overlay, out _);
+
+        coordinator.ShowPushToTalkThenClear(VoiceOverlayState.Failed, "No speech heard", TimeSpan.FromMilliseconds(1));
+        Assert.Equal(VoiceOverlayState.Failed, overlay.State);
+        Assert.Equal("No speech heard", overlay.StatusText);
+
+        await coordinator.PendingPushToTalkClear;
+
+        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
+    }
+
+    /// <summary>And it clears its own message only — a hold that started in the meantime keeps the pill it took.</summary>
+    [Fact]
+    public async Task AStaleClear_LeavesThePillToTheHoldThatTookItSince()
+    {
+        var coordinator = _Create(out var overlay, out _);
+        coordinator.ShowPushToTalkThenClear(VoiceOverlayState.Failed, "No speech heard", TimeSpan.FromMilliseconds(1));
+
+        coordinator.SetPushToTalk(VoiceOverlayState.Listening);
+        await coordinator.PendingPushToTalkClear;
+
+        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
+    }
+
     private static VoiceOverlayCoordinator _Create(out VoiceOverlayViewModel overlay, out FakeVoiceOverlayPresenter presenter)
     {
         overlay = new VoiceOverlayViewModel();
