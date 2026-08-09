@@ -45,11 +45,11 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _profileSystemPrompt;
 
-    // How much a session under this profile may hold before the OS cuts it off (AC-661). Empty means the app
-    // default; a value that is not a number is treated as empty rather than refused, since the floor below it
-    // makes a nonsense cap harmless anyway.
+    // How much a session under this profile may hold before the OS cuts it off (AC-661). Null means the app
+    // default. Numeric rather than text (AC-666): a typed "4096xcxc" used to parse back to null, so the editor
+    // silently dropped the cap it appeared to show.
     [ObservableProperty]
-    private string _memoryCapMegabytes;
+    private int? _memoryCapMegabytes;
 
     // Whether this profile pre-selects a specific set of MCP servers (AC-130). Off — the default — means no
     // restriction: a New session ticks every enabled server, as before. On reveals `McpServers` and
@@ -458,7 +458,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _purpose = profile.Purpose ?? string.Empty;
         _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
         _profileSystemPrompt = profile.SystemPrompt ?? string.Empty;
-        _memoryCapMegabytes = profile.MemoryCapMegabytes?.ToString() ?? string.Empty;
+        _memoryCapMegabytes = profile.MemoryCapMegabytes;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
         _selectedDefaultKind = profile.DefaultKind == ProfileSessionKind.Sdk ? SessionKind.Sdk : SessionKind.Tty;
@@ -577,7 +577,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 : null,
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory.Trim(),
             SystemPrompt = string.IsNullOrWhiteSpace(ProfileSystemPrompt) ? null : ProfileSystemPrompt.Trim(),
-            MemoryCapMegabytes = int.TryParse(MemoryCapMegabytes?.Trim(), out var cap) && cap > 0 ? cap : null,
+            MemoryCapMegabytes = MemoryCapMegabytes is > 0 ? MemoryCapMegabytes : null,
             // Meaningless (and hidden in the editor) for a provider with no TTY route — persist null rather than a
             // choice that could never take effect, so ResolveDefaultKind's own SDK fallback is the only word on it.
             DefaultKind = HasTtyProvider
