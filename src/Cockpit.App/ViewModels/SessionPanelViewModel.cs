@@ -336,6 +336,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isPaneVisible = true;
 
+    // The factor this pane is *drawn* at; 1 is full size. It never changes the size the pane is laid out
+    // at, so the session's pty keeps the grid it has whatever this says (AC-442, `MiniatureHost`). The rail
+    // that sets it to a miniature scale is AC-443's; until then every pane is full size.
+    [ObservableProperty]
+    private double _miniatureScale = 1.0;
+
     // Coarse status for the sidebar/grid overview — see `ViewModels.SessionStatus`.
     [ObservableProperty]
     private SessionStatus _sessionStatus = SessionStatus.Idle;

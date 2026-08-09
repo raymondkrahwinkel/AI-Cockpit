@@ -1263,6 +1263,10 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:SessionPanelViewModel">
+                            <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
+                                 rail (AC-442): switching is then one number and never the rebuild the grid
+                                 comment above describes. Draws the pane small without laying it out small. -->
+                            <controls:MiniatureHost Scale="{Binding MiniatureScale}">
                             <!-- The active panel carries the accent edge (Theme "panel.active") so the
                                  session you're driving jumps out of the grid; others keep the hairline. -->
                             <Border Margin="4" Classes="panel"
@@ -1290,6 +1294,7 @@
                                     <ContentControl Content="{Binding}"/>
                                 </DockPanel>
                             </Border>
+                            </controls:MiniatureHost>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
