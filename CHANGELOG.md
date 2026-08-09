@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Autopilot's CEO can now validate each finished step on a different profile/model than it planned with —
+  planning stays the strong reasoning model, validation (the part of a run that grows fastest and runs most often)
+  can move to a cheaper one. Blank keeps today's behaviour: validation follows planning until you set it separately
+  in the Autopilot settings.
+
 - added: every session — including the voice assistant — now gets an active turn as soon as mail addressed to it is
   waiting, instead of only picking it up on its own next turn or tool call. On by default for everyone, and it costs
   nothing when nothing is waiting: a message no longer has to be marked urgent, and the recipient no longer has to
