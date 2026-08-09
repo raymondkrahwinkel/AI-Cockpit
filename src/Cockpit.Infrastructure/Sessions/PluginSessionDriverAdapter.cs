@@ -62,6 +62,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     {
         SupportsEnvVars = pluginCapabilities.SupportsEnvVars,
         ConfinesFileAccessToWorkingDirectory = _EffectiveConfinesFileAccessToWorkingDirectory(),
+        SupportsContextCompaction = pluginCapabilities.SupportsContextCompaction,
     };
 
     // The honest per-session confinement (AC-190). A provider that has not vouched confinement at all never confines.
@@ -475,6 +476,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         inner.InterruptAsync(cancellationToken);
+
+    public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
+        inner.CompactContextAsync(cancellationToken);
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
         inner.RespondToPermissionAsync(toolUseId, allow, cancellationToken);

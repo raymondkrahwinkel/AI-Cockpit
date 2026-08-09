@@ -655,6 +655,131 @@ public class AssistantSessionHostTests
         Assert.Contains("Context was full", divider.Text, StringComparison.Ordinal);
     }
 
+    // ── Compacting instead of throwing the conversation away (AC-664) ─────────────────────────────────────────
+
+    /// <summary>
+    /// AC-664: the hand-over above is data loss — the transcript goes and only the standing instruction, the memory
+    /// file and the last <c>note_state</c> carry across. A provider that can summarise its own conversation is asked
+    /// to do that instead, and the instance stays exactly where it was.
+    /// </summary>
+    [Fact]
+    public void AFullContext_OnAProviderThatCanCompactItself_IsCompacted_RatherThanRestartedOnAFreshConversation()
+    {
+        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
+
+        _ReportAFullContext(first, driver, fill: 90);
+
+        // The same conversation, and the ask that keeps it: a hand-over would have swapped the instance for one whose
+        // transcript is empty.
+        Assert.Same(first, host.Session);
+        driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
+
+        // And it says so where the operator reads, since the provider reports a compaction nowhere they can see.
+        var divider = Assert.Single(first.Transcript, entry => entry.IsDivider);
+        Assert.Contains("continues here", divider.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Compacting is the better answer, not a guaranteed one — a provider can decline ("not enough messages to
+    /// compact") and leave the context exactly as full. The restart stays as the floor under that: the ask is spent
+    /// once, and a fill still above the line once the provider has answered gets the hand-over after all.
+    /// </summary>
+    [Fact]
+    public void AFullContext_ThatCompactingDidNotRelieve_StillHandsOverToAFreshConversation()
+    {
+        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
+
+        _ReportAFullContext(first, driver, fill: 90);
+        Assert.Same(first, host.Session);
+
+        // The next reading with nothing running is the provider's answer landing — and it left the context as full
+        // as it found it.
+        _ReportAFullContext(first, driver, fill: 91);
+
+        var second = host.Session;
+        Assert.NotSame(first, second);
+        Assert.Contains(second!.Transcript, entry => entry.IsDivider);
+
+        // Asked once, not once per reading: the fill only moves after the provider answers, so an unguarded rule
+        // would keep asking a provider that is still working on the first ask.
+        driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// And a compaction that <em>did</em> work re-arms the ask, so the next time the context fills the answer is
+    /// another compaction rather than the hand-over this ticket exists to avoid.
+    /// </summary>
+    [Fact]
+    public void AContextThatCompactingRelieved_EarnsAnotherCompaction_WhenItFillsUpAgain()
+    {
+        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
+
+        _ReportAFullContext(first, driver, fill: 90);
+        _ReportAFullContext(first, driver, fill: 40);
+        _ReportAFullContext(first, driver, fill: 90);
+
+        Assert.Same(first, host.Session);
+        driver.Received(2).CompactContextAsync(Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The ordering that made the first cut of this wrong. A turn publishes <c>IsBusy</c> false and only then
+    /// re-reads the provider's limits, so the moment the compaction turn ends the panel still holds the fill from
+    /// before it. Judged there, the assistant is idle with a context still over the line — and would hand over the
+    /// conversation the compaction had just saved.
+    /// </summary>
+    [Fact]
+    public void TheCompactionTurnEnding_IsNotJudgedOnTheFillFromBeforeIt()
+    {
+        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
+
+        _ReportAFullContext(first, driver, fill: 90);
+        Assert.Same(first, host.Session);
+
+        // The compaction turn ends: busy drops while the provider's figure has not been re-read yet.
+        Dispatcher.UIThread.Invoke(() => first.IsBusy = false);
+
+        Assert.Same(first, host.Session);
+        driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
+    }
+
+    // A provider that vouches for compacting its own conversation — the one capability AC-664 turns on.
+    private static SessionCapabilities _CompactingProvider() =>
+        SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true };
+
+    private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
+        SessionCapabilities capabilities)
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyEvents());
+        driver.Capabilities.Returns(capabilities);
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+
+        var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
+            () => new SessionViewModel(new SessionManager(factory))));
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit));
+
+        var session = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        Assert.NotNull(session);
+        return (host, session!, driver);
+    }
+
+    // The signal production reads: a turn completes and the provider's usage poll reports the fill.
+    private static void _ReportAFullContext(SessionViewModel session, ISessionDriver driver, double fill)
+    {
+        driver.CurrentStatus.Returns(new SessionStatusFeed(fill, []));
+        Dispatcher.UIThread.Invoke(() => session.Apply(new TurnCompleted
+        {
+            SessionId = "S1",
+            Subtype = "success",
+            Result = "done",
+            IsError = false,
+            Usage = new TokenUsage(1_000, 2_000, 0, 0),
+            TotalCostUsd = 0.01,
+        }));
+    }
+
     [Fact]
     public void LaunchOptions_WithNothingEverRemembered_CarryNoMemoryHeading()
     {

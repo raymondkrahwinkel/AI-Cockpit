@@ -1285,6 +1285,39 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
+    // AC-664: asks the provider to summarise this conversation and carry on in it, for a caller whose alternative is
+    // to start a fresh one and lose the transcript. Reports whether the ask went out, not whether the context
+    // actually shrank — only the provider's next usage reading says that, and the caller checks it there.
+    //
+    // Marked busy for the same reason `_StartTurnAsync` gives: this is a real turn on the provider, and a turn nobody
+    // marked busy is one the session goes on reporting itself idle through — the composer would send on top of it,
+    // and the assistant's own rule for a full context would read "not busy" and hand over the very conversation this
+    // is saving. The provider's own turn-completed event clears it, exactly as for any other turn.
+    public async Task<bool> CompactContextAsync()
+    {
+        if (_runtime is not { IsRunning: true } || !Capabilities.SupportsContextCompaction)
+        {
+            return false;
+        }
+
+        IsBusy = true;
+        _RecomputeStatus();
+
+        try
+        {
+            await _runtime.CompactContextAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // The turn never left, so the session is not working — left standing, it would read as permanently busy.
+            IsBusy = false;
+            _RecomputeStatus();
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Compacting the context failed: {ex.Message}"));
+            return false;
+        }
+    }
+
     private async Task _SetPermissionModeSafeAsync(string mode)
     {
         if (_runtime is null)

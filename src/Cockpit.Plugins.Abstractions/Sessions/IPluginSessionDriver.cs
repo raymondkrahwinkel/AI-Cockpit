@@ -93,6 +93,17 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task InterruptAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Asks the provider to compact this conversation in place (AC-664): summarise what has been said so far and
+    /// carry on as the same conversation, rather than the host having to start a fresh one and lose the transcript.
+    /// The driver expresses this in its provider's own vocabulary — Claude's <c>/compact</c>, another provider's
+    /// equivalent — so the host never has to know one. A driver that implements this reports
+    /// <see cref="PluginSessionCapabilities.SupportsContextCompaction"/> so the host asks only where there is an
+    /// answer. The default is a no-op, so an already-compiled plugin keeps loading and a provider with no such
+    /// mechanism is simply never asked.
+    /// </summary>
+    Task CompactContextAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
     /// Resolves an outstanding <see cref="PluginPermissionRequested"/> decision — the operator's allow/deny
     /// for a pending tool call, correlated on <paramref name="toolUseId"/>.
     /// </summary>
