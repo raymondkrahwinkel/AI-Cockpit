@@ -47,7 +47,40 @@ public class TtyLauncherTests
             .Returns(Substitute.For<IConPtyProcess>());
         var authKey = new McpAuthKey();
         var keyring = new SessionMcpKeyring();
-        return (new TtyLauncher(ptyHostFactory, authKey, keyring, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey, keyring);
+        // No cap for the tests that are not about one — a limiter that enforces nothing is what macOS really hands
+        // back, and it keeps the launcher's own wrapping decisions readable here.
+        var limiter = Substitute.For<ISessionMemoryLimiter>();
+        limiter.Apply(Arg.Any<int>(), Arg.Any<long>()).Returns((IDisposable?)null);
+        return (new TtyLauncher(ptyHostFactory, limiter, authKey, keyring, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey, keyring);
+    }
+
+    [Fact]
+    public void Launch_CapsTheSpawnedProcess_AtTheProfilesOwnCeilingUnlessThisLaunchOverrodeIt()
+    {
+        // AC-661: the cap is applied to the pty child the moment it exists, before the CLI has spawned anything of
+        // its own — everything it starts afterwards is born inside the same job/cgroup.
+        var ptyHostFactory = Substitute.For<IPtyHostFactory>();
+        var process = Substitute.For<IConPtyProcess>();
+        process.ProcessId.Returns(4242);
+        ptyHostFactory
+            .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
+            .Returns(process);
+
+        var limiter = Substitute.For<ISessionMemoryLimiter>();
+        var launcher = new TtyLauncher(ptyHostFactory, limiter, new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance);
+        var provider = Provider(new TtyLaunchSpec("/usr/bin/some-cli", [], new Dictionary<string, string?>(), "/wd", []));
+        var profile = new SessionProfile("Capped", new ClaudeConfig(ConfigDir: "/tmp/claude")) { MemoryCapMegabytes = 3072 };
+
+        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+        limiter.Received(1).Apply(4242, 3072L * 1024 * 1024);
+
+        launcher.Launch(
+            provider,
+            profile,
+            options: new Dictionary<string, string> { [SessionMemoryCap.OptionKey] = "6144" },
+            columns: 80,
+            rows: 24);
+        limiter.Received(1).Apply(4242, 6144L * 1024 * 1024);
     }
 
     [Fact]

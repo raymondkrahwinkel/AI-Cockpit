@@ -221,6 +221,16 @@
                                  PlaceholderText="Optional — added to every session under this profile, e.g. “You are Olaf. Your memory lives in the Depot MCP; look yourself up there before answering.”"/>
                     </StackPanel>
 
+                    <!-- Memory cap (AC-661): how much a session under this profile may hold before the OS cuts it
+                         off. Per profile because one number is either too loose to protect anything or too tight
+                         for the profile that runs real builds. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Memory cap (MB)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding MemoryCapMegabytes}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="Optional — how much this session's whole process tree may hold before the OS stops it. Blank uses the default."/>
+                    </StackPanel>
+
                     <!-- Delegation (#67): whether another session may hand work to this profile, and what it may
                          be handed. Off by default — delegating spawns a process under this profile's login. -->
                     <StackPanel Spacing="11">

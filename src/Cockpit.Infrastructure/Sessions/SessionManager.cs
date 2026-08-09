@@ -10,12 +10,16 @@ namespace Cockpit.Infrastructure.Sessions;
 internal sealed class SessionManager : ISessionManager, ISingletonService
 {
     private readonly ISessionDriverFactory _driverFactory;
+    private readonly ISessionMemoryLimiter? _memoryLimiter;
     private readonly List<ISessionRuntime> _sessions = [];
     private readonly Lock _sessionsLock = new();
 
-    public SessionManager(ISessionDriverFactory driverFactory)
+    // The limiter is optional so a test that only wants a session manager need not stand one up; the container
+    // always supplies one (AC-661).
+    public SessionManager(ISessionDriverFactory driverFactory, ISessionMemoryLimiter? memoryLimiter = null)
     {
         _driverFactory = driverFactory;
+        _memoryLimiter = memoryLimiter;
     }
 
     public IReadOnlyList<ISessionRuntime> Sessions
@@ -33,7 +37,7 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
 
     public ISessionRuntime Create(SessionProfile? profile)
     {
-        var runtime = new SessionRuntime(_driverFactory, profile);
+        var runtime = new SessionRuntime(_driverFactory, profile, _memoryLimiter);
         lock (_sessionsLock)
         {
             _sessions.Add(runtime);

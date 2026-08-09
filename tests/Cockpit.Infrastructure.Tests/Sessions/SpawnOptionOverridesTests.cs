@@ -1,3 +1,4 @@
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -132,5 +133,22 @@ public class SpawnOptionOverridesTests
 
         Assert.Null(refusal);
         Assert.Equal("claude-opus-5-20260501", merged!["model"]);
+    }
+
+    [Fact]
+    public void TheMemoryCapIsTheHostsOwnKey_AcceptedWhateverTheProviderDeclares()
+    {
+        // AC-661: no provider declares `cockpit.memory-cap-mb` and no driver reads it — the host applies it to the
+        // OS. Checked against Codex, which declares no `effort` either, so this proves it passes on its own merit
+        // rather than by happening to be in some provider's list.
+        var (merged, refusal) = SpawnOptionOverrides.Merge(
+            "Codex", Codex, optionDefaults: null, new Dictionary<string, string> { [SessionMemoryCap.OptionKey] = "4096" });
+
+        Assert.Null(refusal);
+        Assert.Equal("4096", merged![SessionMemoryCap.OptionKey]);
+
+        // And a value that is not a cap is refused rather than quietly read as "no cap at all".
+        Assert.NotNull(SpawnOptionOverrides.Merge(
+            "Codex", Codex, optionDefaults: null, new Dictionary<string, string> { [SessionMemoryCap.OptionKey] = "4 GB" }).Refusal);
     }
 }

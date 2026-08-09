@@ -64,6 +64,12 @@ public sealed record SessionProfile(
     // SDK regardless of this field, which `SessionKindDefaults.ResolveDefaultKind` enforces.
     public ProfileSessionKind? DefaultKind { get; init; }
 
+    // How much memory a session under this profile may hold, whole process tree included, before the OS cuts it
+    // off (AC-661). `null` takes `SessionMemoryCap.DefaultMegabytes`; a single spawn overrides it
+    // with the `cockpit.memory-cap-mb` launch option. Per profile because one number is either too loose to
+    // protect anything or too tight for the profile that runs real builds.
+    public int? MemoryCapMegabytes { get; init; }
+
     // Which backend drives this profile.
     public SessionProvider Provider => ProviderConfig.Provider;
 

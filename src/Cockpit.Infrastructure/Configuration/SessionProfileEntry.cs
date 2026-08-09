@@ -48,6 +48,9 @@ internal sealed class SessionProfileEntry
     // The New-session Kind toggle's pre-selection for this profile (AC-139); absent means TTY, the long-standing hard default (and what every profile saved before this setting existed still gets).
     public string? DefaultKind { get; set; }
 
+    // How much memory a session under this profile may hold, whole tree included (AC-661); absent means the app default.
+    public int? MemoryCapMegabytes { get; set; }
+
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
@@ -70,6 +73,7 @@ internal sealed class SessionProfileEntry
         DefaultWorkingDirectory = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory) ? null : profile.DefaultWorkingDirectory,
         SystemPrompt = string.IsNullOrWhiteSpace(profile.SystemPrompt) ? null : profile.SystemPrompt,
         DefaultKind = profile.DefaultKind?.ToString(),
+        MemoryCapMegabytes = profile.MemoryCapMegabytes,
     };
 
     public SessionProfile ToDomain()
@@ -99,6 +103,7 @@ internal sealed class SessionProfileEntry
             DefaultKind = Enum.TryParse<ProfileSessionKind>(DefaultKind, ignoreCase: true, out var parsedDefaultKind)
                 ? parsedDefaultKind
                 : null,
+            MemoryCapMegabytes = MemoryCapMegabytes,
         };
     }
 }
