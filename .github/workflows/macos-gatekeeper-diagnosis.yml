@@ -24,7 +24,9 @@ jobs:
       - name: Runner and Gatekeeper state
         run: |
           # perl is always present on macOS; GNU `timeout` is not. Written once, sourced by every later step.
-          printf '%s\n' 't() { perl -e '"'"'alarm shift; exec @ARGV'"'"' "$@" 2>&1; echo "[exit=$?]"; }' > ~/t.sh
+          # `|| rc=$?` rather than a bare call: the step shell runs with -e, and a probe that reports a verdict
+          # by exiting non-zero (spctl says "rejected" with exit 3) would otherwise kill the job mid-diagnosis.
+          printf '%s\n' 't() { local rc=0; perl -e '"'"'alarm shift; exec @ARGV'"'"' "$@" 2>&1 || rc=$?; echo "[exit=$rc]"; }' > ~/t.sh
           . ~/t.sh
           sw_vers; echo "arch: $(uname -m)"
           echo "--- spctl --status ---";           t 30 spctl --status
@@ -43,7 +45,8 @@ jobs:
           xattr -l ai-cockpit-nightly-macos-arm64.dmg     || echo "(dmg: no xattrs at all)"
           xattr -l ai-cockpit-nightly-macos-arm64.app.zip || echo "(zip: no xattrs at all)"
 
-      - name: Signature of the app inside the DMG
+      - if: always()
+        name: Signature of the app inside the DMG
         run: |
           . ~/t.sh
           cd ~/dl
@@ -55,7 +58,8 @@ jobs:
           echo "=== spctl on the DMG itself ==="                     ; t 120 spctl -a -vvv -t open --context context:primary-signature ai-cockpit-nightly-macos-arm64.dmg
           hdiutil detach /tmp/acdmg || true
 
-      - name: Case A — unzipped, no quarantine (the CLI/installer route)
+      - if: always()
+        name: Case A — unzipped, no quarantine (the CLI/installer route)
         run: |
           . ~/t.sh
           rm -rf /tmp/caseA && mkdir -p /tmp/caseA && cd /tmp/caseA
@@ -66,7 +70,8 @@ jobs:
           echo "=== syspolicy_check ==="     ; t 120 syspolicy_check distribution "$app"
           echo "=== does the binary run? ===" ; t 20 "$app/Contents/MacOS/Cockpit.App" --version
 
-      - name: Case B — quarantined, as a browser download (the reported failure)
+      - if: always()
+        name: Case B — quarantined, as a browser download (the reported failure)
         run: |
           . ~/t.sh
           rm -rf /tmp/caseB && mkdir -p /tmp/caseB && cd /tmp/caseB
@@ -79,7 +84,8 @@ jobs:
           echo "=== syspolicy_check ===" ; t 120 syspolicy_check distribution "$app"
           echo "=== signature itself still valid? ===" ; t 300 codesign --verify --deep --strict --verbose=2 "$app"
 
-      - name: Case C — quarantined, then the documented `xattr -cr` workaround
+      - if: always()
+        name: Case C — quarantined, then the documented `xattr -cr` workaround
         run: |
           . ~/t.sh
           app=/tmp/caseB/AI-Cockpit.app
@@ -92,7 +98,8 @@ jobs:
 
       # Why do the apps Raymond compares against "just work"? Apple's `container` is one of them. Measure it
       # rather than assume: whatever its signature carries is the bar our artifact is missing.
-      - name: Comparison — what does Apple's `container` release actually carry?
+      - if: always()
+        name: Comparison — what does Apple's `container` release actually carry?
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -110,7 +117,8 @@ jobs:
           fi
 
       # The hypothesis under test: does `brew install --cask` sidestep Gatekeeper by not quarantining?
-      - name: Does Homebrew Cask quarantine what it installs?
+      - if: always()
+        name: Does Homebrew Cask quarantine what it installs?
         run: |
           . ~/t.sh
           brew --version | head -1
