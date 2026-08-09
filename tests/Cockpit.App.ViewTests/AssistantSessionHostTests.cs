@@ -723,10 +723,9 @@ public class AssistantSessionHostTests
     }
 
     /// <summary>
-    /// The ordering that made the first cut of this wrong. A turn publishes <c>IsBusy</c> false and only then
-    /// re-reads the provider's limits, so the moment the compaction turn ends the panel still holds the fill from
-    /// before it. Judged there, the assistant is idle with a context still over the line — and would hand over the
-    /// conversation the compaction had just saved.
+    /// The ordering that made the first cut of this wrong: a turn publishes <c>IsBusy</c> false before re-reading the
+    /// provider's limits, so the compaction turn ends with the old fill still standing. Judged there, the assistant
+    /// is idle above the line and would hand over the conversation the compaction had just saved.
     /// </summary>
     [Fact]
     public void TheCompactionTurnEnding_IsNotJudgedOnTheFillFromBeforeIt()

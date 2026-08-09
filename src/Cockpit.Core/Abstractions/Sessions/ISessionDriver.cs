@@ -64,11 +64,10 @@ public interface ISessionDriver : IAsyncDisposable
     Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Asks the provider to compact this conversation in place (AC-664): summarise what has been said so far and
+    /// Asks the provider to compact this conversation in place (AC-664) — summarise what has been said so far and
     /// carry on as the same conversation, instead of the caller starting a fresh one and losing the transcript.
     /// Only meaningful on a driver reporting <see cref="SessionCapabilities.SupportsContextCompaction"/>; the default
-    /// is a no-op, so a provider with no such mechanism is simply never asked and no driver has to grow a member it
-    /// cannot answer.
+    /// is a no-op.
     /// </summary>
     Task CompactContextAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

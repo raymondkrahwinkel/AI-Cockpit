@@ -148,7 +148,10 @@ public class VoiceOverlayCoordinatorTests
     {
         var coordinator = _Create(out var overlay, out _);
 
-        coordinator.ShowPushToTalkThenClear(VoiceOverlayState.Failed, "No speech heard", TimeSpan.FromMilliseconds(1));
+        // Long enough that the assertions below are not racing the linger they check: at one millisecond the clear's
+        // continuation could run first on a loaded CI runner, and the test then read the pill as already cleared.
+        // The await below, not the duration, is what proves the clear happens.
+        coordinator.ShowPushToTalkThenClear(VoiceOverlayState.Failed, "No speech heard", TimeSpan.FromMilliseconds(250));
         Assert.Equal(VoiceOverlayState.Failed, overlay.State);
         Assert.Equal("No speech heard", overlay.StatusText);
 

@@ -1285,14 +1285,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // AC-664: asks the provider to summarise this conversation and carry on in it, for a caller whose alternative is
-    // to start a fresh one and lose the transcript. Reports whether the ask went out, not whether the context
-    // actually shrank — only the provider's next usage reading says that, and the caller checks it there.
-    //
-    // Marked busy for the same reason `_StartTurnAsync` gives: this is a real turn on the provider, and a turn nobody
-    // marked busy is one the session goes on reporting itself idle through — the composer would send on top of it,
-    // and the assistant's own rule for a full context would read "not busy" and hand over the very conversation this
-    // is saving. The provider's own turn-completed event clears it, exactly as for any other turn.
+    // AC-664: asks the provider to summarise this conversation and carry on in it. Reports whether the ask went out,
+    // not whether the context shrank — only the provider's next usage reading says that. Marked busy because this is
+    // a real turn like any other (`_StartTurnAsync`), and the turn-completed event clears it the same way.
     public async Task<bool> CompactContextAsync()
     {
         if (_runtime is not { IsRunning: true } || !Capabilities.SupportsContextCompaction)

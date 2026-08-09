@@ -257,17 +257,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         _SendControlRequestAsync(new { subtype = "interrupt" }, cancellationToken);
 
-    // AC-664: Claude's own context compaction — the CLI summarises the conversation so far and carries on under the
-    // same session id, which is the whole difference from the host starting a fresh one and losing the transcript.
-    // *Why a user message and not a control_request.* There is no compaction subtype on the control protocol: the
-    // full set of `subtype:"…"` strings in claude.exe 2.1.226 has `interrupt`, `set_model`, `get_context_usage` and
-    // the rest, and nothing for compaction — only `compact_boundary`, which is the *system message the CLI emits
-    // after* one. The CLI parses its slash commands out of the stream-json user input itself, so `/compact` on the
-    // same stdin line shape every turn already uses is the channel. Measured against a live 2.1.226 spawn in exactly
-    // this mode: three user lines, the middle one `/compact`, and the CLI answered it as a command ("Not enough
-    // messages to compact."), kept the same `session_id`, and still answered the third line from the first line's
-    // content. The CLI also auto-compacts on its own near its window (`--autocompact`), so this is asking early for
-    // something it would eventually do — never a mechanism invented here.
+    // AC-664: the CLI summarises the conversation and carries on under the same session id. It rides the user-message
+    // line because the control protocol has no compaction subtype (claude.exe 2.1.226) — the CLI parses `/compact`
+    // out of the stream-json input itself; measured against a live spawn in this mode, see the ticket.
     public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
         _SendUserMessageAsync("/compact", images: null, cancellationToken);
 

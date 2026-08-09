@@ -46,11 +46,9 @@ public sealed record SessionCapabilities(
     // `false` so a provider that has not vouched for confinement fails closed, not open.
     public bool ConfinesFileAccessToWorkingDirectory { get; init; }
 
-    // Whether this driver can compact its own conversation in place (AC-664) — the host-side mirror of
-    // `PluginSessionCapabilities.SupportsContextCompaction`, backed by `ISessionDriver.CompactContextAsync`. What it
-    // gates is which of two answers a full context gets: ask the provider to summarise and carry on in the same
-    // conversation, or start a fresh one and lose the transcript. Defaults to `false` so a provider that has not
-    // said it can do the first keeps the second.
+    // AC-664: whether a full context is answered by asking this driver to summarise and carry on, or by starting a
+    // fresh conversation and losing the transcript. The host-side mirror of
+    // `PluginSessionCapabilities.SupportsContextCompaction`; `false` keeps the fresh start.
     public bool SupportsContextCompaction { get; init; }
 
     // The Claude-CLI driver: native tools, permission prompts, live model/permission control, plan mode, thinking, image input, and resuming an earlier conversation.

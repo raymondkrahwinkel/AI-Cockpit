@@ -490,10 +490,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             _NoteInteraction();
             _SyncActivityWithSession(session);
 
-            // Whether this change carries a *new* fill figure or merely happens to be able to read the last one.
-            // The session refreshes the provider's limits at the end of a turn — after it has published IsBusy false —
-            // so the busy transition arrives with the previous turn's figure still standing. That distinction is
-            // what a compaction turns on: see _HandOverIfTheContextIsFull.
+            // Whether this change carries a *new* fill figure or merely happens to be able to read the last one: the
+            // session refreshes the provider's limits after it has published IsBusy false, so the busy transition
+            // arrives with the previous turn's figure still standing. Why that matters: _HandOverIfTheContextIsFull.
             _HandOverIfTheContextIsFull(
                 session,
                 fillWasJustRead: e.PropertyName is null or nameof(SessionPanelViewModel.ContextUsedPercent));
@@ -501,14 +500,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     }
 
     // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
-    // the operator. Never mid-turn, and never over an unanswered permission: that row belongs to a session that
-    // would no longer exist to receive the answer.
-    //
-    // *Why there are now two answers.* AC-596 had one: restart on a fresh conversation, which drops the whole
-    // transcript and carries across only the standing instruction, the memory file and whatever the assistant last
-    // wrote with `note_state`. That is real data loss (AC-664), and on a provider that can summarise its own
-    // conversation it is loss for nothing — so such a provider is asked to compact instead, and the restart stays
-    // as what happens when it cannot or when compacting did not bring the fill down.
+    // the operator: that permission row belongs to a session that would no longer exist to receive the answer.
+    // AC-664: a provider that can summarise its own conversation is asked to, and the restart is what is left.
     private void _HandOverIfTheContextIsFull(SessionViewModel session, bool fillWasJustRead)
     {
         if (!ReferenceEquals(session, Session))
@@ -516,10 +509,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             return;
         }
 
-        // Once a compaction has been asked for, only a fresh reading may decide anything. The turn it runs as ends
-        // like any other — IsBusy goes false *before* the session re-reads the provider's limits — so judging it
-        // there would judge it on the fill from before the compaction: still over the line, nothing running, and the
-        // hand-over would throw away the very conversation the compaction had just saved.
+        // Once a compaction has been asked for, only a fresh reading may decide anything: its turn ends with the
+        // pre-compaction fill still standing, and judged there the hand-over would throw away the very conversation
+        // the compaction had just saved.
         if (_askedTheProviderToCompact && !fillWasJustRead)
         {
             return;
@@ -563,10 +555,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
             if (await session.CompactContextAsync().ConfigureAwait(true))
             {
-                // AC-638's divider, for the case that keeps the conversation. A successful compaction is otherwise
-                // invisible here — the provider reports it as a system line the transcript does not render and says
-                // nothing out loud — so the operator would see the assistant's memory of the early part quietly
-                // thin out with nothing to say when, or that anything happened at all.
+                // AC-638's divider, for the case that keeps the conversation. A compaction is otherwise invisible
+                // here — the provider reports it as a system line the transcript does not render — so the assistant's
+                // memory of the early part would quietly thin out with nothing to say that it had.
                 session.Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.Divider,
                     "Context was full — the conversation so far was summarised and continues here"));
