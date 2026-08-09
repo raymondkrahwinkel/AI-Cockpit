@@ -47,10 +47,10 @@ public class SessionMemoryCapWarningTests
         };
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: true);
-        Assert.Equal("4096", editable.MemoryCapMegabytes);
+        Assert.Equal(4096, editable.MemoryCapMegabytes);
         Assert.Equal(4096, editable.ToProfile().MemoryCapMegabytes);
 
-        editable.MemoryCapMegabytes = string.Empty;
+        editable.MemoryCapMegabytes = null;
         Assert.Null(editable.ToProfile().MemoryCapMegabytes);
     }
 }

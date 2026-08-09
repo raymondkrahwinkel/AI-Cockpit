@@ -227,8 +227,12 @@
                     <StackPanel Spacing="4">
                         <TextBlock Text="Memory cap (MB)" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                        <TextBox Text="{Binding MemoryCapMegabytes}" FontFamily="{StaticResource CockpitMonoFont}"
-                                 PlaceholderText="Optional — how much this session's whole process tree may hold before the OS stops it. Blank uses the default."/>
+                        <!-- Floor is SessionMemoryCap.MinimumMegabytes: below it the cap kills the agent CLI, not a runaway build. -->
+                        <NumericUpDown Value="{Binding MemoryCapMegabytes}" Minimum="512" Maximum="1048576"
+                                       Increment="512" FormatString="0" ClipValueToMinMax="True"
+                                       HorizontalAlignment="Left" Width="180"
+                                       PlaceholderText="Blank = default"
+                                       ToolTip.Tip="How much this session's whole process tree may hold before the OS stops it, in megabytes. Blank uses the default."/>
                     </StackPanel>
 
                     <!-- Delegation (#67): whether another session may hand work to this profile, and what it may
