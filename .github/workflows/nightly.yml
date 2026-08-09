@@ -276,7 +276,9 @@ jobs:
             echo
             echo "---"
             echo
-            echo "**macOS — \"is damaged and can't be opened\":** the download is ad-hoc signed, not notarized, so Gatekeeper quarantines it. After dragging it onto /Applications, clear the flag once with \`xattr -cr /Applications/AI-Cockpit.app\`, then open it normally."
+            echo "**macOS — install with this, not the .dmg:** \`curl -fsSL https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit/main/scripts/install-macos.sh | bash -s -- nightly\`"
+            echo
+            echo "The build is ad-hoc signed, not notarized, so a copy your *browser* fetched is quarantined and Gatekeeper calls it \"damaged and can't be opened\". It is not damaged — that flag is written by the downloader, and \`curl\` does not write one. Already took the .dmg? Clear only the quarantine flag with \`xattr -dr com.apple.quarantine /Applications/AI-Cockpit.app\` — not \`xattr -cr\`, which also wipes the extended attributes carrying each managed assembly's signature and leaves the app unsigned."
           } > nightly-notes.md
 
       # Delete and recreate rather than update: an existing release keeps its old assets and — the part that

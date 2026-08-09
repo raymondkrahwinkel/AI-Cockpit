@@ -181,7 +181,10 @@ public class VelopackPackagingTests
     /// </summary>
     [Theory]
     [InlineData("SmartScreen")]
-    [InlineData("xattr -cr /Applications/AI-Cockpit.app")]
+    [InlineData("scripts/install-macos.sh")]
+    // AC-663: pinned to `-dr com.apple.quarantine`, never `-cr` — that wipes the xattrs carrying each managed
+    // assembly's signature and leaves the bundle unsigned.
+    [InlineData("xattr -dr com.apple.quarantine /Applications/AI-Cockpit.app")]
     [InlineData("chmod +x AI-Cockpit-*.AppImage")]
     public void TheReleaseNotes_SayWhatEachPlatformNeedsOnFirstRun(string instruction) =>
         Assert.Contains(instruction, _Step("release.yml", "Append what each platform needs on first run"), StringComparison.Ordinal);
