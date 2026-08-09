@@ -202,6 +202,8 @@ public sealed class TranscriptStreamingCostTests
             // Paced, not flooded, and that pacing is the test: a tight producer outruns the dispatcher and batches
             // even without a window, which is how the self-clocking version passed a test while doing nothing on a
             // live session (AC-529).
+            var producing = System.Diagnostics.Stopwatch.StartNew();
+
             await Task.Run(() =>
             {
                 for (var i = 0; i < deltas; i++)
@@ -211,18 +213,31 @@ public sealed class TranscriptStreamingCostTests
                 }
             });
 
+            producing.Stop();
+
             await Task.Delay(200);
             queue.Flush();
 
             // Nothing may be lost, however the folding falls out.
             Assert.Equal(deltas * deltaChars, text.Length);
 
-            // Loose on purpose: the exact count depends on how the sleep and the window line up on the day. The
-            // line being drawn is "a fraction of the deltas" against "one apply each", not a frame budget.
+            // Measured against how long the producer actually took, not against a fraction of the delta count: the
+            // window folds per unit of time, so a fixed fraction is really an assertion about the host's timer
+            // resolution. Where Thread.Sleep(1) rounds up to ~15ms this run stretches to six seconds and a fifth of
+            // 400 is simply the wrong line — a red test about the machine rather than about the code. One apply per
+            // window is the ceiling the design promises; the slack covers the leading edge, the flush and a window
+            // that lands either side of the boundary.
+            const int windowMs = 33;
+            var ceiling = (int)(producing.ElapsedMilliseconds / windowMs) + 4;
+
             Assert.True(
-                applies < deltas / 5,
-                $"{deltas} deltas arriving a millisecond apart were applied {applies} times; they are not being "
-                + "folded, so each one still realises the whole reply");
+                applies <= ceiling,
+                $"{deltas} deltas produced over {producing.ElapsedMilliseconds} ms were applied {applies} times, "
+                + $"more than the {ceiling} a {windowMs} ms window allows; they are not being folded, so each one "
+                + "still realises the whole reply");
+
+            // And folding has to be doing something at all, whatever the clock did.
+            Assert.True(applies < deltas, $"every one of {deltas} deltas was applied on its own");
         });
     }
 

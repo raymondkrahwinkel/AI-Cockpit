@@ -59,7 +59,14 @@ internal sealed class SessionEventQueue
     }
 
     // Applies what the drain window is still holding. Runs `_apply` inline, so the caller owes it the UI thread.
-    public void Flush() => _ApplyQueued();
+    // Releases the flag as part of flushing: a flush leaves nothing for a window to find, so leaving "a drain is
+    // coming" standing would mean the next event posts nothing — and a pane that clears its context reuses this
+    // very queue for the runtime that follows.
+    public void Flush()
+    {
+        _ApplyQueued();
+        Interlocked.Exchange(ref _drainPending, 0);
+    }
 
     // Takes one event from the runtime's pump thread and makes sure a drain is coming.
     public void Enqueue(SessionEvent evt)
@@ -72,26 +79,54 @@ internal sealed class SessionEventQueue
     }
 
     // The leading edge: applies what is queued now, then holds the window open so the events behind it fold.
+    //
+    // Anything that escapes here releases the flag on its way out. The version this replaces cleared the flag as its
+    // first statement, so a throw cost one batch and the next event started a fresh drain. Now that the flag is only
+    // released at the end of a burst, an escape that skipped the release would latch it at 1 for good and the pane
+    // would go silently deaf to its runtime — silently, because a throw on the UI thread is marked handled and the
+    // app keeps running (Program.cs).
     internal void Drain()
     {
-        _ApplyQueued();
-        _postAfterWindow(_DrainWindow);
+        try
+        {
+            _ApplyQueued();
+            _postAfterWindow(_DrainWindow);
+        }
+        catch
+        {
+            _EndBurst();
+            throw;
+        }
     }
 
-    // One folded drain per window, for as long as events keep arriving. An empty window ends the burst and releases
-    // the flag, so the next event gets its own leading edge instead of waiting a frame for nothing.
+    // One folded drain per window, for as long as events keep arriving. A window that finds nothing ends the burst,
+    // so the next event gets its own leading edge instead of waiting a frame for nothing.
     private void _DrainWindow()
     {
-        if (_ApplyQueued())
+        try
         {
-            _postAfterWindow(_DrainWindow);
-            return;
+            if (_ApplyQueued())
+            {
+                _postAfterWindow(_DrainWindow);
+                return;
+            }
+        }
+        catch
+        {
+            _EndBurst();
+            throw;
         }
 
+        _EndBurst();
+    }
+
+    // Releases the flag, then looks once more. In that order, never the other way round: an event that slips in behind
+    // the release finds the flag clear and posts its own drain, whereas releasing afterwards would leave it queued
+    // with nothing coming for it.
+    private void _EndBurst()
+    {
         Interlocked.Exchange(ref _drainPending, 0);
 
-        // Released before this last look, never after: an event that slips in behind the release finds the flag clear
-        // and posts its own drain, whereas releasing afterwards would leave it queued with nothing coming for it.
         if (!_pending.IsEmpty && Interlocked.Exchange(ref _drainPending, 1) == 0)
         {
             _post(Drain);
