@@ -1129,6 +1129,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // already current here — passed through so the driver's MCP fan-out resolves this project's registry view.
             await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, McpServerSelection, workingDirectory, resume, _launchOptions, ProjectId);
 
+            // AC-660: a resumed session's driver may have already polled real usage figures during StartAsync
+            // (the CLI knows the resumed conversation's context immediately, no fresh turn needed) — pull them in
+            // now rather than leaving the header pill empty until the operator's next turn completes. Scoped to
+            // resume (not every start): a fresh conversation has nothing to pull yet, and pulling unconditionally
+            // would race a driver whose CurrentStatus has not caught up with a same-pane restart (Clear context).
+            if (resume is not null)
+            {
+                _RefreshLimits();
+            }
+
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;
 
@@ -2515,9 +2525,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : reason;
     }
 
-    // Pulls the driver's latest limits into the header bars. Read at each turn boundary rather than on a timer:
-    // the provider reports how full the context window is when a turn ends, so that is when the numbers change —
-    // and a session with no limits feed simply reads null and keeps the bars hidden.
+    // Pulls the driver's latest limits into the header bars. Read at each turn boundary and once right after start
+    // (AC-660) rather than on a timer: those are the only points the provider has fresh figures to report — a
+    // session with no limits feed yet simply reads null and keeps the bars hidden.
     private void _RefreshLimits()
     {
         if (_runtime?.CurrentStatus is { HasAny: true } status)

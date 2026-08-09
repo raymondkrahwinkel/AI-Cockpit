@@ -111,6 +111,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a resumed session's usage pill no longer sits empty until you send it a fresh message. The header only ever
+  pulled the context/allowance figures at the end of a turn, so a reopened session — which already has real figures
+  the moment it reconnects — showed nothing at all until you actually prompted it, indistinguishable from a provider
+  that does not report usage. It now asks for those figures once as it reconnects, so the pill reflects the resumed
+  conversation right away.
 - fixed: dictation that produces nothing now says so instead of leaving you looking at a cockpit where nothing
   happened. Hold the key, talk, let go, and if the transcription failed or no speech was heard, the floating voice pill
   says which for a few seconds and then goes away on its own — where before it simply vanished the moment the answer
@@ -118,7 +123,6 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   key had no way to report anything at all, so a first dictation that spent minutes downloading its speech model showed
   nothing while it did, and neither did one that failed at the end of it. Releasing the key without having started a
   recording — voice switched off for that session — no longer tries to end a hold that never began.
-
 - fixed: a worktree is no longer emptied out from under the agent working in it. The periodic cleanup asks which
   sessions are alive and clears up the worktrees of the ones that are not — but it asked only the session grid, and a
   worktree the voice assistant made, or one belonging to a delegated task that runs without a pane, is owned by
