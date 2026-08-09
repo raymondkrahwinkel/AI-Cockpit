@@ -67,15 +67,22 @@ internal sealed class ProcProcessTableReader : IProcessTableReader
     // is nothing to size a buffer from and the read grows one under a FileStream and a StreamReader, per process, per
     // tick. Measured on this machine that machinery cost 18.7 KB per process — 656 processes, 12 MB a tick — for
     // files of a few hundred bytes.
+    //
+    // A read that fills the buffer is reported as nothing rather than as content. These files come from seq_file
+    // generators that answer a single read in full, so it does not happen at this size — but "did not fit" and "is
+    // all of it" are indistinguishable afterwards, and the failure that would follow is the quiet kind: a `statm`
+    // cut mid-field still has its two spaces and still parses, into a resident figure that is simply too small and
+    // goes straight to the status bar with nothing to say it is wrong.
     private static int _ReadInto(string path, byte[] buffer)
     {
         using var handle = File.OpenHandle(path);
 
-        return RandomAccess.Read(handle, buffer, 0);
+        var read = RandomAccess.Read(handle, buffer, 0);
+
+        return read == buffer.Length ? 0 : read;
     }
 
-    // Comfortably over a `stat` line for a process with a long name; a longer one is truncated rather than grown,
-    // and a truncated parse reports nothing for that process rather than a wrong number.
+    // Comfortably over a `stat` line for a process with a long name, and over any `statm`.
     private const int BufferBytes = 4096;
 
     // What the process actually occupies, which is what an operator means by "how much RAM is this using".
@@ -95,6 +102,11 @@ internal sealed class ProcProcessTableReader : IProcessTableReader
         try
         {
             var read = _ReadInto($"/proc/{processId}/statm", buffer);
+
+            if (read == 0)
+            {
+                return 0;
+            }
 
             // Fields are space-separated counts of pages: total, resident, shared, … — the second is the one we want.
             // Read straight off the buffer: the digits are ASCII, so there is no string to make here at all.
