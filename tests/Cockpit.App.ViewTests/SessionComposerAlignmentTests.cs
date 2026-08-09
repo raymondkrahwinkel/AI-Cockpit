@@ -64,4 +64,35 @@ public class SessionComposerAlignmentTests
         Assert.Equal(PlacementMode.TopEdgeAlignedLeft, placement);
         Assert.True(buttonWidth < 410, "the pop-out is wider than its button, which is why centring overhangs");
     });
+
+    private static (Window Window, Button Screenshot, TextBox Input) ComposeChatWindow()
+    {
+        var window = new AssistantChatWindow();
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+
+        return (window,
+            window.GetVisualDescendants().OfType<Button>().First(b => b.Name == "ScreenshotButton"),
+            window.GetVisualDescendants().OfType<TextBox>().First(b => b.Name == "InputBox"));
+    }
+
+    /// <summary>AC-653: the screenshot button sat at Classes="Compact" alone (28 tall) beside an input box that
+    /// measures 36, so a shared bottom edge (both VerticalAlignment="Bottom") left the icon's top edge floating
+    /// above the box's — the same composerAction height-sharing SessionView's own row already relies on.</summary>
+    [Fact]
+    public void TheChatWindowsScreenshotButton_IsAsTallAsTheInputBoxItSitsBeside() => HeadlessAvalonia.Run(() =>
+    {
+        var (window, screenshot, input) = ComposeChatWindow();
+
+        var screenshotTop = screenshot.TranslatePoint(new Point(0, 0), window)!.Value.Y;
+        var inputTop = input.TranslatePoint(new Point(0, 0), window)!.Value.Y;
+        var screenshotHeight = screenshot.Bounds.Height;
+        var inputHeight = input.Bounds.Height;
+
+        window.Close();
+
+        Assert.Equal(inputHeight, screenshotHeight);
+        Assert.Equal(inputTop, screenshotTop);
+    });
 }
