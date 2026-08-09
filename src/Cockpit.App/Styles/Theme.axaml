@@ -191,8 +191,11 @@
             <x:Double x:Key="CockpitSubnavRailWidth">184</x:Double>
 
             <!-- Typography: the transcript uses a terminal font so tool blocks and code read as a
-                 Claude-TTY surface; the same family the TTY panel renders with. -->
-            <FontFamily x:Key="CockpitMonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
+                 Claude-TTY surface; the same family the TTY panel renders with. Embedded (AC-551, SIL OFL 1.1,
+                 see NOTICE) so the transcript renders identically regardless of what's installed on the machine
+                 — same reasoning as Inter's .WithInterFont(). Consolas/monospace stay as the OS-installed
+                 fallback if the embedded font is ever unavailable. -->
+            <FontFamily x:Key="CockpitMonoFont">avares://Cockpit.App/Assets/Fonts/CascadiaMono#Cascadia Mono, Consolas, monospace</FontFamily>
 
             <!-- Fluent's own scroll-bar keys, redefined because the values sit inside its template at Template
                  priority, where a style setter of ours cannot reach them (AC-405). The groove keeps one colour
