@@ -1139,7 +1139,8 @@ offer theirs.
 | `description` | yes | One-line summary shown on the card and in the detail panel. |
 | `author` | no | Shown on the card/detail panel. |
 | `category` | no | Groups the plugin under a sidebar category in the store dialog (e.g. `"Issue trackers"`, `"AI providers"`). Plugins with no category still show under "All". A plugin whose contribution is [dashboard widgets](#widget-plugins--a-pane-on-a-dashboard-workspace) publishes with **`"category": "Widgets"`** — the convention that files it under the store's Widgets section. It is only a category string; there is no widget-specific publishing path. |
-| `icon` | no | A single emoji shown on the card and as the plugin's icon elsewhere in the UI. |
+| `icon` | no | A single emoji shown on the card and as the plugin's icon elsewhere in the UI — the fallback once `logoAsset` is unset or unresolvable. |
+| `logoAsset` | no | An SVG mark's file name (e.g. `"depot.svg"`), tinted by category and drawn in place of `icon` (AC-553). Only resolves for plugins the *host itself* bundles the asset for — there is no download/cache path for a third-party store's own logo, so this is meaningless (and harmlessly ignored, falling back to `icon`) outside the official store. |
 | `homepage` | no | Link shown in the detail panel — typically your docs or README section for the plugin. |
 | `repository` | no | Link to the plugin's source repository, shown in the detail panel. |
 | `featured` | no | `true` pins/highlights the card (e.g. in a "Discover" section); default `false`. |

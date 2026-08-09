@@ -1,0 +1,4 @@
+<!-- AC-553: neutral geometric letterform placeholder (option B) — not the vendor mark, pending Raymond's licence-review decision on AC-553. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path fill="currentColor" d="M6,5 L18,5 L18,7.2 L6,7.2 Z M6,5 L8.2,5 L8.2,19 L6,19 Z M6,16.8 L18,16.8 L18,19 L6,19 Z"/>
+</svg>

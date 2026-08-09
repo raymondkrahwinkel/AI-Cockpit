@@ -1,6 +1,7 @@
 {
   "category": "AI providers",
   "icon": "🌙",
+  "logoAsset": "kimi-provider.svg",
   "homepage": "https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/docs/plugins",
   "repository": "https://github.com/raymondkrahwinkel/AI-Cockpit",
   "featured": false

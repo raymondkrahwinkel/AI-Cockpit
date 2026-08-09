@@ -171,6 +171,27 @@
             <SolidColorBrush x:Key="CockpitStatusErrorRingTintBrush" Color="{StaticResource CockpitStatusErrorRingTintColor}"/>
             <SolidColorBrush x:Key="CockpitAccentRingTintBrush" Color="{StaticResource CockpitAccentRingTintColor}"/>
 
+            <!-- Plugin store logo tiles (AC-553): a tint per *category*, not per plugin — the mark itself carries
+                 no colour of its own (CockpitTextPrimaryBrush, same as everywhere else an icon sits on a surface),
+                 so eleven plugins in a grid read as one family instead of eleven clashing brand colours. Five
+                 tints, each an alpha echo of a hue the theme already uses elsewhere (accent blue, the three status
+                 hues, the isolated-badge purple) — a new category never needs a new colour, PluginCategoryTint
+                 (Cockpit.App) picks one of these five by a stable hash of the category string. 0x18 alpha
+                 (~9.4%) rather than the *RingTint tokens' own 0x1F: an identical hex under a second resource key
+                 reads as ambiguous to ThemePaletteBaselineTests (which resource key painted this pixel?) and
+                 fails every unrelated scene that already paints a *RingTint colour, not just this ticket's own. -->
+            <Color x:Key="CockpitCategoryTintBlueColor">#182563EB</Color>
+            <Color x:Key="CockpitCategoryTintCyanColor">#1822D3EE</Color>
+            <Color x:Key="CockpitCategoryTintAmberColor">#18E0A33E</Color>
+            <Color x:Key="CockpitCategoryTintGreenColor">#185AA576</Color>
+            <Color x:Key="CockpitCategoryTintPurpleColor">#18A67CD8</Color>
+
+            <SolidColorBrush x:Key="CockpitCategoryTintBlueBrush" Color="{StaticResource CockpitCategoryTintBlueColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintCyanBrush" Color="{StaticResource CockpitCategoryTintCyanColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintAmberBrush" Color="{StaticResource CockpitCategoryTintAmberColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintGreenBrush" Color="{StaticResource CockpitCategoryTintGreenColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintPurpleBrush" Color="{StaticResource CockpitCategoryTintPurpleColor}"/>
+
             <!-- Geometry. The mockup's control radius (9px) is what every input, select and button
                  carries. Its window radius (14px) belongs to the rounded card a web page draws to
                  stand in for a window; a desktop app gets that corner from the OS, so no token

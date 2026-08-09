@@ -90,6 +90,12 @@ def build_entry(existing: OrderedDict | None, store_meta: dict, args) -> Ordered
     if icon is not None:
         entry["icon"] = icon
 
+    # AC-553: the plugin's bundled SVG mark, additive beside `icon` the same way `icon` itself is additive —
+    # a plugin whose store.json sets neither keeps whatever the existing index entry already carried.
+    logo_asset = first_present(store_meta.get("logoAsset"), existing.get("logoAsset"))
+    if logo_asset is not None:
+        entry["logoAsset"] = logo_asset
+
     homepage = first_present(store_meta.get("homepage"), existing.get("homepage"))
     if homepage is not None:
         entry["homepage"] = homepage

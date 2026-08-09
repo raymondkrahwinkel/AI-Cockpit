@@ -181,6 +181,14 @@ internal static class Screenshotter
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
         ["plugin-store"] = (_, _) => _PluginStore(),
+        // AC-553: the eleven bundled plugins' real logo tiles, side by side (Iron Law #9's own "eyeball the
+        // grid" acceptance criterion) — its own scene rather than added to `_SampleStorePlugins` above, whose
+        // exact row count `PluginStoreBusyGateTests.EveryInstallButtonOnTheCatalogue_GoesDead_WhileAnInstallRuns`
+        // already asserts on.
+        // Height overridden past the dialog's own 820: twelve rows (the eleven bundled plugins plus the
+        // no-LogoAsset fallback sample) do not fit the resting size, and a scene that renders only what you
+        // cannot scroll to proves nothing about the row this ticket did not get to.
+        ["plugin-store-logos"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreWithLogos(), Height = 1900 },
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
         ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),
         ["plugin-store-updating"] = (_, _) => _PluginStoreBusy(percent: 200.0 / 6, "Updating 'Git status' (3 of 6)…"),
@@ -1458,6 +1466,46 @@ internal static class Screenshotter
         {
             SelectedPlugin = manager.AvailablePlugins.FirstOrDefault(),
         };
+    }
+
+    // AC-553: the real bundled-plugin ids and categories (matching plugins-dev/*/store.json) with their
+    // LogoAsset set, so the render actually exercises PluginLogoGeometryConverter/PluginCategoryTint rather than
+    // the emoji/monogram fallbacks — the thing this ticket has to be eyeballed on. No SelectedPlugin: the point
+    // of this scene is the catalogue grid, not the detail panel one card already covers in "plugin-store".
+    private static PluginStoreDialogViewModel _PluginStoreWithLogos()
+    {
+        static StorePluginRowViewModel Row(string id, string name, string category, string logoAsset, string icon)
+        {
+            var versions = new[] { new PluginStoreVersion("1.0.0", $"plugins/{id}.zip", null, null, null, null) };
+            var entry = new PluginStoreEntry(id, name, null, "Cockpit", "1.0.0", versions, category, icon, LogoAsset: logoAsset);
+            return new StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://store.aicockpit.dev/index.json"), null);
+        }
+
+        var manager = new PluginManagerViewModel();
+        manager.Stores.Add(PluginStoreConfig.Remote("https://store.aicockpit.dev/index.json"));
+        StorePluginRowViewModel[] rows =
+        [
+            Row("autopilot", "Autopilot", "Automation", "autopilot.svg", "🤖"),
+            Row("depot", "Depot", "Project tools", "depot.svg", "🗄️"),
+            Row("fan-out", "Fan-Out", "Automation", "fan-out.svg", "🍴"),
+            Row("local-ci", "Local CI", "Automation", "local-ci.svg", "🧪"),
+            Row("transcript-search", "Claude Transcript Search", "Productivity", "transcript-search.svg", "🔍"),
+            Row("git-status", "Git status", "Productivity", "git-status.svg", "🌿"),
+            Row("clock", "Clock", "Widgets", "clock.svg", "🕐"),
+            Row("usage-trend", "Usage Trend", "Widgets", "usage-trend.svg", "📈"),
+            Row("claude-provider", "Claude Code", "AI providers", "claude-provider.svg", null!),
+            Row("cli-agent-provider", "CLI Agent Provider (Codex)", "AI providers", "cli-agent-provider.svg", null!),
+            Row("kimi-provider", "Kimi", "AI providers", "kimi-provider.svg", "🌙"),
+            // No LogoAsset at all — criterion 3, the neutral-tile fallback, in the same grid as the tiles it must not stand out from.
+            Row("no-logo-yet", "Third-party sample", "Other", null!, "🧩"),
+        ];
+
+        foreach (var row in rows)
+        {
+            manager.AvailablePlugins.Add(row);
+        }
+
+        return new PluginStoreDialogViewModel(manager);
     }
 
     // Renders the agent-line inspector (AC-397) with one row in each of its five sections, including a refused send

@@ -3,6 +3,9 @@
 # than are listed (a scroll bar exists only when its content overflows); it may not paint one
 # that is missing. Re-record with COCKPIT_UPDATE_THEME_BASELINES=1 and read the diff.
 
+#1822D3EE  CockpitCategoryTintCyanColor
+#182563EB  CockpitCategoryTintBlueColor
+#18A67CD8  CockpitCategoryTintPurpleColor
 #99FFFFFF  off-palette
 #CCFFFFFF  off-palette
 #FF000000  off-palette

@@ -22,17 +22,23 @@
             PointerPressed="OnCardPressed">
         <Grid ColumnDefinitions="Auto,*,Auto">
 
-            <!-- Icon: the entry's glyph, or its monogram letter when it set none. -->
-            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="9"
-                    Background="{StaticResource CockpitPanelBgBrush}" VerticalAlignment="Center">
+            <!-- Icon (AC-553): the plugin's own vector logo tinted by category, else its emoji glyph, else its
+                 monogram letter — see StorePluginRowViewModel's ShowsIconGlyph/ShowsMonogram for the fallback order. -->
+            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="{StaticResource CockpitControlRadius}"
+                    Background="{Binding CategoryTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                    VerticalAlignment="Center">
                 <Panel>
+                    <Viewbox Width="20" Height="20" IsVisible="{Binding HasLogoAsset}">
+                        <Path Data="{Binding LogoAssetUri, Converter={x:Static conv:PluginLogoGeometryConverter.Instance}}"
+                              Fill="{StaticResource CockpitTextPrimaryBrush}"/>
+                    </Viewbox>
                     <TextBlock Text="{Binding IconGlyphOrNull}" FontSize="19"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                               IsVisible="{Binding IconGlyphOrNull, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                               IsVisible="{Binding ShowsIconGlyph}"/>
                     <TextBlock Text="{Binding MonogramLetter}" FontSize="16" FontWeight="SemiBold"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                               IsVisible="{Binding IconGlyphOrNull, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                               IsVisible="{Binding ShowsMonogram}"/>
                 </Panel>
             </Border>
 

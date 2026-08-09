@@ -111,6 +111,47 @@ public sealed class StorePluginRowViewModel(
     // Upper-cased first letter of `Name`, used as the icon fallback when `IconGlyphOrNull` is null.
     public string MonogramLetter => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
 
+    // The bundled `avares://` URI for `entry.LogoAsset` (AC-553), or null when unset or not actually shipped by
+    // this host — a third-party store's own `LogoAsset`, or one not yet added here, falls through to
+    // `IconGlyphOrNull`/`MonogramLetter` exactly as if it had never been set, rather than showing a broken image.
+    public string? LogoAssetUri => _ResolveLogoAssetUri(entry.LogoAsset);
+
+    public bool HasLogoAsset => LogoAssetUri is not null;
+
+    // Tier 2 (the emoji glyph) only shows once tier 1 (the vector logo) is unavailable.
+    public bool ShowsIconGlyph => !HasLogoAsset && IconGlyphOrNull is not null;
+
+    // Tier 3, the final fallback: no logo, no glyph.
+    public bool ShowsMonogram => !HasLogoAsset && IconGlyphOrNull is null;
+
+    // Which of the theme's five category tints (Theme.axaml) this tile's background wash uses.
+    public string CategoryTintBrushKey => PluginCategoryTint.BrushKeyFor(Category);
+
+    // A crafted or malformed asset name — a remote index is attacker-reachable input — must cost the logo, not
+    // the row, so this never throws: `Uri.TryCreate` guards a name with characters a URI cannot carry, and
+    // `AssetLoader.Exists` is itself wrapped since it is not documented not to throw on every malformed input.
+    private static string? _ResolveLogoAssetUri(string? asset)
+    {
+        if (string.IsNullOrWhiteSpace(asset))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate($"avares://Cockpit.App/Assets/PluginLogos/{asset}", UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Avalonia.Platform.AssetLoader.Exists(uri) ? uri.ToString() : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     public string? Homepage => entry.Homepage;
 
     public bool HasHomepage => !string.IsNullOrWhiteSpace(entry.Homepage);
