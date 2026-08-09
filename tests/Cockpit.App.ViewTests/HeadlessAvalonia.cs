@@ -49,6 +49,9 @@ public sealed class HeadlessAvalonia : IDisposable
                     // in whatever font the machine happens to offer. That is not this program, and it is what
                     // made the same window come out with a scroll bar here and without one on CI.
                     .WithInterFont()
+                    // Same emoji fallback the app and Screenshotter register (AC-551) — without it, a test that
+                    // asks for an emoji glyph gets whatever the headless default resolves to, not what a user sees.
+                    .With(Cockpit.App.Program.CockpitFontOptions())
                     .SetupWithoutStarting();
 
                 ready.Set();
