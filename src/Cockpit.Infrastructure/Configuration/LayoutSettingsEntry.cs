@@ -9,6 +9,8 @@ internal sealed class LayoutSettingsEntry
 
     public bool StackSessionsVertically { get; set; }
 
+    public bool FocusRailLayout { get; set; }
+
     public bool MinimizeToTrayOnClose { get; set; }
 
     public double SidebarWidth { get; set; } = LayoutSettings.DefaultSidebarWidth;
@@ -21,6 +23,7 @@ internal sealed class LayoutSettingsEntry
     {
         SingleSessionLayout = settings.SingleSessionLayout,
         StackSessionsVertically = settings.StackSessionsVertically,
+        FocusRailLayout = settings.FocusRailLayout,
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose,
         SidebarWidth = settings.SidebarWidth,
         SidebarCollapsed = settings.SidebarCollapsed,
@@ -31,6 +34,7 @@ internal sealed class LayoutSettingsEntry
     {
         SingleSessionLayout = SingleSessionLayout,
         StackSessionsVertically = StackSessionsVertically,
+        FocusRailLayout = FocusRailLayout,
         MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,

@@ -1253,26 +1253,44 @@
                     <ItemsControl.Styles>
                         <Style Selector="ItemsControl#SessionGrid > ContentPresenter">
                             <Setter Property="IsVisible" Value="{ReflectionBinding IsPaneVisible}"/>
+                            <!-- Focus+rail (AC-441/444): which pane is the focus candidate and where each
+                                 sorts in the rail, pushed onto the container as plain properties so
+                                 `SessionTilePanel` can arrange without knowing what a `SessionPanelViewModel`
+                                 is — the same reason `IsPaneVisible` above is a Setter and not a binding
+                                 inside the pane template. -->
+                            <Setter Property="controls:SessionTilePanel.IsFocusCandidate" Value="{ReflectionBinding IsSelected}"/>
+                            <Setter Property="controls:SessionTilePanel.RailSortKey" Value="{ReflectionBinding RailSortKey}"/>
                         </Style>
                     </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <controls:SessionTilePanel
-                                StackVertically="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StackSessionsVertically}"/>
+                                StackVertically="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StackSessionsVertically}"
+                                FocusRailLayout="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).ShowFocusRail}"
+                                RailWeight="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).FocusRailWeight}"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:SessionPanelViewModel">
-                            <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
-                                 rail (AC-442): switching is then one number and never the rebuild the grid
-                                 comment above describes. Draws the pane small without laying it out small. -->
-                            <controls:MiniatureHost Scale="{Binding MiniatureScale}">
                             <!-- The active panel carries the accent edge (Theme "panel.active") so the
-                                 session you're driving jumps out of the grid; others keep the hairline. -->
-                            <Border Margin="4" Classes="panel"
+                                 session you're driving jumps out of the grid; others keep the hairline.
+                                 Outside the MiniatureHost on purpose (AC-444 #3): a border scaled down with
+                                 the content it wraps would thin from 1.5px to a fraction of a device pixel in
+                                 the rail and wash out, exactly what "niet mee weggeschaald tot onzichtbaar"
+                                 forbids. Drawn at its own full thickness regardless of what scale the content
+                                 inside draws at. -->
+                            <Border x:Name="PaneRoot" Margin="4" Classes="panel"
                                     Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
+                                <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
+                                     rail (AC-442): switching is then one number and never the rebuild the grid
+                                     comment above describes. Draws the pane small without laying it out small.
+                                     `SessionTilePanel` drives the scale directly in rail mode (AC-444) via the
+                                     attached property it wrote onto `PaneRoot` (`Children[i]`, the container it
+                                     already holds) — read by element name here rather than round-tripped
+                                     through a bindable view-model property, one fewer moving part. -->
+                                <controls:MiniatureHost Scale="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureScale)}">
                                 <DockPanel>
                                     <!-- Drag-reorder grip (#54 follow-up): a grab bar above each pane, shown only when
                                          the draggable multi-pane grid is on. Dragging it picks the pane up and drops it
@@ -1293,8 +1311,8 @@
                                          TtyView (TTY) from the panel view model's type. -->
                                     <ContentControl Content="{Binding}"/>
                                 </DockPanel>
+                                </controls:MiniatureHost>
                             </Border>
-                            </controls:MiniatureHost>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

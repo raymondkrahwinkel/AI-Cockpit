@@ -11,6 +11,10 @@ public sealed record LayoutSettings
     // When true, the multi-session grid stacks panels in a single column (one above the other) instead of tiling them side by side. Off = the adaptive side-by-side grid.
     public bool StackSessionsVertically { get; init; }
 
+    // When true, the session grid shows one session large (the focus) with the rest as a live miniature
+    // rail beside it (AC-441/444), instead of the adaptive multi-pane grid. Off = the grid.
+    public bool FocusRailLayout { get; init; }
+
     // When true, closing the window hides it to the system tray and keeps the app running instead of quitting (#33). Off by default.
     public bool MinimizeToTrayOnClose { get; init; }
 

@@ -677,6 +677,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _globalStackSessionsVertically;
 
+    // Options' focus+rail layout (AC-441/444) — the cockpit-wide default. The effective value is `FocusRailLayout`.
+    // No ⚙-flyout/Options control writes this yet (AC-445); until then it is reachable only from `cockpit.json` or a test.
+    [ObservableProperty]
+    private bool _globalFocusRailLayout;
+
     // The cockpit-wide default divider weight for the focus+rail split (AC-443). The effective value is `FocusRailWeight`.
     [ObservableProperty]
     private double _globalFocusRailWeight = LayoutSettings.DefaultFocusRailWeight;
@@ -694,6 +699,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? stack
             : GlobalStackSessionsVertically;
 
+    // The active workspace's focus+rail choice (AC-441/444), its own override else Options'. Bound to the grid's `Controls.SessionTilePanel.FocusRailLayout`.
+    public bool FocusRailLayout =>
+        Workspaces?.Active is { FocusRailLayout: { } rail } active && active.Type == WorkspaceType.Sessions
+            ? rail
+            : GlobalFocusRailLayout;
+
     // The active workspace's focus/rail divider weight, its own override else Options'. Bound to `Controls.FocusRailPanel.RailWeight`.
     public double FocusRailWeight =>
         Workspaces?.Active is { FocusRailWeight: { } weight } active && active.Type == WorkspaceType.Sessions
@@ -706,7 +717,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool WorkspaceFollowsGlobalLayout
     {
         get => Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions
-            || (sessions.SingleSessionLayout is null && sessions.StackSessionsVertically is null && sessions.FocusRailWeight is null);
+            || (sessions.SingleSessionLayout is null && sessions.StackSessionsVertically is null && sessions.FocusRailWeight is null && sessions.FocusRailLayout is null);
         set
         {
             if (Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions || value == WorkspaceFollowsGlobalLayout)
@@ -718,7 +729,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 sessions.Id,
                 value ? null : SingleSessionLayout,
                 value ? null : StackSessionsVertically,
-                value ? null : FocusRailWeight);
+                value ? null : FocusRailWeight,
+                value ? null : FocusRailLayout);
             _OnEffectiveLayoutChanged();
         }
     }
@@ -734,7 +746,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, value, StackSessionsVertically, FocusRailWeight);
+            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, value, StackSessionsVertically, FocusRailWeight, FocusRailLayout);
             _OnEffectiveLayoutChanged();
         }
     }
@@ -750,7 +762,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, value, FocusRailWeight);
+            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, value, FocusRailWeight, FocusRailLayout);
             _OnEffectiveLayoutChanged();
         }
     }
@@ -766,15 +778,34 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, StackSessionsVertically, value);
+            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, StackSessionsVertically, value, FocusRailLayout);
             _OnEffectiveLayoutChanged();
         }
     }
 
-    // True whenever the multi-pane grid is showing (two or more sessions, not the single-pane/zoom layout):
-    // every pane then carries the drag-reorder grip, and the column/row gutters between them are resizable.
-    // Covers the vertical column, the side-by-side row, and the 2×2 alike — they're one draggable grid.
-    public bool StackSessionsInStack => !ShowSinglePane && Sessions.Count >= 2;
+    // Two-way for the Sessions ⚙'s own focus+rail choice (AC-444) — writes this workspace's override, never
+    // Options. No ⚙ checkbox reads/writes this yet (AC-445 wires the flyout and Options); this is the plumbing
+    // that checkbox will call, exercised for now by a test or a hand-edited `cockpit.json`.
+    public bool WorkspaceFocusRailLayout
+    {
+        get => FocusRailLayout;
+        set
+        {
+            if (Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions || value == FocusRailLayout)
+            {
+                return;
+            }
+
+            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, StackSessionsVertically, FocusRailWeight, value);
+            _OnEffectiveLayoutChanged();
+        }
+    }
+
+    // True whenever the multi-pane grid is showing (two or more sessions, not the single-pane/zoom layout,
+    // nor the focus+rail layout — the rail auto-fits and has no drag-to-cell or column/row gutters of its
+    // own, AC-444 #1): every pane then carries the drag-reorder grip, and the column/row gutters between
+    // them are resizable. Covers the vertical column, the side-by-side row, and the 2×2 alike.
+    public bool StackSessionsInStack => !ShowSinglePane && !ShowFocusRail && Sessions.Count >= 2;
 
     // When true, closing the window hides it to the system tray and keeps the app running (#33). Read by MainWindow on close.
     [ObservableProperty]
@@ -1166,6 +1197,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     partial void OnGlobalFocusRailWeightChanged(double value) => _OnEffectiveLayoutChanged();
 
+    partial void OnGlobalFocusRailLayoutChanged(bool value) => _OnEffectiveLayoutChanged();
+
     // Re-reads what the active desk is doing and pushes it everywhere. One place, because the effective value
     // moves for three different reasons — Options changed, this workspace's override changed, or a different
     // workspace became active — and every one of them has to re-dock the TTY headers (#54) and re-lay the grid.
@@ -1174,11 +1207,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         OnPropertyChanged(nameof(SingleSessionLayout));
         OnPropertyChanged(nameof(StackSessionsVertically));
         OnPropertyChanged(nameof(FocusRailWeight));
+        OnPropertyChanged(nameof(FocusRailLayout));
         OnPropertyChanged(nameof(WorkspaceFollowsGlobalLayout));
         OnPropertyChanged(nameof(WorkspaceSingleSessionLayout));
         OnPropertyChanged(nameof(WorkspaceStackSessionsVertically));
         OnPropertyChanged(nameof(WorkspaceFocusRailWeight));
+        OnPropertyChanged(nameof(WorkspaceFocusRailLayout));
         OnPropertyChanged(nameof(ShowSinglePane));
+        OnPropertyChanged(nameof(ShowFocusRail));
         OnPropertyChanged(nameof(ShowZoomButton));
         OnPropertyChanged(nameof(StackSessionsInStack));
 
@@ -1195,6 +1231,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.
     public bool ShowSinglePane => SingleSessionLayout || IsZoomed;
+
+    // True when the grid should draw as one big focus pane plus a miniature rail (AC-441/444) rather than
+    // the adaptive grid. `ShowSinglePane` still wins when both are somehow on (Zoom, or a config predating
+    // AC-445's mutual exclusivity) — with one visible pane there is nothing left to put in a rail.
+    public bool ShowFocusRail => FocusRailLayout && !ShowSinglePane;
 
     partial void OnIsZoomedChanged(bool value)
     {
@@ -2276,6 +2317,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 _visibleSessions.Insert(i, session);
             }
+        }
+
+        // Stamped on every reconcile, not just on change: the focus-rail's ordering (AC-444 #2) reads this
+        // straight off the pane, so it has to track "the sidebar's own order" exactly, including a plain
+        // renumber when nothing moved but the set behind it did.
+        for (var i = 0; i < target.Count; i++)
+        {
+            target[i].SidebarIndex = i;
         }
     }
 
@@ -3979,6 +4028,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _layoutSettingsStore.LoadAsync();
         GlobalSingleSessionLayout = settings.SingleSessionLayout;
         GlobalStackSessionsVertically = settings.StackSessionsVertically;
+        GlobalFocusRailLayout = settings.FocusRailLayout;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         SidebarWidth = settings.SidebarWidth;
         SidebarCollapsed = settings.SidebarCollapsed;
@@ -3998,6 +4048,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             SingleSessionLayout = GlobalSingleSessionLayout,
             StackSessionsVertically = GlobalStackSessionsVertically,
+            FocusRailLayout = GlobalFocusRailLayout,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
             SidebarCollapsed = SidebarCollapsed,
@@ -4024,6 +4075,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             SingleSessionLayout = GlobalSingleSessionLayout,
             StackSessionsVertically = GlobalStackSessionsVertically,
+            FocusRailLayout = GlobalFocusRailLayout,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
             SidebarCollapsed = SidebarCollapsed,
@@ -4047,6 +4099,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             SingleSessionLayout = GlobalSingleSessionLayout,
             StackSessionsVertically = GlobalStackSessionsVertically,
+            FocusRailLayout = GlobalFocusRailLayout,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
             SidebarCollapsed = SidebarCollapsed,

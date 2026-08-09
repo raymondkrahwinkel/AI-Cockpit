@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Cockpit.Core.Layout;
 using Cockpit.Core.Shortcuts;
 
 namespace Cockpit.App.Controls;
@@ -46,10 +47,66 @@ public sealed class SessionTilePanel : Panel
     public static readonly StyledProperty<bool> StackVerticallyProperty =
         AvaloniaProperty.Register<SessionTilePanel, bool>(nameof(StackVertically));
 
+    // When true, one visible pane (the focus candidate, see `IsFocusCandidateProperty`) fills most of the
+    // panel and the rest auto-fit into a scrolling miniature rail beside it (AC-441/444), instead of the
+    // adaptive grid. `RailLayoutMath`/`StackPaneMath` do the geometry, the same math
+    // `FocusRailPanel`/`RailTilePanel` (AC-443) proved in isolation — reapplied here directly over this
+    // panel's own children instead of a second, nested `ItemsControl`, because a session's pane can never
+    // change container without rebuilding its view (AC-442) and promoting one to focus must not do that.
+    public static readonly StyledProperty<bool> FocusRailLayoutProperty =
+        AvaloniaProperty.Register<SessionTilePanel, bool>(nameof(FocusRailLayout));
+
+    // Weight of the rail against the focus pane's fixed 1.0, mirroring `FocusRailPanel.RailWeight`.
+    public static readonly StyledProperty<double> RailWeightProperty =
+        AvaloniaProperty.Register<SessionTilePanel, double>(nameof(RailWeight), LayoutSettings.DefaultFocusRailWeight);
+
+    // Set (via a Style Setter in `CockpitView.axaml`, the same pattern `IsPaneVisible` already uses)
+    // from the pane's `SessionPanelViewModel.IsSelected` — the panel reads it to pick the one child that
+    // fills the focus slot, without knowing what a `SessionPanelViewModel` is. `AffectsParentArrange`/
+    // `AffectsParentMeasure` (not `AffectsMeasure`/`AffectsArrange`, which apply to a property on this
+    // panel itself) is the same Avalonia mechanism `Grid.Row`/`Grid.Column` use to invalidate their owner
+    // when a child's attached value changes.
+    public static readonly AttachedProperty<bool> IsFocusCandidateProperty =
+        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, bool>("IsFocusCandidate");
+
+    // Set the same way, from `SessionPanelViewModel.RailSortKey` — attention-needing sessions first, then
+    // the sidebar's own order (AC-444 #2). The rail sorts its non-focus children by this key.
+    public static readonly AttachedProperty<int> RailSortKeyProperty =
+        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, int>("RailSortKey");
+
+    // The other direction: the panel is the one who knows a tile's scale (tile width ÷ the focus pane's
+    // actual width), so it *writes* this one rather than reading a Style Setter. `CockpitView.axaml` binds
+    // `MiniatureHost.Scale` to this by element name — an attached property the panel can set directly on the
+    // container it already holds a reference to, rather than a `GetVisualDescendants` walk down into a
+    // template that may not have realized its content yet on the very first layout pass.
+    public static readonly AttachedProperty<double> MiniatureScaleProperty =
+        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, double>("MiniatureScale", 1.0);
+
+    public static bool GetIsFocusCandidate(Control element) => element.GetValue(IsFocusCandidateProperty);
+
+    public static void SetIsFocusCandidate(Control element, bool value) => element.SetValue(IsFocusCandidateProperty, value);
+
+    public static int GetRailSortKey(Control element) => element.GetValue(RailSortKeyProperty);
+
+    public static void SetRailSortKey(Control element, int value) => element.SetValue(RailSortKeyProperty, value);
+
+    public static double GetMiniatureScale(Control element) => element.GetValue(MiniatureScaleProperty);
+
+    public static void SetMiniatureScale(Control element, double value) => element.SetValue(MiniatureScaleProperty, value);
+
+    // How far the rail has been scrolled (px), when more tiles exist than fit — the rail's one scroll axis
+    // (AC-441: "hoogte de rijen, de rest scrollt verticaal"). Clamped to the content extent on every arrange,
+    // so a window resize or a session closing can never leave it stranded past the new bottom.
+    private double _railScrollOffset;
+
+    private const double RailScrollStep = 40;
+
     static SessionTilePanel()
     {
-        AffectsMeasure<SessionTilePanel>(StackVerticallyProperty);
-        AffectsArrange<SessionTilePanel>(StackVerticallyProperty);
+        AffectsMeasure<SessionTilePanel>(StackVerticallyProperty, FocusRailLayoutProperty, RailWeightProperty);
+        AffectsArrange<SessionTilePanel>(StackVerticallyProperty, FocusRailLayoutProperty, RailWeightProperty);
+        AffectsParentMeasure<SessionTilePanel>(IsFocusCandidateProperty, RailSortKeyProperty);
+        AffectsParentArrange<SessionTilePanel>(IsFocusCandidateProperty, RailSortKeyProperty);
     }
 
     public SessionTilePanel()
@@ -66,6 +123,18 @@ public sealed class SessionTilePanel : Panel
         set => SetValue(StackVerticallyProperty, value);
     }
 
+    public bool FocusRailLayout
+    {
+        get => GetValue(FocusRailLayoutProperty);
+        set => SetValue(FocusRailLayoutProperty, value);
+    }
+
+    public double RailWeight
+    {
+        get => GetValue(RailWeightProperty);
+        set => SetValue(RailWeightProperty, value);
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         ReconcileCells();
@@ -77,10 +146,21 @@ public sealed class SessionTilePanel : Panel
         {
             foreach (var child in Children)
             {
+                _ResetMiniatureScale(child);
                 child.Measure(child.IsVisible ? availableSize : default);
             }
 
             return visibleCount == 0 ? default : availableSize;
+        }
+
+        if (FocusRailLayout)
+        {
+            return _MeasureFocusRail(availableSize);
+        }
+
+        foreach (var child in Children)
+        {
+            _ResetMiniatureScale(child);
         }
 
         var grid = GridSlots(availableSize.Width, availableSize.Height);
@@ -112,6 +192,7 @@ public sealed class SessionTilePanel : Panel
 
         if (visibleCount <= 1)
         {
+            ClipToBounds = false;
             foreach (var child in Children)
             {
                 child.Arrange(child.IsVisible ? new Rect(finalSize) : default);
@@ -120,6 +201,12 @@ public sealed class SessionTilePanel : Panel
             return finalSize;
         }
 
+        if (FocusRailLayout)
+        {
+            return _ArrangeFocusRail(finalSize);
+        }
+
+        ClipToBounds = false;
         var grid = GridSlots(finalSize.Width, finalSize.Height);
         var byKey = VisibleChildrenByKey();
         foreach (var child in Children)
@@ -192,6 +279,11 @@ public sealed class SessionTilePanel : Panel
     // nothing is re-parented (a `PlacePane`-style move would rebuild the pty).
     public object? NeighbourInDirection(object active, PaneDirection direction)
     {
+        if (FocusRailLayout)
+        {
+            return _NeighbourInFocusRail(active, direction);
+        }
+
         ReconcileCells();
         var fromCell = _cells.IndexOf(active);
         if (fromCell < 0)
@@ -206,6 +298,224 @@ public sealed class SessionTilePanel : Panel
         }
 
         return NeighbourCell(occupied, fromCell, direction, StackVertically) is { } cell ? _cells[cell] : null;
+    }
+
+    // --- Focus + rail (AC-441/444) -----------------------------------------------------------------------
+    // One child fills the focus slot, the rest auto-fit into the rail slot beside it. Cached from the last
+    // measure pass (the same handoff `RailTilePanel.Geometry` documents) so arrange, the wheel scroll and
+    // keyboard nav all agree with what was actually measured — a child measured at one scale and arranged
+    // at another would resize its pty a second time, which is the one thing AC-442 exists to prevent.
+    private readonly record struct FocusRailLayoutResult(
+        Control Focus,
+        IReadOnlyList<Control> Rail,
+        StackPaneMath.Slot FocusSlot,
+        StackPaneMath.Slot RailSlot,
+        RailLayoutMath.Geometry Geometry);
+
+    private FocusRailLayoutResult? _focusRailLayout;
+
+    private Size _MeasureFocusRail(Size availableSize)
+    {
+        foreach (var child in Children)
+        {
+            if (!child.IsVisible)
+            {
+                child.Measure(default);
+            }
+        }
+
+        var (focus, rail) = _RailChildren();
+        if (focus is null)
+        {
+            _focusRailLayout = null;
+            return availableSize;
+        }
+
+        var slots = StackPaneMath.Layout([1.0, RailWeight], availableSize.Width, Gutter);
+        var focusSlot = slots[0];
+        var railSlot = slots[1];
+
+        _ResetMiniatureScale(focus);
+        focus.Measure(new Size(focusSlot.Height, availableSize.Height));
+
+        if (rail.Count == 0)
+        {
+            _focusRailLayout = new FocusRailLayoutResult(focus, rail, focusSlot, railSlot, default);
+            return availableSize;
+        }
+
+        // A tile mirrors the focus pane's own shape (RailLayoutMath's contract, AC-442's comment to AC-443:
+        // "de invariant houdt alleen als de tegel de focuspane × s is") — derived fresh from the actual slot
+        // rather than a settable property, so it can never go stale against a divider drag.
+        var aspect = availableSize.Height > 0 ? focusSlot.Height / availableSize.Height : 1.0;
+        var geometry = RailLayoutMath.Compute(railSlot.Height, availableSize.Height, rail.Count, FocusRailPanel.MinRailWidth, aspect, Gutter);
+        var scale = focusSlot.Height > 0 ? geometry.TileWidth / focusSlot.Height : 1.0;
+        var tileSize = new Size(geometry.TileWidth, geometry.TileHeight);
+        foreach (var tile in rail)
+        {
+            _SetMiniatureScale(tile, scale);
+            tile.Measure(tileSize);
+        }
+
+        _focusRailLayout = new FocusRailLayoutResult(focus, rail, focusSlot, railSlot, geometry);
+        return availableSize;
+    }
+
+    private Size _ArrangeFocusRail(Size finalSize)
+    {
+        foreach (var child in Children)
+        {
+            if (!child.IsVisible)
+            {
+                child.Arrange(default);
+            }
+        }
+
+        if (_focusRailLayout is not { } layout)
+        {
+            ClipToBounds = false;
+            return finalSize;
+        }
+
+        layout.Focus.Arrange(new Rect(layout.FocusSlot.Top, 0, layout.FocusSlot.Height, finalSize.Height));
+
+        if (layout.Rail.Count == 0)
+        {
+            ClipToBounds = false;
+            return finalSize;
+        }
+
+        // Width decides the columns (measured above), height decides how many rows show before the rest
+        // scrolls (AC-441) — clamped here too, not just on the wheel, so a window resize or a session
+        // closing can never leave the scroll stranded past the new bottom.
+        var maxScroll = Math.Max(0, layout.Geometry.ContentHeight - finalSize.Height);
+        _railScrollOffset = Math.Clamp(_railScrollOffset, 0, maxScroll);
+
+        var tileSize = new Size(layout.Geometry.TileWidth, layout.Geometry.TileHeight);
+        for (var i = 0; i < layout.Rail.Count; i++)
+        {
+            var (x, y) = RailLayoutMath.TileOrigin(i, layout.Geometry, Gutter);
+            layout.Rail[i].Arrange(new Rect(layout.RailSlot.Top + x, y - _railScrollOffset, tileSize.Width, tileSize.Height));
+        }
+
+        // The panel's own bounds already match the focus pane's (arranged within `[0, finalSize.Height]`
+        // too), so clipping the whole panel to itself clips only what a scrolled-off rail tile would
+        // otherwise overdraw — no separate clip region for just the rail sub-area is needed.
+        ClipToBounds = true;
+        return finalSize;
+    }
+
+    // Every visible child, focus first: the one carrying `IsFocusCandidate` (the operator's current
+    // selection), or the first child when none does (no selection yet) — the panel never renders nothing.
+    // The rest sort by `RailSortKey` (attention-needing first, then the sidebar's own order, AC-444 #2).
+    private (Control? Focus, IReadOnlyList<Control> Rail) _RailChildren()
+    {
+        Control? focus = null;
+        var visible = new List<Control>();
+        foreach (var child in Children)
+        {
+            if (!child.IsVisible)
+            {
+                continue;
+            }
+
+            visible.Add(child);
+            if (focus is null && GetIsFocusCandidate(child))
+            {
+                focus = child;
+            }
+        }
+
+        if (visible.Count == 0)
+        {
+            return (null, Array.Empty<Control>());
+        }
+
+        focus ??= visible[0];
+        var rail = visible.Where(child => !ReferenceEquals(child, focus)).OrderBy(GetRailSortKey).ToList();
+        return (focus, rail);
+    }
+
+    private static void _SetMiniatureScale(Control tile, double scale) => SetMiniatureScale(tile, scale);
+
+    // Undoes a previous rail-mode scale when a tile is no longer in the rail (the grid, single-pane, or a
+    // mode switch) — the attached property defaults to 1 (identity) itself, but nothing else resets a value
+    // this panel once pushed away from it.
+    private static void _ResetMiniatureScale(Control tile) => _SetMiniatureScale(tile, 1.0);
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        if (e.Handled || !FocusRailLayout || _focusRailLayout is not { } layout || layout.Rail.Count == 0)
+        {
+            return;
+        }
+
+        var maxScroll = Math.Max(0, layout.Geometry.ContentHeight - Bounds.Height);
+        if (maxScroll <= 0)
+        {
+            return;
+        }
+
+        _railScrollOffset = Math.Clamp(_railScrollOffset - (e.Delta.Y * RailScrollStep), 0, maxScroll);
+        InvalidateArrange();
+        e.Handled = true;
+    }
+
+    // The rail's spatial-nav counterpart to `NeighbourCell`: the focus pane sits left of a tile
+    // grid, so Right from focus enters the rail's first tile, Left from a tile in its first column leaves
+    // it for focus, and Up/Down/Left/Right within the rail walk `RailLayoutMath`'s own row-major columns —
+    // the same "nearest actual pane, no separate keys" contract the grid's nav gives (AC-444 #5).
+    private object? _NeighbourInFocusRail(object active, PaneDirection direction)
+    {
+        if (_focusRailLayout is not { } layout)
+        {
+            return null;
+        }
+
+        if (ReferenceEquals(layout.Focus.DataContext, active))
+        {
+            return direction == PaneDirection.Right && layout.Rail.Count > 0 ? layout.Rail[0].DataContext : null;
+        }
+
+        var index = -1;
+        for (var i = 0; i < layout.Rail.Count; i++)
+        {
+            if (ReferenceEquals(layout.Rail[i].DataContext, active))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0 || layout.Geometry.Columns <= 0)
+        {
+            return null;
+        }
+
+        var columns = layout.Geometry.Columns;
+        var col = index % columns;
+        var row = index / columns;
+
+        return direction switch
+        {
+            PaneDirection.Left when col == 0 => layout.Focus.DataContext,
+            PaneDirection.Left => _RailTileAt(layout, col - 1, row, columns),
+            PaneDirection.Right => _RailTileAt(layout, col + 1, row, columns),
+            PaneDirection.Up => _RailTileAt(layout, col, row - 1, columns),
+            _ => _RailTileAt(layout, col, row + 1, columns),
+        };
+    }
+
+    private static object? _RailTileAt(FocusRailLayoutResult layout, int col, int row, int columns)
+    {
+        if (col < 0 || row < 0 || col >= columns)
+        {
+            return null;
+        }
+
+        var index = (row * columns) + col;
+        return index >= 0 && index < layout.Rail.Count ? layout.Rail[index].DataContext : null;
     }
 
     // Pure cell placement: moves `dragged` to `cell` within
@@ -263,6 +573,15 @@ public sealed class SessionTilePanel : Panel
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
+        // The rail auto-fits and has no column/row gutters of its own (AC-444 #1) — nothing here to hover
+        // or drag. ponytail: `RailWeight` is one-way from Options/the workspace override for now, not a
+        // live pointer drag; wire one (`StackPaneMath.Resize`, as `FocusRailPanel`'s own divider already
+        // proves) if the fixed split becomes something operators actually want to hand-tune in place.
+        if (FocusRailLayout)
+        {
+            return;
+        }
+
         var p = e.GetPosition(this);
         if (_resize is { } drag)
         {
@@ -292,6 +611,7 @@ public sealed class SessionTilePanel : Panel
         // cells. A press on a child (the reorder grip, the terminal, a header button) has that child as the
         // source and is left alone, so grabbing the grip reorders instead of fighting it for the pointer.
         if (e.Handled
+            || FocusRailLayout
             || !ReferenceEquals(e.Source, this)
             || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {

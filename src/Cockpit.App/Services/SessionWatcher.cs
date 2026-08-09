@@ -399,9 +399,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
             _ => null,
         };
 
-    private static bool _NeedsAttention(SessionPanelViewModel pane) =>
-        pane.SessionStatus is SessionStatus.NeedsAttention or SessionStatus.WaitingForInput
-        || pane.PendingConsent is not null;
+    private static bool _NeedsAttention(SessionPanelViewModel pane) => pane.RequestsAttention;
 
     public void Dispose()
     {
