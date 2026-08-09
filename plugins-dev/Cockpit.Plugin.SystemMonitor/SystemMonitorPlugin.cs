@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.SystemMonitor;
 // that a choice instead of a package deal.
 //
 // From the store, not bundled: the clock ships so a fresh Dashboard is not empty, and this comes when it is
-// wanted. It is also the half with settings, which is what proves the pane's ⚙ is really gated by
+// wanted. It is also the half with settings, which is what proves the pane's settings icon is really gated by
 // `WidgetRegistration.CreateConfigView` — the clock beside it has none and shows no gear.
 public sealed class SystemMonitorPlugin : ICockpitPlugin
 {

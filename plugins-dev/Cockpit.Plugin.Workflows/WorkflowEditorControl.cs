@@ -515,6 +515,6 @@ internal sealed class WorkflowEditorControl : UserControl
 
         _status.Text = steps == 0
             ? "Empty. Pick a step on the right to begin — a flow starts with something that triggers it."
-            : $"{steps} step(s), {wires} connection(s) — double-click a step (or its ⚙) to say what it should do; drag it to move it; pull a wire from a way out, or click a + to add what comes next. Delete removes the selected step; hover a connection for its ✕.";
+            : $"{steps} step(s), {wires} connection(s) — double-click a step (or its settings icon) to say what it should do; drag it to move it; pull a wire from a way out, or click + to add what comes next. Delete removes the selected step; hover a connection for its remove button.";
     }
 }

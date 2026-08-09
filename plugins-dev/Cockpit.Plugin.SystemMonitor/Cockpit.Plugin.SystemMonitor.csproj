@@ -2,7 +2,7 @@
 
   <!-- The system monitor widget for a Dashboard workspace: the store half of what used to be one "reference
        widgets" plugin. Deliberately not bundled — the clock ships so a fresh Dashboard is not empty, and this
-       one comes when it is wanted. It is also the half with settings, which is what proves the pane's ⚙ is
+       one comes when it is wanted. It is also the half with settings, which is what proves the pane's settings icon is
        gated by CreateConfigView rather than always there.
        Built OUTSIDE Cockpit.slnx (plugins-dev/) like the other example plugins. Shared assemblies are
        compile-only (Private=false / ExcludeAssets=runtime) so the host's copies load and shared types keep one

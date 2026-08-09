@@ -25,8 +25,8 @@ namespace Cockpit.Plugins.Abstractions.Widgets;
 /// </param>
 public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetContext, Control> CreateView)
 {
-    /// <summary>A short glyph/emoji shown on the gallery card and the pane header. Defaults to a neutral widget mark. Used when <see cref="IconKind"/> is null.</summary>
-    public string Icon { get; init; } = "🧩";
+    /// <summary>A short glyph shown on the gallery card and the pane header when <see cref="IconKind"/> is null. Empty by default — every bundled widget sets <see cref="IconKind"/> instead; a plugin may still put an emoji or letter here.</summary>
+    public string Icon { get; init; } = string.Empty;
 
     /// <summary>
     /// A bundled vector icon for the gallery card and pane header, preferred over <see cref="Icon"/> when set, so the

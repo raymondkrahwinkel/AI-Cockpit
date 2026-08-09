@@ -6,7 +6,7 @@ using Cockpit.Plugins.Abstractions.Widgets;
 namespace Cockpit.Plugin.SystemMonitor;
 
 // CPU, memory and disk, whichever of the three this instance is configured to show. The widget with a
-// settings form, so the ⚙ path is proven rather than assumed: opening it, saving it and seeing this pane
+// settings form, so the settings-icon path is proven rather than assumed: opening it, saving it and seeing this pane
 // change is the end-to-end test of per-instance config.
 internal sealed class SystemMonitorWidget : UserControl
 {
@@ -27,7 +27,7 @@ internal sealed class SystemMonitorWidget : UserControl
         _timer.Tick += (_, _) => _Render();
         _timer.Start();
 
-        // Raised by the pane's ↻ and after the settings form saves — which is how a changed metric selection
+        // Raised by the pane's refresh button and after the settings form saves — which is how a changed metric selection
         // reaches this view without the widget watching its own storage.
         context.RefreshRequested += (_, _) => _Render();
         DetachedFromVisualTree += (_, _) => _timer.Stop();

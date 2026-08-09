@@ -38,7 +38,7 @@ public class WidgetContributionTests
     {
         var registration = new WidgetRegistration("plugin.clock", "Clock", _ => new Border());
 
-        Assert.Equal("🧩", registration.Icon);
+        Assert.Equal(string.Empty, registration.Icon);
         Assert.Equal(1, registration.DefaultColumnSpan);
         Assert.Equal(1, registration.DefaultRowSpan);
         Assert.Empty(registration.Description);

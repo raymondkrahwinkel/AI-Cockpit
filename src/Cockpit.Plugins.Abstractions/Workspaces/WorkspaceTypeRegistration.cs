@@ -25,8 +25,8 @@ namespace Cockpit.Plugins.Abstractions.Workspaces;
 /// </param>
 public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWorkspaceContext, Control> CreateBody)
 {
-    /// <summary>A short glyph/emoji shown in the "+" menu and on the tab. Defaults to a neutral mark. Used when <see cref="IconKind"/> is null.</summary>
-    public string Icon { get; init; } = "🧩";
+    /// <summary>A short glyph shown in the "+" menu and on the tab when <see cref="IconKind"/> is null. Empty by default — every bundled workspace type sets <see cref="IconKind"/> instead; a plugin may still put an emoji or letter here.</summary>
+    public string Icon { get; init; } = string.Empty;
 
     /// <summary>
     /// A bundled vector icon for the "+" menu and the tab, preferred over <see cref="Icon"/> when set, so the
