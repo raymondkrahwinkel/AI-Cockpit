@@ -112,6 +112,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   its branch deleted if the work had already landed on the main branch. Uncommitted work was kept — that part of the
   rule always held — but committed and pushed work vanished from disk with no warning and nothing in the log naming a
   removal, because none was asked for.
+- fixed: an agent could remove a worktree the voice assistant was actively working in by asking a different session to
+  clean it up. Asking to remove a worktree checks whether its owner is still running before letting a session other
+  than that owner take it — but the check asked the session grid, which never lists the voice assistant, so its
+  worktrees always read as ownerless and any session's cleanup request could take them regardless of whether the
+  assistant was still using it.
 - fixed: a session running the Claude terminal no longer sits on "Idle" while it is plainly working. The cockpit
   worked out which conversation file such a session was writing by taking whichever one appeared on disk after the
   launch — and every other Claude on the machine writes one too, several of which are written once and never again.

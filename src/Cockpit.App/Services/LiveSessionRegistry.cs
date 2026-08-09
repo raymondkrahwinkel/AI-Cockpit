@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
@@ -24,7 +25,14 @@ public sealed class LiveSessionRegistry : ILiveSessionRegistry, ISingletonServic
         {
             // Read afresh on every call rather than cached: a session that closed a moment ago must stop protecting
             // its worktree at once, or the guard outlives the thing it guards.
-            var live = new HashSet<string>(StringComparer.Ordinal);
+            var live = new HashSet<string>(StringComparer.Ordinal)
+            {
+                // AC-658: the assistant owns every worktree it makes with worktree_create and is in no session list
+                // by construction (_AllSessions() deliberately excludes it), so every consumer of this registry —
+                // WorktreeReconciler's sweep and worktree_remove alike — must read it as live, or a worktree it is
+                // actively working in is either swept as an orphan or removed by another session as "not live".
+                AssistantIdentity.PaneId,
+            };
             if (_panes is { } panes)
             {
                 live.UnionWith(panes());
