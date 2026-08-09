@@ -248,7 +248,7 @@ loose DLLs and hunting for the executable:
 | Platform | Download | Update |
 |---|---|---|
 | **Windows** | `AI-Cockpit-win-stable-Setup.exe` — installs per-user, or `…-Portable.zip` to unpack and run | From inside the app, once installed |
-| **macOS** | `ai-cockpit-*-macos-arm64.dmg` — open it, drag the app onto Applications | Replace the app |
+| **macOS** | one command, see below — or `ai-cockpit-*-macos-arm64.dmg` to drag by hand | Run the command again |
 | **Linux** | `ai-cockpit-*-x86_64.AppImage` — one file, or the tarball for a server | Overwrite the AppImage |
 
 None of them need a .NET runtime installed. Your settings live in `cockpit.json` (see below), not next to the
@@ -262,13 +262,26 @@ own package cannot, and the Updates tab says so rather than offering a button th
 > installations: run the new Setup once, then remove the old entry from **Settings → Apps**. Nothing of yours
 > moves — everything lives in `%APPDATA%\Cockpit`, beside neither of them.
 
-> **macOS — "is damaged and can't be opened":** the app is ad-hoc signed but not notarized, so a freshly
-> downloaded copy is quarantined by Gatekeeper. After dragging it onto /Applications, clear the quarantine flag
-> once, then open it normally:
+> **macOS — install with this, not with the .dmg:**
 >
 > ```
-> xattr -cr /Applications/AI-Cockpit.app
+> curl -fsSL https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit/main/scripts/install-macos.sh | bash
 > ```
+>
+> The app is ad-hoc signed but not notarized, and Gatekeeper refuses a *quarantined* copy of such a bundle
+> outright — "is damaged and can't be opened", with no "Open Anyway" to click. That flag is written by whatever
+> program downloaded the file: a browser sets it, `curl` does not. So the command above installs a copy that
+> never had one, and the app opens on a double-click. Add ` -s -- nightly` to take the nightly instead.
+>
+> Took the `.dmg` and hit "is damaged" already? Remove *only* the quarantine flag:
+>
+> ```
+> xattr -dr com.apple.quarantine /Applications/AI-Cockpit.app
+> ```
+>
+> Not `xattr -cr`, which earlier versions of this README recommended: that clears *every* extended attribute,
+> and `codesign` stores the signature of each managed .NET assembly in one — so it leaves the app unsigned
+> ("code object is not signed at all"), which is the identity macOS hangs the microphone permission on.
 
 ### Linux
 
@@ -305,8 +318,12 @@ drag, done. One bundle per architecture: a universal binary means lipo-ing every
 output, not just the apphost.
 
 > **Ad-hoc means Gatekeeper will object elsewhere.** A nightly is signed on the runner that built it and nowhere
-> near a Developer ID, so on your machine macOS will refuse it until you allow it (right-click → Open, or
-> Settings → Privacy & Security). That is not a broken build; it is what an unnotarised app looks like.
+> near a Developer ID. On a *quarantined* copy that is fatal — macOS calls it damaged and offers only the Trash;
+> right-click → Open does not rescue an ad-hoc signature, which is why `scripts/install-macos.sh` avoids the
+> flag rather than arguing with it. That is not a broken build; it is what an unnotarised app looks like.
+
+`scripts/install-macos.sh` is the other side of that: it installs a *published* build rather than building one,
+fetching the `.app.zip` with curl so the bundle never gets a quarantine flag to begin with.
 
 For distribution, sign with a Developer ID and notarise (the script prints the exact commands):
 

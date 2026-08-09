@@ -1,15 +1,6 @@
-# Throwaway diagnostic workflow for the macOS "app is damaged" reports (AC macOS DMG investigation).
-#
-# It downloads the *published* nightly .dmg and .app.zip and judges them the way Gatekeeper does, with and
-# without the quarantine flag a browser sets. Nothing is built: the question is about the artifact users
-# actually get, so the test uses that artifact. It also measures a known-good comparison (Apple's `container`,
-# which is one of the apps reported to "just work") to see what its signature carries that ours does not.
-#
-# Every probe runs under `t`, a perl-based alarm: `timeout` is GNU, not on macOS, and spctl can block for
-# minutes on a runner. A hung probe must not eat the job.
-#
-# Delete this file once the investigation lands.
-name: macOS Gatekeeper diagnosis
+# Throwaway: proves scripts/install-macos.sh does what it claims, on a real macOS runner.
+# Delete this file before the branch merges — AC-663.
+name: macOS install script check
 
 on:
   push:
@@ -17,153 +8,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  # DataTray is the app this one is measured against: same stack (.NET desktop), same shape of GitHub
-  # release, and reported to "just work". Same probes, same runner, so the two verdicts are comparable.
-  datatray:
-    runs-on: macos-latest
-    timeout-minutes: 20
-    steps:
-      - name: Measure Lionear/DataTray's published DMG the same way
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          printf '%s\n' 't() { local rc=0; perl -e '"'"'alarm shift; exec @ARGV'"'"' "$@" 2>&1 || rc=$?; echo "[exit=$rc]"; }' > ~/t.sh
-          . ~/t.sh
-          sw_vers | head -2
-          mkdir -p ~/dt && cd ~/dt
-          gh release download v0.7.0 --repo Lionear/DataTray --pattern '*.dmg' --dir .
-          echo "=== xattrs after a CLI download ==="; xattr -l *.dmg || echo "(none at all)"
-          t 120 hdiutil attach -nobrowse -readonly *.dmg -mountpoint /tmp/dtdmg
-          app=/tmp/dtdmg/DataTray.app
-          echo "=== codesign -dv --verbose=4 ===" ; t 120 codesign -dv --verbose=4 "$app"
-          echo "=== codesign --verify --deep --strict ===" ; t 300 codesign --verify --deep --strict --verbose=2 "$app"
-          echo "=== spctl -a -vvv --type execute ===" ; t 120 spctl -a -vvv --type execute "$app"
-          echo "=== syspolicy_check distribution ===" ; t 120 syspolicy_check distribution "$app"
-
-          # Same three cases as the Cockpit job, so the comparison is like for like.
-          rm -rf /tmp/dtq && mkdir -p /tmp/dtq && cp -R "$app" /tmp/dtq/
-          hdiutil detach /tmp/dtdmg || true
-          q=/tmp/dtq/DataTray.app
-          echo "=== [B] quarantined as a browser download ==="
-          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Chrome;$(uuidgen)" "$q"
-          t 120 spctl -a -vvv --type execute "$q"
-          echo "=== [C] after the xattr -cr their release notes tell users to run ==="
-          xattr -cr "$q"
-          t 300 codesign --verify --deep --strict --verbose=2 "$q"
-          t 120 spctl -a -vvv --type execute "$q"
-
-  diagnose:
+  install:
     runs-on: macos-latest
     timeout-minutes: 25
     steps:
-      - name: Runner and Gatekeeper state
-        run: |
-          # perl is always present on macOS; GNU `timeout` is not. Written once, sourced by every later step.
-          # `|| rc=$?` rather than a bare call: the step shell runs with -e, and a probe that reports a verdict
-          # by exiting non-zero (spctl says "rejected" with exit 3) would otherwise kill the job mid-diagnosis.
-          printf '%s\n' 't() { local rc=0; perl -e '"'"'alarm shift; exec @ARGV'"'"' "$@" 2>&1 || rc=$?; echo "[exit=$rc]"; }' > ~/t.sh
-          . ~/t.sh
-          sw_vers; echo "arch: $(uname -m)"
-          echo "--- spctl --status ---";           t 30 spctl --status
-          echo "--- spctl --status --verbose ---"; t 30 spctl --status --verbose
+      - uses: actions/checkout@v7
 
-      - name: Download the published nightly artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: A wrong tag fails with a message, not a bare exit code
         run: |
-          mkdir -p ~/dl && cd ~/dl
-          gh release download nightly --repo "$GITHUB_REPOSITORY" \
-            --pattern 'ai-cockpit-nightly-macos-arm64.dmg' \
-            --pattern 'ai-cockpit-nightly-macos-arm64.app.zip'
-          ls -la
-          echo "--- xattrs on files a CLI tool fetched (the download tool decides quarantine) ---"
-          xattr -l ai-cockpit-nightly-macos-arm64.dmg     || echo "(dmg: no xattrs at all)"
-          xattr -l ai-cockpit-nightly-macos-arm64.app.zip || echo "(zip: no xattrs at all)"
+          set +e
+          out="$(bash scripts/install-macos.sh no-such-tag-here 2>&1)"; rc=$?
+          echo "$out"; echo "exit=$rc"
+          echo "$out" | grep -q 'No macos-arm64 .app.zip' || { echo "expected the explanatory message"; exit 1; }
+          [ "$rc" = "1" ] || { echo "expected exit 1, got $rc"; exit 1; }
 
-      - if: always()
-        name: Signature of the app inside the DMG
-        run: |
-          . ~/t.sh
-          cd ~/dl
-          t 120 hdiutil attach -nobrowse -readonly ai-cockpit-nightly-macos-arm64.dmg -mountpoint /tmp/acdmg
-          app=/tmp/acdmg/AI-Cockpit.app
-          echo "=== codesign -dv --verbose=4 ==="                    ; t 120 codesign -dv --verbose=4 "$app"
-          echo "=== codesign --verify --deep --strict --verbose=4 ===" ; t 300 codesign --verify --deep --strict --verbose=4 "$app"
-          echo "=== spctl -a -vvv --type execute (Gatekeeper) ==="   ; t 120 spctl -a -vvv --type execute "$app"
-          echo "=== spctl on the DMG itself ==="                     ; t 120 spctl -a -vvv -t open --context context:primary-signature ai-cockpit-nightly-macos-arm64.dmg
-          hdiutil detach /tmp/acdmg || true
+      - name: Install the nightly the way a user would
+        run: bash scripts/install-macos.sh nightly
 
-      - if: always()
-        name: Case A — unzipped, no quarantine (the CLI/installer route)
+      - name: It landed, unquarantined, with its signature intact
         run: |
-          . ~/t.sh
-          rm -rf /tmp/caseA && mkdir -p /tmp/caseA && cd /tmp/caseA
-          ditto -x -k ~/dl/ai-cockpit-nightly-macos-arm64.app.zip .
-          app=/tmp/caseA/AI-Cockpit.app
-          echo "=== quarantine xattr? ==="   ; xattr -p com.apple.quarantine "$app" || echo "(none)"
-          echo "=== spctl -a -vvv ==="       ; t 120 spctl -a -vvv --type execute "$app"
-          echo "=== syspolicy_check ==="     ; t 120 syspolicy_check distribution "$app"
-          echo "=== does the binary run? ===" ; t 20 "$app/Contents/MacOS/Cockpit.App" --version
+          app=/Applications/AI-Cockpit.app
+          [ -d "$app" ] || { echo "not installed at $app"; exit 1; }
 
-      - if: always()
-        name: Case B — quarantined, as a browser download (the reported failure)
-        run: |
-          . ~/t.sh
-          rm -rf /tmp/caseB && mkdir -p /tmp/caseB && cd /tmp/caseB
-          ditto -x -k ~/dl/ai-cockpit-nightly-macos-arm64.app.zip .
-          app=/tmp/caseB/AI-Cockpit.app
-          # 0081 = quarantined, never opened; the shape Chrome/Safari write.
-          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Chrome;$(uuidgen)" "$app"
-          echo "=== flag ==="             ; xattr -p com.apple.quarantine "$app"
-          echo "=== spctl -a -vvv ==="    ; t 120 spctl -a -vvv --type execute "$app"
-          echo "=== syspolicy_check ===" ; t 120 syspolicy_check distribution "$app"
-          echo "=== signature itself still valid? ===" ; t 300 codesign --verify --deep --strict --verbose=2 "$app"
-
-      - if: always()
-        name: Case C — quarantined, then the documented `xattr -cr` workaround
-        run: |
-          . ~/t.sh
-          app=/tmp/caseB/AI-Cockpit.app
-          xattr -cr "$app"
-          echo "=== quarantine gone? ===" ; xattr -p com.apple.quarantine "$app" || echo "(none)"
-          echo "=== spctl -a -vvv ==="    ; t 120 spctl -a -vvv --type execute "$app"
-          echo "=== syspolicy_check ===" ; t 120 syspolicy_check distribution "$app"
-          echo "=== signature survived xattr -cr? ===" ; t 300 codesign --verify --deep --strict --verbose=2 "$app"
-          echo "=== binary runs? ==="     ; t 20 "$app/Contents/MacOS/Cockpit.App" --version
-
-      # Why do the apps Raymond compares against "just work"? Apple's `container` is one of them. Measure it
-      # rather than assume: whatever its signature carries is the bar our artifact is missing.
-      - if: always()
-        name: Comparison — what does Apple's `container` release actually carry?
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          . ~/t.sh
-          mkdir -p ~/cmp && cd ~/cmp
-          gh release download --repo apple/container --pattern '*.pkg' --dir . 2>&1 | tail -2 || true
-          ls -la
-          pkg="$(ls *.pkg 2>/dev/null | head -1)"
-          if [ -n "$pkg" ]; then
-            echo "=== pkgutil --check-signature ===" ; t 120 pkgutil --check-signature "$pkg"
-            echo "=== spctl -a -vvv -t install ==="  ; t 120 spctl -a -vvv -t install "$pkg"
-            echo "=== stapled notarization ticket? ===" ; t 120 stapler validate "$pkg"
-          else
-            echo "no .pkg asset found"
+          echo "=== quarantine flag (must be absent — the whole point) ==="
+          if xattr -p com.apple.quarantine "$app" >/dev/null 2>&1; then
+            echo "FAIL: quarantined"; exit 1
           fi
+          echo "absent"
 
-      # The hypothesis under test: does `brew install --cask` sidestep Gatekeeper by not quarantining?
-      - if: always()
-        name: Does Homebrew Cask quarantine what it installs?
+          # The check that distinguishes this from the `xattr -cr` workaround it replaces: that one left the
+          # bundle reading "code object is not signed at all". This must still be valid.
+          echo "=== codesign --verify --deep --strict ==="
+          codesign --verify --deep --strict --verbose=2 "$app" 2>&1 | tail -3
+
+          echo "=== the app starts ==="
+          perl -e 'alarm 20; exec @ARGV' "$app/Contents/MacOS/Cockpit.App" --version 2>&1 | head -3
+
+      - name: Re-running upgrades in place rather than failing
         run: |
-          . ~/t.sh
-          brew --version | head -1
-          echo "=== is --no-quarantine still accepted? ==="
-          t 60 brew install --cask --no-quarantine hello-world-does-not-exist
-          echo "=== Homebrew's own quarantine code ==="
-          grep -rn "def cask\b\|com.apple.quarantine\|xattr" "$(brew --repository)/Library/Homebrew/cask/quarantine.rb" 2>/dev/null | head -15 || echo "(quarantine.rb not found)"
-          echo "=== empirical: install a real cask, read its xattrs ==="
-          t 420 brew install --cask db-browser-for-sqlite
-          for a in /Applications/DB\ Browser*.app "/Applications/DB Browser for SQLite.app"; do
-            [ -e "$a" ] || continue
-            printf '%s -> ' "$a"; xattr -p com.apple.quarantine "$a" 2>/dev/null || echo "(no quarantine)"
-          done
+          bash scripts/install-macos.sh nightly
+          [ -d /Applications/AI-Cockpit.app ] || { echo "gone after reinstall"; exit 1; }
+          echo "second run fine"

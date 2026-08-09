@@ -247,9 +247,18 @@ jobs:
           > accident. Nothing of yours moves: settings, plugins, projects and logs live in `%APPDATA%\Cockpit`,
           > beside neither installation, and both find them there.
 
-          **macOS.** The download is ad-hoc signed, not notarized, so Gatekeeper quarantines it and reports that it
-          "is damaged and can't be opened". It is not damaged. After dragging it onto /Applications, clear the flag
-          once with `xattr -cr /Applications/AI-Cockpit.app`, then open it normally.
+          **macOS.** Install with one command rather than the `.dmg`:
+
+          ```
+          curl -fsSL https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit/main/scripts/install-macos.sh | bash
+          ```
+
+          The download is ad-hoc signed, not notarized, so a copy your *browser* fetched is quarantined and
+          Gatekeeper reports that it "is damaged and can't be opened". It is not damaged — the flag is written by
+          the downloader, and `curl` does not write one, so a copy installed by that command opens normally.
+          Already took the `.dmg`? Clear only the quarantine flag with
+          `xattr -dr com.apple.quarantine /Applications/AI-Cockpit.app` — not `xattr -cr`, which also wipes the
+          extended attributes carrying each managed assembly's signature and leaves the app unsigned.
 
           **Linux.** The AppImage arrives without its executable bit — `chmod +x AI-Cockpit-*.AppImage`, then run it.
           It mounts itself with FUSE; on a distribution that ships only fuse3, either install `libfuse2` or run it
