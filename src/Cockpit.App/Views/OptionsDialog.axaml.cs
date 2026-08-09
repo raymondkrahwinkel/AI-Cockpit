@@ -191,4 +191,47 @@ public partial class OptionsDialog : Window
             });
         }
     }
+
+    // The assistant's own memory, exported/restored on its own (AC-657) — same file-picker split as the backup
+    // above, but no selection dialog on the way in: there is nothing to choose, only these two files.
+    private async void OnExportAssistantMemory(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export the assistant's memory",
+            SuggestedFileName = $"assistant-memory-{DateTime.Now:yyyy-MM-dd}.zip",
+            DefaultExtension = "zip",
+            FileTypeChoices = [new FilePickerFileType("Assistant memory") { Patterns = ["*.zip"] }],
+        });
+
+        if (file?.TryGetLocalPath() is { Length: > 0 } path)
+        {
+            await cockpit.ExportAssistantMemoryAsync(path);
+        }
+    }
+
+    private async void OnImportAssistantMemory(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import the assistant's memory",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Assistant memory") { Patterns = ["*.zip"] }],
+        });
+
+        if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+        {
+            await cockpit.ImportAssistantMemoryAsync(path);
+        }
+    }
 }

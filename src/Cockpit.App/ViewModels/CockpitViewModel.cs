@@ -120,6 +120,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly IShortcutSettingsStore? _shortcutSettingsStore;
     private readonly IBackupService? _backupService;
+    // The assistant's own memory files, loose from the rest of the cockpit backup (AC-657) — same service the
+    // assistant's remember/note_state MCP tools write through.
+    private readonly IAssistantMemory? _assistantMemory;
     private readonly IAppRestartService? _appRestart;
     private readonly IUpdateService? _updates;
     private readonly IUpdateSettingsStore? _updateSettingsStore;
@@ -792,6 +795,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _backupStatus = string.Empty;
+
+    // The assistant's own memory files, exported/restored on their own (AC-657) — separate from the status line
+    // above, since the two archives are unrelated and a status about one must not read as being about the other.
+    [ObservableProperty]
+    private string _assistantMemoryBackupStatus = string.Empty;
 
     // The plugins this backup will carry — their binaries and everything they saved. All of them, unless the operator unticks one.
     public ObservableCollection<BackupPluginViewModel> BackupPlugins { get; } = [];
@@ -2375,6 +2383,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ResourceMonitor? resourceMonitor = null,
         DiagnosticsCollector? diagnosticsCollector = null,
         IBackupService? backupService = null,
+        IAssistantMemory? assistantMemory = null,
         IUpdateService? updateService = null,
         IUpdateSettingsStore? updateSettingsStore = null,
         IUpdateSupportProbe? updateSupportProbe = null,
@@ -2469,6 +2478,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // does not care — reads as not packaged, which is the answer that offers less rather than more.
         CanUpdateItself = (updateSupportProbe?.Detect() ?? UpdateSupport.NotPackaged) == UpdateSupport.Supported;
         _backupService = backupService;
+        _assistantMemory = assistantMemory;
         _appRestart = appRestartService;
         // AC-478: whether this process was launched with PluginManager.SafeModeArgument, read off the same
         // singleton Program.cs constructed the switch on — not a second source of truth for a fact that must
@@ -3335,6 +3345,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // rather than showing two controls that swallow a click and do nothing.
     public bool CanBackUp => _backupService is not null;
 
+    // Same reasoning as CanBackUp, for the assistant-memory-only export/restore (AC-657).
+    public bool CanBackUpAssistantMemory => _assistantMemory is not null;
+
     // Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup — the
     // single first look; `StartPeriodicUpdateChecks` keeps looking every hour after this while the window
     // stays open. A failed check is silent here: the cockpit has just opened, and a toast saying GitHub was
@@ -3788,6 +3801,50 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         catch (Exception exception)
         {
             BackupStatus = $"Nothing was restored: {exception.Message}";
+        }
+    }
+
+    // The assistant's own memory, on its own (AC-657) — loose from the rest of the cockpit backup above: no
+    // settings, no plugins, no secrets dialog, just assistant-memory.md and assistant-state.md. The same
+    // IAssistantMemory the assistant's own export_assistant_memory/import_assistant_memory MCP tools write through.
+    public async Task ExportAssistantMemoryAsync(string archivePath)
+    {
+        if (_assistantMemory is not { } memory)
+        {
+            return;
+        }
+
+        try
+        {
+            AssistantMemoryBackupStatus = "Exporting…";
+            var written = await memory.ExportAsync(archivePath);
+            AssistantMemoryBackupStatus = $"Exported {string.Join(" and ", written)} to {Path.GetFileName(archivePath)}.";
+        }
+        catch (Exception exception)
+        {
+            AssistantMemoryBackupStatus = $"Nothing was exported: {exception.Message}";
+        }
+    }
+
+    // No selection dialog, unlike RestoreBackupAsync: there is nothing to choose, only these two files, and what
+    // gets replaced is copied aside rather than deleted — see AssistantMemoryFile.ImportAsync. Does not restart the
+    // cockpit; the assistant reads the new memory the next time its own session restarts.
+    public async Task ImportAssistantMemoryAsync(string archivePath)
+    {
+        if (_assistantMemory is not { } memory)
+        {
+            return;
+        }
+
+        try
+        {
+            AssistantMemoryBackupStatus = "Restoring…";
+            var restored = await memory.ImportAsync(archivePath);
+            AssistantMemoryBackupStatus = $"Restored {string.Join(" and ", restored)}.";
+        }
+        catch (Exception exception)
+        {
+            AssistantMemoryBackupStatus = $"Nothing was restored: {exception.Message}";
         }
     }
 

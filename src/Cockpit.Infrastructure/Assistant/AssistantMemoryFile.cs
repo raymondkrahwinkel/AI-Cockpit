@@ -79,4 +79,13 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             isNew ? $"{Heading}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
             cancellationToken).ConfigureAwait(false);
     }
+
+    // Synchronous file I/O (AC-657): both files are a few kilobytes of markdown, and the loose backup/restore this
+    // serves is already behind an MCP consent gate that awaits elsewhere — no need to thread cancellation through
+    // ZipFile's own sync-only API for that.
+    public Task<IReadOnlyList<string>> ExportAsync(string archivePath, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantMemoryBackup.Write(archivePath, _filePath, _statePath));
+
+    public Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantMemoryBackup.Restore(archivePath, _filePath, _statePath));
 }

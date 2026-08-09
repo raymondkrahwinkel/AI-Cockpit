@@ -28,4 +28,16 @@ public interface IAssistantMemory
     /// accumulated would be a transcript, which is the thing the restart exists to get rid of.
     /// </summary>
     Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes whichever of the memory and current-state files exist to a .zip at <paramref name="archivePath"/>
+    /// (AC-657) — a loose, light export separate from a full cockpit backup. Returns the file names written.
+    /// </summary>
+    Task<IReadOnlyList<string>> ExportAsync(string archivePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts back whichever of the two files <paramref name="archivePath"/> carries (AC-657). What is replaced is
+    /// copied aside with a timestamp first, never deleted. Returns the file names restored.
+    /// </summary>
+    Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default);
 }
