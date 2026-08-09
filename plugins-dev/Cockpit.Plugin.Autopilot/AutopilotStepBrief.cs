@@ -32,17 +32,16 @@ internal static class AutopilotStepBrief
         // persona, so it holds whatever the profile is.
         const string autonomy =
             "You are an autonomous agent in an Autopilot run, working under the profile you were launched with — no human "
-            + "is available to answer questions this turn. Two things follow. (1) Setup questions: if your startup asks you "
-            + "to pick a persona, brain, or configuration before you begin, treat it as already decided, stay in the "
-            + "identity you launched with, and go straight to the task below — do not stop to ask. (2) Task ambiguity: for "
-            + "anything the brief and acceptance below do not spell out, first try to resolve it yourself — make the most "
-            + "reasonable assumption in line with the goal and acceptance, FOLLOW THE EXISTING CONVENTIONS in the codebase "
-            + "(look at how comparable parts or projects already do it rather than inventing a new way), and keep going; "
-            + "note the assumption in your autopilot_step_done summary. Your manager (the CEO) is reachable when you "
-            + "genuinely cannot get there with a reasonable assumption — a real ambiguity, a design call beyond the plan, "
-            + "a truly irreversible or destructive choice, or a missing credential: call autopilot_blocked to consult your "
-            + "manager, who answers you or escalates to the operator. Never stop for an ordinary judgement call you can "
-            + "make yourself.";
+            + "is available to answer questions this turn. (1) Setup questions: if your startup asks you to pick a "
+            + "persona, brain, or configuration before you begin, treat it as already decided, stay in the identity you "
+            + "launched with, and go straight to the task below — do not stop to ask. (2) Task ambiguity: for anything "
+            + "the brief and acceptance below do not spell out, make the most reasonable assumption in line with the "
+            + "goal and acceptance, FOLLOW THE EXISTING CONVENTIONS in the codebase (look at how comparable parts or "
+            + "projects already do it rather than inventing a new way), and keep going; note the assumption in your "
+            + "autopilot_step_done summary. Your manager (the CEO) is reachable when you genuinely cannot get there with "
+            + "a reasonable assumption — a real ambiguity, a design call beyond the plan, a truly irreversible or "
+            + "destructive choice, or a missing credential: call autopilot_blocked to consult your manager, who answers "
+            + "you or escalates to the operator. Never stop for an ordinary judgement call you can make yourself.";
 
         // The execution mandate: a lighter/local model handed a coding step too often "analyses" the
         // repo, summarises what could be done, or asks what the goal is — and ends its turn without ever writing the code,
@@ -53,11 +52,10 @@ internal static class AutopilotStepBrief
         // the turn on analysis or a question in place of the work.
         const string executionMandate =
             "This is an execution task, not an analysis or planning task — actually make the change. Write and edit the "
-            + "code, add and run the tests, and COMMIT your work in this worktree as you complete it (do not merge — a "
-            + "human does the final merge). Do NOT instead describe the repository, summarise what could be done, ask what "
-            + "the goal is, or reply with a plan or an analysis: that leaves the step unfinished and stalls the run. Deliver "
-            + "the concrete change the task asks for, verify it builds and its tests pass, commit it, and only then report "
-            + "done.";
+            + "code, add and run the tests, and COMMIT your work in this worktree as you complete it. Do NOT instead "
+            + "describe the repository, summarise what could be done, ask what the goal is, or reply with a plan or an "
+            + "analysis: that leaves the step unfinished and stalls the run. Deliver the concrete change the task asks "
+            + "for, verify it builds and its tests pass, commit it, and only then report done.";
 
         return $$"""
             {{autonomy}}

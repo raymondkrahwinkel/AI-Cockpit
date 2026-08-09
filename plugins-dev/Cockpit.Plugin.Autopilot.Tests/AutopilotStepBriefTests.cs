@@ -116,6 +116,18 @@ public class AutopilotStepBriefTests
     }
 
     [Fact]
+    public void For_StatesDoNotMergeOnlyOnce_NotDuplicatedAcrossTheMandateAndTheFooter()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // AC-257: the mandate and the footer each used to say "do not merge" — trimmed to the single footer mention.
+        var occurrences = brief.ToLowerInvariant().Split("do not merge").Length - 1;
+        Assert.Equal(1, occurrences);
+    }
+
+    [Fact]
     public void ValidationTurn_AsksTheCeoToJudgeAgainstAcceptance_ViaTheTool()
     {
         var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "compiles");
