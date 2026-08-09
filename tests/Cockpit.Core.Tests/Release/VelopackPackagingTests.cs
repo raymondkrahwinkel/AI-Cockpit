@@ -178,10 +178,19 @@ public class VelopackPackagingTests
     /// A release page is where somebody stands when their machine refuses the download, so the release notes answer
     /// all three refusals rather than only the one macOS gives (AC-389). Asserted per platform: the note grew out of
     /// a macOS-only one, and the way it would shrink back is a platform quietly going missing.
+    /// <para>
+    /// macOS carries two, and the distinction between them is the point (AC-663). The install script is the answer,
+    /// because a bundle fetched with curl never gets the quarantine flag that makes Gatekeeper look. The fallback is
+    /// <c>xattr -dr com.apple.quarantine</c> and specifically <em>not</em> <c>xattr -cr</c>, which the notes used to
+    /// recommend: that clears every extended attribute, and <c>codesign</c> keeps each managed assembly's signature
+    /// in one, so it leaves the bundle reading "code object is not signed at all" — measured, and the identity macOS
+    /// hangs the microphone permission on. Asserting the exact flag is what stops it being shortened back.
+    /// </para>
     /// </summary>
     [Theory]
     [InlineData("SmartScreen")]
-    [InlineData("xattr -cr /Applications/AI-Cockpit.app")]
+    [InlineData("scripts/install-macos.sh")]
+    [InlineData("xattr -dr com.apple.quarantine /Applications/AI-Cockpit.app")]
     [InlineData("chmod +x AI-Cockpit-*.AppImage")]
     public void TheReleaseNotes_SayWhatEachPlatformNeedsOnFirstRun(string instruction) =>
         Assert.Contains(instruction, _Step("release.yml", "Append what each platform needs on first run"), StringComparison.Ordinal);
