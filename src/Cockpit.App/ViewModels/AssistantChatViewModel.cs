@@ -111,6 +111,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     private readonly IAssistantSettingsStore _settingsStore;
     private readonly IVoicePlaybackQueue _playbackQueue;
 
+    // AC-662: the sidebar's always-on/listen switch (AssistantIndicatorCoordinator.Indicator), fed in so the
+    // header can carry the same toggle without a second copy of its state, its command, or its one-time cost
+    // confirmation. Null for every construction path that predates this ticket (tests, Screenshotter's design-time
+    // scenes) — the header hides the switch rather than binding to nothing.
+    private readonly AssistantIndicatorViewModel? _indicator;
+
     // Optional (AC-545 criterion 5): a fake host in AssistantChatViewModelTests, Screenshotter's design-time data,
     // and every other construction path predating this ticket build this view model with three arguments. Making
     // the spawn trail a fourth required one would be a compile break in every one of them for a flyout most of
@@ -153,16 +159,21 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         IAssistantSessionHost host,
         IAssistantSettingsStore settingsStore,
         IVoicePlaybackQueue playbackQueue,
-        IAssistantSpawnAuditLog? spawnAuditLog = null)
+        IAssistantSpawnAuditLog? spawnAuditLog = null,
+        AssistantIndicatorViewModel? indicator = null)
     {
         _host = host;
         _settingsStore = settingsStore;
         _playbackQueue = playbackQueue;
         _spawnAuditLog = spawnAuditLog;
+        _indicator = indicator;
         _observedSession = _host.Session;
         _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
     }
+
+    // Read-through, like `Session` below: never assigned locally, only ever reports whatever `_indicator` holds.
+    public AssistantIndicatorViewModel? Indicator => _indicator;
 
     // The assistant's own session, bound straight through to the existing SDK transcript view. Null until the assistant has been lazily started at least once.
     public SessionViewModel? Session => _host.Session;

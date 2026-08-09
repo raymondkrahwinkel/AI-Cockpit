@@ -188,7 +188,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
         if (_chatWindow is null)
         {
-            _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog);
+            _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator);
             _chatWindow = new AssistantChatWindow { DataContext = _chatViewModel };
 
             // Dropped on close so the next click builds a fresh window — but nothing about the session is touched

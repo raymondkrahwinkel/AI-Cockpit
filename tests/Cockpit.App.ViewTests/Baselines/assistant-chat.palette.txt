@@ -21,5 +21,7 @@
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0
 radius  10,10,10,10
+radius  20,20,20,20
+radius  3,3,3,3
 radius  6,6,6,6
 radius  9,9,9,9

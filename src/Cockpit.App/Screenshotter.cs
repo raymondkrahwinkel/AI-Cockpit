@@ -346,6 +346,7 @@ internal static class Screenshotter
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
+        ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
 
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
@@ -1735,7 +1736,7 @@ internal static class Screenshotter
     // "session" scene and the Avalonia previewer render) rather than inventing a second sample transcript —
     // that data already includes one expanded and one collapsed tool call, so the collapsed one proves criterion
     // 11's "an inklapbare tool-call" without a bespoke fixture.
-    private static AssistantChatWindow _AssistantChat(bool withConversation, bool speakReplies = true)
+    private static AssistantChatWindow _AssistantChat(bool withConversation, bool speakReplies = true, bool alwaysOn = false)
     {
         var host = new _FakeAssistantSessionHost
         {
@@ -1743,7 +1744,18 @@ internal static class Screenshotter
             Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
         };
 
-        var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue());
+        // AC-662: the same Indicator the coordinator feeds the real window, so the header's always-on switch
+        // renders here too — a scene fed no indicator at all would be testing a header this ticket's own switch
+        // no longer draws.
+        var indicator = new ViewModels.AssistantIndicatorViewModel
+        {
+            ListeningMode = alwaysOn
+                ? Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn
+                : Cockpit.Core.Assistant.AssistantListeningMode.Off,
+        };
+
+        var viewModel = new ViewModels.AssistantChatViewModel(
+            host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator);
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 
