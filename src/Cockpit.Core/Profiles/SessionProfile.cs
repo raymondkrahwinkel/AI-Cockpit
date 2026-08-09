@@ -64,6 +64,11 @@ public sealed record SessionProfile(
     // SDK regardless of this field, which `SessionKindDefaults.ResolveDefaultKind` enforces.
     public ProfileSessionKind? DefaultKind { get; init; }
 
+    // How much a session under this profile may hold, whole tree included, before it is cut off (AC-661). Per
+    // profile because one global number is either too loose to protect anything or too tight for real builds.
+    // `null` takes `SessionMemoryCap.DefaultMegabytes`.
+    public int? MemoryCapMegabytes { get; init; }
+
     // Which backend drives this profile.
     public SessionProvider Provider => ProviderConfig.Provider;
 

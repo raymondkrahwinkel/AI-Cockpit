@@ -3142,6 +3142,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // I last said so", and that question needs a memory of its own.
     private bool _warnedAboutMemory;
 
+    // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
+    // so on its own bar first. Matched back by title, the same key the sample was taken under.
+    private void _WarnAboutSessionCaps(ResourceUsage usage)
+    {
+        foreach (var measured in usage.Sessions)
+        {
+            Sessions.FirstOrDefault(session => session.Title == measured.Title)?.ReportMemoryAgainstCap(measured.MemoryBytes);
+        }
+    }
+
     // Says something when the cockpit and its sessions together approach what the machine has (#78).
     //
     // A session is 300–700 MB of Node; three of them outweigh the whole app. This is the difference between "the app
@@ -3203,6 +3213,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var usage = _resourceMonitor.Sample(processes);
 
         _WarnAboutMemory(usage);
+        _WarnAboutSessionCaps(usage);
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);

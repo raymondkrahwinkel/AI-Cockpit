@@ -18,6 +18,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     private const int MaxLoggedEvents = 5_000;
 
     private readonly ISessionDriverFactory _driverFactory;
+    private readonly ISessionMemoryLimiter? _memoryLimiter;
     private readonly List<SessionEvent> _events = [];
     private readonly List<string> _currentTurnText = [];
     private readonly Lock _eventsLock = new();
@@ -26,14 +27,18 @@ internal sealed class SessionRuntime : ISessionRuntime
     private CancellationTokenSource? _lifetime;
     private Task? _pump;
 
+    // The OS ceiling around this session's process tree, while it has one (AC-661).
+    private IDisposable? _memoryCap;
+
     // Events dropped off the front of the log, so a cursor handed out before a trim still maps to the right
     // place in the log rather than silently replaying events the consumer has already seen.
     private int _droppedEvents;
 
-    public SessionRuntime(ISessionDriverFactory driverFactory, SessionProfile? profile)
+    public SessionRuntime(ISessionDriverFactory driverFactory, SessionProfile? profile, ISessionMemoryLimiter? memoryLimiter = null)
     {
         _driverFactory = driverFactory;
         Profile = profile;
+        _memoryLimiter = memoryLimiter;
     }
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
@@ -88,6 +93,14 @@ internal sealed class SessionRuntime : ISessionRuntime
         // as a failed start, not as a failed construction.
         _driver = _driverFactory.Create(profile);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
+
+        // AC-661: cap the driver's own child (a spawned CLI) the moment it exists, before it has run a turn and
+        // spawned anything itself. A provider that is an HTTP call has no process and nothing to cap.
+        if (_memoryLimiter is not null && _driver.ProcessId is { } processId)
+        {
+            _memoryCap = _memoryLimiter.Apply(processId, SessionMemoryCap.ResolveBytes(profile, launchOptions));
+        }
+
         _pump = _PumpEventsAsync(_lifetime.Token);
     }
 
@@ -161,6 +174,10 @@ internal sealed class SessionRuntime : ISessionRuntime
             await _driver.DisposeAsync();
             _driver = null;
         }
+
+        // After the driver, so the job object/cgroup is empty by the time it is released.
+        _memoryCap?.Dispose();
+        _memoryCap = null;
 
         _lifetime?.Dispose();
         _lifetime = null;

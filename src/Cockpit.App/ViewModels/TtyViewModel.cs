@@ -557,11 +557,16 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
 
         _launched = true;
+        var launchOptions = _LaunchOptions();
+
+        // AC-661: the same cap TtyLauncher hands the OS, so the bar can warn on the approach to it.
+        MemoryCapBytes = SessionMemoryCap.ResolveBytes(_configuredProfile, launchOptions);
+
         LaunchRequested.Invoke(new TtyLaunchRequest(
             _launcher,
             provider,
             _configuredProfile,
-            _LaunchOptions(),
+            launchOptions,
             _configuredWorkingDirectory,
             _configuredResume,
             McpServerSelection,

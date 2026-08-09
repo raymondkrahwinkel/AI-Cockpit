@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
@@ -563,13 +564,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             // the context empties on a /clear and the bar goes on saying it is half full until someone clicks a
             // notice about a window that no longer exists away by hand. Being away also lifts the silence, so a
             // signal that comes back is news again rather than staying muted for the life of the session.
-            _standing.RemoveAll(standing => standing.Key == signal.Key);
-            _silenced.Remove(signal.Key);
-
-            if (_warnedSignal == signal.Key)
-            {
-                _ShowWhatIsStillWorthSaying();
-            }
+            _RaiseOrClear(signal.Key, says: null);
 
             if (_offeredSignal == signal.Key)
             {
@@ -584,25 +579,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         var returns = reading.ResetsAt is { } at ? $", back {at.ToLocalTime():ddd HH:mm}" : string.Empty;
         var says = $"{name} is {used:0}% used{returns}.";
 
-        var already = _standing.FindIndex(standing => standing.Key == signal.Key);
-        if (already >= 0)
-        {
-            // Still over its line, so its crossing has been spent and the bar does not go back up — a bar that
-            // returns at 91%, 92%, 93% is noise. What it would say is kept current all the same: a figure that
-            // climbs while another warning covers it must not come back afterwards understating itself.
-            _standing[already] = (signal.Key, says);
-
-            if (_warnedSignal == signal.Key)
-            {
-                UsageWarning = says;
-            }
-        }
-        else
-        {
-            _standing.Add((signal.Key, says));
-            UsageWarning = says;
-            _warnedSignal = signal.Key;
-        }
+        _RaiseOrClear(signal.Key, says);
 
         // The offer waits for the allowance to actually be spent, not for the threshold that warns about it
         // (Raymond, 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from
@@ -639,6 +616,74 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             _silenced.Remove(signal.Key);
             _ShowWhatIsStillWorthSaying();
         }
+    }
+
+    // The bookkeeping behind one line on the bar, shared by the provider's usage signals and the memory cap
+    // (AC-661): raised on the crossing, kept current while it stands, taken down when its subject goes away.
+    // `says` of null is "nothing to say about this any more".
+    private void _RaiseOrClear(string key, string? says)
+    {
+        if (says is null)
+        {
+            _standing.RemoveAll(standing => standing.Key == key);
+            _silenced.Remove(key);
+
+            if (_warnedSignal == key)
+            {
+                _ShowWhatIsStillWorthSaying();
+            }
+
+            return;
+        }
+
+        var already = _standing.FindIndex(standing => standing.Key == key);
+        if (already >= 0)
+        {
+            // Still over its line, so its crossing has been spent and the bar does not go back up — a bar that
+            // returns at 91%, 92%, 93% is noise. What it would say is kept current all the same: a figure that
+            // climbs while another warning covers it must not come back afterwards understating itself.
+            _standing[already] = (key, says);
+
+            if (_warnedSignal == key)
+            {
+                UsageWarning = says;
+            }
+
+            return;
+        }
+
+        _standing.Add((key, says));
+        UsageWarning = says;
+        _warnedSignal = key;
+    }
+
+    // The key the memory-cap warning stands under, so it behaves like any other bar warning — dismissable, and
+    // said again when the session drops back and climbs a second time.
+    private const string MemoryCapWarningKey = "cockpit.memory-cap";
+
+    // Where this session's warning sits inside its cap. Not so near the ceiling that the warning and the kill
+    // arrive together, which would make the warning pointless.
+    private const double MemoryCapWarnShare = 0.8;
+
+    // What this session's process tree may hold before the OS cuts it off (AC-661); null when nothing caps it.
+    public long? MemoryCapBytes { get; set; }
+
+    // Puts the session's own approach to its cap on the bar (AC-661), sampled with the rest of the resource meter.
+    // The whole point is that being cut off is announced first: the session dies, the cockpit does not, and the
+    // operator saw it coming rather than finding a pane that had quietly stopped.
+    public void ReportMemoryAgainstCap(long usedBytes)
+    {
+        if (MemoryCapBytes is not { } cap || cap <= 0)
+        {
+            return;
+        }
+
+        _RaiseOrClear(
+            MemoryCapWarningKey,
+            usedBytes < cap * MemoryCapWarnShare
+                ? null
+                : $"This session is holding {ByteSize.Human(usedBytes)} of its {ByteSize.Human(cap)} memory cap. " +
+                  "Over it the session is cut off by the operating system — the cockpit itself is not.");
     }
 
     // Hands the bar to whichever signal is still over its threshold and has not been taken down, most recent

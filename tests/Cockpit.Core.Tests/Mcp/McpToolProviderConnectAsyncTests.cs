@@ -182,7 +182,7 @@ public class McpToolProviderConnectAsyncTests
         ptyHostFactory
             .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
             .Returns(Substitute.For<IConPtyProcess>());
-        var ttyLauncher = new TtyLauncher(ptyHostFactory, new McpAuthKey(), keyring, NullLogger<TtyLauncher>.Instance);
+        var ttyLauncher = new TtyLauncher(ptyHostFactory, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), keyring, NullLogger<TtyLauncher>.Instance);
         var ttyProvider = Substitute.For<ITtySessionProvider>();
         ttyProvider.ProviderId.Returns("test-provider");
         ttyProvider.BuildLaunch(Arg.Any<TtyLaunchContext>())

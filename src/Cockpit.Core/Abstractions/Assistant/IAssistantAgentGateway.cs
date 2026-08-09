@@ -250,7 +250,8 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
 // but at low effort". Per key: what is not named keeps the profile's value, so naming `effort` never costs the profile
 // its own `permission-mode`. Validated against what the profile's provider declares (AC-649), and `permission-mode`
 // — with any other provider's word for the same launch-time access-control question — is refused outright, whoever
-// asks. See `SpawnOptionOverrides`.
+// asks. See `SpawnOptionOverrides`. One key is the host's own rather than a provider's: `cockpit.memory-cap-mb`
+// (AC-661) sets how much memory this session's whole process tree may hold before the OS cuts it off.
 public sealed record AgentSpawnRequest(
     SpawnTarget Target,
     string ProfileLabel,

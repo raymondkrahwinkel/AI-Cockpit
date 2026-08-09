@@ -1,3 +1,4 @@
+using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -39,6 +40,20 @@ public static class SpawnOptionOverrides
         foreach (var (rawKey, value) in overrides)
         {
             var key = rawKey.Trim();
+
+            // AC-661: the memory cap is the host's own key, not the provider's — no provider declares it and no
+            // driver reads it, so it is checked here rather than against a declaration that will never mention it.
+            if (string.Equals(key, SessionMemoryCap.OptionKey, StringComparison.OrdinalIgnoreCase))
+            {
+                if (SessionMemoryCap.RefusalFor(value) is { } capRefusal)
+                {
+                    return (null, capRefusal);
+                }
+
+                merged[SessionMemoryCap.OptionKey] = value;
+                continue;
+            }
+
             if (NeverOverridable.Contains(key, StringComparer.OrdinalIgnoreCase))
             {
                 return (null, $"'{key}' is not something a spawn may set. It decides what the session is allowed to do, " +

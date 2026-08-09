@@ -942,6 +942,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         mergedOptions[WellKnownPluginSessionOptions.PaneId] = PaneId;
         _launchOptions = mergedOptions;
 
+        // AC-661: the same cap the runtime hands the OS, so the bar can warn on the approach to it.
+        MemoryCapBytes = SessionMemoryCap.ResolveBytes(profile, mergedOptions);
+
         await StartWithProfileAsync(profile, workingDirectory, resume);
 
         // StartWithProfileAsync swallows launch failures (it only sets Status); the runtime is left un-started
