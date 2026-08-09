@@ -47,6 +47,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly ComboBox _costStrategy;
     private readonly NumericUpDown _maxAttempts;
     private readonly NumericUpDown _maxConcurrent;
+    private readonly NumericUpDown _ceoCheckpoint;
     private readonly ComboBox _autonomy;
     // One box per tracker the operator could start from — the installed ones plus the two Autopilot ships a default
     // for, so a tracker it knows nothing about is still configurable rather than silently ungated.
@@ -123,6 +124,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
         _maxAttempts = _Number(settings.MaxSelfFixAttempts(), min: 0, max: 10);
         _maxConcurrent = _Number(settings.MaxConcurrentRuns(), min: 1, max: 8);
+        _ceoCheckpoint = _Number(settings.CeoCheckpointEverySteps(), min: 0, max: 20);
         _autonomy = new ComboBox
         {
             Width = 220,
@@ -149,6 +151,8 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         var cost = _Section("Cost & tokens");
         cost.Children.Add(_Hint("How hard the CEO leans on cost when it picks a model per step. Balanced is the recommended default; the CEO always fits the model to the work, this only moves where the line between a local free model and a paid one sits."));
         cost.Children.Add(_Row("Cost strategy", _costStrategy));
+        cost.Children.Add(_Hint("How many steps the CEO validates before it starts over on a fresh session that only carries a one-line verdict per finished step (AC-253). One long-lived validator re-reads every earlier step's diff on every new turn, so a long run pays for its own history again and again. 0 never starts over — what you set to measure a run without this."));
+        cost.Children.Add(_Row("Validator starts over every N steps", _ceoCheckpoint));
 
         var safety = _Section("Run safety");
         safety.Children.Add(_Hint("Caps the operator keeps regardless of what the CEO plans."));
@@ -509,6 +513,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         _settings.SetCostStrategy(_costStrategy.SelectedIndex >= 0 ? (AutopilotCostStrategy)_costStrategy.SelectedIndex : AutopilotCostStrategy.Balanced);
         _settings.SetMaxSelfFixAttempts((int)(_maxAttempts.Value ?? 2));
         _settings.SetMaxConcurrentRuns((int)(_maxConcurrent.Value ?? 1));
+        _settings.SetCeoCheckpointEverySteps((int)(_ceoCheckpoint.Value ?? 3));
         _settings.SetAutonomyMode(_autonomy.SelectedItem as string ?? AutopilotSettings.DefaultAutonomyMode);
         foreach (var (trackerId, box) in _executableStages)
         {

@@ -27,7 +27,8 @@ internal sealed class AutopilotRunCoordinator(
     TimeSpan? stepDoneReminderDelay = null,
     TimeSpan? stepStallTimeout = null,
     IAutopilotPrPublisher? prPublisher = null,
-    IAutopilotEvidenceSource? evidenceSource = null)
+    IAutopilotEvidenceSource? evidenceSource = null,
+    Func<string, Task<IEmbeddedSession?>>? checkpointCeo = null)
 {
     private readonly Lock _lock = new();
 
@@ -44,6 +45,11 @@ internal sealed class AutopilotRunCoordinator(
     // summary (AC-255); null in a bare test graph, and in every run the source cannot observe — both fall back to the
     // deep inspection. The app supplies the real GitCliEvidenceSource through AutopilotRunContext.
     private readonly IAutopilotEvidenceSource? _evidenceSource = evidenceSource;
+
+    // Replaces the run's validator with a fresh session briefed on the carry-over it is handed, returning it — or null
+    // when the host refused to embed one (AC-253). Null in a bare test graph, and in a run whose surface cannot embed:
+    // both simply never checkpoint. The app supplies the real swap through AutopilotRunContext.
+    private readonly Func<string, Task<IEmbeddedSession?>>? _checkpointCeo = checkpointCeo;
 
     // AC-434: a review group's gates run concurrently, and more than one can reach the leftover-work safety commit
     // (below) at the same moment — two concurrent `git add`/`git commit` on the one shared run worktree can collide
@@ -80,6 +86,11 @@ internal sealed class AutopilotRunCoordinator(
     private readonly Dictionary<string, int> _consultCounts = new(StringComparer.Ordinal);
     private int _maxConsultsPerStep;
 
+    // AC-253: how many validation turns the live validator has taken on since it was last replaced, and the interval
+    // it is replaced on (0 = never). Guarded by _lock, like the CEO state above it.
+    private int _validationsSinceCheckpoint;
+    private int _ceoCheckpointEverySteps;
+
     // AC-202: the last stage this run's automatic phase→stage mapping set on the source issue, so a lifecycle edge does
     // not set the same stage twice (idempotent). Guarded by _lock. The CEO's manual autopilot_tracker_stage does not
     // touch this — the auto-mapping fires only on the two lifecycle edges (start, merge-ready), far from the CEO's own
@@ -108,6 +119,7 @@ internal sealed class AutopilotRunCoordinator(
         {
             _ceoSession = ceo;
             _maxConsultsPerStep = settings.MaxConsultsPerStep();
+            _ceoCheckpointEverySteps = settings.CeoCheckpointEverySteps();
         }
 
         // AC-202: the run has just started (the plan is Running after its single approval). Move the source issue to the
@@ -124,7 +136,7 @@ internal sealed class AutopilotRunCoordinator(
             settings.MaxSelfFixAttempts(),
             async step => AutopilotModelTier.HoldToCeiling(step, await host.GetProfilesAsync().ConfigureAwait(false) ?? [], settings.CostStrategy()));
         await driver.RunAsync(
-            step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
+            step => _ExecuteStepAsync(context, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
             cancellationToken);
 
         // AC-202: the run settled. When it reached merge-ready (every hard step passed), move the source issue to the
@@ -564,7 +576,6 @@ internal sealed class AutopilotRunCoordinator(
     // step exactly like a Rejected one, but never counts it as a review finding (AC-347).
     private async Task<AutopilotStepOutcome> _ExecuteStepAsync(
         IWorkspaceContext context,
-        IEmbeddedSession ceo,
         AutopilotSettings settings,
         Action<Control> showStepSession,
         Action<bool> setValidating,
@@ -759,8 +770,19 @@ internal sealed class AutopilotRunCoordinator(
                     _validation = validation;
                 }
 
+                // AC-253: replaced on the way into the next turn, not straight after the one that filled the interval —
+                // a run's last step would otherwise embed a fresh validator nothing is ever asked of. Read the live one
+                // after it: the swap may just have replaced that pane.
+                await _MaybeCheckpointCeoAsync();
+                var ceo = _CurrentCeo() ?? throw new InvalidOperationException("The run has no live CEO session to validate this step.");
+
                 await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries, evidence));
                 passed = await _AwaitValidationOrCeoEndAsync(validation.Task, ceo, cancellationToken);
+                lock (_lock)
+                {
+                    _validationsSinceCheckpoint++;
+                }
+
                 if (!passed)
                 {
                     // The CEO turned the step down; show its reason on the block so a failed step explains itself.
@@ -963,6 +985,67 @@ internal sealed class AutopilotRunCoordinator(
         throw new InvalidOperationException(string.IsNullOrWhiteSpace(reason)
             ? "The step agent's session ended before it reported its work done."
             : reason);
+    }
+
+    // The validator this run is talking to right now — the one it started with, or whichever checkpoint replaced it.
+    private IEmbeddedSession? _CurrentCeo()
+    {
+        lock (_lock)
+        {
+            return _ceoSession;
+        }
+    }
+
+    // AC-253: swaps the validator for a fresh session once it has taken on `_ceoCheckpointEverySteps` validation turns,
+    // so the diffs those turns carried stop being re-read on every later one. Called from inside the validation gate —
+    // the one place in a run where exactly one step is talking to the CEO (AC-434).
+    private async Task _MaybeCheckpointCeoAsync()
+    {
+        if (_checkpointCeo is not { } checkpointCeo)
+        {
+            return;
+        }
+
+        AutopilotPlan? current;
+        lock (_lock)
+        {
+            // A worker mid-consult (AC-201) is waiting on an answer from this exact session, and replacing it would
+            // leave it waiting for one that never comes. Defer to the next validation rather than force the swap.
+            if (!AutopilotCeoCheckpoint.IsDue(_validationsSinceCheckpoint, _ceoCheckpointEverySteps) || _consultPane is not null)
+            {
+                return;
+            }
+
+            current = plan.Plan;
+        }
+
+        if (current is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await checkpointCeo(AutopilotCeoCheckpoint.CarryOver(current)).ConfigureAwait(false) is not { } fresh)
+            {
+                // The host refused to embed a replacement; the live validator stays and the run carries on with it.
+                return;
+            }
+
+            lock (_lock)
+            {
+                _ceoSession = fresh;
+                _validationsSinceCheckpoint = 0;
+            }
+
+            // Without this the fresh pane's own autopilot_validate is turned down by ReportValidation's run gate, and
+            // the very next step would hang until its CEO-end race fired.
+            plan.BindSession(fresh.PaneId);
+        }
+        catch (Exception)
+        {
+            // A checkpoint is a saving, never a condition: a failed swap leaves the run on the validator it has.
+        }
     }
 
     // The CEO's verdict, or its session ending before it gives one — the counterpart of _AwaitStepReportOrEndAsync for

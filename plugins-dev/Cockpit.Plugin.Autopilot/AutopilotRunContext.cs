@@ -21,6 +21,10 @@ internal sealed class AutopilotRunContext
     private AutopilotPlanPhase _lastPhase = AutopilotPlanPhase.Planning;
     private IEmbeddedSession? _ceo;
 
+    // Where a checkpointed validator is re-embedded (AC-253) — the run's worktree, else its folder. Resolved in
+    // `_RunAsync` before the first CEO exists, so the coordinator can never call back here while it is still blank.
+    private string _ceoDirectory = string.Empty;
+
     // The MCP surface the run's validator CEO is scoped to (AC-197): only the CEO endpoint that hosts its own tools —
     // autopilot_validate plus autopilot_tracker_stage / autopilot_tracker_note. Left on the request's default empty list
     // it would inherit the host's whole selection (161 tools observed): every tool definition in its context, and it
@@ -29,9 +33,14 @@ internal sealed class AutopilotRunContext
     internal static readonly IReadOnlyList<string> ValidatorCeoMcpServers = [AutopilotCeoTools.EndpointName];
 
     // The embed request for a run's validating CEO — a pure static so the shape it asks the host for can be exercised
-    // without a host or a UI thread. Pointed at `workingDirectory`: the run's worktree when it has
-    // one, else the folder it runs in.
-    internal static EmbeddedSessionRequest ValidatorCeoRequest(AutopilotSettings settings, string workingDirectory, AutopilotPlan plan, string runId) =>
+    // without a host or a UI thread. Pointed at `workingDirectory`: the run's worktree when it has one, else the folder
+    // it runs in. `carryOver` is the ledger a checkpointed replacement starts with (AC-253), null for the first.
+    internal static EmbeddedSessionRequest ValidatorCeoRequest(
+        AutopilotSettings settings,
+        string workingDirectory,
+        AutopilotPlan plan,
+        string runId,
+        string? carryOver = null) =>
         new()
         {
             // The validating CEO spends on the run's behalf just as its steps do, so it is recorded against the same
@@ -63,7 +72,11 @@ internal sealed class AutopilotRunContext
             // confinement, and the host's fail-closed gate refuses the very confinement this request asks for — leaving
             // the run waiting on a validator that never starts (AC-191).
             PermissionMode = settings.AutonomyMode(),
-            AppendSystemPrompt = AutopilotValidatorBrief.For(plan),
+            // The ledger rides in the hidden brief rather than as an opening turn: it is this session's standing
+            // context, and a turn would cost the very round trip the checkpoint is there to save.
+            AppendSystemPrompt = string.IsNullOrWhiteSpace(carryOver)
+                ? AutopilotValidatorBrief.For(plan)
+                : $"{AutopilotValidatorBrief.For(plan)}\n\n{carryOver}",
         };
 
     public AutopilotRunContext(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
@@ -80,7 +93,8 @@ internal sealed class AutopilotRunContext
             host,
             Controller,
             prPublisher: new GitCliPrPublisher(),
-            evidenceSource: new GitCliEvidenceSource());
+            evidenceSource: new GitCliEvidenceSource(),
+            checkpointCeo: _CheckpointCeoAsync);
         Completed = _RunAsync(plan);
     }
 
@@ -182,11 +196,11 @@ internal sealed class AutopilotRunContext
             // A fresh CEO validator for this run (the planning round is closed): embedded on the CEO profile and briefed
             // to validate. Pointed at the run's worktree so it can actually inspect the accumulated work — not only the
             // step's summary — when validating; the main checkout when there is no run worktree.
+            _ceoDirectory = runWorktree?.Path ?? repositoryDirectory;
             IEmbeddedSession? ceo = null;
             await _runOnUi(() =>
             {
-                ceo = _context.EmbedSession(
-                    ValidatorCeoRequest(_settings, runWorktree?.Path ?? repositoryDirectory, plan, RunId));
+                ceo = _context.EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, plan, RunId));
             });
 
             if (ceo is null)
@@ -255,6 +269,29 @@ internal sealed class AutopilotRunContext
     // while already there. Pure so the edge guard is unit-testable without a host or a UI thread.
     internal static bool ShouldToastAwaiting(AutopilotPlanPhase previous, AutopilotPlanPhase current) =>
         previous != AutopilotPlanPhase.AwaitingOperator && current == AutopilotPlanPhase.AwaitingOperator;
+
+    // AC-253: replaces the run's validator with a fresh session briefed on `carryOver`, so the growing tail of earlier
+    // steps' diffs leaves its context. The new session is embedded before the old one is closed, and the run keeps the
+    // one it has when the host refuses — a checkpoint is a saving, never a condition for the run to continue.
+    private async Task<IEmbeddedSession?> _CheckpointCeoAsync(string carryOver)
+    {
+        IEmbeddedSession? fresh = null;
+        await _runOnUi(() =>
+        {
+            fresh = _context.EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, Plan, RunId, carryOver));
+            if (fresh is null)
+            {
+                return;
+            }
+
+            var previous = _ceo;
+            _ceo = fresh;
+            _ = previous?.CloseAsync();
+            Changed?.Invoke();
+        });
+
+        return fresh;
+    }
 
     private void _ShowStepView(Control view)
     {
