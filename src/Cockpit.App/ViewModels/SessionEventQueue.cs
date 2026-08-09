@@ -11,12 +11,11 @@ namespace Cockpit.App.ViewModels;
 // `Dispatcher.UIThread.Post` each. Here the producer only enqueues, and asks for a drain when no drain is
 // already pending, so a burst piles into the queue and is applied by the one drain already on its way.
 //
-// AC-529: that drain is scheduled a frame ahead rather than immediately, because the self-clocking version it
-// replaces was measured on a live session to batch nothing at all — every batch held one event, so
-// `SessionEventCoalescer` never folded and every delta cost a full copy of the reply.
+// AC-529: the first event after a quiet moment is applied at once and the ones behind it are folded into one drain
+// per frame, because posting each drain immediately was measured on a live session to fold nothing at all.
 //
-// AC-529: the window puts "nothing is left behind at the end of a turn, on an error, or when the pane closes" at
-// risk, since events now wait on a deadline. `Flush` buys it back.
+// AC-529: that window means events can wait on a deadline, so "nothing is left behind at the end of a turn, on an
+// error, or when the pane closes" is no longer free. `Flush` buys it back.
 //
 // An event whose apply throws costs only itself. Batching must not widen the blast radius of a bad event: with one
 // post per event a throw took down that event alone and its neighbours ran in their own untouched posts, so the
@@ -33,24 +32,34 @@ internal sealed class SessionEventQueue
 
     private readonly Action<SessionEvent> _apply;
     private readonly Action<Action> _post;
+    private readonly Action<Action> _postAfterWindow;
     private readonly ConcurrentQueue<SessionEvent> _pending = new();
     private int _drainPending;
 
-    // `apply`: Applies one event to the view model; runs on whatever thread `post` lands on.
-    // `post`:
-    // Test seam, the same shape as `ToastHostViewModel`'s scheduler and `DevPluginReloadWatcher`'s
-    // debounce: null takes the real dispatcher, a test hands in a manual pump so the drain
+    // `apply`: Applies one event to the view model; runs on whatever thread the posts land on.
+    // `post`/`postAfterWindow`:
+    // Test seams, the same shape as `ToastHostViewModel`'s scheduler and `DevPluginReloadWatcher`'s
+    // debounce: null takes the real dispatcher, a test hands in a manual pump so each drain
     // runs when it says so instead of when a real dispatcher gets round to it.
-    public SessionEventQueue(Action<SessionEvent> apply, Action<Action>? post = null)
+    public SessionEventQueue(
+        Action<SessionEvent> apply,
+        Action<Action>? post = null,
+        Action<Action>? postAfterWindow = null)
     {
         _apply = apply;
+        _post = post ?? (action => Dispatcher.UIThread.Post(action));
 
-        // One-shot rather than a running timer, so nothing holds a recycled view model alive (AC-611).
-        _post = post ?? (action => DispatcherTimer.RunOnce(action, TimeSpan.FromMilliseconds(DrainDelayMs)));
+        // Posted first, timer armed second: `DispatcherTimer` binds to `Dispatcher.CurrentDispatcher`, so arming one
+        // straight from the runtime's pump thread lands it on a dispatcher nothing pumps (AC-529, and the shape
+        // `TtyViewModel` already uses). One-shot, so nothing keeps ticking against a recycled pane (AC-611).
+        _postAfterWindow = postAfterWindow
+            ?? post
+            ?? (action => Dispatcher.UIThread.Post(
+                () => DispatcherTimer.RunOnce(action, TimeSpan.FromMilliseconds(DrainDelayMs))));
     }
 
-    // Applies what the drain window is still holding. Called on the UI thread where a pane stops listening.
-    public void Flush() => Drain();
+    // Applies what the drain window is still holding. Runs `_apply` inline, so the caller owes it the UI thread.
+    public void Flush() => _ApplyQueued();
 
     // Takes one event from the runtime's pump thread and makes sure a drain is coming.
     public void Enqueue(SessionEvent evt)
@@ -62,16 +71,36 @@ internal sealed class SessionEventQueue
         }
     }
 
-    // Applies everything queued so far, in arrival order, with adjacent deltas folded. In the app it only ever runs
-    // as the action `Enqueue` posted; a test's manual pump runs the same method.
+    // The leading edge: applies what is queued now, then holds the window open so the events behind it fold.
     internal void Drain()
     {
-        // Cleared before the queue is read, never after. An event enqueued while this drain runs then finds the flag
-        // clear and posts its own drain, so the worst case is a later drain that finds nothing to do — whereas
-        // clearing afterwards would let an event slip in between the last dequeue and the clear with no drain coming
-        // for it, which is silent loss.
+        _ApplyQueued();
+        _postAfterWindow(_DrainWindow);
+    }
+
+    // One folded drain per window, for as long as events keep arriving. An empty window ends the burst and releases
+    // the flag, so the next event gets its own leading edge instead of waiting a frame for nothing.
+    private void _DrainWindow()
+    {
+        if (_ApplyQueued())
+        {
+            _postAfterWindow(_DrainWindow);
+            return;
+        }
+
         Interlocked.Exchange(ref _drainPending, 0);
 
+        // Released before this last look, never after: an event that slips in behind the release finds the flag clear
+        // and posts its own drain, whereas releasing afterwards would leave it queued with nothing coming for it.
+        if (!_pending.IsEmpty && Interlocked.Exchange(ref _drainPending, 1) == 0)
+        {
+            _post(Drain);
+        }
+    }
+
+    // Applies everything queued so far, in arrival order, with adjacent deltas folded. Returns whether it found any.
+    private bool _ApplyQueued()
+    {
         // A fresh list per drain rather than a reused field: Coalesce hands this very instance back when a batch had
         // nothing to fold, so a reused buffer would be cleared underneath an iteration if a drain ever nested.
         var batch = new List<SessionEvent>();
@@ -82,7 +111,7 @@ internal sealed class SessionEventQueue
 
         if (batch.Count == 0)
         {
-            return;
+            return false;
         }
 
         foreach (var evt in SessionEventCoalescer.Coalesce(batch))
@@ -95,10 +124,13 @@ internal sealed class SessionEventQueue
             {
                 // Re-posted rather than re-thrown here: thrown from this loop it would take the rest of the batch
                 // with it, which is exactly the blast radius one-post-per-event did not have. Capture/Throw keeps the
-                // original stack, so the global handler sees what it saw before.
+                // original stack, so the global handler sees what it saw before. Through `_post`, never the window:
+                // a timer-armed throw reaches no unhandled-exception handler at all.
                 var failure = ExceptionDispatchInfo.Capture(ex);
                 _post(failure.Throw);
             }
         }
+
+        return true;
     }
 }

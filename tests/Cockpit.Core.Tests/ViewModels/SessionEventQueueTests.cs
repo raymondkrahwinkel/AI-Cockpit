@@ -68,8 +68,9 @@ public class SessionEventQueueTests
 
     /// <summary>
     /// The case that would be silent loss: the last delta of a turn (and the turn's own end event) arriving while a
-    /// drain is already running. The flag is cleared before the queue is read precisely so that such an event claims
-    /// a drain of its own instead of finding one "already pending" that has in fact stopped looking.
+    /// drain is already running. Such an event must still be applied rather than find a drain "already pending" that
+    /// has in fact stopped looking — under AC-529's window that is the next window picking it up, and the burst only
+    /// ends on a window that finds nothing.
     /// </summary>
     [Fact]
     public void Enqueue_WhileADrainIsRunning_PostsAFurtherDrain_SoTheLateEventStillLands()
@@ -100,7 +101,10 @@ public class SessionEventQueueTests
 
         pump.RunAll();
 
-        Assert.Equal(2, pump.PostCount);
+        // Three, where the self-clocking version this replaced needed two: the leading-edge drain, the window that
+        // folds the tail that arrived during it, and the window that finds nothing and ends the burst. The count is
+        // the shape, not the guarantee — the guarantee is the line below, that nothing went missing.
+        Assert.Equal(3, pump.PostCount);
         Assert.Equal(new[] { "ab", "c", "TurnCompleted" }, applied.Select(Describe));
     }
 
@@ -372,6 +376,109 @@ public class SessionEventQueueTests
         Text("Done", 3), Text(".", 3),
         new TurnCompleted { SessionId = Sid, Subtype = "success", Result = "ok", IsError = false },
     ];
+
+    /// <summary>
+    /// The leading edge applies at once and everything behind it folds into one drain per window (AC-529): posting
+    /// each drain immediately was measured on a live session to fold nothing at all.
+    /// </summary>
+    [Fact]
+    public void Enqueue_EventsArrivingWhileTheWindowIsOpen_FoldIntoOneDrainRatherThanOneEach()
+    {
+        var pump = new ManualPump();
+        var window = new ManualPump();
+        var applied = new List<SessionEvent>();
+        var queue = new SessionEventQueue(applied.Add, pump.Post, window.Post);
+
+        queue.Enqueue(Text("a", block: 0));
+        pump.RunAll();
+
+        Assert.Single(applied);
+
+        // Arriving one at a time, the way a live stream does. Each finds the window still open, so none of them
+        // gets a drain of its own — which is exactly what the immediate-post version failed to do.
+        queue.Enqueue(Text("b", block: 0));
+        queue.Enqueue(Text("c", block: 0));
+        queue.Enqueue(Text("d", block: 0));
+
+        Assert.Equal(1, pump.PostCount);
+
+        window.RunAll();
+
+        Assert.Equal(2, applied.Count);
+        Assert.Equal("bcd", ((AssistantTextDelta)applied[1]).Text);
+    }
+
+    /// <summary>
+    /// An empty window ends the burst: the next event is applied at once instead of waiting a frame behind a
+    /// window that has nothing to fold it with (AC-529).
+    /// </summary>
+    [Fact]
+    public void Enqueue_AfterAWindowClosedOnNothing_GetsItsOwnLeadingEdgeAgain()
+    {
+        var pump = new ManualPump();
+        var window = new ManualPump();
+        var applied = new List<SessionEvent>();
+        var queue = new SessionEventQueue(applied.Add, pump.Post, window.Post);
+
+        queue.Enqueue(Text("a", block: 0));
+        pump.RunAll();
+        window.RunAll();
+
+        Assert.Single(applied);
+
+        queue.Enqueue(Text("b", block: 1));
+
+        Assert.Equal(2, pump.PostCount);
+
+        pump.RunAll();
+        Assert.Equal(2, applied.Count);
+    }
+
+    /// <summary>
+    /// An event that lands while the burst is being wound down is still applied, rather than sitting in the queue
+    /// with no drain coming for it (AC-529).
+    ///
+    /// It does not pin the narrower race the code guards against — an event arriving after `_ApplyQueued` came back
+    /// empty and after the flag was released, which is why the release comes before that last look. There is no seam
+    /// between those two statements to land an event in, so this test reaches the guarantee by the ordinary path and
+    /// stays green if that guard is removed. Naming it after the race would be a test claiming a branch it cannot
+    /// reach.
+    /// </summary>
+    [Fact]
+    public void Enqueue_ArrivingWhileTheWindowIsWindingDown_IsStillApplied()
+    {
+        var pump = new ManualPump();
+        var applied = new List<SessionEvent>();
+        SessionEventQueue? queue = null;
+
+        // The window's action enqueues before it runs, standing in for the pump thread landing an event at exactly
+        // the moment the burst is being released. Once, not on every post: an event on every window keeps the burst
+        // alive for ever, and `ManualPump.RunAll` drains until empty, so the run never ends and the applied list
+        // grows without bound.
+        var window = new ManualPump();
+        var raced = false;
+        queue = new SessionEventQueue(applied.Add, pump.Post, action =>
+        {
+            window.Post(() =>
+            {
+                if (!raced)
+                {
+                    raced = true;
+                    queue!.Enqueue(Text("late", block: 7));
+                }
+
+                action();
+            });
+        });
+
+        queue.Enqueue(Text("a", block: 0));
+        pump.RunAll();
+        window.RunAll();
+        pump.RunAll();
+
+        Assert.Equal(2, applied.Count);
+        Assert.Equal("late", ((AssistantTextDelta)applied[1]).Text);
+    }
 
     private static AssistantTextDelta Text(string text, int block, string? parent = null) =>
         new() { SessionId = Sid, BlockIndex = block, Text = text, ParentToolUseId = parent };

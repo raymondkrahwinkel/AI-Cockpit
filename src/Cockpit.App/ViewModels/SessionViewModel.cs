@@ -2567,16 +2567,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // hang shutdown with a live child claude (#32).
     private async Task _StopRuntimeAsync()
     {
+        if (_runtime is not null)
+        {
+            _runtime.EventAppended -= _OnSessionEvent;
+        }
+
+        // AC-529: ahead of the null guard, because a teardown that finds the runtime already gone still has the last
+        // window's events queued. `Invoke` because `Flush` applies inline and several teardown paths carry no UI
+        // context — `Transcript` is bound, so applying off the UI thread corrupts it.
+        Dispatcher.UIThread.Invoke(_eventQueue.Flush);
+
         if (_runtime is null)
         {
             return;
         }
-
-        _runtime.EventAppended -= _OnSessionEvent;
-
-        // AC-529: after the unsubscribe so nothing refills behind it, before the runtime goes so the turn's last
-        // deltas still land in the transcript.
-        _eventQueue.Flush();
 
         var runtime = _runtime;
         _runtime = null;
