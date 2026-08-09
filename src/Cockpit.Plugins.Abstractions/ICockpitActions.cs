@@ -12,7 +12,7 @@ public interface ICockpitActions
 
     /// <summary>
     /// Asks the operator to confirm a destructive action (e.g. deleting a saved item) with the cockpit's own
-    /// confirmation dialog. Returns true only when they confirm; Cancel/✕/Esc return false. Default returns
+    /// confirmation dialog. Returns true only when they confirm; Cancel/close/Esc return false. Default returns
     /// true (proceed) so a plugin built against this SDK still works on an older host without the dialog — only
     /// the app's own host shows the real confirmation.
     /// </summary>

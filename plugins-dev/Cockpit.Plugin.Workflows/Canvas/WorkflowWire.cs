@@ -95,7 +95,7 @@ internal sealed class WorkflowWire
             };
     }
 
-    // Raised when the operator clicked the wire's ✕.
+    // Raised when the operator clicked the wire's remove button.
     public event EventHandler? RemoveRequested;
 
     public Path Line { get; }
@@ -103,7 +103,7 @@ internal sealed class WorkflowWire
     // The wide, invisible curve the pointer meets.
     public Path Hit { get; }
 
-    // The ✕ on the middle of the wire, shown on hover.
+    // The remove button on the middle of the wire, shown on hover.
     public Border Remove { get; }
 
     public Path Arrow { get; }

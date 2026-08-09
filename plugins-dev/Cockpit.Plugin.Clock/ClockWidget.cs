@@ -7,7 +7,7 @@ using Cockpit.Plugins.Abstractions.Widgets;
 namespace Cockpit.Plugin.Clock;
 
 // The time and date. The simplest widget there is, and deliberately so: it declares no settings form, which
-// is what proves the pane's ⚙ is really gated on having one rather than always drawn.
+// is what proves the pane's settings icon is really gated on having one rather than always drawn.
 internal sealed class ClockWidget : UserControl
 {
     private readonly TextBlock _time = new()
@@ -38,7 +38,7 @@ internal sealed class ClockWidget : UserControl
         _Tick();
 
         // Its own timer rather than the host's refresh: a clock is the one widget that has to update whether or
-        // not anyone asked it to. RefreshRequested is still honoured, so the pane's ↻ does something visible.
+        // not anyone asked it to. RefreshRequested is still honoured, so the pane's refresh button does something visible.
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => _Tick();
         _timer.Start();

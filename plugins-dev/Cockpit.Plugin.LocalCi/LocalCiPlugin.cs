@@ -94,7 +94,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         // whichever pane happens to be selected when the operator gets to it.
         host.AddSessionHeaderAction(new PluginSessionAction(
             "Run CI on this machine…",
-            "🧪",
+            "",
             session => _ = _OpenForAsync(host, session, runner, tracker, head, gateSettings))
         {
             IconKind = MaterialIconKind.FlaskOutline,

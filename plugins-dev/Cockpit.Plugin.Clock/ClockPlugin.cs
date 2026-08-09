@@ -13,7 +13,7 @@ namespace Cockpit.Plugin.Clock;
 // than one that already has a clock. Its former other half, the system monitor, is now its own plugin from the
 // store (wanting the clock but not the system monitor means being able to download and install just the clock)
 // — one plugin per widget is what makes that possible. Between them they still
-// prove the ⚙ is really gated: this one has no settings, that one has.
+// prove the settings icon is really gated: this one has no settings, that one has.
 public sealed class ClockPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

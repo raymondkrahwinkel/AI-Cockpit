@@ -151,9 +151,8 @@ public sealed class ManagedCliConfigSection
     private void _SetMuted(string message)
     {
         _status.Text = message;
-        // Checkmark-less and muted for the neutral states (not-installed, downloading) — a green ✓ there would read
-        // as a success mark on something that has not happened. The green ✓ (ProviderConfigStatus.Set) is kept only
-        // for the actually-installed state.
+        // Muted rather than green for the neutral states (not-installed, downloading) — the green
+        // (ProviderConfigStatus.Set) is kept only for the actually-installed state.
         _status.Foreground = ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#949aa5");
     }
 

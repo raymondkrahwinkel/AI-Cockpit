@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.SystemMonitor;
 // than reaching for per-platform counters.
 // An instance rather than a static, because `CpuPercent` is a difference against the previous
 // reading and that sample point belongs to the pane doing the asking. Shared statically, two System Monitors —
-// and placing one twice, configured differently, is the whole point of a widget with a ⚙ — consumed each
+// and placing one twice, configured differently, is the whole point of a widget with settings — consumed each
 // other's: both timers fire two seconds apart, so whichever ran second measured against a sample point
 // microseconds old and reported a number that was not the CPU share at all. Nothing is shared now, so there is
 // nothing to corrupt.

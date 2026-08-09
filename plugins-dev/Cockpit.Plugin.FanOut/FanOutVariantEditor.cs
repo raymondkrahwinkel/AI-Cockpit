@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.FanOut;
 
@@ -29,7 +31,7 @@ internal sealed class FanOutVariantEditor
 
         var remove = new Button
         {
-            Content = "✕",
+            Content = new MaterialIcon { Kind = MaterialIconKind.Close, Width = 12, Height = 12 },
             VerticalAlignment = VerticalAlignment.Center,
             [Grid.ColumnProperty] = 2,
         };
@@ -44,7 +46,7 @@ internal sealed class FanOutVariantEditor
 
     public Control View { get; }
 
-    // Raised when this row's ✕ is pressed; the form decides whether the row may actually go.
+    // Raised when this row's remove button is pressed; the form decides whether the row may actually go.
     public event EventHandler? RemoveRequested;
 
     // Fills the profile picker once the host has answered. Rows start on different profiles where there are

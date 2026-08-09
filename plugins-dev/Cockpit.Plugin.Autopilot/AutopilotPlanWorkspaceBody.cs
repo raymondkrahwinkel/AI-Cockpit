@@ -440,13 +440,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    private static string _HistoryStepMark(AutopilotStepStatus status) => status switch
+    private static MaterialIconKind _HistoryStepMark(AutopilotStepStatus status) => status switch
     {
-        AutopilotStepStatus.Passed => "✓",
-        AutopilotStepStatus.Failed => "✗",
-        AutopilotStepStatus.Skipped => "–",
-        AutopilotStepStatus.Blocked => "⏸",
-        _ => "·",
+        AutopilotStepStatus.Passed => MaterialIconKind.CheckCircleOutline,
+        AutopilotStepStatus.Failed => MaterialIconKind.CloseCircleOutline,
+        AutopilotStepStatus.Skipped => MaterialIconKind.MinusCircleOutline,
+        AutopilotStepStatus.Blocked => MaterialIconKind.PauseCircleOutline,
+        _ => MaterialIconKind.CircleSmall,
     };
 
     // The AC-347 correction label, in operator language rather than the enum name — read next to the step title so
@@ -480,14 +480,27 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         var correctionLabel = _CorrectionLabel(step.Correction);
         var correctionSuffix = correctionLabel.Length == 0 ? string.Empty : $" — {correctionLabel}";
-        lines.Children.Add(new TextBlock
+        var stepForeground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush");
+        var stepRow = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 2, 0, 0) };
+        var stepMark = new MaterialIcon
         {
-            Text = $"{_HistoryStepMark(step.Status)}  {step.Title}{correctionSuffix}",
+            Kind = _HistoryStepMark(step.Status),
+            Width = 11,
+            Height = 11,
+            Margin = new Thickness(0, 1, 4, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            Foreground = stepForeground,
+            [DockPanel.DockProperty] = Dock.Left,
+        };
+        stepRow.Children.Add(stepMark);
+        stepRow.Children.Add(new TextBlock
+        {
+            Text = $"{step.Title}{correctionSuffix}",
             FontSize = 10.5,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 2, 0, 0),
-            Foreground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
+            Foreground = stepForeground,
         });
+        lines.Children.Add(stepRow);
 
         // Which tier actually ran this step (AC-256). While the run is live this is the block's model chip; once it
         // settles the chip is gone, and this line is the only place the mix of a finished run can still be read — the
@@ -714,9 +727,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, [DockPanel.DockProperty] = Dock.Right };
-        buttons.Children.Add(_QueueButton("↑", () => _queue.MoveUp(index)));
-        buttons.Children.Add(_QueueButton("↓", () => _queue.MoveDown(index)));
-        buttons.Children.Add(_QueueButton("✕", () => _queue.RemoveAt(index)));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowUp, () => _queue.MoveUp(index)));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowDown, () => _queue.MoveDown(index)));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.Close, () => _queue.RemoveAt(index)));
 
         return new Border
         {
@@ -728,9 +741,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    private Button _QueueButton(string glyph, Action onClick)
+    private Button _QueueButton(MaterialIconKind icon, Action onClick)
     {
-        var button = new Button { Content = glyph, Padding = new Thickness(7, 2), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        var button = new Button
+        {
+            Content = new MaterialIcon { Kind = icon, Width = 12, Height = 12 },
+            Padding = new Thickness(7, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         button.Click += (_, _) => onClick();
         return button;
     }
@@ -1519,14 +1537,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 var menu = new MenuFlyout();
                 foreach (var favorite in remembered.Favorites)
                 {
-                    menu.Items.Add(_RememberedPathItem($"★  {favorite}", favorite, box));
+                    menu.Items.Add(_RememberedPathItem(favorite, favorite, box, MaterialIconKind.Star));
                 }
 
                 // Recents that are not already pinned above, so a folder that is both a favorite and recent shows once
                 // (the shared history keeps the two lists independent — the New-session quick-pick dedupes the same way).
                 foreach (var recent in remembered.Recents.Where(recent => !remembered.Favorites.Any(favorite => _SamePath(favorite, recent))))
                 {
-                    menu.Items.Add(_RememberedPathItem(recent, recent, box));
+                    menu.Items.Add(_RememberedPathItem(recent, recent, box, null));
                 }
 
                 if (menu.Items.Count == 0)
@@ -1606,9 +1624,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return (field, box);
     }
 
-    private static MenuItem _RememberedPathItem(string header, string path, TextBox box)
+    private static MenuItem _RememberedPathItem(string header, string path, TextBox box, MaterialIconKind? icon)
     {
         var item = new MenuItem { Header = header };
+        if (icon is { } kind)
+        {
+            item.Icon = new MaterialIcon { Kind = kind, Width = 14, Height = 14 };
+        }
+
         item.Click += (_, _) => box.Text = path;
         return item;
     }
@@ -2034,17 +2057,27 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
             BorderThickness = new Thickness(step.Status == AutopilotStepStatus.Pending ? 2 : 0),
             BorderBrush = _Brush("CockpitHairlineBrush"),
-            Child = new TextBlock
-            {
-                Text = step.Status == AutopilotStepStatus.Passed ? "✓" : $"{index}",
-                FontSize = 10,
-                FontWeight = FontWeight.Bold,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Foreground = step.Status is AutopilotStepStatus.Pending
-                    ? _Brush("CockpitTextFaintBrush")
-                    : _Brush("CockpitTextOnStatusBrush"),
-            },
+            Child = step.Status == AutopilotStepStatus.Passed
+                ? new MaterialIcon
+                {
+                    Kind = MaterialIconKind.Check,
+                    Width = 10,
+                    Height = 10,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = _Brush("CockpitTextOnStatusBrush"),
+                }
+                : new TextBlock
+                {
+                    Text = $"{index}",
+                    FontSize = 10,
+                    FontWeight = FontWeight.Bold,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = step.Status is AutopilotStepStatus.Pending
+                        ? _Brush("CockpitTextFaintBrush")
+                        : _Brush("CockpitTextOnStatusBrush"),
+                },
         };
 
         var meta = new StackPanel
