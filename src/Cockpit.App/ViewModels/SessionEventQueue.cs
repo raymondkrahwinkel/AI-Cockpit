@@ -9,13 +9,14 @@ namespace Cockpit.App.ViewModels;
 //
 // The runtime pumps its driver off the UI thread and raises an event per streamed delta, which used to be one
 // `Dispatcher.UIThread.Post` each. Here the producer only enqueues, and asks for a drain when no drain is
-// already pending — so a quiet stream still gets a post per event and loses no responsiveness, while a burst the UI
-// thread cannot keep up with piles into the queue and is applied by the one drain already on its way.
+// already pending, so a burst piles into the queue and is applied by the one drain already on its way.
 //
-// It is self-clocking on purpose: no timer, no interval, and therefore no buffer that is holding events on a
-// deadline. That is what keeps the "nothing is left behind at the end of a turn, on an error, or when the pane
-// closes" property cheap — every enqueue either finds a drain pending or posts one, so as long as the dispatcher
-// still runs a posted action, the queue empties.
+// AC-529: that drain is scheduled a frame ahead rather than immediately, because the self-clocking version it
+// replaces was measured on a live session to batch nothing at all — every batch held one event, so
+// `SessionEventCoalescer` never folded and every delta cost a full copy of the reply.
+//
+// AC-529: the window puts "nothing is left behind at the end of a turn, on an error, or when the pane closes" at
+// risk, since events now wait on a deadline. `Flush` buys it back.
 //
 // An event whose apply throws costs only itself. Batching must not widen the blast radius of a bad event: with one
 // post per event a throw took down that event alone and its neighbours ran in their own untouched posts, so the
@@ -26,6 +27,10 @@ namespace Cockpit.App.ViewModels;
 // the batch, wider than the one delta the old path would have lost.
 internal sealed class SessionEventQueue
 {
+    // One frame at 30 fps, matching `MarkdownView.RebuildIntervalMs`: the markdown rows repaint on that cadence
+    // anyway, so folding the deltas that arrive between two repaints removes work no one could have seen.
+    private const int DrainDelayMs = 33;
+
     private readonly Action<SessionEvent> _apply;
     private readonly Action<Action> _post;
     private readonly ConcurrentQueue<SessionEvent> _pending = new();
@@ -34,13 +39,18 @@ internal sealed class SessionEventQueue
     // `apply`: Applies one event to the view model; runs on whatever thread `post` lands on.
     // `post`:
     // Test seam, the same shape as `ToastHostViewModel`'s scheduler and `DevPluginReloadWatcher`'s
-    // debounce: null takes the real `Dispatcher.UIThread`, a test hands in a manual pump so the drain
+    // debounce: null takes the real dispatcher, a test hands in a manual pump so the drain
     // runs when it says so instead of when a real dispatcher gets round to it.
     public SessionEventQueue(Action<SessionEvent> apply, Action<Action>? post = null)
     {
         _apply = apply;
-        _post = post ?? (action => Dispatcher.UIThread.Post(action));
+
+        // One-shot rather than a running timer, so nothing holds a recycled view model alive (AC-611).
+        _post = post ?? (action => DispatcherTimer.RunOnce(action, TimeSpan.FromMilliseconds(DrainDelayMs)));
     }
+
+    // Applies what the drain window is still holding. Called on the UI thread where a pane stops listening.
+    public void Flush() => Drain();
 
     // Takes one event from the runtime's pump thread and makes sure a drain is coming.
     public void Enqueue(SessionEvent evt)

@@ -2573,6 +2573,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _runtime.EventAppended -= _OnSessionEvent;
+
+        // AC-529: after the unsubscribe so nothing refills behind it, before the runtime goes so the turn's last
+        // deltas still land in the transcript.
+        _eventQueue.Flush();
+
         var runtime = _runtime;
         _runtime = null;
         OnPropertyChanged(nameof(IsSessionReady));
