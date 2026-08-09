@@ -244,4 +244,26 @@ public class AutopilotRunContextTests
         Assert.Equal("work", settings.CeoProfileLabel());
         Assert.Equal("opus", settings.CeoModel());
     }
+
+    [Fact]
+    public void ValidatorCeoRequest_WithACarryOver_StaysTheSameValidatorOnTheSameRun()
+    {
+        // AC-253: the replacement carries the ledger in its hidden brief, and is otherwise the validator the run
+        // already had — same profile/model (AC-254) and same run (AC-251), or the very context this measures would
+        // drop out of usage-history.jsonl the moment the checkpoint fires.
+        var settings = new AutopilotSettings(new FakeStorage());
+        settings.SetCeoProfileLabel("work");
+        settings.SetCeoValidationModel("sonnet");
+        var plan = _SourcePlan();
+
+        var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", plan, "run-1", "- Code it: done, verified");
+
+        Assert.Equal("work", request.ProfileId);
+        Assert.Equal("sonnet", request.Model);
+        Assert.Equal("run-1", request.RunId);
+        Assert.Equal(plan.Label, request.RunLabel);
+        Assert.Contains("- Code it: done, verified", request.AppendSystemPrompt);
+        // The ledger is added to the validator brief, never instead of it.
+        Assert.Contains(AutopilotValidatorBrief.For(plan), request.AppendSystemPrompt);
+    }
 }

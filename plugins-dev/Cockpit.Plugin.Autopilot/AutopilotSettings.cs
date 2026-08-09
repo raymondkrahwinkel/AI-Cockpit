@@ -15,6 +15,7 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string CeoModelKey = "ceoModel";
     private const string CeoValidationProfileKey = "ceoValidationProfileLabel";
     private const string CeoValidationModelKey = "ceoValidationModel";
+    private const string CeoCheckpointEveryKey = "ceoCheckpointEverySteps";
     private const string AutonomyModeKey = "autonomyMode";
     private const string CostStrategyKey = "costStrategy";
     private const string MaxConcurrentRunsKey = "maxConcurrentRuns";
@@ -81,6 +82,15 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public string? CeoValidationProfileLabelOverride(string? projectId = null) => _ReadString(projectId, CeoValidationProfileKey);
 
     public string? CeoValidationModelOverride(string? projectId = null) => _ReadString(projectId, CeoValidationModelKey);
+
+    // After how many validation turns the run replaces its validator CEO with a fresh session carrying only the ledger
+    // of what it already judged (AC-253, default 3) — the one long-lived validator otherwise re-reads every earlier
+    // step's diff on every new turn. 0 never checkpoints, which is what makes a before/after on `usage-history.jsonl`
+    // measurable at all (AC-251); negative values read as 0 rather than checkpointing on every turn.
+    public int CeoCheckpointEverySteps(string? projectId = null) => Math.Max(0, _ReadValue(projectId, CeoCheckpointEveryKey, 3));
+
+    public void SetCeoCheckpointEverySteps(int everySteps, string? projectId = null) =>
+        _Write(projectId, CeoCheckpointEveryKey, Math.Max(0, everySteps));
 
     // The permission mode that turns off a permission-based (Claude) provider's worktree confinement (AC-209):
     // coerced out of an autonomous run's effective mode. Public callers read the coerced value through `AutonomyMode`.
