@@ -7,11 +7,11 @@
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="520"
+        mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="600"
         x:Class="Cockpit.App.Views.AssistantChatWindow"
         x:DataType="vm:AssistantChatViewModel"
         Title="Assistant"
-        Width="420" Height="560" MinWidth="340" MinHeight="360"
+        Width="520" Height="640" MinWidth="340" MinHeight="360"
         WindowStartupLocation="CenterOwner"
         Topmost="True"
         WindowDecorations="BorderOnly"
@@ -62,7 +62,18 @@
                                        ToolTip.Tip="Set in Options → Voice. Every skipped card is still written to the consent trail."/>
                         </StackPanel>
                     </StackPanel>
-                    <ToggleButton Grid.Column="2" IsChecked="{Binding SpeakReplies}" Classes="Subtle Compact"
+                    <!-- AC-662: the same always-on/listen switch the sidebar chip carries (AssistantIndicator.axaml),
+                         reached from `Indicator` rather than reimplemented — reusing its command keeps the one-time
+                         cost confirmation below in step with the sidebar instead of a second copy that could drift.
+                         Null (Screenshotter/tests that build this view model without a coordinator) hides it rather
+                         than binding to nothing. -->
+                    <CheckBox Grid.Column="2" Classes="Switch assistantIndicatorSwitch" VerticalAlignment="Center" Margin="0,0,8,0"
+                              IsVisible="{Binding Indicator, Converter={x:Static ObjectConverters.IsNotNull}}"
+                              IsChecked="{Binding Indicator.IsListeningModeAlwaysOn, Mode=OneWay, FallbackValue=False}"
+                              Command="{Binding Indicator.ToggleListeningModeCommand}"
+                              ToolTip.Tip="On: the microphone stays open and everything you say goes to the assistant. Off: only the held assistant hotkey opens it."/>
+
+                    <ToggleButton Grid.Column="3" IsChecked="{Binding SpeakReplies}" Classes="Subtle Compact"
                                   VerticalAlignment="Center" Margin="0,0,4,0"
                                   ToolTip.Tip="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
                         <materialIcons:MaterialIcon Kind="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
@@ -78,7 +89,7 @@
                          reading it is a file read (AssistantChatViewModel.LoadSpawnLogCommand), and a window that
                          is opened far more often than this history is actually consulted should not pay for it
                          every time. -->
-                    <Button Grid.Column="3" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                    <Button Grid.Column="4" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
                             ToolTip.Tip="What the assistant has started or stopped">
                         <materialIcons:MaterialIcon Kind="History" Width="14" Height="14"/>
                         <Button.Flyout>
@@ -141,7 +152,7 @@
                     <!-- Save the conversation as text. This window is the assistant's only surface, so a
                          conversation that went wrong here can only be shown to anyone else by describing it from
                          memory or photographing the screen. Plain text, every row, folded ones included. -->
-                    <Button Grid.Column="4" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
                             Click="_OnExportClick" ToolTip.Tip="Save this conversation as a text file">
                         <materialIcons:MaterialIcon Kind="TrayArrowDown" Width="14" Height="14"/>
                     </Button>
@@ -151,11 +162,26 @@
                          that it belongs. It belongs beside the setting that needs it: the permission mode in
                          Options → Voice → Assistant Profile, where the sentence "this applies at the next start"
                          and the start that answers it are one thing instead of two windows apart. -->
-                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
+                    <Button Grid.Column="6" Classes="Subtle Compact" VerticalAlignment="Center"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
                     </Button>
                 </Grid>
+            </Border>
+
+            <!-- AC-662: the switch's one-time cost explanation (criterion 18 on the sidebar chip), reused here
+                 rather than re-worded — same Indicator, same command, so acknowledging it once covers both
+                 surfaces. -->
+            <Border DockPanel.Dock="Top" Classes="assistantIndicatorConfirm" Margin="10,8,10,0"
+                    IsVisible="{Binding Indicator.IsAlwaysOnConfirmationPending, FallbackValue=False}">
+                <StackPanel Spacing="8">
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Everything you say will be sent to the assistant, and every utterance costs. This is asked once."/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="Turn on" Classes="Accent Compact" Command="{Binding Indicator.ConfirmAlwaysOnCommand}"/>
+                        <Button Content="Cancel" Classes="Ghost Compact" Command="{Binding Indicator.CancelAlwaysOnConfirmationCommand}"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
 
             <!-- Footer: the text field plus what a message can carry with it (AC-630 — queued chips, image

@@ -153,16 +153,24 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         IAssistantSessionHost host,
         IAssistantSettingsStore settingsStore,
         IVoicePlaybackQueue playbackQueue,
-        IAssistantSpawnAuditLog? spawnAuditLog = null)
+        IAssistantSpawnAuditLog? spawnAuditLog = null,
+        AssistantIndicatorViewModel? indicator = null)
     {
         _host = host;
         _settingsStore = settingsStore;
         _playbackQueue = playbackQueue;
         _spawnAuditLog = spawnAuditLog;
+        Indicator = indicator;
         _observedSession = _host.Session;
         _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
     }
+
+    // AC-662: the sidebar's always-on/listen switch (AssistantIndicatorCoordinator.Indicator), fed in so the
+    // header can carry the same toggle without a second copy of its state, its command, or its one-time cost
+    // confirmation. Null for every construction path that predates this ticket (tests, Screenshotter's design-time
+    // scenes) — the header hides the switch rather than binding to nothing.
+    public AssistantIndicatorViewModel? Indicator { get; }
 
     // The assistant's own session, bound straight through to the existing SDK transcript view. Null until the assistant has been lazily started at least once.
     public SessionViewModel? Session => _host.Session;

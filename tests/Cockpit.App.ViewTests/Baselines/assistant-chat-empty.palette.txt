@@ -11,6 +11,7 @@
 #FF12141A  CockpitChromeBgColor
 #FF1A1D24  CockpitPanelBgColor
 #FF20242C  CockpitHairlineSoftColor
+#FF202430  CockpitInsetBgColor
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
 #FF656C78  CockpitTextFaintColor
@@ -21,4 +22,6 @@
 radius  0,0,0,0
 radius  10,10,10,10
 radius  13,13,13,13
+radius  20,20,20,20
+radius  3,3,3,3
 radius  9,9,9,9
