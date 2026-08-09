@@ -62,8 +62,19 @@ public partial class SessionView : UserControl
         // Not while the operator is in another window (AC-636): in single-pane/zoom mode a session closing swaps
         // which pane is realised, and this attach would then take the keyboard out of the assistant's chat pop-out
         // — the same steal as the selection path's, one control further down.
+        // AC-650: and not for a pane that is not the selection. RestoreSessionPanesAsync attaches every
+        // restored pane's view in the same burst; every one of them used to post this same Focus() regardless
+        // of selection, so each attach tore the keyboard away from the last (Avalonia's TextBox teardown on
+        // that hand-off, TextBoxTextInputMethodClient.SetPresenter, is what became ruinously slow). Only the
+        // one CockpitView already means to focus (via SelectedSession) claims it here; the others still
+        // restore fully, they just do not fight over the caret.
         Dispatcher.UIThread.Post(() =>
         {
+            if (DataContext is SessionPanelViewModel { IsSelected: false })
+            {
+                return;
+            }
+
             if (!AutoFocus.WouldTakeTheKeyboardFromAnotherWindow(this))
             {
                 InputBox.Focus();
