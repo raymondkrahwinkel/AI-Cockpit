@@ -18,6 +18,8 @@ internal sealed class WorkspaceEntry
 
     public bool? StackSessionsVertically { get; set; }
 
+    public double? FocusRailWeight { get; set; }
+
     public List<WorkspacePaneEntry> Panes { get; set; } = [];
 
     public static WorkspaceEntry FromDomain(Workspace workspace) => new()
@@ -30,6 +32,7 @@ internal sealed class WorkspaceEntry
         Layout = workspace.Type == WorkspaceType.Dashboard ? DashboardLayoutEntry.FromDomain(workspace.Layout) : null,
         SingleSessionLayout = workspace.Type == WorkspaceType.Sessions ? workspace.SingleSessionLayout : null,
         StackSessionsVertically = workspace.Type == WorkspaceType.Sessions ? workspace.StackSessionsVertically : null,
+        FocusRailWeight = workspace.Type == WorkspaceType.Sessions ? workspace.FocusRailWeight : null,
         Panes = [.. workspace.Panes.Select(WorkspacePaneEntry.FromDomain)],
     };
 
@@ -49,6 +52,7 @@ internal sealed class WorkspaceEntry
             // existed means, and what every workspace means until someone overrides it.
             SingleSessionLayout = type == WorkspaceType.Sessions ? SingleSessionLayout : null,
             StackSessionsVertically = type == WorkspaceType.Sessions ? StackSessionsVertically : null,
+            FocusRailWeight = type == WorkspaceType.Sessions ? FocusRailWeight : null,
             Panes = [.. Panes.Select(pane => pane.ToDomain()).Where(pane => WorkspaceTypeRules.Accepts(type, pane.Kind))],
         };
     }

@@ -15,6 +15,8 @@ internal sealed class LayoutSettingsEntry
 
     public bool SidebarCollapsed { get; set; }
 
+    public double FocusRailWeight { get; set; } = LayoutSettings.DefaultFocusRailWeight;
+
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
         SingleSessionLayout = settings.SingleSessionLayout,
@@ -22,6 +24,7 @@ internal sealed class LayoutSettingsEntry
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose,
         SidebarWidth = settings.SidebarWidth,
         SidebarCollapsed = settings.SidebarCollapsed,
+        FocusRailWeight = settings.FocusRailWeight,
     };
 
     public LayoutSettings ToDomain() => new()
@@ -31,5 +34,6 @@ internal sealed class LayoutSettingsEntry
         MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,
+        FocusRailWeight = FocusRailWeight,
     };
 }

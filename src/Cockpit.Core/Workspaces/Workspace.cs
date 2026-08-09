@@ -27,6 +27,10 @@ public sealed record Workspace(string Id, string Name, WorkspaceType Type)
     // Overrides Options' "stack sessions vertically" for this workspace; null follows Options. See `SingleSessionLayout`.
     public bool? StackSessionsVertically { get; init; }
 
+    // Overrides the global focus/rail divider weight (AC-443) for this workspace; null follows the
+    // global default. See `SingleSessionLayout`.
+    public double? FocusRailWeight { get; init; }
+
     // A new, empty workspace of `type` with a generated id.
     public static Workspace Create(string name, WorkspaceType type) =>
         new(Guid.NewGuid().ToString("n"), name, type);

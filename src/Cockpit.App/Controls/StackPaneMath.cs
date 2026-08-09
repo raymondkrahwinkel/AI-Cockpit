@@ -92,7 +92,18 @@ internal static class StackPaneMath
         int gutterIndex,
         double pixelDelta,
         double contentHeight,
-        double minPixels)
+        double minPixels) =>
+        Resize(weights, gutterIndex, pixelDelta, contentHeight, minPixels, minPixels);
+
+    // As above, but the two sides of the gutter keep their own minimum — the focus pane and the rail
+    // (AC-443) aren't the same shape, so one shared `minPixels` can't describe both.
+    public static double[] Resize(
+        IReadOnlyList<double> weights,
+        int gutterIndex,
+        double pixelDelta,
+        double contentHeight,
+        double minPixelsA,
+        double minPixelsB)
     {
         var result = new double[weights.Count];
         for (var i = 0; i < weights.Count; i++)
@@ -125,10 +136,19 @@ internal static class StackPaneMath
             return result;
         }
 
-        // Keep both panes at least minPixels; if the pair itself can't fit two minimums, split it evenly.
-        var min = Math.Min(minPixels, pairPixels / 2);
+        // Keep both panes at their own minimum; if the pair can't fit both minimums, split the shortfall
+        // proportionally rather than favouring whichever side happens to be pane `a`.
+        var minA = minPixelsA;
+        var minB = minPixelsB;
+        if (minA + minB > pairPixels)
+        {
+            var totalMin = minA + minB;
+            minA = totalMin > 0 ? pairPixels * minA / totalMin : pairPixels / 2;
+            minB = pairPixels - minA;
+        }
+
         var upperPixels = contentHeight * result[a] / sum + pixelDelta;
-        upperPixels = Math.Clamp(upperPixels, min, pairPixels - min);
+        upperPixels = Math.Clamp(upperPixels, minA, pairPixels - minB);
 
         var ratio = upperPixels / pairPixels;
         result[a] = pairWeight * ratio;
