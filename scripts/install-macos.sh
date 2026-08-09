@@ -1,24 +1,10 @@
 #!/usr/bin/env bash
-# Installs the cockpit into /Applications on macOS, without the bundle ever picking up a quarantine flag.
-#
-# Why this exists: the .app is ad-hoc signed and not notarized, and Gatekeeper refuses a *quarantined* copy of
-# such a bundle outright — "is damaged and can't be opened", with no "Open Anyway" to click. Notarizing is the
-# only way to make a browser download open cleanly, and that needs a paid Developer ID.
-#
-# But the quarantine flag is not something macOS puts on the app. It is written by whichever program did the
-# downloading: a browser sets it, curl does not. An app fetched and unpacked here therefore never acquires one,
-# Gatekeeper is never consulted, and the bundle opens on a double-click like any other app.
-#
-# This also replaces the `xattr -cr` workaround the release notes used to carry. That one worked by wiping every
-# extended attribute on the bundle — including the ones holding the code signature of each managed .NET
-# assembly, which `codesign` cannot embed in a PE file and stores as an xattr instead. It left the app running
-# but unsigned ("code object is not signed at all"), which is the identity macOS hangs the microphone permission
-# on. Not acquiring the flag beats removing it.
+# AC-663: installs a published build with curl, so the bundle never gets the quarantine flag Gatekeeper refuses
+# an ad-hoc signature over. Do not swap this for `xattr -cr`: that wipes the extended attributes holding each
+# managed .NET assembly's signature and leaves the app unsigned.
 #
 # Usage:   curl -fsSL https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit/main/scripts/install-macos.sh | bash
 #          curl -fsSL …/install-macos.sh | bash -s -- nightly     # a release tag, instead of the latest stable
-#
-# This installs a published build; it does not build one. scripts/package-macos.sh is the one that builds.
 
 set -euo pipefail
 
