@@ -32,6 +32,7 @@ public class LayoutSettingsStoreTests : IDisposable
 
         Assert.False(settings.SingleSessionLayout);
         Assert.Equal(LayoutSettings.DefaultSidebarWidth, settings.SidebarWidth);
+        Assert.Equal(LayoutSettings.DefaultFocusRailWeight, settings.FocusRailWeight);
     }
 
     [Fact]
@@ -39,13 +40,14 @@ public class LayoutSettingsStoreTests : IDisposable
     {
         var store = new LayoutSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, MinimizeToTrayOnClose = true, SidebarWidth = 260 });
+        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, MinimizeToTrayOnClose = true, SidebarWidth = 260, FocusRailWeight = 0.5 });
         var loaded = await store.LoadAsync();
 
         Assert.True(loaded.SingleSessionLayout);
         Assert.True(loaded.StackSessionsVertically);
         Assert.True(loaded.MinimizeToTrayOnClose);
         Assert.Equal(260, loaded.SidebarWidth);
+        Assert.Equal(0.5, loaded.FocusRailWeight);
     }
 
     [Theory]
@@ -59,6 +61,19 @@ public class LayoutSettingsStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         Assert.Equal(expected, loaded.SidebarWidth);
+    }
+
+    [Theory]
+    [InlineData(0.01, LayoutSettings.MinFocusRailWeight)]
+    [InlineData(5, LayoutSettings.MaxFocusRailWeight)]
+    public async Task SaveAsync_ClampsAnOutOfRangeFocusRailWeight(double requested, double expected)
+    {
+        var store = new LayoutSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new LayoutSettings { FocusRailWeight = requested });
+        var loaded = await store.LoadAsync();
+
+        Assert.Equal(expected, loaded.FocusRailWeight);
     }
 
     [Fact]

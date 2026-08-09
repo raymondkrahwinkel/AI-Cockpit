@@ -34,6 +34,7 @@ internal sealed class LayoutSettingsStore : ILayoutSettingsStore, ISingletonServ
         return settings with
         {
             SidebarWidth = Math.Clamp(settings.SidebarWidth, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth),
+            FocusRailWeight = Math.Clamp(settings.FocusRailWeight, LayoutSettings.MinFocusRailWeight, LayoutSettings.MaxFocusRailWeight),
         };
     }
 
@@ -42,6 +43,7 @@ internal sealed class LayoutSettingsStore : ILayoutSettingsStore, ISingletonServ
         var clamped = settings with
         {
             SidebarWidth = Math.Clamp(settings.SidebarWidth, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth),
+            FocusRailWeight = Math.Clamp(settings.FocusRailWeight, LayoutSettings.MinFocusRailWeight, LayoutSettings.MaxFocusRailWeight),
         };
 
         return _configFile.UpdateAsync(

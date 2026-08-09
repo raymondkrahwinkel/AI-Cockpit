@@ -82,6 +82,33 @@ public class StackPaneMathTests
         Assert.True(Math.Abs((200 * result[0] / sum) - 160) < 1e-6);
     }
 
+    [Fact]
+    public void Resize_AsymmetricMinimums_ClampsEachSideToItsOwn()
+    {
+        double[] weights = [1, 1];
+
+        // Pair shares 200px; dragging hard toward pane 0 must still leave pane 1 (min 80) its own minimum,
+        // not pane 0's smaller one.
+        var result = StackPaneMath.Resize(weights, gutterIndex: 0, pixelDelta: 500, contentHeight: 200, minPixelsA: 40, minPixelsB: 80);
+
+        var sum = result[0] + result[1];
+        Assert.True(Math.Abs((200 * result[1] / sum) - 80) < 1e-6);
+        Assert.True(Math.Abs((200 * result[0] / sum) - 120) < 1e-6);
+    }
+
+    [Fact]
+    public void Resize_AsymmetricMinimums_PairTooSmallForBoth_SplitsProportionally()
+    {
+        double[] weights = [1, 1];
+
+        // Pair only has 60px total but the minimums (40 + 80) ask for 120 — split 1:2, the minimums' own ratio.
+        var result = StackPaneMath.Resize(weights, gutterIndex: 0, pixelDelta: 0, contentHeight: 60, minPixelsA: 40, minPixelsB: 80);
+
+        var sum = result[0] + result[1];
+        Assert.True(Math.Abs((60 * result[0] / sum) - 20) < 1e-6);
+        Assert.True(Math.Abs((60 * result[1] / sum) - 40) < 1e-6);
+    }
+
     [Theory]
     [InlineData(50, 0)]    // inside the first slot
     [InlineData(150, 1)]   // inside the second slot
