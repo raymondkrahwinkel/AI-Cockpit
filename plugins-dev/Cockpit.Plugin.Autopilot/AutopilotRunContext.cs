@@ -33,9 +33,8 @@ internal sealed class AutopilotRunContext
     internal static readonly IReadOnlyList<string> ValidatorCeoMcpServers = [AutopilotCeoTools.EndpointName];
 
     // The embed request for a run's validating CEO — a pure static so the shape it asks the host for can be exercised
-    // without a host or a UI thread. Pointed at `workingDirectory`: the run's worktree when it has
-    // one, else the folder it runs in. `carryOver` is the ledger a checkpointed replacement starts with (AC-253);
-    // null for the run's first validator, which has nothing to carry over yet.
+    // without a host or a UI thread. Pointed at `workingDirectory`: the run's worktree when it has one, else the folder
+    // it runs in. `carryOver` is the ledger a checkpointed replacement starts with (AC-253), null for the first.
     internal static EmbeddedSessionRequest ValidatorCeoRequest(
         AutopilotSettings settings,
         string workingDirectory,

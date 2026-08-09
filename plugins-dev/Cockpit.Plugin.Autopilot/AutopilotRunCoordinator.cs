@@ -770,10 +770,9 @@ internal sealed class AutopilotRunCoordinator(
                     _validation = validation;
                 }
 
-                // AC-253: a validator that has taken on its interval of turns is replaced here, on the way into the next
-                // one, rather than straight after the turn that filled it — a run's last step would otherwise embed a
-                // fresh session that never gets asked anything. Read the live validator after it, never the one the run
-                // started with: a checkpoint may already have replaced that pane.
+                // AC-253: replaced on the way into the next turn, not straight after the one that filled the interval —
+                // a run's last step would otherwise embed a fresh validator nothing is ever asked of. Read the live one
+                // after it: the swap may just have replaced that pane.
                 await _MaybeCheckpointCeoAsync();
                 var ceo = _CurrentCeo() ?? throw new InvalidOperationException("The run has no live CEO session to validate this step.");
 

@@ -83,10 +83,9 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
 
     public string? CeoValidationModelOverride(string? projectId = null) => _ReadString(projectId, CeoValidationModelKey);
 
-    // After how many validation turns the run replaces its validator CEO with a fresh session carrying only the ledger
-    // of what it already judged (AC-253, default 3) — the one long-lived validator otherwise re-reads every earlier
-    // step's diff on every new turn. 0 never checkpoints, which is what makes a before/after on `usage-history.jsonl`
-    // measurable at all (AC-251); negative values read as 0 rather than checkpointing on every turn.
+    // AC-253: after how many validation turns the run replaces its validator CEO with a fresh session carrying only the
+    // ledger of what it already judged. 0 never checkpoints — what makes a before/after measurable at all (AC-251) —
+    // and a negative value reads as 0 rather than as a checkpoint on every turn.
     public int CeoCheckpointEverySteps(string? projectId = null) => Math.Max(0, _ReadValue(projectId, CeoCheckpointEveryKey, 3));
 
     public void SetCeoCheckpointEverySteps(int everySteps, string? projectId = null) =>

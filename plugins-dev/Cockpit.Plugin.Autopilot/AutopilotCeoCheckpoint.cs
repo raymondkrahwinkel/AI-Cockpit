@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// AC-253: what a run's replacement validator CEO is briefed with when its context is checkpointed. One long-lived
-// validator keeps every earlier step's diff and test output, so each new validation turn re-reads the whole tail and a
-// run's validation cost grows with the square of its step count. A checkpoint swaps that session for a fresh one and
-// hands it this ledger instead — one line per settled step, so later steps still have the verdicts to reason about
-// without the diffs behind them. Kept a pure builder so the wording is tested without a live session.
+// AC-253: what a run's replacement validator CEO is briefed with when its context is checkpointed — one line per
+// settled step, so later steps still have the verdicts to reason about without the diffs behind them. A pure builder,
+// so the wording is tested without a live session.
 internal static class AutopilotCeoCheckpoint
 {
     // Whether a validator carrying `validationsSinceCheckpoint` turns is due to be replaced on an interval of

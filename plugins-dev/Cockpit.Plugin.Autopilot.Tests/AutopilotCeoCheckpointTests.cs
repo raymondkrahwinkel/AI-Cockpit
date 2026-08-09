@@ -7,10 +7,8 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// AC-253: one long-lived validator carries every earlier step's diff, so each new validation turn re-reads the whole
-// tail. A checkpoint replaces it with a fresh session that carries only a one-line verdict per settled step. The ledger
-// is a pure builder, tested without a session; the swap itself is tested through the coordinator, since what matters is
-// that the next step's turn — and its verdict — actually reach the new pane.
+// AC-253: the ledger is a pure builder, tested without a session; the swap is tested through the coordinator, since
+// what matters is that the next step's turn — and its verdict — actually reach the new pane.
 [Collection("avalonia")]
 public class AutopilotCeoCheckpointTests
 {
