@@ -1,6 +1,6 @@
 {
   "category": "AI providers",
-  "logoAsset": "cli-agent-provider.svg",
+  "logoAsset": "https://avatars.githubusercontent.com/openai",
   "homepage": "https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/docs/plugins",
   "repository": "https://github.com/raymondkrahwinkel/AI-Cockpit",
   "featured": false

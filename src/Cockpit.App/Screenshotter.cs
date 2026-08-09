@@ -1493,9 +1493,13 @@ internal static class Screenshotter
             Row("git-status", "Git status", "Productivity", "git-status.svg", "🌿"),
             Row("clock", "Clock", "Widgets", "clock.svg", "🕐"),
             Row("usage-trend", "Usage Trend", "Widgets", "usage-trend.svg", "📈"),
-            Row("claude-provider", "Claude Code", "AI providers", "claude-provider.svg", null!),
-            Row("cli-agent-provider", "CLI Agent Provider (Codex)", "AI providers", "cli-agent-provider.svg", null!),
-            Row("kimi-provider", "Kimi", "AI providers", "kimi-provider.svg", "🌙"),
+            // AC-553 option A: these three point at the vendor's own CDN, fetched by
+            // PluginManagerViewModel._LoadPluginLogoAsync — not exercised by this offline scene (no network in a
+            // headless CI render), so they render on their glyph/monogram fallback here, same as any plugin
+            // whose fetch has not landed yet.
+            Row("claude-provider", "Claude Code", "AI providers", "https://claude.ai/favicon.svg", null!),
+            Row("cli-agent-provider", "CLI Agent Provider (Codex)", "AI providers", "https://avatars.githubusercontent.com/openai", null!),
+            Row("kimi-provider", "Kimi", "AI providers", "https://moonshotai.github.io/Branding-Guide/scenarios/04-k-only/k-only-color.svg", "🌙"),
             // No LogoAsset at all — criterion 3, the neutral-tile fallback, in the same grid as the tiles it must not stand out from.
             Row("no-logo-yet", "Third-party sample", "Other", null!, "🧩"),
         ];

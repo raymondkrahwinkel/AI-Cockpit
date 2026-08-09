@@ -380,6 +380,8 @@
                                 Background="{Binding CategoryTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                 HorizontalAlignment="Left">
                             <Panel>
+                                <Image Source="{Binding RemoteLogo}" Width="30" Height="30" Stretch="Uniform"
+                                       IsVisible="{Binding HasRemoteLogo}"/>
                                 <Viewbox Width="28" Height="28" IsVisible="{Binding HasLogoAsset}">
                                     <Path Data="{Binding LogoAssetUri, Converter={x:Static conv:PluginLogoGeometryConverter.Instance}}"
                                           Fill="{StaticResource CockpitTextPrimaryBrush}"/>

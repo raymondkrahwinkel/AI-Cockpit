@@ -9,6 +9,7 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Svg;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
@@ -725,12 +726,20 @@ public partial class PluginManagerViewModel : ViewModelBase
                     var installedVersion = _pendingUpdateVersions.TryGetValue(entry.Id, out var pending)
                         ? pending
                         : installedRow?.Discovered.Manifest.Version;
-                    AvailablePlugins.Add(new StorePluginRowViewModel(
+                    var row = new StorePluginRowViewModel(
                         entry,
                         store,
                         installedVersion,
                         isEnabled: installedRow?.CanDisable ?? false,
-                        hasSettings: installedRow?.HasSettings ?? false));
+                        hasSettings: installedRow?.HasSettings ?? false);
+                    AvailablePlugins.Add(row);
+
+                    // AC-553 option A: a provider plugin's `LogoAsset` naming its vendor's own CDN — fetched the
+                    // same way a store's own IconUrl already is (below), never redistributed as a file in this repo.
+                    if (row.IsRemoteLogoAsset)
+                    {
+                        logoLoads.Add(_LoadPluginLogoAsync(row, store, entry.LogoAsset!));
+                    }
                 }
 
                 foreach (var template in fetch.Index.Templates ?? [])
@@ -790,6 +799,41 @@ public partial class PluginManagerViewModel : ViewModelBase
         catch
         {
             // Decoding failed (a non-image, a corrupt file) — fall back to the glyph, silently.
+        }
+    }
+
+    // Fetches a provider plugin's vendor-hosted logo (AC-553 option A) and hands it to its row as a Bitmap, the
+    // same best-effort shape as `_LoadStoreLogoAsync` above: an http error, an oversize image, or one this SVG
+    // rasteriser/decoder cannot read leaves `RemoteLogo` null and the row falls to its emoji glyph/monogram — a
+    // vendor's own hosting hiccup must never break browsing. Rasterises SVG bytes the same way a project's own
+    // logo does (Cockpit.Infrastructure.Svg.SvgRasterizer): `DownloadImageAsync` returns raw bytes regardless of
+    // format, and Avalonia's `Bitmap` only decodes raster images.
+    private async Task _LoadPluginLogoAsync(StorePluginRowViewModel row, PluginStoreConfig store, string logoUrl)
+    {
+        if (_storeClient is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var image = await _storeClient.DownloadImageAsync(store, logoUrl);
+            if (!image.IsSuccess || image.Bytes is not { Length: > 0 } bytes)
+            {
+                return;
+            }
+
+            if (SvgRasterizer.LooksLikeSvg(bytes) && SvgRasterizer.Rasterize(bytes, 256f) is { } raster)
+            {
+                bytes = raster;
+            }
+
+            using var stream = new MemoryStream(bytes);
+            row.RemoteLogo = new Bitmap(stream);
+        }
+        catch
+        {
+            // Decoding failed (a non-image, a corrupt file) — fall back to the glyph/monogram, silently.
         }
     }
 

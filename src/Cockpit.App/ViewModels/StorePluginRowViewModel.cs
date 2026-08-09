@@ -1,3 +1,5 @@
+using Avalonia.Media.Imaging;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Material.Icons;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
@@ -13,14 +15,19 @@ namespace Cockpit.App.ViewModels;
 // install-time gate and the load-time gate would reach is visible here — *before* a click that would
 // only fail. `hostAbstractionsMajor`/`hostVersion` default to the running
 // cockpit's own values; a caller only ever overrides them in a test.
-public sealed class StorePluginRowViewModel(
+//
+// ObservableObject/partial (AC-553) only for `RemoteLogo` — a vendor CDN logo (option A's provider trio)
+// arrives asynchronously, after the row is already on screen (PluginManagerViewModel's own `logoLoads`,
+// mirroring how a store's own `IconUrl` already loads), so it is the one property here that is not settled at
+// construction and needs change notification. Everything else on this row stays a plain computed property.
+public sealed partial class StorePluginRowViewModel(
     PluginStoreEntry entry,
     PluginStoreConfig store,
     string? installedVersion,
     bool isEnabled = false,
     bool hasSettings = false,
     int hostAbstractionsMajor = AbstractionsContract.Version,
-    Version? hostVersion = null)
+    Version? hostVersion = null) : ObservableObject
 {
     private Version EffectiveHostVersion => hostVersion ?? HostVersionInfo.Current;
     public PluginStoreEntry Entry => entry;
@@ -111,18 +118,42 @@ public sealed class StorePluginRowViewModel(
     // Upper-cased first letter of `Name`, used as the icon fallback when `IconGlyphOrNull` is null.
     public string MonogramLetter => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
 
-    // The bundled `avares://` URI for `entry.LogoAsset` (AC-553), or null when unset or not actually shipped by
-    // this host — a third-party store's own `LogoAsset`, or one not yet added here, falls through to
-    // `IconGlyphOrNull`/`MonogramLetter` exactly as if it had never been set, rather than showing a broken image.
-    public string? LogoAssetUri => _ResolveLogoAssetUri(entry.LogoAsset);
+    // Whether `entry.LogoAsset` names a vendor's own CDN rather than a file this host bundles (AC-553 option A:
+    // the three provider plugins point at Anthropic's/OpenAI's/Moonshot's own hosting, never a copy stored in
+    // this repo — a trademarked mark is shown exactly as its owner serves it, not redistributed). Decides which
+    // download path applies (PluginManagerViewModel's async fetch into `RemoteLogo` below) and keeps
+    // `LogoAssetUri` from ever trying to resolve a URL as a bundled file name.
+    public bool IsRemoteLogoAsset =>
+        Uri.TryCreate(entry.LogoAsset, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    // A vendor CDN logo (tier 0), once PluginManagerViewModel's async fetch lands it — null until then, on a
+    // failed/oversize/undecodable fetch, or when `IsRemoteLogoAsset` is false. Shown as-is, in the mark's own
+    // colours: recolouring a trademarked logo to the app's foreground brush is not this ticket's call to make.
+    [ObservableProperty]
+    private Bitmap? _remoteLogo;
+
+    partial void OnRemoteLogoChanged(Bitmap? value)
+    {
+        OnPropertyChanged(nameof(HasRemoteLogo));
+        OnPropertyChanged(nameof(ShowsIconGlyph));
+        OnPropertyChanged(nameof(ShowsMonogram));
+    }
+
+    public bool HasRemoteLogo => RemoteLogo is not null;
+
+    // The bundled `avares://` URI for `entry.LogoAsset` (AC-553), or null when unset, a remote CDN URL
+    // (`IsRemoteLogoAsset`), or not actually shipped by this host — a third-party store's own `LogoAsset`, or
+    // one not yet added here, falls through to `IconGlyphOrNull`/`MonogramLetter` exactly as if it had never
+    // been set, rather than showing a broken image.
+    public string? LogoAssetUri => IsRemoteLogoAsset ? null : _ResolveLogoAssetUri(entry.LogoAsset);
 
     public bool HasLogoAsset => LogoAssetUri is not null;
 
-    // Tier 2 (the emoji glyph) only shows once tier 1 (the vector logo) is unavailable.
-    public bool ShowsIconGlyph => !HasLogoAsset && IconGlyphOrNull is not null;
+    // Tier 2 (the emoji glyph) only shows once tiers 0 and 1 (a vendor CDN logo, then the bundled vector one) are unavailable.
+    public bool ShowsIconGlyph => !HasRemoteLogo && !HasLogoAsset && IconGlyphOrNull is not null;
 
-    // Tier 3, the final fallback: no logo, no glyph.
-    public bool ShowsMonogram => !HasLogoAsset && IconGlyphOrNull is null;
+    // Tier 3, the final fallback: no vendor logo, no bundled logo, no glyph.
+    public bool ShowsMonogram => !HasRemoteLogo && !HasLogoAsset && IconGlyphOrNull is null;
 
     // Which of the theme's five category tints (Theme.axaml) this tile's background wash uses.
     public string CategoryTintBrushKey => PluginCategoryTint.BrushKeyFor(Category);

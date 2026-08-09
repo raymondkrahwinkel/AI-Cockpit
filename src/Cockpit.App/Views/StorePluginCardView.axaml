@@ -22,12 +22,15 @@
             PointerPressed="OnCardPressed">
         <Grid ColumnDefinitions="Auto,*,Auto">
 
-            <!-- Icon (AC-553): the plugin's own vector logo tinted by category, else its emoji glyph, else its
-                 monogram letter — see StorePluginRowViewModel's ShowsIconGlyph/ShowsMonogram for the fallback order. -->
+            <!-- Icon (AC-553): a vendor CDN logo (option A's provider trio) in its own colours, else the plugin's
+                 own bundled vector logo tinted by category, else its emoji glyph, else its monogram letter — see
+                 StorePluginRowViewModel's HasRemoteLogo/HasLogoAsset/ShowsIconGlyph/ShowsMonogram for the order. -->
             <Border Grid.Column="0" Width="40" Height="40" CornerRadius="{StaticResource CockpitControlRadius}"
                     Background="{Binding CategoryTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                     VerticalAlignment="Center">
                 <Panel>
+                    <Image Source="{Binding RemoteLogo}" Width="22" Height="22" Stretch="Uniform"
+                           IsVisible="{Binding HasRemoteLogo}"/>
                     <Viewbox Width="20" Height="20" IsVisible="{Binding HasLogoAsset}">
                         <Path Data="{Binding LogoAssetUri, Converter={x:Static conv:PluginLogoGeometryConverter.Instance}}"
                               Fill="{StaticResource CockpitTextPrimaryBrush}"/>

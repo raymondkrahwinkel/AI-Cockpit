@@ -11,12 +11,15 @@ namespace Cockpit.Core.Plugins;
 // for why (no new download/cache layer needed for a text glyph the app already renders elsewhere, e.g.
 // the titlebar caption glyphs).
 //
-// `LogoAsset` (AC-553) is additive the same way: a plugin's own SVG mark, resolved only against the
-// host's *bundled* assets (`avares://Cockpit.App/Assets/PluginLogos/<LogoAsset>`) — a file name, not a
-// URL, so this stays a lookup rather than growing a download/cache layer of its own (the same call
-// `Icon`'s own doc comment already made). A value that does not resolve to a bundled asset — a
-// third-party store's entry, or an `index.json` published before this field existed — falls back to
-// `Icon`, then to the monogram, so an unresolvable name never renders as a blank tile or a broken image.
+// `LogoAsset` (AC-553) is additive the same way: a plugin's own logo mark, either a bare file name
+// resolved only against the host's *bundled* assets (`avares://Cockpit.App/Assets/PluginLogos/<LogoAsset>`,
+// no download at all — the same call `Icon`'s own doc comment already made) or an `http(s)` URL fetched
+// live from wherever the plugin's vendor already hosts its own mark (option A, 2026-08-09: the three
+// AI-provider plugins point at Anthropic's/OpenAI's/Moonshot's own CDN rather than a copy stored in this
+// repo — see NOTICE for the licence/trademark decision), the same `DownloadImageAsync` a store's own
+// `IconUrl` already uses. A value that resolves to neither — a bundled name this build does not
+// ship, an unreachable URL, or an `index.json` published before this field existed — falls back to
+// `Icon`, then to the monogram, so an unresolvable value never renders as a blank tile or a broken image.
 public sealed record PluginStoreEntry(
     string Id,
     string Name,

@@ -20,7 +20,8 @@ public class StorePluginRowViewModelTests
         string? published = null,
         string latestVersion = "1.0.0",
         int? abstractionsVersion = 1,
-        string? minHostVersion = "1.0.0") => new(
+        string? minHostVersion = "1.0.0",
+        string? logoAsset = null) => new(
         Id: "github-issues",
         Name: name,
         Description: "d",
@@ -32,7 +33,8 @@ public class StorePluginRowViewModelTests
         Homepage: homepage,
         Repository: repository,
         Featured: featured,
-        Published: published);
+        Published: published,
+        LogoAsset: logoAsset);
 
     [Fact]
     public void Category_WhenEntryHasNone_FallsBackToOther()
@@ -118,6 +120,46 @@ public class StorePluginRowViewModelTests
 
         Assert.Null(row.PublishedDate);
     }
+
+    // AC-553 option A: entry.LogoAsset carries either a vendor CDN URL (the provider trio) or a bundled file
+    // name (everyone else) — the same field, told apart by whether it parses as an absolute http(s) URI.
+    [Theory]
+    [InlineData("https://claude.ai/favicon.svg", true)]
+    [InlineData("http://example.com/logo.svg", true)]
+    [InlineData("depot.svg", false)]
+    [InlineData(null, false)]
+    [InlineData("ftp://example.com/logo.svg", false)]
+    public void IsRemoteLogoAsset_TrueOnlyForAnHttpOrHttpsUrl(string? logoAsset, bool expected)
+    {
+        var row = new StorePluginRowViewModel(_Entry(logoAsset: logoAsset), PluginStoreConfig.Remote("url"), null);
+
+        Assert.Equal(expected, row.IsRemoteLogoAsset);
+    }
+
+    [Fact]
+    public void RemoteLogoAsset_NeverResolvesAsABundledLocalAsset()
+    {
+        var row = new StorePluginRowViewModel(_Entry(logoAsset: "https://claude.ai/favicon.svg"), PluginStoreConfig.Remote("url"), null);
+
+        Assert.Null(row.LogoAssetUri);
+        Assert.False(row.HasLogoAsset);
+    }
+
+    [Fact]
+    public void ShowsIconGlyph_WhileARemoteLogoIsDeclaredButNotYetLoaded_FallsBackToTheGlyph()
+    {
+        // Mirrors the real gap between a row appearing (AC-553's IsRemoteLogoAsset check) and
+        // PluginManagerViewModel's async fetch landing RemoteLogo — a plugin must never render a blank tile
+        // in between, or if the fetch never succeeds at all.
+        var row = new StorePluginRowViewModel(_Entry(icon: "🌙", logoAsset: "https://claude.ai/favicon.svg"), PluginStoreConfig.Remote("url"), null);
+
+        Assert.False(row.HasRemoteLogo);
+        Assert.True(row.ShowsIconGlyph);
+        Assert.False(row.ShowsMonogram);
+    }
+
+    // The "once it loads" half — RemoteLogo actually flips the flags — needs a real decoded Bitmap, which needs
+    // Avalonia's headless platform running; see StorePluginRowViewModelRemoteLogoTests in Cockpit.App.ViewTests.
 
     [Fact]
     public void PrimaryActionLabel_NotInstalled_IsInstall()
