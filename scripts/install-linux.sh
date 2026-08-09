@@ -56,7 +56,7 @@ fi
 executable="$(cd "$(dirname "$executable")" && pwd)/$(basename "$executable")"
 
 # The icons are checked in at each size the hicolor theme wants, so this install needs no image tooling on the
-# machine. Regenerate them with scripts/generate-appicon.py when the icon changes.
+# machine. Regenerate them with scripts/generate-appicon.sh when the icon changes.
 for icon in "$icons_source"/*.png; do
     size="$(basename "$icon" .png)"
     target_dir="$icons_dir/${size}x${size}/apps"

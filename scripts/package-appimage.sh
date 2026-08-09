@@ -50,7 +50,7 @@ mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications"
 cp -r "$publish_dir/." "$appdir/usr/bin/"
 chmod +x "$appdir/usr/bin/Cockpit.App"
 
-# The icon, at every size the desktop asks for. Checked in (scripts/generate-appicon.py writes them), so this
+# The icon, at every size the desktop asks for. Checked in (scripts/generate-appicon.sh writes them), so this
 # needs no image tooling on the machine that builds the AppImage.
 for icon in "$repo_root"/packaging/linux/icons/*.png; do
     size="$(basename "$icon" .png)"
