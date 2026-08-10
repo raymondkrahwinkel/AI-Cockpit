@@ -4,7 +4,9 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
@@ -1240,6 +1242,31 @@ public class CockpitViewModelTests
         terminals.Received(1).SessionEnded(session.PaneId);
     }
 
+    // AC-692: drives the real `SampleResources`/`ResourceMonitor` wire (over a fake process table) rather than
+    // calling `_WarnAboutSessionMemory` directly — the decision logic itself is `SessionMemoryPressureTests`.
+    [Fact]
+    public async Task ASessionOverItsCap_GetsANamedTopLevelToast_AndTheKillButtonClosesIt()
+    {
+        const long Megabyte = 1024 * 1024;
+        var reader = Substitute.For<IProcessTableReader>();
+        reader.Read().Returns([new ProcessRow(4242, 1, TimeSpan.Zero, 5000 * Megabyte)]);
+
+        var vm = NewVm(resourceMonitor: new ResourceMonitor(reader));
+        var session = new TtyViewModel { Title = "leaky-build", ProcessId = 4242, MemoryCapBytes = 4096 * Megabyte };
+        vm.Sessions.Add(session);
+
+        vm.SampleResources();
+
+        var toast = Assert.Single(vm.Toasts);
+        Assert.Contains("leaky-build", toast.Message, StringComparison.Ordinal);
+        Assert.Equal("Kill", toast.ActionLabel);
+
+        toast.InvokeActionCommand.Execute(null);
+        await Task.Delay(10);
+
+        Assert.DoesNotContain(session, vm.Sessions);
+    }
+
     private static CockpitViewModel NewVm(
         ISessionDialogService? dialogService = null,
         ITerminalSettingsStore? terminalSettingsStore = null,
@@ -1248,7 +1275,8 @@ public class CockpitViewModelTests
         ITerminalAccessRegistry? terminals = null,
         ProjectsViewModel? projects = null,
         IFirstRunWizard? firstRunWizard = null,
-        Func<string, bool>? tryOpenExternalLink = null)
+        Func<string, bool>? tryOpenExternalLink = null,
+        ResourceMonitor? resourceMonitor = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
@@ -1290,7 +1318,8 @@ public class CockpitViewModelTests
             terminals: terminals,
             projects: projects,
             firstRunWizard: firstRunWizard,
-            tryOpenExternalLink: tryOpenExternalLink);
+            tryOpenExternalLink: tryOpenExternalLink,
+            resourceMonitor: resourceMonitor);
     }
 
     /// <summary>A projects view model over a store holding exactly <paramref name="saved"/>, already loaded.</summary>

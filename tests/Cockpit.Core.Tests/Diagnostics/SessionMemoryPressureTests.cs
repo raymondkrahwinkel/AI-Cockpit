@@ -1,0 +1,70 @@
+using Cockpit.Core.Diagnostics;
+
+namespace Cockpit.Core.Tests.Diagnostics;
+
+/// <summary>
+/// Tests <see cref="SessionMemoryPressure"/>, the AC-692 replacement for the automatic kill: same hysteresis shape
+/// as <see cref="MemoryPressureTests"/>, measured against a session's own cap instead of the machine.
+/// </summary>
+public class SessionMemoryPressureTests
+{
+    private const long Gb = 1024L * 1024 * 1024;
+    private const long Cap = 8 * Gb; // SessionMemoryCap.DefaultMegabytes
+
+    [Fact]
+    public void PastTheCap_ItWarns()
+    {
+        var decision = SessionMemoryPressure.Decide(usedBytes: Cap + Gb, capBytes: Cap, warned: false);
+
+        Assert.True(decision.Warn);
+        Assert.True(decision.Warned, "so the next sample does not say it again");
+    }
+
+    [Fact]
+    public void RightAtTheCap_NotYetOverIt_SaysNothing() =>
+        // The old auto-kill fired once the tree was strictly over the cap, not merely at it; the notice replaces
+        // that behaviour rather than moving the line.
+        Assert.False(SessionMemoryPressure.Decide(usedBytes: Cap, capBytes: Cap, warned: false).Warn);
+
+    [Fact]
+    public void HavingSaidItOnce_ItDoesNotRepeatWhileYouDecide()
+    {
+        var decision = SessionMemoryPressure.Decide(usedBytes: Cap + Gb, capBytes: Cap, warned: true);
+
+        Assert.False(decision.Warn, "a warning every sample is a warning you turn off");
+        Assert.True(decision.Warned);
+    }
+
+    [Fact]
+    public void OnceItHasFallenWellBack_TheNextClimbIsWorthSayingAgain()
+    {
+        var calm = SessionMemoryPressure.Decide(usedBytes: (long)(0.6 * Cap), capBytes: Cap, warned: true);
+
+        Assert.False(calm.Warn);
+        Assert.False(calm.Warned, "it is let off the hook, so a real climb later is heard");
+
+        Assert.True(SessionMemoryPressure.Decide(usedBytes: Cap + Gb, capBytes: Cap, calm.Warned).Warn);
+    }
+
+    [Fact]
+    public void JustDippingUnderTheCap_DoesNotResetIt()
+    {
+        // Otherwise a session that breathes in and out around its cap re-notifies every sample.
+        Assert.Equal(
+            new MemoryPressureDecision(false, true),
+            SessionMemoryPressure.Decide(usedBytes: (long)(0.95 * Cap), capBytes: Cap, warned: true));
+    }
+
+    [Fact]
+    public void AnOrdinarySession_SaysNothing() =>
+        Assert.False(SessionMemoryPressure.Decide(usedBytes: (long)(0.3 * Cap), capBytes: Cap, warned: false).Warn);
+
+    [Fact]
+    public void AnUncappedSession_SaysNothing() =>
+        // Zero/negative means nothing was resolved to cap this session against — a share of no limit is not a fact.
+        Assert.False(SessionMemoryPressure.Decide(usedBytes: 20 * Gb, capBytes: 0, warned: false).Warn);
+
+    [Fact]
+    public void ASessionWithNothingMeasured_SaysNothing() =>
+        Assert.False(SessionMemoryPressure.Decide(usedBytes: 0, capBytes: Cap, warned: false).Warn);
+}

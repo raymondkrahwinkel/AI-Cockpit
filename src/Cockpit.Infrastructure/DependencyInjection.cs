@@ -228,16 +228,12 @@ public static class DependencyInjection
         }
     }
 
-    // The session memory cap (AC-661) is a different OS primitive per platform — a Job Object, a cgroup, and on
-    // macOS a polling watchdog, since it has neither. Registered by platform, like the pty host above.
+    // The session memory cap (AC-661) is watched, never enforced by a kernel-level kill, on any platform (AC-692):
+    // Linux throttles via cgroup `memory.high`, Windows and macOS share the polling watchdog since neither has a
+    // native soft-throttle primitive.
     private static void AddSessionMemoryLimiter(IServiceCollection services)
     {
-#pragma warning disable CA1416
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            services.AddSingleton<ISessionMemoryLimiter, WindowsJobMemoryLimiter>();
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             services.AddSingleton<ISessionMemoryLimiter, LinuxCgroupMemoryLimiter>();
         }
@@ -245,7 +241,6 @@ public static class DependencyInjection
         {
             services.AddSingleton<ISessionMemoryLimiter, PollingMemoryLimiter>();
         }
-#pragma warning restore CA1416
     }
 
     // The process table is read a different way on every OS (#78): /proc on Linux, ps on macOS, WMI on

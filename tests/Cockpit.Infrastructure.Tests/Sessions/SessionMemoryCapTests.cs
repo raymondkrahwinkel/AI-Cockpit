@@ -2,13 +2,15 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
 /// <summary>
-/// The session memory cap (AC-661): what a session may hold, and — on Windows — that the OS enforces it around
-/// the session's whole tree while leaving this process (standing in for the cockpit) alone.
+/// The session memory cap (AC-661): what a session may hold. AC-692 retired the Windows-side enforcement this
+/// class used to prove live (a Job Object that killed the tree over its cap) — the live test below now proves the
+/// opposite on the same real hardware: a tree well past its cap keeps running, because nothing here stops it.
 /// </summary>
 public class SessionMemoryCapTests
 {
@@ -56,35 +58,37 @@ public class SessionMemoryCapTests
     }
 
     [Fact]
-    public void OnWindows_TheJobObjectStopsARunawayGrandchild_AndThisProcessLivesOn()
+    public void OnWindows_ARunawayGrandchildIsNeverStopped_OnlyWatched()
     {
         if (!OperatingSystem.IsWindows())
         {
-            // Windows is where this bug was reproduced, so it is where the mechanism is proven live.
+            // Windows is where the original bug (and the job-object fix this replaced) was reproduced, so it is
+            // where the new no-kill contract is proven live too.
             return;
         }
 
-        const long capBytes = 512L * 1024 * 1024;
+        // AC-692: WindowsJobMemoryLimiter's hard job-object kill (AC-661) is gone; Windows now shares
+        // `PollingMemoryLimiter` with macOS. Scaled down from the old test's 10 GB ceiling — this machine runs
+        // other agents' work at the same time.
+        const long capBytes = 64L * 1024 * 1024;
 
         var script = Path.Combine(Path.GetTempPath(), $"cockpit-hog-{Guid.NewGuid():n}.ps1");
 
-        // Grows in 50 MB steps and reports how far it got, so the assertion below is about the bound the job
-        // enforced rather than about the process merely having died of something.
+        // 16 steps of 10 MB is 160 MB total, 2.5x the cap — enough to prove the point without asking much of a
+        // shared machine. Reports how far it got, so the assertion is about every step having run, not just that
+        // the process eventually exited.
         File.WriteAllText(script, """
             $held = @()
-            try
+            for ($i = 1; $i -le 16; $i++)
             {
-                for ($i = 1; $i -le 200; $i++)
-                {
-                    $held += ,(New-Object byte[] 52428800)
-                    Write-Output $i
-                }
+                $held += ,(New-Object byte[] 10485760)
+                Write-Output $i
+                Start-Sleep -Milliseconds 200
             }
-            catch { exit 42 }
             """);
 
-        // cmd.exe is the direct child and the allocating powershell its child — the shape of the bug, where
-        // `claude` is fine and the `dotnet test` it started is not.
+        // cmd.exe is the direct child and the allocating powershell its child — the shape of the bug this whole
+        // mechanism exists for, where `claude` is fine and the `dotnet test` it started is not.
         using var parent = Process.Start(new ProcessStartInfo
         {
             FileName = "cmd.exe",
@@ -96,9 +100,8 @@ public class SessionMemoryCapTests
 
         try
         {
-            using var cap = new WindowsJobMemoryLimiter(NullLogger<WindowsJobMemoryLimiter>.Instance)
-                .Apply(parent.Id, capBytes);
-            Assert.NotNull(cap);
+            var limiter = new PollingMemoryLimiter(new WmiProcessTableReader(), NullLogger<PollingMemoryLimiter>.Instance);
+            using var watch = limiter.Apply(parent.Id, capBytes);
 
             var reached = 0;
             while (parent.StandardOutput.ReadLine() is { } line)
@@ -109,19 +112,10 @@ public class SessionMemoryCapTests
                 }
             }
 
-            Assert.True(parent.WaitForExit(60_000), "The capped tree never exited.");
+            Assert.True(parent.WaitForExit(30_000), "The tree never exited on its own.");
 
-            // Non-zero first: without it the two bounds below pass on a tree that never started. 200 steps is
-            // 10 GB, which a machine with room would have handed over happily.
-            Assert.True(reached > 0, "The allocating grandchild never got going, so nothing was proven.");
-            Assert.True(reached < 200, $"The tree allocated its full 10 GB (reached step {reached}); the cap did not bind.");
-            Assert.True(reached * 50L * 1024 * 1024 < capBytes * 2, $"The tree reached {reached * 50} MB against a {capBytes / 1024 / 1024} MB cap.");
-
-            // The cockpit's side of it: this process is untouched by the limit that killed the tree, and can still
-            // commit memory of its own.
-            var mine = new byte[64 * 1024 * 1024];
-            mine[^1] = 1;
-            Assert.Equal(1, mine[^1]);
+            // The whole point: every step ran, well past the 64 MB cap, because nothing here stops it anymore.
+            Assert.Equal(16, reached);
         }
         finally
         {
@@ -130,73 +124,6 @@ public class SessionMemoryCapTests
                 parent.Kill(entireProcessTree: true);
             }
 
-            File.Delete(script);
-        }
-    }
-
-    [Fact]
-    public async Task OnWindows_TheCapHoldsThroughTheRealPtyHost_WhichIsHowASessionActuallySpawns()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        // The same claim over the spawn a session really uses — `ConPtyHostFactory`, the call `TtyLauncher` makes.
-        // A pseudo-console child is an ordinary child of this process, so it joins the job like any other.
-        const long capBytes = 512L * 1024 * 1024;
-
-        var script = Path.Combine(Path.GetTempPath(), $"cockpit-hog-pty-{Guid.NewGuid():n}.ps1");
-        File.WriteAllText(script, """
-            $held = @()
-            try
-            {
-                for ($i = 1; $i -le 200; $i++) { $held += ,(New-Object byte[] 52428800) }
-            }
-            catch { }
-            "done"
-            """);
-
-        var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
-        {
-            if (entry.Key is string key && entry.Value is string value)
-            {
-                environment[key] = value;
-            }
-        }
-
-        using var pty = new Cockpit.Infrastructure.Sessions.Tty.ConPtyHostFactory().Start(
-            "cmd.exe",
-            ["/c", "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
-            Path.GetTempPath(),
-            environment,
-            columns: 80,
-            rows: 24);
-
-        try
-        {
-            using var cap = new WindowsJobMemoryLimiter(NullLogger<WindowsJobMemoryLimiter>.Instance)
-                .Apply(pty.ProcessId, capBytes);
-            Assert.NotNull(cap);
-
-            // The pty EOFs when the child tree is gone; uncapped, the hog would still be climbing towards 10 GB.
-            var buffer = new byte[4096];
-            var read = Task.Run(() =>
-            {
-                while (pty.OutputStream.Read(buffer, 0, buffer.Length) > 0)
-                {
-                }
-            });
-
-            Assert.Same(read, await Task.WhenAny(read, Task.Delay(TimeSpan.FromMinutes(2))));
-
-            var mine = new byte[64 * 1024 * 1024];
-            mine[^1] = 1;
-            Assert.Equal(1, mine[^1]);
-        }
-        finally
-        {
             File.Delete(script);
         }
     }

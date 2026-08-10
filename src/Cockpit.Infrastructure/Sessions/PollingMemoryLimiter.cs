@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Abstractions.Sessions;
@@ -7,12 +6,9 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// macOS `ISessionMemoryLimiter` (AC-661): no cgroups and no job objects, so the tree's RSS is polled and killed
-// when it goes over. `setrlimit(RLIMIT_AS)` bounds address space, which .NET and Node reserve far more of than
-// they use; Jetsam has no public per-child-tree API. Weaker than a kernel cap, said plainly: a spike between two
-// polls can get through. `PollingMemoryLimiterTests` covers the logic against a fake process table; what no test
-// here can cover is whether `ps` reports these figures on real macOS hardware, since there is no Mac to check on
-// (the same blind spot as AC-57).
+// The `ISessionMemoryLimiter` for macOS, and since AC-692 for Windows too (replacing `WindowsJobMemoryLimiter`'s
+// hard job-object kill, AC-661): neither platform enforces a cap anymore, just polls and reports. What no test
+// here can cover is whether `ps` reports these figures on real macOS hardware — there is no Mac to check on (AC-57).
 internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
 {
     // Short enough to catch an ordinary build's climb, long enough that shelling out to `ps` is not the cost.
@@ -20,25 +16,22 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
 
     private readonly IProcessTableReader _reader;
     private readonly ILogger _logger;
-    private readonly Action<int> _kill;
 
     // One loop and one process-table read for every watched session, rather than one `ps` per session per tick.
     private readonly ConcurrentDictionary<int, long> _watched = new();
+
+    // One-shot per crossing, same shape as every other memory warning in this codebase — otherwise a session
+    // sitting over its cap logs the same warning every 1.5 seconds for as long as it stays there.
+    private readonly ConcurrentDictionary<int, bool> _reported = new();
+
     private readonly CancellationTokenSource _stopped = new();
     private Task? _loop;
     private readonly Lock _loopLock = new();
 
     public PollingMemoryLimiter(IProcessTableReader reader, ILogger<PollingMemoryLimiter> logger)
-        : this(reader, logger, KillTree)
-    {
-    }
-
-    // Test seam: the kill is what a test must not actually perform.
-    internal PollingMemoryLimiter(IProcessTableReader reader, ILogger logger, Action<int> kill)
     {
         _reader = reader;
         _logger = logger;
-        _kill = kill;
     }
 
     public IDisposable? Apply(int processId, long capBytes)
@@ -49,8 +42,9 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
         return new Watch(this, processId);
     }
 
-    // One sweep: every watched session whose tree is over its cap is killed and dropped. Returns how many were
-    // killed, which is what the tests assert on — no timer, no waiting.
+    // One sweep: every watched session whose tree is over its cap is logged once, on the way up — the same crossing
+    // that used to end in a kill (AC-692). Returns how many were newly reported, which is what the tests assert
+    // on — no timer, no waiting.
     internal int CheckOnce()
     {
         if (_watched.IsEmpty)
@@ -59,37 +53,32 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
         }
 
         var rows = _reader.Read();
-        var killed = 0;
+        var reported = 0;
 
         foreach (var (processId, capBytes) in _watched)
         {
             var held = ProcessTree.Sum(rows, processId).WorkingSetBytes;
             if (held <= capBytes)
             {
+                _reported.TryRemove(processId, out _);
+                continue;
+            }
+
+            if (!_reported.TryAdd(processId, true))
+            {
                 continue;
             }
 
             _logger.LogWarning(
-                "Session {ProcessId} held {HeldBytes} bytes against its {CapBytes} byte cap; stopping it so the cockpit is not taken with it.",
+                "Session {ProcessId} held {HeldBytes} bytes against its {CapBytes} byte cap. Not stopped automatically (AC-692) — the operator decides from the cockpit's own notice.",
                 processId,
                 held,
                 capBytes);
 
-            // Dropped before the kill, so a slow kill cannot be counted twice on the next sweep.
-            _watched.TryRemove(processId, out _);
-            killed++;
-
-            try
-            {
-                _kill(processId);
-            }
-            catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException or SystemException)
-            {
-                _logger.LogWarning(exception, "Session {ProcessId} could not be stopped.", processId);
-            }
+            reported++;
         }
 
-        return killed;
+        return reported;
     }
 
     public void Dispose()
@@ -122,16 +111,12 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
         }
     }
 
-    // SIGKILL to the tree: a session that is over its cap has already lost, and a polite signal it can ignore
-    // would leave the machine in exactly the state this exists to prevent.
-    private static void KillTree(int processId)
-    {
-        using var process = Process.GetProcessById(processId);
-        process.Kill(entireProcessTree: true);
-    }
-
     private sealed class Watch(PollingMemoryLimiter limiter, int processId) : IDisposable
     {
-        public void Dispose() => limiter._watched.TryRemove(processId, out _);
+        public void Dispose()
+        {
+            limiter._watched.TryRemove(processId, out _);
+            limiter._reported.TryRemove(processId, out _);
+        }
     }
 }
