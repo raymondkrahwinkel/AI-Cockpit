@@ -474,12 +474,24 @@
                        IsVisible="{Binding IsSessionReady}"
                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
         </StackPanel>
-        <ScrollViewer x:Name="TranscriptScroll" IsVisible="{Binding HasTranscript}">
             <!-- Virtualised (#memory): an ItemsControl builds a control tree for every row a session has ever
                  produced and keeps it alive forever — hundreds of megabytes of UI nobody is looking at, in a long
-                 session. An ItemsRepeater builds what is on screen. The rows the operator scrolled past cost what
-                 they are worth: their view model, and nothing else. -->
-            <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Transcript}">
+                 session. A VirtualizingStackPanel builds what is on screen. The rows the operator scrolled past cost
+                 what they are worth: their view model, and nothing else.
+                 The scroll owner is the transcript's own template, not a ScrollViewer wrapped around it (AC-686):
+                 an enclosing ScrollViewer measures its content with infinite height, so the panel sizes itself
+                 against a viewport it does not have and its extent is an estimate it keeps correcting. Inside the
+                 template it measures against the real viewport, which is how every virtualising list in Avalonia is
+                 built. x:Name still reads TranscriptScroll — the code-behind and the follow tests ask for the
+                 transcript's scroll owner by that name. -->
+            <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Transcript}" IsVisible="{Binding HasTranscript}">
+                <ItemsControl.Template>
+                    <ControlTemplate TargetType="ItemsControl">
+                        <ScrollViewer x:Name="TranscriptScroll" HorizontalScrollBarVisibility="Disabled">
+                            <ItemsPresenter x:Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"/>
+                        </ScrollViewer>
+                    </ControlTemplate>
+                </ItemsControl.Template>
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <VirtualizingStackPanel/>
@@ -795,7 +807,6 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
-        </ScrollViewer>
 
         <!-- Scroll-to-bottom affordance: shown only when scrolled up (#21), jumps back to the newest
              row and resumes following. On top of the transcript (last Grid child), bottom-right. -->
