@@ -28,6 +28,7 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                     <Button Content="New project…" Classes="Accent" Command="{Binding AddProjectCommand}"/>
                     <Button Content="Edit…" Command="{Binding EditProjectCommand}"/>
+                    <Button Content="{Binding ShareToggleLabel}" Command="{Binding ToggleSharingCommand}"/>
                     <Button Content="Remove" Command="{Binding RemoveProjectCommand}"/>
                 </StackPanel>
                 <Button Grid.Column="2" Content="Close" Click="OnClose"/>

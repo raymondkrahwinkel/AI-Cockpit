@@ -73,4 +73,27 @@ public interface ISharedProjectSource
     /// moment ago.
     /// </param>
     Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether this source can turn a not-yet-shared local project into a new one of its own (AC-620). Required,
+    /// not default-implemented — the same "an interface the plugin implements is worse for an older binary, not
+    /// better" reasoning <see cref="PrepareBindingAsync"/>'s own version-history entry already documents for this
+    /// interface: nothing here depends on an old plugin binary satisfying a newer host, so a plain required member
+    /// stays unambiguous instead of quietly degrading to "unsupported" the way a default body would.
+    /// </summary>
+    bool CanPublish { get; }
+
+    /// <summary>
+    /// The "Depot project" picker's own rows — unlike <see cref="ListAsync"/>, includes a target with no portable
+    /// definition yet. Never called when <see cref="CanPublish"/> is false; report an ordinary failure through <see cref="SharedProjectPublishTargetListResult.Failed"/>.
+    /// </summary>
+    Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Publishes <paramref name="definition"/> as a new portable definition at <paramref name="targetId"/> (AC-620) —
+    /// must fail with <see cref="SharedProjectPublishResult.AlreadyPublished"/> rather than overwrite one that already exists (<see cref="PrepareBindingAsync"/>'s case, not this call's).
+    /// </summary>
+    /// <param name="targetId">A <see cref="SharedProjectPublishTarget.Id"/> this source itself listed.</param>
+    /// <param name="definition">The local project's portable snapshot, offered as-is — see <see cref="SharedProjectPublishDefinition"/> for what "portable" already excludes.</param>
+    Task<SharedProjectPublishResult> PublishAsync(string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken);
 }

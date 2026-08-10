@@ -1,0 +1,118 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.ShareProjectDialog"
+        x:DataType="vm:ShareProjectDialogViewModel"
+        Title="Share via Depot"
+        Width="640" Height="620" MinWidth="520" MinHeight="440"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:ShareProjectDialogViewModel/>
+    </Design.DataContext>
+
+    <!-- AC-620, mockup section 2.3. Two columns before the first upload: what goes to Depot, what stays. No
+         field-level opt-out (Raymond's own decision) — the split is a property of the field, not a per-share
+         choice; only the connection and the target project are asked here. -->
+    <Window.Styles>
+        <Style Selector="TextBlock.SectionTitle">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="TextBlock.FieldHint">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,1,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldRowLabel">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldRowValue">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="*,Auto">
+        <Border Grid.Row="1" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding ErrorMessage}" VerticalAlignment="Center" FontSize="11.5"
+                           Foreground="{StaticResource CockpitStatusErrorBrush}" TextWrapping="Wrap"
+                           IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="Share" Classes="Accent" Command="{Binding ShareCommand}"
+                            IsEnabled="{Binding !IsSharing}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="18" Margin="24,20,24,28">
+                <TextBlock Text="Where it goes" Classes="SectionTitle"/>
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldHint" Text="Connection"/>
+                    <ComboBox ItemsSource="{Binding Connections}" SelectedIndex="{Binding SelectedConnectionIndex}"
+                              HorizontalAlignment="Stretch" MaxWidth="380"/>
+                </StackPanel>
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldHint" Text="Depot project"/>
+                    <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}"
+                              PlaceholderText="Pick a project…" HorizontalAlignment="Stretch" MaxWidth="380">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Classes="FieldHint" Text="Loading…" IsVisible="{Binding IsLoadingTargets}"/>
+                    <TextBlock Text="{Binding LoadError}" FontSize="11" Foreground="{StaticResource CockpitStatusErrorBrush}"
+                               TextWrapping="Wrap" IsVisible="{Binding LoadError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding RoleNote}" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               IsVisible="{Binding RoleNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                    <StackPanel Grid.Column="0" Spacing="6">
+                        <TextBlock Text="What goes to Depot" Classes="SectionTitle"/>
+                        <ItemsControl ItemsSource="{Binding GoesToDepot}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ShareFieldRowViewModel">
+                                    <StackPanel Margin="0,0,0,8" Spacing="1">
+                                        <TextBlock Classes="FieldRowLabel" Text="{Binding Label}"/>
+                                        <TextBlock Classes="FieldRowValue" Text="{Binding Value}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <TextBlock Text="What stays on this machine" Classes="SectionTitle"/>
+                        <ItemsControl ItemsSource="{Binding StaysOnThisMachine}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ShareFieldRowViewModel">
+                                    <StackPanel Margin="0,0,0,8" Spacing="1">
+                                        <TextBlock Classes="FieldRowLabel" Text="{Binding Label}"/>
+                                        <TextBlock Classes="FieldRowValue" Text="{Binding Value}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

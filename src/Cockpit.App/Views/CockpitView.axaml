@@ -115,6 +115,24 @@
             <Setter Property="IsHitTestVisible" Value="True"/>
             <Setter Property="RenderTransform" Value="translateY(0)"/>
         </Style>
+
+        <!-- AC-620: a project card's own "which Depot connection" badge — shown only for a bound project
+             (OriginBadge starts with "◆ "), never for a local one ("● This machine" says nothing a launcher card
+             needs). Same pill geometry and colour as ProjectDialog.axaml's per-field origin badge
+             (Border.originBadge.shared) — duplicated rather than shared across windows, since Avalonia styles do
+             not cross a UserControl/Window boundary. -->
+        <Style Selector="Border.sharedProjectBadge">
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="{StaticResource CockpitIsolatedBadgeBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+        </Style>
+        <Style Selector="Border.sharedProjectBadge > TextBlock">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+        </Style>
     </UserControl.Styles>
 
     <DockPanel LastChildFill="True">
@@ -1041,14 +1059,21 @@
                                                         <!-- The logo carries the recognition: a colleague finds their project by its
                                                              picture before they have read a word. Without one the well shows the
                                                              project's initial, so every card is the same shape either way. -->
-                                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                                        <Grid ColumnDefinitions="Auto,*,Auto">
                                                             <controls:ProjectLogoBadge Grid.Column="0" Size="34"
+                                                                                       Margin="0,0,10,0"
                                                                                        LogoPath="{Binding Project.LogoPath}"
                                                                                        ProjectName="{Binding Project.Name}"
                                                                                        WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
                                                             <TextBlock Grid.Column="1" Text="{Binding Project.Name}" FontSize="15" FontWeight="SemiBold"
                                                                        VerticalAlignment="Center"
                                                                        TextTrimming="CharacterEllipsis"/>
+                                                            <!-- AC-620: which Depot connection this project is shared through — never shown
+                                                                 for a plain local project (IsShared false), only what changed. -->
+                                                            <Border Grid.Column="2" Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
+                                                                    Margin="8,0,0,0">
+                                                                <TextBlock Text="{Binding OriginBadge}"/>
+                                                            </Border>
                                                         </Grid>
                                                         <!-- The description carries the card: it is what a colleague reads to know
                                                              which one is theirs. A card without one closes up instead of holding
@@ -1100,22 +1125,36 @@
                                                             </StackPanel>
                                                         </Button>
                                                         <!-- The quieter half: everything that is not "carry on with this", kept
-                                                             below the one button that is. -->
-                                                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
-                                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Open folder"
+                                                             below the one button that is. AC-620: a WrapPanel, not a StackPanel —
+                                                             Share…/Stop sharing… makes this four items wide, and Raymond's own
+                                                             call was to let it wrap to a second line rather than hide the new
+                                                             action behind a ⋯-overflow (that was the whole complaint this ticket
+                                                             opened with: delen was invisible). -->
+                                                        <WrapPanel HorizontalAlignment="Center">
+                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Open folder"
                                                                     ToolTip.ShowOnDisabled="True"
                                                                     ToolTip.Tip="{Binding Project.SourceDirectory}"
                                                                     IsEnabled="{Binding Project.SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenProjectFolderCommand}"
                                                                     CommandParameter="{Binding Project}"/>
-                                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Edit"
+                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Edit"
                                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
                                                                     CommandParameter="{Binding Project}"/>
-                                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Start with options…"
+                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Start with options…"
                                                                     ToolTip.Tip="Open the New-session dialog on this project, to change something before it starts"
                                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).NewSessionForProjectCommand}"
                                                                     CommandParameter="{Binding Project}"/>
-                                                        </StackPanel>
+                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Share…"
+                                                                    IsVisible="{Binding !IsShared}"
+                                                                    ToolTip.Tip="Publish this project to Depot so colleagues can bind to the same definition"
+                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShareProjectCommand}"
+                                                                    CommandParameter="{Binding Project}"/>
+                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Stop sharing…"
+                                                                    IsVisible="{Binding IsShared}"
+                                                                    ToolTip.Tip="Remove this project's connection on this machine — nothing in Depot is affected"
+                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShareProjectCommand}"
+                                                                    CommandParameter="{Binding Project}"/>
+                                                        </WrapPanel>
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>

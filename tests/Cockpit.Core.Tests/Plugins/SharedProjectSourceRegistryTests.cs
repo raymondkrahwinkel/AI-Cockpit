@@ -97,5 +97,13 @@ public class SharedProjectSourceRegistryTests
 
         public Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) =>
             Task.FromResult(SharedProjectWriteBackResult.Failed("not implemented by this fake"));
+
+        public bool CanPublish => false;
+
+        public Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectPublishTargetListResult.Failed("not implemented by this fake"));
+
+        public Task<SharedProjectPublishResult> PublishAsync(string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectPublishResult.Failed("not implemented by this fake"));
     }
 }

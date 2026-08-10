@@ -213,6 +213,118 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
         };
     }
 
+    public bool CanPublish => true;
+
+    // AC-620: the same list_projects call ListAsync makes, but kept unfiltered by "does it already carry a
+    // definition" — a publish target is a container to write the *first* definition into, so a project that has
+    // never opted into Cockpit sharing is exactly the common case here, not the one ListAsync leaves out.
+    public async Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken)
+    {
+        var listResult = await host.CallMcpToolAsync(
+            connection.McpServerName,
+            "list_projects",
+            new Dictionary<string, object?> { ["includeSummary"] = false },
+            projectId: null,
+            cancellationToken).ConfigureAwait(false);
+
+        switch (listResult.Outcome)
+        {
+            case PluginMcpToolCallOutcome.AuthorizationRequired:
+                return SharedProjectPublishTargetListResult.Failed("Sign in to this Depot connection to publish a project.");
+            case PluginMcpToolCallOutcome.Success:
+                break;
+            default:
+                return SharedProjectPublishTargetListResult.Failed(
+                    listResult.Error is { Length: > 0 } error ? error : "Depot did not return a list of projects.");
+        }
+
+        if (!DepotMemorySource.TryParseProjects(listResult.Content ?? string.Empty, out var listed, out var parseError))
+        {
+            return SharedProjectPublishTargetListResult.Failed(parseError ?? "Depot's project list came back in an unexpected shape.");
+        }
+
+        // AC-620's own decision 4: only a project the operator can already write to is offered — Depot has no
+        // create_project call for the dropdown to fall back on, so a Viewer's own projects would otherwise dead-end
+        // in a picker row that fails the moment it is chosen.
+        var targets = listed
+            .Where(project => !string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
+            .Select(project => (project.Slug, project.Name, Role: DepotProjectRoleParser.Parse(project.Role)))
+            .Where(entry => entry.Role is DepotProjectRole.Editor or DepotProjectRole.Owner)
+            .Select(entry => new SharedProjectPublishTarget(
+                $"{scheme}:{entry.Slug}",
+                entry.Name is { Length: > 0 } ? entry.Name : entry.Slug,
+                entry.Role.ToDisplayString()))
+            .ToList();
+
+        return SharedProjectPublishTargetListResult.Success(targets);
+    }
+
+    // AC-620. Reads first — Depot's own "[NotFound]" read wording (measured live against a real server) is what
+    // tells "nothing there yet" from "already published" apart before writing with no baseChecksum.
+    public async Task<SharedProjectPublishResult> PublishAsync(
+        string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken)
+    {
+        var prefix = $"{scheme}:";
+        if (!targetId.StartsWith(prefix, StringComparison.Ordinal) || targetId.Length <= prefix.Length)
+        {
+            return SharedProjectPublishResult.Failed($"'{targetId}' does not belong to this Depot connection.");
+        }
+
+        var slug = targetId[prefix.Length..];
+        // ponytail: read-then-write, not atomic — two concurrent first publishes of the same target can both pass
+        // this read before either writes, and the second silently overwrites the first. Depot's write tool has no
+        // create-if-absent flag to close this; upgrade path is a DEP-ticket to add one.
+        var existing = await CockpitProjectDefinitionStore.ReadAsync(
+            host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
+
+        if (existing.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+        {
+            return SharedProjectPublishResult.Failed("Sign in to this Depot connection to publish this project.");
+        }
+
+        if (existing.Outcome == PluginMcpToolCallOutcome.Success)
+        {
+            return SharedProjectPublishResult.AlreadyPublished(
+                "This Depot project already carries a shared definition — finish setting it up here instead of publishing over it.");
+        }
+
+        if (existing.Error is not { } existingError || !existingError.StartsWith("[NotFound]", StringComparison.Ordinal))
+        {
+            return SharedProjectPublishResult.Failed(
+                existing.Error is { Length: > 0 } error ? error : "Couldn't confirm whether this Depot project is already published.");
+        }
+
+        // Never AdditionalInfo/secret material here by construction — SharedProjectPublishDefinition carries no
+        // field one could populate (see its own remarks); CockpitProjectResourceFilter is what additionally drops a
+        // secret-shaped resource reference (AC-612) before anything below reaches the wire.
+        var filtered = CockpitProjectResourceFilter.Apply(
+            definition.Resources.Select(resource => (resource.Role, resource.Reference, resource.Label)));
+
+        var toWrite = new CockpitProjectDefinition
+        {
+            Name = definition.Name,
+            Description = definition.Description,
+            GitUrl = definition.GitUrl,
+            BehaviorPrompt = definition.BehaviorPrompt,
+            IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
+            McpOverlay = definition.EnabledMcpServerNames is { } enabled ? new CockpitProjectMcpOverlayEntry { Enabled = [.. enabled] } : null,
+            Resources = filtered.Portable.Count == 0 ? null : [.. filtered.Portable],
+        };
+
+        var writeResult = await CockpitProjectDefinitionStore.WriteAsync(
+            host, connection.McpServerName, slug, toWrite, baseChecksum: null, callerRole: null, cancellationToken).ConfigureAwait(false);
+
+        return writeResult.Outcome switch
+        {
+            PluginMcpToolCallOutcome.Success => SharedProjectPublishResult.Success($"{scheme}:{slug}"),
+            _ when writeResult.FailureKind == CockpitProjectDefinitionWriteFailureKind.PermissionDenied =>
+                SharedProjectPublishResult.PermissionDenied(
+                    writeResult.Error is { Length: > 0 } error ? error : "You do not have permission to publish here."),
+            _ => SharedProjectPublishResult.Failed(
+                writeResult.Error is { Length: > 0 } error ? error : "Depot did not confirm the write."),
+        };
+    }
+
     // Shared by PrepareBindingAsync and WriteBackAsync's own conflict snapshot — both ever have to turn a
     // CockpitProjectDefinition into the plugin-shape-agnostic SharedProjectBinding the same way.
     private static SharedProjectBinding _ToBinding(string slug, CockpitProjectDefinition definition, string? checksum)

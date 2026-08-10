@@ -358,7 +358,14 @@
          already-compiled plugin reports no gate, still read as "manages its own auth". Implementers: the host
          calls it synchronously on the UI thread, once per profile, so answer from a cache and refresh behind it.
          Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.50.0</Version>
+    <!-- 1.51.0 (AC-620): added ISharedProjectSource.CanPublish/ListPublishTargetsAsync/PublishAsync — required, not
+         default-implemented, same reasoning as 1.49.0's PrepareBindingAsync entry — plus SharedProjectPublishTarget/
+         SharedProjectPublishTargetListResult/SharedProjectPublishResource/SharedProjectPublishDefinition/
+         SharedProjectPublishResult (new types). Turns a not-yet-shared local project into a new portable definition
+         at a source-chosen target, the missing "publish" mirror of PrepareBindingAsync's "attach" — the naad AC-242's
+         own outbound direction never had one for. Major and abstractionsVersion stay 1. Consumed in-repo by
+         Cockpit.Plugin.Depot, whose minHostVersion moves with it. -->
+    <Version>1.51.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

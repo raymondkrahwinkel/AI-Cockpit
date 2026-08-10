@@ -667,6 +667,88 @@ public class ProjectsViewModelTests
         Assert.Equal("Cockpit", Assert.Single(werk.Cards).Project.Name);
     }
 
+    // AC-620: ToggleSharingAsync(Project) is the launcher's own parameterized entry point (no selection to read,
+    // unlike the RelayCommand ProjectsDialog uses) — same either/or the selection-based command wraps.
+    [Fact]
+    public async Task ToggleSharingAsync_LocalProject_OpensTheShareDialogAndPersistsTheReturnedProject()
+    {
+        var local = Project.Create("PayrollProcessor");
+        // publishResult is only what makes CanPublish true here — the dialog itself (mocked below) is what would
+        // call PublishAsync in the real app; ProjectsViewModel never calls it directly.
+        var source = new _FakeSharedProjectSource(
+            "Depot — Work", SharedProjectListResult.Success([]), publishResult: SharedProjectPublishResult.Success("depot:new-project"));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store, local);
+        await viewModel.LoadAsync();
+
+        var bound = local with { Resources = [new ProjectResource("depot:new-project", ProjectResourceRole.Memory)] };
+        dialogs.ShowShareProjectDialogAsync(local, Arg.Is<IReadOnlyList<ISharedProjectSource>>(sources => sources.Contains(source)))
+            .Returns(bound);
+
+        await viewModel.ToggleSharingAsync(local);
+
+        await store.Received(1).SaveAsync(Arg.Is<ProjectSettings>(settings =>
+            settings.Projects.Single().Resources.Any(resource => resource.Reference == "depot:new-project")), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ToggleSharingAsync_LocalProject_NoPublishCapableSource_NeverOpensADialog()
+    {
+        var local = Project.Create("PayrollProcessor");
+        // CanPublish is false here (_FakeSharedProjectSource with no publishResult) — the same shape a read-only
+        // ISharedProjectSource (one that only ever implemented ListAsync/PrepareBindingAsync) already has.
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out _, local);
+        await viewModel.LoadAsync();
+
+        await viewModel.ToggleSharingAsync(local);
+
+        await dialogs.DidNotReceive().ShowShareProjectDialogAsync(Arg.Any<Project>(), Arg.Any<IReadOnlyList<ISharedProjectSource>>());
+    }
+
+    [Fact]
+    public async Task ToggleSharingAsync_AlreadySharedProject_ConfirmsThenRemovesOnlyTheBindingRow()
+    {
+        var extraMemoryRow = new ProjectResource("~/Notes/payroll.md", ProjectResourceRole.Memory) { Label = "Personal notes" };
+        var bound = Project.Create("PayrollProcessor") with
+        {
+            Resources = [new ProjectResource("Depot — Work:payroll-processor", ProjectResourceRole.Memory), extraMemoryRow],
+        };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("Depot — Work:payroll-processor", "PayrollProcessor")]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store, bound);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask; // claims the ownership ToggleSharingAsync's _ResolveSharedSource reads
+
+        await viewModel.ToggleSharingAsync(bound);
+
+        await store.Received(1).SaveAsync(Arg.Is<ProjectSettings>(settings =>
+            !settings.Projects.Single().Resources.Any(resource => resource.Reference == "Depot — Work:payroll-processor")
+            && settings.Projects.Single().Resources.Contains(extraMemoryRow)), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ToggleSharingAsync_AlreadySharedProject_ConfirmationDeclined_LeavesTheBindingIntact()
+    {
+        var bound = Project.Create("PayrollProcessor") with
+        {
+            Resources = [new ProjectResource("Depot — Work:payroll-processor", ProjectResourceRole.Memory)],
+        };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("Depot — Work:payroll-processor", "PayrollProcessor")]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(false);
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store, bound);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+        store.ClearReceivedCalls();
+
+        await viewModel.ToggleSharingAsync(bound);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
+    }
+
     private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> sources) : ISharedProjectSourceRegistry
     {
         public IReadOnlyList<ISharedProjectSource> Sources => sources;
@@ -683,14 +765,20 @@ public class ProjectsViewModelTests
         private readonly SharedProjectListResult? _result;
         private readonly Exception? _exception;
         private readonly bool _neverCompletes;
+        private readonly SharedProjectPublishResult? _publishResult;
 
-        public _FakeSharedProjectSource(string sourceName, SharedProjectListResult? result = null, Exception? exception = null, bool neverCompletes = false)
+        public _FakeSharedProjectSource(
+            string sourceName, SharedProjectListResult? result = null, Exception? exception = null, bool neverCompletes = false,
+            SharedProjectPublishResult? publishResult = null)
         {
             SourceName = sourceName;
             _result = result;
             _exception = exception;
             _neverCompletes = neverCompletes;
+            _publishResult = publishResult;
         }
+
+        public SharedProjectPublishDefinition? LastPublishedDefinition { get; private set; }
 
         public string Key => SourceName;
 
@@ -719,5 +807,18 @@ public class ProjectsViewModelTests
         // AC-247: not exercised by any test in this file either (none of them call ProjectDialogViewModel.SaveAsync) — same reasoning as PrepareBindingAsync above.
         public Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) =>
             Task.FromResult(SharedProjectWriteBackResult.Failed("not implemented by this fake"));
+
+        // AC-620: CanPublish tracks whether this fake was given a publishResult to answer with, so a test that
+        // never asks for publish support does not have to opt out of it separately.
+        public bool CanPublish => _publishResult is not null;
+
+        public Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectPublishTargetListResult.Success([new SharedProjectPublishTarget($"{Key}:target", "target", "Owner")]));
+
+        public Task<SharedProjectPublishResult> PublishAsync(string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken)
+        {
+            LastPublishedDefinition = definition;
+            return Task.FromResult(_publishResult ?? SharedProjectPublishResult.Failed("not implemented by this fake"));
+        }
     }
 }
