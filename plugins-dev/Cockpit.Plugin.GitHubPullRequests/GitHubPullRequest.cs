@@ -11,4 +11,8 @@ public sealed record GitHubPullRequest(
     string? Body,
     string Repository,
     string Author,
-    DateTimeOffset? UpdatedAt = null);
+    DateTimeOffset? UpdatedAt = null)
+{
+    // Display-only: ordering/caching compare `UpdatedAt` itself, which is offset-agnostic already.
+    public DateTimeOffset? UpdatedAtLocal => UpdatedAt?.ToLocalTime();
+}
