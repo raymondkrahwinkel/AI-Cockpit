@@ -35,6 +35,11 @@ public sealed class MarkdownView : ContentControl
     private static IBrush TextSecondary => ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#949aa5");
     private static IBrush TextFaint => ThemeBrush.Resolve("CockpitTextFaintBrush", "#656c78");
 
+    // A clickable path's tint (AC-642): lighter than Accent so a resolved file still reads as code, on the
+    // same wash a selected row already uses — see the tokens' own comments in Theme.axaml.
+    private static IBrush ClickablePathForeground => ThemeBrush.Resolve("CockpitClickablePathFgBrush", "#93b4f7");
+    private static IBrush ClickablePathBackground => ThemeBrush.Resolve("CockpitAccentSelectionBrush", "#292563eb");
+
     public static readonly StyledProperty<string?> MarkdownProperty =
         AvaloniaProperty.Register<MarkdownView, string?>(nameof(Markdown));
 
@@ -42,6 +47,18 @@ public sealed class MarkdownView : ContentControl
     {
         get => GetValue(MarkdownProperty);
         set => SetValue(MarkdownProperty, value);
+    }
+
+    public static readonly StyledProperty<string?> BasePathProperty =
+        AvaloniaProperty.Register<MarkdownView, string?>(nameof(BasePath));
+
+    // The directory a relative code-span path resolves against (AC-642) — the hosting surface's working
+    // directory, bound in per view (SessionView.axaml, AssistantChatWindow.axaml). Null where none is known
+    // (a plugin dialog, delegated-task output): only absolute paths resolve there.
+    public string? BasePath
+    {
+        get => GetValue(BasePathProperty);
+        set => SetValue(BasePathProperty, value);
     }
 
     // A streaming reply re-sets Markdown on every delta, and each set rebuilt the whole block tree: at the end of
@@ -68,7 +85,7 @@ public sealed class MarkdownView : ContentControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property != MarkdownProperty)
+        if (change.Property != MarkdownProperty && change.Property != BasePathProperty)
         {
             return;
         }
@@ -191,7 +208,26 @@ public sealed class MarkdownView : ContentControl
         }
     }
 
-    private static Control _RenderBlock(MarkdownBlock block) => block.Kind switch
+    // `FilePathResolver`'s callback once a background probe lands (AC-642, valkuil 2): `_Render` reuses the
+    // block tree and compares parsed blocks for equality, so an answer that only changed a run's brush inside
+    // an otherwise-unchanged block is invisible to it. Force one full rebuild of this message to make the
+    // now-known answer show up; a view that is not attached defers to the same `_pendingRebuild` path a
+    // recycled row already uses.
+    private void _OnPathResolved()
+    {
+        if (this.IsAttachedToVisualTree())
+        {
+            _rendered = [];
+            _blocks.Children.Clear();
+            _Render(Markdown ?? string.Empty);
+        }
+        else
+        {
+            _pendingRebuild = true;
+        }
+    }
+
+    private Control _RenderBlock(MarkdownBlock block) => block.Kind switch
     {
         MarkdownBlockKind.Heading => _Heading(block),
         MarkdownBlockKind.CodeBlock => _CodeBlock(block),
@@ -207,7 +243,7 @@ public sealed class MarkdownView : ContentControl
     // and 188 MB for a fence against 48 MB for the same length of prose, which splits into small blocks of which
     // only the last is rebuilt. Returns false whenever the shape changed rather than grew, and a rebuild is then
     // the honest answer.
-    private static bool _TryUpdateInPlace(Control control, MarkdownBlock was, MarkdownBlock now)
+    private bool _TryUpdateInPlace(Control control, MarkdownBlock was, MarkdownBlock now)
     {
         if (was.Kind != now.Kind)
         {
@@ -256,7 +292,7 @@ public sealed class MarkdownView : ContentControl
         }
     }
 
-    private static bool _UpdateListItems(
+    private bool _UpdateListItems(
         StackPanel panel,
         IReadOnlyList<IReadOnlyList<MarkdownInline>> was,
         IReadOnlyList<IReadOnlyList<MarkdownInline>> now,
@@ -297,7 +333,7 @@ public sealed class MarkdownView : ContentControl
         return true;
     }
 
-    private static bool _UpdateTableRows(Grid grid, MarkdownBlock was, MarkdownBlock now)
+    private bool _UpdateTableRows(Grid grid, MarkdownBlock was, MarkdownBlock now)
     {
         // The header sets the columns, so a change there is a different table rather than a longer one.
         if (!_SameCells(was.Items, now.Items))
@@ -371,7 +407,7 @@ public sealed class MarkdownView : ContentControl
         return true;
     }
 
-    private static Control _Heading(MarkdownBlock block)
+    private Control _Heading(MarkdownBlock block)
     {
         var size = block.HeadingLevel switch { 1 => 16.0, 2 => 15.0, 3 => 13.5, _ => 13.0 };
         var text = _InlineTextBlock(block.Inlines);
@@ -381,7 +417,7 @@ public sealed class MarkdownView : ContentControl
         return text;
     }
 
-    private static Control _Paragraph(IReadOnlyList<MarkdownInline> inlines, Thickness margin)
+    private Control _Paragraph(IReadOnlyList<MarkdownInline> inlines, Thickness margin)
     {
         var text = _InlineTextBlock(inlines);
         text.Margin = margin;
@@ -493,7 +529,7 @@ public sealed class MarkdownView : ContentControl
         return copy;
     }
 
-    private static Control _List(MarkdownBlock block)
+    private Control _List(MarkdownBlock block)
     {
         var panel = new StackPanel { Spacing = 2, Margin = new Thickness(0, 4, 0, 4) };
         for (var index = 0; index < block.Items.Count; index++)
@@ -504,7 +540,7 @@ public sealed class MarkdownView : ContentControl
         return panel;
     }
 
-    private static Control _ListRow(IReadOnlyList<MarkdownInline> item, int index, bool ordered)
+    private Control _ListRow(IReadOnlyList<MarkdownInline> item, int index, bool ordered)
     {
         var marker = new TextBlock
         {
@@ -526,7 +562,7 @@ public sealed class MarkdownView : ContentControl
         return row;
     }
 
-    private static Control _Table(MarkdownBlock block)
+    private Control _Table(MarkdownBlock block)
     {
         var columns = block.Items.Count;
         var grid = new Grid();
@@ -550,7 +586,7 @@ public sealed class MarkdownView : ContentControl
         };
     }
 
-    private static void _AddTableRow(Grid grid, IReadOnlyList<IReadOnlyList<MarkdownInline>> cells, int rowIndex, bool isHeader)
+    private void _AddTableRow(Grid grid, IReadOnlyList<IReadOnlyList<MarkdownInline>> cells, int rowIndex, bool isHeader)
     {
         grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
         for (var c = 0; c < cells.Count; c++)
@@ -578,9 +614,11 @@ public sealed class MarkdownView : ContentControl
 
     // A text block that keeps the link ranges its runs were built from. Refilling one while a reply streams
     // would otherwise stack another click handler on it per repaint, and hand out another platform cursor.
+    // `Line` rides along for a resolved file path (AC-642) — null for an ordinary markdown link, which has
+    // nowhere to jump to.
     private sealed class InlineTextBlock : SelectableTextBlock
     {
-        public readonly List<(int Start, int Length, string Url)> Links = [];
+        public readonly List<(int Start, int Length, string Url, int? Line)> Links = [];
     }
 
     // One cursor for every block that holds a link, rather than one per build: a Cursor is a platform handle, and
@@ -590,7 +628,7 @@ public sealed class MarkdownView : ContentControl
     private static Cursor? _handCursor;
 
     // Builds a selectable text block from inline runs, styling code/links and making links clickable.
-    private static InlineTextBlock _InlineTextBlock(IReadOnlyList<MarkdownInline> inlines)
+    private InlineTextBlock _InlineTextBlock(IReadOnlyList<MarkdownInline> inlines)
     {
         var block = new InlineTextBlock
         {
@@ -614,7 +652,7 @@ public sealed class MarkdownView : ContentControl
     }
 
     // Replaces a block's runs in place — what a growing paragraph, list item or table cell needs.
-    private static void _FillInlines(InlineTextBlock block, IReadOnlyList<MarkdownInline> inlines)
+    private void _FillInlines(InlineTextBlock block, IReadOnlyList<MarkdownInline> inlines)
     {
         block.Links.Clear();
         block.Inlines?.Clear();
@@ -643,13 +681,25 @@ public sealed class MarkdownView : ContentControl
                 case MarkdownInlineKind.Code:
                     run.FontFamily = MonoFont;
                     run.Background = CodeBackground;
+
+                    // A code span that could be a file path (AC-642): the cheap vorm filter decides who gets
+                    // asked, the memoised resolver — never on this thread — decides who is real. Still unknown
+                    // or not a file: the run stays plain code, exactly as before.
+                    if (FilePathCandidate.TryParse(inline.Text, out var candidatePath, out var candidateLine) &&
+                        FilePathResolver.Resolve(candidatePath, BasePath, _OnPathResolved) is { } resolvedPath)
+                    {
+                        run.Foreground = ClickablePathForeground;
+                        run.Background = ClickablePathBackground;
+                        links.Add((offset, inline.Text.Length, resolvedPath, candidateLine));
+                    }
+
                     break;
                 case MarkdownInlineKind.Link:
                     run.Foreground = Accent;
                     run.TextDecorations = TextDecorations.Underline;
                     if (!string.IsNullOrEmpty(inline.Url))
                     {
-                        links.Add((offset, inline.Text.Length, inline.Url));
+                        links.Add((offset, inline.Text.Length, inline.Url, null));
                     }
 
                     break;
@@ -662,8 +712,12 @@ public sealed class MarkdownView : ContentControl
         block.Cursor = links.Count > 0 ? _handCursor ??= new Cursor(StandardCursorType.Hand) : null;
     }
 
+    // A web address opens the browser exactly as before; anything else in `Links` is a file path this same
+    // method already resolved to a real, existing file — open the preview window instead. `TopLevel.GetTopLevel`
+    // is asked of `block` rather than the enclosing `MarkdownView`: both sit in the same window, and this stays
+    // usable from a static context without threading `this` through the click handler.
     private static void _OnLinkClick(
-        SelectableTextBlock block, List<(int Start, int Length, string Url)> links, PointerReleasedEventArgs e)
+        SelectableTextBlock block, List<(int Start, int Length, string Url, int? Line)> links, PointerReleasedEventArgs e)
     {
         // Selecting text also raises PointerReleased; only treat it as a link click when nothing is selected.
         if (block.SelectionEnd != block.SelectionStart)
@@ -675,11 +729,21 @@ public sealed class MarkdownView : ContentControl
         var position = hit.TextPosition;
         foreach (var link in links)
         {
-            if (position >= link.Start && position < link.Start + link.Length)
+            if (position < link.Start || position >= link.Start + link.Length)
             {
-                ExternalLink.TryOpen(link.Url);
-                return;
+                continue;
             }
+
+            if (ExternalLink.TryParseWebAddress(link.Url, out var address))
+            {
+                ExternalLink.TryOpen(address);
+            }
+            else if (TopLevel.GetTopLevel(block) is Window owner)
+            {
+                FilePreviewWindow.Show(link.Url, link.Line, owner);
+            }
+
+            return;
         }
     }
 

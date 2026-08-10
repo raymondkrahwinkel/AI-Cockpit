@@ -36,7 +36,8 @@ public partial class ExternalLinkSingleSourceTests
     private static readonly Dictionary<string, (int Occurrences, string Reason)> AllowedShellCallers =
         new(StringComparer.Ordinal)
         {
-            ["Services/ExternalLink.cs"] = (1, "the one opener; this is where the rule lives"),
+            ["Services/ExternalLink.cs"] = (2, "the one opener; this is where the rule lives — TryOpen for a web " +
+                "address and TryOpenWithSystemApp for a filesystem path (AC-642), both gated behind an explicit click"),
             ["ViewModels/CockpitViewModel.cs"] = (1, "reveals a project's folder in the file manager, not a web address"),
             ["Views/WorktreesDialog.axaml.cs"] = (1, "reveals a worktree's folder in the file manager, not a web address"),
         };

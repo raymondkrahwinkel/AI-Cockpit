@@ -65,6 +65,13 @@
             <Color x:Key="CockpitAccentSelectionColor">#292563eb</Color>
             <SolidColorBrush x:Key="CockpitAccentSelectionBrush" Color="{StaticResource CockpitAccentSelectionColor}"/>
 
+            <!-- The foreground of a code-span `MarkdownView` resolved to a real file (AC-642): lighter than
+                 CockpitAccentColor so it still reads as code rather than as a link, matching the mockup's
+                 `.path.live` rule. Paired with CockpitAccentSelectionBrush above as the background wash — same
+                 16%-accent tint already used for a selected row, so this reuses rather than invents a second wash. -->
+            <Color x:Key="CockpitClickablePathFgColor">#93b4f7</Color>
+            <SolidColorBrush x:Key="CockpitClickablePathFgBrush" Color="{StaticResource CockpitClickablePathFgColor}"/>
+
             <!-- Accent at 25% (#40 alpha) — the quiet edge a TextBox/ComboBox gets from a click (AC-438).
                  :focus-visible carries the full accent ring for keyboard navigation; a plain :focus (which a
                  mouse click also sets) is not silence — a clicked field still needs a marker distinct from a

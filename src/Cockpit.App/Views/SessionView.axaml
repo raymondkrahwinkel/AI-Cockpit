@@ -556,7 +556,8 @@
                                     <StackPanel Grid.Column="1" Spacing="3">
                                         <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
                                                    Text="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).Title}"/>
-                                        <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"/>
+                                        <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                                                             BasePath="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).WorkingDirectory}"/>
                                         <!-- Copy hands over the reply's markdown source verbatim. -->
                                         <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                                     HorizontalAlignment="Left">
