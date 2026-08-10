@@ -13,7 +13,7 @@
         Title="Assistant"
         Width="520" Height="640" MinWidth="340" MinHeight="360"
         WindowStartupLocation="CenterOwner"
-        Topmost="True"
+        Topmost="{Binding AlwaysOnTop}"
         WindowDecorations="BorderOnly"
         ExtendClientAreaToDecorationsHint="True"
         Background="{StaticResource CockpitPanelBgBrush}">
