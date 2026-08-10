@@ -57,6 +57,10 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         // them has to re-arm, or the setting is a field that remembers what you typed and changes nothing.
         _cockpit.VoiceSettingsSaved += (_, _) => _ = _hotkeys.ApplyAsync();
 
+        // AC-691: the operator's on-demand ask for a fresh portal permission prompt. Same re-arm as above — on
+        // Wayland it is what makes PortalGlobalHotkeyService.StartAsync tear down and rebuild its session.
+        _cockpit.HotkeyPortalRetryRequested += (_, _) => _ = _hotkeys.ApplyAsync();
+
         // The compositor may rebind this from its own shortcut settings at any time, without the cockpit being
         // asked. Following it is the difference between reporting the trigger and reporting a guess.
         _hotkeys.TriggerDescriptionsChanged += (_, _) => Dispatcher.UIThread.Post(HandleTriggerDescriptionsChanged);

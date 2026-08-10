@@ -326,6 +326,22 @@ public class VoicePushToTalkCoordinatorTests
         Assert.Empty(cockpit.VoiceGlobalHotkeyTrigger);
     }
 
+    /// <summary>AC-691: the portal re-request button must actually force a new portal session, not just exist.</summary>
+    [Fact]
+    public async Task RequestingAPortalRetry_ReArmsTheHotkeysWithTheOsService()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService();
+        var hotkeys = TestGlobalHotkeys.Coordinator(hotkeyService, TestGlobalHotkeys.GlobalPushToTalkOn);
+        var cockpit = NewCockpitViewModel();
+        _CreateCoordinatorOnHotkeys(hotkeys, cockpit);
+        await hotkeys.ApplyAsync();
+        Assert.Equal(1, hotkeyService.StartCallCount);
+
+        cockpit.RetryHotkeyPortalPermissionCommand.Execute(null);
+
+        Assert.Equal(2, hotkeyService.StartCallCount);
+    }
+
     /// <summary>A press of another feature's key reaches this coordinator too — it must ignore anything that is not its own.</summary>
     [Fact]
     public async Task APressOfAnotherFeaturesKey_StartsNoHold()
