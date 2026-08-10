@@ -5,6 +5,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 
@@ -38,6 +39,22 @@ public partial class SessionView : UserControl
     // app (`Cockpit.Core.Tests` calls `SessionViewModel.Apply` directly, with no platform initialized),
     // so only this purely cosmetic re-tick — a no-op when nothing is running — lives in the view.
     private DispatcherTimer? _activityAgeTicker;
+
+    private ScrollViewer? _transcriptScroll;
+
+    // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-686, so the virtualising
+    // panel measures against the viewport rather than the infinite height an enclosing ScrollViewer hands it — and a
+    // name inside a template is not a code-behind field, so it is resolved from the template instead.
+    internal ScrollViewer TranscriptScroll =>
+        _transcriptScroll ??= _ResolveTranscriptScroll();
+
+    // ApplyTemplate, not just a visual-tree walk: this is first asked for from the attach that wires the scroll
+    // handlers, and at that point the transcript has not been measured, so its template child does not exist yet.
+    private ScrollViewer _ResolveTranscriptScroll()
+    {
+        TranscriptItems.ApplyTemplate();
+        return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().First();
+    }
 
     public SessionView()
     {

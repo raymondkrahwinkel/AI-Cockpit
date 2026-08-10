@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
@@ -36,17 +35,20 @@ public class TranscriptVirtualisationTests
         };
 
         window.Show();
+        window.UpdateLayout();
         Dispatcher.UIThread.RunJobs();
 
-        var rows = window.GetVisualDescendants()
-            .OfType<Border>()
-            .Count(border => border.Classes.Contains("transcriptRow"));
+        // The panel's own count of what it has built, rather than a sweep of the visual tree: it is the number the
+        // fix is about, and it does not depend on a row's template having rendered a Border yet.
+        var view = (SessionView)window.Content!;
+        var built = view.TranscriptItems.GetRealizedContainers().Count();
 
         window.Close();
 
-        // A 600px-tall window cannot show four hundred rows. Anything close to four hundred means the panel is
-        // building the whole history again.
-        Assert.True(rows > 0, "the rows on screen must actually be there");
-        Assert.True(rows < 100, "only what fits on screen (plus a little) should exist as controls");
+        // A 600px-tall window cannot show four hundred rows; anything close to four hundred means the panel is
+        // building the whole history again. It realises six either side of AC-686, so this guards the panel against
+        // being swapped for one that virtualises nothing — it is not evidence about the memory that ticket chases.
+        Assert.True(built > 0, "the rows on screen must actually be there");
+        Assert.True(built < 100, $"{built} of 400 rows built: the panel is building history nobody is looking at");
     });
 }
