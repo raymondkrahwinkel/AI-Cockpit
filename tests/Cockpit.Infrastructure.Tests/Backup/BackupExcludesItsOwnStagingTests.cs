@@ -5,17 +5,7 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Backup;
 
-/// <summary>
-/// "Create backup…" failed with "The process cannot access the file
-/// '…\Cockpit\staging\cockpit-backup-{guid}.zip' because it is being used by another process" (AC-689), naming a
-/// fresh guid every attempt.
-/// <para>
-/// It was not the virus scanner the earlier fix assumed. AC-45 moved staging out of the shared temp directory to
-/// under the cockpit's own root — which is the directory a backup walks. So the archive is opened for writing in
-/// `staging/`, and the walk that fills it then reaches that very file and tries to put it inside itself. The
-/// writer holds it exclusively, so this is a sharing violation on every run, not a race that can be waited out.
-/// </para>
-/// </summary>
+/// <summary>AC-689: the archive being written must not sweep itself into its own contents.</summary>
 public class BackupExcludesItsOwnStagingTests
 {
     [Fact]
@@ -36,7 +26,7 @@ public class BackupExcludesItsOwnStagingTests
         Assert.False(BackupContents.Includes(Path.GetRelativePath(CockpitConfigPath.Root, staged)));
     }
 
-    /// <summary>Why it must: this is the operator's exact message, reproduced without a scanner in sight.</summary>
+    /// <summary>The operator's exact message, reproduced with no virus scanner in sight.</summary>
     [Fact]
     public void ZippingTheArchiveThatIsStillBeingWritten_IsTheReportedSharingViolation()
     {
