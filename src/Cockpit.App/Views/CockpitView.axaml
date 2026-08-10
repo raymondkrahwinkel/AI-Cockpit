@@ -1282,6 +1282,13 @@
                         <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] Border#PaneRoot">
                             <Setter Property="Background" Value="Transparent"/>
                         </Style>
+                        <!-- Chrome that may not be collapsed, only blanked: TtyView's header shares a DockPanel with
+                             the terminal, so taking it out of the layout hands the terminal two more rows and the pty
+                             hears about it (measured 39 -> 41 at 1000x640). Opacity keeps the box exactly where it
+                             was; the identity strip above covers the empty band it leaves. -->
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChromeBlank">
+                            <Setter Property="Opacity" Value="0"/>
+                        </Style>
                     </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -1304,6 +1311,13 @@
                                     Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
+                                <!-- A Grid, not a DockPanel (AC-670): the rail's identity strip is *overlaid* on the
+                                     miniature rather than docked above it. Docking would take 16px off the
+                                     MiniatureHost's box, and the host lays its child out at box ÷ scale — so those
+                                     16px become ~53px less pane, which moves a TTY pane's terminal and resizes its
+                                     pty. Measured: taking the header out of a TtyView at 1000x640 moves the grid
+                                     from 39 rows to 41. Nothing a rail tile does may change the child's box. -->
+                                <Grid>
                                 <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
                                      rail (AC-442): switching is then one number and never the rebuild the grid
                                      comment above describes. Draws the pane small without laying it out small.
@@ -1333,6 +1347,30 @@
                                     <ContentControl Content="{Binding}"/>
                                 </DockPanel>
                                 </controls:MiniatureHost>
+                                <!-- The rail tile's identity strip (AC-670, variant A): status dot · name · status,
+                                     drawn at full size on top of the miniature so it stays legible at any scale —
+                                     the same reason the accent edge above sits outside the MiniatureHost. It covers
+                                     the top of the scaled pane, which is where that pane's own header bar lands, so
+                                     a tile reads as one label over one picture instead of two stacked headers.
+                                     Hidden outside the rail; hit-transparent so it never eats the promoting click. -->
+                                <Border x:Name="MiniatureLabel"
+                                        IsVisible="{Binding #PaneRoot.(controls:SessionTilePanel.IsMiniature)}"
+                                        IsHitTestVisible="False"
+                                        VerticalAlignment="Top" Height="16" Padding="6,0"
+                                        Background="{StaticResource CockpitChromeBgBrush}"
+                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                                    <DockPanel LastChildFill="False">
+                                        <Ellipse DockPanel.Dock="Left" Width="5" Height="5" Margin="0,0,6,0" VerticalAlignment="Center"
+                                                 Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding SessionStatusLabel}" FontSize="9"
+                                                   VerticalAlignment="Center" Margin="6,0,0,0"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="{Binding Title}" FontSize="9" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                    </DockPanel>
+                                </Border>
+                                </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
