@@ -6,16 +6,9 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// The `ISessionMemoryLimiter` for macOS, and since AC-692 for Windows too: neither gets a kernel-enforced kill
-// anymore, so the tree's RSS is just polled. macOS never had another option (no cgroups, no job objects). Windows
-// did — a Job Object with a hard `JOB_OBJECT_LIMIT_JOB_MEMORY` (`WindowsJobMemoryLimiter`, AC-661) — but once the
-// kill itself was the thing to remove, an unenforced Job Object bought nothing this class does not already give
-// for free, so Windows moved here rather than keeping a second, more complex mechanism doing the same job. Cockpit
-// no longer decides for the operator on either platform, only reports; `CockpitViewModel`'s own resource poll is
-// what actually tells them, with a toast that names the session and a kill button on it.
-// `PollingMemoryLimiterTests` covers the logic against a fake process table on both; `SessionMemoryCapTests` proves
-// it live against a real process tree on this machine's own OS. What no test here can cover is whether `ps`
-// reports these figures on real macOS hardware, since there is no Mac to check on (the same blind spot as AC-57).
+// The `ISessionMemoryLimiter` for macOS, and since AC-692 for Windows too (replacing `WindowsJobMemoryLimiter`'s
+// hard job-object kill, AC-661): neither platform enforces a cap anymore, just polls and reports. What no test
+// here can cover is whether `ps` reports these figures on real macOS hardware — there is no Mac to check on (AC-57).
 internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
 {
     // Short enough to catch an ordinary build's climb, long enough that shelling out to `ps` is not the cost.

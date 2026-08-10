@@ -4,10 +4,9 @@ using Cockpit.Infrastructure.Sessions;
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
 /// <summary>
-/// AC-692: the cgroup this class configures throttles a session over its cap (<c>memory.high</c>) — it must never
-/// set the kernel's hard OOM-kill boundary (<c>memory.max</c>) again. Proved against a real temp directory standing
-/// in for cgroupfs — real file I/O, not real cgroups — since no dev machine or CI runner for this repo's other two
-/// platforms has cgroupfs to point at.
+/// AC-692: proves this class only ever configures the throttle file (<c>memory.high</c>), never the kernel's hard
+/// OOM-kill boundary (<c>memory.max</c>) — against a real temp directory standing in for cgroupfs, which no dev or
+/// CI machine for this repo's other two platforms has.
 /// </summary>
 public class LinuxCgroupMemoryLimiterTests
 {
@@ -37,11 +36,8 @@ public class LinuxCgroupMemoryLimiterTests
         }
     }
 
-    // Deliberately not tested: `CgroupHandle.Dispose` relies on real cgroupfs treating a directory that holds only
-    // its own pseudo-files (no processes, no children) as empty enough to `rmdir`. A plain temp directory holding
-    // ordinary files does not share that semantic — `Directory.Delete` on it always fails as "not empty" on any
-    // real filesystem, so a test built on a fake temp root would only prove something about temp directories, not
-    // about the cgroupfs behaviour the code actually depends on. Needs real Linux to verify; flagged, not guessed.
+    // Deliberately not tested: `CgroupHandle.Dispose`'s cleanup relies on real cgroupfs's "empty enough to rmdir"
+    // semantics, which a plain temp directory holding ordinary files does not share — needs real Linux to verify.
 
     [Fact]
     public void WithNoWritableParent_TheSessionRunsUncapped()

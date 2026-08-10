@@ -3,10 +3,8 @@ using Cockpit.Core.Diagnostics;
 namespace Cockpit.Core.Tests.Diagnostics;
 
 /// <summary>
-/// When to raise the top-level, named notice that a session has actually gone over its own memory cap (AC-692,
-/// on top of AC-661's <c>SessionMemoryCap</c>) — the notice with the kill button that replaced the automatic kill.
-/// A sibling to <see cref="MemoryPressureTests"/>: same hysteresis shape, measured as a share of the session's own
-/// cap rather than a share of the machine.
+/// Tests <see cref="SessionMemoryPressure"/>, the AC-692 replacement for the automatic kill: same hysteresis shape
+/// as <see cref="MemoryPressureTests"/>, measured against a session's own cap instead of the machine.
 /// </summary>
 public class SessionMemoryPressureTests
 {

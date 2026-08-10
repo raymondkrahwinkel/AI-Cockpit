@@ -3,14 +3,9 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// Linux `ISessionMemoryLimiter` (AC-661): a cgroup v2 group per session, the pid moved in. Everything it spawns is
-// born there. AC-692: this used to set `memory.max`, a hard ceiling the kernel's OOM killer enforces the moment it
-// is crossed; that killed the session outright, the same decision Cockpit no longer makes for the operator on any
-// platform. It now sets `memory.high` instead — a throttle, not a limit. The kernel leans on the cgroup with
-// reclaim pressure once it is over `memory.high`, which slows a runaway session down without ending it, and costs
-// nothing to keep: the toast that actually tells the operator (with the kill button on it) comes from
-// `CockpitViewModel`'s own resource poll, the same as on every other platform, not from this class. Plain cgroupfs
-// rather than `systemd-run --scope`, which only wraps a launch and cannot cap a pid that is already running.
+// Linux `ISessionMemoryLimiter` (AC-661): a cgroup v2 group per session, the pid moved in. AC-692: sets
+// `memory.high` (a throttle) rather than `memory.max` (a hard OOM-kill boundary), since Cockpit no longer ends a
+// session for going over its cap on any platform — the toast that does tell the operator comes from `CockpitViewModel`.
 internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
 {
     private const string CgroupRoot = "/sys/fs/cgroup";

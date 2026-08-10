@@ -1242,11 +1242,8 @@ public class CockpitViewModelTests
         terminals.Received(1).SessionEnded(session.PaneId);
     }
 
-    // AC-692: `PollingMemoryLimiter` and its platform siblings no longer kill a session that goes over its memory
-    // cap — this top-level, named toast (with the kill button on it) is what replaced that. Drives the same
-    // resource-poll path a real timer would (`SampleResources`), through a real `ResourceMonitor` over a fake
-    // process table, rather than calling `_WarnAboutSessionMemory` directly — the point is the whole wire, not
-    // just the decision logic (that part is `SessionMemoryPressureTests`, in Core).
+    // AC-692: drives the real `SampleResources`/`ResourceMonitor` wire (over a fake process table) rather than
+    // calling `_WarnAboutSessionMemory` directly — the decision logic itself is `SessionMemoryPressureTests`.
     [Fact]
     public async Task ASessionOverItsCap_GetsANamedTopLevelToast_AndTheKillButtonClosesIt()
     {

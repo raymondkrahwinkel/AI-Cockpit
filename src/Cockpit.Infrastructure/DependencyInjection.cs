@@ -228,12 +228,9 @@ public static class DependencyInjection
         }
     }
 
-    // The session memory cap (AC-661) is watched, never enforced by a kernel-level kill, on any platform (AC-692).
-    // Linux still gets a cgroup, but for `memory.high` — a throttle, not `memory.max`'s hard OOM-kill boundary —
-    // because that costs nothing to keep and adds real kernel-side backpressure a poll alone cannot. Windows used
-    // to get a Job Object with a hard `JOB_OBJECT_LIMIT_JOB_MEMORY`; that mechanism had no non-killing mode worth
-    // keeping once the kill itself was the thing to remove, so Windows now shares the same polling watchdog macOS
-    // always used, since neither has a native soft-throttle primitive.
+    // The session memory cap (AC-661) is watched, never enforced by a kernel-level kill, on any platform (AC-692):
+    // Linux throttles via cgroup `memory.high`, Windows and macOS share the polling watchdog since neither has a
+    // native soft-throttle primitive.
     private static void AddSessionMemoryLimiter(IServiceCollection services)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))

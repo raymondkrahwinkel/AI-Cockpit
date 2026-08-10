@@ -3255,12 +3255,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // Says something cockpit-wide, by name, the moment a session actually goes over its own cap (AC-692) — the
-    // notice that replaced the automatic kill `PollingMemoryLimiter` (and its per-platform siblings) used to do.
-    // Cockpit no longer decides this on its own: the operator does, with a kill button right on the toast, or by
-    // dismissing it and letting the session run. The pane's own early warning (`_WarnAboutSessionCaps` above, at
-    // 80% of the cap) still stands on its own — this is the louder signal for the moment the line is actually
-    // crossed, seen whether or not you are looking at that pane.
+    // Names the session in a cockpit-wide toast with a Kill button the moment it crosses its own cap — replaces
+    // the automatic kill that used to happen instead (AC-692); `_WarnAboutSessionCaps` above still covers the
+    // earlier, pane-local warning at 80%.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
         var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.Title), StringComparer.Ordinal);

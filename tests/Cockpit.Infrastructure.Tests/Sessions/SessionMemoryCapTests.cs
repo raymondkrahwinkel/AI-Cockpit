@@ -67,12 +67,9 @@ public class SessionMemoryCapTests
             return;
         }
 
-        // AC-692: Cockpit no longer kills a session for going over its cap, on any platform — Windows used to do
-        // this with a Job Object's hard JOB_OBJECT_LIMIT_JOB_MEMORY (WindowsJobMemoryLimiter, AC-661); that class
-        // is gone, and Windows now shares `PollingMemoryLimiter` with macOS. Small and safe on purpose: this test
-        // proves the tree is left alone by actually letting it run past its cap on real Windows, not by reasoning
-        // about it, so the allocation stays in the tens of MB rather than the original test's 10 GB ceiling — this
-        // machine runs other agents' work at the same time.
+        // AC-692: WindowsJobMemoryLimiter's hard job-object kill (AC-661) is gone; Windows now shares
+        // `PollingMemoryLimiter` with macOS. Scaled down from the old test's 10 GB ceiling — this machine runs
+        // other agents' work at the same time.
         const long capBytes = 64L * 1024 * 1024;
 
         var script = Path.Combine(Path.GetTempPath(), $"cockpit-hog-{Guid.NewGuid():n}.ps1");
