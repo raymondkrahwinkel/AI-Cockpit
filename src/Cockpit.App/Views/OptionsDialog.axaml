@@ -456,6 +456,20 @@
                                             Command="{Binding RestartAppCommand}"
                                             IsVisible="{Binding VoiceGlobalPushToTalkNeedsRestart}"/>
                                 </StackPanel>
+                                <!-- Wayland only (AC-691): the GlobalShortcuts portal ties permission to the app's
+                                     binary path, so moving the AppImage looks like a new app to KDE and the old
+                                     permission never fires again. This forces a fresh CreateSession/BindShortcuts
+                                     cycle; it cannot touch the stale registration KDE kept for the old path. -->
+                                <StackPanel Orientation="Vertical" Spacing="4" IsVisible="{Binding IsLinuxWayland}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <Button Content="Re-request shortcut permission" Classes="Accent"
+                                                Command="{Binding RetryHotkeyPortalPermissionCommand}"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Forces a fresh permission prompt from your desktop's shortcuts portal — try this if global hotkeys stopped working after moving the AppImage."/>
+                                    </StackPanel>
+                                    <TextBlock Text="This does not remove your desktop's old registration for the previous location — clean that up yourself in System Settings → Shortcuts."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <CheckBox Content="Send automatically after dictation (press Enter)"
                                               IsChecked="{Binding VoiceAutoSubmit}"/>

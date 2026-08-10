@@ -2085,6 +2085,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Shortcuts settings rather than configurable in-app (#34) — drives the Options-flyout hint text.
     public bool IsLinuxPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
 
+    // AC-691: the portal re-request button only makes sense where a portal is what's arming the hotkey.
+    // X11 uses the same keyboard hook Windows does — nothing there to lose permission for — so the button
+    // is Wayland-only, not Linux-wide like the hint text above it.
+    public bool IsLinuxWayland { get; } = ShouldShowHotkeyPortalRetry(
+        RuntimeInformation.IsOSPlatform(OSPlatform.Linux),
+        LinuxSession.IsWayland(
+            Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"),
+            Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")));
+
+    // Pulled out so the platform gate is testable off a Wayland session — the same reasoning as
+    // ShouldOfferGlobalPushToTalkRestart below.
+    internal static bool ShouldShowHotkeyPortalRetry(bool isLinux, bool isWayland) => isLinux && isWayland;
+
     // Pushes the timestamp toggle to every open session as it changes, so the switch takes effect live.
     partial void OnShowTimestampsChanged(bool value)
     {
@@ -4398,6 +4411,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Restarts the app so a saved change that only applies at startup (the Linux global hotkey) takes effect, without the operator closing and relaunching by hand. See `VoiceGlobalPushToTalkNeedsRestart`.
     [RelayCommand(CanExecute = nameof(CanRestartApp))]
     private void RestartApp() => _appRestart?.Restart();
+
+    // AC-691: forces a fresh portal CreateSession/BindShortcuts cycle — the fix for a moved AppImage getting a
+    // new app identity to KDE and losing its shortcuts permission with no way to re-ask. Raised rather than
+    // called for the same reason VoiceSettingsSaved is: GlobalHotkeyCoordinator is VoicePushToTalkCoordinator's
+    // to hold, and injecting it back into this view model would be a circle the container walks forever.
+    public event EventHandler? HotkeyPortalRetryRequested;
+
+    [RelayCommand]
+    private void RetryHotkeyPortalPermission() => HotkeyPortalRetryRequested?.Invoke(this, EventArgs.Empty);
 
     // Whether saving global push-to-talk should offer a restart: only on Linux (elsewhere the change applies
     // live), and only when the saved value differs from what this process armed with at startup — so toggling it
