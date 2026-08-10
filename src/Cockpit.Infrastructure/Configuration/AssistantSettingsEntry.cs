@@ -13,6 +13,9 @@ internal sealed class AssistantSettingsEntry
 
     public bool AlwaysOnCostAcknowledged { get; set; }
 
+    // AC-681. Defaults true to match `AssistantSettings.AlwaysOnTop`'s own default.
+    public bool AlwaysOnTop { get; set; } = true;
+
     // The chat window's reading level (AC-138), stored as its enum name rather than the enum itself — same
     // defensive shape as `ProfileDefaultsEntry.DefaultReadingLevel`: a name a newer build wrote that
     // this one does not recognise (a fourth level, say) reads back as "no match" here, never as whichever value
@@ -39,6 +42,7 @@ internal sealed class AssistantSettingsEntry
         SpeakReplies = settings.SpeakReplies,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         AlwaysOnCostAcknowledged = settings.AlwaysOnCostAcknowledged,
+        AlwaysOnTop = settings.AlwaysOnTop,
         ReadingLevel = settings.ReadingLevel.ToString(),
         ConsentBypassSources = [.. settings.ConsentBypassSources],
         ConsentBypassDangerousSources = [.. settings.ConsentBypassDangerousSources],
@@ -51,6 +55,7 @@ internal sealed class AssistantSettingsEntry
         SpeakReplies = SpeakReplies,
         PushToTalkKeyName = PushToTalkKeyName,
         AlwaysOnCostAcknowledged = AlwaysOnCostAcknowledged,
+        AlwaysOnTop = AlwaysOnTop,
         // A value written by an older build, or a hand-edited config, that does not name one of the three levels
         // falls back to the app default (Developer) rather than throwing.
         ReadingLevel = Enum.TryParse<Cockpit.Core.Sessions.ReadingLevel>(ReadingLevel, out var readingLevel)
