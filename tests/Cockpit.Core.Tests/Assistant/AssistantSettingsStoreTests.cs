@@ -56,6 +56,7 @@ public class AssistantSettingsStoreTests : IDisposable
             SpeakReplies = false,
             PushToTalkKeyName = "F11",
             AlwaysOnCostAcknowledged = true,
+            AlwaysOnTop = false,
             ReadingLevel = ReadingLevel.Simple,
             ConsentBypassSources = ["Terminal MCP", "cockpit-kubernetes"],
             ConsentBypassDangerousSources = ["cockpit-kubernetes"],
@@ -67,6 +68,9 @@ public class AssistantSettingsStoreTests : IDisposable
         Assert.False(loaded.SpeakReplies);
         Assert.Equal("F11", loaded.PushToTalkKeyName);
         Assert.True(loaded.AlwaysOnCostAcknowledged);
+        // AC-681: switched off against its default (true), so this round trip proves the off is stored rather
+        // than re-defaulted — which is exactly what silently dropped it (see AssistantSettingsEntry).
+        Assert.False(loaded.AlwaysOnTop);
         Assert.Equal(ReadingLevel.Simple, loaded.ReadingLevel);
         Assert.Equal(["Terminal MCP", "cockpit-kubernetes"], loaded.ConsentBypassSources);
         Assert.Equal(["cockpit-kubernetes"], loaded.ConsentBypassDangerousSources);
