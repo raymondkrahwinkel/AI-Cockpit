@@ -586,6 +586,35 @@
     <Style Selector="ToggleButton:checked:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
+
+    <!-- Subtle toggle (e.g. the Assistant window's read-aloud switch): a flat icon button that must sit flush
+         among Button.Subtle/Compact siblings (History/Export/Close) instead of the bordered, accent-filled
+         ToggleButton above. Declared before .Compact below so Compact's denser padding still wins — the same
+         cascade Button.Subtle/Button.Compact already rely on. Checked recolours the icon itself rather than
+         filling a surface, since Subtle leaves no button-shaped background to fill. -->
+    <Style Selector="ToggleButton.Subtle">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="2"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:checked:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:checked materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+
     <!-- Collapser toggle: a chevron and a line of text that open a section — a heading you can click, not a
          button. It needs its own styling because the checked state above fills a ToggleButton with the accent,
          which would make the quietest row in a dialog the loudest thing on the screen the moment it is opened.

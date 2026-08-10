@@ -7,6 +7,8 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.App.ViewTests;
 
@@ -723,6 +725,34 @@ public class ThemeControlStateTests
         host.Window.UpdateLayout();
         Assert.True(picker.IsPointerOver, "the test only means something while the pointer is on the picker");
         Assert.Equal(RenderedScene.Token("CockpitSecondaryBgColor"), _ColourOf(border.Background));
+    });
+
+    [Fact]
+    public void ASubtleToggle_CarriesNoBorderOrFill_LikeItsButtonSiblings() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-685: the read-aloud toggle in the Assistant window header used Classes="Subtle Compact" expecting the
+        // same flat look as the Button.Subtle/Compact icon buttons beside it, but only Button ever had a Subtle
+        // rule — the base ToggleButton style (hairline border, panel-bg fill) shone straight through.
+        var toggle = new ToggleButton { Content = "x", Classes = { "Subtle" } };
+        using var host = RenderedScene.Show(toggle);
+
+        var presenter = toggle.GetVisualDescendants().OfType<ContentPresenter>().First();
+        Assert.Equal(new Thickness(0), toggle.BorderThickness);
+        Assert.Equal(RenderedScene.AsRendered(Brushes.Transparent), RenderedScene.AsRendered((ISolidColorBrush)presenter.Background!));
+    });
+
+    [Fact]
+    public void ASubtleToggle_ColoursItsIconWithTheAccent_OnlyWhenChecked() => HeadlessAvalonia.Run(() =>
+    {
+        var off = new ToggleButton { Content = new MaterialIcon { Kind = MaterialIconKind.VolumeOff }, Classes = { "Subtle" }, IsChecked = false };
+        var on = new ToggleButton { Content = new MaterialIcon { Kind = MaterialIconKind.VolumeHigh }, Classes = { "Subtle" }, IsChecked = true };
+        using var host = RenderedScene.Show(new StackPanel { Children = { off, on } });
+
+        var offIcon = off.GetVisualDescendants().OfType<MaterialIcon>().First();
+        var onIcon = on.GetVisualDescendants().OfType<MaterialIcon>().First();
+
+        Assert.NotEqual(RenderedScene.Token("CockpitAccentColor"), _ColourOf(offIcon.Foreground));
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(onIcon.Foreground));
     });
 
     /// <summary>The colour a brush paints, and a readable failure when it is not a plain colour at all.</summary>
