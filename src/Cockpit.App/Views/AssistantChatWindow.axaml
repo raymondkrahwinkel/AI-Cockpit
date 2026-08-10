@@ -456,7 +456,8 @@
                                         <!-- Assistant reply: markdown through the app's own renderer — the piece
                                              this whole requirement turns on. -->
                                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                                             IsVisible="{Binding IsAssistantMarkdown}"/>
+                                                             IsVisible="{Binding IsAssistantMarkdown}"
+                                                             BasePath="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.WorkingDirectory}"/>
 
                                         <!-- Question/error/turn-result rows: plain wrapped text. -->
                                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"

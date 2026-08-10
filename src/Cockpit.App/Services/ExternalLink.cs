@@ -53,4 +53,20 @@ internal static class ExternalLink
             return false;
         }
     }
+
+    // Opens a filesystem path with the operator's default system application — FilePreviewWindow's "Openen"
+    // button (AC-642). A separate method rather than widening TryOpen's http(s)-only filter: a path is not a
+    // URL, and only the explicit second click behind that button reaches this, never a link click.
+    public static bool TryOpenWithSystemApp(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 }

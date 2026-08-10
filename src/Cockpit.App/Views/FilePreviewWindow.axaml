@@ -1,0 +1,38 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Cockpit.App.Views.FilePreviewWindow"
+        Width="760" Height="620"
+        MinWidth="380" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Spacing="3" Margin="16,12,16,10">
+      <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Bottom">
+        <TextBlock Name="NameText" FontSize="13.5" FontWeight="SemiBold"
+                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="4"
+                Padding="6,1">
+          <TextBlock Name="KindText" FontSize="10.5" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+        </Border>
+      </StackPanel>
+      <SelectableTextBlock Name="PathText" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}" TextWrapping="Wrap"/>
+      <TextBlock Name="MetaText" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"
+               Margin="16,10,16,14">
+      <Button Name="UpButton" Classes="Ghost" Content="Omhoog" Click="_OnUp" IsVisible="False"/>
+      <Button Name="BackButton" Classes="Ghost" Content="Terug" Click="_OnBack" IsVisible="False"/>
+      <Button Classes="Ghost" Content="Pad kopiëren" Click="_OnCopyPath"/>
+      <Button Name="OpenButton" Classes="Accent" Content="Openen" Click="_OnOpen"/>
+    </StackPanel>
+
+    <Border Background="{StaticResource CockpitSecondaryBgBrush}">
+      <ScrollViewer Name="BodyScroller">
+        <ContentControl Name="BodyHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+      </ScrollViewer>
+    </Border>
+  </DockPanel>
+</Window>
