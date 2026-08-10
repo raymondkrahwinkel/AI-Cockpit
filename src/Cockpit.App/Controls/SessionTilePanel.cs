@@ -83,9 +83,8 @@ public sealed class SessionTilePanel : Panel
     public static readonly AttachedProperty<Size> MiniatureFocusSizeProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureFocusSize", inherits: true);
 
-    // True for every control inside a rail tile, false in the focus slot and in the grid (AC-670). Inherited for
-    // the same reason as the scale, and read by `CockpitView.axaml` to strip a miniature down to what a
-    // miniature is for: the terminal, without the controls you drive it with.
+    // AC-670: true for every control inside a rail tile, inherited for the same reason as the boxes above, and
+    // read by `CockpitView.axaml` to strip a miniature down to the terminal.
     public static readonly AttachedProperty<bool> IsMiniatureProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, bool>("IsMiniature", inherits: true);
 
