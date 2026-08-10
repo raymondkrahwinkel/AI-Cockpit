@@ -2,6 +2,7 @@ using Avalonia;
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia.Headless;
+using Avalonia.Media.Imaging;
 using Cockpit.App.Controls;
 using Exclr8.Terminal;
 
@@ -86,7 +87,7 @@ public class MiniatureShowsTheSameContentTests
         scene.Window.UpdateLayout();
         using var frame = scene.Window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("the headless renderer produced no frame");
-        frame.Save(Path.Combine(OutputDirectory, fileName));
+        frame.Save(Path.Combine(OutputDirectory, fileName), PngBitmapEncoderOptions.Default);
 
         using var buffer = frame.Lock();
         var bands = new double[Bands];

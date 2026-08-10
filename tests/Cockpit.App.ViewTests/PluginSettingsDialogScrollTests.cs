@@ -26,7 +26,7 @@ public class PluginSettingsDialogScrollTests
     public PluginSettingsDialogScrollTests(ITestOutputHelper output) => _out = output;
 
     [Fact]
-    public void PaddingOnTheScrollViewer_StillClipsTheLastRow() => HeadlessAvalonia.Run(() =>
+    public void PaddingOnTheScrollViewer_NowClearsTheLastRow() => HeadlessAvalonia.Run(() =>
     {
         var (window, marker, footer) = Build(nestOwnScrollViewer: false, insetInsideContent: false);
 
@@ -34,9 +34,11 @@ public class PluginSettingsDialogScrollTests
 
         window.Close();
 
-        // Diagnostic: padding set on the ScrollViewer itself is left out of the scroll extent, so the last row's
-        // tail cannot be scrolled clear of the footer.
-        Assert.True(gap < 0, "ScrollViewer padding is not counted in the scroll extent");
+        // Diagnostic: Avalonia 12.1 fixed ScrollViewer to count its own Padding in the scroll extent (AC-688).
+        // Before that, padding set directly on the ScrollViewer was left out, clipping the last row's tail under
+        // the footer — which is why the host still routes the dialog inset through a Border in the content
+        // (PluginSettingsBody._ScrolledView) rather than relying on this now-fixed behaviour.
+        Assert.True(gap >= 0, "ScrollViewer padding is counted in the scroll extent (Avalonia 12.1+)");
     });
 
     [Fact]
@@ -103,8 +105,8 @@ public class PluginSettingsDialogScrollTests
             : new UserControl { Content = stack };
 
         // The fix: put the dialog inset inside the scrolled content (a padded Border) so the ScrollViewer's extent
-        // includes it. Padding on the ScrollViewer itself (the else branch, the current host behaviour) is left out
-        // of the extent and clips the tail under the footer.
+        // includes it. This is still the host's actual approach (PluginSettingsBody._ScrolledView) even though
+        // Avalonia 12.1 also fixed the other path (padding on the ScrollViewer itself, the else branch below).
         var scroll = insetInsideContent
             ? new ScrollViewer { Content = new Border { Padding = new Thickness(14, 12), Child = view } }
             : new ScrollViewer { Content = view, Padding = new Thickness(14, 12) };

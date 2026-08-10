@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Plugin #42, reworked in #48: a left-menu button opens a dialog listing open YouTrack issues across one
        or more configured instances (instance/project/state filters, click-to-inject), mirroring the GitHub
@@ -26,11 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5">
+    <PackageReference Include="Avalonia" Version="12.1.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1">
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

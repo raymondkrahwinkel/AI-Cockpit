@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Test infrastructure shared by the host's test projects and the plugin test projects under plugins-dev/
        (AC-371). Those two live in different places and neither can see the other's internals, so a helper both
@@ -17,7 +17,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <!-- ThemePalette walks a rendered visual tree. Avalonia only — no headless platform and no Skia: this reads
          a tree that its caller has already shown, and each caller brings the runtime it shows it with. -->
-    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
   </ItemGroup>
 
 </Project>

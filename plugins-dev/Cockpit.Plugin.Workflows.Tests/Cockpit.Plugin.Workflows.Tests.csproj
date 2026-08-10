@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Unit tests for the workflow model (#69) — the rules a canvas cannot be trusted to enforce on its own.
        Kept OUTSIDE Cockpit.slnx, alongside the plugin, like the other plugin test projects. -->
@@ -12,22 +12,22 @@
   <ItemGroup>
     <!-- The + and the node cards are controls, and the bug they exist to prevent is a control-level one (a Button
          swallowing the pointer press). Headless Avalonia lets that be tested without a screen. -->
-    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
     <!-- AC-423 added a DataGridRow selector to the host's shared Theme.axaml, loaded off disk below — the XAML
          compiler needs DataGridRow resolvable even though this plugin has no DataGrid of its own. -->
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
-    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
     <!-- Skia, so the canvas can actually be rendered to pixels and looked at (AC-337). Headless drawing stubs out
          text shaping and paints nothing, which is fine for "did the button eat the click?" and useless for "does
          this read right?". -->
-    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
     <!-- Fluent, because Theme.axaml is written to sit on top of it: half its rules exist to take a state back off
          Fluent, and loading it alone would test a theme the app never runs. -->
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     <!-- Parses the host's Theme.axaml off disk. The plugin cannot reference Cockpit.App — that is the whole point
          of a plugin — so the only way to render a canvas card in the colours an operator sees is to load the
          theme as text at test time. -->
-    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.1.1" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

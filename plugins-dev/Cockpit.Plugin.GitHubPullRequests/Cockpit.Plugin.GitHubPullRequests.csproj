@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Plugin #41: GitHub open pull requests inline in the left menu (up to 5, click-to-inject) plus a
        "view all" dialog, mirroring the GitHub Issues plugin (#14). Built OUTSIDE the main solution
@@ -23,11 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5">
+    <PackageReference Include="Avalonia" Version="12.1.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1">
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

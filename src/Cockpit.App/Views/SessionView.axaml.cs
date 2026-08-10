@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -390,7 +391,7 @@ public partial class SessionView : UserControl
                 using (bitmap)
                 {
                     using var stream = new MemoryStream();
-                    bitmap.Save(stream);
+                    bitmap.Save(stream, PngBitmapEncoderOptions.Default);
                     vm.AddPastedImage(stream.ToArray());
                 }
 

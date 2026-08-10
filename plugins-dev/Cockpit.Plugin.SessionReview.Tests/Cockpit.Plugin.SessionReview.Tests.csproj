@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Tests for the session-review plugin (AC-50): the diff parser, the file tree and the review prompt on their
        own, plus the panel itself built headless against a real repository in a temp directory — a code-built
@@ -17,12 +17,12 @@
          needs a runtime copy present, which the host would otherwise supply. Same set the GitStatus/GitHubIssues
          plugin test projects carry — see HeadlessAvalonia for why Skia rather than headless drawing, and
          SessionReviewTestApp for why the DataGrid theme is in the list of a plugin that has no DataGrid. -->
-    <PackageReference Include="Avalonia" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
-    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <!-- ICockpitHost and IPluginSessionContext are stubbed rather than hand-faked: the panel only reads the

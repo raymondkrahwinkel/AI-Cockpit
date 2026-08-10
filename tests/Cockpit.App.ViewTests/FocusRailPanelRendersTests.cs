@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Cockpit.App.Controls;
 
 namespace Cockpit.App.ViewTests;
@@ -133,6 +134,6 @@ public class FocusRailPanelRendersTests
     {
         using var frame = window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("the headless renderer produced no frame to sample");
-        frame.Save(Path.Combine(OutputDirectory, fileName));
+        frame.Save(Path.Combine(OutputDirectory, fileName), PngBitmapEncoderOptions.Default);
     }
 }

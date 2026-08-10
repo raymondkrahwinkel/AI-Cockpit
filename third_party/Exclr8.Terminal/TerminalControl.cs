@@ -9,6 +9,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Reactive;
 using Avalonia.Threading;
@@ -2395,7 +2396,7 @@ public class TerminalControl : Control, IDisposable
         var dir = Path.Combine(Path.GetTempPath(), PasteImageDirectoryName);
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, $"paste-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}.png");
-        bitmap.Save(path);
+        bitmap.Save(path, PngBitmapEncoderOptions.Default);
         return path;
     }
 

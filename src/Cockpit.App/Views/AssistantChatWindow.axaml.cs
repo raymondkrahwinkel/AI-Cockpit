@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
@@ -245,7 +246,7 @@ public partial class AssistantChatWindow : Window
                     if (vm.Session is { } session)
                     {
                         using var stream = new MemoryStream();
-                        bitmap.Save(stream);
+                        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
                         session.AddPastedImage(stream.ToArray());
                     }
                 }

@@ -1,7 +1,7 @@
 {
   "id": "session-review",
   "name": "Session Review",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "entryAssembly": "Cockpit.Plugin.SessionReview.dll",
   "entryType": "Cockpit.Plugin.SessionReview.SessionReviewPlugin",
   "abstractionsVersion": 1,
