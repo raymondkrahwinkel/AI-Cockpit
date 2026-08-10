@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <!-- The plugin references Avalonia types (the settings view), compile-only; the test host brings them at runtime. -->
-    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />

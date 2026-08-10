@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Cockpit plugin (#14). The shared assemblies (Cockpit.Plugins.Abstractions, Avalonia, the DI
        abstractions) are compile-only (Private=false / ExcludeAssets=runtime) so the host's copies load and
@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5">
+    <PackageReference Include="Avalonia" Version="12.1.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Cockpit.App.Controls;
 using Cockpit.Core.Shortcuts;
 
@@ -118,7 +119,7 @@ public class SessionTilePanelFocusRailTests
         using var scene = RenderedScene.Show(tile, (1000 * 0.28) + 3, (640 * 0.28) + 3);
         using (var frame = scene.Window.CaptureRenderedFrame())
         {
-            frame!.Save(Path.Combine(OutputDirectory, "attention-border-at-rail-scale.png"));
+            frame!.Save(Path.Combine(OutputDirectory, "attention-border-at-rail-scale.png"), PngBitmapEncoderOptions.Default);
         }
 
         var edgeColor = RenderedScene.PaintedAt(scene.Window, new Point(1, 1));
@@ -143,7 +144,7 @@ public class SessionTilePanelFocusRailTests
         using var scrimmedScene = RenderedScene.Show(scrimmedHost, 1000 * 0.28, 640 * 0.28);
         using (var frame = scrimmedScene.Window.CaptureRenderedFrame())
         {
-            frame!.Save(Path.Combine(OutputDirectory, "consent-scrim-at-rail-scale.png"));
+            frame!.Save(Path.Combine(OutputDirectory, "consent-scrim-at-rail-scale.png"), PngBitmapEncoderOptions.Default);
         }
 
         var scrimmedColor = RenderedScene.PaintedAt(scrimmedScene.Window, new Point(50, 50));

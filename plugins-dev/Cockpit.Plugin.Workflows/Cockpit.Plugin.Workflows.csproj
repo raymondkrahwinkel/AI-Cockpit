@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Workflow editor (#69): the visual canvas where cockpit workflows are drawn. Built OUTSIDE the main
        solution (plugins-dev/) like the other plugins; package bin/<config>/net10.0 into a .zip and install it
@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5">
+    <PackageReference Include="Avalonia" Version="12.1.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

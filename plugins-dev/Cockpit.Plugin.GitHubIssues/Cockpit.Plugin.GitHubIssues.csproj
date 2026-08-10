@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Example plugin (#14): GitHub open-issues in the left menu, click-to-inject. Built OUTSIDE the main
        solution (plugins-dev/) so the app build stays clean; package its bin/<config>/net10.0 output into a
@@ -22,11 +22,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5">
+    <PackageReference Include="Avalonia" Version="12.1.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1">
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

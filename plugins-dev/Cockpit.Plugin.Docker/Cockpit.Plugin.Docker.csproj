@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Docker plugin (AC-84): register the local Docker daemon and inject an mcp__cockpit-docker__* MCP server so an
        agent can work with containers under strict, human-approved control. Proxy model — the plugin talks to the
@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5">
+    <PackageReference Include="Avalonia" Version="12.1.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

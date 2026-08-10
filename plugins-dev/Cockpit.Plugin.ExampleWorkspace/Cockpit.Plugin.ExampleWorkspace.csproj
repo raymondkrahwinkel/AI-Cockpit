@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The example workspace plugin (AC-122): a full-surface workspace type contributed from outside the host — the
        plugin draws the whole body and embeds a real host session in it (IWorkspaceContext.EmbedSession), proving
@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5">
+    <PackageReference Include="Avalonia" Version="12.1.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Vendored from https://github.com/alexmehlhorn/exclr8-terminal (MIT), tag v1.0.7, so the terminal
        renderer can be patched in-tree. 1.0.7 is the last NuGet release, and the DrawGlyphs glyph-drift
@@ -20,8 +20,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
     <!-- WMI for the WmiChildWatcher on Windows; the Windows path is [SupportedOSPlatform]-guarded so
          non-Windows builds link cleanly against the kqueue / no-op backend. -->
     <PackageReference Include="System.Management" Version="9.0.0" />

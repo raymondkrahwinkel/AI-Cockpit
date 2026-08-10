@@ -25,14 +25,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     <!-- The host provides the DataGrid (control + theme) so plugins can use it via Private=false and share
          its type identity + app-wide theme, instead of each shipping and theming their own copy (#14). -->
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
     <!-- The host provides the Material Design icon set (control + styles), app-wide, so the UI draws icons as
          paths that inherit Foreground instead of emoji glyphs the machine's font renders (AC-33). Plugins use it
          via Private=false/ExcludeAssets=runtime — same host-provided pattern as the DataGrid above, so its type

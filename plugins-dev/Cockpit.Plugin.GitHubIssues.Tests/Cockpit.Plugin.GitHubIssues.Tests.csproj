@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Unit tests for the GitHub-issues plugin (#77) — kept OUTSIDE Cockpit.slnx and outside Cockpit.Core.Tests,
        in its own project alongside the plugin under plugins-dev/, same as the other plugin test projects. Run
@@ -17,15 +17,15 @@
          would otherwise supply. Avalonia.Headless is the platform those controls ask for a cursor and a font
          from — see HeadlessAvalonia. The same set the YouTrack plugin's test project carries; the two dialogs are
          separate copies by design (plugins ship and version on their own), so each proves its own. -->
-    <PackageReference Include="Avalonia" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
-    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     <!-- Parses the host's Theme.axaml off disk (AC-338), the same way Cockpit.Plugin.Workflows.Tests does: the
          plugin cannot reference Cockpit.App, so this is the only way DialogTestApp can load the real cockpit
          theme rather than bare Fluent. -->
-    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.1.1" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />

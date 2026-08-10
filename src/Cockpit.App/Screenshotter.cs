@@ -42,7 +42,7 @@ internal static class Screenshotter
             Directory.CreateDirectory(directory);
         }
 
-        frame.Save(outputPngPath);
+        frame.Save(outputPngPath, PngBitmapEncoderOptions.Default);
 
         if (!string.IsNullOrEmpty(snapshotPath))
         {
@@ -1150,7 +1150,7 @@ internal static class Screenshotter
     {
         using var bitmap = StandInDesktop.Draw(width, height);
         using var stream = new MemoryStream();
-        bitmap.Save(stream);
+        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
         return stream.ToArray();
     }
 
