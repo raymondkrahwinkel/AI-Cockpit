@@ -8,10 +8,8 @@ using NSubstitute;
 namespace Cockpit.Plugin.Depot.Tests;
 
 // `DepotSharedProjectSource.ListPublishTargetsAsync`/`PublishAsync` (AC-620): turning a not-yet-shared local
-// project into a new `.cockpit/project.json`. Every fixture is the actual JSON text Depot's `list_projects`/
-// `read`/`write` tools would send, the same "measure against a real-looking response" discipline
-// `DepotSharedProjectSourceTests` already documents — including the `[NotFound]` read-error text, measured live
-// against a real Depot server rather than guessed.
+// project into a new `.cockpit/project.json`. Fixtures are real JSON shapes Depot's tools send, including the
+// `[NotFound]` read-error text, measured live against a real Depot server.
 public class DepotSharedProjectSourcePublishTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
@@ -95,6 +93,24 @@ public class DepotSharedProjectSourcePublishTests
             Arg.Any<string>(), "write",
             Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && !args.ContainsKey("baseChecksum")),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PublishAsync_WriteRejectedForRoleBelowEditor_ReturnsPermissionDenied()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "new-project", _NotFound("new-project"));
+        host.CallMcpToolAsync(
+            Arg.Any<string>(), "write",
+            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && (string)args["project"]! == "new-project"),
+            Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("This action requires the Editor role on project 'new-project'.")));
+
+        var result = await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
+
+        Assert.Equal(SharedProjectPublishOutcome.PermissionDenied, result.Outcome);
+        Assert.Equal("This action requires the Editor role on project 'new-project'.", result.Error);
     }
 
     [Fact]

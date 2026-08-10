@@ -259,14 +259,8 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
         return SharedProjectPublishTargetListResult.Success(targets);
     }
 
-    // AC-620. Reads the target first — not for its checksum (this is a first write, so WriteAsync below sends none),
-    // but to tell "nothing there yet" from "already published" apart before ever writing: Depot's own `write` tool
-    // performs no conflict check when baseChecksum is omitted, so writing blind here would silently overwrite an
-    // existing colleague's definition, exactly the "publish must never become a stealth overschrijving" rule AC-620
-    // itself states. Depot's `read` phrases a missing file `"[NotFound] '<path>' was not found in project
-    // '<slug>'."` (measured live against a real Depot server, the same "classify Depot's own wording" discipline
-    // CockpitProjectDefinitionWriteResult already documents) — anything else non-Success is treated as "cannot
-    // confirm", never as "safe to publish".
+    // AC-620. Reads first — Depot's own "[NotFound]" read wording (measured live against a real server) is what
+    // tells "nothing there yet" from "already published" apart before writing with no baseChecksum.
     public async Task<SharedProjectPublishResult> PublishAsync(
         string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken)
     {
@@ -277,6 +271,9 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
         }
 
         var slug = targetId[prefix.Length..];
+        // ponytail: read-then-write, not atomic — two concurrent first publishes of the same target can both pass
+        // this read before either writes, and the second silently overwrites the first. Depot's write tool has no
+        // create-if-absent flag to close this; upgrade path is a DEP-ticket to add one.
         var existing = await CockpitProjectDefinitionStore.ReadAsync(
             host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
 

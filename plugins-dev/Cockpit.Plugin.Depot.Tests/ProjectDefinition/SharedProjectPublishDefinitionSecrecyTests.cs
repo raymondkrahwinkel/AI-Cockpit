@@ -2,10 +2,9 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-// Pins the same rule CockpitProjectDefinitionSecrecyTests pins for the write side, one boundary earlier: a
-// project's AdditionalInfo/secret rows must never even reach the type ISharedProjectSource.PublishAsync (AC-620)
-// is handed, let alone the wire. These tests do not implement that rule; they make it impossible to break it by
-// accident.
+// Pins the same rule CockpitProjectDefinitionSecrecyTests pins for the write side, one boundary earlier: a secret
+// AdditionalInfo row must never reach the type ISharedProjectSource.PublishAsync (AC-620) is handed. These tests
+// make that impossible to break by accident, not implement the rule itself.
 public class SharedProjectPublishDefinitionSecrecyTests
 {
     private static readonly string[] _FieldsClearedForSharing =

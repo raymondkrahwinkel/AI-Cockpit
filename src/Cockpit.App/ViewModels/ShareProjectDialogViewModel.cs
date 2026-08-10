@@ -6,13 +6,9 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-// AC-620's confirmation screen — the moment a not-yet-shared local project first leaves for Depot. Deliberately no
-// field-level opt-out (Raymond's own decision, documented on the ticket): the portable/machine-local split is a
-// property of the field, not a per-share choice — only which connection and which Depot project it goes to is
-// asked here. The two field lists below (GoesToDepot/StaysOnThisMachine) are built from exactly the same
-// classification PublishAsync's own resource filter applies at write time (ProjectResourcePathPortability +
-// ProjectResourceSecretPathHeuristic — the host-side mirrors AC-604/AC-605/AC-612 already keep in sync with the
-// Depot plugin's own copies), so this screen never promises a row travels that the write then drops.
+// AC-620's confirmation screen — the moment a not-yet-shared local project first leaves for Depot. No field-level
+// opt-out (Raymond's decision): the portable/local split is a property of the field. GoesToDepot/StaysOnThisMachine
+// mirror PublishAsync's own write-time classification, including a machine-scope row's split (name travels as a Placeholder, path stays).
 public partial class ShareProjectDialogViewModel : ViewModelBase
 {
     private readonly Project _project;
@@ -148,11 +144,8 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         }
     }
 
-    // AC-620: the same split PublishAsync's own resource filter applies (portable shape, not secret-shaped, goes;
-    // a machine-scope or secret-shaped reference stays) — computed here purely for display, never trusted instead
-    // of that write-time filter. A project's AdditionalInfo rows are deliberately not shown in either list: they
-    // are not part of the portable contract at all yet (CockpitProjectDefinitionSecrecyTests pins that on the write
-    // side), so nothing here should promise one travels or even name it.
+    // Mirrors PublishAsync's own write-time filter, computed here purely for display. AdditionalInfo is never
+    // shown: it is not part of the portable contract yet (CockpitProjectDefinitionSecrecyTests pins that on the write side).
     private void _BuildFieldRows()
     {
         GoesToDepot.Add(new ShareFieldRowViewModel("Name", _project.Name));
@@ -198,6 +191,9 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
 
             if (ProjectResourcePathPortability.ClassifyScope(resource.Reference) == ProjectResourceScope.Machine)
             {
+                // CockpitProjectResourceEntry.Create writes this as a Placeholder: the role/label still cross to
+                // Depot (a colleague sees the row when they bind), only the path itself does not.
+                GoesToDepot.Add(new ShareFieldRowViewModel(label, "(name only — this machine's own path stays local)"));
                 StaysOnThisMachine.Add(new ShareFieldRowViewModel(label, resource.Reference));
             }
             else
@@ -229,9 +225,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             }
 
             // Prepended, same reason SharedProjectBindingDialogViewModel.ToProject prepends its own binding row: it
-            // is what Project.MemoryRef and ProjectsViewModel._ClaimBoundProjects resolve to, ahead of any resource
-            // this project already carried (an existing Memory row, say — that one stays, now shared too, since it
-            // classified as portable above).
+            // is what Project.MemoryRef/_ClaimBoundProjects resolve to, ahead of any resource already carried.
             var bound = _project with
             {
                 Resources = [new ProjectResource(boundId, ProjectResourceRole.Memory), .. _project.Resources],

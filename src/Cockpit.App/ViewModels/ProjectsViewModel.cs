@@ -649,11 +649,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    // AC-620's publication naad: offers every registered source that can turn a not-yet-shared project into a new
-    // portable definition (Depot's own ISharedProjectSource.CanPublish today, but this asks generically — the host
-    // does not know or care that it is Depot). No connection able to publish yet → nothing to open; the operator
-    // sets one up in the Depot plugin's own settings first, same as AddProjectAsync has nothing to offer without a
-    // profile configured.
+    // AC-620's publication naad: offers every registered source that can publish, generically — the host does not
+    // know or care that it is Depot. No connection able to publish yet → nothing to open.
     private async Task _ShareAsync(Project project)
     {
         if (_dialogs is null || _sharedSources is null)
@@ -676,11 +673,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    // Removes only the local binding — the first Memory-role resource, the same row _ResolveSharedSource reads to
-    // recognise a bound project (ToProject/SharedProjectBindingDialogViewModel prepend it there for exactly this
-    // reason). `.cockpit/project.json` itself is never touched: a colleague's own binding, and the shared
-    // definition, are unaffected — Raymond's own decision on AC-620, confirmed with explicit text rather than a
-    // silent removal.
+    // Removes only the local binding — the first Memory-role resource _ResolveSharedSource reads. `.cockpit/project.json`
+    // itself is never touched: a colleague's own binding stays unaffected (Raymond's decision, explicit confirmation text).
     private async Task _StopSharingAsync(Project project)
     {
         if (_dialogs is null)

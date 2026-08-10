@@ -84,22 +84,14 @@ public interface ISharedProjectSource
     bool CanPublish { get; }
 
     /// <summary>
-    /// Places the operator could publish a project into right now — the "Depot project" picker's own rows. Not the
-    /// same list <see cref="ListAsync"/> returns (that only lists targets that already carry a portable definition);
-    /// a target here may or may not have one yet, which is exactly what <see cref="PublishAsync"/> checks at write
-    /// time. Never called when <see cref="CanPublish"/> is false. Must not throw for an ordinary failure — report it
-    /// through <see cref="SharedProjectPublishTargetListResult.Failed"/>, the same contract every other member of
-    /// this interface already keeps.
+    /// The "Depot project" picker's own rows — unlike <see cref="ListAsync"/>, includes a target with no portable
+    /// definition yet. Never called when <see cref="CanPublish"/> is false; report an ordinary failure through <see cref="SharedProjectPublishTargetListResult.Failed"/>.
     /// </summary>
     Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Publishes <paramref name="definition"/> as a brand-new portable definition at <paramref name="targetId"/>
-    /// (AC-620) — called once, when the operator confirms the Share dialog for a project that has never been shared
-    /// this way before. Must fail with <see cref="SharedProjectPublishResult.AlreadyPublished"/>, never overwrite,
-    /// when the target already carries a definition — that case is <see cref="PrepareBindingAsync"/>'s to handle, not
-    /// this call's. Never called when <see cref="CanPublish"/> is false. Must not throw for an ordinary failure —
-    /// report it through <see cref="SharedProjectPublishResult.Failed"/>.
+    /// Publishes <paramref name="definition"/> as a new portable definition at <paramref name="targetId"/> (AC-620) —
+    /// must fail with <see cref="SharedProjectPublishResult.AlreadyPublished"/> rather than overwrite one that already exists (<see cref="PrepareBindingAsync"/>'s case, not this call's).
     /// </summary>
     /// <param name="targetId">A <see cref="SharedProjectPublishTarget.Id"/> this source itself listed.</param>
     /// <param name="definition">The local project's portable snapshot, offered as-is — see <see cref="SharedProjectPublishDefinition"/> for what "portable" already excludes.</param>

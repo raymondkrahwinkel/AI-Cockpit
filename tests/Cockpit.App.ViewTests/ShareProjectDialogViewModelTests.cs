@@ -59,14 +59,14 @@ public class ShareProjectDialogViewModelTests
     }
 
     [Fact]
-    public void Rows_MachineScopeResource_StaysOnThisMachine()
+    public void Rows_MachineScopeResource_TravelsAsAPlaceholderAndKeepsItsPathLocal()
     {
         var project = Project(resources:
             [new ProjectResource("/home/raymond/dumps/payroll-2026.sql", ProjectResourceRole.Reference) { Label = "Testdata dump" }]);
         var viewModel = ShareProjectDialogViewModel.Create(project, []);
 
         Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Testdata dump" && row.Value == "/home/raymond/dumps/payroll-2026.sql");
-        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label == "Testdata dump");
+        Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Testdata dump" && row.Value == "(name only — this machine's own path stays local)");
     }
 
     [Fact]
@@ -134,10 +134,9 @@ public class ShareProjectDialogViewModelTests
         Assert.Equal("You do not have permission to publish here.", viewModel.ErrorMessage);
     }
 
-    // The DoD's own bar, at the boundary that matters most: what actually reaches ISharedProjectSource.PublishAsync
-    // for a project carrying a secret AdditionalInfo row. SharedProjectPublishDefinition has no field that could
-    // carry it (SharedProjectPublishDefinitionSecrecyTests pins that structurally); this proves the mapping this
-    // view model does on top of that type never smuggles the value into one of the fields it does carry either.
+    // The DoD's bar, at the boundary that matters most: what actually reaches PublishAsync for a project carrying a
+    // secret AdditionalInfo row. The type itself has no field to carry it; this proves the mapping doesn't smuggle
+    // it into a field the type does carry.
     [Fact]
     public async Task ShareAsync_PublishedDefinition_NeverCarriesTheSecretAdditionalInfoValue()
     {
@@ -162,10 +161,9 @@ public class ShareProjectDialogViewModelTests
         });
     }
 
-    // IL#9: measured against the actual rendered markup, not the view model alone — a binding typo (the wrong
-    // path, a DataTemplate that silently renders nothing) passes every view-model-only test above happily while
-    // the operator sees an empty column, the same "never trust the view model alone" discipline
-    // ProjectDialogOwnershipBadgeTests already documents for the sibling ◆/● badge.
+    // IL#9: measured against the rendered markup, not the view model alone — a binding typo could pass every
+    // view-model test above while the operator sees an empty column, the same discipline
+    // ProjectDialogOwnershipBadgeTests already documents.
     [Fact]
     public void Render_BothColumns_ShowTheirFieldRowsAndNoSecretValueAnywhereInTheTree()
     {
