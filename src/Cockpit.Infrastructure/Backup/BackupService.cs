@@ -31,7 +31,7 @@ internal sealed class BackupService(
     // including the credential-bearing files the backup-time scrubber only ever touches inside cockpit.json — to the
     // staging directory for the length of the restore. Staged here, in an owner-only directory, that window is not
     // readable by other users on the machine.
-    private static string StagingRoot => Path.Combine(CockpitConfigPath.Root, "staging");
+    internal static string StagingRoot => Path.Combine(CockpitConfigPath.Root, BackupContents.StagingFolder);
 
     public async Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default)
     {
