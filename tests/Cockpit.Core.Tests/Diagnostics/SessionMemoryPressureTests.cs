@@ -3,9 +3,10 @@ using Cockpit.Core.Diagnostics;
 namespace Cockpit.Core.Tests.Diagnostics;
 
 /// <summary>
-/// When to say — cockpit-wide, by name — that one session is closing in on its own memory cap (AC-692, on top of
-/// AC-661's <c>SessionMemoryCap</c>). A sibling to <see cref="MemoryPressureTests"/>: same hysteresis shape, but
-/// measured as a share of the session's own cap rather than a share of the machine.
+/// When to raise the top-level, named notice that a session has actually gone over its own memory cap (AC-692,
+/// on top of AC-661's <c>SessionMemoryCap</c>) — the notice with the kill button that replaced the automatic kill.
+/// A sibling to <see cref="MemoryPressureTests"/>: same hysteresis shape, measured as a share of the session's own
+/// cap rather than a share of the machine.
 /// </summary>
 public class SessionMemoryPressureTests
 {
@@ -13,18 +14,24 @@ public class SessionMemoryPressureTests
     private const long Cap = 8 * Gb; // SessionMemoryCap.DefaultMegabytes
 
     [Fact]
-    public void PastNineTenthsOfTheCap_ItWarns()
+    public void PastTheCap_ItWarns()
     {
-        var decision = SessionMemoryPressure.Decide(usedBytes: (long)(0.95 * Cap), capBytes: Cap, warned: false);
+        var decision = SessionMemoryPressure.Decide(usedBytes: Cap + Gb, capBytes: Cap, warned: false);
 
         Assert.True(decision.Warn);
         Assert.True(decision.Warned, "so the next sample does not say it again");
     }
 
     [Fact]
+    public void RightAtTheCap_NotYetOverIt_SaysNothing() =>
+        // The old auto-kill fired once the tree was strictly over the cap, not merely at it; the notice replaces
+        // that behaviour rather than moving the line.
+        Assert.False(SessionMemoryPressure.Decide(usedBytes: Cap, capBytes: Cap, warned: false).Warn);
+
+    [Fact]
     public void HavingSaidItOnce_ItDoesNotRepeatWhileYouDecide()
     {
-        var decision = SessionMemoryPressure.Decide(usedBytes: (long)(0.92 * Cap), capBytes: Cap, warned: true);
+        var decision = SessionMemoryPressure.Decide(usedBytes: Cap + Gb, capBytes: Cap, warned: true);
 
         Assert.False(decision.Warn, "a warning every sample is a warning you turn off");
         Assert.True(decision.Warned);
@@ -38,16 +45,16 @@ public class SessionMemoryPressureTests
         Assert.False(calm.Warn);
         Assert.False(calm.Warned, "it is let off the hook, so a real climb later is heard");
 
-        Assert.True(SessionMemoryPressure.Decide(usedBytes: (long)(0.95 * Cap), capBytes: Cap, calm.Warned).Warn);
+        Assert.True(SessionMemoryPressure.Decide(usedBytes: Cap + Gb, capBytes: Cap, calm.Warned).Warn);
     }
 
     [Fact]
-    public void JustDippingUnderTheWarnLine_DoesNotResetIt()
+    public void JustDippingUnderTheCap_DoesNotResetIt()
     {
-        // Otherwise a session that breathes in and out around the threshold warns you twice a minute.
+        // Otherwise a session that breathes in and out around its cap re-notifies every sample.
         Assert.Equal(
             new MemoryPressureDecision(false, true),
-            SessionMemoryPressure.Decide(usedBytes: (long)(0.8 * Cap), capBytes: Cap, warned: true));
+            SessionMemoryPressure.Decide(usedBytes: (long)(0.95 * Cap), capBytes: Cap, warned: true));
     }
 
     [Fact]
