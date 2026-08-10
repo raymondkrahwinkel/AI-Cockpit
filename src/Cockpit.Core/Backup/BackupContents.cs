@@ -12,6 +12,10 @@ namespace Cockpit.Core.Backup;
 // in a cloud folder should not be a key ring.
 public static class BackupContents
 {
+    // Where a backup or restore does its unpacking and half-finished work. Named here rather than where it is
+    // built, because the one thing that must never be forgotten about it is that it is excluded below.
+    public const string StagingFolder = "staging";
+
     // Directories under the cockpit folder that never go into a backup, and why.
     public static IReadOnlyList<string> Excluded { get; } =
     [
@@ -21,6 +25,11 @@ public static class BackupContents
 
         // Yesterday's log lines restore nothing. They are the app talking to itself.
         "logs",
+
+        // The archive being written lives here (AC-45 moved it under this root), so a backup that walked it would
+        // reach the file it is holding open and try to put it inside itself — a sharing violation on every run,
+        // which is exactly what the operator saw (AC-689).
+        StagingFolder,
     ];
 
     // Whether a path inside the cockpit directory belongs in a backup. `relativePath` uses either separator.
