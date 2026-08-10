@@ -98,7 +98,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         _grid.Columns.Add(new DataGridTextColumn
         {
             Header = "Updated",
-            Binding = new Binding(nameof(GitHubPullRequest.UpdatedAt)) { StringFormat = "{0:d MMM HH:mm}" },
+            Binding = new Binding(nameof(GitHubPullRequest.UpdatedAtLocal)) { StringFormat = "{0:d MMM HH:mm}" },
             Width = new DataGridLength(110),
         });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Author", Binding = new Binding(nameof(GitHubPullRequest.Author)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
