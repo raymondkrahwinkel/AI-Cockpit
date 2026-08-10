@@ -587,11 +587,9 @@
         <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
 
-    <!-- Subtle toggle (e.g. the Assistant window's read-aloud switch): a flat icon button that must sit flush
-         among Button.Subtle/Compact siblings (History/Export/Close) instead of the bordered, accent-filled
-         ToggleButton above. Declared before .Compact below so Compact's denser padding still wins — the same
-         cascade Button.Subtle/Button.Compact already rely on. Checked recolours the icon itself rather than
-         filling a surface, since Subtle leaves no button-shaped background to fill. -->
+    <!-- Subtle toggle (e.g. the read-aloud switch): flat like Button.Subtle instead of the bordered,
+         accent-filled ToggleButton above. Declared before .Compact so Compact's padding still wins, and
+         recolours the icon on checked since Subtle leaves no surface to fill. -->
     <Style Selector="ToggleButton.Subtle">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
