@@ -190,4 +190,30 @@ public class ProjectDialogOwnershipBadgeTests
             Assert.False(behaviorBox.IsEnabled, "a read-only claim has nowhere to write an edit back to, so the control must stay locked");
         });
     }
+
+    [Fact]
+    public async Task AViewerClaimedField_TheReadOnlyReasonNamesTheRole()
+    {
+        // AC-248: a Viewer must see why a field is locked, not just that it is — SharedProject.Role now flows
+        // through ProjectFieldOwnership into the reason text next to the field.
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.Behavior] = new ProjectFieldOwnership("EVE Workbench — Team", IsEditable: false, Role: "Viewer"),
+        };
+        var viewModel = await ViewModelAsync(Project.Create("Cockpit"), fieldOwnership);
+
+        HeadlessAvalonia.Run(() =>
+        {
+            var window = new ProjectDialog { DataContext = viewModel };
+            window.Show();
+            window.UpdateLayout();
+
+            var reason = window.GetVisualDescendants().OfType<TextBlock>()
+                .FirstOrDefault(text => text.Classes.Contains("FieldReadOnlyReason") && text.IsEffectivelyVisible);
+            window.Close();
+
+            Assert.NotNull(reason);
+            Assert.Equal("Shared from EVE Workbench — Team — Viewer access is read-only here.", reason.Text);
+        });
+    }
 }

@@ -184,14 +184,14 @@ internal sealed class DepotConnectionRowControl : UserControl
         _authStatus.Text = "Saving…";
         try
         {
-            var (saved, duplicateName) = _saveAll();
+            var (saved, failureReason) = _saveAll();
             if (!saved)
             {
-                // Reachable since the fix that made Save() refuse the whole batch on a same-named collision instead
+                // Reachable since the fix that made Save() refuse the whole batch on a name or URL collision instead
                 // of silently keeping one row and dropping the other — this row could be either one, so it always
                 // gets the same honest answer rather than only the one that happened to be dropped finding out.
-                _authStatus.Text = duplicateName is { } name
-                    ? $"Couldn't save — \"{name}\" is used by another row above. Rename one of them and try again."
+                _authStatus.Text = failureReason is { } reason
+                    ? $"Couldn't save — {reason}"
                     : "Couldn't save these connections — sign-in was not attempted.";
                 return;
             }

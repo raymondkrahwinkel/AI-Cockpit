@@ -4,12 +4,10 @@ using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
 
-// IPluginSettingsView.Save has no room for anything but a bool, but a row's own Sign-in click (DepotConnectionRowControl
-// .SignInAsync) needs to know *why* a save was refused — a name collision refuses the whole batch, and the operator
-// staring at the row that lost deserves to know which name it collided with. Tuple alias, not a new record type: this
-// stays entirely internal plumbing between the two files in this folder, the same "named tuple over a one-off type"
-// call DepotMemorySource.BuildRegistrationPairs already makes for its own connection/registration pairing.
-using DepotSaveResult = (bool Success, string? DuplicateName);
+// IPluginSettingsView.Save has no room for anything but a bool, but a row's own Sign-in click needs to know *why* a
+// save was refused (a name or URL collision). Tuple alias, not a new record type, same internal-plumbing idiom
+// DepotMemorySource.BuildRegistrationPairs already uses for its own connection/registration pairing.
+using DepotSaveResult = (bool Success, string? FailureReason);
 
 namespace Cockpit.Plugin.Depot.Ui;
 
@@ -124,9 +122,19 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // than a save that does nothing and says why.
         if (candidates
                 .GroupBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(group => group.Count() > 1) is { } duplicate)
+                .FirstOrDefault(group => group.Count() > 1) is { } duplicateName)
         {
-            return (false, duplicate.Key);
+            return (false, $"\"{duplicateName.Key}\" is used by another row above. Rename one of them and try again.");
+        }
+
+        // AC-248: two rows pointed at the same (already-normalized) Url would register the same shared-project
+        // source twice under two names — refused the same way as the name collision above, own message since
+        // renaming does not fix a URL collision.
+        if (candidates
+                .GroupBy(candidate => candidate.Url, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(group => group.Count() > 1) is { } duplicateUrl)
+        {
+            return (false, $"This Depot instance is already connected as \"{duplicateUrl.First().Name}\". Remove one of the rows instead of adding a second connection to the same instance.");
         }
 
         var keptNames = candidates.Select(registration => registration.McpServerName).ToHashSet(StringComparer.Ordinal);

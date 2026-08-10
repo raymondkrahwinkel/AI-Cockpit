@@ -344,7 +344,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     private static ProjectFieldOriginViewModel _ResolveOrigin(
         IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? fieldOwnership, HostProjectField field) =>
         fieldOwnership is not null && fieldOwnership.TryGetValue(field, out var ownership) && ownership is not null
-            ? ProjectFieldOriginViewModel.Claimed(ownership.SourceName, ownership.IsEditable)
+            ? ProjectFieldOriginViewModel.Claimed(ownership.SourceName, ownership.IsEditable, ownership.Role)
             : ProjectFieldOriginViewModel.Local;
 
     [ObservableProperty]

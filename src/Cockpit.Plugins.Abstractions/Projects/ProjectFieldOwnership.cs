@@ -12,4 +12,9 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// claiming plugin's own <see cref="ISharedProjectSource.WriteBackAsync"/> can actually take an edit to this
 /// field (AC-247); an editable-but-nowhere-to-save control would drop what the operator typed silently on save.
 /// </param>
-public sealed record ProjectFieldOwnership(string SourceName, bool IsEditable = false);
+/// <param name="Role">
+/// The operator's <see cref="SharedProject.Role"/> on the source this field came from — Viewer/Editor/Owner, or
+/// null when the source cannot say. Display only, same as <see cref="SharedProject.Role"/> itself: it names why a
+/// locked field is locked (AC-248) rather than leaving "read-only" unexplained.
+/// </param>
+public sealed record ProjectFieldOwnership(string SourceName, bool IsEditable = false, string? Role = null);
