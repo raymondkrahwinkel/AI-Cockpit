@@ -11,6 +11,14 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <!-- Defensive: nothing in the repo sets GC mode explicitly, so it defaults to Server GC because
+       Microsoft.Extensions.Hosting pulls in Microsoft.AspNetCore.App. Server GC's per-core heap adds baseline
+       footprint a desktop app doesn't need, worse on macOS. Not a fix for a measured issue (see AC-686). -->
+  <PropertyGroup>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
