@@ -3241,6 +3241,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // I last said so", and that question needs a memory of its own.
     private bool _warnedAboutMemory;
 
+    // One warned-flag per session title (AC-692), not one flag for the whole cockpit — a session that has already
+    // been named should not silence the toast for the next one that climbs.
+    private readonly Dictionary<string, bool> _warnedAboutSessionMemory = new(StringComparer.Ordinal);
+
     // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
     // so on its own bar first. Matched back by title, the same key the sample was taken under.
     private void _WarnAboutSessionCaps(ResourceUsage usage)
@@ -3248,6 +3252,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         foreach (var measured in usage.Sessions)
         {
             Sessions.FirstOrDefault(session => session.Title == measured.Title)?.ReportMemoryAgainstCap(measured.MemoryBytes);
+        }
+    }
+
+    // Says something cockpit-wide, by name, when a session closes in on its own cap (AC-692) — the pane's own bar
+    // (`_WarnAboutSessionCaps` above) says the same thing, but only where you are already looking. This is the
+    // toast for when you are not.
+    private void _WarnAboutSessionMemory(ResourceUsage usage)
+    {
+        var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.Title), StringComparer.Ordinal);
+        foreach (var title in _warnedAboutSessionMemory.Keys.Where(title => !stillHere.Contains(title)).ToList())
+        {
+            _warnedAboutSessionMemory.Remove(title);
+        }
+
+        foreach (var measured in usage.Sessions)
+        {
+            var cap = Sessions.FirstOrDefault(session => session.Title == measured.Title)?.MemoryCapBytes ?? 0;
+            var warned = _warnedAboutSessionMemory.GetValueOrDefault(measured.Title);
+            var decision = SessionMemoryPressure.Decide(measured.MemoryBytes, cap, warned);
+            _warnedAboutSessionMemory[measured.Title] = decision.Warned;
+
+            if (!decision.Warn)
+            {
+                continue;
+            }
+
+            ToastHost.Add(
+                $"'{measured.Title}' is holding {_Megabytes(measured.MemoryBytes)} of its {_Megabytes(cap)} memory cap.",
+                ToastSeverity.Warning,
+                actionLabel: null,
+                onAction: null);
         }
     }
 
@@ -3313,6 +3348,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         _WarnAboutMemory(usage);
         _WarnAboutSessionCaps(usage);
+        _WarnAboutSessionMemory(usage);
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);
