@@ -723,6 +723,8 @@
                                                                                      Classes="toolBody" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                                                                      IsVisible="{Binding HasResult}"/>
                                                             </StackPanel>
+                                                            <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
+                                                                 value outranks a style setter, so only blanking is available. -->
                                                             <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
                                                                 <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
                                                                         Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowToolCommand}"
@@ -770,6 +772,8 @@
                                      the row as the parameter, so allow/deny/always actually resolve the
                                      session's pending decision and persist the always-allow rule. Compact
                                      row: Allow gets the accent, the rest stay quiet and wrap if narrow. -->
+                                <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
+                                     value outranks a style setter, so only blanking is available. -->
                                 <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal"
                                            IsVisible="{Binding IsPendingPermission}">
                                     <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"

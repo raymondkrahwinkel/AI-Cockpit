@@ -74,21 +74,9 @@ public sealed class SessionTilePanel : Panel
     public static readonly AttachedProperty<int> RailSortKeyProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, int>("RailSortKey");
 
-    // The other direction: the panel is the one who knows the two boxes a rail tile is drawn from, so it
-    // *writes* these rather than reading a Style Setter. `CockpitView.axaml` binds `MiniatureHost`'s own
-    // `TileSize`/`FocusSize` to them by element name — attached properties the panel can set directly on the
-    // container it already holds a reference to, rather than a `GetVisualDescendants` walk down into a template
-    // that may not have realized its content yet on the very first layout pass.
-    //
-    // `inherits: true` is what makes those bindings see anything at all (AC-670): the panel writes onto its own
-    // child, which is the `ContentPresenter` the ItemsControl generated, while `PaneRoot` is the Border *inside*
-    // that container's template. Without inheritance the Border keeps the default, the host never scales, and a
-    // rail tile is laid out small instead of drawn small — which reflows the pane and resizes its pty, the one
-    // thing AC-442 exists to prevent.
-    //
-    // Two sizes rather than one scale, because the host sits behind fixed chrome (`PaneRoot`'s margin and
-    // border) and only it can measure that inset; a scale computed out here from container widths comes out
-    // wrong by `inset / scale − inset`. See `MiniatureHost.Fit`.
+    // AC-670: the two boxes a rail tile is drawn from, written onto the container and read by `MiniatureHost`
+    // inside its template — `inherits: true` is what carries them across that boundary, and two boxes rather
+    // than one scale because only the host can measure the pane chrome between them (see `MiniatureHost.Fit`).
     public static readonly AttachedProperty<Size> MiniatureTileSizeProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureTileSize", inherits: true);
 
@@ -380,10 +368,8 @@ public sealed class SessionTilePanel : Panel
         // rather than a settable property, so it can never go stale against a divider drag.
         var aspect = availableSize.Height > 0 ? focusSlot.Height / availableSize.Height : 1.0;
 
-        // One column at every rail width (AC-670 #2). `RailLayoutMath` folds to a second column as soon as the
-        // rail is twice `minTileWidth`, so handing it the rail's own width as that minimum is the whole rule:
-        // a tile is never narrower than the rail, so a second column never fits. The rail is a strip you read
-        // top to bottom; a rail dragged past 320px was opening into a second column instead of bigger tiles.
+        // AC-670 #2: handing `RailLayoutMath` the rail's own width as the minimum tile width is the whole
+        // one-column rule — a tile is never narrower than the rail, so a second column never fits.
         var geometry = RailLayoutMath.Compute(railSlot.Height, availableSize.Height, rail.Count, railSlot.Height, aspect, Gutter);
         var tileSize = new Size(geometry.TileWidth, geometry.TileHeight);
 

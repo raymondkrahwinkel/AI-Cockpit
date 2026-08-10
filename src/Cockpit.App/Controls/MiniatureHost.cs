@@ -4,21 +4,14 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Controls;
 
-// Draws its child small without laying it out small (AC-442): a TerminalControl reports the grid its Bounds
-// imply and the host forwards that to the pty, so a tile-sized layout would reflow the session for good.
-// The child is laid out in the box it would have in the focus slot and only *drawn* scaled, so switching is
-// a number and never rebuilds the pane.
-//
-// The box is derived, not given (AC-670). It used to be `availableSize / Scale`, which is only the focus box
-// when the host's own box is exactly the focus pane's × the scale — and it never is: between the container the
-// rail arranges and this host sits fixed chrome (`PaneRoot`'s 4px margin and 1px border, 10px in all). Dividing
-// after that inset has been taken off multiplies it by 1/scale: at 0.31 the child came out ~22px narrower than
-// in focus, which is three terminal columns, so a promoted session reflowed. `TileSize` and `FocusSize` are the
-// container's box in each of the two states, and the inset between them is measurable here — it is whatever
-// this host did not get of the box the panel handed its container.
-//
+// AC-442: draws its child small without laying it out small — a TerminalControl reports the grid its Bounds
+// imply, so a tile-sized layout would resize the session's pty for good.
+
+// AC-670: the child's box comes from the two container boxes, not from `available / Scale`, because the pane's
+// own chrome sits between them and dividing after it comes off multiplies it by 1/scale (three columns).
+
 // ponytail: live scaling. Measured at 6 streaming panes (MiniatureFrameCostBenchmark) it costs a third of a
-// 60fps budget against a 2 Hz snapshot route's 0.42 ms/frame; snapshots if a real rail drops frames.
+// 60fps budget against a 2 Hz snapshot route; snapshots if a real rail drops frames.
 public sealed class MiniatureHost : Decorator
 {
     // The box the rail gave this host's container. Empty (the default) means "not in a rail" — the child is
@@ -53,13 +46,9 @@ public sealed class MiniatureHost : Decorator
         set => SetValue(FocusSizeProperty, value);
     }
 
-    // What the child is laid out in, and what it is drawn at, for a host box of `available`. Pure so the
-    // arithmetic that the pty depends on is testable without a terminal.
-    //
-    // `inset` is the chrome between the container and this host — the same markup in both states, so the box
-    // the child needs is the focus container minus that same inset. The scale then follows from the width:
-    // the tile mirrors the focus pane's shape, so width and height agree to within a pixel or two of the
-    // panel's own rounding, and width is the one that decides the column count.
+    // AC-670: `inset` is the chrome between the container and this host, the same markup in both states, so the
+    // child's box is the focus container minus that same inset. Scale follows from the width, which is what
+    // decides a terminal's column count; pure, so the pty's arithmetic is testable without a terminal.
     internal static (Size ChildBox, double Scale) Fit(Size available, Size tile, Size focus)
     {
         if (focus.Width <= 0 || focus.Height <= 0

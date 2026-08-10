@@ -1264,28 +1264,21 @@
                             <Setter Property="controls:SessionTilePanel.IsFocusCandidate" Value="{ReflectionBinding IsSelected}"/>
                             <Setter Property="controls:SessionTilePanel.RailSortKey" Value="{ReflectionBinding RailSortKey}"/>
                         </Style>
-                        <!-- A rail tile is a miniature of the terminal, not a shrunken copy of the pane you drive
-                             (AC-670): everything you operate the session with goes, everything that tells you what
-                             the session is doing stays. `.paneChrome` is carried by the composer and the header's
-                             button strip in SessionView/TtyView; the identity strip beside them is not chrome. -->
+                        <!-- AC-670: a tile is a miniature of the terminal, so everything you operate the session
+                             with goes and everything that says what it is doing stays. -->
                         <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChrome">
                             <Setter Property="IsVisible" Value="False"/>
                         </Style>
-                        <!-- Nothing inside a tile is clickable, so a stray click can't land in another session's
-                             composer or terminal — but the tile itself still has to catch that click and promote
-                             (AC-444, AC-670 #7). Hit-testing off on the host lets the press fall through to
-                             `PaneRoot`, and `Border.panel` sets no Background of its own, so give it a
-                             transparent one: null is not hit-testable in Avalonia, Transparent is. -->
+                        <!-- AC-670 #7: hit-testing off on the host lets the press fall through to `PaneRoot`, which
+                             needs a Transparent background of its own — null is not hit-testable in Avalonia. -->
                         <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] controls|MiniatureHost">
                             <Setter Property="IsHitTestVisible" Value="False"/>
                         </Style>
                         <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] Border#PaneRoot">
                             <Setter Property="Background" Value="Transparent"/>
                         </Style>
-                        <!-- Chrome that may not be collapsed, only blanked: TtyView's header shares a DockPanel with
-                             the terminal, so taking it out of the layout hands the terminal two more rows and the pty
-                             hears about it (measured 39 -> 41 at 1000x640). Opacity keeps the box exactly where it
-                             was; the identity strip above covers the empty band it leaves. -->
+                        <!-- AC-670: chrome that may not be collapsed, only blanked — anything that gives up space
+                             inside the scaled subtree hands it to the terminal and resizes the pty. -->
                         <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChromeBlank">
                             <Setter Property="Opacity" Value="0"/>
                         </Style>
@@ -1311,12 +1304,8 @@
                                     Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
-                                <!-- A Grid, not a DockPanel (AC-670): the rail's identity strip is *overlaid* on the
-                                     miniature rather than docked above it. Docking would take 16px off the
-                                     MiniatureHost's box, and the host lays its child out at box ÷ scale — so those
-                                     16px become ~53px less pane, which moves a TTY pane's terminal and resizes its
-                                     pty. Measured: taking the header out of a TtyView at 1000x640 moves the grid
-                                     from 39 rows to 41. Nothing a rail tile does may change the child's box. -->
+                                <!-- AC-670: a Grid so the identity strip is overlaid, not docked — 16px docked above
+                                     the host is 16/scale (~53px) less pane, which resizes a TTY pane's pty. -->
                                 <Grid>
                                 <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
                                      rail (AC-442): switching is then one number and never the rebuild the grid
@@ -1349,12 +1338,8 @@
                                     <ContentControl Content="{Binding}"/>
                                 </DockPanel>
                                 </controls:MiniatureHost>
-                                <!-- The rail tile's identity strip (AC-670, variant A): status dot · name · status,
-                                     drawn at full size on top of the miniature so it stays legible at any scale —
-                                     the same reason the accent edge above sits outside the MiniatureHost. It covers
-                                     the top of the scaled pane, which is where that pane's own header bar lands, so
-                                     a tile reads as one label over one picture instead of two stacked headers.
-                                     Hidden outside the rail; hit-transparent so it never eats the promoting click. -->
+                                <!-- AC-670: the tile's identity strip, drawn at full size over the miniature so it
+                                     stays legible at any scale. Hit-transparent, so it never eats the promoting click. -->
                                 <Border x:Name="MiniatureLabel"
                                         IsVisible="{Binding #PaneRoot.(controls:SessionTilePanel.IsMiniature)}"
                                         IsHitTestVisible="False"

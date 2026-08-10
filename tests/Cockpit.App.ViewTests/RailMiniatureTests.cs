@@ -13,19 +13,14 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-670: the rail is a strip of miniatures, one under the other. Two facts the rest of the rail leans on and
-/// neither of which the AC-441/444 suite could see, because those tests put plain controls straight into the
-/// panel while the real cockpit puts a generated container between the panel and the pane.
+/// AC-670: the rail as a strip of miniatures, tested through the generated container the AC-441/444 suite skips.
 /// </summary>
 [Collection("avalonia")]
 public class RailMiniatureTests
 {
     /// <summary>
-    /// The boxes the panel writes land on its own child — the ItemsControl's container — while the markup that
-    /// consumes them (<c>MiniatureHost.TileSize</c>/<c>FocusSize</c>, bound to <c>#PaneRoot</c>) sits one level
-    /// down inside that container's template. Without inherited properties the Border keeps the empty default:
-    /// the rail then lays each pane out at tile size instead of drawing it small, reflowing the pane and
-    /// resizing its pty.
+    /// The panel writes onto the container; the markup reads one level down, inside that container's template.
+    /// Without inheritance the boxes never arrive and a tile is laid out small rather than drawn small.
     /// </summary>
     [Fact]
     public void TheBoxesWrittenOnTheContainer_ReachTheTemplateRootInsideIt() => HeadlessAvalonia.Run(() =>
@@ -43,11 +38,8 @@ public class RailMiniatureTests
     });
 
     /// <summary>
-    /// The arithmetic the pty depends on, without a terminal in the way. The inset is the pane's own chrome
-    /// (<c>PaneRoot</c>'s margin and border): the child has to be laid out in the focus box minus that same
-    /// chrome, in both states, or the terminal inside changes shape between the rail and the focus slot.
-    /// Dividing the host's box by a scale computed from container widths — what this replaced — takes the inset
-    /// off first and then multiplies it by 1/scale, which is where three columns went missing.
+    /// The arithmetic the pty depends on, without a terminal in the way: the child gets the focus box minus the
+    /// pane's own chrome, in both states. Dividing by a scale instead multiplies that chrome by 1/scale.
     /// </summary>
     [Theory]
     [InlineData(252, 197)]   // the rail at its default weight
@@ -109,10 +101,8 @@ public class RailMiniatureTests
     });
 
     /// <summary>
-    /// AC-670 #7 against AC-670 #1, on the real view: nothing inside a tile takes the click any more
-    /// (<c>MiniatureHost</c> is hit-test-invisible, so a press can't land in another session's composer), and the
-    /// tile still promotes. Those two pull against each other — a press that reaches nothing at all promotes
-    /// nothing either — so this drives an actual pointer rather than the attached property that stands in for one.
+    /// AC-670 #7 against #1, which pull against each other: nothing inside a tile may take the click, yet the
+    /// tile must still promote. Driven with a real pointer rather than the property that stands in for one.
     /// </summary>
     [Fact]
     public void ClickingARailTile_StillPromotesIt_WithNothingInsideTheTileTakingTheClick() => HeadlessAvalonia.Run(() =>
@@ -144,12 +134,8 @@ public class RailMiniatureTests
     });
 
     /// <summary>
-    /// AC-442's invariant through the real view rather than <c>MiniatureHost</c> in isolation, which is the only
-    /// place two things it cannot see show up: the pane's own chrome sitting between the container and the host
-    /// (AC-670 — that cost three columns), and any rail chrome that collapses or docks inside the scaled subtree
-    /// (measured while building this: taking TtyView's header out of the layout moved a 1000x640 pane from 39
-    /// rows to 41, which is why that bar is blanked rather than collapsed and why the identity strip is an
-    /// overlay rather than a dock). Fails on any of those coming back.
+    /// AC-442's invariant through the real view, where the two things an isolated host cannot see show up: the
+    /// pane's chrome between container and host, and rail chrome that collapses or docks inside the scaled subtree.
     /// </summary>
     [Fact]
     public async Task ATtyPaneInTheRail_KeepsTheGridItHasInFocus()
@@ -164,9 +150,9 @@ public class RailMiniatureTests
             var window = new Window { Content = view, Width = 1400, Height = 900 };
             window.Show();
             window.UpdateLayout();
-            await Task.Delay(300);
 
             var terminal = view.GetVisualDescendants().OfType<TerminalControl>().Single();
+            await TerminalSettle.WaitAsync(terminal);
             var tty = view.GetVisualDescendants().OfType<TtyView>().Single();
             var container = tty.GetVisualAncestors().OfType<ContentPresenter>()
                 .First(c => c.DataContext is SessionPanelViewModel);
@@ -178,7 +164,7 @@ public class RailMiniatureTests
             // Promote it: the tile becomes the focus pane, at full size and with all its chrome back.
             cockpit.SelectSessionCommand.Execute(container.DataContext);
             window.UpdateLayout();
-            await Task.Delay(300);
+            await TerminalSettle.WaitAsync(terminal);
 
             Assert.False(SessionTilePanel.GetIsMiniature(container), "the promoted pane must have left the rail");
             asFocus = (terminal.Buffer.Cols, terminal.Buffer.Rows);
