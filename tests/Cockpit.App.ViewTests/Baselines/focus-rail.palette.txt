@@ -15,6 +15,7 @@
 #FF20242C  CockpitHairlineSoftColor
 #FF202430  CockpitInsetBgColor
 #FF22D3EE  CockpitStatusBusyColor
+#FF28313B  CockpitUserBubbleColor
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
 #FF656C78  CockpitTextFaintColor
