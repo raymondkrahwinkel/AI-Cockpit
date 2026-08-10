@@ -953,6 +953,34 @@ public partial class CockpitView : UserControl
 
     private void OnClearSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ClearSessionStatusCommand.Execute(s));
 
+    // AC-674: built here rather than bound via ItemsSource — mirrors PluginSessionHeaderHost's action menu.
+    private void OnMoveSessionToWorkspace(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: SessionPanelViewModel session } control || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var targets = cockpit.Workspaces.Settings.Workspaces
+            .Where(workspace => workspace.Type == WorkspaceType.Sessions && workspace.Id != session.WorkspaceId)
+            .ToList();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        var items = targets
+            .Select(workspace =>
+            {
+                var item = new MenuItem { Header = workspace.Name };
+                item.Click += (_, _) => cockpit.MoveSessionToWorkspaceCommand.Execute((session, workspace.Id));
+                return item;
+            })
+            .ToList();
+
+        new ContextMenu { ItemsSource = items, PlacementTarget = control }.Open(control);
+    }
+
     private void OnMoveSessionUp(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.MoveSessionUpCommand.Execute(s));
 
     private void OnMoveSessionDown(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.MoveSessionDownCommand.Execute(s));

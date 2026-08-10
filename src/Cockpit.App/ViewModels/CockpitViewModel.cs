@@ -5049,6 +5049,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // AC-674: WorkspaceId is stamped before the pane write, since the write's Settings change synchronously
+    // triggers RefreshPaneVisibility — stamping after would leave the grid a step behind.
+    [RelayCommand]
+    private async Task MoveSessionToWorkspaceAsync((SessionPanelViewModel Session, string TargetWorkspaceId) move)
+    {
+        var (session, targetWorkspaceId) = move;
+        if (session.WorkspaceId == targetWorkspaceId)
+        {
+            return;
+        }
+
+        var sourceWorkspaceId = session.WorkspaceId;
+        session.WorkspaceId = targetWorkspaceId;
+
+        if (!await Workspaces.MoveSessionPaneToWorkspaceAsync(sourceWorkspaceId, session.PaneId, targetWorkspaceId))
+        {
+            // The pane write refused (target vanished, wrong kind): put the live side back rather than leave a
+            // session whose desk and pane record disagree.
+            session.WorkspaceId = sourceWorkspaceId;
+        }
+    }
+
     // Context-menu Move up: shift the session one place earlier in the sidebar order.
     [RelayCommand]
     private void MoveSessionUp(SessionPanelViewModel session)

@@ -540,6 +540,9 @@
                                             <MenuItem Header="Clear status" Click="OnClearSessionStatus"
                                                       IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             <Separator/>
+                                            <!-- AC-674: submenu built in code-behind — a popup ContextMenu can't reach CockpitViewModel via $parent. -->
+                                            <MenuItem Header="Move to workspace" Click="OnMoveSessionToWorkspace"/>
+                                            <Separator/>
                                             <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
                                             <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
                                             <Separator/>
