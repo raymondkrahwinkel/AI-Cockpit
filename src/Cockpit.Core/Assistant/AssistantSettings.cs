@@ -31,6 +31,11 @@ public sealed record AssistantSettings
     // Avalonia `Key` enum name for the assistant push-to-talk hotkey. F10, next to dictation's F9, and rebindable.
     public string PushToTalkKeyName { get; init; } = "F10";
 
+    // Whether the chat pop-out stays above every other window (AC-681). *On by default* — this is the behaviour
+    // the window always had before this switch existed, so upgrading a config that predates it must not change
+    // anything until the operator actually opens Options and turns it off.
+    public bool AlwaysOnTop { get; init; } = true;
+
     // The reading level (AC-138) the assistant chat window renders replies at — the same
     // `Sessions.ReadingLevel` an SDK session's own header "View" dropdown uses, and the same default
     // (`Sessions.ReadingLevel.Developer`) so nobody's existing view shifts. Set only here: the chat

@@ -47,6 +47,22 @@ public class AssistantOptionsViewModelTests
         Assert.True(settingsStore.Saved!.IsEnabled);
     }
 
+    // AC-681: the chat window's always-on-top used to be hardcoded; this switch is what turns it off.
+    [Fact]
+    public async Task TogglingAlwaysOnTop_PersistsThroughTheSettingsStore()
+    {
+        var settingsStore = new FakeSettingsStore(new AssistantSettings { IsEnabled = true });
+        var vm = new AssistantOptionsViewModel(settingsStore);
+        await vm.RefreshAsync();
+
+        Assert.True(vm.AlwaysOnTop);
+
+        vm.AlwaysOnTop = false;
+
+        Assert.False(settingsStore.Saved!.AlwaysOnTop);
+        Assert.True(settingsStore.Saved!.IsEnabled);
+    }
+
     /// <summary>
     /// The page names the assistant's own profile — it does not offer a choice among the profile list.
     /// </summary>

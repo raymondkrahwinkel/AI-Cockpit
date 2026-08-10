@@ -50,6 +50,11 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private string _pushToTalkKeyName = "F10";
 
+    // Whether the chat pop-out stays above every other window (AC-681). Mirrors `AssistantSettings.AlwaysOnTop`'s
+    // own default so the checkbox does not flash unchecked before `RefreshAsync` loads the real value.
+    [ObservableProperty]
+    private bool _alwaysOnTop = true;
+
     // The three reading levels the chat window can render at (AC-138) — the same list an SDK session's own header dropdown offers.
     public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
 
@@ -95,6 +100,7 @@ public sealed partial class AssistantOptionsViewModel(
                 IsEnabled = _lastLoadedSettings.IsEnabled;
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
+                AlwaysOnTop = _lastLoadedSettings.AlwaysOnTop;
                 SelectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(_lastLoadedSettings.ReadingLevel);
                 ConsentBypassAll = _lastLoadedSettings.ConsentBypassAll;
                 await _RebuildConsentBypassRowsAsync(cancellationToken).ConfigureAwait(true);
@@ -189,6 +195,8 @@ public sealed partial class AssistantOptionsViewModel(
 
     partial void OnPushToTalkKeyNameChanged(string value) => _SaveSettings();
 
+    partial void OnAlwaysOnTopChanged(bool value) => _SaveSettings();
+
     partial void OnSelectedReadingLevelChanged(ReadingLevelOption value) => _SaveSettings();
 
     // Raised once a change here is actually on disk. The key and the on/off flag are read when the hotkey is
@@ -209,6 +217,7 @@ public sealed partial class AssistantOptionsViewModel(
             IsEnabled = IsEnabled,
             SpeakReplies = SpeakReplies,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
+            AlwaysOnTop = AlwaysOnTop,
             ReadingLevel = SelectedReadingLevel.Value,
             // Written from the rows rather than merged into what was loaded: the rows already carry every stored
             // key (see _RebuildConsentBypassRowsAsync), so this is a full replacement and unticking a box actually

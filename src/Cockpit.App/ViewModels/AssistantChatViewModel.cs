@@ -155,6 +155,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _consentBypassActive;
 
+    // Mirrors `AssistantSettings.AlwaysOnTop` (AC-681) — Options-only, no write-back from this window. Read
+    // alongside `SpeakReplies` on open and on every `ApplySettingsAsync`, so a change while the window is
+    // already sitting there takes effect without a reopen.
+    [ObservableProperty]
+    private bool _alwaysOnTop = true;
+
     public AssistantChatViewModel(
         IAssistantSessionHost host,
         IAssistantSettingsStore settingsStore,
@@ -227,6 +233,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         // AC-575, criterion 5. The window where the assistant's actions are read is also where "some of these were
         // never shown to you" has to be legible; the chip carries the same mark for when this window is closed.
         ConsentBypassActive = settings.HasConsentBypass;
+        AlwaysOnTop = settings.AlwaysOnTop;
 
         _loadingSpeakReplies = true;
         try

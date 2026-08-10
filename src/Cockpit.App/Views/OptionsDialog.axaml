@@ -692,6 +692,14 @@
                                               IsChecked="{Binding AssistantOptions.SpeakReplies}"/>
 
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Keep chat window on top" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Keeps the chat pop-out above every other window. Turn off to let it sit behind other windows like any other."/>
+                                    </StackPanel>
+                                    <CheckBox Content="Always on top"
+                                              IsChecked="{Binding AssistantOptions.AlwaysOnTop}"/>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <TextBlock Text="Chat window reading level" FontWeight="SemiBold"/>
                                         <materialIcons:MaterialIcon Classes="hint"
                                             ToolTip.Tip="How much the chat window shows: Developer sees everything (tool calls, thinking, costs, jargon); Focus folds tool runs and moves cost to the usage pill; Simple drops tool noise and jargon. The same three levels an SDK session's own header dropdown offers — set here instead, since the chat window is a display, not a control panel."/>
