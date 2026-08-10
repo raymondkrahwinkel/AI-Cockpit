@@ -3,11 +3,15 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// Linux `ISessionMemoryLimiter` (AC-661): a cgroup v2 group per session with `memory.max`, the pid moved in.
-// Everything it spawns is born there, and the kernel's OOM kill is scoped to that cgroup — the cockpit sits in its
-// own and is never a candidate. Plain cgroupfs rather than `systemd-run --scope`, which only wraps a launch and
-// cannot cap a pid that is already running.
-internal sealed class LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter> logger) : ISessionMemoryLimiter
+// Linux `ISessionMemoryLimiter` (AC-661): a cgroup v2 group per session, the pid moved in. Everything it spawns is
+// born there. AC-692: this used to set `memory.max`, a hard ceiling the kernel's OOM killer enforces the moment it
+// is crossed; that killed the session outright, the same decision Cockpit no longer makes for the operator on any
+// platform. It now sets `memory.high` instead — a throttle, not a limit. The kernel leans on the cgroup with
+// reclaim pressure once it is over `memory.high`, which slows a runaway session down without ending it, and costs
+// nothing to keep: the toast that actually tells the operator (with the kill button on it) comes from
+// `CockpitViewModel`'s own resource poll, the same as on every other platform, not from this class. Plain cgroupfs
+// rather than `systemd-run --scope`, which only wraps a launch and cannot cap a pid that is already running.
+internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
 {
     private const string CgroupRoot = "/sys/fs/cgroup";
 
@@ -15,35 +19,55 @@ internal sealed class LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter>
     // boundary is a level or two above.
     private const int SearchDepth = 4;
 
+    private readonly ILogger _logger;
+    private readonly Func<string?> _findWritableParent;
+
+    public LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter> logger)
+        : this(logger, _FindWritableParent)
+    {
+    }
+
+    // Test seam: real `/proc/self/cgroup` discovery needs actual cgroupfs, which no dev machine or CI runner for
+    // this repo's other two platforms has. This lets a test point `Apply` at an ordinary temp directory instead
+    // and read back what was really written there — real file I/O, just not real cgroupfs.
+    internal LinuxCgroupMemoryLimiter(ILogger logger, Func<string?> findWritableParent)
+    {
+        _logger = logger;
+        _findWritableParent = findWritableParent;
+    }
+
     public IDisposable? Apply(int processId, long capBytes)
     {
         try
         {
-            if (_FindWritableParent() is not { } parent)
+            if (_findWritableParent() is not { } parent)
             {
-                logger.LogWarning("Session memory cap: no writable cgroup v2 parent with a memory controller; session {ProcessId} runs uncapped.", processId);
+                _logger.LogWarning("Session memory cap: no writable cgroup v2 parent with a memory controller; session {ProcessId} runs uncapped.", processId);
                 return null;
             }
 
             var group = Path.Combine(parent, $"cockpit-session-{processId}");
             Directory.CreateDirectory(group);
-            File.WriteAllText(Path.Combine(group, "memory.max"), capBytes.ToString());
+
+            // memory.high, never memory.max (AC-692) — see the class comment. A session over this throttles; it is
+            // never the reason the kernel's OOM killer looks at this cgroup.
+            File.WriteAllText(Path.Combine(group, "memory.high"), capBytes.ToString());
 
             // Swap left as the parent has it: forcing memory.swap.max to 0 surprises a machine running zram.
             File.WriteAllText(Path.Combine(group, "cgroup.procs"), processId.ToString());
 
-            logger.LogInformation("Session {ProcessId} capped at {CapBytes} bytes by cgroup {Group}.", processId, capBytes, group);
-            return new CgroupHandle(group, logger);
+            _logger.LogInformation("Session {ProcessId} throttled past {CapBytes} bytes by cgroup {Group}.", processId, capBytes, group);
+            return new CgroupHandle(group, _logger);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            logger.LogWarning(exception, "Session memory cap: could not create a cgroup; session {ProcessId} runs uncapped.", processId);
+            _logger.LogWarning(exception, "Session memory cap: could not create a cgroup; session {ProcessId} runs uncapped.", processId);
             return null;
         }
     }
 
-    // The first level up where a new group both can be made and comes up with `memory.max` in it — proof the
-    // controller is delegated there, rather than a directory that merely accepted a mkdir.
+    // The first level up where a new group both can be made and comes up with the memory controller's interface
+    // files in it — proof the controller is delegated there, rather than a directory that merely accepted a mkdir.
     private static string? _FindWritableParent()
     {
         if (_OwnCgroupPath() is not { } own)
@@ -58,7 +82,7 @@ internal sealed class LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter>
             try
             {
                 Directory.CreateDirectory(probe);
-                var usable = File.Exists(Path.Combine(probe, "memory.max"));
+                var usable = File.Exists(Path.Combine(probe, "memory.high"));
                 Directory.Delete(probe);
                 if (usable)
                 {
