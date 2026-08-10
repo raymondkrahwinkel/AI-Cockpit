@@ -4,12 +4,9 @@ using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
 
-// IPluginSettingsView.Save has no room for anything but a bool, but a row's own Sign-in click (DepotConnectionRowControl
-// .SignInAsync) needs to know *why* a save was refused — a name or URL collision refuses the whole batch, and the
-// operator staring at the row that lost deserves to know which one it collided with, and which kind. Tuple alias, not
-// a new record type: this stays entirely internal plumbing between the two files in this folder, the same "named
-// tuple over a one-off type" call DepotMemorySource.BuildRegistrationPairs already makes for its own
-// connection/registration pairing.
+// IPluginSettingsView.Save has no room for anything but a bool, but a row's own Sign-in click needs to know *why* a
+// save was refused (a name or URL collision). Tuple alias, not a new record type, same internal-plumbing idiom
+// DepotMemorySource.BuildRegistrationPairs already uses for its own connection/registration pairing.
 using DepotSaveResult = (bool Success, string? FailureReason);
 
 namespace Cockpit.Plugin.Depot.Ui;
@@ -130,11 +127,9 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             return (false, $"\"{duplicateName.Key}\" is used by another row above. Rename one of them and try again.");
         }
 
-        // AC-248: two rows pointed at the same instance (its own Url, already normalized by ToRegistration — a
-        // trailing /mcp or slash difference must not read as two instances) register the same shared-project
-        // source twice under two names, so an operator ends up setting up the same Depot project a second time
-        // instead of finding it already bound. Refuse the same way the name collision above does — the two checks
-        // share the "does this collide" idea but not the message, since renaming does not fix a URL collision.
+        // AC-248: two rows pointed at the same (already-normalized) Url would register the same shared-project
+        // source twice under two names — refused the same way as the name collision above, own message since
+        // renaming does not fix a URL collision.
         if (candidates
                 .GroupBy(candidate => candidate.Url, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault(group => group.Count() > 1) is { } duplicateUrl)

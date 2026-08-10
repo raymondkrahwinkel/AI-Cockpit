@@ -97,10 +97,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // Whether there is anything to show under a "Shared" heading right now — lets the workspace leave the whole section out rather than draw an empty one.
     public bool HasSharedProjects => SharedProjectGroups.Count > 0;
 
-    // AC-248: no plugin has registered an ISharedProjectSource at all — the launcher's own wegwijzer line is
-    // gated on this rather than on HasSharedProjects, so it never contradicts a signed-out connection's own
-    // "Sign in to this Depot connection…" (SharedProjectListResult.Failed) by implying nothing is set up. Host-
-    // generic on purpose (AC-244): says a plugin can share projects, never which one.
+    // AC-248: gates the launcher's own pointer line separately from HasSharedProjects, so it never contradicts a
+    // signed-out connection's own "Sign in to this Depot connection…" error by implying nothing is set up.
     public bool HasNoSharedProjectSources => _sharedSources is null || _sharedSources.Sources.Count == 0;
 
     // `Projects` grouped by category for the list (AC-618), rebuilt by `_Republish` —

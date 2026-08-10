@@ -1167,11 +1167,8 @@
                     </ItemsControl>
 
                     <!-- AC-248: the same "Shared via {source}" groups ProjectsDialog.axaml already renders (AC-245),
-                         surfaced on the default landing screen too — a project shared through a plugin used to show
-                         up only once that separate Manage-projects window was opened, so someone who never opens it
-                         saw no sign Depot (or any other shared source) exists at all. Same view model
-                         (ProjectsViewModel.LoadSharedProjectsAsync fills it), same "Finish setting up…" entry point
-                         AC-246 already built — only the binding here is new. -->
+                         now also on the default landing screen — that separate Manage-projects window used to be
+                         the only place a shared-but-unbound project showed up at all. -->
                     <ItemsControl ItemsSource="{Binding Projects.SharedProjectGroups}" IsVisible="{Binding Projects.HasSharedProjects}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
@@ -1214,12 +1211,9 @@
                                                         <TextBlock Text="{Binding Role}" FontSize="11"
                                                                    IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                                        <!-- $parent[UserControl], not $parent[ItemsControl]: this card sits inside three
-                                                             nested ItemsControls (groups, then projects), so the nearest ItemsControl
-                                                             ancestor is the inner one — DataContext SharedProject, not
-                                                             CockpitViewModel. CockpitView itself is the nearest ancestor typed right,
-                                                             same idiom the local-project cards above already use. FinishSettingUpCommand
-                                                             lives on ProjectsViewModel, not CockpitViewModel, unlike those cards' commands. -->
+                                                        <!-- Three-deep nested ItemsControls, so $parent[UserControl] (not [ItemsControl])
+                                                             reaches CockpitView itself. FinishSettingUpCommand lives on Projects, unlike
+                                                             the local-project cards' commands above. -->
                                                         <Button Classes="Accent" HorizontalAlignment="Stretch"
                                                                 HorizontalContentAlignment="Center" Padding="12,7"
                                                                 Content="Finish setting up…"
@@ -1244,12 +1238,8 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
-                    <!-- AC-248: the one line that points at where a shared connection is set up, shown only when no
-                         plugin has registered a shared-project source at all — a signed-out connection already
-                         speaks for itself through its own group's Error text above
-                         (SharedProjectListResult.Failed("Sign in to this Depot connection…")), so this must never
-                         show alongside that and imply nothing is configured. Host-generic wording (AC-244): says a
-                         plugin can share projects, never names one. -->
+                    <!-- AC-248: only shown when no source is registered at all — a signed-out connection already
+                         speaks for itself via its own group's Error text. Host-generic wording (AC-244). -->
                     <TextBlock IsVisible="{Binding Projects.HasNoSharedProjectSources}" FontSize="11"
                                HorizontalAlignment="Center" Margin="0,14,0,0" TextWrapping="Wrap" TextAlignment="Center"
                                Foreground="{StaticResource CockpitTextFaintBrush}">
