@@ -2,12 +2,7 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// AC-691: the portal re-request button only makes sense where a portal is what's arming the hotkey — Wayland,
-/// via <c>PortalGlobalHotkeyService</c>. X11 and Windows use a keyboard hook with no portal permission to lose,
-/// and macOS has no global hotkey at all. The platform/session gate is a hard runtime check on the view model, so
-/// the decision is pulled out to be testable on any OS.
-/// </summary>
+/// <summary>AC-691: the portal re-request button must show only where a portal is arming the hotkey — Linux+Wayland.</summary>
 public class HotkeyPortalRetryVisibilityTests
 {
     [Fact]

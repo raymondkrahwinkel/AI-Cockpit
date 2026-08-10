@@ -4412,10 +4412,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand(CanExecute = nameof(CanRestartApp))]
     private void RestartApp() => _appRestart?.Restart();
 
-    // AC-691: forces a fresh portal CreateSession/BindShortcuts cycle — the fix for a moved AppImage getting a
-    // new app identity to KDE and losing its shortcuts permission with no way to re-ask. Raised rather than
-    // called for the same reason VoiceSettingsSaved is: GlobalHotkeyCoordinator is VoicePushToTalkCoordinator's
-    // to hold, and injecting it back into this view model would be a circle the container walks forever.
+    // AC-691: raised rather than called for the same reason VoiceSettingsSaved is — see its remarks.
     public event EventHandler? HotkeyPortalRetryRequested;
 
     [RelayCommand]

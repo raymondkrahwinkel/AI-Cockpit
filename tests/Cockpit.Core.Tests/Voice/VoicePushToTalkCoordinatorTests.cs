@@ -326,13 +326,7 @@ public class VoicePushToTalkCoordinatorTests
         Assert.Empty(cockpit.VoiceGlobalHotkeyTrigger);
     }
 
-    /// <summary>
-    /// AC-691: the Options button that asks the desktop for its shortcuts permission again must actually force a
-    /// new portal session — not just exist. <see cref="CockpitViewModel.HotkeyPortalRetryRequested"/> is this
-    /// coordinator's to re-arm on, the same seam <c>VoiceSettingsSaved</c> uses, so a click re-runs
-    /// <see cref="IGlobalHotkeyService.StartAsync"/> (which is what tears down and rebuilds the portal session —
-    /// see <c>PortalGlobalHotkeyService.StartAsync</c>) rather than leaving the stale one in place.
-    /// </summary>
+    /// <summary>AC-691: the portal re-request button must actually force a new portal session, not just exist.</summary>
     [Fact]
     public async Task RequestingAPortalRetry_ReArmsTheHotkeysWithTheOsService()
     {
