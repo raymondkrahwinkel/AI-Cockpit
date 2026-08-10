@@ -23,15 +23,24 @@ public sealed class ProjectFieldOriginViewModel
 
     public string? SourceName { get; private init; }
 
+    // The operator's role on the claiming source (Viewer/Editor/Owner) — display only, same idiom as SourceName.
+    public string? Role { get; private init; }
+
     public string BadgeText => IsClaimed ? "◆ Shared" : "● This machine";
 
-    // The reason shown under a locked field instead of leaving it silently disabled. Null when the field is not locked.
-    public string? ReadOnlyReason => IsLockedHere ? $"Shared from {SourceName} — read-only here." : null;
+    // The reason shown under a locked field instead of leaving it silently disabled — names the role (AC-248)
+    // when the source reports one, so a Viewer sees why, not just that. Null when the field is not locked.
+    public string? ReadOnlyReason => IsLockedHere
+        ? Role is { Length: > 0 }
+            ? $"Shared from {SourceName} — {Role} access is read-only here."
+            : $"Shared from {SourceName} — read-only here."
+        : null;
 
-    public static ProjectFieldOriginViewModel Claimed(string sourceName, bool isEditable) => new()
+    public static ProjectFieldOriginViewModel Claimed(string sourceName, bool isEditable, string? role = null) => new()
     {
         IsClaimed = true,
         IsLockedHere = !isEditable,
         SourceName = sourceName,
+        Role = role,
     };
 }

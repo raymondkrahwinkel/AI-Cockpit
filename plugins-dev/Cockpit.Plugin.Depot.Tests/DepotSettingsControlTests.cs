@@ -112,6 +112,64 @@ public class DepotSettingsControlTests
         Assert.Empty(settings.Connections);
     }
 
+    // AC-248: two rows named differently but pointed at the same instance would otherwise both register a shared-
+    // project source for it, so an operator setting up a second connection to an instance they already added finds
+    // a duplicate instead of the one already there — refused the same way a name collision is.
+    [Fact]
+    public void Save_TwoRowsWithTheSameUrl_RefusesTheWholeSave_AndWritesNothing()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage());
+        var view = new DepotSettingsControl(host, settings);
+        _AddRow(view);
+        _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com");
+        _SetRowFields(view, index: 1, name: "Work (personal)", url: "https://depot.example.com");
+
+        var saved = view.Save();
+
+        Assert.False(saved);
+        Assert.Empty(settings.Connections);
+    }
+
+    // Normalize strips a trailing /mcp and slash (AC-499) — two rows pasting the documented endpoint and the bare
+    // origin for the same instance must collide too, not just a byte-identical pair of URLs.
+    [Fact]
+    public void Save_TwoRowsWithTheSameUrl_DifferingOnlyByATrailingMcpSegment_RefusesTheWholeSave()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage());
+        var view = new DepotSettingsControl(host, settings);
+        _AddRow(view);
+        _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com/mcp");
+        _SetRowFields(view, index: 1, name: "Work (personal)", url: "https://depot.example.com/");
+
+        var saved = view.Save();
+
+        Assert.False(saved);
+        Assert.Empty(settings.Connections);
+    }
+
+    // The message itself, not just the refusal: names the row the operator can find the instance already
+    // connected under, so they remove the duplicate instead of guessing which of the two rows to keep.
+    [Fact]
+    public async Task SignInAsync_SaveFailsOnAUrlCollision_NamesTheAlreadyConnectedRow()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _AddRow(view);
+        _SetRowFields(view, index: 1, name: "Work (personal)", url: "https://depot.example.com");
+        var newRow = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().ElementAt(1);
+
+        await newRow.SignInAsync();
+
+        _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.Contains("already connected as \"Work\"", _AuthStatusText(newRow), StringComparison.Ordinal);
+    }
+
     // AC-501: memory sources sync the same save a connection's MCP contribution does, live, without an app restart.
     [Fact]
     public void Save_NewConnection_RegistersItsOwnMemorySourceUnderThePlainDepotScheme()

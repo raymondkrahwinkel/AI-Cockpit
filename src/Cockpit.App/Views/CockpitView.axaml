@@ -8,6 +8,7 @@
              xmlns:projects="using:Cockpit.Core.Projects"
              xmlns:ws="using:Cockpit.Core.Workspaces"
              xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
+             xmlns:sharedProjects="using:Cockpit.Plugins.Abstractions.Projects"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:avconv="using:Avalonia.Data.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -1165,6 +1166,75 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <!-- AC-248: the same "Shared via {source}" groups ProjectsDialog.axaml already renders (AC-245),
+                         surfaced on the default landing screen too — a project shared through a plugin used to show
+                         up only once that separate Manage-projects window was opened, so someone who never opens it
+                         saw no sign Depot (or any other shared source) exists at all. Same view model
+                         (ProjectsViewModel.LoadSharedProjectsAsync fills it), same "Finish setting up…" entry point
+                         AC-246 already built — only the binding here is new. -->
+                    <ItemsControl ItemsSource="{Binding Projects.SharedProjectGroups}" IsVisible="{Binding Projects.HasSharedProjects}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
+                                <StackPanel Spacing="4" Margin="0,10,0,0">
+                                    <TextBlock Text="{Binding SourceName, StringFormat='Shared via {0}'}" FontSize="13" FontWeight="SemiBold"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                               IsVisible="{Binding HasError}"/>
+
+                                    <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel HorizontalAlignment="Center"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="sharedProjects:SharedProject">
+                                                <Border Width="278" Margin="8" Padding="16"
+                                                        CornerRadius="{StaticResource CockpitPanelRadius}"
+                                                        Background="{StaticResource CockpitPanelBgBrush}" Opacity="0.85"
+                                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                                    <StackPanel Spacing="8">
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                            <Border Grid.Column="1" Margin="8,0,0,0" Padding="7,2"
+                                                                    CornerRadius="{StaticResource CockpitPillRadius}"
+                                                                    Background="{StaticResource CockpitStatusWaitingChipTintBrush}"
+                                                                    VerticalAlignment="Top">
+                                                                <TextBlock Text="Not set up yet" FontSize="10"
+                                                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                            </Border>
+                                                        </Grid>
+                                                        <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
+                                                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding Role}" FontSize="11"
+                                                                   IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        <!-- $parent[UserControl], not $parent[ItemsControl]: this card sits inside three
+                                                             nested ItemsControls (groups, then projects), so the nearest ItemsControl
+                                                             ancestor is the inner one — DataContext SharedProject, not
+                                                             CockpitViewModel. CockpitView itself is the nearest ancestor typed right,
+                                                             same idiom the local-project cards above already use. FinishSettingUpCommand
+                                                             lives on ProjectsViewModel, not CockpitViewModel, unlike those cards' commands. -->
+                                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
+                                                                HorizontalContentAlignment="Center" Padding="12,7"
+                                                                Content="Finish setting up…"
+                                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.FinishSettingUpCommand}"
+                                                                CommandParameter="{Binding}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
                     <StackPanel IsVisible="{Binding !Projects.HasProjects}" MaxWidth="440" Spacing="10"
                                 HorizontalAlignment="Center">
                         <TextBlock Text="No projects yet" FontSize="15" FontWeight="SemiBold"
@@ -1173,6 +1243,20 @@
                                    TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
+
+                    <!-- AC-248: the one line that points at where a shared connection is set up, shown only when no
+                         plugin has registered a shared-project source at all — a signed-out connection already
+                         speaks for itself through its own group's Error text above
+                         (SharedProjectListResult.Failed("Sign in to this Depot connection…")), so this must never
+                         show alongside that and imply nothing is configured. Host-generic wording (AC-244): says a
+                         plugin can share projects, never names one. -->
+                    <TextBlock IsVisible="{Binding Projects.HasNoSharedProjectSources}" FontSize="11"
+                               HorizontalAlignment="Center" Margin="0,14,0,0" TextWrapping="Wrap" TextAlignment="Center"
+                               Foreground="{StaticResource CockpitTextFaintBrush}">
+                        Projects can also come from a plugin, shared with your team.
+                        <LineBreak/>
+                        <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=" → Plugins."/>
+                    </TextBlock>
 
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0"
                                 HorizontalAlignment="Center">
