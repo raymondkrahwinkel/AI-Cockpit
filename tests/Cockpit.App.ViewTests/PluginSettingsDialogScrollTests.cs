@@ -34,10 +34,9 @@ public class PluginSettingsDialogScrollTests
 
         window.Close();
 
-        // Diagnostic: Avalonia 12.1 fixed ScrollViewer to count its own Padding in the scroll extent (AC-688).
-        // Before that, padding set directly on the ScrollViewer was left out, clipping the last row's tail under
-        // the footer — which is why the host still routes the dialog inset through a Border in the content
-        // (PluginSettingsBody._ScrolledView) rather than relying on this now-fixed behaviour.
+        // Diagnostic: Avalonia 12.1 fixed ScrollViewer to count its own Padding in the scroll extent (AC-688) —
+        // padding set directly on the ScrollViewer used to be left out, clipping the last row's tail under the
+        // footer.
         Assert.True(gap >= 0, "ScrollViewer padding is counted in the scroll extent (Avalonia 12.1+)");
     });
 
