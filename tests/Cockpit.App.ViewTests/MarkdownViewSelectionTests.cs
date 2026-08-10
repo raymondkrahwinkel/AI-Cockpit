@@ -10,13 +10,9 @@ using Cockpit.App.Views;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-679/AC-680: text in a <see cref="MarkdownView"/> reply looked unselectable. It wasn't — SelectionStart/
-/// SelectionEnd tracked the drag correctly the whole time — it was invisible. <see cref="MarkdownView"/>'s
-/// private <c>InlineTextBlock</c> subclasses <see cref="SelectableTextBlock"/> without overriding
-/// <c>StyleKeyOverride</c>, so Avalonia's implicit-theme lookup (which keys on the concrete type) never found
-/// FluentTheme's <c>{x:Type SelectableTextBlock}</c> ControlTheme — the one that sets <c>SelectionBrush</c>,
-/// the IBeam cursor and the right-click Copy menu. A bare <c>&lt;SelectableTextBlock&gt;</c> row elsewhere in
-/// the transcript (user messages, tool results) uses the base type directly and was never affected.
+/// AC-679/AC-680: text in a <see cref="MarkdownView"/> reply looked unselectable, but only because it was
+/// invisible — its private <c>InlineTextBlock</c> subclassed <see cref="SelectableTextBlock"/> without
+/// overriding <c>StyleKeyOverride</c>, so it never picked up FluentTheme's SelectionBrush/cursor/Copy-menu.
 /// </summary>
 [Collection("avalonia")]
 public sealed class MarkdownViewSelectionTests
