@@ -45,6 +45,9 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+
+        // macOS builds its Apple-menu/About/Hide/Quit labels from Application.Name, not the bundle's Info.plist.
+        Name = CockpitProduct.DisplayName;
     }
 
     public override void OnFrameworkInitializationCompleted()
