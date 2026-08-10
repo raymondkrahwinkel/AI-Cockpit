@@ -54,6 +54,38 @@ public class ProjectSecretRowReachesTheEncryptionTests : IDisposable
         Assert.Contains("https://github.com/example/repo", scrubbed);
     }
 
+    // AC-607: the project password itself is cached locally the same way as any other credential (AC-353's
+    // heuristic, not a new storage mechanism) — its property name alone ("ProjectPassword") is what routes it
+    // through the same SecretJsonWalker traversal already proven above for AdditionalInfo rows.
+    [Fact]
+    public async Task AProjectPassword_IsFoundByTheSecretTraversal()
+    {
+        const string password = "project-password-that-must-not-survive";
+        var project = Project.Create("Cockpit") with { ProjectPassword = password };
+
+        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(project));
+        var config = JsonNode.Parse(await File.ReadAllTextAsync(_configFilePath))!;
+
+        var rewritten = SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED");
+
+        var path = Assert.Single(rewritten);
+        Assert.Contains("ProjectPassword", path);
+
+        var scrubbed = config.ToJsonString();
+        Assert.DoesNotContain(password, scrubbed);
+    }
+
+    // AC-607 review finding 2: Project is a record, whose compiler-generated ToString() would otherwise print
+    // every public property, ProjectPassword included, in the clear the moment anyone logs or debug-prints one.
+    [Fact]
+    public void ToString_WithAProjectPasswordSet_NeverContainsItInTheClear()
+    {
+        const string password = "project-password-that-must-not-appear-in-tostring";
+        var project = Project.Create("Cockpit") with { ProjectPassword = password };
+
+        Assert.DoesNotContain(password, $"{project}", StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task AnOrdinaryRow_IsNotTreatedAsASecret()
     {

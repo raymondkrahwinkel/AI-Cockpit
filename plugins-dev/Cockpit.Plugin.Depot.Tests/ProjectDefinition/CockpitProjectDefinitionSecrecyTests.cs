@@ -25,6 +25,11 @@ public class CockpitProjectDefinitionSecrecyTests
         nameof(CockpitProjectDefinition.Resources),
         nameof(CockpitProjectDefinition.Logo),
         nameof(CockpitProjectDefinition.ExtensionData),
+        // AC-607 (deliberate act, as this test's own comment demands): a project's IsSecret AdditionalInfo rows
+        // now DO travel, but only ever as ciphertext under the project's data key — see
+        // CockpitProjectSensitiveFieldFilter.Apply, the only place that builds SensitiveFields entries.
+        nameof(CockpitProjectDefinition.SensitiveFields),
+        nameof(CockpitProjectDefinition.PasswordEnvelope),
     ];
 
     [Fact]
@@ -38,8 +43,13 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.Equal(_FieldsClearedForSharing.OrderBy(name => name, StringComparer.Ordinal), actual);
     }
 
+    // AC-607 review finding 5: the definition now deliberately DOES carry a secret-derived row — SensitiveFields,
+    // ciphertext only, never plaintext. This test does not guard against that; it guards against a plaintext
+    // `AdditionalInfo`-shaped or `Secret`-named property specifically ever appearing again, which
+    // `SensitiveFields`/`PasswordEnvelope` correctly do not trip (neither name contains "Secret" or
+    // "AdditionalInfo").
     [Fact]
-    public void Definition_CarriesNoAdditionalInfo_SinceThoseRowsAreWhereSecretsLive()
+    public void Definition_CarriesNoSecretOrAdditionalInfoNamedProperty_OnlyTheEncryptedSensitiveFieldsRow()
     {
         var names = typeof(CockpitProjectDefinition).GetProperties().Select(property => property.Name).ToArray();
 
@@ -60,14 +70,16 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.DoesNotContain(names, name => name.Contains("Category", StringComparison.OrdinalIgnoreCase));
     }
 
-    // The known gap, pinned so it is a documented limit rather than a surprise. `ExtensionData` exists to
-    // carry a newer Cockpit's fields through a read-then-write untouched (AC-244) — which means an older build
-    // forwards a field it cannot recognise, including one holding a secret a later version chose to share. Keeping
-    // forward compatibility and refusing unknown sensitive data are in direct tension here, and this build resolves
-    // it in favour of compatibility. Whatever design lands the project password has to close this: an unrecognised
-    // field is exactly the case a receiving build cannot judge for itself.
+    // The gap is narrowed at the write seam, not closed: CockpitProjectDefinitionExtensionDataGuard (applied by
+    // CockpitProjectDefinitionStore.WriteAsync, AC-607) refuses a secret-shaped, not-already-encrypted key at the
+    // top level or one level of nested-object keys. It still forwards a secret-shaped value two-plus levels deep,
+    // inside an array, inside an array of objects, or embedded as JSON-in-a-string (the exact last case the host's
+    // own SecretJsonWalker handles and this guard deliberately does not — see
+    // CockpitProjectDefinitionExtensionDataGuardTests for the 4 "still forwarded" cases pinned as a known, accepted
+    // limitation, the same narrow-and-defensible tradeoff ProjectResourceSecretPathHeuristic already documents for
+    // itself). `someFutureField` here matches no secret-name heuristic at all, so it correctly still forwards.
     [Fact]
-    public void ExtensionData_ForwardsUnknownFieldsUnread_WhichIsTheGapAnEncryptionDesignMustClose()
+    public void ExtensionData_ForwardsUnknownFieldsUnread_WhichAC607NarrowsButDoesNotFullyClose()
     {
         const string fromANewerCockpit = """{"schemaVersion":1,"name":"probe","someFutureField":"forwarded as-is"}""";
 
@@ -93,6 +105,63 @@ public class CockpitProjectDefinitionSecrecyTests
         ];
 
         var actual = typeof(CockpitProjectResourceEntry)
+            .GetProperties()
+            .Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal);
+
+        Assert.Equal(cleared.OrderBy(name => name, StringComparer.Ordinal), actual);
+    }
+
+    // AC-607 review finding 4: the same reflection-whitelist pinning as ResourceEntry above, for the 3 new wire
+    // types this ticket introduced — so a row growing an undeclared property (a plaintext fallback field, say)
+    // goes red here rather than by inspection.
+    [Fact]
+    public void SensitiveFieldEntry_CarriesOnlyFieldsClearedForSharing_SoARowCannotGrowAPlaintextFallbackUnnoticed()
+    {
+        string[] cleared =
+        [
+            nameof(CockpitProjectSensitiveFieldEntry.Label),
+            nameof(CockpitProjectSensitiveFieldEntry.Value),
+            nameof(CockpitProjectSensitiveFieldEntry.ExtensionData),
+        ];
+
+        var actual = typeof(CockpitProjectSensitiveFieldEntry)
+            .GetProperties()
+            .Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal);
+
+        Assert.Equal(cleared.OrderBy(name => name, StringComparer.Ordinal), actual);
+    }
+
+    [Fact]
+    public void PasswordEnvelope_CarriesOnlyFieldsClearedForSharing_SoItCannotGrowAPlaintextFallbackUnnoticed()
+    {
+        string[] cleared =
+        [
+            nameof(CockpitProjectPasswordEnvelope.Kdf),
+            nameof(CockpitProjectPasswordEnvelope.Iterations),
+            nameof(CockpitProjectPasswordEnvelope.Password),
+            nameof(CockpitProjectPasswordEnvelope.Recovery),
+        ];
+
+        var actual = typeof(CockpitProjectPasswordEnvelope)
+            .GetProperties()
+            .Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal);
+
+        Assert.Equal(cleared.OrderBy(name => name, StringComparer.Ordinal), actual);
+    }
+
+    [Fact]
+    public void KeyWrapper_CarriesOnlyFieldsClearedForSharing_SoItCannotGrowAPlaintextFallbackUnnoticed()
+    {
+        string[] cleared =
+        [
+            nameof(CockpitProjectKeyWrapper.Salt),
+            nameof(CockpitProjectKeyWrapper.WrappedDataKey),
+        ];
+
+        var actual = typeof(CockpitProjectKeyWrapper)
             .GetProperties()
             .Select(property => property.Name)
             .OrderBy(name => name, StringComparer.Ordinal);
