@@ -540,6 +540,12 @@
                                             <MenuItem Header="Clear status" Click="OnClearSessionStatus"
                                                       IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             <Separator/>
+                                            <!-- AC-674: the target list is dynamic (one per other Sessions desk), and a
+                                                 popup's ContextMenu breaks the visual-tree $parent walk other rows rely
+                                                 on for a live VM binding — so it is built in code-behind, the same way
+                                                 PluginSessionHeaderHost's action menu already does. -->
+                                            <MenuItem Header="Move to workspace" Click="OnMoveSessionToWorkspace"/>
+                                            <Separator/>
                                             <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
                                             <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
                                             <Separator/>

@@ -160,6 +160,10 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // Whether the session grid and its empty state apply at all — false on a dashboard, which owns the content area instead.
     public bool IsSessionsActive => Active?.Type == WorkspaceType.Sessions;
 
+    // AC-674: whether a session has anywhere else to go — gates the sidebar's "Move to workspace" entry so it
+    // never opens onto an empty list.
+    public bool HasOtherSessionWorkspaces => Settings.Workspaces.Count(workspace => workspace.Type == WorkspaceType.Sessions) > 1;
+
     // The active workspace — what the grid renders. Never null once loaded (`WorkspaceSettings.Normalized` guarantees one).
     public Workspace? Active => Settings.Active;
 
@@ -452,6 +456,37 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return true;
     }
 
+    // Moves a session or terminal pane from one Sessions desk to another (AC-674): the operator's context-menu
+    // "Move to workspace", the counterpart to `MovePaneToWorkspaceAsync` for the other host type. Not restricted
+    // to `Active` as the source — the sidebar only offers this for the session showing, but the live side
+    // (`CockpitViewModel.MoveSessionToWorkspaceAsync`) stamps the session's own `WorkspaceId`, not the currently
+    // active desk, so this takes the source explicitly rather than assuming it.
+    //
+    // The pane keeps its id, same rule as `MovePaneToWorkspaceAsync`: a moved AI session must not be rebuilt, or
+    // it loses its pty/conversation state (leermoment 2026-07-13). No `Cell` to place either end — a Sessions
+    // workspace arranges its panes by order, not by grid cell.
+    //
+    // Both ends land in one write, for the same reason as the widget move: two writes can half-land and leave the
+    // pane on neither desk.
+    // False when the move does not apply: same desk, either workspace missing, or either side rejects the pane's kind.
+    public async Task<bool> MoveSessionPaneToWorkspaceAsync(string sourceWorkspaceId, string paneId, string targetWorkspaceId)
+    {
+        if (sourceWorkspaceId == targetWorkspaceId
+            || Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == sourceWorkspaceId) is not { } source
+            || source.Panes.FirstOrDefault(pane => pane.Id == paneId) is not { } moving
+            || Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == targetWorkspaceId) is not { } target
+            || !WorkspaceTypeRules.Accepts(target.Type, moving.Kind))
+        {
+            return false;
+        }
+
+        await _ApplyAsync(Settings
+            .WithUpdated(source.WithoutPane(paneId))
+            .WithUpdated(target.WithPane(moving)));
+
+        return true;
+    }
+
     // Removes a pane from the active workspace (the pane's ✕).
     public Task RemovePaneAsync(string paneId) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithoutPane(paneId)));
@@ -668,6 +703,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(ShowTabStrip));
         OnPropertyChanged(nameof(IsDashboardActive));
         OnPropertyChanged(nameof(IsSessionsActive));
+        OnPropertyChanged(nameof(HasOtherSessionWorkspaces));
         OnPropertyChanged(nameof(IsProjectsActive));
         OnPropertyChanged(nameof(IsPluginWorkspaceActive));
         OnPropertyChanged(nameof(ActivePluginBody));
