@@ -619,6 +619,11 @@ public sealed class MarkdownView : ContentControl
     private sealed class InlineTextBlock : SelectableTextBlock
     {
         public readonly List<(int Start, int Length, string Url, int? Line)> Links = [];
+
+        // Without this, Avalonia's implicit-theme lookup keys on the concrete type (AC-679) and finds no
+        // ControlTheme for this private subclass — so it silently gets none at all: no SelectionBrush to paint
+        // a selection with, no IBeam cursor, no right-click Copy menu. Styled as SelectableTextBlock instead.
+        protected override Type StyleKeyOverride => typeof(SelectableTextBlock);
     }
 
     // One cursor for every block that holds a link, rather than one per build: a Cursor is a platform handle, and
