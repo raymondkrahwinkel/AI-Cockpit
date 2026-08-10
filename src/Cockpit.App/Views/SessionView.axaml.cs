@@ -41,11 +41,9 @@ public partial class SessionView : UserControl
 
     private ScrollViewer? _transcriptScroll;
 
-    /// <summary>
-    /// The transcript's scroll owner, which lives inside <c>TranscriptItems</c>' own template since AC-686 so the
-    /// virtualising panel measures against the viewport rather than the infinite height an enclosing ScrollViewer
-    /// hands it. A name inside a template is not a code-behind field, so it is resolved from the template instead.
-    /// </summary>
+    // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-686, so the virtualising
+    // panel measures against the viewport rather than the infinite height an enclosing ScrollViewer hands it — and a
+    // name inside a template is not a code-behind field, so it is resolved from the template instead.
     internal ScrollViewer TranscriptScroll =>
         _transcriptScroll ??= _ResolveTranscriptScroll();
 
