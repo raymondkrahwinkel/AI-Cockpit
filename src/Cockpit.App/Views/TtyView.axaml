@@ -21,7 +21,10 @@
         <!-- Compact one-row session header: the session data (TTY tag with render diagnostics on hover,
              status, profile, working directory, redraw) is left-aligned; the session title is docked right.
              Always top-docked, including the stacked-vertical grid layout (#54). -->
-        <Border x:Name="HeaderPanel" DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
+        <!-- paneChromeBlank, not paneChrome (AC-670): this bar shares a DockPanel with the terminal, so collapsing
+             it in a rail miniature hands the terminal two more rows and the pty hears about it (measured: 39 -> 41
+             at 1000x640). Blanking keeps the box where it is; the tile's identity strip covers the band it leaves. -->
+        <Border x:Name="HeaderPanel" Classes="paneChromeBlank" DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
             <DockPanel>

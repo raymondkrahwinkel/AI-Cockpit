@@ -28,10 +28,16 @@ public class MiniatureHostPtyInvariantTests
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var terminal = NewTerminal();
-            var host = new MiniatureHost { Child = terminal, UseLayoutRounding = false };
+            var host = new MiniatureHost
+            {
+                Child = terminal,
+                UseLayoutRounding = false,
+                FocusSize = new Size(FullWidth, FullHeight),
+                TileSize = new Size(FullWidth, FullHeight),
+            };
 
             Layout(host, FullWidth, FullHeight);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             full = Grid(terminal);
             childBefore = host.Child;
 
@@ -39,15 +45,15 @@ public class MiniatureHostPtyInvariantTests
             terminal.Resized += (_, e) => resizes.Add(e);
 
             // Into the rail: the tile is the pane at MiniatureScale, which is what the rail hands it.
-            host.Scale = MiniatureScale;
+            host.TileSize = new Size(FullWidth * MiniatureScale, FullHeight * MiniatureScale);
             Layout(host, FullWidth * MiniatureScale, FullHeight * MiniatureScale);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             mini = Grid(terminal);
 
             // And back to focus.
-            host.Scale = 1.0;
+            host.TileSize = new Size(FullWidth, FullHeight);
             Layout(host, FullWidth, FullHeight);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             back = Grid(terminal);
             childAfter = host.Child;
         });
@@ -76,11 +82,11 @@ public class MiniatureHostPtyInvariantTests
             var terminal = NewTerminal();
 
             Layout(terminal, FullWidth, FullHeight);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             full = Grid(terminal);
 
             Layout(terminal, FullWidth * MiniatureScale, FullHeight * MiniatureScale);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             tiled = Grid(terminal);
         });
 
@@ -102,24 +108,5 @@ public class MiniatureHostPtyInvariantTests
         var size = new Size(width, height);
         control.Measure(size);
         control.Arrange(new Rect(size));
-    }
-
-    // The control's resize debounce is 50ms; 150ms leaves room for a dispatcher timer running late on a
-    // loaded machine, then the poll waits out a grid still in motion.
-    private static async Task SettleAsync(TerminalControl terminal)
-    {
-        var seen = terminal.Buffer.Rows;
-        await Task.Delay(150);
-
-        for (var poll = 0; poll < 12; poll++)
-        {
-            if (terminal.Buffer.Rows == seen)
-            {
-                return;
-            }
-
-            seen = terminal.Buffer.Rows;
-            await Task.Delay(50);
-        }
     }
 }

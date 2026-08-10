@@ -30,7 +30,10 @@
              · token meter · usage pill) flexes, and this view's live controls dock right. The session is started
              from the New-session dialog (#31), so there is no Start button — only Stop plus the live
              mode/model/effort selectors, each shown only when the provider supports it. -->
-        <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
+        <!-- paneChrome (AC-670): out of a rail miniature. The tile carries its own identity strip, and this view
+             hosts no TerminalControl, so collapsing the bar moves nothing a pty listens to — unlike TtyView's
+             header, which is why that one is blanked instead of collapsed. -->
+        <Border Classes="paneChrome" DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
             <!-- V1 header (AC-37): a single identity/activity/usage strip that flexes, with the live controls
@@ -119,7 +122,7 @@
              mentioning (a context window filling, an allowance nearly spent), and dismissible. Directly under the
              header so it reads as part of the same story the pills tell, in the amber they take at the same
              threshold. Built on the shared base, so this is the same bar the TTY session shows. -->
-        <Border DockPanel.Dock="Top" Margin="0,6,0,0" Padding="8,4"
+        <Border Classes="paneChrome" DockPanel.Dock="Top" Margin="0,6,0,0" Padding="8,4"
                 IsVisible="{Binding HasUsageWarning}"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
@@ -154,7 +157,7 @@
 
         <!-- AC-231: a resume is waiting. Shown for as long as it is pending, with the moment it will fire and a way
              out — a timer that goes off at 07:30 with nothing on screen saying so is a surprise, not a feature. -->
-        <Border DockPanel.Dock="Top" Margin="0,6,0,0" Padding="8,4"
+        <Border Classes="paneChrome" DockPanel.Dock="Top" Margin="0,6,0,0" Padding="8,4"
                 IsVisible="{Binding HasPendingResume}"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
@@ -177,7 +180,7 @@
              silently dismissible: doing nothing leaves it standing, so the pane comes back again next run rather
              than vanishing without a trace. "Resume conversation" only shows when the plan is confident the
              earlier conversation is still reachable; "Start fresh" and "Close" are always offered. -->
-        <Border DockPanel.Dock="Top" Margin="0,6,0,0" Padding="8,4"
+        <Border Classes="paneChrome" DockPanel.Dock="Top" Margin="0,6,0,0" Padding="8,4"
                 IsVisible="{Binding HasRestoreOffer}"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
@@ -222,7 +225,7 @@
              is what the overlap report described. A boundary makes scrolled-under content read as scrolled-under. The
              8px that used to be this panel's top margin is now padding under the line, so nothing below the line
              moves; the transcript gives up the single pixel the line itself occupies. -->
-        <Border DockPanel.Dock="Bottom" Padding="0,8,0,0"
+        <Border Classes="paneChrome" DockPanel.Dock="Bottom" Padding="0,8,0,0"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
             <DockPanel LastChildFill="True">
 
@@ -721,7 +724,9 @@
                                                                                      Classes="toolBody" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                                                                      IsVisible="{Binding HasResult}"/>
                                                             </StackPanel>
-                                                            <WrapPanel Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
+                                                            <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
+                                                                 value outranks a style setter, so only blanking is available. -->
+                                                            <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
                                                                 <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
                                                                         Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowToolCommand}"
                                                                         CommandParameter="{Binding}"/>
@@ -768,7 +773,9 @@
                                      the row as the parameter, so allow/deny/always actually resolve the
                                      session's pending decision and persist the always-allow rule. Compact
                                      row: Allow gets the accent, the rest stay quiet and wrap if narrow. -->
-                                <WrapPanel Orientation="Horizontal"
+                                <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
+                                     value outranks a style setter, so only blanking is available. -->
+                                <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal"
                                            IsVisible="{Binding IsPendingPermission}">
                                     <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
                                             Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowToolCommand}"

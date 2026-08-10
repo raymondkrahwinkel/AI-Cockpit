@@ -4,20 +4,29 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Controls;
 
-// Draws its child small without laying it out small (AC-442): a TerminalControl reports the grid its Bounds
-// imply and the host forwards that to the pty, so a tile-sized layout would reflow the session for good.
-// Scale 1 is the identity, so the host stays in the tree and switching never rebuilds the pane.
+// AC-442: draws its child small without laying it out small — a TerminalControl reports the grid its Bounds
+// imply, so a tile-sized layout would resize the session's pty for good.
+
+// AC-670: the child's box comes from the two container boxes, not from `available / Scale`, because the pane's
+// own chrome sits between them and dividing after it comes off multiplies it by 1/scale (three columns).
+
 // ponytail: live scaling. Measured at 6 streaming panes (MiniatureFrameCostBenchmark) it costs a third of a
-// 60fps budget against a 2 Hz snapshot route's 0.42 ms/frame; snapshots if a real rail drops frames.
+// 60fps budget against a 2 Hz snapshot route; snapshots if a real rail drops frames.
 public sealed class MiniatureHost : Decorator
 {
-    public static readonly StyledProperty<double> ScaleProperty =
-        AvaloniaProperty.Register<MiniatureHost, double>(nameof(Scale), 1.0);
+    // The box the rail gave this host's container. Empty (the default) means "not in a rail" — the child is
+    // then laid out at the size it is given, at scale 1.
+    public static readonly StyledProperty<Size> TileSizeProperty =
+        AvaloniaProperty.Register<MiniatureHost, Size>(nameof(TileSize));
+
+    // The box that same container has in the focus slot: the box the child must keep being laid out in.
+    public static readonly StyledProperty<Size> FocusSizeProperty =
+        AvaloniaProperty.Register<MiniatureHost, Size>(nameof(FocusSize));
 
     static MiniatureHost()
     {
-        AffectsMeasure<MiniatureHost>(ScaleProperty);
-        AffectsArrange<MiniatureHost>(ScaleProperty);
+        AffectsMeasure<MiniatureHost>(TileSizeProperty, FocusSizeProperty);
+        AffectsArrange<MiniatureHost>(TileSizeProperty, FocusSizeProperty);
     }
 
     public MiniatureHost()
@@ -25,15 +34,44 @@ public sealed class MiniatureHost : Decorator
         ClipToBounds = true;
     }
 
-    // The factor the child is drawn at. 1 = full size (identity). The rail's working range is 0.15–0.40.
-    public double Scale
+    public Size TileSize
     {
-        get => GetValue(ScaleProperty);
-        set => SetValue(ScaleProperty, value);
+        get => GetValue(TileSizeProperty);
+        set => SetValue(TileSizeProperty, value);
     }
 
-    // A non-positive scale would divide the available size by zero and hand the child an infinite box.
-    private double EffectiveScale => Scale is > 0 and <= 1 ? Scale : 1.0;
+    public Size FocusSize
+    {
+        get => GetValue(FocusSizeProperty);
+        set => SetValue(FocusSizeProperty, value);
+    }
+
+    // AC-670: `inset` is the chrome between the container and this host, the same markup in both states, so the
+    // child's box is the focus container minus that same inset. Scale follows from the width, which is what
+    // decides a terminal's column count; pure, so the pty's arithmetic is testable without a terminal.
+    internal static (Size ChildBox, double Scale) Fit(Size available, Size tile, Size focus)
+    {
+        if (focus.Width <= 0 || focus.Height <= 0
+            || !double.IsFinite(available.Width) || !double.IsFinite(available.Height)
+            || available.Width <= 0 || available.Height <= 0)
+        {
+            return (available, 1.0);
+        }
+
+        var inset = new Size(
+            Math.Max(0, tile.Width - available.Width),
+            Math.Max(0, tile.Height - available.Height));
+        var childBox = new Size(focus.Width - inset.Width, focus.Height - inset.Height);
+
+        if (childBox.Width <= 0 || childBox.Height <= 0)
+        {
+            return (available, 1.0);
+        }
+
+        // Above 1 would blow the child up rather than shrink it; that is not a miniature, it is a bug upstream.
+        var scale = Math.Min(1.0, available.Width / childBox.Width);
+        return scale > 0 ? (childBox, scale) : (available, 1.0);
+    }
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -42,8 +80,8 @@ public sealed class MiniatureHost : Decorator
             return default;
         }
 
-        var scale = EffectiveScale;
-        child.Measure(new Size(availableSize.Width / scale, availableSize.Height / scale));
+        var (childBox, scale) = Fit(availableSize, TileSize, FocusSize);
+        child.Measure(childBox);
         return new Size(child.DesiredSize.Width * scale, child.DesiredSize.Height * scale);
     }
 
@@ -54,8 +92,8 @@ public sealed class MiniatureHost : Decorator
             return finalSize;
         }
 
-        var scale = EffectiveScale;
-        child.Arrange(new Rect(0, 0, finalSize.Width / scale, finalSize.Height / scale));
+        var (childBox, scale) = Fit(finalSize, TileSize, FocusSize);
+        child.Arrange(new Rect(default, childBox));
 
         // Only on change: Arrange runs on every layout pass and a fresh transform each time would
         // invalidate the child's render every one of them.

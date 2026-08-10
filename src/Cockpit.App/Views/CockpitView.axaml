@@ -1264,6 +1264,24 @@
                             <Setter Property="controls:SessionTilePanel.IsFocusCandidate" Value="{ReflectionBinding IsSelected}"/>
                             <Setter Property="controls:SessionTilePanel.RailSortKey" Value="{ReflectionBinding RailSortKey}"/>
                         </Style>
+                        <!-- AC-670: a tile is a miniature of the terminal, so everything you operate the session
+                             with goes and everything that says what it is doing stays. -->
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChrome">
+                            <Setter Property="IsVisible" Value="False"/>
+                        </Style>
+                        <!-- AC-670 #7: hit-testing off on the host lets the press fall through to `PaneRoot`, which
+                             needs a Transparent background of its own — null is not hit-testable in Avalonia. -->
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] controls|MiniatureHost">
+                            <Setter Property="IsHitTestVisible" Value="False"/>
+                        </Style>
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] Border#PaneRoot">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                        <!-- AC-670: chrome that may not be collapsed, only blanked — anything that gives up space
+                             inside the scaled subtree hands it to the terminal and resizes the pty. -->
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChromeBlank">
+                            <Setter Property="Opacity" Value="0"/>
+                        </Style>
                     </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -1286,6 +1304,9 @@
                                     Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
+                                <!-- AC-670: a Grid so the identity strip is overlaid, not docked — 16px docked above
+                                     the host is 16/scale (~53px) less pane, which resizes a TTY pane's pty. -->
+                                <Grid>
                                 <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
                                      rail (AC-442): switching is then one number and never the rebuild the grid
                                      comment above describes. Draws the pane small without laying it out small.
@@ -1293,7 +1314,9 @@
                                      attached property it wrote onto `PaneRoot` (`Children[i]`, the container it
                                      already holds) — read by element name here rather than round-tripped
                                      through a bindable view-model property, one fewer moving part. -->
-                                <controls:MiniatureHost Scale="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureScale)}">
+                                <controls:MiniatureHost
+                                        TileSize="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureTileSize)}"
+                                        FocusSize="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureFocusSize)}">
                                 <DockPanel>
                                     <!-- Drag-reorder grip (#54 follow-up): a grab bar above each pane, shown only when
                                          the draggable multi-pane grid is on. Dragging it picks the pane up and drops it
@@ -1315,6 +1338,26 @@
                                     <ContentControl Content="{Binding}"/>
                                 </DockPanel>
                                 </controls:MiniatureHost>
+                                <!-- AC-670: the tile's identity strip, drawn at full size over the miniature so it
+                                     stays legible at any scale. Hit-transparent, so it never eats the promoting click. -->
+                                <Border x:Name="MiniatureLabel"
+                                        IsVisible="{Binding #PaneRoot.(controls:SessionTilePanel.IsMiniature)}"
+                                        IsHitTestVisible="False"
+                                        VerticalAlignment="Top" Height="16" Padding="6,0"
+                                        Background="{StaticResource CockpitChromeBgBrush}"
+                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                                    <DockPanel LastChildFill="False">
+                                        <Ellipse DockPanel.Dock="Left" Width="5" Height="5" Margin="0,0,6,0" VerticalAlignment="Center"
+                                                 Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding SessionStatusLabel}" FontSize="9"
+                                                   VerticalAlignment="Center" Margin="6,0,0,0"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="{Binding Title}" FontSize="9" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                    </DockPanel>
+                                </Border>
+                                </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
