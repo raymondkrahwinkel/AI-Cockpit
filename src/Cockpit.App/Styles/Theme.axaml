@@ -586,6 +586,33 @@
     <Style Selector="ToggleButton:checked:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
+
+    <!-- Subtle toggle (e.g. the read-aloud switch): flat like Button.Subtle instead of the bordered,
+         accent-filled ToggleButton above. Declared before .Compact so Compact's padding still wins, and
+         recolours the icon on checked since Subtle leaves no surface to fill. -->
+    <Style Selector="ToggleButton.Subtle">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="2"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:checked:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Subtle:checked materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+
     <!-- Collapser toggle: a chevron and a line of text that open a section — a heading you can click, not a
          button. It needs its own styling because the checked state above fills a ToggleButton with the accent,
          which would make the quietest row in a dialog the loudest thing on the screen the moment it is opened.
