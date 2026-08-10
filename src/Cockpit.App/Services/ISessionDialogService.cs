@@ -84,6 +84,14 @@ public interface ISessionDialogService
     /// </summary>
     Task<Project?> ShowSharedProjectBindingDialogAsync(SharedProject sharedProject, string sourceName, ISharedProjectSource source);
 
+    /// <summary>
+    /// Shows AC-620's confirmation screen for publishing <paramref name="project"/> — a local project not yet bound
+    /// to any <see cref="ISharedProjectSource"/> — to one of <paramref name="publishSources"/> (every registered
+    /// source whose <see cref="ISharedProjectSource.CanPublish"/> is true). Returns <paramref name="project"/> with
+    /// its new binding row on a successful publish, or null when the operator cancelled.
+    /// </summary>
+    Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<ISharedProjectSource> publishSources);
+
     /// <summary>Shows the MCP-servers dialog (#26), over the main window, for editing the shared MCP-server registry.</summary>
     Task ShowMcpServersDialogAsync();
 

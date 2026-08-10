@@ -122,6 +122,10 @@ internal static class Screenshotter
         // constructor directly): the origin properties this scene exists to show are private-init, set only inside
         // that factory.
         ["project-editor-ownership"] = (_, _) => _ProjectEditorWithOwnership(),
+        // AC-620, IL#9: the confirmation screen before a local project's first publish — the design-time sample
+        // already carries a portable resource, a machine-scope one and a filled connection/target picker, so this
+        // scene draws the same populated state the design-time previewer does rather than an empty shell.
+        ["share-project-dialog"] = (_, _) => new ShareProjectDialog { DataContext = new ShareProjectDialogViewModel() },
         // AC-499: the server row's own two states — a family with instances to pick from (its dropdown), and a
         // family with none yet (its empty hint plus "Servers…" in the dropdown's place) — staged together since
         // only one row of each is needed to prove both render, and DialogScreenClamp caps how much of this dialog

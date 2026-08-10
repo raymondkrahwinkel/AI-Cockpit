@@ -417,6 +417,28 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await _surfaces.ShowAsync(key, dialog, owner, () => saved);
     }
 
+    public async Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<ISharedProjectSource> publishSources)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var key = (typeof(ShareProjectDialog), project.Id);
+        if (_surfaces.TryActivateAsync(key) is Task<Project?> open)
+        {
+            return await open;
+        }
+
+        var viewModel = ShareProjectDialogViewModel.Create(project, publishSources);
+        Project? bound = null;
+        viewModel.CloseRequested += result => bound = result;
+
+        var dialog = new ShareProjectDialog { DataContext = viewModel };
+
+        return await _surfaces.ShowAsync(key, dialog, owner, () => bound);
+    }
+
     // Mirrors _CloneIntoProjectAsync, pre-filled with the shared definition's own GitUrl (AC-246: "Clone…" is an
     // offer built on a URL the operator never has to type in, not a general clone-from-anywhere flow).
     private async Task _CloneIntoSharedProjectBindingAsync(SharedProjectBindingDialogViewModel viewModel, Window owner)

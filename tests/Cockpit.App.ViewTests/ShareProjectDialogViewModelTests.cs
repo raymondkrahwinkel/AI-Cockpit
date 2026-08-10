@@ -1,0 +1,195 @@
+using Avalonia.Controls;
+using Avalonia.VisualTree;
+using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
+using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
+using NSubstitute;
+
+namespace Cockpit.App.ViewTests;
+
+/// <summary>
+/// AC-620's confirmation screen. The DoD's own bar: a field the project marks as secret must never leave the
+/// machine unencrypted — tested here as the wire content <see cref="ISharedProjectSource.PublishAsync"/> actually
+/// receives, not the intent, the same "measured, not guessed" discipline this ticket's own DoD names.
+/// </summary>
+[Collection("avalonia")]
+public class ShareProjectDialogViewModelTests
+{
+    private const string SecretValue = "hunter2-super-secret-value";
+
+    private static Project Project(IReadOnlyList<ProjectResource>? resources = null, IReadOnlyList<ProjectInfoField>? additionalInfo = null) =>
+        Core.Projects.Project.Create("PayrollProcessor") with
+        {
+            Description = "Loonverwerking",
+            GitUrl = "git@github.com:example/payroll.git",
+            SourceDirectory = "/home/raymond/RiderProjects/payroll",
+            DefaultProfileLabel = "Zyra — Sonnet",
+            Resources = resources ?? [],
+            AdditionalInfo = additionalInfo ?? [],
+        };
+
+    private static ISharedProjectSource FakeSource(SharedProjectPublishResult result, out Func<SharedProjectPublishDefinition> sent)
+    {
+        var source = Substitute.For<ISharedProjectSource>();
+        source.SourceName.Returns("Work");
+        source.CanPublish.Returns(true);
+        SharedProjectPublishDefinition? captured = null;
+        source.PublishAsync(Arg.Any<string>(), Arg.Any<SharedProjectPublishDefinition>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                captured = callInfo.ArgAt<SharedProjectPublishDefinition>(1);
+                return Task.FromResult(result);
+            });
+        source.ListPublishTargetsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(SharedProjectPublishTargetListResult.Success(
+                [new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner")])));
+        sent = () => captured ?? throw new InvalidOperationException("PublishAsync was never called");
+        return source;
+    }
+
+    [Fact]
+    public void Rows_PortableResource_GoesToDepot()
+    {
+        var project = Project(resources: [new ProjectResource("docs/CONVENTIONS.md", ProjectResourceRole.Reference) { Label = "Conventions" }]);
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Conventions" && row.Value == "docs/CONVENTIONS.md");
+        Assert.DoesNotContain(viewModel.StaysOnThisMachine, row => row.Label == "Conventions");
+    }
+
+    [Fact]
+    public void Rows_MachineScopeResource_StaysOnThisMachine()
+    {
+        var project = Project(resources:
+            [new ProjectResource("/home/raymond/dumps/payroll-2026.sql", ProjectResourceRole.Reference) { Label = "Testdata dump" }]);
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Testdata dump" && row.Value == "/home/raymond/dumps/payroll-2026.sql");
+        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label == "Testdata dump");
+    }
+
+    [Fact]
+    public void Rows_SecretShapedResourceReference_StaysOnThisMachineAndNeverShowsTheReferenceItself()
+    {
+        var project = Project(resources: [new ProjectResource("~/.ssh/id_rsa", ProjectResourceRole.Reference) { Label = "Deploy key" }]);
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        var row = Assert.Single(viewModel.StaysOnThisMachine, row => row.Label == "Deploy key");
+        Assert.DoesNotContain("id_rsa", row.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label == "Deploy key");
+    }
+
+    [Fact]
+    public void Rows_AdditionalInfo_NeverAppearsInEitherColumn_SecretOrNot()
+    {
+        // AdditionalInfo is not part of the portable contract at all yet (CockpitProjectDefinitionSecrecyTests pins
+        // this on the write side) — nothing here should promise a row travels, or even name it, secret or plain.
+        var project = Project(additionalInfo:
+        [
+            new ProjectInfoField("Repository", "https://github.com/example/payroll"),
+            new ProjectInfoField("Production DB password", SecretValue) { IsSecret = true },
+        ]);
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label.Contains("Repository") || row.Value.Contains(SecretValue));
+        Assert.DoesNotContain(viewModel.StaysOnThisMachine, row => row.Value.Contains(SecretValue));
+    }
+
+    [Fact]
+    public async Task ShareAsync_Success_ClosesWithTheBindingRowPrependedFirst()
+    {
+        var project = Project();
+        var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out _);
+        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+
+        Project? closed = null;
+        viewModel.CloseRequested += result => closed = result;
+        viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
+
+        await viewModel.ShareCommand.ExecuteAsync(null);
+
+        Assert.NotNull(closed);
+        var binding = Assert.Single(closed!.Resources);
+        Assert.Equal(ProjectResourceRole.Memory, binding.Role);
+        Assert.Equal("depot:payroll-processor", binding.Reference);
+    }
+
+    [Fact]
+    public async Task ShareAsync_Failure_DoesNotCloseAndShowsTheError()
+    {
+        var project = Project();
+        var source = FakeSource(SharedProjectPublishResult.PermissionDenied("You do not have permission to publish here."), out _);
+        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+
+        Project? closed = null;
+        var closeRaised = false;
+        viewModel.CloseRequested += result => { closed = result; closeRaised = true; };
+        viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
+
+        await viewModel.ShareCommand.ExecuteAsync(null);
+
+        Assert.False(closeRaised);
+        Assert.Null(closed);
+        Assert.Equal("You do not have permission to publish here.", viewModel.ErrorMessage);
+    }
+
+    // The DoD's own bar, at the boundary that matters most: what actually reaches ISharedProjectSource.PublishAsync
+    // for a project carrying a secret AdditionalInfo row. SharedProjectPublishDefinition has no field that could
+    // carry it (SharedProjectPublishDefinitionSecrecyTests pins that structurally); this proves the mapping this
+    // view model does on top of that type never smuggles the value into one of the fields it does carry either.
+    [Fact]
+    public async Task ShareAsync_PublishedDefinition_NeverCarriesTheSecretAdditionalInfoValue()
+    {
+        var project = Project(
+            resources: [new ProjectResource("docs/CONVENTIONS.md", ProjectResourceRole.Reference) { Label = "Conventions" }],
+            additionalInfo: [new ProjectInfoField("Production DB password", SecretValue) { IsSecret = true }]);
+        var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out var sent);
+        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+        viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
+
+        await viewModel.ShareCommand.ExecuteAsync(null);
+
+        var definition = sent();
+        Assert.DoesNotContain(SecretValue, definition.Name, StringComparison.Ordinal);
+        Assert.DoesNotContain(SecretValue, definition.Description ?? "", StringComparison.Ordinal);
+        Assert.DoesNotContain(SecretValue, definition.BehaviorPrompt ?? "", StringComparison.Ordinal);
+        Assert.DoesNotContain(SecretValue, definition.GitUrl ?? "", StringComparison.Ordinal);
+        Assert.All(definition.Resources, resource =>
+        {
+            Assert.DoesNotContain(SecretValue, resource.Reference, StringComparison.Ordinal);
+            Assert.DoesNotContain(SecretValue, resource.Label ?? "", StringComparison.Ordinal);
+        });
+    }
+
+    // IL#9: measured against the actual rendered markup, not the view model alone — a binding typo (the wrong
+    // path, a DataTemplate that silently renders nothing) passes every view-model-only test above happily while
+    // the operator sees an empty column, the same "never trust the view model alone" discipline
+    // ProjectDialogOwnershipBadgeTests already documents for the sibling ◆/● badge.
+    [Fact]
+    public void Render_BothColumns_ShowTheirFieldRowsAndNoSecretValueAnywhereInTheTree()
+    {
+        var project = Project(
+            resources: [new ProjectResource("docs/CONVENTIONS.md", ProjectResourceRole.Reference) { Label = "Conventions" }],
+            additionalInfo: [new ProjectInfoField("Production DB password", SecretValue) { IsSecret = true }]);
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        HeadlessAvalonia.Run(() =>
+        {
+            var window = new ShareProjectDialog { DataContext = viewModel };
+            window.Show();
+            window.UpdateLayout();
+
+            var texts = window.GetVisualDescendants().OfType<TextBlock>()
+                .Where(text => text.IsEffectivelyVisible)
+                .Select(text => text.Text)
+                .ToList();
+            window.Close();
+
+            Assert.Contains("PayrollProcessor", texts);
+            Assert.Contains("docs/CONVENTIONS.md", texts);
+            Assert.Contains("/home/raymond/RiderProjects/payroll", texts);
+            Assert.DoesNotContain(texts, text => text is { Length: > 0 } value && value.Contains(SecretValue, StringComparison.Ordinal));
+        });
+    }
+}

@@ -68,6 +68,14 @@ public class ProjectDialogWriteBackTests
             _calls++;
             return Task.FromResult(answer);
         }
+
+        public bool CanPublish => false;
+
+        public Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException("not exercised by SaveAsync");
+
+        public Task<SharedProjectPublishResult> PublishAsync(string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("not exercised by SaveAsync");
     }
 
     private static async Task<ProjectDialogViewModel> ViewModelAsync(

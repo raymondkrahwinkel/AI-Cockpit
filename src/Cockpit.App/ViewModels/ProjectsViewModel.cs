@@ -620,5 +620,98 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
         EditProjectCommand.NotifyCanExecuteChanged();
         RemoveProjectCommand.NotifyCanExecuteChanged();
+        ToggleSharingCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(ShareToggleLabel));
+    }
+
+    // AC-620: one button, two directions — "Share…" opens the confirmation screen for a local project, "Stop
+    // sharing…" removes the local binding of one already shared. Never both/neither: a project is exactly one of
+    // the two, the same either/or `_ResolveSharedSource` already answers for AC-247's write-back gating.
+    public string ShareToggleLabel => SelectedProject is { } project && _ResolveSharedSource(project) is not null
+        ? "Stop sharing…"
+        : "Share…";
+
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private Task ToggleSharingAsync() => SelectedProject is { } project ? ToggleSharingAsync(project) : Task.CompletedTask;
+
+    // The launcher's own per-card button (AC-620) has no selection to read — each card acts on its own project —
+    // so this is public and parameterized, the same split EditAsync(Project) already keeps from
+    // EditProjectAsync()'s selection-based command above.
+    public async Task ToggleSharingAsync(Project project)
+    {
+        if (_ResolveSharedSource(project) is not null)
+        {
+            await _StopSharingAsync(project);
+        }
+        else
+        {
+            await _ShareAsync(project);
+        }
+    }
+
+    // AC-620's publication naad: offers every registered source that can turn a not-yet-shared project into a new
+    // portable definition (Depot's own ISharedProjectSource.CanPublish today, but this asks generically — the host
+    // does not know or care that it is Depot). No connection able to publish yet → nothing to open; the operator
+    // sets one up in the Depot plugin's own settings first, same as AddProjectAsync has nothing to offer without a
+    // profile configured.
+    private async Task _ShareAsync(Project project)
+    {
+        if (_dialogs is null || _sharedSources is null)
+        {
+            return;
+        }
+
+        var publishSources = _sharedSources.Sources.Where(source => source.CanPublish).ToList();
+        if (publishSources.Count == 0)
+        {
+            return;
+        }
+
+        if (await _dialogs.ShowShareProjectDialogAsync(project, publishSources) is { } shared)
+        {
+            var stored = await _WithStoredLogoAsync(shared);
+            await _PersistAsync(_settings.WithUpdated(stored));
+            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
+            await LoadSharedProjectsAsync();
+        }
+    }
+
+    // Removes only the local binding — the first Memory-role resource, the same row _ResolveSharedSource reads to
+    // recognise a bound project (ToProject/SharedProjectBindingDialogViewModel prepend it there for exactly this
+    // reason). `.cockpit/project.json` itself is never touched: a colleague's own binding, and the shared
+    // definition, are unaffected — Raymond's own decision on AC-620, confirmed with explicit text rather than a
+    // silent removal.
+    private async Task _StopSharingAsync(Project project)
+    {
+        if (_dialogs is null)
+        {
+            return;
+        }
+
+        var confirmed = await _dialogs.ShowConfirmationDialogAsync(
+            "Stop sharing?",
+            $"This only removes the connection ‘{project.Name}’ has on this machine. Nothing is deleted in Depot — the shared definition and every colleague's own binding stay exactly as they are.",
+            confirmLabel: "Stop sharing");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var resources = project.Resources.ToList();
+        var index = resources.FindIndex(resource => resource.Role == ProjectResourceRole.Memory);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var withoutBinding = project with
+        {
+            Resources = [.. resources.Take(index), .. resources.Skip(index + 1)],
+        };
+
+        await _PersistAsync(_settings.WithUpdated(withoutBinding));
+        SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == withoutBinding.Id);
+        await LoadSharedProjectsAsync();
     }
 }

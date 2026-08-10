@@ -29,6 +29,7 @@ public class DialogChromeTests
         nameof(ProjectDefinitionConflictDialog),
         nameof(ProjectDialog),
         nameof(SetStatusDialog),
+        nameof(ShareProjectDialog),
         nameof(SharedProjectBindingDialog),
     ];
 
@@ -72,6 +73,7 @@ public class DialogChromeTests
         [nameof(ProjectDefinitionConflictDialog)] = () => new ProjectDefinitionConflictDialog { DataContext = new ProjectDefinitionConflictViewModel() },
         [nameof(ProjectDialog)] = () => new ProjectDialog { DataContext = new ProjectDialogViewModel() },
         [nameof(SetStatusDialog)] = () => new SetStatusDialog { DataContext = new SetStatusDialogViewModel("AC-335") },
+        [nameof(ShareProjectDialog)] = () => new ShareProjectDialog { DataContext = new ShareProjectDialogViewModel() },
         [nameof(SharedProjectBindingDialog)] = () => new SharedProjectBindingDialog { DataContext = new SharedProjectBindingDialogViewModel() },
     };
 

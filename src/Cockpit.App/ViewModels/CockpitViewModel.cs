@@ -4715,6 +4715,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private Task EditProjectAsync(Project? project) =>
         project is null ? Task.CompletedTask : Projects.EditAsync(project);
 
+    // The launcher's own Share…/Stop sharing… action (AC-620) — one button, two directions, same either/or
+    // Projects.ToggleSharingAsync already answers for Manage projects' selection-based command.
+    [RelayCommand]
+    private Task ShareProjectAsync(Project? project) =>
+        project is null ? Task.CompletedTask : Projects.ToggleSharingAsync(project);
+
     // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording
     // the result on the panel so the context-menu Duplicate can replay it. Returns the started session's PaneId
     // (#AC-96) so a caller that opened the dialog on a plugin's behalf can hand that id back — null when nothing

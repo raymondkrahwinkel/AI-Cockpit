@@ -73,4 +73,35 @@ public interface ISharedProjectSource
     /// moment ago.
     /// </param>
     Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether this source can turn a not-yet-shared local project into a new one of its own (AC-620). Required,
+    /// not default-implemented — the same "an interface the plugin implements is worse for an older binary, not
+    /// better" reasoning <see cref="PrepareBindingAsync"/>'s own version-history entry already documents for this
+    /// interface: nothing here depends on an old plugin binary satisfying a newer host, so a plain required member
+    /// stays unambiguous instead of quietly degrading to "unsupported" the way a default body would.
+    /// </summary>
+    bool CanPublish { get; }
+
+    /// <summary>
+    /// Places the operator could publish a project into right now — the "Depot project" picker's own rows. Not the
+    /// same list <see cref="ListAsync"/> returns (that only lists targets that already carry a portable definition);
+    /// a target here may or may not have one yet, which is exactly what <see cref="PublishAsync"/> checks at write
+    /// time. Never called when <see cref="CanPublish"/> is false. Must not throw for an ordinary failure — report it
+    /// through <see cref="SharedProjectPublishTargetListResult.Failed"/>, the same contract every other member of
+    /// this interface already keeps.
+    /// </summary>
+    Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Publishes <paramref name="definition"/> as a brand-new portable definition at <paramref name="targetId"/>
+    /// (AC-620) — called once, when the operator confirms the Share dialog for a project that has never been shared
+    /// this way before. Must fail with <see cref="SharedProjectPublishResult.AlreadyPublished"/>, never overwrite,
+    /// when the target already carries a definition — that case is <see cref="PrepareBindingAsync"/>'s to handle, not
+    /// this call's. Never called when <see cref="CanPublish"/> is false. Must not throw for an ordinary failure —
+    /// report it through <see cref="SharedProjectPublishResult.Failed"/>.
+    /// </summary>
+    /// <param name="targetId">A <see cref="SharedProjectPublishTarget.Id"/> this source itself listed.</param>
+    /// <param name="definition">The local project's portable snapshot, offered as-is — see <see cref="SharedProjectPublishDefinition"/> for what "portable" already excludes.</param>
+    Task<SharedProjectPublishResult> PublishAsync(string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken);
 }
