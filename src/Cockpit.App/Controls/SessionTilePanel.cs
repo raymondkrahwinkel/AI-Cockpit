@@ -74,18 +74,26 @@ public sealed class SessionTilePanel : Panel
     public static readonly AttachedProperty<int> RailSortKeyProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, int>("RailSortKey");
 
-    // The other direction: the panel is the one who knows a tile's scale (tile width ÷ the focus pane's
-    // actual width), so it *writes* this one rather than reading a Style Setter. `CockpitView.axaml` binds
-    // `MiniatureHost.Scale` to this by element name — an attached property the panel can set directly on the
-    // container it already holds a reference to, rather than a `GetVisualDescendants` walk down into a
-    // template that may not have realized its content yet on the very first layout pass.
-    // `inherits: true` is what makes that binding see anything at all (AC-670): the panel writes onto its own
+    // The other direction: the panel is the one who knows the two boxes a rail tile is drawn from, so it
+    // *writes* these rather than reading a Style Setter. `CockpitView.axaml` binds `MiniatureHost`'s own
+    // `TileSize`/`FocusSize` to them by element name — attached properties the panel can set directly on the
+    // container it already holds a reference to, rather than a `GetVisualDescendants` walk down into a template
+    // that may not have realized its content yet on the very first layout pass.
+    //
+    // `inherits: true` is what makes those bindings see anything at all (AC-670): the panel writes onto its own
     // child, which is the `ContentPresenter` the ItemsControl generated, while `PaneRoot` is the Border *inside*
-    // that container's template. Without inheritance the Border keeps the 1.0 default, `MiniatureHost` never
-    // scales, and a rail tile is laid out small instead of drawn small — which reflows the pane and resizes its
-    // pty, the one thing AC-442 exists to prevent.
-    public static readonly AttachedProperty<double> MiniatureScaleProperty =
-        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, double>("MiniatureScale", 1.0, inherits: true);
+    // that container's template. Without inheritance the Border keeps the default, the host never scales, and a
+    // rail tile is laid out small instead of drawn small — which reflows the pane and resizes its pty, the one
+    // thing AC-442 exists to prevent.
+    //
+    // Two sizes rather than one scale, because the host sits behind fixed chrome (`PaneRoot`'s margin and
+    // border) and only it can measure that inset; a scale computed out here from container widths comes out
+    // wrong by `inset / scale − inset`. See `MiniatureHost.Fit`.
+    public static readonly AttachedProperty<Size> MiniatureTileSizeProperty =
+        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureTileSize", inherits: true);
+
+    public static readonly AttachedProperty<Size> MiniatureFocusSizeProperty =
+        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureFocusSize", inherits: true);
 
     // True for every control inside a rail tile, false in the focus slot and in the grid (AC-670). Inherited for
     // the same reason as the scale, and read by `CockpitView.axaml` to strip a miniature down to what a
@@ -101,17 +109,21 @@ public sealed class SessionTilePanel : Panel
 
     public static void SetRailSortKey(Control element, int value) => element.SetValue(RailSortKeyProperty, value);
 
-    public static double GetMiniatureScale(Control element) => element.GetValue(MiniatureScaleProperty);
+    public static Size GetMiniatureTileSize(Control element) => element.GetValue(MiniatureTileSizeProperty);
 
-    // Writes both halves of "this pane is a rail tile": the scale it draws at, and the flag the markup strips its
-    // chrome by. One entry point, so the two can never disagree — anything below full size is a miniature.
-    public static void SetMiniatureScale(Control element, double value)
-    {
-        element.SetValue(MiniatureScaleProperty, value);
-        element.SetValue(IsMiniatureProperty, value < 1.0);
-    }
+    public static Size GetMiniatureFocusSize(Control element) => element.GetValue(MiniatureFocusSizeProperty);
 
     public static bool GetIsMiniature(Control element) => element.GetValue(IsMiniatureProperty);
+
+    // Writes all three halves of "this pane is a rail tile" at once — the two boxes it is drawn from and the flag
+    // the markup strips its chrome by — so they can never disagree. An empty focus box means "not in a rail".
+    public static void SetMiniatureBox(Control element, Size tile, Size focus)
+    {
+        var miniature = focus is { Width: > 0, Height: > 0 };
+        element.SetValue(MiniatureTileSizeProperty, tile);
+        element.SetValue(MiniatureFocusSizeProperty, focus);
+        element.SetValue(IsMiniatureProperty, miniature);
+    }
 
     // How far the rail has been scrolled (px), when more tiles exist than fit — the rail's one scroll axis
     // (AC-441: "hoogte de rijen, de rest scrollt verticaal"). Clamped to the content extent on every arrange,
@@ -165,7 +177,7 @@ public sealed class SessionTilePanel : Panel
         {
             foreach (var child in Children)
             {
-                _ResetMiniatureScale(child);
+                _LeaveTheRail(child);
                 child.Measure(child.IsVisible ? availableSize : default);
             }
 
@@ -179,7 +191,7 @@ public sealed class SessionTilePanel : Panel
 
         foreach (var child in Children)
         {
-            _ResetMiniatureScale(child);
+            _LeaveTheRail(child);
         }
 
         var grid = GridSlots(availableSize.Width, availableSize.Height);
@@ -354,7 +366,7 @@ public sealed class SessionTilePanel : Panel
         var focusSlot = slots[0];
         var railSlot = slots[1];
 
-        _ResetMiniatureScale(focus);
+        _LeaveTheRail(focus);
         focus.Measure(new Size(focusSlot.Height, availableSize.Height));
 
         if (rail.Count == 0)
@@ -373,11 +385,14 @@ public sealed class SessionTilePanel : Panel
         // a tile is never narrower than the rail, so a second column never fits. The rail is a strip you read
         // top to bottom; a rail dragged past 320px was opening into a second column instead of bigger tiles.
         var geometry = RailLayoutMath.Compute(railSlot.Height, availableSize.Height, rail.Count, railSlot.Height, aspect, Gutter);
-        var scale = focusSlot.Height > 0 ? geometry.TileWidth / focusSlot.Height : 1.0;
         var tileSize = new Size(geometry.TileWidth, geometry.TileHeight);
+
+        // Both boxes, not a scale: only the host behind the pane's own chrome can tell what that chrome costs,
+        // and the pty depends on getting that exactly right (AC-670, `MiniatureHost.Fit`).
+        var focusSize = new Size(focusSlot.Height, availableSize.Height);
         foreach (var tile in rail)
         {
-            SetMiniatureScale(tile, scale);
+            SetMiniatureBox(tile, tileSize, focusSize);
             tile.Measure(tileSize);
         }
 
@@ -460,10 +475,10 @@ public sealed class SessionTilePanel : Panel
         return (focus, rail);
     }
 
-    // Undoes a previous rail-mode scale when a tile is no longer in the rail (the grid, single-pane, or a
-    // mode switch) — the attached property defaults to 1 (identity) itself, but nothing else resets a value
-    // this panel once pushed away from it.
-    private static void _ResetMiniatureScale(Control tile) => SetMiniatureScale(tile, 1.0);
+    // Undoes a previous rail-mode box when a pane is no longer a tile (the grid, single-pane, the focus slot,
+    // or a mode switch) — the attached properties default to empty themselves, but nothing else resets a value
+    // this panel once pushed away from it. An empty focus box is what `MiniatureHost.Fit` reads as "not scaled".
+    private static void _LeaveTheRail(Control tile) => SetMiniatureBox(tile, default, default);
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {

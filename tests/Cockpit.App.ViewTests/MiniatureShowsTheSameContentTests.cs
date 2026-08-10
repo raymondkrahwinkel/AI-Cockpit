@@ -1,3 +1,4 @@
+using Avalonia;
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia.Headless;
@@ -63,7 +64,14 @@ public class MiniatureShowsTheSameContentTests
         int seed, double scale, string fileName)
     {
         var terminal = new TerminalControl { FontSize = 14, UseLayoutRounding = false };
-        var host = new MiniatureHost { Child = terminal, Scale = scale, UseLayoutRounding = false };
+        var host = new MiniatureHost
+        {
+            Child = terminal,
+            // No chrome between the rail and the host here, so the tile box is the host's own box.
+            TileSize = new Size(FullWidth * scale, FullHeight * scale),
+            FocusSize = new Size(FullWidth, FullHeight),
+            UseLayoutRounding = false,
+        };
         using var scene = RenderedScene.Show(host, FullWidth * scale, FullHeight * scale);
 
         // The grid the pane settles on is what the transcript is then written into, at either scale — write

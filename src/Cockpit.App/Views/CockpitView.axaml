@@ -1325,7 +1325,9 @@
                                      attached property it wrote onto `PaneRoot` (`Children[i]`, the container it
                                      already holds) — read by element name here rather than round-tripped
                                      through a bindable view-model property, one fewer moving part. -->
-                                <controls:MiniatureHost Scale="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureScale)}">
+                                <controls:MiniatureHost
+                                        TileSize="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureTileSize)}"
+                                        FocusSize="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureFocusSize)}">
                                 <DockPanel>
                                     <!-- Drag-reorder grip (#54 follow-up): a grab bar above each pane, shown only when
                                          the draggable multi-pane grid is on. Dragging it picks the pane up and drops it

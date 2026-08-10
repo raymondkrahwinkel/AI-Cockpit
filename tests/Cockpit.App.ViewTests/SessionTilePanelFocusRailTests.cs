@@ -33,8 +33,8 @@ public class SessionTilePanelFocusRailTests
         using var scene = RenderedScene.Show(panel, 900, 600);
 
         Assert.True(a.Bounds.Width > b.Bounds.Width, "the focus candidate must fill the large slot, not a rail tile");
-        Assert.Equal(1.0, _MiniatureScaleOf(a));
-        Assert.True(_MiniatureScaleOf(b) is > 0 and < 1, "a rail tile must draw smaller, never full scale");
+        Assert.False(_IsMiniature(a), "the focus candidate is drawn at full size, not as a tile");
+        Assert.True(_IsMiniature(b), "a rail tile must draw smaller, never full scale");
 
         // Promote "b": the operator clicked it, which (via OnSessionPanePressed → SelectSessionCommand →
         // OnSelectedSessionChanged) flips IsSelected on the two panes — here, the attached property that
@@ -49,8 +49,8 @@ public class SessionTilePanelFocusRailTests
         Assert.Equal(3, panel.Children.Count);
 
         Assert.True(b.Bounds.Width > a.Bounds.Width, "the promoted pane must now fill the large slot");
-        Assert.Equal(1.0, _MiniatureScaleOf(b));
-        Assert.True(_MiniatureScaleOf(a) is > 0 and < 1, "the demoted pane must go back to rail scale");
+        Assert.False(_IsMiniature(b), "the promoted pane must be drawn at full size");
+        Assert.True(_IsMiniature(a), "the demoted pane must go back to rail scale");
     });
 
     [Fact]
@@ -112,11 +112,7 @@ public class SessionTilePanelFocusRailTests
             Background = Brushes.Black,
             BorderBrush = attentionBrush,
             BorderThickness = new Thickness(1.5),
-            Child = new MiniatureHost
-            {
-                Scale = 0.28,
-                Child = new Border { Width = 1000, Height = 640, Background = Brushes.Black },
-            },
+            Child = _Miniature(0.28, new Border { Width = 1000, Height = 640, Background = Brushes.Black }),
         };
 
         using var scene = RenderedScene.Show(tile, (1000 * 0.28) + 3, (640 * 0.28) + 3);
@@ -133,25 +129,17 @@ public class SessionTilePanelFocusRailTests
         // The consent overlay (ConsentBannerHost): a #B3000000 scrim over the whole pane. At rail scale the
         // Approve/Deny text is unreadable by design (AC-441) — what has to survive is the scrim itself
         // reading as visibly darker than an un-scrimmed tile.
-        var plainHost = new MiniatureHost
-        {
-            Scale = 0.28,
-            Child = new Border { Width = 1000, Height = 640, Background = Brushes.White },
-        };
+        var plainHost = _Miniature(0.28, new Border { Width = 1000, Height = 640, Background = Brushes.White });
         using var plainScene = RenderedScene.Show(plainHost, 1000 * 0.28, 640 * 0.28);
         var plainColor = RenderedScene.PaintedAt(plainScene.Window, new Point(50, 50));
 
-        var scrimmedHost = new MiniatureHost
+        var scrimmedHost = _Miniature(0.28, new Border
         {
-            Scale = 0.28,
-            Child = new Border
-            {
-                Width = 1000,
-                Height = 640,
-                Background = Brushes.White,
-                Child = new Border { Background = new SolidColorBrush(Color.FromArgb(0xB3, 0, 0, 0)) },
-            },
-        };
+            Width = 1000,
+            Height = 640,
+            Background = Brushes.White,
+            Child = new Border { Background = new SolidColorBrush(Color.FromArgb(0xB3, 0, 0, 0)) },
+        });
         using var scrimmedScene = RenderedScene.Show(scrimmedHost, 1000 * 0.28, 640 * 0.28);
         using (var frame = scrimmedScene.Window.CaptureRenderedFrame())
         {
@@ -176,7 +164,16 @@ public class SessionTilePanelFocusRailTests
         return container;
     }
 
-    private static double _MiniatureScaleOf(Control container) => SessionTilePanel.GetMiniatureScale(container);
+    private static bool _IsMiniature(Control container) => SessionTilePanel.GetIsMiniature(container);
+
+    // The host as the rail hands it to a pane: no chrome between the two here, so the tile box *is* the host's
+    // box and the inset is zero — `MiniatureHost.Fit` then lands on exactly `scale`.
+    private static MiniatureHost _Miniature(double scale, Control child) => new()
+    {
+        TileSize = new Size(1000 * scale, 640 * scale),
+        FocusSize = new Size(1000, 640),
+        Child = child,
+    };
 
     private static bool _ColorsClose(Color a, Color b) =>
         Math.Abs(a.R - b.R) < 24 && Math.Abs(a.G - b.G) < 24 && Math.Abs(a.B - b.B) < 24;

@@ -28,7 +28,13 @@ public class MiniatureHostPtyInvariantTests
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var terminal = NewTerminal();
-            var host = new MiniatureHost { Child = terminal, UseLayoutRounding = false };
+            var host = new MiniatureHost
+            {
+                Child = terminal,
+                UseLayoutRounding = false,
+                FocusSize = new Size(FullWidth, FullHeight),
+                TileSize = new Size(FullWidth, FullHeight),
+            };
 
             Layout(host, FullWidth, FullHeight);
             await SettleAsync(terminal);
@@ -39,13 +45,13 @@ public class MiniatureHostPtyInvariantTests
             terminal.Resized += (_, e) => resizes.Add(e);
 
             // Into the rail: the tile is the pane at MiniatureScale, which is what the rail hands it.
-            host.Scale = MiniatureScale;
+            host.TileSize = new Size(FullWidth * MiniatureScale, FullHeight * MiniatureScale);
             Layout(host, FullWidth * MiniatureScale, FullHeight * MiniatureScale);
             await SettleAsync(terminal);
             mini = Grid(terminal);
 
             // And back to focus.
-            host.Scale = 1.0;
+            host.TileSize = new Size(FullWidth, FullHeight);
             Layout(host, FullWidth, FullHeight);
             await SettleAsync(terminal);
             back = Grid(terminal);
