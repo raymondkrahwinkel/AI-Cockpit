@@ -953,10 +953,7 @@ public partial class CockpitView : UserControl
 
     private void OnClearSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ClearSessionStatusCommand.Execute(s));
 
-    // AC-674: the submenu is built here, not bound via ItemsSource in XAML — a ContextMenu is a popup, so the
-    // $parent[ItemsControl] walk the "+" workspace menu uses to reach CockpitViewModel does not reach through it.
-    // Mirrors PluginSessionHeaderHost's action menu: real MenuItems, not template-generated ones, so nothing
-    // depends on container materialisation inside a popup.
+    // AC-674: built here rather than bound via ItemsSource — mirrors PluginSessionHeaderHost's action menu.
     private void OnMoveSessionToWorkspace(object? sender, RoutedEventArgs e)
     {
         if (sender is not Control { DataContext: SessionPanelViewModel session } control || DataContext is not CockpitViewModel cockpit)

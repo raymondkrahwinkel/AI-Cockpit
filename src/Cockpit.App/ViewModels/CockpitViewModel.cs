@@ -5049,11 +5049,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // Context-menu "Move to workspace" (AC-674): re-desks a running session without rebuilding it. The
-    // `WorkspaceId` is stamped before the pane write below, not after — `_WireWorkspaceVisibility` reacts to
-    // `Workspaces.Settings` changing, synchronously, from inside that same write, so `RefreshPaneVisibility` has
-    // to see the new desk already on the session or the grid/sidebar would not follow the move until something
-    // else happened to touch Settings again. Mirrors the stamp-before-persist order `AddSession` already uses.
+    // AC-674: WorkspaceId is stamped before the pane write, since the write's Settings change synchronously
+    // triggers RefreshPaneVisibility — stamping after would leave the grid a step behind.
     [RelayCommand]
     private async Task MoveSessionToWorkspaceAsync((SessionPanelViewModel Session, string TargetWorkspaceId) move)
     {

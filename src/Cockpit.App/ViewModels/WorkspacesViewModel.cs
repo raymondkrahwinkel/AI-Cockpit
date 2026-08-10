@@ -456,19 +456,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return true;
     }
 
-    // Moves a session or terminal pane from one Sessions desk to another (AC-674): the operator's context-menu
-    // "Move to workspace", the counterpart to `MovePaneToWorkspaceAsync` for the other host type. Not restricted
-    // to `Active` as the source — the sidebar only offers this for the session showing, but the live side
-    // (`CockpitViewModel.MoveSessionToWorkspaceAsync`) stamps the session's own `WorkspaceId`, not the currently
-    // active desk, so this takes the source explicitly rather than assuming it.
-    //
-    // The pane keeps its id, same rule as `MovePaneToWorkspaceAsync`: a moved AI session must not be rebuilt, or
-    // it loses its pty/conversation state (leermoment 2026-07-13). No `Cell` to place either end — a Sessions
-    // workspace arranges its panes by order, not by grid cell.
-    //
-    // Both ends land in one write, for the same reason as the widget move: two writes can half-land and leave the
-    // pane on neither desk.
-    // False when the move does not apply: same desk, either workspace missing, or either side rejects the pane's kind.
+    // AC-674: counterpart to MovePaneToWorkspaceAsync for AI-session/terminal panes — same one-write, pane-keeps-
+    // its-id rules, so a moved session is re-desked, not rebuilt.
+    // False when the move does not apply: same desk, either workspace missing, or the target rejects the pane's kind.
     public async Task<bool> MoveSessionPaneToWorkspaceAsync(string sourceWorkspaceId, string paneId, string targetWorkspaceId)
     {
         if (sourceWorkspaceId == targetWorkspaceId
