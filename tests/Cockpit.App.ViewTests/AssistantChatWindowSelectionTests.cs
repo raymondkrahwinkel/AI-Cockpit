@@ -9,14 +9,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-680: the same MarkdownView selection defect AC-679 fixed, pinned here for the Assistant pop-out window
-/// specifically — a separate <see cref="MarkdownView"/> host from SessionView, sharing only the control.
-/// </summary>
-/// <remarks>
-/// Asserts the <c>SelectionBrush</c>, not a drag-and-check-SelectedText — dragging highlights a range either
-/// way (SelectionStart/SelectionEnd track it regardless), the defect was that nothing painted it.
-/// </remarks>
+/// <summary>AC-680: the same MarkdownView selection defect AC-679 fixed, pinned here for the Assistant pop-out window.</summary>
 [Collection("avalonia")]
 public sealed class AssistantChatWindowSelectionTests
 {
