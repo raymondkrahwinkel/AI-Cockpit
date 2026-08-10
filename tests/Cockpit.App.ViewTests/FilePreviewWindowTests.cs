@@ -7,11 +7,9 @@ using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The window a clickable path opens (AC-642), exercised through the same <c>Build</c> seam
-/// <c>ScreenshotPreviewWindow</c> uses — the harness's own step, not a real mouse click through
-/// <c>MarkdownView</c>. One case per soort from criterion 13, plus resize (criterion 7).
-/// </summary>
+// The window a clickable path opens (AC-642), exercised through the same `Build` seam `ScreenshotPreviewWindow`
+// uses — the harness's own step, not a real mouse click through `MarkdownView`. One case per soort from
+// criterion 13, plus resize (criterion 7).
 [Collection("avalonia")]
 public sealed class FilePreviewWindowTests : IDisposable
 {
@@ -71,6 +69,24 @@ public sealed class FilePreviewWindowTests : IDisposable
             Assert.Equal("afbeelding", _KindText(window));
             var border = Assert.IsType<Border>(_Body(window));
             Assert.IsType<Image>(border.Child);
+        });
+    }
+
+    [Fact]
+    public async Task BinaryFile_ShowsNoPreviewInsteadOfDecodedGarbageAsCode()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            // A NUL byte in the head rules out "text" in FilePreviewClassifier — Other, not Text.
+            var path = Path.Combine(_dir, "report.pdf");
+            await File.WriteAllBytesAsync(path, [0x25, 0x50, 0x44, 0x46, 0x00, 0x01, 0x02, 0x03]);
+
+            var window = FilePreviewWindow.Build(path, null);
+            await Task.Delay(200);
+
+            Assert.Equal("bestand", _KindText(window));
+            var text = Assert.IsType<TextBlock>(_Body(window));
+            Assert.Equal("Geen voorbeeld voor dit bestandstype.", text.Text);
         });
     }
 

@@ -3,7 +3,7 @@ using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>The soort-choice per file kind (AC-642), one case per kind — <see cref="FilePreviewClassifier"/>.</summary>
+// The soort-choice per file kind (AC-642), one case per kind — FilePreviewClassifier.
 public class FilePreviewClassifierTests
 {
     [Theory]

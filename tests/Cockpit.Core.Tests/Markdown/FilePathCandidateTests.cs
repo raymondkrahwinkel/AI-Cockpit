@@ -2,10 +2,8 @@ using Cockpit.Core.Markdown;
 
 namespace Cockpit.Core.Tests.Markdown;
 
-/// <summary>
-/// The vorm filter only — see the class doc on <see cref="FilePathCandidate"/> for why it cannot tell
-/// <c>Theme.axaml</c> from <c>System.Text.Json</c> and does not try to.
-/// </summary>
+// The vorm filter only — see the class doc on FilePathCandidate for why it cannot tell `Theme.axaml` from
+// `System.Text.Json` and does not try to.
 public class FilePathCandidateTests
 {
     [Theory]

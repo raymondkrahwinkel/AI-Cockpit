@@ -188,6 +188,14 @@ public partial class FilePreviewWindow : Window
             return new _Loaded(FilePreviewKind.Image, name, "afbeelding", pixelMeta, bitmap, null, false, null);
         }
 
+        // Other (pdf, video, exe, archief, ...) gets no preview at all — reading it as text would UTF-8-decode
+        // binary bytes into replacement characters and show that as "code", which is worse than the plain
+        // "no preview" state _OtherBody already draws.
+        if (kind == FilePreviewKind.Other)
+        {
+            return new _Loaded(FilePreviewKind.Other, name, "bestand", meta, null, null, false, null);
+        }
+
         var truncated = info.Length > MaxTextBytes;
         var text = _ReadCappedText(path, MaxTextBytes);
 
@@ -196,7 +204,8 @@ public partial class FilePreviewWindow : Window
             FilePreviewKind.Json => new _Loaded(FilePreviewKind.Json, name, "json", meta, null, _FormatJson(text), truncated, null),
             FilePreviewKind.Csv => new _Loaded(FilePreviewKind.Csv, name, "csv", meta, null, _CsvToMarkdownTable(text, truncated), false, null),
             FilePreviewKind.Markdown => new _Loaded(FilePreviewKind.Markdown, name, "markdown", meta, null, text, truncated, null),
-            _ => new _Loaded(FilePreviewKind.Text, name, "code", meta, null, text, truncated, null),
+            FilePreviewKind.Text => new _Loaded(FilePreviewKind.Text, name, "code", meta, null, text, truncated, null),
+            _ => throw new InvalidOperationException($"{kind} should have returned earlier in _Load"),
         };
     }
 

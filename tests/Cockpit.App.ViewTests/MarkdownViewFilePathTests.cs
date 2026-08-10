@@ -8,11 +8,9 @@ using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The click-carrying half of AC-642, alongside <see cref="MarkdownBlockReuseTests"/>: a code-span that
-/// <see cref="FilePathResolver"/> resolves gets the mockup's tint and opens <see cref="FilePreviewWindow"/>;
-/// one that does not resolve is left exactly as before.
-/// </summary>
+// The click-carrying half of AC-642, alongside MarkdownBlockReuseTests: a code-span that FilePathResolver
+// resolves gets the mockup's tint and opens FilePreviewWindow; one that does not resolve is left exactly as
+// before.
 [Collection("avalonia")]
 public sealed class MarkdownViewFilePathTests : IDisposable
 {

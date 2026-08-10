@@ -17,12 +17,18 @@ internal static class FilePathResolver
 
     private static readonly Lock Gate = new();
     private static readonly Dictionary<(string BasePath, string Candidate), (string? Full, DateTimeOffset At)> Cache = [];
-    private static readonly HashSet<(string BasePath, string Candidate)> Pending = [];
+
+    // One shared probe per key, not per caller: two MarkdownView instances with the same BasePath naming the
+    // same still-unresolved path around the same moment used to leave the second caller's callback dropped —
+    // its repaint would only catch up on the *next* rebuild instead of the one this probe was already paying
+    // for. Every waiter registered while a probe is in flight is notified when it lands.
+    private static readonly Dictionary<(string BasePath, string Candidate), List<Action>> Pending = [];
 
     internal static Func<string, bool> Exists = path => File.Exists(path) || Directory.Exists(path);
 
     // The full path once known; null while the answer is still pending or the candidate does not exist.
-    // `onSettled` fires once, on the UI thread, the moment a pending probe lands — never stored beyond that.
+    // `onSettled` fires once, on the UI thread, the moment a pending probe lands — never stored beyond that
+    // one in-flight probe, shared by every caller that arrived while it was running.
     internal static string? Resolve(string candidate, string? basePath, Action onSettled)
     {
         if (string.IsNullOrEmpty(basePath) && !Path.IsPathRooted(candidate))
@@ -47,17 +53,20 @@ internal static class FilePathResolver
                 }
             }
 
-            if (!Pending.Add(key))
+            if (Pending.TryGetValue(key, out var waiters))
             {
-                return null; // already being probed — this repaint gets the earlier one's answer
+                waiters.Add(onSettled);
+                return null; // already being probed — this caller joins the same in-flight probe
             }
+
+            Pending[key] = [onSettled];
         }
 
-        _ = _ProbeAsync(key, onSettled);
+        _ = _ProbeAsync(key);
         return null;
     }
 
-    private static async Task _ProbeAsync((string BasePath, string Candidate) key, Action onSettled)
+    private static async Task _ProbeAsync((string BasePath, string Candidate) key)
     {
         var full = await Task.Run(() =>
         {
@@ -65,8 +74,10 @@ internal static class FilePathResolver
             return Exists(resolved) ? resolved : null;
         });
 
+        List<Action> waiters;
         lock (Gate)
         {
+            waiters = Pending.TryGetValue(key, out var list) ? list : [];
             Pending.Remove(key);
             if (Cache.Count >= MaxCacheEntries)
             {
@@ -76,6 +87,9 @@ internal static class FilePathResolver
             Cache[key] = (full, DateTimeOffset.UtcNow);
         }
 
-        Dispatcher.UIThread.Post(onSettled);
+        foreach (var waiter in waiters)
+        {
+            Dispatcher.UIThread.Post(waiter);
+        }
     }
 }
