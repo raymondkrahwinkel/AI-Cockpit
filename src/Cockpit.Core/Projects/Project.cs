@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text;
 
 namespace Cockpit.Core.Projects;
 
@@ -132,6 +133,27 @@ public sealed record Project(string Id, string Name)
 
     // Whether this project keeps any information of its own, so a surface leaves the block out rather than holding an empty space open.
     public bool HasAdditionalInfo => AdditionalInfo.Count > 0;
+
+    // The local cache of the password that unwraps this project's shared-field envelope in Depot (AC-607). Its
+    // name matches `SecretFields.ByName`, so it is encrypted at rest and scrubbed from backups the same
+    // way every other credential in `cockpit.json` already is (AC-353) — no new storage mechanism.
+    public string? ProjectPassword { get; init; }
+
+    // A record's compiler-generated ToString() would otherwise print ProjectPassword in the clear — masked here
+    // the same way ProjectInfoField.Mask hides a secret AdditionalInfo value (Iron Law #8). `PrintMembers`
+    // (the usual record idiom) trips this SDK's IDE0051 analyzer as a false "unused member", hence ToString().
+    public override string ToString()
+    {
+        var builder = new StringBuilder();
+        builder.Append("Project { ");
+        builder.Append($"Id = {Id}, Name = {Name}, Description = {Description}, SourceDirectory = {SourceDirectory}, ");
+        builder.Append($"GitUrl = {GitUrl}, DefaultProfileLabel = {DefaultProfileLabel}, BehaviorPrompt = {BehaviorPrompt}, ");
+        builder.Append($"IsolateInWorktreeByDefault = {IsolateInWorktreeByDefault}, McpOverlay = {McpOverlay}, Resources = {Resources}, ");
+        builder.Append($"MemoryRef = {MemoryRef}, LogoPath = {LogoPath}, LastOpenedAt = {LastOpenedAt}, AdditionalInfo = {AdditionalInfo}, ");
+        builder.Append($"HasAdditionalInfo = {HasAdditionalInfo}, ProjectPassword = {(ProjectPassword is null ? null : ProjectInfoField.Mask)}, ");
+        builder.Append($"Category = {Category}, PluginFields = {PluginFields} }}");
+        return builder.ToString();
+    }
 
     // Which category this project sits under in the manager's list (AC-618) — "Privé", "Werk", whatever the
     // operator types; null/blank groups it under "Uncategorized" instead. Always local, even for a project bound

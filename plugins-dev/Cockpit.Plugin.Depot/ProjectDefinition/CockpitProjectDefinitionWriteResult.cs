@@ -22,14 +22,21 @@ public enum CockpitProjectDefinitionWriteFailureKind
 }
 
 // What came of writing `.cockpit/project.json` to a Depot project (AC-244, conflict/permission classification AC-247).
+// `DroppedExtensionKeys`: ExtensionData keys CockpitProjectDefinitionExtensionDataGuard refused on a Success write
+// (AC-607 decision 3) — a secret-shaped, not-already-encrypted field a newer build wrote that this one would not
+// forward. Empty on every other outcome and on a Success that dropped nothing.
 public sealed record CockpitProjectDefinitionWriteResult(
-    PluginMcpToolCallOutcome Outcome, string? Checksum, string? Error, CockpitProjectDefinitionWriteFailureKind FailureKind)
+    PluginMcpToolCallOutcome Outcome,
+    string? Checksum,
+    string? Error,
+    CockpitProjectDefinitionWriteFailureKind FailureKind,
+    IReadOnlyList<string>? DroppedExtensionKeys = null)
 {
     public static CockpitProjectDefinitionWriteResult AuthorizationRequired { get; } =
         new(PluginMcpToolCallOutcome.AuthorizationRequired, null, null, CockpitProjectDefinitionWriteFailureKind.Unclassified);
 
-    public static CockpitProjectDefinitionWriteResult Success(string checksum) =>
-        new(PluginMcpToolCallOutcome.Success, checksum, null, CockpitProjectDefinitionWriteFailureKind.Unclassified);
+    public static CockpitProjectDefinitionWriteResult Success(string checksum, IReadOnlyList<string>? droppedExtensionKeys = null) =>
+        new(PluginMcpToolCallOutcome.Success, checksum, null, CockpitProjectDefinitionWriteFailureKind.Unclassified, droppedExtensionKeys);
 
     // A failed write, classified from Depot's own error text — measured live against a real Depot server (AC-247),
     // not guessed, and cross-checked against Depot's own source (a project this repo does not own or ship, read

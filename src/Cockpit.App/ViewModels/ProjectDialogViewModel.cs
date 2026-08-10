@@ -517,6 +517,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 .. AdditionalInfo.Select(field => field.ToDomain().Tidied()).Where(field => !field.IsBlank),
             ],
             PluginFields = _LinkedProjectFields(),
+            // AC-607: no dialog field edits this yet (out of scope for this ticket) — carried through unedited
+            // rather than silently dropped on save, the same as any other field with no editing surface.
+            ProjectPassword = _originalProject?.ProjectPassword,
         };
     }
 

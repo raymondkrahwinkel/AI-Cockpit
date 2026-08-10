@@ -49,11 +49,26 @@ public static class CockpitProjectDefinitionStore
             return CockpitProjectDefinitionWriteResult.PermissionDenied(role.WriteDeniedReason());
         }
 
+        // AC-607 decision 3: never forward an ExtensionData field a newer build wrote if it looks secret-shaped
+        // and is not already encrypted — checked both at the definition's own top level and inside each
+        // SensitiveFields row's own ExtensionData (finding 4). Applied to a copy, never definition itself —
+        // WriteAsync must not change what the caller still holds a reference to.
+        var (kept, droppedKeys) = CockpitProjectDefinitionExtensionDataGuard.Apply(definition.ExtensionData);
+        var (sensitiveFieldsKept, sensitiveFieldsDroppedKeys) =
+            CockpitProjectDefinitionExtensionDataGuard.ApplyToSensitiveFields(definition.SensitiveFields);
+        var allDroppedKeys = sensitiveFieldsDroppedKeys.Count == 0 ? droppedKeys : [.. droppedKeys, .. sensitiveFieldsDroppedKeys];
+        var outgoing = allDroppedKeys.Count == 0
+            ? definition
+            : _WithGuardedData(
+                definition,
+                droppedKeys.Count == 0 ? definition.ExtensionData : kept,
+                sensitiveFieldsDroppedKeys.Count == 0 ? definition.SensitiveFields : sensitiveFieldsKept);
+
         var arguments = new Dictionary<string, object?>
         {
             ["project"] = depotProjectSlug,
             ["path"] = DefinitionPath,
-            ["content"] = CockpitProjectDefinitionJson.Serialize(definition),
+            ["content"] = CockpitProjectDefinitionJson.Serialize(outgoing),
         };
         if (baseChecksum is { Length: > 0 })
         {
@@ -66,11 +81,31 @@ public static class CockpitProjectDefinitionStore
         return result.Outcome switch
         {
             PluginMcpToolCallOutcome.AuthorizationRequired => CockpitProjectDefinitionWriteResult.AuthorizationRequired,
-            PluginMcpToolCallOutcome.Success => _ParseWriteEnvelope(result.Content ?? string.Empty),
+            PluginMcpToolCallOutcome.Success => _ParseWriteEnvelope(result.Content ?? string.Empty, allDroppedKeys),
             _ => CockpitProjectDefinitionWriteResult.Failed(
                 result.Error is { Length: > 0 } error ? error : "Depot did not confirm the write."),
         };
     }
+
+    // A shallow copy of `definition` with `extensionData` and `sensitiveFields` substituted — every other field
+    // carried through unchanged, so the guard's refusal never reaches the caller's own object.
+    private static CockpitProjectDefinition _WithGuardedData(
+        CockpitProjectDefinition definition, Dictionary<string, JsonElement>? extensionData,
+        List<CockpitProjectSensitiveFieldEntry>? sensitiveFields) => new()
+    {
+        SchemaVersion = definition.SchemaVersion,
+        Name = definition.Name,
+        Description = definition.Description,
+        GitUrl = definition.GitUrl,
+        BehaviorPrompt = definition.BehaviorPrompt,
+        IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
+        McpOverlay = definition.McpOverlay,
+        Resources = definition.Resources,
+        Logo = definition.Logo,
+        SensitiveFields = sensitiveFields,
+        PasswordEnvelope = definition.PasswordEnvelope,
+        ExtensionData = extensionData,
+    };
 
     private static CockpitProjectDefinitionReadResult _ParseReadEnvelope(string json)
     {
@@ -92,13 +127,13 @@ public static class CockpitProjectDefinitionStore
         }
     }
 
-    private static CockpitProjectDefinitionWriteResult _ParseWriteEnvelope(string json)
+    private static CockpitProjectDefinitionWriteResult _ParseWriteEnvelope(string json, IReadOnlyList<string> droppedExtensionKeys)
     {
         try
         {
             var envelope = JsonSerializer.Deserialize<_WriteEnvelope>(json, _SerializerOptions);
             return envelope?.Checksum is { Length: > 0 } checksum
-                ? CockpitProjectDefinitionWriteResult.Success(checksum)
+                ? CockpitProjectDefinitionWriteResult.Success(checksum, droppedExtensionKeys.Count == 0 ? null : droppedExtensionKeys)
                 : CockpitProjectDefinitionWriteResult.Failed("Depot's write result came back in an unexpected shape.");
         }
         catch (JsonException exception)

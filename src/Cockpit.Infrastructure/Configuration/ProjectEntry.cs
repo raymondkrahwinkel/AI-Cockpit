@@ -73,6 +73,11 @@ internal sealed class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? PluginFields { get; set; }
 
+    // Absent for a project with no cached project password (AC-607) — the name alone routes it through the same
+    // encryption and backup scrubbing every other credential in this file already gets (AC-353).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectPassword { get; set; }
+
     public static ProjectEntry FromDomain(Project project) => new()
     {
         Id = project.Id,
@@ -101,6 +106,7 @@ internal sealed class ProjectEntry
         PluginFields = project.PluginFields.Count == 0
             ? null
             : project.PluginFields.ToDictionary(link => link.Key, link => link.Value, StringComparer.Ordinal),
+        ProjectPassword = project.ProjectPassword,
     };
 
     public Project ToDomain() => new(Id, Name)
@@ -135,5 +141,6 @@ internal sealed class ProjectEntry
         PluginFields = PluginFields is null
             ? ReadOnlyDictionary<string, string>.Empty
             : new Dictionary<string, string>(PluginFields, StringComparer.Ordinal),
+        ProjectPassword = ProjectPassword,
     };
 }
