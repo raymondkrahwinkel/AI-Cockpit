@@ -128,16 +128,23 @@ public sealed class TranscriptStreamingCostTests
                 .OfType<ItemsControl>()
                 .First(c => c.Name == "SessionGrid");
 
-            var selector = Assert.IsType<Style>(sessionGrid.Styles.Single()).Selector;
-            Assert.NotNull(selector);
+            // Every style on the grid, not just the visibility one: the rail's miniature styles (AC-670) are
+            // descendant selectors reaching into a pane, so they need the same parent constraint or they reach
+            // the transcript too.
+            Assert.NotEmpty(sessionGrid.Styles);
+            foreach (var style in sessionGrid.Styles)
+            {
+                var selector = Assert.IsType<Style>(style).Selector;
+                Assert.NotNull(selector);
 
-            var text = selector!.ToString()!;
-            Assert.Contains("ContentPresenter", text);
+                var text = selector!.ToString()!;
+                Assert.Contains("ContentPresenter", text, StringComparison.Ordinal);
 
-            // The child combinator is the whole point: without it the selector also matches every
-            // #PART_ContentPresenter deeper in each session view, whose DataContext is a transcript entry.
-            Assert.Contains(">", text);
-            Assert.Contains("SessionGrid", text);
+                // The child combinator is the whole point: without it the selector also matches every
+                // #PART_ContentPresenter deeper in each session view, whose DataContext is a transcript entry.
+                Assert.Contains(">", text, StringComparison.Ordinal);
+                Assert.Contains("SessionGrid", text, StringComparison.Ordinal);
+            }
         });
     }
 

@@ -38,7 +38,9 @@
                  so name, cwd, branch and the usage pill keep their place instead of colliding — the half-width
                  overflow this redesign fixes. Same bar height as before (hard constraint). -->
             <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0,0,0">
+                <!-- paneChrome (AC-670): the controls you drive the session with, hidden in a rail miniature —
+                     the identity strip beside them stays, so a tile still says which session it is. -->
+                <StackPanel Classes="paneChrome" DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0,0,0">
                     <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
                          driver and rendered generically. An SDK session can carry three of them, which crowded the
                          header — so they collapse behind a single sliders icon that opens a flyout to change them.
@@ -222,7 +224,7 @@
              is what the overlap report described. A boundary makes scrolled-under content read as scrolled-under. The
              8px that used to be this panel's top margin is now padding under the line, so nothing below the line
              moves; the transcript gives up the single pixel the line itself occupies. -->
-        <Border DockPanel.Dock="Bottom" Padding="0,8,0,0"
+        <Border Classes="paneChrome" DockPanel.Dock="Bottom" Padding="0,8,0,0"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
             <DockPanel LastChildFill="True">
 

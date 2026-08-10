@@ -201,6 +201,9 @@ internal static class Screenshotter
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+        // AC-670: the focus+rail layout, which is the only way to see what a rail tile actually renders as — a
+        // miniature of the terminal with the controls you drive it with taken out, one column deep.
+        ["focus-rail"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalFocusRailLayout = true } },
         // AC-543 criterion 11: the assistant chip in the sidebar it actually lives in, expanded and as the rail.
         // The component has scenes of its own below, but those render it alone — what neither of them can show is
         // whether it survives the collapse in place, which is the half of criterion 6 that is about the sidebar

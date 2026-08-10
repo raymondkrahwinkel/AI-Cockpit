@@ -1264,6 +1264,24 @@
                             <Setter Property="controls:SessionTilePanel.IsFocusCandidate" Value="{ReflectionBinding IsSelected}"/>
                             <Setter Property="controls:SessionTilePanel.RailSortKey" Value="{ReflectionBinding RailSortKey}"/>
                         </Style>
+                        <!-- A rail tile is a miniature of the terminal, not a shrunken copy of the pane you drive
+                             (AC-670): everything you operate the session with goes, everything that tells you what
+                             the session is doing stays. `.paneChrome` is carried by the composer and the header's
+                             button strip in SessionView/TtyView; the identity strip beside them is not chrome. -->
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChrome">
+                            <Setter Property="IsVisible" Value="False"/>
+                        </Style>
+                        <!-- Nothing inside a tile is clickable, so a stray click can't land in another session's
+                             composer or terminal — but the tile itself still has to catch that click and promote
+                             (AC-444, AC-670 #7). Hit-testing off on the host lets the press fall through to
+                             `PaneRoot`, and `Border.panel` sets no Background of its own, so give it a
+                             transparent one: null is not hit-testable in Avalonia, Transparent is. -->
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] controls|MiniatureHost">
+                            <Setter Property="IsHitTestVisible" Value="False"/>
+                        </Style>
+                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] Border#PaneRoot">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
                     </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
