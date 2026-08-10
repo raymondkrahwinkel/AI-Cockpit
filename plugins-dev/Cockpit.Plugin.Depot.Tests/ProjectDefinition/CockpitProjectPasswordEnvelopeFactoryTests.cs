@@ -163,4 +163,19 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
 
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
     }
+
+    // Second review pass, PR #473: WrappedDataKey without the enc:v1: prefix is valid base64 but was never
+    // produced by _Wrap — ProjectSecretProtector.Unprotect's idempotency rule (return an unprefixed value as-is)
+    // would otherwise hand back those raw bytes as "the data key", independent of whatever password was supplied.
+    [Fact]
+    public void TryUnwrapWithPassword_WrappedDataKeyMissingTheEncV1Prefix_ReturnsNullRatherThanThePlainBytes()
+    {
+        var envelope = _DeserializeEnvelope("""
+            {"kdf":"pbkdf2-sha512","iterations":210000,
+             "password":{"salt":"AAAA","wrappedDataKey":"AAAA"},
+             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
+            """);
+
+        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
+    }
 }

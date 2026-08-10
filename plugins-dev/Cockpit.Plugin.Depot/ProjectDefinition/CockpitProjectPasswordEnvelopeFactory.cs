@@ -83,6 +83,15 @@ public static class CockpitProjectPasswordEnvelopeFactory
             return null;
         }
 
+        // ProjectSecretProtector.Unprotect treats an unprefixed value as already-plaintext and returns it as-is
+        // (the idempotency behaviour a half-migrated local secret store needs) — a WrappedDataKey off the wire is
+        // never legitimately that, so without this check a corrupt envelope would "unwrap" to whatever bytes sit
+        // there, independent of the secret supplied. Require the enc:v1: proof before ever calling Unprotect.
+        if (!ProjectSecretProtector.IsProtected(wrapper.WrappedDataKey))
+        {
+            return null;
+        }
+
         try
         {
             var salt = Convert.FromBase64String(wrapper.Salt);
