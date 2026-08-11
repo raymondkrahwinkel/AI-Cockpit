@@ -115,10 +115,9 @@ public class SessionRuntimeTests
     [Fact]
     public async Task WhenItsProcessDiesOutOfBand_IsRunningSaysSo_WithoutADispose()
     {
-        // AC-693: a crash, or a kill from outside this class (AC-661's OS cap, AC-692's button), ends the driver's
-        // event stream and nothing else — no exception, no DisposeAsync. IsRunning used to read `_pump is not null`,
-        // which only ever went false in DisposeAsync, so a dead session kept reporting itself alive and the next send
-        // went into a stdin pipe with no reader ("The pipe is being closed.").
+        // AC-693: a crash or an outside kill ends the driver's stream and nothing else — no exception, no
+        // DisposeAsync. `_pump is not null` only went false in DisposeAsync, so the dead session read as alive and
+        // the next send went into a stdin pipe with no reader ("The pipe is being closed.").
         var processDied = new TaskCompletionSource();
         var driver = _DriverDyingOn(processDied.Task, new AssistantTextCompleted { SessionId = "s1", Text = "alive" });
         var runtime = new SessionRuntime(_FactoryFor(driver), profile: null);
