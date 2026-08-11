@@ -317,10 +317,9 @@ public class SessionContextMenuTargetViewTests
         });
     }
 
-    // AC-703: "Move to workspace" did nothing on click - opening a second ContextMenu from the Click handler of a
-    // MenuItem inside an already-open one never showed (Avalonia raced the close of the parent menu against the
-    // open of the new one). The fix builds the submenu on the parent ContextMenu's Opened event instead, so it is
-    // there - and clickable - as soon as the menu is shown, with no second popup involved.
+    // AC-703: "Move to workspace" did nothing - a second ContextMenu opened from a MenuItem's Click inside an
+    // already-open one never showed (Avalonia raced the parent menu's close against the new popup's open). The fix
+    // builds the submenu on the parent ContextMenu's Opened event instead, so it's there before anything can be clicked.
     [Fact]
     public void MoveToWorkspace_OpensASubmenu_AndMovesTheSessionWhenAnEntryIsClicked()
     {
