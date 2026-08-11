@@ -1243,10 +1243,12 @@ public class CockpitViewModelTests
     }
 
     // AC-692/AC-700: drives the real `SampleResources`/`ResourceMonitor` wire (over a fake process table) rather
-    // than calling `_WarnAboutSessionCaps` directly — the decision logic itself is `SessionMemoryPressureTests`.
-    // The warning lands on the session's own bar now, not in a cockpit-wide toast.
+    // than calling the warners directly — the decision logic itself is `SessionMemoryPressureTests`.
+    //
+    // Both, on the same crossing, and that is the point of the test: the toast is cockpit-wide and goes away on
+    // its own, the bar is on the session and stays until it is dismissed. Either one alone is a regression.
     [Fact]
-    public void ASessionOverItsCap_WarnsOnItsOwnBarWithAKill_AndRaisesNoToast()
+    public async Task ASessionOverItsCap_GetsBothANamedToast_AndAKillOnItsOwnBar()
     {
         const long Megabyte = 1024 * 1024;
         var reader = Substitute.For<IProcessTableReader>();
@@ -1258,17 +1260,52 @@ public class CockpitViewModelTests
 
         vm.SampleResources();
 
+        var toast = Assert.Single(vm.Toasts);
+        Assert.Contains("leaky-build", toast.Message, StringComparison.Ordinal);
+        Assert.Equal("Kill", toast.ActionLabel);
+
         Assert.True(session.IsOverMemoryCap);
         Assert.Contains("over its", session.UsageWarning, StringComparison.Ordinal);
-        Assert.Empty(vm.Toasts);
 
-        // The Kill button takes the ordinary self-close path; that `CloseRequested` tears the session down is
-        // covered where the cockpit's own close wiring is.
-        var asked = false;
-        session.CloseRequested += (_, _) => asked = true;
+        // The bar's own Kill takes the ordinary self-close path; that `CloseRequested` tears the session down is
+        // covered where the cockpit's close wiring is. The toast's Kill goes straight through the command.
+        var askedFromTheBar = false;
+        session.CloseRequested += (_, _) => askedFromTheBar = true;
         session.KillOverCapSessionCommand.Execute(null);
+        Assert.True(askedFromTheBar);
 
-        Assert.True(asked);
+        toast.InvokeActionCommand.Execute(null);
+        await Task.Delay(10);
+
+        Assert.DoesNotContain(session, vm.Sessions);
+    }
+
+    // The bar outlives the toast: a toast is gone in seconds, and the operator who was looking elsewhere must still
+    // find the choice on the pane. Nothing takes the bar down but the operator (AC-700).
+    [Fact]
+    public void TheOverCapBar_StaysUpAcrossLaterSamples_UntilItIsDismissed()
+    {
+        const long Megabyte = 1024 * 1024;
+        var reader = Substitute.For<IProcessTableReader>();
+        reader.Read().Returns([new ProcessRow(4242, 1, TimeSpan.Zero, 5000 * Megabyte)]);
+
+        var vm = NewVm(resourceMonitor: new ResourceMonitor(reader));
+        var session = new TtyViewModel { Title = "leaky-build", ProcessId = 4242, MemoryCapBytes = 4096 * Megabyte };
+        vm.Sessions.Add(session);
+
+        vm.SampleResources();
+        vm.SampleResources();
+        vm.SampleResources();
+
+        // One toast for one crossing — the bar standing does not re-announce it — and the bar still up three
+        // samples later.
+        Assert.Single(vm.Toasts);
+        Assert.True(session.HasUsageWarning);
+
+        session.DismissUsageWarningCommand.Execute(null);
+        vm.SampleResources();
+
+        Assert.False(session.HasUsageWarning);
     }
 
     private static CockpitViewModel NewVm(

@@ -690,9 +690,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // The whole point is that being cut off is announced first: the session dies, the cockpit does not, and the
     // operator saw it coming rather than finding a pane that had quietly stopped.
     //
-    // Past the cap it is the same line with different words and a Kill button (AC-700, replacing AC-692's toast):
-    // one subject, one key, so crossing the cap rewrites what is already there instead of stacking a second
-    // warning about the same megabytes. The over/under decision is `SessionMemoryPressure`'s, so the point the
+    // Past the cap it is the same line with different words and a Kill button (AC-700): one subject, one key, so
+    // crossing the cap rewrites what is already there instead of stacking a second warning about the same
+    // megabytes. This stands beside AC-692's cockpit-wide toast rather than replacing it — the toast is gone in
+    // seconds, this stays until dismissed. The over/under decision is `SessionMemoryPressure`'s, so the point the
     // automatic kill used to happen at stays written down once.
     public void ReportMemoryAgainstCap(long usedBytes)
     {
@@ -724,8 +725,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                       "Over it the session is cut off by the operating system — the cockpit itself is not.");
     }
 
-    // "Kill session" on the over-cap bar. Straight down the ordinary self-close path — the same one the toast this
-    // replaced took, and deliberately without the "still running, close it?" prompt: the operator just answered it.
+    // "Kill session" on the over-cap bar. Straight down the ordinary self-close path — where the toast's own Kill
+    // lands too, and deliberately without the "still running, close it?" prompt: the operator just answered it.
     [RelayCommand]
     private void KillOverCapSession() => RaiseCloseRequested();
 
