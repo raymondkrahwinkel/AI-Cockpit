@@ -74,6 +74,12 @@ public sealed class SessionTilePanel : Panel
     public static readonly AttachedProperty<int> RailSortKeyProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, int>("RailSortKey");
 
+    // Set the same way, from `SessionPanelViewModel.IsOnActiveDesk` — the tab now showing owns this pane, zoom
+    // or no zoom. The grid sizes itself from these alone: it holds a container for every session alive, so
+    // counting all of them laid a two-pane tab out as a 2×2 (AC-696). True by default: no property, no filter.
+    public static readonly AttachedProperty<bool> IsOnActiveDeskProperty =
+        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, bool>("IsOnActiveDesk", defaultValue: true);
+
     // AC-670: the two boxes a rail tile is drawn from, written onto the container and read by `MiniatureHost`
     // inside its template — `inherits: true` is what carries them across that boundary, and two boxes rather
     // than one scale because only the host can measure the pane chrome between them (see `MiniatureHost.Fit`).
@@ -91,6 +97,10 @@ public sealed class SessionTilePanel : Panel
     public static bool GetIsFocusCandidate(Control element) => element.GetValue(IsFocusCandidateProperty);
 
     public static void SetIsFocusCandidate(Control element, bool value) => element.SetValue(IsFocusCandidateProperty, value);
+
+    public static bool GetIsOnActiveDesk(Control element) => element.GetValue(IsOnActiveDeskProperty);
+
+    public static void SetIsOnActiveDesk(Control element, bool value) => element.SetValue(IsOnActiveDeskProperty, value);
 
     public static int GetRailSortKey(Control element) => element.GetValue(RailSortKeyProperty);
 
@@ -123,8 +133,8 @@ public sealed class SessionTilePanel : Panel
     {
         AffectsMeasure<SessionTilePanel>(StackVerticallyProperty, FocusRailLayoutProperty, RailWeightProperty);
         AffectsArrange<SessionTilePanel>(StackVerticallyProperty, FocusRailLayoutProperty, RailWeightProperty);
-        AffectsParentMeasure<SessionTilePanel>(IsFocusCandidateProperty, RailSortKeyProperty);
-        AffectsParentArrange<SessionTilePanel>(IsFocusCandidateProperty, RailSortKeyProperty);
+        AffectsParentMeasure<SessionTilePanel>(IsFocusCandidateProperty, RailSortKeyProperty, IsOnActiveDeskProperty);
+        AffectsParentArrange<SessionTilePanel>(IsFocusCandidateProperty, RailSortKeyProperty, IsOnActiveDeskProperty);
     }
 
     public SessionTilePanel()
@@ -719,16 +729,15 @@ public sealed class SessionTilePanel : Panel
     private static int LinearIndex(int col, int row, int columns, int rows, bool stackVertically) =>
         stackVertically ? col * rows + row : row * columns + col;
 
-    // Reconciles the cell list with the live panes: removes the cells of closed sessions (compacting the
-    // rest — see `DropClosedCells`), and gives each new pane the first hole or a new trailing
-    // cell. Runs off *all* children (visible or collapsed by zoom) so a placement isn't lost when the
-    // grid is temporarily single-pane.
+    // Reconciles the cell list with this desk's panes: drops the cells of the ones that are gone (compacting the
+    // rest — see `DropClosedCells`), gives each new pane the first hole or a trailing cell. Runs off every child
+    // the active desk owns, zoom-collapsed included, so a placement survives single-pane; off no other desk's.
     private void ReconcileCells()
     {
         var live = new HashSet<object>();
         foreach (var child in Children)
         {
-            if (child.DataContext is { } key)
+            if (LaysOutHere(child) && child.DataContext is { } key)
             {
                 live.Add(key);
             }
@@ -747,7 +756,7 @@ public sealed class SessionTilePanel : Panel
 
         foreach (var child in Children)
         {
-            if (child.DataContext is { } key && present.Add(key))
+            if (LaysOutHere(child) && child.DataContext is { } key && present.Add(key))
             {
                 PlaceInFirstHole(key);
             }
@@ -755,6 +764,10 @@ public sealed class SessionTilePanel : Panel
 
         TrimTrailingHoles(_cells);
     }
+
+    // A pane this grid owes a cell: one the active desk holds — hidden by zoom or not — plus anything actually
+    // on screen, since a visible pane without a cell would never be arranged at all.
+    private static bool LaysOutHere(Control child) => GetIsOnActiveDesk(child) || child.IsVisible;
 
     private void PlaceInFirstHole(object key)
     {

@@ -811,7 +811,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // nor the focus+rail layout — the rail auto-fits and has no drag-to-cell or column/row gutters of its
     // own, AC-444 #1): every pane then carries the drag-reorder grip, and the column/row gutters between
     // them are resizable. Covers the vertical column, the side-by-side row, and the 2×2 alike.
-    public bool StackSessionsInStack => !ShowSinglePane && !ShowFocusRail && Sessions.Count >= 2;
+    // Counts the workspace now showing, for the same reason `GridColumns` does (AC-696).
+    public bool StackSessionsInStack => !ShowSinglePane && !ShowFocusRail && VisibleSessions.Count() >= 2;
 
     // When true, closing the window hides it to the system tray and keeps the app running (#33). Read by MainWindow on close.
     [ObservableProperty]
@@ -2203,7 +2204,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var single = ShowSinglePane;
         foreach (var session in Sessions)
         {
-            session.IsPaneVisible = BelongsToActiveWorkspace(session) && (!single || session.IsSelected);
+            var here = BelongsToActiveWorkspace(session);
+            session.IsOnActiveDesk = here;
+            session.IsPaneVisible = here && (!single || session.IsSelected);
         }
     }
 
