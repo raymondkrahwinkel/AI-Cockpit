@@ -99,6 +99,27 @@ public class AssistantChatViewModelTests
         Assert.True(vm.ConsentBypassActive);
     }
 
+    /// <summary>
+    /// AC-671: the composer's placeholder used to hardcode "F10" regardless of what the operator rebound push-to-talk
+    /// to. Covers the configured case and the empty-settings fallback in one theory, same read points as
+    /// <see cref="AssistantChatViewModel.AlwaysOnTop"/>.
+    /// </summary>
+    [Theory]
+    [InlineData("F11", "F11")]
+    [InlineData("", "F10")]
+    [InlineData("   ", "F10")]
+    public async Task PushToTalkKeyName_FollowsTheConfiguredHotkey_FallingBackToF10WhenEmpty(string configured, string expected)
+    {
+        var store = Substitute.For<IAssistantSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, PushToTalkKeyName = configured }));
+        var vm = new AssistantChatViewModel(FakeHost(), store, Substitute.For<IVoicePlaybackQueue>());
+
+        await vm.EnsureOpenedAsync();
+
+        Assert.Equal(expected, vm.PushToTalkKeyName);
+    }
+
     [Fact]
     public void ARowArrivingInTheTranscript_RaisesHasMessages_SoTheWindowStopsShowingItsPlaceholder()
     {

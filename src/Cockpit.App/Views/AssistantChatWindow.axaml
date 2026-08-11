@@ -378,7 +378,7 @@
                             <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14"/>
                         </Button>
                         <TextBox x:Name="InputBox" Text="{Binding InputText}"
-                                 PlaceholderText="Type, or hold F10 to talk…"
+                                 PlaceholderText="{Binding PushToTalkKeyName, StringFormat='Type, or hold {0} to talk…'}"
                                  AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
                     </DockPanel>
                 </StackPanel>
