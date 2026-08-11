@@ -2767,8 +2767,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // raise a toast. A prompt whose pane is gone is denied rather than left hanging — there is nowhere to show it.
     private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt)
     {
-        // AC-711: captured now, since the assistant's live instance can be replaced (restart, AC-596 hand-over,
-        // AC-602 idle stop) before the routing below runs. AssistantIdentity.PaneId is reused across that
+        // AC-711: captured now, since the assistant's live instance can be replaced (restart, AC-596 hand-over)
+        // before the routing below runs. AssistantIdentity.PaneId is reused across that
         // replacement, so a pane-id-only lookup there can't tell the original instance from its successor.
         var isForAssistant = prompt.Request.Source.PaneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId;
         var assistantWhenOpened = isForAssistant ? _assistantSession : null;
