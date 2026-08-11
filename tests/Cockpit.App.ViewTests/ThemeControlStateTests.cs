@@ -730,9 +730,9 @@ public class ThemeControlStateTests
     [Fact]
     public void ASubtleToggle_CarriesNoBorderOrFill_LikeItsButtonSiblings() => HeadlessAvalonia.Run(() =>
     {
-        // AC-685: the read-aloud toggle in the Assistant window header used Classes="Subtle Compact" expecting the
-        // same flat look as the Button.Subtle/Compact icon buttons beside it, but only Button ever had a Subtle
-        // rule — the base ToggleButton style (hairline border, panel-bg fill) shone straight through.
+        // AC-694: the always-on listen toggle in the Assistant window header carries Classes="Subtle Compact" for the
+        // same flat look as the Button.Subtle/Compact icon buttons beside it. Before AC-685 added this rule only
+        // Button had a Subtle one, so the base ToggleButton style (hairline border, panel-bg fill) shone through.
         var toggle = new ToggleButton { Content = "x", Classes = { "Subtle" } };
         using var host = RenderedScene.Show(toggle);
 
