@@ -3260,12 +3260,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Names the session in a cockpit-wide toast with a Kill button the moment it crosses its own cap — replaces
-    // the automatic kill that used to happen instead (AC-692).
-    //
-    // Kept alongside AC-700's bar rather than replaced by it, deliberately: the two answer different questions. The
-    // toast is cockpit-wide and says *which* session went over while you are looking at another one, and it leaves
-    // of its own accord after a few seconds. The bar is on that session and stays until it is dismissed, so the
-    // choice is still there when you come back to the pane. Both carry the same kill.
+    // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
         var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.Title), StringComparer.Ordinal);

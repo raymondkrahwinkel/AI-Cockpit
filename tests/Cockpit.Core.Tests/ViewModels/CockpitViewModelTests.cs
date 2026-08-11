@@ -1242,11 +1242,9 @@ public class CockpitViewModelTests
         terminals.Received(1).SessionEnded(session.PaneId);
     }
 
-    // AC-692/AC-700: drives the real `SampleResources`/`ResourceMonitor` wire (over a fake process table) rather
-    // than calling the warners directly — the decision logic itself is `SessionMemoryPressureTests`.
-    //
-    // Both, on the same crossing, and that is the point of the test: the toast is cockpit-wide and goes away on
-    // its own, the bar is on the session and stays until it is dismissed. Either one alone is a regression.
+    // AC-692/AC-700: drives the real `SampleResources`/`ResourceMonitor` wire over a fake process table, and demands
+    // both notices on one crossing — either one alone is a regression. The decision logic itself is
+    // `SessionMemoryPressureTests`.
     [Fact]
     public async Task ASessionOverItsCap_GetsBothANamedToast_AndAKillOnItsOwnBar()
     {

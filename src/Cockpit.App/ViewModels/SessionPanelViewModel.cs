@@ -686,15 +686,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isOverMemoryCap;
 
-    // Puts the session's own approach to its cap on the bar (AC-661), sampled with the rest of the resource meter.
-    // The whole point is that being cut off is announced first: the session dies, the cockpit does not, and the
-    // operator saw it coming rather than finding a pane that had quietly stopped.
-    //
-    // Past the cap it is the same line with different words and a Kill button (AC-700): one subject, one key, so
-    // crossing the cap rewrites what is already there instead of stacking a second warning about the same
-    // megabytes. This stands beside AC-692's cockpit-wide toast rather than replacing it — the toast is gone in
-    // seconds, this stays until dismissed. The over/under decision is `SessionMemoryPressure`'s, so the point the
-    // automatic kill used to happen at stays written down once.
+    // Puts the session's own approach to its cap on the bar (AC-661), and past the cap the same line with a Kill
+    // button beside the toast that also fires (AC-700) — being cut off is announced before it happens, and the
+    // choice outlives the toast. One key for both states; the over/under verdict is `SessionMemoryPressure`'s.
     public void ReportMemoryAgainstCap(long usedBytes)
     {
         if (MemoryCapBytes is not { } cap || cap <= 0)
@@ -707,10 +701,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         if (crossing.Warn)
         {
-            // Taken down and put back up, so crossing the cap is a fresh crossing: a Dismiss at 80% was "keep an
-            // eye on this" and must not swallow the moment the cap is actually gone, leaving the Kill button behind
-            // a hidden bar where nothing can reach it. Same reasoning as the resume offer above — and it also puts
-            // this line in front of whatever crossed after it, which past the cap is where it belongs.
+            // AC-700: a fresh crossing, so a Dismiss at 80% cannot leave the Kill button behind a hidden bar.
             _RaiseOrClear(MemoryCapWarningKey, says: null);
         }
 
