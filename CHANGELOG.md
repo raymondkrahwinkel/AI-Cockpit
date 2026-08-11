@@ -125,6 +125,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   conversation (Claude), it now asks for exactly that instead, and carries on in the same conversation with the
   transcript intact. Starting over stays as the fallback: for a provider with no such mechanism, and for the case
   where summarising did not free enough room.
+- fixed: a newly started session's usage pill no longer stays empty until its first turn finishes. Asking for the
+  figures as the session starts was scoped to reopened sessions, on the assumption a fresh one has nothing to report
+  yet — it does: the allowances are account-wide and the context window is in use from the system prompt onwards. A
+  session you start and then leave working for half an hour now shows its pill from the outset instead of nothing.
 - fixed: a resumed session's usage pill no longer sits empty until you send it a fresh message. The header only ever
   pulled the context/allowance figures at the end of a turn, so a reopened session — which already has real figures
   the moment it reconnects — showed nothing at all until you actually prompted it, indistinguishable from a provider

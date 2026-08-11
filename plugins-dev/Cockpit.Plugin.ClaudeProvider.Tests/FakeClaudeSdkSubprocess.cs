@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
@@ -42,6 +43,11 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
         EnvironmentVariables = environmentVariables;
     }
 
+    // Every start polls usage now (AC-701), and a fake that answers nothing leaves each one waiting out the
+    // driver's publish grace. Refusing by default keeps tests that care about something else fast; the ones
+    // driving the poll themselves turn it off.
+    public bool AutoRefuseUsagePolls { get; set; } = true;
+
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)
     {
         lock (_writtenLines)
@@ -49,7 +55,23 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
             _writtenLines.Add(line);
         }
 
+        if (AutoRefuseUsagePolls && _UsagePollRequestId(line) is { } requestId)
+        {
+            return PushStdoutAsync($$$"""{"type":"control_response","response":{"subtype":"error","request_id":"{{{requestId}}}","error":"not supported in this context"}}""");
+        }
+
         return Task.CompletedTask;
+    }
+
+    private static string? _UsagePollRequestId(string line)
+    {
+        using var document = JsonDocument.Parse(line);
+        var root = document.RootElement;
+        return root.TryGetProperty("request", out var request)
+            && request.TryGetProperty("subtype", out var subtype)
+            && subtype.GetString() is "get_usage" or "get_context_usage"
+                ? root.GetProperty("request_id").GetString()
+                : null;
     }
 
     public IAsyncEnumerable<string> ReadStdoutLinesAsync(CancellationToken cancellationToken = default) =>

@@ -1138,15 +1138,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // already current here — passed through so the driver's MCP fan-out resolves this project's registry view.
             await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, McpServerSelection, workingDirectory, resume, _launchOptions, ProjectId);
 
-            // AC-660: a resumed session's driver may have already polled real usage figures during StartAsync
-            // (the CLI knows the resumed conversation's context immediately, no fresh turn needed) — pull them in
-            // now rather than leaving the header pill empty until the operator's next turn completes. Scoped to
-            // resume (not every start): a fresh conversation has nothing to pull yet, and pulling unconditionally
-            // would race a driver whose CurrentStatus has not caught up with a same-pane restart (Clear context).
-            if (resume is not null)
-            {
-                _RefreshLimits();
-            }
+            // AC-701: the driver polls usage during StartAsync for every session, resumed or fresh — pull the
+            // figures in now rather than leaving the header pill empty until the first turn completes. A driver
+            // with nothing yet reads null and _RefreshLimits leaves the bars as they were.
+            _RefreshLimits();
 
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;

@@ -20,11 +20,11 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await using var driver = _CreateDriver(fake);
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
-        // StartAsync puts an SDK client on the control channel first (so the CLI routes approvals here), then applies
-        // the launch effort as the session's initial thinking-token budget (default medium).
-        Assert.Equal(2, System.Linq.Enumerable.Count(fake.WrittenLines));
-        Assert.Equal("initialize", JsonDocument.Parse(fake.WrittenLines[0]).RootElement.GetProperty("request").GetProperty("subtype").GetString());
-        Assert.Equal("set_max_thinking_tokens", JsonDocument.Parse(fake.WrittenLines[1]).RootElement.GetProperty("request").GetProperty("subtype").GetString());
+        // StartAsync puts an SDK client on the control channel first (so the CLI routes approvals here), applies
+        // the launch effort as the session's initial thinking-token budget (default medium), then polls usage.
+        Assert.Equal(
+            ["initialize", "set_max_thinking_tokens", "get_usage", "get_context_usage"],
+            fake.WrittenLines.Select(line => JsonDocument.Parse(line).RootElement.GetProperty("request").GetProperty("subtype").GetString()));
 
         await fake.PushStdoutAsync("""
         {"type":"control_request","request_id":"req-42","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf /"},"tool_use_id":"toolu_7"}}
@@ -456,8 +456,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             await fake.PushStdoutAsync(line);
         }
 
-        // Nothing answers the usage poll here, so this waits out the publish grace; the assertion below is about
-        // the rate-limit line the stream carried on its own.
+        // The fake refuses both polls, so nothing here feeds Status; the assertion below is about the rate-limit
+        // line the stream carried on its own.
         await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
 
         var status = driver.Status;
@@ -478,15 +478,18 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        // The start poll is the fake's to refuse; this turn's is the test's to answer.
+        fake.AutoRefuseUsagePolls = false;
+        var writtenAfterStart = fake.WrittenLines.Count;
 
         await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
 
-        var usageId = await _AwaitControlRequestAsync(fake, "get_usage");
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage", writtenAfterStart);
         await fake.PushStdoutAsync(_ControlSuccess(usageId, """
         {"rate_limits":{"five_hour":{"utilization":7,"resets_at":"2026-08-08T18:00:00.978410+00:00"},"seven_day":{"utilization":1,"resets_at":"2026-08-15T09:00:00.978430+00:00"}}}
         """));
 
-        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage");
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage", writtenAfterStart);
         await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"totalTokens":28981,"maxTokens":1000000,"percentage":3}"""));
 
         // Read at the very moment the header would look, not a poll later.
@@ -507,7 +510,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     [Fact]
     public async Task Resuming_PollsUsageDuringStart_SoStatusIsKnownBeforeAnyTurn()
     {
-        var fake = new FakeClaudeSdkSubprocess();
+        var fake = new FakeClaudeSdkSubprocess { AutoRefuseUsagePolls = false };
         await using var driver = _CreateDriver(fake);
 
         var startTask = driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: "conv-1", options: null, mcpServers: null, CancellationToken.None);
@@ -530,19 +533,33 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal(12d, window.UsedPercent, precision: 10);
     }
 
-    // A fresh (non-resumed) session has no prior conversation to ask about — StartAsync must not block on a poll
-    // that has nothing to report, matching CanUseTool_SurfacesPermissionRequested_ThenRespondEchoesRequestId's
-    // assertion that a plain start writes only the initialize/effort lines.
+    // AC-701: the allowances are account-wide and the context is non-zero from the system prompt alone, so a fresh
+    // session has real figures to report before its first turn — AC-660 scoped this poll to resume on the opposite
+    // assumption, which left every fresh pane without a usage pill until a turn completed.
     [Fact]
-    public async Task ANonResumedStart_PollsNothing_AndStatusStaysNull()
+    public async Task AFreshStart_PollsUsageToo_SoStatusIsKnownBeforeAnyTurn()
     {
-        var fake = new FakeClaudeSdkSubprocess();
+        var fake = new FakeClaudeSdkSubprocess { AutoRefuseUsagePolls = false };
         await using var driver = _CreateDriver(fake);
 
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        var startTask = driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
-        Assert.Null(driver.Status);
-        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("get_usage") || line.Contains("get_context_usage"));
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage");
+        await fake.PushStdoutAsync(_ControlSuccess(usageId, """
+        {"rate_limits":{"five_hour":{"utilization":15,"resets_at":"2026-08-11T18:00:00.978410+00:00"}}}
+        """));
+
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage");
+        await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"totalTokens":2000,"maxTokens":100000,"percentage":2}"""));
+
+        await startTask;
+
+        var status = driver.Status;
+        Assert.NotNull(status);
+        Assert.Equal(2d, status.ContextUsedPercent);
+        var window = Assert.Single(status.RateLimits);
+        Assert.Equal("5h", window.Label);
+        Assert.Equal(15d, window.UsedPercent, precision: 10);
     }
 
     // Without the grace this waits out `_UsageRequestTimeout` (15s) and the session looks stuck.
@@ -552,6 +569,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        fake.AutoRefuseUsagePolls = false;
 
         await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
 
@@ -569,13 +587,15 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        fake.AutoRefuseUsagePolls = false;
+        var writtenAfterStart = fake.WrittenLines.Count;
 
         await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
 
-        var usageId = await _AwaitControlRequestAsync(fake, "get_usage");
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage", writtenAfterStart);
         await fake.PushStdoutAsync(_ControlError(usageId));
 
-        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage");
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage", writtenAfterStart);
         await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"percentage":42}"""));
 
         var status = await _AwaitAsync(() => driver.Status?.ContextUsedPercent is not null ? driver.Status : null);
@@ -592,6 +612,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: "gone", options: null, mcpServers: null, CancellationToken.None);
+        fake.AutoRefuseUsagePolls = false;
 
         await fake.PushStdoutAsync("""
         {"type":"result","subtype":"error_during_execution","session_id":"gone","is_error":true,"errors":["No conversation found with session ID: gone"]}
@@ -615,10 +636,11 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         $$$"""{"type":"control_response","response":{"subtype":"error","request_id":"{{{requestId}}}","error":"not supported in this context"}}""";
 
     // The request_id of the newest control_request carrying `subtype`, once the fire-and-forget poll has written it.
-    private static async Task<string> _AwaitControlRequestAsync(FakeClaudeSdkSubprocess fake, string subtype) =>
+    // `after` skips the lines a start already wrote, so a turn's poll is not answered on the start poll's id.
+    private static async Task<string> _AwaitControlRequestAsync(FakeClaudeSdkSubprocess fake, string subtype, int after = 0) =>
         await _AwaitAsync(() =>
         {
-            foreach (var line in fake.WrittenLines.Reverse())
+            foreach (var line in fake.WrittenLines.Skip(after).Reverse())
             {
                 using var document = JsonDocument.Parse(line);
                 var root = document.RootElement;

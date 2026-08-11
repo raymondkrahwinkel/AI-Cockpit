@@ -123,6 +123,28 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-701: AC-660 scoped the post-start pull to resume, so a fresh pane showed no pill at all until its first
+    // turn completed — on a long agent turn that is tens of minutes of nothing. The driver polls at every start
+    // now (measured: a fresh session answers both requests), so the header must pull for every start too.
+    [Fact]
+    public async Task AFreshSession_ShowsTheDriversLimits_BeforeAnyTurnCompletes()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var reset = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+        session.CurrentStatus.Returns(new SessionStatusFeed(2, [new SessionRateWindow("5h", 15, reset)]));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        Assert.Equal(2, vm.ContextUsedPercent);
+        Assert.Equal(new[] { new SessionRateWindow("5h", 15, reset) }, vm.RateLimits);
+        Assert.True(vm.HasUsagePillRegion);
+
+        await vm.DisposeAsync();
+    }
+
     // AC-536: measured root cause was neither of the two candidates the ticket itself named (a dropped Usage, or
     // the "Connected (…)" status text crowding the meter out of the layout) — both were fine. The actual break was
     // a third one: SessionViewModel.SuppressCostMeter vetoed the standalone meter at every non-Developer reading
