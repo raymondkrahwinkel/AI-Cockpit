@@ -161,6 +161,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _alwaysOnTop = true;
 
+    // Mirrors `AssistantSettings.PushToTalkKeyName` (AC-671), same read points as `AlwaysOnTop` above. Backs the
+    // composer's placeholder instead of a hardcoded "F10" — see `_LoadSpeakRepliesAsync` for the empty-settings
+    // fallback.
+    [ObservableProperty]
+    private string _pushToTalkKeyName = "F10";
+
     public AssistantChatViewModel(
         IAssistantSessionHost host,
         IAssistantSettingsStore settingsStore,
@@ -234,6 +240,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         // never shown to you" has to be legible; the chip carries the same mark for when this window is closed.
         ConsentBypassActive = settings.HasConsentBypass;
         AlwaysOnTop = settings.AlwaysOnTop;
+        PushToTalkKeyName = string.IsNullOrWhiteSpace(settings.PushToTalkKeyName) ? "F10" : settings.PushToTalkKeyName;
 
         _loadingSpeakReplies = true;
         try
