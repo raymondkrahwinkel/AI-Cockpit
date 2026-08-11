@@ -5,11 +5,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// A running `ILoginFlow`, rendered inline on the transcript row that started it (AC-713) — there is exactly one
-// place a login flow ever plays out, whichever surface started it (the row's own "Login" action, or the
-// panel-wide auth-expiry warning). Consumes `Steps` as they arrive: a step naming a link shows it as a clickable
-// URL, and one awaiting input (Claude's pasted code) grows a text field and Submit; Codex never asks, so those
-// stay hidden for its flow.
+// AC-713: a running `ILoginFlow`, rendered inline wherever it was started — one place a login ever plays out.
 public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposable
 {
     private readonly ILoginFlow _flow;

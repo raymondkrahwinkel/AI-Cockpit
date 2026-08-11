@@ -2,10 +2,7 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-// The login gate (AC-713). `codex login status` has no `--json` — only its exit code is structured (0 logged in,
-// non-zero logged out, empirically verified: a fresh scratch CODEX_HOME exits 1 with "Not logged in" on stderr).
-// Same caching shape as `ClaudeLoginStatus` and for the same reason: synchronous on the UI thread, once per
-// profile, and the CLI costs a subprocess.
+// AC-713: the login gate — `codex login status` has no `--json`, only its exit code is structured (empirically verified).
 [Collection(nameof(CodexLoginStatusTests))]
 [CollectionDefinition(nameof(CodexLoginStatusTests), DisableParallelization = true)]
 public class CodexLoginStatusTests

@@ -391,11 +391,7 @@
                         </Grid>
                     </StackPanel>
 
-                    <!-- AC-713: login status + in-app sign-in, provider-neutral (any plugin provider may declare
-                         StartLogin — today Claude and Codex). CanStartLogin checks the *current* provider
-                         declared one at all, not just "not local" — a provider with no gate (Gemini, GitHub
-                         Models, Kimi) must not show a permanently-green "logged in" status for a login it does
-                         not have. -->
+                    <!-- AC-713: login status + in-app sign-in, provider-neutral, gated on CanStartLogin rather than just "not local". -->
                     <StackPanel Spacing="11" IsVisible="{Binding CanStartLogin}">
                         <TextBlock Text="LOGIN" FontSize="11" Margin="0,4,0,0"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>

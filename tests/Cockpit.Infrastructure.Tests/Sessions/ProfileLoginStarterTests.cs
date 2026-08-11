@@ -6,11 +6,7 @@ using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
-/// <summary>
-/// <see cref="ProfileLoginStarter"/> — <see cref="ProfileLoginChecker"/>'s sibling (AC-713): the same TTY-then-
-/// session dispatch, but for <c>StartLogin</c> instead of <c>IsLoggedIn</c>. Mirrors
-/// <see cref="ProviderDispatchFacadeTests"/>'s coverage of the login gate, one level up.
-/// </summary>
+/// <summary>AC-713: <see cref="ProfileLoginStarter"/> is <see cref="ProfileLoginChecker"/>'s sibling, dispatching <c>StartLogin</c> the same way.</summary>
 public class ProfileLoginStarterTests
 {
     private static TtyProviderRegistration Registration(string providerId, Func<string, CancellationToken, ILoginFlow>? startLogin) =>

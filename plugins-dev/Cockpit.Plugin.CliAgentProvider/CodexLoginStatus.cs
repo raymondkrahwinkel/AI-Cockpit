@@ -4,11 +4,7 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// Whether a Codex profile is logged in, per `codex login status`'s exit code (AC-713). No `--json` output exists
-// (confirmed via `codex login --help`) — exit 0 answers "logged in"; any other exit (empirically 1, with
-// "Not logged in" on stderr for a fresh profile) answers "logged out". Cached for the same reason as
-// `ClaudeLoginStatus`: `TtyProviderRegistration.IsLoggedIn`/`SessionProviderRegistration.IsLoggedIn` are
-// synchronous on the UI thread, once per profile, and the CLI costs a subprocess.
+// AC-713: whether a Codex profile is logged in, per `codex login status`'s exit code (no `--json` exists) — cached like `ClaudeLoginStatus`.
 internal static class CodexLoginStatus
 {
     public static readonly TimeSpan MaxAge = TimeSpan.FromMinutes(1);

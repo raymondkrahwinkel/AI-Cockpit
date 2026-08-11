@@ -746,11 +746,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // The key the auth-expiry warning stands under (AC-713), same bookkeeping as the memory cap above.
     private const string AuthExpiryWarningKey = "cockpit.auth-expiry";
 
-    // Tells the bar whether this session's provider profile is currently logged in — the SDK route has no TTY
-    // pane to show the CLI's own login prompt in, so this line stands in for it. No countdown: neither CLI
-    // publishes a token's expiry, and both refresh their own access token behind the scenes, so a timed warning
-    // would be false alarm firing every few hours. `blocks: true` because an expired login fails the very next
-    // prompt, the same severity class as the memory cap.
+    // AC-713: no countdown — neither CLI publishes a token's expiry, and both refresh their own access token.
     public void ReportLoginStatus(bool isLoggedIn) =>
         _RaiseOrClear(
             AuthExpiryWarningKey,

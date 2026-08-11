@@ -1,9 +1,6 @@
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
-// `claude auth login`'s stdout, parsed line by line (AC-713). Lines verbatim from the empirical spike recorded on
-// the ticket: "Opening browser to sign in…", "If the browser didn't open, visit: <url>", then the CLI blocks on
-// "Paste code here if prompted >" with no trailing newline — the prompt `LooksLikeAwaitsInputPrompt` exists to
-// catch, since a line-based reader alone would wait forever for a newline that never comes.
+// AC-713: `claude auth login`'s stdout, parsed line by line — lines verbatim from the ticket's empirical spike.
 public class ClaudeLoginFlowTests
 {
     [Fact]

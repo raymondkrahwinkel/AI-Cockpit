@@ -462,21 +462,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public string LoginStatusLabel => IsSelectedProfileLoggedIn ? "logged in" : "not logged in";
 
-    // AC-713: whether the *selected* profile's provider declared a login at all — not just "not local". A provider
-    // with no gate (Gemini, GitHub Models, Kimi) reads `IsSelectedProfileLoggedIn == true` by the checker's own
-    // "no gate → ready" contract, so without this the footer would show a permanently-green "logged in" status for
-    // a provider that has no login concept to be logged in to.
+    // AC-713: whether the *selected* profile's provider declared a login at all, not just "not local" — a
+    // gate-less provider (Gemini, Kimi) reads `IsSelectedProfileLoggedIn == true` and must not look logged in.
     public bool HasLoginConcept => SelectedProfile is { } profile && (_loginStarter?.CanStartLogin(profile) ?? false);
 
-    // Guidance shown (in the body) only for an SDK session that is not logged in — a TTY session logs in via its
-    // own TUI, and a local provider (Ollama/LM Studio) has no login at all. AC-713: generalized off `IsClaudeProfile`
-    // — Codex now declares its own `IsLoggedIn`/`StartLogin` the same way, so it gates and offers this the same way.
+    // AC-713: an SDK session that is not logged in — a TTY logs in via its own TUI, generalized off `IsClaudeProfile` now that Codex has a gate too.
     public bool ShowLoginHint => IsSdk && !IsLocalProfile && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
 
-    // AC-713: the in-app sign-in this hint's "Login" button starts, and its running flow — same shape as the
-    // transcript row and the Manage-profiles dialog, so a login always looks and behaves the same wherever it
-    // starts. `null` when `_loginStarter` was not supplied (design-time preview, most existing tests) or before
-    // the operator has clicked it.
+    // AC-713: the in-app sign-in this hint's "Login" button starts, rendered the same way everywhere it can start.
     [ObservableProperty]
     private LoginFlowRowViewModel? _loginFlow;
 

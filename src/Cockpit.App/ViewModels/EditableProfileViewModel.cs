@@ -338,10 +338,7 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     public string LoginStatusBrushKey => IsLoggedIn ? "CockpitStatusDoneBrush" : "CockpitStatusWaitingBrush";
 
-    // AC-713: secondary entry point for an operator who would rather sign in before ever starting a session —
-    // the same `ILoginFlow` the transcript row's "Login" action starts, rendered the same way. `null` before the
-    // operator has clicked "Login". Built from the current edits (`ToProfile`), not the saved profile — an
-    // incomplete row simply fails to start, reported the same way any other flow failure is.
+    // AC-713: secondary entry point to sign in before ever starting a session — same flow the transcript row shows.
     [ObservableProperty]
     private LoginFlowRowViewModel? _loginFlow;
 

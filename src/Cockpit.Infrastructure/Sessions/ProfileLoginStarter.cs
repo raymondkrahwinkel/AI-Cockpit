@@ -5,10 +5,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// The generic host-side login starter — `ProfileLoginChecker`'s sibling: dispatches a profile's `StartLogin` to
-// its provider plugin so the core carries no knowledge of any provider's auth mechanism. Same TTY-then-session
-// precedence as `ProfileLoginChecker` (AC-629), for the same reason: an SDK-only provider can register `StartLogin`
-// on its `SessionProviderRegistration` alone.
+// AC-713: `ProfileLoginChecker`'s sibling — dispatches a profile's `StartLogin` to its provider plugin.
 internal sealed class ProfileLoginStarter(
     IPluginTtyProviderRegistry ttyProviderRegistry,
     IPluginProviderRegistry? sessionProviderRegistry = null)

@@ -41,22 +41,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
 
     // AC-713: the generic login gate/starter, dispatched to whichever provider plugin the profile below names.
-    // Null in the design-time/unit-test graph, where an auth-related error never grows a "Login" action and the
-    // auth-expiry bar never polls — the same "absent seam, absent affordance" shape every optional dependency
-    // here already follows.
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly IProfileLoginStarter? _loginStarter;
 
-    // The profile this session started under (AC-713) — captured in `StartConfiguredAsync`, the same moment
-    // `McpServerSelection`/`MemoryCapBytes` are, so a later auth error or poll tick has something to check
-    // `_loginChecker`/`_loginStarter` against without threading it through every event.
+    // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
     private SessionProfile? _profile;
 
-    // Polls `_loginChecker.IsLoggedIn(_profile)` for the auth-expiry bar (AC-713) — the SDK route has no TTY pane
-    // to show a login prompt in on its own, so this is what notices the profile went from logged in to out
-    // between prompts, before the operator's next send fails on it. Same interval as `ClaudeLoginStatus`'s own
-    // cache window, so a tick almost never forces a fresh subprocess — it mostly just re-reads what a poll from
-    // that cache (or another session under the same profile) already refreshed.
+    // AC-713: polls `_loginChecker.IsLoggedIn(_profile)` for the auth-expiry bar, since the SDK route has no TTY pane to show a login prompt in on its own.
     private DispatcherTimer? _loginPollTimer;
 
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
@@ -2386,10 +2377,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             case SessionError error:
                 var errorEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message);
-                // AC-713: re-checks the profile's own login gate rather than pattern-matching `error.Message` —
-                // provider knowledge of what its error text looks like stays behind that gate, not here. The gate
-                // answers from the same cache the auth-expiry poll above keeps warm, so this rarely forces its own
-                // subprocess.
+                // AC-713: re-checks the profile's own login gate rather than pattern-matching `error.Message`.
                 if (_profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
                 {
                     errorEntry.ActionLabel = "Login";
@@ -2688,10 +2676,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        // AC-564: `ClearContextAsync` re-runs `StartConfiguredAsync` on this same instance, so the `Tick`
-        // subscription must happen only for a genuinely new timer — otherwise a context clear leaves the old
-        // timer's handler subscribed alongside the new one, and every later tick fires the poll twice, three
-        // times, and so on for the life of the pane.
+        // AC-564: only subscribe `Tick` for a genuinely new timer, since `ClearContextAsync` re-runs this on the same instance.
         if (_loginPollTimer is null)
         {
             _loginPollTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };

@@ -167,9 +167,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     partial void OnActionCommandChanged(IRelayCommand? value) => OnPropertyChanged(nameof(HasAction));
 
     // --- Login flow (AC-713) ----------------------------------------------------------------------------------
-    // Set once the row's "Login" action (or the panel-wide auth-expiry warning) has started an `ILoginFlow` — the
-    // row then renders this inline instead of the action button, so a login always plays out in the same place
-    // regardless of where it began.
+    // Set once the row's "Login" action started an `ILoginFlow`; the row then renders this instead of the button.
 
     [ObservableProperty]
     private LoginFlowRowViewModel? _loginFlow;

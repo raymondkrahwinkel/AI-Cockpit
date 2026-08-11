@@ -32,10 +32,7 @@
                  beside Start, which is a real change in exchange for none. -->
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                    <!-- AC-713: generalized off IsClaudeProfile to HasLoginConcept — Codex now declares a login
-                         gate too, but a provider that declares none at all (Gemini, GitHub Models, Kimi, any
-                         local provider) must not show a permanently-green "logged in" status for a login it does
-                         not have. -->
+                    <!-- AC-713: generalized off IsClaudeProfile to HasLoginConcept, so a provider with no login gate does not show a permanently-green status. -->
                     <Ellipse Width="8" Height="8" IsVisible="{Binding HasLoginConcept}"
                              Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                     <TextBlock Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"

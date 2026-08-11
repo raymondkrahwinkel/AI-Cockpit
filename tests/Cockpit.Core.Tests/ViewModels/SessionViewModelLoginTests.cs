@@ -10,11 +10,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// AC-713: a <c>SessionError</c> grows a "Login" action when the profile's own login gate says logged out
-/// (re-checked generically, never by pattern-matching the error text), and the panel-wide auth-expiry warning
-/// carries the same "Sign in again" action — both land the operator in the same inline <see cref="LoginFlowRowViewModel"/>.
-/// </summary>
+/// <summary>AC-713: reactive and proactive login prompts both land the operator in the same inline <see cref="LoginFlowRowViewModel"/>.</summary>
 public class SessionViewModelLoginTests
 {
     [Fact]

@@ -6,12 +6,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// `claude auth login`, spawned as a plain subprocess — no pty (empirically verified, AC-713): the CLI's browser
-// step and its "paste code here" fallback both work over redirected, non-interactive stdio. Lines stream out as
-// `LoginFlowStep`s as they arrive; a line naming a URL carries it as `LinkToOpen`, and the final prompt — which
-// the CLI prints without a trailing newline, since it then blocks on stdin — is detected from the still-partial
-// buffer and reported as `AwaitsInput`. An unrecognised line still streams through as plain text: a wording
-// change in a future CLI version degrades to "show the raw output", never a crash.
+// AC-713: `claude auth login`, spawned as a plain subprocess — no pty needed, empirically verified.
 internal sealed class ClaudeLoginFlow : ILoginFlow
 {
     private static readonly Regex _UrlPattern = new(@"https?://\S+", RegexOptions.Compiled);
@@ -104,10 +99,7 @@ internal sealed class ClaudeLoginFlow : ILoginFlow
                 pending.Append(buffer, 0, read);
                 _DrainCompleteLines(pending);
 
-                // Re-checked on every read, not latched after the first match: a wrong/expired pasted code makes
-                // the CLI print this same no-trailing-newline prompt a second time, and a latch would leave that
-                // retry sitting unflushed in `pending` — the row would show nothing, forever, instead of a second
-                // input field.
+                // AC-713: re-checked every read, not latched — a retry after a wrong code reprints this prompt.
                 if (LooksLikeAwaitsInputPrompt(pending.ToString()))
                 {
                     _steps.Writer.TryWrite(new LoginFlowStep(pending.ToString().Trim(), null, AwaitsInput: true));

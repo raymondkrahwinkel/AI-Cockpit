@@ -7,10 +7,7 @@
              x:Class="Cockpit.App.Controls.LoginFlowView"
              x:DataType="vm:LoginFlowRowViewModel">
 
-    <!-- AC-713: a running `ILoginFlow`, however it was started (a transcript row's "Login" action, the
-         panel-wide auth-expiry warning, the Manage-profiles or New-session dialogs) — one shared view so the
-         flow always looks and behaves the same, the same reason AC-722 factored the transcript row out. Hosts
-         set `DataContext="{Binding LoginFlow}"` and gate their own visibility on `HasLoginFlow`. -->
+    <!-- AC-713: shared view for a running `ILoginFlow`, however it was started. Hosts set `DataContext="{Binding LoginFlow}"` and gate their own visibility on `HasLoginFlow`. -->
     <StackPanel Spacing="6">
         <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"/>
         <Button Content="{Binding LinkToOpen}" Classes="Compact" HorizontalAlignment="Left"

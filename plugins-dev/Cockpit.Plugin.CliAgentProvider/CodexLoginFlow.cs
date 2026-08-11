@@ -7,12 +7,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// `codex login --device-auth`, spawned as a plain subprocess — OpenAI's own documented headless route (the
-// default `codex login` names it itself: "On a remote or headless machine? Use `codex login --device-auth`
-// instead."). The subprocess polls the token endpoint itself once the operator has visited the link and entered
-// the code elsewhere, so unlike `ClaudeLoginFlow` there is nothing to submit back — `SubmitAsync` is a no-op and
-// `Completion` simply follows the process exit. Output lines stream through as `LoginFlowStep`s the same way
-// `ClaudeLoginFlow` does; a line naming a URL carries it as `LinkToOpen`.
+// AC-713: `codex login --device-auth`, OpenAI's own documented headless route — the subprocess polls the token endpoint itself.
 internal sealed class CodexLoginFlow : ILoginFlow
 {
     private static readonly Regex _UrlPattern = new(@"https?://\S+", RegexOptions.Compiled);
