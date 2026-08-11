@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
@@ -115,6 +116,11 @@ internal sealed class OpenMicListener(
         var utterance = new List<float>();
         float[]? preRoll = null;
 
+        // AC-721: finished utterances wait here to be transcribed one at a time, in speaking order — the same
+        // fix OpenMicCoordinator._ConsumeInjectionsAsync already applies one layer up, for the same reason.
+        var pendingUtterances = Channel.CreateUnbounded<float[]>(new UnboundedChannelOptions { SingleReader = true });
+        var consumerTask = _ConsumeUtterancesAsync(pendingUtterances.Reader, cancellationToken);
+
         try
         {
             await foreach (var frame in captureService.CaptureAsync(CaptureFormat, cancellationToken).ConfigureAwait(false))
@@ -175,10 +181,10 @@ internal sealed class OpenMicListener(
                             // for, and announcing the end once it finished would be announcing it too late.
                             SpeechEnded?.Invoke(this, EventArgs.Empty);
 
-                            // AC-707: fire-and-forget — awaiting here stalled the capture loop for as long as
-                            // Whisper took, dropping frames. WhisperWorkerSpeechToTextService._gate serializes
-                            // clips onto one worker, so utterances still finish in order.
-                            _ = _FinalizeUtteranceAsync([.. utterance], cancellationToken);
+                            // AC-707: queuing here (not awaiting transcription) keeps the capture loop
+                            // non-blocking, so it never stalls behind Whisper and never drops frames.
+                            // Ordering is the consumer's job (AC-721).
+                            pendingUtterances.Writer.TryWrite([.. utterance]);
                             utterance.Clear();
                             break;
                     }
@@ -191,6 +197,26 @@ internal sealed class OpenMicListener(
         {
             // Expected: StopAsync cancels the capture stream.
         }
+        finally
+        {
+            pendingUtterances.Writer.TryComplete();
+            try
+            {
+                await consumerTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected: StopAsync cancelled a clip that was still being transcribed when the mic stopped.
+            }
+        }
+    }
+
+    private async Task _ConsumeUtterancesAsync(ChannelReader<float[]> pendingUtterances, CancellationToken cancellationToken)
+    {
+        await foreach (var samples in pendingUtterances.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await _FinalizeUtteranceAsync(samples, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task _FinalizeUtteranceAsync(float[] samples, CancellationToken cancellationToken)
@@ -202,8 +228,8 @@ internal sealed class OpenMicListener(
         }
         catch (OperationCanceledException)
         {
-            // Expected: StopAsync cancelled this clip mid-transcription. Nothing awaits this task directly
-            // (it is fire-and-forget), so this has to be caught here rather than by a caller's try/catch.
+            // Expected: StopAsync cancelled this clip mid-transcription. Caught here, not left to propagate,
+            // so the consumer loop above does not treat a cancelled clip as a reason to stop draining others.
             return;
         }
 
