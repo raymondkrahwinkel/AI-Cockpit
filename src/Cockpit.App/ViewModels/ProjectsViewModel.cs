@@ -236,6 +236,10 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         };
         viewModel._Republish();
 
+        // AC-709: a selected card so this scene also renders the workspace's own selection styling, not just
+        // its category grouping.
+        viewModel.SelectedProject = viewModel.Projects.First(project => project.Id == eveWorkbench.Id);
+
         return viewModel;
     }
 
@@ -611,7 +615,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(_UncategorizedLabel, uncategorized));
     }
 
-    private ProjectCardViewModel _ToCard(Project project) => new(project, _OriginBadge(project));
+    private ProjectCardViewModel _ToCard(Project project) =>
+        new(project, _OriginBadge(project)) { IsSelected = project.Id == SelectedProject?.Id };
 
     // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on
     // `project` (AC-604's own seam, claimed for a bound project by
@@ -627,6 +632,13 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         RemoveProjectCommand.NotifyCanExecuteChanged();
         ToggleSharingCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ShareToggleLabel));
+
+        // AC-709: keeps every already-materialized card's selected style in sync — a plain assignment here
+        // (rather than going through a full _Republish) is what OnProjectPressed does on every click.
+        foreach (var card in ProjectCategoryGroups.SelectMany(group => group.Cards))
+        {
+            card.IsSelected = card.Project.Id == value?.Id;
+        }
     }
 
     // AC-620: one button, two directions — "Share…" opens the confirmation screen for a local project, "Stop

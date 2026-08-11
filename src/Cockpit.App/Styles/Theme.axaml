@@ -1151,6 +1151,22 @@
         <Setter Property="Background" Value="#2AE0A33E"/>
     </Style>
 
+    <!-- Projects workspace card (AC-709). Unlike the sidebar's sessionItem row (flat, left-edge-only border),
+         a project card already carries a full border at rest, so the selected state lifts the whole border to
+         the accent colour rather than just one edge — same "filled card + accent" language as sessionItem.active,
+         adapted to a card instead of a flat row. Background/border live here rather than inline on the Border
+         (see ProjectsDialog.axaml) so this style setter can actually win. -->
+    <Style Selector="Border.projectCard">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="Border.projectCard.active">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderThickness" Value="1.5"/>
+    </Style>
+
     <!-- ListBox (profile manager): flat, transparent; the selected row gets a quiet panel-bg fill
          (matching the sidebar's active treatment) instead of the default Fluent-blue highlight. -->
     <Style Selector="ListBox">

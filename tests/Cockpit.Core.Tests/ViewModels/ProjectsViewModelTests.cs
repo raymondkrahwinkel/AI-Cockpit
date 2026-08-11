@@ -588,6 +588,24 @@ public class ProjectsViewModelTests
     }
 
     [Fact]
+    public async Task ProjectCardViewModel_SelectingAProject_MarksItsCardAndClearsTheOldOne()
+    {
+        var first = Project.Create("Cockpit");
+        var second = Project.Create("Depot");
+        var (viewModel, _, _) = Build(first, second);
+        await viewModel.LoadAsync();
+        var cards = viewModel.ProjectCategoryGroups.Single().Cards;
+
+        viewModel.SelectedProject = first;
+        Assert.True(cards.Single(card => card.Project.Id == first.Id).IsSelected);
+        Assert.False(cards.Single(card => card.Project.Id == second.Id).IsSelected);
+
+        viewModel.SelectedProject = second;
+        Assert.False(cards.Single(card => card.Project.Id == first.Id).IsSelected);
+        Assert.True(cards.Single(card => card.Project.Id == second.Id).IsSelected);
+    }
+
+    [Fact]
     public async Task ClaimBoundProjects_ARoleThatCanWriteBack_ClaimsEveryFieldEditableExceptLogo()
     {
         // AC-247: SharedProject.CanWriteBack (the source's own Editor/Owner check) drives IsEditable — Logo stays
