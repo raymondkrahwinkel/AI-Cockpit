@@ -2767,12 +2767,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // raise a toast. A prompt whose pane is gone is denied rather than left hanging — there is nowhere to show it.
     private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt)
     {
-        // AC-711: captured now, before the hop below, because the assistant's live instance can be replaced —
-        // restarted, handed over to a fresh conversation (AC-596), or stopped when idle (AC-602) — between this
-        // event firing and the routing actually running. `AssistantIdentity.PaneId` is a reserved identity the
-        // replacement adopts too (state-store continuity across a restart), so resolving purely by pane id below
-        // cannot tell the instance this prompt was raised for apart from an unrelated successor that happens to
-        // reuse the same id. Comparing against the instance that was live right now is what can.
+        // AC-711: captured now, since the assistant's live instance can be replaced (restart, AC-596 hand-over,
+        // AC-602 idle stop) before the routing below runs. AssistantIdentity.PaneId is reused across that
+        // replacement, so a pane-id-only lookup there can't tell the original instance from its successor.
         var isForAssistant = prompt.Request.Source.PaneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId;
         var assistantWhenOpened = isForAssistant ? _assistantSession : null;
 
@@ -2791,10 +2788,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ? _ConsentPanes().FirstOrDefault(session => session.PaneId == paneId)
                 : SelectedSession;
 
-            // The assistant was replaced while this routing was still queued: the instance it belongs to is
-            // already gone, and `pane` (if any) is an unrelated successor under the same reused id — not the
-            // session that asked. Nothing will ever answer it, so deny it here rather than orphan AC-47's scrim
-            // on a conversation that has no idea what it is waiting for.
+            // Replaced while queued: `pane` (if any) is an unrelated successor reusing the same id, not the
+            // session that asked, and nothing will ever answer it — deny rather than orphan AC-47's scrim.
             if (isForAssistant && !ReferenceEquals(pane, assistantWhenOpened))
             {
                 pane = null;
