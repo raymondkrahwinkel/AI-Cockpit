@@ -52,6 +52,22 @@ public class DepotSharedProjectSourceTests
         Assert.Empty(result.VisibleButUnreadable);
     }
 
+    // AC-699: the same "Admin" role the publish picker used to drop also gates AC-247's write-back — a global
+    // admin may write anywhere, so reading it as Unknown made every project on the connection read-only.
+    [Fact]
+    public async Task ListAsync_AnAdminsProject_MayWriteBackAndShowsItsRole()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        _StubListProjects(host, """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project"}]}""");
+        _StubRead(host, "cockpit", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
+
+        var result = await SourceFor(host).ListAsync(CancellationToken.None);
+
+        var project = Assert.Single(result.Projects);
+        Assert.Equal("Admin", project.Role);
+        Assert.True(project.CanWriteBack);
+    }
+
     [Fact]
     public async Task ListAsync_TheProjectId_MatchesTheConnectionsOwnMemorySourceScheme()
     {

@@ -76,7 +76,7 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
 
             if (definitionResult.Outcome != PluginMcpToolCallOutcome.Success || definitionResult.Definition is not { } definition)
             {
-                if (role is DepotProjectRole.Viewer or DepotProjectRole.Unknown)
+                if (!role.CanWrite())
                 {
                     unreadable.Add(new UnreadableSharedProject(
                         $"{scheme}:{project.Slug}", project.Name is { Length: > 0 } ? project.Name : project.Slug, role.ToDisplayString()));
@@ -98,7 +98,7 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
                 Role = role.ToDisplayString(),
                 // AC-247: Editor/Owner may write WriteBackAsync's target; Viewer/Unknown may not — the same
                 // minimum DepotProjectRoleParser's own remarks already earmarked this enum for.
-                CanWriteBack = role is DepotProjectRole.Editor or DepotProjectRole.Owner,
+                CanWriteBack = role.CanWrite(),
             });
         }
 
@@ -245,11 +245,12 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
 
         // AC-620's own decision 4: only a project the operator can already write to is offered — Depot has no
         // create_project call for the dropdown to fall back on, so a Viewer's own projects would otherwise dead-end
-        // in a picker row that fails the moment it is chosen.
+        // in a picker row that fails the moment it is chosen. AC-699: "can write" is DepotProjectRoleParser.CanWrite's
+        // to answer, not a role list repeated here — this one used to miss "Admin" and emptied the whole dropdown.
         var targets = listed
             .Where(project => !string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
             .Select(project => (project.Slug, project.Name, Role: DepotProjectRoleParser.Parse(project.Role)))
-            .Where(entry => entry.Role is DepotProjectRole.Editor or DepotProjectRole.Owner)
+            .Where(entry => entry.Role.CanWrite())
             .Select(entry => new SharedProjectPublishTarget(
                 $"{scheme}:{entry.Slug}",
                 entry.Name is { Length: > 0 } ? entry.Name : entry.Slug,

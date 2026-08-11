@@ -65,8 +65,61 @@ public class ShareProjectDialogViewModelTests
             [new ProjectResource("/home/raymond/dumps/payroll-2026.sql", ProjectResourceRole.Reference) { Label = "Testdata dump" }]);
         var viewModel = ShareProjectDialogViewModel.Create(project, []);
 
-        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Testdata dump" && row.Value == "/home/raymond/dumps/payroll-2026.sql");
-        Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Testdata dump" && row.Value == "(name only — this machine's own path stays local)");
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Testdata dump — path" && row.Value == "/home/raymond/dumps/payroll-2026.sql");
+        Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Testdata dump — name only");
+    }
+
+    // AC-699: the reported bug — an unlabelled resource falls back to its role for a name, so one machine-scope
+    // Memory row showed up as "Memory" in both columns, once as a path and once as an explanation of a path.
+    [Fact]
+    public void Rows_UnlabelledMachineScopeResource_NeverRepeatsOneLabelInBothColumns()
+    {
+        var project = Project(resources:
+        [
+            new ProjectResource("/home/raymond/Nextcloud/Memory/SynCRM/", ProjectResourceRole.Memory),
+            new ProjectResource("depot:synvolution-flow", ProjectResourceRole.Memory),
+        ]);
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        var shared = viewModel.GoesToDepot.Select(row => row.Label).Intersect(viewModel.StaysOnThisMachine.Select(row => row.Label));
+        Assert.Empty(shared);
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Value == "/home/raymond/Nextcloud/Memory/SynCRM/");
+        Assert.Contains(viewModel.GoesToDepot, row => row.Value == "depot:synvolution-flow");
+    }
+
+    // The column titles are a promise about the whole project, not only the fields the publish call happens to map.
+    [Fact]
+    public void Rows_FieldsAPublishedDefinitionHasNoPlaceFor_AreNamedAsStayingHere()
+    {
+        var project = Project(additionalInfo: [new ProjectInfoField("Repository", "https://github.com/example/payroll")]) with
+        {
+            Category = "Synvolution",
+            LogoPath = "/home/raymond/logos/payroll.png",
+        };
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Category" && row.Value == "Synvolution");
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Logo");
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Anything else worth keeping");
+        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label is "Category" or "Logo");
+    }
+
+    // A connection whose projects the operator may all only read lists nothing to publish to — silence there reads
+    // as a broken dropdown, which is exactly how AC-699's role-parsing bug hid.
+    [Fact]
+    public async Task LoadTargets_ASucceededButEmptyList_SaysSoInsteadOfShowingAnEmptyPicker()
+    {
+        var source = Substitute.For<ISharedProjectSource>();
+        source.SourceName.Returns("Work");
+        source.CanPublish.Returns(true);
+        source.ListPublishTargetsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(SharedProjectPublishTargetListResult.Success([])));
+
+        var viewModel = ShareProjectDialogViewModel.Create(Project(), [source]);
+        await Task.Yield();
+
+        Assert.Empty(viewModel.Targets);
+        Assert.False(string.IsNullOrWhiteSpace(viewModel.LoadError));
     }
 
     [Fact]
