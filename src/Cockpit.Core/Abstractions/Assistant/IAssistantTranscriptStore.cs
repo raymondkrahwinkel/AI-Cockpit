@@ -4,14 +4,9 @@ namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
 /// Persists the assistant's transcript (AC-684) so a resumed conversation can be redrawn once the window
-/// reopens or the app restarts. <see cref="Sessions.ISessionStateStore"/> already lets the provider resume its
-/// own memory — the conversation id — but nothing else remembers what the operator actually saw on screen.
+/// reopens or the app restarts — the other half of what <see cref="Sessions.ISessionStateStore"/> leaves out.
 /// </summary>
-/// <remarks>
-/// One file, not one per pane: there is exactly one assistant (see <c>AssistantSessionHost</c>'s own remarks on
-/// why), so this store needs no pane key. <see cref="SaveAsync"/> overwrites the whole file — the transcript is
-/// a snapshot of where the conversation stands, not an audit trail with its own retention rule.
-/// </remarks>
+/// <remarks>One file, not one per pane: there is exactly one assistant. <see cref="SaveAsync"/> overwrites the whole file.</remarks>
 public interface IAssistantTranscriptStore
 {
     /// <summary>The transcript as it stood when it was last saved. Empty when nothing was ever saved or the file could not be read.</summary>

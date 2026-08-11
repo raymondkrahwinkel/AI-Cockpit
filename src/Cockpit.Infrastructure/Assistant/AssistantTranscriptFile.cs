@@ -8,9 +8,7 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Infrastructure.Assistant;
 
 // The assistant's transcript as a JSON snapshot next to `cockpit.json` (AC-684) — what `ISessionStateStore`
-// leaves out: it remembers the conversation id, not what the operator saw. Overwritten whole on every change,
-// the same idiom `AssistantMemoryFile.NoteCurrentStateAsync` uses for the current-state file: this is the
-// conversation's current shape, not a trail.
+// leaves out. Overwritten whole on every change, same idiom as `AssistantMemoryFile.NoteCurrentStateAsync`.
 internal sealed class AssistantTranscriptFile : IAssistantTranscriptStore, ISingletonService
 {
     private readonly string _filePath;

@@ -386,10 +386,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             ? SessionResume.New
             : await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true);
 
-        // AC-684: the provider resumes its own memory, but nothing else remembered what the operator saw — replay
-        // it before the launch so the window shows the earlier conversation the moment it attaches, rather than
-        // starting empty and hoping the operator never looks. Read before StartConfiguredAsync, not after: a
-        // resume the provider ends up refusing (below) throws this whole session away, replayed rows included.
+        // AC-684: replay before the launch so the window shows the earlier conversation the moment it attaches,
+        // not after — a resume the provider ends up refusing (below) throws this whole session away anyway.
         if (resume.Mode == SessionResumeMode.BySessionId)
         {
             await _ReplayTranscriptAsync(session, cancellationToken).ConfigureAwait(true);
@@ -415,10 +413,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true)),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
-        // AC-638/AC-596: a hand-over leaves the operator looking at an empty window, so say why in the transcript
-        // itself — the note that carries forward only reaches the system prompt, which is nowhere they can see.
-        // `startFreshBecause` lets a caller other than the AC-596 hand-over (AC-684's failed-resume recovery) say
-        // its own reason instead of this default.
+        // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
+        // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.
         if (startFresh)
         {
             session.Transcript.Add(new TranscriptEntryViewModel(
@@ -427,10 +423,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
         else if (resume.Mode == SessionResumeMode.BySessionId)
         {
-            // AC-684: a resume the provider ends up refusing (an expired/unknown conversation id) surfaces as an
-            // immediate failed turn, not an exception — StartConfiguredAsync above already returned normally
-            // either way. Watched rather than awaited: blocking every ordinary, successful resume on a grace
-            // window would tax the common case for a failure that is the exception.
+            // AC-684: watched rather than awaited — a refused resume surfaces as a normal-looking return from
+            // StartConfiguredAsync, and blocking every successful resume on a grace window would tax the common case.
             _WatchForUnresolvableResume(session);
         }
 
@@ -731,11 +725,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             : SessionResume.New;
     }
 
-    // AC-684: what the operator saw before this launch, read back into a fresh session's empty transcript before
-    // it ever starts. The provider resumes its own memory on `resume.Mode == BySessionId` already
-    // (`_ResolveResumeAsync`); this is the other half nothing else did — nobody repainted the window.
-    // A row this build cannot make sense of (an older/newer snapshot shape) is skipped rather than guessed at,
-    // same contract `SessionStateStore` uses for a line it cannot parse.
+    // AC-684: repaints a fresh session's transcript with what the operator saw before this launch. A row this
+    // build cannot make sense of is skipped, same contract `SessionStateStore` uses for a line it cannot parse.
     private async Task _ReplayTranscriptAsync(SessionViewModel session, CancellationToken cancellationToken)
     {
         foreach (var saved in await _transcript.LoadAsync(cancellationToken).ConfigureAwait(true))
@@ -747,12 +738,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    // Every new row this session's transcript gets, from here on, is worth a snapshot — a divider, a tool call, a
-    // reply. Fire-and-forget and best-effort, the same contract `ISessionStateStore.RecordAsync` uses: a save that
-    // fails is logged, not the turn that produced the row.
-    // ponytail: the whole transcript is re-serialized on every new row rather than appended — cheap while a
-    // conversation is a few hundred rows, and a row still streaming (AppendText mutates it in place, which raises
-    // no CollectionChanged) is only durable once the *next* row's save runs. Upgrade to a debounced/incremental
+    // AC-684: every new transcript row is worth a snapshot. Fire-and-forget, same contract as
+    // `ISessionStateStore.RecordAsync` — a save that fails is logged, not the turn that produced the row.
+    // ponytail: whole transcript re-serialized per row rather than appended; upgrade to a debounced/incremental
     // write if a long-running conversation ever makes the full rewrite measurable.
     private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -796,12 +784,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         return entry;
     }
 
-    // AC-684, criterion 4: a `BySessionId` resume the provider ends up refusing (an expired, stopped or unknown
-    // conversation) surfaces as an immediate failed turn, not an exception — the CLI prints its result line and
-    // exits (AC-539's `error_during_execution`). Watched instead of awaited inline: the failure, when it happens,
-    // is the very first row this fresh launch's transcript receives (replayed history was already in before this
-    // was wired, and nothing has sent the provider a prompt yet), so there is nothing to correlate — the first row
-    // decides it, once, and the watch retires either way.
+    // AC-684, criterion 4: a `BySessionId` resume the provider refuses surfaces as an immediate failed turn
+    // (AC-539's `error_during_execution`), not an exception. The first row this fresh launch's transcript
+    // receives decides it, once, since nothing has sent the provider a prompt yet to correlate against.
     private void _WatchForUnresolvableResume(SessionViewModel session)
     {
         void OnChanged(object? sender, NotifyCollectionChangedEventArgs e)
