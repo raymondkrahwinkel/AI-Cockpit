@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
@@ -82,8 +83,11 @@ public class OpenMicListenerTests
         var listener = _CreateListener(vad, speechToText, _Windows(8));
         var speechStartedCount = 0;
         listener.SpeechStarted += (_, _) => Interlocked.Increment(ref speechStartedCount);
-        var transcripts = new List<string>();
-        listener.UtteranceTranscribed += (_, text) => transcripts.Add(text);
+
+        // Concurrent, not a plain List<string>: UtteranceTranscribed can fire from a background transcription
+        // continuation, which is a different thread than the one that reads transcripts.Count below (AC-721).
+        var transcripts = new ConcurrentQueue<string>();
+        listener.UtteranceTranscribed += (_, text) => transcripts.Enqueue(text);
 
         await listener.StartAsync();
         await firstClipStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
@@ -98,6 +102,48 @@ public class OpenMicListenerTests
 
         Assert.Equal(["first", "second"], transcripts);
         Assert.Equal(1, speechToText.MaxConcurrentCalls);
+    }
+
+    /// <summary>
+    /// AC-721: the STT gate only ever guaranteed no two clips transcribe at once, never that the slower one's
+    /// event fires last. Clip 1 returns instantly with nothing serializing it against a still-open clip 0, so a
+    /// fire-and-forget finalizer is guaranteed — not merely likely — to raise "second" first.
+    /// </summary>
+    [Fact]
+    public async Task Listen_FirstClipHeldOpenWhileSecondReturnsInstantly_EventsStillArriveInSpeakingOrder()
+    {
+        var vad = Substitute.For<IVoiceActivityDetector>();
+        vad.HasSpeechAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>())
+            .Returns(true, false, false, false, true, false, false, false);
+        var speechToText = new SequencedSpeechToTextService();
+        var firstClipGate = new TaskCompletionSource();
+        speechToText.OnTranscribe = async (index, _) =>
+        {
+            if (index != 0)
+            {
+                return "second";
+            }
+
+            await firstClipGate.Task;
+            return "first";
+        };
+        var listener = _CreateListener(vad, speechToText, _Windows(8));
+        var speechStartedCount = 0;
+        listener.SpeechStarted += (_, _) => Interlocked.Increment(ref speechStartedCount);
+        var transcripts = new ConcurrentQueue<string>();
+        listener.UtteranceTranscribed += (_, text) => transcripts.Enqueue(text);
+
+        await listener.StartAsync();
+
+        // Both utterances are captured regardless of clip 0's still-pending transcription — proof the mic
+        // pipeline itself never depends on which order the transcriptions finish in.
+        await _WaitUntilAsync(() => speechStartedCount == 2);
+
+        firstClipGate.SetResult();
+        await _WaitUntilAsync(() => transcripts.Count == 2);
+        await listener.StopAsync();
+
+        Assert.Equal(["first", "second"], transcripts);
     }
 
     /// <summary>
