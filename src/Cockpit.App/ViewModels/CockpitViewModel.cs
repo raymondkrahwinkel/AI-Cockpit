@@ -2765,7 +2765,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Route a consent prompt to the pane it belongs to. On the UI thread: it sets an observable property and can
     // raise a toast. A prompt whose pane is gone is denied rather than left hanging — there is nowhere to show it.
-    private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt) =>
+    private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt)
+    {
+        // AC-711: captured now, since the assistant's live instance can be replaced (restart, AC-596 hand-over,
+        // AC-602 idle stop) before the routing below runs. AssistantIdentity.PaneId is reused across that
+        // replacement, so a pane-id-only lookup there can't tell the original instance from its successor.
+        var isForAssistant = prompt.Request.Source.PaneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId;
+        var assistantWhenOpened = isForAssistant ? _assistantSession : null;
+
         Dispatcher.UIThread.Post(() =>
         {
             // A request that names a pane goes to that pane; a host-internal caller with no pane of its own (a null
@@ -2780,6 +2787,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var pane = prompt.Request.Source.PaneId is { } paneId
                 ? _ConsentPanes().FirstOrDefault(session => session.PaneId == paneId)
                 : SelectedSession;
+
+            // Replaced while queued: `pane` (if any) is an unrelated successor reusing the same id, not the
+            // session that asked, and nothing will ever answer it — deny rather than orphan AC-47's scrim.
+            if (isForAssistant && !ReferenceEquals(pane, assistantWhenOpened))
+            {
+                pane = null;
+            }
+
             if (pane is null)
             {
                 _consentBroker?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
@@ -2809,6 +2824,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, "Review", () => SelectedSession = pane);
             }
         });
+    }
 
     private void _OnConsentPromptClosed(object? sender, Guid promptId) =>
         Dispatcher.UIThread.Post(() =>
