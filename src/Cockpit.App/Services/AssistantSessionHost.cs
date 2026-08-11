@@ -738,10 +738,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    // AC-684: every new transcript row is worth a snapshot. Fire-and-forget, same contract as
-    // `ISessionStateStore.RecordAsync` — a save that fails is logged, not the turn that produced the row.
-    // ponytail: whole transcript re-serialized per row rather than appended; upgrade to a debounced/incremental
-    // write if a long-running conversation ever makes the full rewrite measurable.
+    // AC-684: every new transcript row is worth a snapshot — fire-and-forget, same contract as
+    // `ISessionStateStore.RecordAsync` (a failed save is logged, not the turn that produced the row).
+    // ponytail: whole transcript re-serialized per row; upgrade to a debounced/incremental write if a long-running conversation makes the rewrite measurable.
     private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (sender is not ObservableCollection<TranscriptEntryViewModel> transcript)
