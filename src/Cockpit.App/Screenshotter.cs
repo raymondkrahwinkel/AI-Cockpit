@@ -240,6 +240,11 @@ internal static class Screenshotter
         // "a link is there" and "it reads as a link, and the one next to it is a different link" are separate
         // claims and only the second is visible.
         ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
+        // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
+        // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
+        // bar where nothing is drawn.
+        ["session-memory-cap-near"] = (width, height) => new Window { Width = width, Height = height, Content = _MemoryCapBar(overCap: false) },
+        ["session-memory-cap-over"] = (width, height) => new Window { Width = width, Height = height, Content = _MemoryCapBar(overCap: true) },
         ["session-settings-flyout"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: true) },
         ["session-settings-flyout-no-live-controls"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: false) },
         // AC-563, staged open by the Hovers table below. See _McpHeader for why each of these four is its own.
@@ -1243,6 +1248,19 @@ internal static class Screenshotter
                    stays plain text.
                    """,
         });
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    // The session's own warning bar approaching its memory cap, and past it (AC-661/AC-700). Driven through the
+    // real `ReportMemoryAgainstCap`, not by setting the bar's text, so what is on screen is what a sample produces.
+    private static SessionView _MemoryCapBar(bool overCap)
+    {
+        const long Cap = 512L * 1024 * 1024;
+        var viewModel = new SessionViewModel { Title = "personal - webshop", MemoryCapBytes = Cap };
+
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Running the build." });
+        viewModel.ReportMemoryAgainstCap((long)(Cap * (overCap ? 1.12 : 0.86)));
 
         return new SessionView { DataContext = viewModel };
     }

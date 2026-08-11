@@ -3249,7 +3249,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly Dictionary<string, bool> _warnedAboutSessionMemory = new(StringComparer.Ordinal);
 
     // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
-    // so on its own bar first. Matched back by title, the same key the sample was taken under.
+    // so on its own bar first, and past the cap offers the Kill there too (AC-700). Matched back by title, the same
+    // key the sample was taken under.
     private void _WarnAboutSessionCaps(ResourceUsage usage)
     {
         foreach (var measured in usage.Sessions)
@@ -3259,8 +3260,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Names the session in a cockpit-wide toast with a Kill button the moment it crosses its own cap — replaces
-    // the automatic kill that used to happen instead (AC-692); `_WarnAboutSessionCaps` above still covers the
-    // earlier, pane-local warning at 80%.
+    // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
         var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.Title), StringComparer.Ordinal);

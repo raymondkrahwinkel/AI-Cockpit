@@ -5,7 +5,7 @@ namespace Cockpit.Infrastructure.Sessions;
 
 // Linux `ISessionMemoryLimiter` (AC-661): a cgroup v2 group per session, the pid moved in. AC-692: sets
 // `memory.high` (a throttle) rather than `memory.max` (a hard OOM-kill boundary), since Cockpit no longer ends a
-// session for going over its cap on any platform — the toast that does tell the operator comes from `CockpitViewModel`.
+// session for going over its cap on any platform — it warns instead, by toast and by the session's bar (AC-700).
 internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
 {
     private const string CgroupRoot = "/sys/fs/cgroup";

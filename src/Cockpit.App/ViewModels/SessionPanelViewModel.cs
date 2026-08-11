@@ -681,9 +681,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // What this session's process tree may hold before the OS cuts it off (AC-661); null when nothing caps it.
     public long? MemoryCapBytes { get; set; }
 
-    // Puts the session's own approach to its cap on the bar (AC-661), sampled with the rest of the resource meter.
-    // The whole point is that being cut off is announced first: the session dies, the cockpit does not, and the
-    // operator saw it coming rather than finding a pane that had quietly stopped.
+    // Whether this session is over its memory cap, which is what puts the Kill button on the bar (AC-700). Nothing
+    // closes it on its own since AC-692, so the choice is the operator's and it is offered where the warning is.
+    [ObservableProperty]
+    private bool _isOverMemoryCap;
+
+    // Puts the session's own approach to its cap on the bar (AC-661), and past the cap the same line with a Kill
+    // button beside the toast that also fires (AC-700) — being cut off is announced before it happens, and the
+    // choice outlives the toast. One key for both states; the over/under verdict is `SessionMemoryPressure`'s.
     public void ReportMemoryAgainstCap(long usedBytes)
     {
         if (MemoryCapBytes is not { } cap || cap <= 0)
@@ -691,13 +696,30 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
+        var crossing = SessionMemoryPressure.Decide(usedBytes, cap, IsOverMemoryCap);
+        IsOverMemoryCap = crossing.Warned;
+
+        if (crossing.Warn)
+        {
+            // AC-700: a fresh crossing, so a Dismiss at 80% cannot leave the Kill button behind a hidden bar.
+            _RaiseOrClear(MemoryCapWarningKey, says: null);
+        }
+
         _RaiseOrClear(
             MemoryCapWarningKey,
-            usedBytes < cap * MemoryCapWarnShare
-                ? null
-                : $"This session is holding {ByteSize.Human(usedBytes)} of its {ByteSize.Human(cap)} memory cap. " +
-                  "Over it the session is cut off by the operating system — the cockpit itself is not.");
+            IsOverMemoryCap
+                ? $"This session is over its {ByteSize.Human(cap)} memory cap, holding {ByteSize.Human(usedBytes)}. " +
+                  "The cockpit will not close it on its own."
+                : usedBytes < cap * MemoryCapWarnShare
+                    ? null
+                    : $"This session is holding {ByteSize.Human(usedBytes)} of its {ByteSize.Human(cap)} memory cap. " +
+                      "Over it the session is cut off by the operating system — the cockpit itself is not.");
     }
+
+    // "Kill session" on the over-cap bar. Straight down the ordinary self-close path — where the toast's own Kill
+    // lands too, and deliberately without the "still running, close it?" prompt: the operator just answered it.
+    [RelayCommand]
+    private void KillOverCapSession() => RaiseCloseRequested();
 
     // Hands the bar to whichever signal is still over its threshold and has not been taken down, most recent
     // crossing first — the same rule that decides what is shown in the first place, so a bar clearing cannot

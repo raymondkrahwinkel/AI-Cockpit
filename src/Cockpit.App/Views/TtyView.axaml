@@ -70,6 +70,10 @@
                             Command="{Binding ChangeResumeMomentCommand}" IsVisible="{Binding CanChangeResumeMoment}"
                             VerticalAlignment="Center"
                             ToolTip.Tip="Pick your own moment instead — the reset is the sensible default, not a rule."/>
+                    <Button Content="Kill session" Classes="Compact"
+                            Command="{Binding KillOverCapSessionCommand}" IsVisible="{Binding IsOverMemoryCap}"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
                     <Button Content="Dismiss" Classes="Compact"
                             Command="{Binding DismissUsageWarningCommand}" VerticalAlignment="Center"
                             ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>

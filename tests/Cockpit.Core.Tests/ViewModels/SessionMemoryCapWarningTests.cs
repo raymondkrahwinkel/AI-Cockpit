@@ -27,6 +27,46 @@ public class SessionMemoryCapWarningTests
     }
 
     [Fact]
+    public void PastTheCap_TheSameBarChangesItsWords_AndOffersTheKill()
+    {
+        // AC-700: the second state of one warning, not a second warning — the bar reads differently and grows a
+        // Kill button, because since AC-692 nothing closes the session on its own.
+        var panel = new TtyViewModel { MemoryCapBytes = 1000 };
+
+        panel.ReportMemoryAgainstCap(850);
+        Assert.False(panel.IsOverMemoryCap);
+
+        panel.ReportMemoryAgainstCap(1100);
+        Assert.True(panel.IsOverMemoryCap);
+        Assert.Contains("over its", panel.UsageWarning);
+
+        // Hysteresis is `SessionMemoryPressure`'s: back under the cap is not enough, it has to fall well back.
+        panel.ReportMemoryAgainstCap(950);
+        Assert.True(panel.IsOverMemoryCap);
+
+        panel.ReportMemoryAgainstCap(850);
+        Assert.False(panel.IsOverMemoryCap);
+        Assert.Contains("of its", panel.UsageWarning);
+    }
+
+    [Fact]
+    public void ADismissAtTheWarningLine_DoesNotHideTheKillWhenTheCapIsActuallyGone()
+    {
+        // "Keep an eye on this" was clicked away; the cap being spent is a different message, and the button that
+        // acts on it lives inside the bar — silenced, it would sit where nothing can reach it.
+        var panel = new TtyViewModel { MemoryCapBytes = 1000 };
+
+        panel.ReportMemoryAgainstCap(850);
+        panel.DismissUsageWarningCommand.Execute(null);
+        Assert.False(panel.HasUsageWarning);
+
+        panel.ReportMemoryAgainstCap(1100);
+
+        Assert.True(panel.HasUsageWarning);
+        Assert.Contains("over its", panel.UsageWarning);
+    }
+
+    [Fact]
     public void WithNoCapAtAll_NothingIsClaimed()
     {
         // macOS, where nothing enforces a cap: a bar that warned about a ceiling that does not exist would be
