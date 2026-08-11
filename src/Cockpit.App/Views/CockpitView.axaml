@@ -1379,6 +1379,11 @@
                                  inside the pane template. -->
                             <Setter Property="controls:SessionTilePanel.IsFocusCandidate" Value="{ReflectionBinding IsSelected}"/>
                             <Setter Property="controls:SessionTilePanel.RailSortKey" Value="{ReflectionBinding RailSortKey}"/>
+                            <!-- AC-696: which panes the grid sizes itself from. A container exists here for every
+                                 session alive, including the other desks' — counting those laid a two-pane tab
+                                 out as a 2x2 with an empty row under it. Distinct from IsPaneVisible, which zoom
+                                 also clears for this desk's own panes. -->
+                            <Setter Property="controls:SessionTilePanel.IsOnActiveDesk" Value="{ReflectionBinding IsOnActiveDesk}"/>
                         </Style>
                         <!-- AC-670: a tile is a miniature of the terminal, so everything you operate the session
                              with goes and everything that says what it is doing stays. -->

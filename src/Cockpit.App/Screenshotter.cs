@@ -205,6 +205,11 @@ internal static class Screenshotter
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+        // AC-696: two sessions on the desk showing while a third runs on another one. Its own scene because the
+        // grid holds a container for every session alive, and the plain "session" scene — one desk, every
+        // session on it — is blind to the difference: this desk's two panes used to lay out as the top row of a
+        // 2x2, with the third desk's session claiming a whole empty row underneath them.
+        ["session-two-desks"] = (_, _) => new MainWindow { DataContext = _TwoSessionDesks() },
         // AC-670: the focus+rail layout, which is the only way to see what a rail tile actually renders as — a
         // miniature of the terminal with the controls you drive it with taken out, one column deep.
         ["focus-rail"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalFocusRailLayout = true } },
@@ -1533,6 +1538,23 @@ internal static class Screenshotter
     // Renders the agent-line inspector (AC-397) with one row in each of its five sections, including a refused send
     // and a claim old enough to look stale — the two rows an operator is actually scanning for, and the two a scene
     // built only from happy-path data would leave undrawn.
+    // The design-time graph's three sample sessions split over two Sessions desks, the first one showing.
+    // The workspace set is assigned last on purpose: that assignment is what re-runs pane visibility, so the
+    // stamps have to be on the sessions before it lands.
+    private static ViewModels.CockpitViewModel _TwoSessionDesks()
+    {
+        var vm = new ViewModels.CockpitViewModel();
+        var here = vm.Workspaces.Settings.Active!;
+        var elsewhere = Cockpit.Core.Workspaces.Workspace.Create("Sessions 2", Cockpit.Core.Workspaces.WorkspaceType.Sessions);
+
+        vm.Sessions[0].WorkspaceId = here.Id;
+        vm.Sessions[1].WorkspaceId = here.Id;
+        vm.Sessions[2].WorkspaceId = elsewhere.Id;
+
+        vm.Workspaces.Settings = vm.Workspaces.Settings.WithWorkspace(elsewhere).WithActive(here.Id);
+        return vm;
+    }
+
     private static ViewModels.AgentLineInspectorViewModel _AgentLine()
     {
         var inspector = new ViewModels.AgentLineInspectorViewModel { DeskNote = "Desk ws-1 · 3 agent session(s)", EmptyNote = string.Empty };
