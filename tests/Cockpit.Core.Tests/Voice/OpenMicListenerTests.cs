@@ -54,6 +54,53 @@ public class OpenMicListenerTests
     }
 
     /// <summary>
+    /// AC-707: transcribing the first utterance used to be awaited inside the capture loop, so the mic stopped
+    /// being read for as long as Whisper took — a second utterance spoken during that window was lost. Holding
+    /// the first clip open here proves the second utterance is still detected and transcribed while the first
+    /// is still in flight, and that the two transcriptions never overlap (the gate the worker already has).
+    /// </summary>
+    [Fact]
+    public async Task Listen_SecondUtteranceArrivesWhileFirstStillTranscribing_BothAreTranscribedWithoutOverlap()
+    {
+        var vad = Substitute.For<IVoiceActivityDetector>();
+        vad.HasSpeechAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>())
+            .Returns(true, false, false, false, true, false, false, false);
+        var speechToText = new GatedSpeechToTextService();
+        var firstClipGate = new TaskCompletionSource();
+        var firstClipStarted = new TaskCompletionSource();
+        speechToText.OnTranscribe = async (index, _) =>
+        {
+            if (index != 0)
+            {
+                return "second";
+            }
+
+            firstClipStarted.TrySetResult();
+            await firstClipGate.Task;
+            return "first";
+        };
+        var listener = _CreateListener(vad, speechToText, _Windows(8));
+        var speechStartedCount = 0;
+        listener.SpeechStarted += (_, _) => Interlocked.Increment(ref speechStartedCount);
+        var transcripts = new List<string>();
+        listener.UtteranceTranscribed += (_, text) => transcripts.Add(text);
+
+        await listener.StartAsync();
+        await firstClipStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // The capture loop reached the second utterance and asked the (still gated) worker to transcribe it too —
+        // proof the mic kept being read instead of stalling behind the first clip's still-pending transcription.
+        await _WaitUntilAsync(() => speechStartedCount == 2);
+
+        firstClipGate.SetResult();
+        await _WaitUntilAsync(() => transcripts.Count == 2);
+        await listener.StopAsync();
+
+        Assert.Equal(["first", "second"], transcripts);
+        Assert.Equal(1, speechToText.MaxConcurrentCalls);
+    }
+
+    /// <summary>
     /// AC-628: starts landing together each opened a microphone. The settings load is held open rather than raced
     /// on timing, so the second call is provably inside the window the guard used to leave open.
     /// </summary>
