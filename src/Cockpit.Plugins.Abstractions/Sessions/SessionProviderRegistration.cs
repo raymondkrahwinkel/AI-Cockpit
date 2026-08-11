@@ -65,4 +65,12 @@ public sealed record SessionProviderRegistration(
     /// login concept, and the host treats such a profile as always ready.
     /// </summary>
     public Func<string, bool>? IsLoggedIn { get; init; }
+
+    /// <summary>
+    /// Starts an in-app login attempt for a profile under this provider — the SDK mirror of
+    /// <see cref="TtyProviderRegistration.StartLogin"/>. <see langword="null"/> (the default) when the provider
+    /// offers no in-app login. Init-only, so an already-compiled plugin keeps its constructor and simply offers
+    /// no in-app login.
+    /// </summary>
+    public Func<string, CancellationToken, ILoginFlow>? StartLogin { get; init; }
 }

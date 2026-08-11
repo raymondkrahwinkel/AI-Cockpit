@@ -38,6 +38,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 {
     private readonly ISessionProfileStore _profileStore;
     private readonly IProfileLoginChecker _loginChecker;
+    private readonly IProfileLoginStarter _loginStarter;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IMcpServerCatalog _mcpServerCatalog;
@@ -85,7 +86,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IProjectMemorySourceRegistry memorySources,
         IProjectOwnershipRegistry projectOwnership,
         SurfaceWindows surfaces,
-        IAssistantProfileStore assistantProfileStore)
+        IAssistantProfileStore assistantProfileStore,
+        IProfileLoginStarter loginStarter)
     {
         _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
@@ -93,6 +95,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _delegatedTasks = delegatedTasks;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
+        _loginStarter = loginStarter;
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
         _mcpServerCatalog = mcpServerCatalog;
@@ -136,7 +139,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
             _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
-            _projectStore, _oauthCoordinator, _memorySources);
+            _projectStore, _oauthCoordinator, _memorySources, _loginStarter);
         await viewModel.LoadAsync();
 
         // The project (AC-164) before the prefill, and by identity out of the loaded list rather than the caller's
@@ -489,7 +492,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     private async Task<Window> _BuildManageProfilesAsync()
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver);
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _loginStarter);
         await viewModel.LoadAsync();
 
         return new ManageProfilesDialog { DataContext = viewModel };

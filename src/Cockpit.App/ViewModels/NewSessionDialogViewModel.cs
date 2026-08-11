@@ -38,6 +38,7 @@ namespace Cockpit.App.ViewModels;
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginStarter? _loginStarter;
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
@@ -461,8 +462,42 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public string LoginStatusLabel => IsSelectedProfileLoggedIn ? "logged in" : "not logged in";
 
-    // Guidance shown (in the body) only when a Claude SDK session isn't logged in — a TTY session logs in via its own TUI, and a local provider has no login.
-    public bool ShowLoginHint => IsClaudeProfile && IsSdk && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
+    // Guidance shown (in the body) only for an SDK session that is not logged in — a TTY session logs in via its
+    // own TUI, and a local provider (Ollama/LM Studio) has no login at all. AC-713: generalized off `IsClaudeProfile`
+    // — Codex now declares its own `IsLoggedIn`/`StartLogin` the same way, so it gates and offers this the same way.
+    public bool ShowLoginHint => IsSdk && !IsLocalProfile && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
+
+    // AC-713: the in-app sign-in this hint's "Login" button starts, and its running flow — same shape as the
+    // transcript row and the Manage-profiles dialog, so a login always looks and behaves the same wherever it
+    // starts. `null` when `_loginStarter` was not supplied (design-time preview, most existing tests) or before
+    // the operator has clicked it.
+    [ObservableProperty]
+    private LoginFlowRowViewModel? _loginFlow;
+
+    public bool HasLoginFlow => LoginFlow is not null;
+
+    partial void OnLoginFlowChanged(LoginFlowRowViewModel? value) => OnPropertyChanged(nameof(HasLoginFlow));
+
+    public bool CanStartLogin => _loginStarter is not null;
+
+    [RelayCommand(CanExecute = nameof(CanStartLogin))]
+    private void Login()
+    {
+        if (SelectedProfile is not { } profile || _loginStarter?.StartLogin(profile, CancellationToken.None) is not { } flow)
+        {
+            return;
+        }
+
+        var loginFlow = new LoginFlowRowViewModel(flow);
+        loginFlow.Completed = succeeded =>
+        {
+            if (succeeded)
+            {
+                IsSelectedProfileLoggedIn = true;
+            }
+        };
+        LoginFlow = loginFlow;
+    }
 
     public string LoginStatusBrushKey => IsSelectedProfileLoggedIn
         ? "CockpitStatusDoneBrush"
@@ -505,13 +540,15 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IMcpToolTokenEstimator? tokenEstimator = null,
         IProjectStore? projectStore = null,
         IMcpOAuthCoordinator? oauthCoordinator = null,
-        IProjectMemorySourceRegistry? memorySourceRegistry = null)
+        IProjectMemorySourceRegistry? memorySourceRegistry = null,
+        IProfileLoginStarter? loginStarter = null)
     {
         _projectStore = projectStore;
         _memorySources = memorySourceRegistry?.Sources.ToMemorySources();
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
+        _loginStarter = loginStarter;
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _workingPathStore = workingPathStore;
@@ -978,6 +1015,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // The generic login checker gates whichever provider declares a login; a profile whose provider has no
         // gate (or a profile-less/local session) reports logged in, so gating never falsely blocks it.
         IsSelectedProfileLoggedIn = value is not null && (_loginChecker?.IsLoggedIn(value) ?? true);
+        // AC-713: a running flow belongs to the profile that started it — switching away must not leave a stale
+        // one showing (or submittable) against whatever profile is selected now.
+        LoginFlow = null;
         OnPropertyChanged(nameof(SelectedProfileConfigDir));
         OnPropertyChanged(nameof(IsClaudeProfile));
         OnPropertyChanged(nameof(IsLocalProfile));

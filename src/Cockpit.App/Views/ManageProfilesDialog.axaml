@@ -358,8 +358,9 @@
                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     </StackPanel>
 
-                    <!-- Session defaults + login are Claude-CLI concepts; a local provider has no permission
-                         mode / thinking budget / login, so this whole block is hidden for those. -->
+                    <!-- Session defaults are a Claude-CLI concept; a local provider has no permission mode /
+                         thinking budget, so this whole block is hidden for those. Login (below) is its own,
+                         provider-neutral section — Codex has one too, but none of these typed fields. -->
                     <StackPanel Spacing="11" IsVisible="{Binding IsClaudeProvider}">
                         <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
@@ -381,22 +382,51 @@
                                                  FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
                                                  HorizontalAlignment="Stretch"/>
                             </StackPanel>
-                            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                                 <TextBlock Text="Effort" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                 <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Efforts}"
                                           SelectedItem="{Binding SelectedEffort}"
                                           DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                             </StackPanel>
-                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
-                                <TextBlock Text="Login" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" Height="30">
-                                    <Ellipse Width="8" Height="8"
-                                             Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                    <TextBlock Text="{Binding LoginStatusLabel}" VerticalAlignment="Center"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                </StackPanel>
-                            </StackPanel>
                         </Grid>
+                    </StackPanel>
+
+                    <!-- AC-713: login status + in-app sign-in, provider-neutral (any plugin provider may declare
+                         StartLogin — today Claude and Codex) — a local HTTP provider (Ollama/LM Studio) has no
+                         login at all. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding !IsLocalProvider}">
+                        <TextBlock Text="LOGIN" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8"
+                                     Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                            <TextBlock Text="{Binding LoginStatusLabel}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <Button Content="Login" Classes="Compact" Command="{Binding LoginCommand}"
+                                    IsVisible="{Binding CanStartLogin}" Margin="6,0,0,0"/>
+                        </StackPanel>
+                        <!-- Same inline flow shape as the transcript row (AC-713) — one place a login flow plays out. -->
+                        <StackPanel Spacing="6" IsVisible="{Binding HasLoginFlow}">
+                            <TextBlock Text="{Binding LoginFlow.Message}" TextWrapping="Wrap" FontSize="12"/>
+                            <Button Content="{Binding LoginFlow.LinkToOpen}" Classes="Compact" HorizontalAlignment="Left"
+                                    Command="{Binding LoginFlow.OpenLinkCommand}"
+                                    IsVisible="{Binding LoginFlow.HasLink}"/>
+                            <WrapPanel IsVisible="{Binding LoginFlow.AwaitsInput}">
+                                <TextBox Text="{Binding LoginFlow.CodeInput}" Width="220" FontSize="11" Padding="6,4"
+                                         Margin="0,0,6,4" PlaceholderText="Paste the code here"/>
+                                <Button Content="Submit" Classes="Accent Compact" Margin="0,0,0,4"
+                                        Command="{Binding LoginFlow.SubmitCommand}"/>
+                            </WrapPanel>
+                            <TextBlock Text="Waiting for the sign-in to finish…" FontSize="11"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                       IsVisible="{Binding LoginFlow.IsSubmitting}"/>
+                            <TextBlock Text="Signed in." FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                       IsVisible="{Binding LoginFlow.Succeeded}"/>
+                            <TextBlock Text="{Binding LoginFlow.ErrorMessage}" TextWrapping="Wrap" FontSize="11.5"
+                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                       IsVisible="{Binding LoginFlow.HasError}"/>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Session defaults for a plugin provider (Claude and Codex are both plugins now): the provider's

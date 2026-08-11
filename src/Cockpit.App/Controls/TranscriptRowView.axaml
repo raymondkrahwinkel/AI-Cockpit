@@ -417,6 +417,32 @@
             <Button Content="{Binding ActionLabel}" Command="{Binding ActionCommand}"
                     Classes="Compact actionButton" HorizontalAlignment="Left"
                     IsVisible="{Binding HasAction}"/>
+
+            <!-- AC-713: the login flow this row's "Login" action (or the panel-wide auth-expiry bar) started —
+                 there is exactly one place a login flow ever plays out, regardless of where it began. -->
+            <Border Classes="paneChrome" Padding="8,6" IsVisible="{Binding HasLoginFlow}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{Binding LoginFlow.Message}" TextWrapping="Wrap" FontSize="12"/>
+                    <Button Content="{Binding LoginFlow.LinkToOpen}" Classes="Compact" HorizontalAlignment="Left"
+                            Command="{Binding LoginFlow.OpenLinkCommand}"
+                            IsVisible="{Binding LoginFlow.HasLink}"
+                            ToolTip.Tip="Opens in your browser."/>
+                    <WrapPanel IsVisible="{Binding LoginFlow.AwaitsInput}">
+                        <TextBox Text="{Binding LoginFlow.CodeInput}" Width="220" FontSize="11" Padding="6,4"
+                                 Margin="0,0,6,4" PlaceholderText="Paste the code here"/>
+                        <Button Content="Submit" Classes="Accent Compact" Margin="0,0,0,4"
+                                Command="{Binding LoginFlow.SubmitCommand}"/>
+                    </WrapPanel>
+                    <TextBlock Text="Waiting for the sign-in to finish…" FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding LoginFlow.IsSubmitting}"/>
+                    <TextBlock Text="Signed in." FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               IsVisible="{Binding LoginFlow.Succeeded}"/>
+                    <TextBlock Text="{Binding LoginFlow.ErrorMessage}" TextWrapping="Wrap" FontSize="11.5"
+                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                               IsVisible="{Binding LoginFlow.HasError}"/>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </Border>
 </UserControl>

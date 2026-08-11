@@ -160,11 +160,27 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     [ObservableProperty]
     private IRelayCommand? _actionCommand;
 
-    public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel) && ActionCommand is not null;
+    public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel) && ActionCommand is not null && LoginFlow is null;
 
     partial void OnActionLabelChanged(string? value) => OnPropertyChanged(nameof(HasAction));
 
     partial void OnActionCommandChanged(IRelayCommand? value) => OnPropertyChanged(nameof(HasAction));
+
+    // --- Login flow (AC-713) ----------------------------------------------------------------------------------
+    // Set once the row's "Login" action (or the panel-wide auth-expiry warning) has started an `ILoginFlow` — the
+    // row then renders this inline instead of the action button, so a login always plays out in the same place
+    // regardless of where it began.
+
+    [ObservableProperty]
+    private LoginFlowRowViewModel? _loginFlow;
+
+    public bool HasLoginFlow => LoginFlow is not null;
+
+    partial void OnLoginFlowChanged(LoginFlowRowViewModel? value)
+    {
+        OnPropertyChanged(nameof(HasAction));
+        OnPropertyChanged(nameof(HasLoginFlow));
+    }
 
     partial void OnQuestionPromptsChanged(IReadOnlyList<AskUserQuestionViewModel>? value)
     {

@@ -157,6 +157,14 @@
                                         IsVisible="{Binding ShowKill}"
                                         VerticalAlignment="Center"
                                         ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
+                                <!-- AC-713: opens in the row this starts (a fresh one, if none is open yet) — not
+                                     here, so a login flow always plays out in the same place regardless of where
+                                     it began. -->
+                                <Button Content="Sign in again" Classes="Accent Compact"
+                                        Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).SignInAgainCommand}"
+                                        IsVisible="{Binding ShowSignInAgain}"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="Opens the sign-in flow in the transcript below."/>
                                 <Button Content="Dismiss" Classes="Compact"
                                         Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).DismissWarningCommand}"
                                         CommandParameter="{Binding Key}"

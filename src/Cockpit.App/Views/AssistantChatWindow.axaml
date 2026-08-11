@@ -288,6 +288,13 @@
                                             Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.KillOverCapSessionCommand}"
                                             IsVisible="{Binding ShowKill}"
                                             ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
+                                    <!-- AC-713: opens in the row this starts (a fresh one, if none is open yet) —
+                                         not here, so a login flow always plays out in the same place regardless
+                                         of where it began. -->
+                                    <Button Content="Sign in again" Classes="Accent Compact" Margin="0,0,6,4"
+                                            Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.SignInAgainCommand}"
+                                            IsVisible="{Binding ShowSignInAgain}"
+                                            ToolTip.Tip="Opens the sign-in flow in the transcript below."/>
                                     <Button Content="Dismiss" Classes="Compact" Margin="0,0,0,4"
                                             Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.DismissWarningCommand}"
                                             CommandParameter="{Binding Key}"
