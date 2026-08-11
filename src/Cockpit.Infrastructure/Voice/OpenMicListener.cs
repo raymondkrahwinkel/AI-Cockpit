@@ -174,7 +174,11 @@ internal sealed class OpenMicListener(
                             // Before transcribing, not after: transcription is the part worth showing a spinner
                             // for, and announcing the end once it finished would be announcing it too late.
                             SpeechEnded?.Invoke(this, EventArgs.Empty);
-                            await _FinalizeUtteranceAsync([.. utterance], cancellationToken).ConfigureAwait(false);
+
+                            // AC-707: fire-and-forget — awaiting here stalled the capture loop for as long as
+                            // Whisper took, dropping frames. WhisperWorkerSpeechToTextService._gate serializes
+                            // clips onto one worker, so utterances still finish in order.
+                            _ = _FinalizeUtteranceAsync([.. utterance], cancellationToken);
                             utterance.Clear();
                             break;
                     }
@@ -191,7 +195,17 @@ internal sealed class OpenMicListener(
 
     private async Task _FinalizeUtteranceAsync(float[] samples, CancellationToken cancellationToken)
     {
-        var text = await speechToText.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
+        string text;
+        try
+        {
+            text = await speechToText.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected: StopAsync cancelled this clip mid-transcription. Nothing awaits this task directly
+            // (it is fire-and-forget), so this has to be caught here rather than by a caller's try/catch.
+            return;
+        }
 
         // Raised even when the transcript filtered down to nothing (a throat-clear or a bare "um" the noise filter
         // removed): the overlay was flipped to "Transcribing" on SpeechEnded, and the coordinator clears it when the
