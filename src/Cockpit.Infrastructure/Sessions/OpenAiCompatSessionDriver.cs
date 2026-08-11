@@ -1,5 +1,6 @@
 using System.ClientModel;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.AI;
@@ -251,7 +252,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
             }
 
             _logger.LogWarning(ex, "OpenAI-compatible chat request failed: {Message}", message);
-            _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = message, Exception = ex });
+            _events.Writer.TryWrite(new SessionError
+            {
+                SessionId = _sessionId,
+                Message = message,
+                Exception = ex,
+                Kind = _ClassifyError(ex),
+                RetryAfter = _RetryAfterFrom(ex),
+            });
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
     }
@@ -316,7 +324,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // unparseable tool template) rather than a bare "HTTP 400 (Bad Request)" (AC-132).
         var message = _DescribeError(ex);
         _logger.LogWarning(ex, "OpenAI-compatible chat request failed: {Message}", message);
-        _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = message, Exception = ex });
+        _events.Writer.TryWrite(new SessionError
+        {
+            SessionId = _sessionId,
+            Message = message,
+            Exception = ex,
+            Kind = _ClassifyError(ex),
+            RetryAfter = _RetryAfterFrom(ex),
+        });
         _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
     }
 
@@ -373,6 +388,36 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     }
 
     private const int MaxErrorBodyChars = 2000;
+
+    // AC-720: the HTTP status is the one structured signal an OpenAI-compatible server gives — the SDK
+    // otherwise collapses everything into free text (_DescribeError above). Presentation-only classification;
+    // an unrecognised status (including "no response received", Status == 0) stays Unknown/informational.
+    internal static SessionErrorKind _ClassifyError(Exception ex) => ex switch
+    {
+        ClientResultException { Status: 401 or 403 } => SessionErrorKind.AuthRequired,
+        ClientResultException { Status: 429 } => SessionErrorKind.RateLimited,
+        ClientResultException { Status: >= 500 } => SessionErrorKind.ServiceUnavailable,
+        _ => SessionErrorKind.Unknown,
+    };
+
+    // A 429's Retry-After header — RFC 9110 §10.2.3 allows either delta-seconds or an HTTP-date.
+    internal static DateTimeOffset? _RetryAfterFrom(Exception ex)
+    {
+        if (ex is not ClientResultException clientError
+            || clientError.GetRawResponse()?.Headers.TryGetValue("Retry-After", out var value) != true)
+        {
+            return null;
+        }
+
+        if (int.TryParse(value, out var seconds))
+        {
+            return DateTimeOffset.UtcNow.AddSeconds(seconds);
+        }
+
+        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var absolute)
+            ? absolute
+            : null;
+    }
 
     async Task<ToolApprovalResult> IToolApprovalGate.RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken)
     {

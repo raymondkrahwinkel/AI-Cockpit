@@ -54,11 +54,28 @@
                            Classes="transcript"/>
             </StackPanel>
 
-            <!-- Questions / errors / turn-result rows: plain wrapped text, not a bubble or
-                 markdown; indented to sit in the reply column. -->
+            <!-- Questions / turn-result rows: plain wrapped text, not a bubble or markdown;
+                 indented to sit in the reply column. An error row (AC-720) gets its own card below. -->
             <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                        Classes="transcript rowIndent"
                        IsVisible="{Binding IsPlainNonMarkdown}"/>
+
+            <!-- AC-720: a driver-reported failure renders as a severity-coloured card, never guessing red/amber
+                 for an unclassified type (falls to informational). Raw provider text always shows in full. -->
+            <Border IsVisible="{Binding IsErrorRow}" ClipToBounds="True" Classes="errorCard rowIndent"
+                    Classes.blocking="{Binding IsBlockingError}"
+                    Classes.temporary="{Binding IsTemporaryError}"
+                    Classes.informational="{Binding IsInformationalError}">
+                <DockPanel Margin="11,9,11,10">
+                    <materialIcons:MaterialIcon DockPanel.Dock="Left" Classes="errorIcon" Kind="{Binding ErrorIconKind}"
+                                                Width="14" Height="14" Margin="0,1,9,0" VerticalAlignment="Top"/>
+                    <StackPanel Spacing="4">
+                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="transcript"/>
+                        <TextBlock Text="{Binding RetryAfterText}" IsVisible="{Binding HasRetryAfter}"
+                                   FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
 
             <!-- Context-cleared divider (AC-564): a hairline across the full width with its
                  label in the middle, so the break reads as a break in the conversation rather

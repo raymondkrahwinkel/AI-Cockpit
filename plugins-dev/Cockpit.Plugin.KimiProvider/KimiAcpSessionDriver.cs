@@ -278,7 +278,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             // through in sync (P1-8's precedent: a thrown message a caller shows verbatim, e.g. SessionViewModel's
             // Status = $"Failed to start: {ex.Message}") — the event and the rethrown exception carry the same text.
             var actionableMessage = "Kimi is not authenticated. Set an API key in this provider's configuration, or run \"kimi acp --login\" to sign in, then try again.";
-            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = actionableMessage });
+            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = actionableMessage, Kind = PluginSessionErrorKind.AuthRequired });
             throw new KimiAcpException(actionableMessage, exception.Code.Value);
         }
 

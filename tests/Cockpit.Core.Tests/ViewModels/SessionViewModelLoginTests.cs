@@ -113,6 +113,9 @@ public class SessionViewModelLoginTests
 
         var entry = Assert.Single(vm.Transcript);
         Assert.NotNull(entry.LoginFlow);
+        // AC-720: not an Error row — this is a status line, not a driver failure, and Error rows now
+        // render as a severity-coloured card that would misread "Signing in again…" as a problem.
+        Assert.False(entry.IsErrorRow);
 
         await vm.DisposeAsync();
     }

@@ -1085,7 +1085,21 @@ public class PluginSessionDriverAdapterTests
         yield return
         [
             new PluginSessionError { SessionId = "s1", Message = "boom" },
-            (Func<SessionEvent, bool>)(evt => evt is SessionError error && error.Message == "boom"),
+            (Func<SessionEvent, bool>)(evt => evt is SessionError error && error.Message == "boom" && error.Kind == SessionErrorKind.Unknown),
+        ];
+        yield return
+        [
+            // AC-720: Kind and RetryAfter cross the plugin/host boundary as their own (separately typed) enum.
+            new PluginSessionError
+            {
+                SessionId = "s1",
+                Message = "not authenticated",
+                Kind = PluginSessionErrorKind.AuthRequired,
+                RetryAfter = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            },
+            (Func<SessionEvent, bool>)(evt => evt is SessionError error
+                && error.Kind == SessionErrorKind.AuthRequired
+                && error.RetryAfter == new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
         ];
 
         // #45 D3 — the richer events a plugin can now express: a reasoning trace, the session's cwd, and a turn's

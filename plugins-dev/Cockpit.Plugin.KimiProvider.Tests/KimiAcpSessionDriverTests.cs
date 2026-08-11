@@ -1155,6 +1155,7 @@ public class KimiAcpSessionDriverTests
         var error = await _NextEventOfTypeAsync<PluginSessionError>(driver);
         Assert.Contains("kimi acp --login", error.Message);
         Assert.Contains("API key", error.Message);
+        Assert.Equal(PluginSessionErrorKind.AuthRequired, error.Kind);
     }
 
     // P1-10b regression: an authRequired failure on the JSON-RPC error must not be confused with any other

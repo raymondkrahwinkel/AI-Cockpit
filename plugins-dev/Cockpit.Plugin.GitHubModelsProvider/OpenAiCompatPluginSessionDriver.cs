@@ -1,3 +1,5 @@
+using System.ClientModel;
+using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.AI;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -94,9 +96,45 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         }
         catch (Exception ex)
         {
-            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = ex.Message });
+            _events.Publish(new PluginSessionError
+            {
+                SessionId = _sessionId,
+                Message = ex.Message,
+                Kind = _ClassifyError(ex),
+                RetryAfter = _RetryAfterFrom(ex),
+            });
             _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
+    }
+
+    // AC-720: the HTTP status is the one structured signal an OpenAI-compatible server gives — mirrors
+    // the host's own Cockpit.Infrastructure.Sessions.OpenAiCompatSessionDriver._ClassifyError. An
+    // unrecognised status stays Unknown/informational rather than a guessed severity.
+    private static PluginSessionErrorKind _ClassifyError(Exception ex) => ex switch
+    {
+        ClientResultException { Status: 401 or 403 } => PluginSessionErrorKind.AuthRequired,
+        ClientResultException { Status: 429 } => PluginSessionErrorKind.RateLimited,
+        ClientResultException { Status: >= 500 } => PluginSessionErrorKind.ServiceUnavailable,
+        _ => PluginSessionErrorKind.Unknown,
+    };
+
+    // A 429's Retry-After header — RFC 9110 §10.2.3 allows either delta-seconds or an HTTP-date.
+    private static DateTimeOffset? _RetryAfterFrom(Exception ex)
+    {
+        if (ex is not ClientResultException clientError
+            || clientError.GetRawResponse()?.Headers.TryGetValue("Retry-After", out var value) != true)
+        {
+            return null;
+        }
+
+        if (int.TryParse(value, out var seconds))
+        {
+            return DateTimeOffset.UtcNow.AddSeconds(seconds);
+        }
+
+        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var absolute)
+            ? absolute
+            : null;
     }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default)

@@ -658,6 +658,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             SessionId = error.SessionId,
             Message = error.Message,
+            Kind = error.Kind switch
+            {
+                PluginSessionErrorKind.AuthRequired => SessionErrorKind.AuthRequired,
+                PluginSessionErrorKind.RateLimited => SessionErrorKind.RateLimited,
+                PluginSessionErrorKind.ServiceUnavailable => SessionErrorKind.ServiceUnavailable,
+                _ => SessionErrorKind.Unknown,
+            },
+            RetryAfter = error.RetryAfter,
         },
         _ => new UnknownEvent { SessionId = pluginEvent.SessionId, RawJson = string.Empty },
     };

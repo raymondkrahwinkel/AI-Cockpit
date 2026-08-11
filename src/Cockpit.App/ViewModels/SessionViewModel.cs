@@ -2302,8 +2302,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // noise in the transcript (T4). The Done status still fires below.
                 if (turn.IsError)
                 {
+                    // AC-720: the subtype alone ("error_during_execution") names nothing actionable — show
+                    // the provider's own reason (AC-410's Errors) when the event carries one.
+                    var reason = _TurnFailureReason(turn);
                     Transcript.Add(new TranscriptEntryViewModel(
-                        TranscriptEntryKind.TurnCompleted, $"Turn failed ({turn.Subtype})"));
+                        TranscriptEntryKind.TurnCompleted,
+                        reason is null ? $"Turn failed ({turn.Subtype})" : $"Turn failed ({turn.Subtype}): {reason}"));
                 }
 
                 // AC-410: the first turn of a restored pane's own launch settles the resume snapshot, one way or
@@ -2376,7 +2380,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case SessionError error:
-                var errorEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message);
+                var errorEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message)
+                {
+                    // AC-720: trust a driver that classified itself; otherwise fall back to the host's text
+                    // heuristic so an untyped driver still renders better than a guessed severity.
+                    ErrorKind = error.Kind == SessionErrorKind.Unknown
+                        ? SessionErrorClassifier.Classify(error.Message)
+                        : error.Kind,
+                    RetryAfter = error.RetryAfter,
+                };
                 // AC-713: re-checks the profile's own login gate rather than pattern-matching `error.Message`.
                 if (_profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
                 {
@@ -2623,14 +2635,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // pointing at the cause. Naming the directory the resume was made in is what makes it actionable.
     private static string _DegradedTurnExplanation(TurnCompleted turn, string? workingDirectory)
     {
-        var reason = turn.Errors is { Count: > 0 } errors
-            ? string.Join('\n', errors)
-            : $"Claude could not resume the earlier conversation ({turn.Subtype}).";
+        var reason = _TurnFailureReason(turn) ?? $"Claude could not resume the earlier conversation ({turn.Subtype}).";
 
         return workingDirectory is { Length: > 0 } directory
             ? $"{reason}\nThe resume was made in {directory} — Claude keeps its conversations per working directory, so one saved elsewhere is not found here."
             : reason;
     }
+
+    // The provider's own reason a turn failed (AC-410), when it gave one — null otherwise.
+    private static string? _TurnFailureReason(TurnCompleted turn) =>
+        turn.Errors is { Count: > 0 } errors ? string.Join('\n', errors) : null;
 
     // --- Login flow (AC-713) ----------------------------------------------------------------------------------
 
@@ -2639,7 +2653,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // flow ever plays out, regardless of where it started.
     protected override void OnSignInAgainRequested()
     {
-        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, "Signing in again…");
+        // AC-720: TurnCompleted, not Error — this is a status line, not a driver failure, and Error rows
+        // now render as a severity-coloured card that would misread "Signing in again…" as a problem.
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.TurnCompleted, "Signing in again…");
         Transcript.Add(entry);
         _StartLoginFlow(entry);
     }
