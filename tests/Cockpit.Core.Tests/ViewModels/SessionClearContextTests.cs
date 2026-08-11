@@ -107,13 +107,15 @@ public class SessionClearContextTests
         Assert.Equal(66, vm.ContextUsedPercent);
         Assert.True(vm.HasUsage);
 
+        // AC-701: the restarted pane polls usage at start, so the header shows the new conversation's own figure.
+        driver.CurrentStatus.Returns(new SessionStatusFeed(2, []));
+
         await vm.ClearContextAsync(Profile);
 
         // "ctx 66%" over a conversation that has no context is a number that actively lies, and the token total
         // belongs to the process that ran it up (decision 3).
-        Assert.Null(vm.ContextUsedPercent);
+        Assert.Equal(2, vm.ContextUsedPercent);
         Assert.Empty(vm.RateLimits);
-        Assert.Empty(vm.LimitsTooltip);
         Assert.False(vm.HasUsage);
         Assert.Empty(vm.UsageSummary);
 
