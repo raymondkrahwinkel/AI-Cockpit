@@ -483,6 +483,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
         inner.RespondToPermissionAsync(toolUseId, allow, cancellationToken);
 
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
+        inner.RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken);
+
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) =>
         inner.SetAutoApproveToolsAsync(enabled, cancellationToken);
 

@@ -46,6 +46,8 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
 
     public (string ToolUseId, bool Allow)? LastPermissionResponse { get; private set; }
 
+    public string? LastPermissionAnswersJson { get; private set; }
+
     public bool? LastAutoApprove { get; private set; }
 
     public bool Disposed { get; private set; }
@@ -90,6 +92,12 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
     {
         LastPermissionResponse = (toolUseId, allow);
         return Task.CompletedTask;
+    }
+
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken)
+    {
+        LastPermissionAnswersJson = answersJson;
+        return RespondToPermissionAsync(toolUseId, allow, cancellationToken);
     }
 
     public Task AllowPermissionAlwaysAsync(string toolUseId, CancellationToken cancellationToken = default)

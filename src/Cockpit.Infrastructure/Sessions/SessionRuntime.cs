@@ -135,6 +135,9 @@ internal sealed class SessionRuntime : ISessionRuntime
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
         _driver?.RespondToPermissionAsync(toolUseId, allow, cancellationToken) ?? Task.CompletedTask;
 
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
+        _driver?.RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken) ?? Task.CompletedTask;
+
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
         _driver?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope, cancellationToken) ?? Task.CompletedTask;
 

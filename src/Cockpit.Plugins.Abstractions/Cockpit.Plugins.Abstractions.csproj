@@ -365,7 +365,13 @@
          at a source-chosen target, the missing "publish" mirror of PrepareBindingAsync's "attach" — the naad AC-242's
          own outbound direction never had one for. Major and abstractionsVersion stay 1. Consumed in-repo by
          Cockpit.Plugin.Depot, whose minHostVersion moves with it. -->
-    <Version>1.51.0</Version>
+    <!-- 1.52.0 (AC-715): added the IPluginSessionDriver.RespondToPermissionAsync overload that also carries the
+         operator's answers — a clarifying-question tool (Claude's AskUserQuestion, which Kimi tunnels over ACP under
+         the same name) rides the permission callback but asks for an answer, and allow/deny alone approves the
+         question while leaving the agent waiting. Default-implemented onto the plain allow, so a provider without
+         such a tool and every already-compiled plugin are unaffected. Additions only — a minor; major and
+         abstractionsVersion stay 1. -->
+    <Version>1.52.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

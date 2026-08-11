@@ -109,6 +109,16 @@ public interface ISessionDriver : IAsyncDisposable
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Resolves the decision carrying the operator's <em>answers</em> as well (AC-715) — what a clarifying-question
+    /// tool such as Claude's <c>AskUserQuestion</c> asks for, where allow/deny alone leaves the agent approved but
+    /// unanswered. <paramref name="answersJson"/> is a JSON object keyed by question text with the chosen option
+    /// label(s) as its values; the default drops it and falls back to the plain allow above, for a driver whose
+    /// provider has no such tool.
+    /// </summary>
+    Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
+        RespondToPermissionAsync(toolUseId, allow, cancellationToken);
+
+    /// <summary>
     /// Allows the outstanding decision for <paramref name="toolUseId"/> and persists an always-allow
     /// rule for the session's profile so this tool call is auto-allowed from now on — both for the
     /// rest of this session (the coordinator short-circuits future prompts) and across restarts

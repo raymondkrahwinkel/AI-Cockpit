@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -158,9 +159,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 return string.Empty;
             }
 
-            return _IsAwaitingPermission(call.ToolUseId)
-                ? "waiting for permission"
-                : $"running {_FormatElapsed(DateTimeOffset.Now - call.StartedAt)}";
+            if (!_IsAwaitingPermission(call.ToolUseId))
+            {
+                return $"running {_FormatElapsed(DateTimeOffset.Now - call.StartedAt)}";
+            }
+
+            // AC-715: a clarifying question is blocked on an answer, not on consent — "waiting for permission"
+            // sends the operator looking for an Allow button that is deliberately not there.
+            return Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.HasQuestionPrompts == true
+                ? "waiting for an answer"
+                : "waiting for permission";
         }
     }
 
@@ -1726,10 +1734,35 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ = _DispatchMessageAsync(next.Text, next.Images);
     }
 
+    // The clarifying-question tool, which arrives over the permission callback like any other tool but wants an
+    // answer rather than consent (AC-715). Named the same on both providers that send one: Claude's own tool, and
+    // Kimi's, which tunnels it over ACP under this title.
+    private const string AskUserQuestionToolName = "AskUserQuestion";
+
     [RelayCommand]
     private async Task AllowToolAsync(TranscriptEntryViewModel entry)
     {
         await RespondToPermissionAsync(entry, allow: true);
+    }
+
+    // Sends the operator's picks back as the tool's own input — where AskUserQuestion reads them. An allow
+    // without them approves the question and leaves the agent waiting for an answer that never comes.
+    [RelayCommand]
+    private async Task SubmitQuestionAnswersAsync(TranscriptEntryViewModel entry)
+    {
+        if (!entry.CanSubmitAnswers || entry.QuestionPrompts is not { Count: > 0 } prompts)
+        {
+            return;
+        }
+
+        var answers = new JsonObject();
+        foreach (var prompt in prompts)
+        {
+            answers[prompt.Question] = prompt.Answer;
+            prompt.IsAnswered = true;
+        }
+
+        await RespondToPermissionAsync(entry, allow: true, answers.ToJsonString());
     }
 
     [RelayCommand]
@@ -1752,20 +1785,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await AllowAlwaysAsync(entry, PermissionRuleScope.Wildcard);
     }
 
-    private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow)
+    private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null)
     {
         if (_runtime is null || entry.ToolUseId is null)
         {
             return;
         }
 
-        entry.PermissionDecision = allow ? "Allowed" : "Denied";
+        entry.PermissionDecision = answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied";
         entry.IsPendingPermission = false;
         // AC-532: the operator's decision may be what the composer's activity band was showing "waiting for
         // permission" for — re-raise so it reverts to the normal running text (or goes quiet, if this was the
         // call's only reason to still be shown).
         _RaiseActiveToolActivityChanged();
-        await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow);
+        await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson, CancellationToken.None);
     }
 
     private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
@@ -2218,6 +2251,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
                 if (entry is not null)
                 {
+                    // AC-715: an AskUserQuestion rides this same callback but asks for an answer, not consent —
+                    // parse its questions here so the row renders them as choices instead of Allow/Deny over raw
+                    // JSON. Any other tool parses to nothing and keeps the ordinary consent card.
+                    entry.QuestionPrompts = permission.ToolName == AskUserQuestionToolName
+                        ? AskUserQuestionViewModel.Parse(permission.InputJson)
+                        : null;
                     entry.IsPendingPermission = true;
                     // AC-532: a top-level call stalling on this prompt is why the turn looks idle right now —
                     // flip the composer's activity band from "running" to "waiting for permission" so that reads

@@ -633,6 +633,97 @@
                                     <SelectableTextBlock IsVisible="{Binding ShowHumanToolLine}" Text="{Binding HumanToolText}"
                                                          TextWrapping="Wrap" Classes="transcript"/>
 
+                                    <!-- AC-715: an AskUserQuestion rides the permission callback like any other tool,
+                                         but Allow/Deny is not an answer to it — so it renders as the agent's own
+                                         options instead of the consent buttons over raw JSON. Non-modal, and it
+                                         stays put with the chosen labels once sent. -->
+                                    <Border IsVisible="{Binding HasQuestionPrompts}" ClipToBounds="True"
+                                            CornerRadius="{StaticResource CockpitControlRadius}"
+                                            Background="{StaticResource CockpitPanelBgBrush}"
+                                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                        <DockPanel>
+                                            <Border DockPanel.Dock="Left" Width="3" Background="{StaticResource CockpitAccentBrush}"/>
+                                            <StackPanel Margin="11,9,11,10" Spacing="9">
+                                                <!-- One card, one block per question (1-4 per call) and one Send at the
+                                                     bottom: four cards for one round-trip would be four things to scroll
+                                                     past for a decision the agent takes in one go. -->
+                                                <ItemsControl ItemsSource="{Binding QuestionPrompts}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Spacing="11"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:AskUserQuestionViewModel">
+                                                            <StackPanel Spacing="6">
+                                                                <DockPanel>
+                                                                    <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="HelpCircleOutline"
+                                                                                                Width="14" Height="14" Margin="0,1,7,0"
+                                                                                                VerticalAlignment="Top"
+                                                                                                Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Header}"
+                                                                               IsVisible="{Binding HasHeader}" Margin="8,0,0,0"
+                                                                               VerticalAlignment="Top" FontSize="11"
+                                                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                    <SelectableTextBlock Text="{Binding Question}" TextWrapping="Wrap"
+                                                                                         FontWeight="SemiBold" FontSize="12.5"/>
+                                                                </DockPanel>
+
+                                                                <ItemsControl ItemsSource="{Binding Options}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <StackPanel Spacing="4"/>
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate x:DataType="vm:AskUserQuestionOptionViewModel">
+                                                                            <!-- The tick column keeps its width whether or not a tick is in
+                                                                                 it, so picking one does not shunt the labels sideways. -->
+                                                                            <Button Classes="optionChip" Command="{Binding SelectCommand}"
+                                                                                    IsEnabled="{Binding IsSelectable}">
+                                                                                <Grid ColumnDefinitions="Auto,Auto,*">
+                                                                                    <Panel Grid.Column="0" Width="13" Margin="0,0,7,0">
+                                                                                        <materialIcons:MaterialIcon Kind="Check" Width="13" Height="13"
+                                                                                                                    VerticalAlignment="Center"
+                                                                                                                    IsVisible="{Binding IsSelected}"
+                                                                                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                                                    </Panel>
+                                                                                    <TextBlock Grid.Column="1" Text="{Binding Label}" FontWeight="SemiBold"
+                                                                                               VerticalAlignment="Center"/>
+                                                                                    <TextBlock Grid.Column="2" Text="{Binding Description}" Margin="8,0,0,0"
+                                                                                               IsVisible="{Binding HasDescription}" TextWrapping="Wrap"
+                                                                                               VerticalAlignment="Center"
+                                                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                                </Grid>
+                                                                            </Button>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+
+                                                                <!-- The fallback the SDK guarantees, not the main path: it opens a box
+                                                                     only once asked for, and typing in it drops the ticked options. -->
+                                                                <Button Content="Other…" Classes="Compact" HorizontalAlignment="Left"
+                                                                        Command="{Binding SelectOtherCommand}" IsVisible="{Binding !IsAnswered}"/>
+                                                                <!-- CockpitSecondaryBgBrush, not the TextBox default: that is the panel
+                                                                     colour this card is already painted in, so the box would vanish. -->
+                                                                <TextBox Text="{Binding OtherText}" IsVisible="{Binding IsOtherSelected}"
+                                                                         IsReadOnly="{Binding IsAnswered}" AcceptsReturn="False"
+                                                                         PlaceholderText="Type your own answer"
+                                                                         Background="{StaticResource CockpitSecondaryBgBrush}"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
+                                                        IsVisible="{Binding IsPendingPermission}"
+                                                        IsEnabled="{Binding CanSubmitAnswers}"
+                                                        Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).SubmitQuestionAnswersCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </Border>
+
                                     <!-- The full tool chip + expandable body: shown at Developer always, at Focus only
                                          when the fold group is expanded (or the call stands alone), and never at Simple.
                                          A member of a folded run (AC-554) nests one level in behind a hairline guide,
@@ -791,8 +882,10 @@
                                      row: Allow gets the accent, the rest stay quiet and wrap if narrow. -->
                                 <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
                                      value outranks a style setter, so only blanking is available. -->
+                                <!-- AC-715: a question row answers with its own Send, so it must not also offer the
+                                     four consent buttons — none of them is an answer. -->
                                 <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal"
-                                           IsVisible="{Binding IsPendingPermission}">
+                                           IsVisible="{Binding IsPendingToolPermission}">
                                     <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
                                             Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowToolCommand}"
                                             CommandParameter="{Binding}"/>
@@ -806,6 +899,13 @@
                                             Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowAlwaysWildcardToolCommand}"
                                             CommandParameter="{Binding}"/>
                                 </WrapPanel>
+
+                                <!-- AC-715: the row's own optional action — one labelled button any row kind can
+                                     carry, so a row that needs an affordance (AC-713's "Login" on an auth-error
+                                     row) reuses this instead of growing a card of its own. -->
+                                <Button Content="{Binding ActionLabel}" Command="{Binding ActionCommand}"
+                                        Classes="Compact" HorizontalAlignment="Left" Margin="36,4,0,0"
+                                        IsVisible="{Binding HasAction}"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>

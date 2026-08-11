@@ -257,7 +257,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
         _SendUserMessageAsync("/compact", images: null, cancellationToken);
 
-    public async Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
+        RespondToPermissionAsync(toolUseId, allow, answersJson: null, cancellationToken);
+
+    public async Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken)
     {
         if (!_pendingApprovals.TryRemove(toolUseId, out var pending))
         {
@@ -266,9 +269,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             return;
         }
 
-        // The original input rides back verbatim as updatedInput on an allow — the cockpit never rewrites tool input,
-        // and dropping it would run the tool with no arguments.
-        var line = ClaudeControlProtocol.BuildDecisionResponse(pending.RequestId, allow, pending.InputJson, denyMessage: "Denied by the cockpit operator.");
+        // The original input rides back as updatedInput on an allow — dropping it would run the tool with no
+        // arguments. AC-715: the operator's answers to an AskUserQuestion are merged into it there.
+        var line = ClaudeControlProtocol.BuildDecisionResponse(pending.RequestId, allow, pending.InputJson, denyMessage: "Denied by the cockpit operator.", answersJson);
         await _RequireSubprocess().WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
     }
 

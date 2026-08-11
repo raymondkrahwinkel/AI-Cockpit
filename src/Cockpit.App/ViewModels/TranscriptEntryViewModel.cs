@@ -133,6 +133,52 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public string? ToolUseId { get; init; }
 
+    // --- Clarifying questions (AC-715) ------------------------------------------------------------------------
+    // An AskUserQuestion arrives over the same permission callback as a tool approval, but Allow/Deny is not an
+    // answer to it. A row that carries parsed questions renders them as its own card instead of the tool chip and
+    // the four consent buttons, and keeps them on screen with the chosen labels once answered.
+
+    [ObservableProperty]
+    private IReadOnlyList<AskUserQuestionViewModel>? _questionPrompts;
+
+    public bool HasQuestionPrompts => QuestionPrompts is { Count: > 0 };
+
+    // The generic allow/deny row: every pending consent except a question, which has its own Send.
+    public bool IsPendingToolPermission => IsPendingPermission && !HasQuestionPrompts;
+
+    // Send only lights up once every question on the card has an answer — a half-filled card would send the agent
+    // an answers object missing the keys it asked about.
+    public bool CanSubmitAnswers =>
+        IsPendingPermission && QuestionPrompts is { Count: > 0 } prompts && prompts.All(prompt => prompt.HasAnswer);
+
+    // --- Row action (AC-715) ----------------------------------------------------------------------------------
+    // A single optional affordance any row can carry — a label plus the command its button runs. Deliberately not
+    // tied to questions: AC-713's "Login" button on an auth error row is the next caller, and without this each
+    // such row would grow its own bespoke card.
+
+    [ObservableProperty]
+    private string? _actionLabel;
+
+    [ObservableProperty]
+    private IRelayCommand? _actionCommand;
+
+    public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel) && ActionCommand is not null;
+
+    partial void OnActionLabelChanged(string? value) => OnPropertyChanged(nameof(HasAction));
+
+    partial void OnActionCommandChanged(IRelayCommand? value) => OnPropertyChanged(nameof(HasAction));
+
+    partial void OnQuestionPromptsChanged(IReadOnlyList<AskUserQuestionViewModel>? value)
+    {
+        foreach (var prompt in value ?? [])
+        {
+            prompt.AnswerChanged = () => OnPropertyChanged(nameof(CanSubmitAnswers));
+        }
+
+        OnPropertyChanged(nameof(HasQuestionPrompts));
+        _RaiseReadingLevelPresentation();
+    }
+
     // --- Sub-agent nesting (AC-146) ---------------------------------------------------------------------------
     // A Task/Agent tool call's own row anchors whatever activity the sub-agent it spawned produced — its own
     // tool calls, text and thinking, matched to this row by SessionEvent.ParentToolUseId == this row's own
@@ -276,8 +322,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         _ => true,
     };
 
-    // Whether the normal tool chip + expandable body shows: Developer always, Focus only when a grouped row is expanded, never in Simple (which speaks consent as a plain line and hides auto tools).
-    public bool ShowToolBlock => IsToolUse && ReadingLevel switch
+    // Whether the normal tool chip + expandable body shows: Developer always, Focus only when a grouped row is expanded, never in Simple (which speaks consent as a plain line and hides auto tools). A question card replaces the chip entirely (AC-715) — the chip's raw JSON is the same questions, spelled worse.
+    public bool ShowToolBlock => IsToolUse && !HasQuestionPrompts && ReadingLevel switch
     {
         ReadingLevel.Simple => false,
         ReadingLevel.Focus => !IsInGroup || IsGroupExpanded,
@@ -293,8 +339,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // Chevron for the fold line, matching the expanded/collapsed state.
     public MaterialIconKind GroupToggleIconKind => IsGroupExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
 
-    // Whether this row shows the plain-language consent line instead of the tool chip — a consent tool call, at the Simple level.
-    public bool ShowHumanToolLine => ReadingLevel == ReadingLevel.Simple && RequiredApproval;
+    // Whether this row shows the plain-language consent line instead of the tool chip — a consent tool call, at the Simple level. A question card carries its own words at every level, so it needs no stand-in.
+    public bool ShowHumanToolLine => ReadingLevel == ReadingLevel.Simple && RequiredApproval && !HasQuestionPrompts;
 
     // The consent decision in plain words for the Simple level (AC-138): what the tool did, and that the operator
     // approved, declined, or is being asked — e.g. "✓ Changed a file — you approved this". Jargon tool names map
@@ -347,6 +393,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGroupSummary));
         OnPropertyChanged(nameof(ShowHumanToolLine));
         OnPropertyChanged(nameof(HumanToolText));
+        OnPropertyChanged(nameof(IsPendingToolPermission));
+        OnPropertyChanged(nameof(CanSubmitAnswers));
     }
 
     // Maps a tool name to a plain-language action for the Simple consent line; an unmapped tool keeps its own name.

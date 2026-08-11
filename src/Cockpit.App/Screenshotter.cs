@@ -240,6 +240,12 @@ internal static class Screenshotter
         // "a link is there" and "it reads as a link, and the one next to it is a different link" are separate
         // claims and only the second is visible.
         ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
+        // AC-715: the clarifying-question card, in the two states that paint differently — waiting for an answer
+        // (options clickable, Send present but shut) and answered (the question and the chosen label still there,
+        // Send gone). Two scenes because neither renders the other's surface, and the whole point of the ticket is
+        // what this looks like: a passing test can say the labels are bound and still be looking at raw JSON.
+        ["session-question"] = (width, height) => new Window { Width = width, Height = height, Content = _AskUserQuestionSession(answered: false) },
+        ["session-question-answered"] = (width, height) => new Window { Width = width, Height = height, Content = _AskUserQuestionSession(answered: true) },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
         // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
         // bar where nothing is drawn.
@@ -1278,6 +1284,49 @@ internal static class Screenshotter
 
         var anchor = viewModel.Transcript.Single(row => row.ToolUseId == "toolu_task1");
         anchor.IsSubAgentExpanded = expanded;
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    // AC-715: an AskUserQuestion as it arrives — over the permission callback, with the agent's own options in the
+    // payload. Two questions, one single-select and one multi-select, because they render the same tick column and
+    // only the multi-select one can hold two ticks at once.
+    private static SessionView _AskUserQuestionSession(bool answered)
+    {
+        const string input = """
+        {"questions":[
+          {"question":"Which test suites should I run before the push?","header":"Tests","multiSelect":false,
+           "options":[{"label":"Core only","description":"Fast, misses view regressions"},
+                      {"label":"Everything","description":"Slower, but nothing slips through"}]},
+          {"question":"What should I include in the commit message?","header":"Commit","multiSelect":true,
+           "options":[{"label":"Ticket id"},{"label":"Test counts"},{"label":"Reviewer notes"}]}
+        ]}
+        """;
+
+        var viewModel = new SessionViewModel { Title = "personal - webshop" };
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Before I push, two things I would rather not guess at." });
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_q1", ToolName = "AskUserQuestion", InputJson = input });
+        viewModel.Apply(new PermissionRequested { SessionId = "s1", ToolUseId = "toolu_q1", ToolName = "AskUserQuestion", InputJson = input });
+
+        var entry = viewModel.Transcript.Single(row => row.ToolUseId == "toolu_q1");
+        var prompts = entry.QuestionPrompts ?? [];
+        if (answered)
+        {
+            prompts[0].Options[1].SelectCommand.Execute(null);
+            prompts[1].Options[0].SelectCommand.Execute(null);
+            prompts[1].Options[1].SelectCommand.Execute(null);
+            foreach (var prompt in prompts)
+            {
+                prompt.IsAnswered = true;
+            }
+
+            entry.IsPendingPermission = false;
+            entry.PermissionDecision = "Answered";
+        }
+        else
+        {
+            prompts[0].Options[0].SelectCommand.Execute(null);
+        }
 
         return new SessionView { DataContext = viewModel };
     }
