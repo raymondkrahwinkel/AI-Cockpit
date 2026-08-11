@@ -62,14 +62,9 @@
                                        ToolTip.Tip="Set in Options → Voice. Every skipped card is still written to the consent trail."/>
                         </StackPanel>
                     </StackPanel>
-                    <!-- AC-662: the same always-on/listen mode the sidebar chip carries (AssistantIndicator.axaml),
-                         reached from `Indicator` rather than reimplemented — reusing its command keeps the one-time
-                         cost confirmation below in step with the sidebar instead of a second copy that could drift.
-                         Null (Screenshotter/tests that build this view model without a coordinator) hides it rather
-                         than binding to nothing.
-                         AC-694: an icon button here, not the chip's `CheckBox.Switch` — this header is a strip of flat
-                         icon buttons, and a switch track in the middle of them read as a stray control. The chip keeps
-                         the switch: there it stands alone in a badge, which is what a track is for. -->
+                    <!-- AC-662/AC-694: the sidebar chip's listening mode (AssistantIndicator.axaml), driven through
+                         `Indicator` so the one-time cost confirmation stays in step instead of being copied. An icon
+                         button, not the chip's `CheckBox.Switch`: a track reads as a stray control in a strip of icons. -->
                     <ToggleButton Grid.Column="2" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
                                   IsVisible="{Binding Indicator, Converter={x:Static ObjectConverters.IsNotNull}}"
                                   IsChecked="{Binding Indicator.IsListeningModeAlwaysOn, Mode=OneWay, FallbackValue=False}"
@@ -79,8 +74,7 @@
                                                     Width="14" Height="14"/>
                     </ToggleButton>
 
-                    <!-- AC-694 reverts AC-685 here: `Subtle` is gone, so this is the bordered Fluent toggle again. The
-                         style itself stays in Theme.axaml — the listen toggle above is what actually wanted it. -->
+                    <!-- AC-694 reverts AC-685's `Subtle` here; the style stays in Theme.axaml for the listen toggle. -->
                     <ToggleButton Grid.Column="3" IsChecked="{Binding SpeakReplies}" Classes="Compact"
                                   VerticalAlignment="Center" Margin="0,0,4,0"
                                   ToolTip.Tip="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
