@@ -16,12 +16,21 @@ internal static class WhisperModelCache
 
     public static async Task<string> EnsureDownloadedAsync(
         GgmlType type,
+        QuantizationType quantization,
         CancellationToken cancellationToken,
         ILogger? logger = null,
         IProgress<VoicePreparationProgress>? progress = null)
     {
         Directory.CreateDirectory(ModelsDirectory);
-        var path = Path.Combine(ModelsDirectory, $"ggml-{type.ToString().ToLowerInvariant()}.bin");
+        // Quantization is folded into the file name (AC-706) — otherwise a quantized download and the full
+        // model would collide on the same cache file and overwrite each other.
+        var fileStem = type.ToString().ToLowerInvariant();
+        if (quantization != QuantizationType.NoQuantization)
+        {
+            fileStem += $"-{quantization.ToString().ToLowerInvariant()}";
+        }
+
+        var path = Path.Combine(ModelsDirectory, $"ggml-{fileStem}.bin");
         if (File.Exists(path))
         {
             return path;
@@ -32,7 +41,7 @@ internal static class WhisperModelCache
         // progress so the operator sees the download rather than a spinner claiming to transcribe.
         logger?.LogInformation("Whisper model '{Model}' is not cached yet; downloading it now (first use — this can take several minutes)", type);
         await using var modelStream = await WhisperGgmlDownloader.Default
-            .GetGgmlModelAsync(type, QuantizationType.NoQuantization, cancellationToken)
+            .GetGgmlModelAsync(type, quantization, cancellationToken)
             .ConfigureAwait(false);
 
         // Download to a temp file first so a cancelled/failed download never leaves a truncated file

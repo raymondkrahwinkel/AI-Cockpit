@@ -119,9 +119,9 @@ internal static class TranscriptionCalibrationProbe
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var modelType = WhisperModelCatalog.Resolve(model);
+                    var (modelType, quantization) = WhisperModelCatalog.Resolve(model);
                     var modelPath = await WhisperModelCache
-                        .EnsureDownloadedAsync(modelType, cancellationToken, logger: null, runtimeProgress)
+                        .EnsureDownloadedAsync(modelType, quantization, cancellationToken, logger: null, runtimeProgress)
                         .ConfigureAwait(false);
 
                     _Emit(new(CalibrationChildMessage.KindProgress, $"Loading {model}…"));

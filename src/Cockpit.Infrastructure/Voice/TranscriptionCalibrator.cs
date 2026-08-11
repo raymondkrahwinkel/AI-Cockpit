@@ -21,7 +21,7 @@ internal sealed class TranscriptionCalibrator(
 {
     // The models the phase-two ladder spans, most to least accurate. The configured model is added if it
     // is a known model not already here, so the table includes what the operator actually runs.
-    private static readonly string[] CuratedModelLadder = ["large-v3-turbo", "small", "base", "tiny"];
+    private static readonly string[] CuratedModelLadder = ["large-v3-turbo", "large-v3-turbo-q5_0", "small", "base", "tiny"];
 
     public async Task<TranscriptionCalibration> MeasureAsync(
         IProgress<CalibrationProgress>? progress = null, CancellationToken cancellationToken = default)

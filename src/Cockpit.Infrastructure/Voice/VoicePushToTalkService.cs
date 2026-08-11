@@ -30,6 +30,10 @@ internal sealed class VoicePushToTalkService(
     private static readonly int WindowByteCount =
         (int)(CaptureFormat.SampleRate * AnalysisWindow.TotalSeconds) * (CaptureFormat.BitsPerSample / 8);
 
+    // AC-706: the tail's own samples already passed the windowed VAD above as they streamed in — this is only a
+    // final "is there anything to transcribe" gate, so it needs a few seconds of signal, not the whole tail.
+    private static readonly TimeSpan TailVadWindow = TimeSpan.FromSeconds(3);
+
     private readonly PushToTalkHoldGuard _holdGuard = new();
     private CancellationTokenSource? _captureCancellation;
     private Task<CaptureResult>? _captureTask;
@@ -99,7 +103,11 @@ internal sealed class VoicePushToTalkService(
                 }
             }
 
-            if (capture.TailSamples.Length > 0 && await vad.HasSpeechAsync(capture.TailSamples, cancellationToken).ConfigureAwait(false))
+            var tailVadSampleCount = Math.Min(capture.TailSamples.Length, (int)(CaptureFormat.SampleRate * TailVadWindow.TotalSeconds));
+            var tailVadSamples = tailVadSampleCount == capture.TailSamples.Length
+                ? capture.TailSamples
+                : capture.TailSamples[..tailVadSampleCount];
+            if (tailVadSamples.Length > 0 && await vad.HasSpeechAsync(tailVadSamples, cancellationToken).ConfigureAwait(false))
             {
                 var tailText = await speechToText.TranscribeAsync(capture.TailSamples, cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(tailText))
