@@ -176,6 +176,16 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public bool HasLoginFlow => LoginFlow is not null;
 
+    // Disposes the outgoing flow — its `ILoginFlow` owns a real `claude`/`codex` subprocess, which must not be
+    // orphaned just because the row moved on to a different attempt.
+    partial void OnLoginFlowChanging(LoginFlowRowViewModel? oldValue, LoginFlowRowViewModel? newValue)
+    {
+        if (oldValue is not null && !ReferenceEquals(oldValue, newValue))
+        {
+            _ = oldValue.DisposeAsync().AsTask();
+        }
+    }
+
     partial void OnLoginFlowChanged(LoginFlowRowViewModel? value)
     {
         OnPropertyChanged(nameof(HasAction));

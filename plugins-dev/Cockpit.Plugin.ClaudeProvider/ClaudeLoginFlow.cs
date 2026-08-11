@@ -92,7 +92,6 @@ internal sealed class ClaudeLoginFlow : ILoginFlow
     private async Task _PumpOutputAsync()
     {
         var pending = new StringBuilder();
-        var awaitedInput = false;
         var buffer = new char[256];
 
         try
@@ -105,9 +104,12 @@ internal sealed class ClaudeLoginFlow : ILoginFlow
                 pending.Append(buffer, 0, read);
                 _DrainCompleteLines(pending);
 
-                if (!awaitedInput && LooksLikeAwaitsInputPrompt(pending.ToString()))
+                // Re-checked on every read, not latched after the first match: a wrong/expired pasted code makes
+                // the CLI print this same no-trailing-newline prompt a second time, and a latch would leave that
+                // retry sitting unflushed in `pending` — the row would show nothing, forever, instead of a second
+                // input field.
+                if (LooksLikeAwaitsInputPrompt(pending.ToString()))
                 {
-                    awaitedInput = true;
                     _steps.Writer.TryWrite(new LoginFlowStep(pending.ToString().Trim(), null, AwaitsInput: true));
                     pending.Clear();
                 }

@@ -91,6 +91,16 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         // happen at plugin-load time, well before this dialog can be shown, so a live-updating list buys
         // nothing here.
         _providers = pluginProviderRegistry is null ? SessionProviderCatalog.Providers : SessionProviderCatalog.AllProviders(pluginProviderRegistry);
+
+        // AC-713: a running flow's subprocess must not outlive the dialog that started it — closing (Save or
+        // Cancel) must dispose whichever row's `LoginFlow` is still going, not just the selected one.
+        CloseRequested += () =>
+        {
+            foreach (var profile in Profiles)
+            {
+                _ = profile.LoginFlow?.DisposeAsync().AsTask();
+            }
+        };
     }
 
     // Status of the last model refresh (count or a "server not running" hint), shown next to the model picker.

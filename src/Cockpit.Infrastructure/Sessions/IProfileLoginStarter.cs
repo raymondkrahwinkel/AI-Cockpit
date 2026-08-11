@@ -11,6 +11,13 @@ namespace Cockpit.Infrastructure.Sessions;
 /// </summary>
 public interface IProfileLoginStarter
 {
+    /// <summary>
+    /// Whether this profile's provider declared a <c>StartLogin</c> at all — an existence check, no subprocess
+    /// spawned, for a caller deciding whether to show a login affordance for this profile in the first place
+    /// (Ollama/LM Studio, Gemini, Kimi and any other provider that declares no gate all read false here).
+    /// </summary>
+    bool CanStartLogin(SessionProfile profile);
+
     /// <summary>Starts the flow, or <see langword="null"/> when this profile's provider offers no in-app login.</summary>
     ILoginFlow? StartLogin(SessionProfile profile, CancellationToken cancellationToken);
 }

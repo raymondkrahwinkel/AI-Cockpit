@@ -108,4 +108,19 @@ public class ProfileLoginStarterTests
 
         Assert.Null(starter.StartLogin(profile, CancellationToken.None));
     }
+
+    // CanStartLogin is an existence check the profile-editor and New-session dialogs use to decide whether to
+    // show a login affordance at all — it must not spawn anything, and must agree with StartLogin's own answer.
+    [Fact]
+    public void CanStartLogin_TrueOnlyWhenTheProviderDeclaredOne()
+    {
+        var starter = new ProfileLoginStarter(RegistryWith(Registration("claude", (_, _) => Substitute.For<ILoginFlow>())));
+        var withGate = new SessionProfile("p", new PluginProviderConfig("claude", "{}"));
+        var withoutGate = new SessionProfile("p", new PluginProviderConfig("gemini", "{}"));
+        var local = new SessionProfile("local", new OllamaConfig("http://localhost", "llama"));
+
+        Assert.True(starter.CanStartLogin(withGate));
+        Assert.False(starter.CanStartLogin(withoutGate), "gemini declares no StartLogin");
+        Assert.False(starter.CanStartLogin(local), "a local provider has no provider to dispatch to at all");
+    }
 }

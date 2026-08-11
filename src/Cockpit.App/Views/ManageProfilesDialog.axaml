@@ -392,9 +392,11 @@
                     </StackPanel>
 
                     <!-- AC-713: login status + in-app sign-in, provider-neutral (any plugin provider may declare
-                         StartLogin — today Claude and Codex) — a local HTTP provider (Ollama/LM Studio) has no
-                         login at all. -->
-                    <StackPanel Spacing="11" IsVisible="{Binding !IsLocalProvider}">
+                         StartLogin — today Claude and Codex). CanStartLogin checks the *current* provider
+                         declared one at all, not just "not local" — a provider with no gate (Gemini, GitHub
+                         Models, Kimi) must not show a permanently-green "logged in" status for a login it does
+                         not have. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding CanStartLogin}">
                         <TextBlock Text="LOGIN" FontSize="11" Margin="0,4,0,0"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
@@ -403,29 +405,12 @@
                                      Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                             <TextBlock Text="{Binding LoginStatusLabel}" VerticalAlignment="Center"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <Button Content="Login" Classes="Compact" Command="{Binding LoginCommand}"
-                                    IsVisible="{Binding CanStartLogin}" Margin="6,0,0,0"/>
+                            <!-- No IsVisible: the enclosing section already gates on CanStartLogin. -->
+                            <Button Content="Login" Classes="Compact" Command="{Binding LoginCommand}" Margin="6,0,0,0"/>
                         </StackPanel>
-                        <!-- Same inline flow shape as the transcript row (AC-713) — one place a login flow plays out. -->
-                        <StackPanel Spacing="6" IsVisible="{Binding HasLoginFlow}">
-                            <TextBlock Text="{Binding LoginFlow.Message}" TextWrapping="Wrap" FontSize="12"/>
-                            <Button Content="{Binding LoginFlow.LinkToOpen}" Classes="Compact" HorizontalAlignment="Left"
-                                    Command="{Binding LoginFlow.OpenLinkCommand}"
-                                    IsVisible="{Binding LoginFlow.HasLink}"/>
-                            <WrapPanel IsVisible="{Binding LoginFlow.AwaitsInput}">
-                                <TextBox Text="{Binding LoginFlow.CodeInput}" Width="220" FontSize="11" Padding="6,4"
-                                         Margin="0,0,6,4" PlaceholderText="Paste the code here"/>
-                                <Button Content="Submit" Classes="Accent Compact" Margin="0,0,0,4"
-                                        Command="{Binding LoginFlow.SubmitCommand}"/>
-                            </WrapPanel>
-                            <TextBlock Text="Waiting for the sign-in to finish…" FontSize="11"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"
-                                       IsVisible="{Binding LoginFlow.IsSubmitting}"/>
-                            <TextBlock Text="Signed in." FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                       IsVisible="{Binding LoginFlow.Succeeded}"/>
-                            <TextBlock Text="{Binding LoginFlow.ErrorMessage}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                                       IsVisible="{Binding LoginFlow.HasError}"/>
+                        <!-- Same shared flow view as the transcript row (AC-713) — one place a login flow plays out. -->
+                        <StackPanel IsVisible="{Binding HasLoginFlow}">
+                            <controls:LoginFlowView DataContext="{Binding LoginFlow}"/>
                         </StackPanel>
                     </StackPanel>
 

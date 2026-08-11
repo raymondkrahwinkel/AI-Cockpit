@@ -14,6 +14,8 @@ internal sealed class ProfileLoginStarter(
     IPluginProviderRegistry? sessionProviderRegistry = null)
     : IProfileLoginStarter, ISingletonService
 {
+    public bool CanStartLogin(SessionProfile profile) => _Resolve(profile) is not null;
+
     public ILoginFlow? StartLogin(SessionProfile profile, CancellationToken cancellationToken)
     {
         if (profile.ProviderConfig is not PluginProviderConfig plugin)
@@ -22,9 +24,12 @@ internal sealed class ProfileLoginStarter(
             return null;
         }
 
-        var startLogin = ttyProviderRegistry.Resolve(plugin.ProviderId)?.StartLogin
-            ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.StartLogin;
-
-        return startLogin?.Invoke(plugin.ConfigJson, cancellationToken);
+        return _Resolve(profile)?.Invoke(plugin.ConfigJson, cancellationToken);
     }
+
+    private Func<string, CancellationToken, ILoginFlow>? _Resolve(SessionProfile profile) =>
+        profile.ProviderConfig is not PluginProviderConfig plugin
+            ? null
+            : ttyProviderRegistry.Resolve(plugin.ProviderId)?.StartLogin
+                ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.StartLogin;
 }

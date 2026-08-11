@@ -339,8 +339,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     public string LoginStatusBrushKey => IsLoggedIn ? "CockpitStatusDoneBrush" : "CockpitStatusWaitingBrush";
 
     // AC-713: secondary entry point for an operator who would rather sign in before ever starting a session —
-    // the same `ILoginFlow` the transcript row's "Login" action starts, rendered the same way. `null` when this
-    // provider has no `StartLogin` (`_loginStarter` absent, or the provider itself declares none), or before the
+    // the same `ILoginFlow` the transcript row's "Login" action starts, rendered the same way. `null` before the
     // operator has clicked "Login". Built from the current edits (`ToProfile`), not the saved profile — an
     // incomplete row simply fails to start, reported the same way any other flow failure is.
     [ObservableProperty]
@@ -348,9 +347,23 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     public bool HasLoginFlow => LoginFlow is not null;
 
+    // Disposes the outgoing flow — its `ILoginFlow` owns a real `claude`/`codex` subprocess, which must not be
+    // orphaned just because the operator started a second attempt. `ManageProfilesDialogViewModel.CloseRequested`
+    // disposes whatever is still running when the dialog itself closes.
+    partial void OnLoginFlowChanging(LoginFlowRowViewModel? oldValue, LoginFlowRowViewModel? newValue)
+    {
+        if (oldValue is not null && !ReferenceEquals(oldValue, newValue))
+        {
+            _ = oldValue.DisposeAsync().AsTask();
+        }
+    }
+
     partial void OnLoginFlowChanged(LoginFlowRowViewModel? value) => OnPropertyChanged(nameof(HasLoginFlow));
 
-    public bool CanStartLogin => _loginStarter is not null;
+    // Whether this row's *current* provider (the picker may have changed since the last save) actually declared a
+    // login at all — not just whether `_loginStarter` is wired. Without this, a Gemini/Kimi/local-model row would
+    // show the whole LOGIN section with a green "logged in" status for a provider that has no login concept.
+    public bool CanStartLogin => _loginStarter?.CanStartLogin(ToProfile()) ?? false;
 
     [RelayCommand(CanExecute = nameof(CanStartLogin))]
     private void Login()
@@ -414,6 +427,8 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(SupportsEnvVars));
         OnPropertyChanged(nameof(HasTtyProvider));
         OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
+        OnPropertyChanged(nameof(CanStartLogin));
+        LoginCommand.NotifyCanExecuteChanged();
 
         // Point the base URL at the newly chosen provider's default port when adding a profile — including
         // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.

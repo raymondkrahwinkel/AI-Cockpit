@@ -2688,8 +2688,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        _loginPollTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
-        _loginPollTimer.Tick += (_, _) => ReportLoginStatus(_loginChecker.IsLoggedIn(_profile));
+        // AC-564: `ClearContextAsync` re-runs `StartConfiguredAsync` on this same instance, so the `Tick`
+        // subscription must happen only for a genuinely new timer — otherwise a context clear leaves the old
+        // timer's handler subscribed alongside the new one, and every later tick fires the poll twice, three
+        // times, and so on for the life of the pane.
+        if (_loginPollTimer is null)
+        {
+            _loginPollTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+            _loginPollTimer.Tick += (_, _) => ReportLoginStatus(_loginChecker.IsLoggedIn(_profile));
+        }
+
         ReportLoginStatus(_loginChecker.IsLoggedIn(_profile));
         _loginPollTimer.Start();
     }
@@ -2724,6 +2732,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         await _StopRuntimeAsync();
+
+        // AC-713: a running flow's subprocess must not outlive the pane that started it.
+        _loginPollTimer?.Stop();
+        foreach (var entry in Transcript)
+        {
+            if (entry.LoginFlow is { } loginFlow)
+            {
+                await loginFlow.DisposeAsync();
+            }
+        }
     }
 
     // Ends this panel's runtime and detaches from it, leaving the panel itself intact. Two callers: the panel
