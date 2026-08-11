@@ -47,45 +47,61 @@
             </DockPanel>
         </Border>
 
-        <!-- AC-230: the usage warning — raised once when a signal passes the point its provider called worth
-             mentioning (a context window filling, an allowance nearly spent), and dismissible. Same shape as the
-             agent bar below it, in the amber the pill uses at the same threshold, so one language says "watch
-             this" wherever it appears. -->
-        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4"
-                IsVisible="{Binding HasUsageWarning}"
-                Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
-                CornerRadius="{StaticResource CockpitControlRadius}">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <TextBox Text="{Binding ResumePrompt}" Width="150" FontSize="11" Padding="6,0"
-                             IsVisible="{Binding CanOfferResume}"
-                             VerticalAlignment="Stretch" VerticalContentAlignment="Center" MinHeight="0"
-                             ToolTip.Tip="What to send when the session picks up again. Starts on the provider's default."/>
-                    <Button Content="Resume when it returns" Classes="Compact"
-                            Command="{Binding ScheduleResumeCommand}" IsVisible="{Binding CanOfferResume}"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="Send this prompt a minute after the allowance rolls over."/>
-                    <Button Content="At another time…" Classes="Compact"
-                            Command="{Binding ChangeResumeMomentCommand}" IsVisible="{Binding CanChangeResumeMoment}"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="Pick your own moment instead — the reset is the sensible default, not a rule."/>
-                    <Button Content="Kill session" Classes="Compact"
-                            Command="{Binding KillOverCapSessionCommand}" IsVisible="{Binding IsOverMemoryCap}"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
-                    <Button Content="Dismiss" Classes="Compact"
-                            Command="{Binding DismissUsageWarningCommand}" VerticalAlignment="Center"
-                            ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <materialIcons:MaterialIcon Kind="GaugeFull" Width="15" Height="15"
-                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
-                    <TextBlock Text="{Binding UsageWarning}" VerticalAlignment="Center" FontSize="12"
-                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
+        <!-- AC-230/AC-683: the usage warning bar — one line per signal that has passed the point its provider
+             called worth mentioning, each dismissible on its own, blocking subjects first (AC-683 criterion 9).
+             Same shape as the agent bar below it, in the amber the pill uses at the same threshold, so one
+             language says "watch this" wherever it appears. -->
+        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Warnings}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SessionWarningItem">
+                    <Border Margin="0,0,0,6" Padding="8,4"
+                            Background="{StaticResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CockpitControlRadius}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding $parent[UserControl].((vm:TtyViewModel)DataContext).ResumePrompt}"
+                                         Width="150" FontSize="11" Padding="6,0"
+                                         IsVisible="{Binding ShowResumeOffer}"
+                                         VerticalAlignment="Stretch" VerticalContentAlignment="Center" MinHeight="0"
+                                         ToolTip.Tip="What to send when the session picks up again. Starts on the provider's default."/>
+                                <Button Content="Resume when it returns" Classes="Compact"
+                                        Command="{Binding $parent[UserControl].((vm:TtyViewModel)DataContext).ScheduleResumeCommand}"
+                                        IsVisible="{Binding ShowResumeOffer}"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="Send this prompt a minute after the allowance rolls over."/>
+                                <Button Content="At another time…" Classes="Compact"
+                                        Command="{Binding $parent[UserControl].((vm:TtyViewModel)DataContext).ChangeResumeMomentCommand}"
+                                        IsVisible="{Binding ShowChangeResumeMoment}"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="Pick your own moment instead — the reset is the sensible default, not a rule."/>
+                                <Button Content="Kill session" Classes="Compact"
+                                        Command="{Binding $parent[UserControl].((vm:TtyViewModel)DataContext).KillOverCapSessionCommand}"
+                                        IsVisible="{Binding ShowKill}"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
+                                <Button Content="Dismiss" Classes="Compact"
+                                        Command="{Binding $parent[UserControl].((vm:TtyViewModel)DataContext).DismissWarningCommand}"
+                                        CommandParameter="{Binding Key}"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="GaugeFull" Width="15" Height="15"
+                                                            Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                <TextBlock Text="{Binding Text}" VerticalAlignment="Center" FontSize="12"
+                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
 
         <!-- AC-231: a resume is waiting. Shown for as long as it is pending, with the moment it will fire and a way

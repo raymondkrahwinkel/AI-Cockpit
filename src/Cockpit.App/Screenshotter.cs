@@ -15,6 +15,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App;
 
@@ -250,6 +251,10 @@ internal static class Screenshotter
         // bar where nothing is drawn.
         ["session-memory-cap-near"] = (width, height) => new Window { Width = width, Height = height, Content = _MemoryCapBar(overCap: false) },
         ["session-memory-cap-over"] = (width, height) => new Window { Width = width, Height = height, Content = _MemoryCapBar(overCap: true) },
+        // AC-683: two warnings standing at once — the memory cap actually spent (blocks) and an allowance running
+        // low (merely limits it) — stacked, blocking line first, each with its own Dismiss. A single-warning
+        // scene cannot show criterion 9's ordering; this is the shape that used to collapse to one visible line.
+        ["session-warnings-stacked"] = (width, height) => new Window { Width = width, Height = height, Content = _StackedWarningsSession() },
         ["session-settings-flyout"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: true) },
         ["session-settings-flyout-no-live-controls"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: false) },
         // AC-563, staged open by the Hovers table below. See _McpHeader for why each of these four is its own.
@@ -376,6 +381,10 @@ internal static class Screenshotter
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
+        // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
+        // neither before, which was the whole premise of the ticket (a running-out allowance was invisible on
+        // the assistant's one and only surface).
+        ["assistant-chat-warnings"] = (_, _) => _AssistantChatWithWarnings(),
 
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
@@ -1270,6 +1279,29 @@ internal static class Screenshotter
         return new SessionView { DataContext = viewModel };
     }
 
+    // AC-683: the memory cap actually spent and a weekly allowance running low, standing at once — driven through
+    // the same real ApplyUsage/ReportMemoryAgainstCap every other warning scene uses, not by fabricating Warnings
+    // entries, so what is on screen is what the mechanism itself produces.
+    private static SessionView _StackedWarningsSession()
+    {
+        const long Cap = 512L * 1024 * 1024;
+        var viewModel = new SessionViewModel { Title = "personal - webshop", MemoryCapBytes = Cap };
+
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Running the build." });
+        viewModel.ApplyUsage(
+            [
+                new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, 50) { Description = "Context window" },
+                new PluginUsageSignal("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" },
+            ],
+            [
+                new PluginUsageReading("context", 55, null),
+                new PluginUsageReading("weekly", 95, DateTimeOffset.Now.AddDays(3)),
+            ]);
+        viewModel.ReportMemoryAgainstCap((long)(Cap * 1.12));
+
+        return new SessionView { DataContext = viewModel };
+    }
+
     private static SessionView _SubAgentSession(bool expanded)
     {
         var viewModel = new SessionViewModel { Title = "personal - webshop" };
@@ -1869,6 +1901,30 @@ internal static class Screenshotter
 
         var viewModel = new ViewModels.AssistantChatViewModel(
             host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator);
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-683: the same stacked warnings _StackedWarningsSession renders in a session pane, on the assistant's
+    // session instead — the window this ticket's criteria 1-3 add the pill row and the warning bar to, so the
+    // scene proves both surfaces render the one SessionViewModel the same way rather than two hand-tuned copies.
+    private static AssistantChatWindow _AssistantChatWithWarnings()
+    {
+        const long Cap = 512L * 1024 * 1024;
+        var session = new ViewModels.SessionViewModel { MemoryCapBytes = Cap };
+        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Running the build." });
+        session.ApplyUsage(
+            [
+                new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, 50) { Description = "Context window" },
+                new PluginUsageSignal("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" },
+            ],
+            [
+                new PluginUsageReading("context", 55, null),
+                new PluginUsageReading("weekly", 95, DateTimeOffset.Now.AddDays(3)),
+            ]);
+        session.ReportMemoryAgainstCap((long)(Cap * 1.12));
+
+        var host = new _FakeAssistantSessionHost { Session = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 

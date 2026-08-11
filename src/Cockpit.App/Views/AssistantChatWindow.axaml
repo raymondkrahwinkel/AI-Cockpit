@@ -4,6 +4,7 @@
         xmlns:views="using:Cockpit.App.Views"
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:sessions="using:Cockpit.Core.Sessions"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -170,6 +171,133 @@
                     </Button>
                 </Grid>
             </Border>
+
+            <!-- AC-683: usage-pill row, the same segmented pill SessionHeaderBar renders for a session pane —
+                 this window has no SessionHeaderBar of its own (it is a peephole, not a full session header,
+                 with its own title/dot/kind chip already drawn above), so the pill pattern is reproduced here
+                 rather than the whole control reused, which would drag those in too. -->
+            <Border DockPanel.Dock="Top" Margin="10,6,10,0" ClipToBounds="True" HorizontalAlignment="Left"
+                    Background="{StaticResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPillRadius}"
+                    IsVisible="{Binding Session.HasUsagePillRegion, FallbackValue=False}">
+                <StackPanel Orientation="Horizontal">
+                    <ItemsControl ItemsSource="{Binding Session.UsagePillItems}" VerticalAlignment="Stretch">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:UsagePillItem">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                                            IsVisible="{Binding ShowLeadingDivider}"/>
+                                    <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
+                                               VerticalAlignment="Center"
+                                               Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                               ToolTip.Tip="{Binding Tooltip}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                            IsVisible="{Binding Session.ShowChevronDivider, FallbackValue=False}"/>
+                    <Button VerticalAlignment="Stretch" Padding="6,2"
+                            MinWidth="0" MinHeight="0"
+                            Background="Transparent" BorderThickness="0"
+                            IsVisible="{Binding Session.HasUsagePill, FallbackValue=False}"
+                            ToolTip.Tip="{Binding Session.LimitsTooltip}">
+                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Button.Flyout>
+                            <Flyout Placement="Bottom">
+                                <StackPanel Spacing="8" MinWidth="210" Margin="4">
+                                    <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <controls:LimitBar Label="ctx" Percent="{Binding Session.ContextUsedPercent}" Threshold="{Binding Session.ContextThreshold}" FontSize="10" Height="14"
+                                                       StretchTrack="True" HorizontalAlignment="Stretch"/>
+                                    <ItemsControl ItemsSource="{Binding Session.RateLimits}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="sessions:SessionRateWindow">
+                                                <StackPanel Spacing="1" Margin="0,4,0,0">
+                                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
+                                                                       StretchTrack="True" HorizontalAlignment="Stretch"/>
+                                                    <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
+                                                               FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                               IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="{Binding Session.UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
+                                               Margin="0,4,0,0"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding Session.UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- AC-230/AC-683: the same usage-warning bar the SDK session view shows, bound through Session so a
+                 5h/wk crossing (or the memory cap) appears here too — this window had none, so a running-out
+                 allowance was invisible on the one surface with no pane in the grid to show it on. -->
+            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Session.Warnings}" Margin="10,6,10,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="6"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SessionWarningItem">
+                        <!-- Text on its own row, buttons in a WrapPanel below rather than docked right (T2's
+                             narrow-window layout, 340px MinWidth): a right-docked action row is what the wider
+                             session pane can afford, but here it would push the sentence into a sliver or clip
+                             the buttons outright. -->
+                        <Border Padding="8,4"
+                                Background="{StaticResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource CockpitControlRadius}">
+                            <StackPanel Spacing="6">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="GaugeFull" Width="13" Height="13"
+                                                                VerticalAlignment="Top" Margin="0,1,0,0"
+                                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                    <TextBlock Text="{Binding Text}" FontSize="11.5" TextWrapping="Wrap"
+                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                </StackPanel>
+                                <WrapPanel>
+                                    <TextBox Text="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.ResumePrompt}"
+                                             Width="150" FontSize="11" Padding="6,0" Margin="0,0,6,4"
+                                             IsVisible="{Binding ShowResumeOffer}"
+                                             VerticalContentAlignment="Center" MinHeight="0"
+                                             ToolTip.Tip="What to send when the session picks up again. Starts on the provider's default."/>
+                                    <Button Content="Resume when it returns" Classes="Compact" Margin="0,0,6,4"
+                                            Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.ScheduleResumeCommand}"
+                                            IsVisible="{Binding ShowResumeOffer}"
+                                            ToolTip.Tip="Send this prompt a minute after the allowance rolls over."/>
+                                    <Button Content="At another time…" Classes="Compact" Margin="0,0,6,4"
+                                            Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.ChangeResumeMomentCommand}"
+                                            IsVisible="{Binding ShowChangeResumeMoment}"
+                                            ToolTip.Tip="Pick your own moment instead — the reset is the sensible default, not a rule."/>
+                                    <Button Content="Kill session" Classes="Compact" Margin="0,0,6,4"
+                                            Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.KillOverCapSessionCommand}"
+                                            IsVisible="{Binding ShowKill}"
+                                            ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
+                                    <Button Content="Dismiss" Classes="Compact" Margin="0,0,0,4"
+                                            Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.DismissWarningCommand}"
+                                            CommandParameter="{Binding Key}"
+                                            ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
             <!-- AC-662: the switch's one-time cost explanation (criterion 18 on the sidebar chip), reused here
                  rather than re-worded — same Indicator, same command, so acknowledging it once covers both
