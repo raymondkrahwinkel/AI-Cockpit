@@ -1420,6 +1420,40 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    /// <summary>
+    /// AC-693: the operator was shown "Send failed: The pipe is being closed." — the raw IOException from writing
+    /// into the stdin of a process that had already died. Both readings of that death are covered: the exception
+    /// itself, and a runtime the pump has by now noticed is gone. A genuine send error keeps its own words.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ABrokenPipe_IsReportedAsAStoppedSession_NotAsItsOwnException(bool runtimeIsRunning)
+    {
+        var message = SessionViewModel.SendFailureMessage(
+            new IOException("The pipe is being closed."), runtimeIsRunning);
+
+        Assert.DoesNotContain("pipe", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("This session's process has stopped, so the message was not sent.", message);
+    }
+
+    [Fact]
+    public void ASendThatFailsOnARuntimeThatIsStillRunning_KeepsTheProvidersOwnMessage() =>
+        Assert.Equal(
+            "Send failed: boom",
+            SessionViewModel.SendFailureMessage(new InvalidOperationException("boom"), runtimeIsRunning: true));
+
+    [Fact]
+    public void ASendThatFailsAfterTheRuntimeStopped_ReportsTheStoppedSession()
+    {
+        // The wrapped case: the driver refused the write with something other than an IOException, and by the time
+        // the failure lands the pump has already seen stdout end.
+        var message = SessionViewModel.SendFailureMessage(
+            new InvalidOperationException("The session has not been started."), runtimeIsRunning: false);
+
+        Assert.Equal("This session's process has stopped, so the message was not sent.", message);
+    }
+
     [Fact]
     public void ErrorRow_StaysOnThePlainPath()
     {
@@ -1896,7 +1930,8 @@ public class SessionViewModelTests
 
     private static async IAsyncEnumerable<SessionEvent> EmptyEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask;
+        // Open until the runtime cancels it: a live driver's stream ends only when its process does (AC-693).
+        await Task.Delay(Timeout.Infinite, cancellationToken);
         yield break;
     }
 
