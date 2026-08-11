@@ -140,10 +140,9 @@ internal static class ClaudeControlProtocol
         });
     }
 
-    // The original input rides back on allow, with the operator's answers merged in when a clarifying-question
-    // tool asked for them (AC-715): `AskUserQuestion` reads `updatedInput.answers`, an object keyed by question
-    // text, alongside the `questions` it sent — so an allow without it approves the question and never answers it.
-    // A blank/garbled input or answers document degrades to {} rather than failing the whole response.
+    // AC-715: `AskUserQuestion` reads `updatedInput.answers` alongside the `questions` it sent, so an allow that
+    // echoes only the input approves the question and never answers it. A blank or garbled input or answers
+    // document degrades to {} rather than failing the whole response.
     private static JsonNode _BuildUpdatedInput(string originalInputJson, string? answersJson)
     {
         var input = _ParseObject(originalInputJson) ?? [];

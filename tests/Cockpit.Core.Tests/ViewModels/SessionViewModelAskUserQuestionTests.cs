@@ -149,10 +149,9 @@ public class SessionViewModelAskUserQuestionTests
     [Fact]
     public async Task TheComposerBandSaysWhatItIsWaitingFor_AnAnswerRatherThanAPermission()
     {
-        // AC-532's band reads "waiting for permission" for a stalled tool call. On a question that sends the
-        // operator looking for an Allow button this deliberately does not have.
-        // Two sessions rather than two calls in one: the band tracks the oldest outstanding call, so a second
-        // prompt stacked on the first would still be reporting the question.
+        // AC-532's band says "waiting for permission", which on a question sends the operator looking for an Allow
+        // button it deliberately does not have. Two sessions rather than two calls in one: the band tracks the
+        // oldest outstanding call, so a second prompt stacked on the first would still be reporting the question.
         var (questionVm, _) = await _StartedAsync();
         _RaiseQuestion(questionVm, OneQuestion);
 

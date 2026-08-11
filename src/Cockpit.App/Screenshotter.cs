@@ -240,10 +240,9 @@ internal static class Screenshotter
         // "a link is there" and "it reads as a link, and the one next to it is a different link" are separate
         // claims and only the second is visible.
         ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
-        // AC-715: the clarifying-question card, in the two states that paint differently — waiting for an answer
-        // (options clickable, Send present but shut) and answered (the question and the chosen label still there,
-        // Send gone). Two scenes because neither renders the other's surface, and the whole point of the ticket is
-        // what this looks like: a passing test can say the labels are bound and still be looking at raw JSON.
+        // AC-715: the clarifying-question card in its two states — waiting for an answer, and answered. Two scenes
+        // because neither renders the other's surface, and because a passing test can say the labels are bound
+        // while the screen still shows raw JSON.
         ["session-question"] = (width, height) => new Window { Width = width, Height = height, Content = _AskUserQuestionSession(answered: false) },
         ["session-question-answered"] = (width, height) => new Window { Width = width, Height = height, Content = _AskUserQuestionSession(answered: true) },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second

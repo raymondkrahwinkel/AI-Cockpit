@@ -107,11 +107,10 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resolves the decision carrying the operator's <em>answers</em> as well (AC-715) — what a clarifying-question
-    /// tool asks for, where allow/deny alone leaves the agent approved but unanswered. <paramref name="answersJson"/>
-    /// is a JSON object keyed by question text with the chosen option label(s) as its values, which the driver
-    /// translates into its own provider's shape; the default drops it and falls back to the plain allow above, so a
-    /// driver whose provider has no such tool — and every already-compiled plugin — is unaffected.
+    /// Resolves the decision carrying the operator's answers as well (AC-715) — what a clarifying-question tool
+    /// asks for, where allow/deny alone leaves the agent approved but unanswered. <paramref name="answersJson"/> is
+    /// a JSON object keyed by question text, which the driver translates to its provider's shape; the default drops
+    /// it and falls back to the plain allow above, so an already-compiled plugin is unaffected.
     /// </summary>
     Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
         RespondToPermissionAsync(toolUseId, allow, cancellationToken);

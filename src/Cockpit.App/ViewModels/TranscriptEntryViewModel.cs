@@ -134,9 +134,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     public string? ToolUseId { get; init; }
 
     // --- Clarifying questions (AC-715) ------------------------------------------------------------------------
-    // An AskUserQuestion arrives over the same permission callback as a tool approval, but Allow/Deny is not an
-    // answer to it. A row that carries parsed questions renders them as its own card instead of the tool chip and
-    // the four consent buttons, and keeps them on screen with the chosen labels once answered.
+    // An AskUserQuestion rides the permission callback like a tool approval, but Allow/Deny is not an answer to it:
+    // a row carrying parsed questions renders them as its own card, and keeps them there once answered.
 
     [ObservableProperty]
     private IReadOnlyList<AskUserQuestionViewModel>? _questionPrompts;
@@ -152,9 +151,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         IsPendingPermission && QuestionPrompts is { Count: > 0 } prompts && prompts.All(prompt => prompt.HasAnswer);
 
     // --- Row action (AC-715) ----------------------------------------------------------------------------------
-    // A single optional affordance any row can carry — a label plus the command its button runs. Deliberately not
-    // tied to questions: AC-713's "Login" button on an auth error row is the next caller, and without this each
-    // such row would grow its own bespoke card.
+    // One optional affordance any row can carry. Deliberately not tied to questions: AC-713's "Login" on an
+    // auth-error row is the next caller, and without this each such row would grow its own bespoke card.
 
     [ObservableProperty]
     private string? _actionLabel;
