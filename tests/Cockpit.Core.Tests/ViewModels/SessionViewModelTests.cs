@@ -1228,6 +1228,74 @@ public class SessionViewModelTests
     }
 
     [Fact]
+    public void Apply_SessionError_ClassifiesAnUntypedDriverFromItsMessageText()
+    {
+        // AC-720: a driver that has not been taught to set Kind (still Unknown) still gets a useful
+        // presentation via the host's text heuristic.
+        var vm = NewVm();
+
+        vm.Apply(new SessionError { SessionId = "S1", Message = "429 Too Many Requests: rate limit exceeded" });
+
+        var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.Error);
+        Assert.Equal(SessionErrorKind.RateLimited, row.ErrorKind);
+        Assert.True(row.IsTemporaryError);
+    }
+
+    [Fact]
+    public void Apply_SessionError_TrustsADriverThatAlreadyClassifiedItself()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new SessionError { SessionId = "S1", Message = "some unrelated wording", Kind = SessionErrorKind.AuthRequired });
+
+        var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.Error);
+        Assert.Equal(SessionErrorKind.AuthRequired, row.ErrorKind);
+        Assert.True(row.IsBlockingError);
+    }
+
+    [Fact]
+    public void Apply_SessionError_UnclassifiableTextRendersInformational_NeverAGuessedSeverity()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new SessionError { SessionId = "S1", Message = "something odd happened" });
+
+        var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.Error);
+        Assert.Equal(SessionErrorKind.Unknown, row.ErrorKind);
+        Assert.True(row.IsInformationalError);
+    }
+
+    [Fact]
+    public void Apply_TurnCompleted_Error_ShowsTheProvidersReasonWhenTheEventCarriesOne()
+    {
+        // AC-720/AC-410: the subtype alone names nothing actionable; Errors carries the real reason.
+        var vm = NewVm();
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1",
+            Subtype = "error_during_execution",
+            Result = null,
+            IsError = true,
+            Errors = ["No conversation found."],
+        });
+
+        var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.TurnCompleted);
+        Assert.Equal("Turn failed (error_during_execution): No conversation found.", row.Text);
+    }
+
+    [Fact]
+    public void Apply_TurnCompleted_Error_FallsBackToTheSubtypeAloneWhenNoReasonIsGiven()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error", Result = null, IsError = true });
+
+        var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.TurnCompleted);
+        Assert.Equal("Turn failed (error)", row.Text);
+    }
+
+    [Fact]
     public void Apply_SubAgentToolCall_NeverReplacesTheTopLevelActivityBand()
     {
         // AC-146: a sub-agent's own tool call nests under its Task row, already visible activity there — it must
@@ -1477,12 +1545,15 @@ public class SessionViewModelTests
     }
 
     [Fact]
-    public void ErrorRow_StaysOnThePlainPath()
+    public void ErrorRow_RendersItsOwnCardInsteadOfThePlainPath()
     {
+        // AC-720: an error row used to fall through to the same plain-text branch as a question/turn-result
+        // row (IsPlainNonMarkdown); it now gets its own severity-coloured card (IsErrorRow).
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, "Send failed: boom");
 
         Assert.False(entry.IsAssistantMarkdown);
-        Assert.True(entry.IsPlainNonMarkdown);
+        Assert.False(entry.IsPlainNonMarkdown);
+        Assert.True(entry.IsErrorRow);
     }
 
     [Fact]

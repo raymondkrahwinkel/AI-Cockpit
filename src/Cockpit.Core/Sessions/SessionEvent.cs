@@ -194,6 +194,13 @@ public sealed record SessionError : SessionEvent
 {
     public required string Message { get; init; }
     public Exception? Exception { get; init; }
+
+    // AC-720: which kind of failure this is, so the transcript can render blocking/temporary/informational
+    // rows instead of identical plain text. Defaults to Unknown — a driver that has not been taught to
+    // classify its errors yet renders exactly like today (informational, never a guessed red/amber).
+    public SessionErrorKind Kind { get; init; } = SessionErrorKind.Unknown;
+
+    public DateTimeOffset? RetryAfter { get; init; }
 }
 
 // Forward-compat catch-all for a wire line whose `type`/`subtype`/block-type this

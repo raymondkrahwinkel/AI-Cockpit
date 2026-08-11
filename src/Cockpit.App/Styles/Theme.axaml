@@ -333,6 +333,32 @@
         <Setter Property="TextAlignment" Value="Center"/>
     </Style>
 
+    <!-- AC-720: driver-reported error row — one card, three severities via Classes, reusing the exact
+         brushes the usage-warning bar already paints with. No new color tokens. -->
+    <Style Selector="Border.errorCard">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+    </Style>
+    <Style Selector="Border.errorCard.blocking">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusErrorBrush}"/>
+    </Style>
+    <Style Selector="Border.errorCard.temporary">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+    </Style>
+    <Style Selector="Border.errorCard.informational">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+    <Style Selector="Border.errorCard.blocking materialIcons|MaterialIcon.errorIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusErrorBrush}"/>
+    </Style>
+    <Style Selector="Border.errorCard.temporary materialIcons|MaterialIcon.errorIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+    </Style>
+    <Style Selector="Border.errorCard.informational materialIcons|MaterialIcon.errorIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
     <!-- Sender identity: a small model avatar badge to the left of a reply, so a glance tells you who
          is speaking (the SDK/Local-LLM chat had no such cue). Subtle by design — panel fill + hairline,
          the glyph carries the accent. Sized for the per-reply badge; the empty-state reuses it larger. -->

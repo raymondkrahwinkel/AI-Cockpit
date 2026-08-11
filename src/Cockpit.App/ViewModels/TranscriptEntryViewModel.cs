@@ -57,8 +57,12 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // The user's own message, rendered as a right-aligned bubble (T2) — plain text, not markdown.
     public bool IsUserRow => Kind == TranscriptEntryKind.UserText;
 
-    // Plain rows that are neither the user bubble nor markdown: questions, errors, turn results.
-    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow;
+    // A driver-reported failure (AC-720), rendered as a severity-coloured card rather than plain text.
+    public bool IsErrorRow => Kind == TranscriptEntryKind.Error;
+
+    // Plain rows that are neither the user bubble nor markdown: questions and turn results. An error row
+    // (AC-720) is plain text too, but gets its own severity-coloured card instead of this branch.
+    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow && !IsErrorRow;
 
     // Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
     // results). User and tool-use rows carry their timestamp inline in their own header line instead
@@ -149,6 +153,52 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // an answers object missing the keys it asked about.
     public bool CanSubmitAnswers =>
         IsPendingPermission && QuestionPrompts is { Count: > 0 } prompts && prompts.All(prompt => prompt.HasAnswer);
+
+    // --- Error severity (AC-720) ------------------------------------------------------------------------------
+    // The driver's own Kind, or the host's text-heuristic guess when it hasn't set one — presentation only,
+    // never behaviour (SessionViewModel resolves which of the two this is before setting it).
+
+    [ObservableProperty]
+    private SessionErrorKind _errorKind = SessionErrorKind.Unknown;
+
+    [ObservableProperty]
+    private DateTimeOffset? _retryAfter;
+
+    // Auth/config problems block the session until the operator acts — the row that gets the "Log in…" action.
+    public bool IsBlockingError => IsErrorRow && ErrorKind == SessionErrorKind.AuthRequired;
+
+    // Rate limits and outages resolve on their own; the operator's own next attempt is the only "action".
+    public bool IsTemporaryError => IsErrorRow && ErrorKind is SessionErrorKind.RateLimited or SessionErrorKind.ServiceUnavailable;
+
+    // Everything else — a parse failure, an empty reply, an unclassified driver — and always the safe
+    // default: never guessed red or amber (AC-720 acceptance criterion).
+    public bool IsInformationalError => IsErrorRow && !IsBlockingError && !IsTemporaryError;
+
+    public MaterialIconKind ErrorIconKind => ErrorKind switch
+    {
+        SessionErrorKind.AuthRequired => MaterialIconKind.LockAlertOutline,
+        SessionErrorKind.RateLimited => MaterialIconKind.GaugeFull,
+        SessionErrorKind.ServiceUnavailable => MaterialIconKind.CloudOffOutline,
+        _ => MaterialIconKind.InformationCircleOutline,
+    };
+
+    public bool HasRetryAfter => RetryAfter is not null;
+
+    public string RetryAfterText => RetryAfter is { } retryAfter ? $"Try again after {retryAfter.ToLocalTime():HH:mm}" : string.Empty;
+
+    partial void OnErrorKindChanged(SessionErrorKind value)
+    {
+        OnPropertyChanged(nameof(IsBlockingError));
+        OnPropertyChanged(nameof(IsTemporaryError));
+        OnPropertyChanged(nameof(IsInformationalError));
+        OnPropertyChanged(nameof(ErrorIconKind));
+    }
+
+    partial void OnRetryAfterChanged(DateTimeOffset? value)
+    {
+        OnPropertyChanged(nameof(HasRetryAfter));
+        OnPropertyChanged(nameof(RetryAfterText));
+    }
 
     // --- Row action (AC-715) ----------------------------------------------------------------------------------
     // One optional affordance any row can carry. Deliberately not tied to questions: AC-713's "Login" on an
