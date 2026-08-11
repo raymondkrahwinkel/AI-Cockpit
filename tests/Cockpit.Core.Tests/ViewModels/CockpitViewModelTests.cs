@@ -1242,10 +1242,11 @@ public class CockpitViewModelTests
         terminals.Received(1).SessionEnded(session.PaneId);
     }
 
-    // AC-692: drives the real `SampleResources`/`ResourceMonitor` wire (over a fake process table) rather than
-    // calling `_WarnAboutSessionMemory` directly — the decision logic itself is `SessionMemoryPressureTests`.
+    // AC-692/AC-700: drives the real `SampleResources`/`ResourceMonitor` wire (over a fake process table) rather
+    // than calling `_WarnAboutSessionCaps` directly — the decision logic itself is `SessionMemoryPressureTests`.
+    // The warning lands on the session's own bar now, not in a cockpit-wide toast.
     [Fact]
-    public async Task ASessionOverItsCap_GetsANamedTopLevelToast_AndTheKillButtonClosesIt()
+    public void ASessionOverItsCap_WarnsOnItsOwnBarWithAKill_AndRaisesNoToast()
     {
         const long Megabyte = 1024 * 1024;
         var reader = Substitute.For<IProcessTableReader>();
@@ -1257,14 +1258,17 @@ public class CockpitViewModelTests
 
         vm.SampleResources();
 
-        var toast = Assert.Single(vm.Toasts);
-        Assert.Contains("leaky-build", toast.Message, StringComparison.Ordinal);
-        Assert.Equal("Kill", toast.ActionLabel);
+        Assert.True(session.IsOverMemoryCap);
+        Assert.Contains("over its", session.UsageWarning, StringComparison.Ordinal);
+        Assert.Empty(vm.Toasts);
 
-        toast.InvokeActionCommand.Execute(null);
-        await Task.Delay(10);
+        // The Kill button takes the ordinary self-close path; that `CloseRequested` tears the session down is
+        // covered where the cockpit's own close wiring is.
+        var asked = false;
+        session.CloseRequested += (_, _) => asked = true;
+        session.KillOverCapSessionCommand.Execute(null);
 
-        Assert.DoesNotContain(session, vm.Sessions);
+        Assert.True(asked);
     }
 
     private static CockpitViewModel NewVm(
