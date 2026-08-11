@@ -63,10 +63,12 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:ProjectCardViewModel">
                                             <!-- A row per project, showing what it is rather than only its name: the logo it will
-                                                 carry on its card, what it is for, and where its files and memory live. -->
+                                                 carry on its card, what it is for, and where its files and memory live.
+                                                 Background/border stay out of the markup (Classes="projectCard" instead) for
+                                                 the same reason the sessionItem rows do (Theme.axaml): a local value here
+                                                 would beat the .active style setter and the selected card would never light up. -->
                                             <Border Margin="0,0,0,8" Padding="12" CornerRadius="{StaticResource CockpitPanelRadius}"
-                                                    Background="{StaticResource CockpitSecondaryBgBrush}"
-                                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                                    Classes="projectCard" Classes.active="{Binding IsSelected}"
                                                     PointerPressed="OnProjectPressed" DoubleTapped="OnProjectDoubleTapped"
                                                     Cursor="Hand">
                                                 <Grid ColumnDefinitions="Auto,*,Auto">
