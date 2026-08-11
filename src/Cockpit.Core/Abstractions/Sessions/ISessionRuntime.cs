@@ -108,5 +108,9 @@ public interface ISessionRuntime : IAsyncDisposable
 
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
+    /// <summary>Resolves the decision carrying the operator's answers as well (AC-715). See <see cref="ISessionDriver.RespondToPermissionAsync(string, bool, string?, CancellationToken)"/>.</summary>
+    Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
+        RespondToPermissionAsync(toolUseId, allow, cancellationToken);
+
     Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default);
 }

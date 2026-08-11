@@ -70,6 +70,43 @@ public class ClaudeControlProtocolTests
     }
 
     [Fact]
+    public void BuildDecisionResponse_Allow_WithAnswers_MergesThemIntoUpdatedInputBesideTheQuestions()
+    {
+        // AC-715: the AskUserQuestion contract — the SDK reads `updatedInput.answers`, keyed by question text,
+        // alongside the `questions` it sent. An allow that echoes only the input approves the question and never
+        // answers it, which is what the cockpit did before this.
+        const string questions = """{"questions":[{"question":"Which tests?","header":"Tests","options":[{"label":"Both"}],"multiSelect":false}]}""";
+
+        var line = ClaudeControlProtocol.BuildDecisionResponse(
+            "req-4", allow: true, originalInputJson: questions, denyMessage: "unused", answersJson: """{"Which tests?":"Both"}""");
+
+        using var document = JsonDocument.Parse(line);
+        var updatedInput = document.RootElement.GetProperty("response").GetProperty("response").GetProperty("updatedInput");
+
+        Assert.Equal("Both", updatedInput.GetProperty("answers").GetProperty("Which tests?").GetString());
+        Assert.Equal("Which tests?", updatedInput.GetProperty("questions")[0].GetProperty("question").GetString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not json")]
+    [InlineData("\"a string, not an object\"")]
+    public void BuildDecisionResponse_Allow_WithoutUsableAnswers_LeavesTheInputAlone(string? answersJson)
+    {
+        // A tool that was never a question, and a garbled answers document, take the same path: echo the input as
+        // it came, rather than failing the whole response or inventing an empty `answers` the agent would read.
+        var line = ClaudeControlProtocol.BuildDecisionResponse(
+            "req-5", allow: true, originalInputJson: """{"command":"ls"}""", denyMessage: "unused", answersJson);
+
+        using var document = JsonDocument.Parse(line);
+        var updatedInput = document.RootElement.GetProperty("response").GetProperty("response").GetProperty("updatedInput");
+
+        Assert.Equal("ls", updatedInput.GetProperty("command").GetString());
+        Assert.False(updatedInput.TryGetProperty("answers", out _));
+    }
+
+    [Fact]
     public void BuildDecisionResponse_Deny_CarriesBehaviorDenyAndMessage_StillSuccessSubtype()
     {
         var line = ClaudeControlProtocol.BuildDecisionResponse("req-9", allow: false, originalInputJson: "{}", denyMessage: "No.");

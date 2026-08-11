@@ -400,7 +400,8 @@ public class AssistantChatViewModelTests
 
         await session.AllowToolCommand.ExecuteAsync(pending);
 
-        await driver.Received(1).RespondToPermissionAsync("toolu_1", true, Arg.Any<CancellationToken>());
+        // AC-715: every decision now travels the overload that can also carry answers; a plain allow carries none.
+        await driver.Received(1).RespondToPermissionAsync("toolu_1", true, null, Arg.Any<CancellationToken>());
         Assert.False(pending.IsPendingPermission);
         Assert.False(session.HasPendingPermission);
 

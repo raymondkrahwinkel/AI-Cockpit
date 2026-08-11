@@ -357,6 +357,24 @@
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
 
+    <!-- An offered answer on a clarifying-question card (AC-715): the tool chip's chrome, but prose — the agent
+         wrote these labels for a person to read, and the mono face above is what made a question look like output.
+         Full width and left-aligned so a row of choices reads as a list rather than as scattered buttons. -->
+    <Style Selector="Button.optionChip">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="9,6"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    </Style>
+    <Style Selector="Button.optionChip:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+
     <!-- A chip that belongs to a folded run (AC-554): nests one level in behind a hairline guide so it
          reads as a member of the "N steps run" line above it, which stays on the outer margin unstyled. -->
     <Style Selector="Border.toolGroupMember.grouped">

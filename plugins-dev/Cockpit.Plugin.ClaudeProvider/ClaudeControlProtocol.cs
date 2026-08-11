@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
@@ -118,13 +119,13 @@ internal static class ClaudeControlProtocol
     }
 
     // The `control_response` line answering the permission request keyed by `requestId`. An allow
-    // carries the original `originalInputJson` back as `updatedInput` (the cockpit never rewrites
-    // tool input); a deny carries the operator's `message`. Both are `subtype:"success"` — the
+    // carries the original `originalInputJson` back as `updatedInput` (the cockpit rewrites tool input only
+    // to add `answers`, see below); a deny carries the operator's `message`. Both are `subtype:"success"` — the
     // callback succeeded and returned a decision; only a thrown callback would be "error".
-    public static string BuildDecisionResponse(string requestId, bool allow, string originalInputJson, string denyMessage)
+    public static string BuildDecisionResponse(string requestId, bool allow, string originalInputJson, string denyMessage, string? answersJson = null)
     {
         object decision = allow
-            ? new { behavior = "allow", updatedInput = _ParseOrEmptyObject(originalInputJson) }
+            ? new { behavior = "allow", updatedInput = _BuildUpdatedInput(originalInputJson, answersJson) }
             : new { behavior = "deny", message = denyMessage };
 
         return JsonSerializer.Serialize(new
@@ -139,31 +140,35 @@ internal static class ClaudeControlProtocol
         });
     }
 
-    // The original input rides back verbatim on allow. It arrives as a raw JSON string; re-parse it into a node the
-    // serializer emits as an object rather than a re-escaped string. A blank/garbled input degrades to {} rather than
-    // failing the whole response — the tool still runs, just without an echoed input the CLI already has.
-    private static JsonElement _ParseOrEmptyObject(string inputJson)
+    // AC-715: `AskUserQuestion` reads `updatedInput.answers` alongside the `questions` it sent, so an allow that
+    // echoes only the input approves the question and never answers it. A blank or garbled input or answers
+    // document degrades to {} rather than failing the whole response.
+    private static JsonNode _BuildUpdatedInput(string originalInputJson, string? answersJson)
     {
-        if (string.IsNullOrWhiteSpace(inputJson))
+        var input = _ParseObject(originalInputJson) ?? [];
+        if (_ParseObject(answersJson) is { } answers)
         {
-            return _EmptyObject();
+            input["answers"] = answers;
+        }
+
+        return input;
+    }
+
+    private static JsonObject? _ParseObject(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
         }
 
         try
         {
-            using var document = JsonDocument.Parse(inputJson);
-            return document.RootElement.Clone();
+            return JsonNode.Parse(json) as JsonObject;
         }
         catch (JsonException)
         {
-            return _EmptyObject();
+            return null;
         }
-    }
-
-    private static JsonElement _EmptyObject()
-    {
-        using var document = JsonDocument.Parse("{}");
-        return document.RootElement.Clone();
     }
 
     private static bool _TryGetString(JsonElement parent, string property, out string value)

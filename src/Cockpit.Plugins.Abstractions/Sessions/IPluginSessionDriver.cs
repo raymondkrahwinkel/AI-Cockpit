@@ -107,6 +107,15 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Resolves the decision carrying the operator's answers as well (AC-715) — what a clarifying-question tool
+    /// asks for, where allow/deny alone leaves the agent approved but unanswered. <paramref name="answersJson"/> is
+    /// a JSON object keyed by question text, which the driver translates to its provider's shape; the default drops
+    /// it and falls back to the plain allow above, so an already-compiled plugin is unaffected.
+    /// </summary>
+    Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
+        RespondToPermissionAsync(toolUseId, allow, cancellationToken);
+
+    /// <summary>
     /// Allows the outstanding decision for <paramref name="toolUseId"/> <em>and</em> stops prompting for the like
     /// of it for the rest of this session (D4) — the operator's "allow always". A provider that can say this to
     /// its agent (Codex's <c>acceptForSession</c>) overrides this; the default falls back to a one-time allow, so

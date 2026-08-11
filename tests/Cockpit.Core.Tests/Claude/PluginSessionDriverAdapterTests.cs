@@ -894,6 +894,20 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public async Task RespondToPermissionAsync_CarriesTheOperatorsAnswers_ToTheInnerDriver()
+    {
+        // AC-715: a clarifying question is answered, not merely allowed — the answers must survive the hop across
+        // the plugin boundary, or the agent is approved and still waiting.
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        await adapter.RespondToPermissionAsync("tool_1", allow: true, """{"Which suites?":"Core"}""", CancellationToken.None);
+
+        Assert.Equal(("tool_1", true), inner.LastPermissionResponse);
+        Assert.Equal("""{"Which suites?":"Core"}""", inner.LastPermissionAnswersJson);
+    }
+
+    [Fact]
     public async Task AllowPermissionAlwaysAsync_ForwardsTheAlwaysAllowIntent_ToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();

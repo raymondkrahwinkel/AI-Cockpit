@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: when an agent stops to ask you something, the question and the answers it offers now appear as a card in
+  the transcript with the choices as buttons — pick one (or several, where it allows that) and press Send, or type
+  your own answer under "Other". Before, the same question arrived as a generic Allow/Deny prompt with the options
+  buried in raw JSON, and allowing it approved the question without ever answering it.
+
 - added: Autopilot's CEO can now validate each finished step on a different profile/model than it planned with —
   planning stays the strong reasoning model, validation (the part of a run that grows fastest and runs most often)
   can move to a cheaper one. Blank keeps today's behaviour: validation follows planning until you set it separately
