@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -106,10 +107,16 @@ public class TranscriptStickToBottomTests
     public void TheStartingBanner_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
         _AssertTogglingNeverStopsFollowing("the starting banner", (session, on) => session.IsStarting = on));
 
+    private static readonly PluginUsageSignal _ContextSignal =
+        new("context", "ctx", PluginUsageSignalKind.Fill, 50) { Description = "Context window" };
+
     [Fact]
     public void TheUsageWarningBar_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
         _AssertTogglingNeverStopsFollowing(
-            "the usage-warning bar", (session, on) => session.UsageWarning = on ? "Context filling up." : string.Empty));
+            "the usage-warning bar",
+            // AC-683: UsageWarning is now derived from Warnings, so a crossing raises it and a drop-back clears
+            // it, the same real path the app itself uses — no more assigning the derived property directly.
+            (session, on) => session.ApplyUsage([_ContextSignal], [new PluginUsageReading("context", on ? 88 : 4, null)])));
 
     [Fact]
     public void ThePendingResumeBar_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
@@ -227,7 +234,9 @@ public class TranscriptStickToBottomTests
             // reply lands below it — a plain Focus-level turn, no click involved.
             session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, $"Read {run}")
             {
-                IsInGroup = true, IsGroupAnchor = true, GroupCount = 4,
+                IsInGroup = true,
+                IsGroupAnchor = true,
+                GroupCount = 4,
             });
             _Settle(window);
 

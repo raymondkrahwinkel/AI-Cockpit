@@ -1,5 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -64,6 +65,29 @@ public class SessionMemoryCapWarningTests
 
         Assert.True(panel.HasUsageWarning);
         Assert.Contains("over its", panel.UsageWarning);
+    }
+
+    [Fact]
+    public void OverTheCap_ItsLineBlocks_AndSortsAboveAMerelyLimitingWarning()
+    {
+        // AC-683 criterion 9: what blocks the session (spent, cut off by the OS) sorts above what only limits it
+        // (an allowance running low) — regardless of which crossed first.
+        var panel = new TtyViewModel { MemoryCapBytes = 1000, UsageProviderId = "claude" };
+        var weekly = new PluginUsageSignal("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" };
+        panel.ApplyUsage([weekly], [new PluginUsageReading("weekly", 95, null)]);
+
+        panel.ReportMemoryAgainstCap(1100);
+
+        Assert.Equal(2, panel.Warnings.Count);
+        Assert.Contains("over its", panel.Warnings[0].Text);
+        Assert.True(panel.Warnings[0].ShowKill);
+        Assert.Contains("Week is 95% used", panel.Warnings[1].Text);
+        Assert.False(panel.Warnings[1].ShowKill);
+
+        // Dismissing the memory-cap line by its own key must not take the weekly line down with it.
+        panel.DismissWarningCommand.Execute("cockpit.memory-cap");
+        Assert.Single(panel.Warnings);
+        Assert.Contains("Week is 95% used", panel.Warnings[0].Text);
     }
 
     [Fact]

@@ -514,36 +514,59 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private double? _contextThreshold;
 
-    // Which signals are currently over their threshold and what each of them has to say, oldest crossing first.
-    // Membership is what makes the bar rise on the crossing rather than on every poll: a figure that drops back is
-    // forgotten, and crossing again says so again — the reset is real, because a compaction genuinely empties the
-    // window and the next fill is news. Keeping each sentence rather than only the keys is what lets the bar fall
-    // back to a warning that is still true when the one in front of it goes quiet; one string for every signal
-    // meant the covered one was lost for good, since its own crossing had already been spent.
-    private readonly List<(string Key, string Text)> _standing = [];
+    // Which signals are currently over their threshold, what each has to say, and whether the subject blocks the
+    // session outright (the memory cap actually spent) rather than merely limiting it (an allowance running low) —
+    // oldest crossing first. Membership is what makes the bar rise on the crossing rather than on every poll: a
+    // figure that drops back is forgotten, and crossing again says so again — the reset is real, because a
+    // compaction genuinely empties the window and the next fill is news. Every standing, unsilenced entry gets its
+    // own line now (AC-683): the bar used to keep only the most recently crossed on screen, and a dismiss took
+    // every standing sentence down with it whether the operator had seen it or not.
+    private readonly List<(string Key, string Text, bool Blocks)> _standing = [];
 
-    // Which signals the operator has taken down by hand — dismissed, or acted on by scheduling the resume they
-    // offered. Separate from _standing because both are true at once: the figure is still over its threshold, and
-    // the bar is not to speak of it again until it has been away and come back. Without this, taking one warning
-    // down would hand the bar straight to whatever it was covering, which reads as the dismiss not having worked.
+    // Which signals the operator has taken down by hand, one key at a time — dismissed, or acted on by scheduling
+    // the resume they offered (AC-683: a dismiss on one subject must not silence a sibling the operator never
+    // saw). Separate from _standing because both are true at once: the figure is still over its threshold, and
+    // that one line is not to speak of it again until it has been away and come back.
     private readonly HashSet<string> _silenced = [];
 
-    // Which signal put the text that is on screen there, and which one the standing offer belongs to. Two keys
-    // rather than one because they drift apart: a later crossing overwrites the words while the earlier signal's
-    // offer is still standing, and that offer belongs to its own allowance, not to the sentence above it.
-    private string? _warnedSignal;
+    // Which signal the standing resume offer belongs to, if any — the offer's own line is what carries its
+    // buttons, so a later crossing on some other subject must not take them with it.
     private string? _offeredSignal;
 
-    // What the session bar says about a signal that has passed the point its provider called worth mentioning
-    // (AC-230), or empty when nothing has. Raised once per crossing: a bar that reappears at 91%, 92%, 93% is
-    // noise, and noise gets ignored exactly when it matters.
-    [ObservableProperty]
-    private string _usageWarning = string.Empty;
+    // The bar's lines, blocking subjects first and then the order each first crossed (AC-683 criterion 9) — not
+    // "last crossed", which used to let a session that would still run happily bump the warning that will not.
+    // Rebuilt from _standing/_silenced by `_RebuildWarnings` rather than patched in place, the same
+    // "clear and re-add" shape `RateLimits`/`UsagePillItems` already use.
+    public ObservableCollection<SessionWarningItem> Warnings { get; } = [];
+
+    // Back-compat for a caller that still asks for "the" warning as a single string (AC-230's original surface):
+    // the top line, or empty when the bar has nothing standing. `Warnings` is the real state now; these two are
+    // derived from it so bindings and tests that never learned about the collection keep working.
+    public string UsageWarning => Warnings.Count > 0 ? Warnings[0].Text : string.Empty;
 
     // Whether the session bar shows a usage warning at all.
-    public bool HasUsageWarning => UsageWarning.Length > 0;
+    public bool HasUsageWarning => Warnings.Count > 0;
 
-    partial void OnUsageWarningChanged(string value) => OnPropertyChanged(nameof(HasUsageWarning));
+    // Rebuilds `Warnings` (and the two derived properties above) from `_standing` minus `_silenced` — the one
+    // place that decides what the bar shows, so a caller cannot update one without the others drifting out of
+    // step. `OrderByDescending` is a stable sort in .NET, so subjects that block equally keep the order they
+    // first crossed in rather than being reshuffled on every rebuild.
+    private void _RebuildWarnings()
+    {
+        Warnings.Clear();
+        foreach (var standing in _standing.Where(s => !_silenced.Contains(s.Key)).OrderByDescending(s => s.Blocks))
+        {
+            Warnings.Add(new SessionWarningItem(
+                standing.Key,
+                standing.Text,
+                ShowResumeOffer: standing.Key == _offeredSignal && CanOfferResume,
+                ShowChangeResumeMoment: standing.Key == _offeredSignal && CanChangeResumeMoment,
+                ShowKill: standing.Key == MemoryCapWarningKey && IsOverMemoryCap));
+        }
+
+        OnPropertyChanged(nameof(UsageWarning));
+        OnPropertyChanged(nameof(HasUsageWarning));
+    }
 
     // Sends a prompt into this session as if it had been typed (AC-234) — how a scheduled resume arrives. Each
     // session kind knows its own route (the SDK runtime, the terminal's stdin); the base only knows that a session
@@ -551,9 +574,22 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // that could not be delivered rather than assuming it landed.
     public virtual Task<bool> SendPromptAsync(string prompt) => Task.FromResult(false);
 
-    // Dismisses the bar; what it could say stays quiet until each of those figures drops back and crosses again.
+    // Back-compat for a caller that still asks the bar to dismiss itself without saying which line (AC-230's
+    // original surface): takes down the top line, the same one `UsageWarning` reads from. New callers use
+    // `DismissWarningCommand` with the line's own key instead, so a click on one subject cannot silence a
+    // sibling the operator never saw.
     [RelayCommand]
-    private void DismissUsageWarning() => _SilenceTheBar();
+    private void DismissUsageWarning()
+    {
+        if (Warnings.Count > 0)
+        {
+            _SilenceOne(Warnings[0].Key);
+        }
+    }
+
+    // Takes one line down by its key (AC-683) — what each row's own Dismiss button calls.
+    [RelayCommand]
+    private void DismissWarning(string key) => _SilenceOne(key);
 
     // Where this signal warns for this session (AC-233): what the operator set for the profile, else for the
     // provider, else what the provider itself declared. One resolver, so the pill, the bar and the warning cannot
@@ -627,25 +663,22 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             // silenced at 91% must not leave the offer sitting behind a hidden banner where nothing can reach it.
             // Dismissing again covers this message too, which is the operator's call to make a second time.
             _silenced.Remove(signal.Key);
-            _ShowWhatIsStillWorthSaying();
+            _RebuildWarnings();
         }
     }
 
     // The bookkeeping behind one line on the bar, shared by the provider's usage signals and the memory cap
     // (AC-661): raised on the crossing, kept current while it stands, taken down when its subject goes away.
-    // `says` of null is "nothing to say about this any more".
-    private void _RaiseOrClear(string key, string? says)
+    // `says` of null is "nothing to say about this any more". `blocks` is AC-683's severity flag — true only for
+    // a subject that blocks the session outright (the memory cap actually spent), which is what sorts it above
+    // subjects that merely limit it.
+    private void _RaiseOrClear(string key, string? says, bool blocks = false)
     {
         if (says is null)
         {
             _standing.RemoveAll(standing => standing.Key == key);
             _silenced.Remove(key);
-
-            if (_warnedSignal == key)
-            {
-                _ShowWhatIsStillWorthSaying();
-            }
-
+            _RebuildWarnings();
             return;
         }
 
@@ -655,19 +688,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             // Still over its line, so its crossing has been spent and the bar does not go back up — a bar that
             // returns at 91%, 92%, 93% is noise. What it would say is kept current all the same: a figure that
             // climbs while another warning covers it must not come back afterwards understating itself.
-            _standing[already] = (key, says);
-
-            if (_warnedSignal == key)
-            {
-                UsageWarning = says;
-            }
-
-            return;
+            _standing[already] = (key, says, blocks);
+        }
+        else
+        {
+            _standing.Add((key, says, blocks));
         }
 
-        _standing.Add((key, says));
-        UsageWarning = says;
-        _warnedSignal = key;
+        _RebuildWarnings();
     }
 
     // The key the memory-cap warning stands under, so it behaves like any other bar warning — dismissable, and
@@ -713,7 +741,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 : usedBytes < cap * MemoryCapWarnShare
                     ? null
                     : $"This session is holding {ByteSize.Human(usedBytes)} of its {ByteSize.Human(cap)} memory cap. " +
-                      "Over it the session is cut off by the operating system — the cockpit itself is not.");
+                      "Over it the session is cut off by the operating system — the cockpit itself is not.",
+            blocks: IsOverMemoryCap);
     }
 
     // "Kill session" on the over-cap bar. Straight down the ordinary self-close path — where the toast's own Kill
@@ -721,41 +750,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [RelayCommand]
     private void KillOverCapSession() => RaiseCloseRequested();
 
-    // Hands the bar to whichever signal is still over its threshold and has not been taken down, most recent
-    // crossing first — the same rule that decides what is shown in the first place, so a bar clearing cannot
-    // quietly promote an older warning over a newer one. Nothing left to say means an empty bar, which also takes
-    // any resume offer's buttons off screen with it; that is why the offer's own signal being still standing is
-    // what keeps it reachable, rather than anything the offer does for itself.
-    private void _ShowWhatIsStillWorthSaying()
+    // Takes one line down — what the operator asked for on that particular subject (AC-683). What it could say
+    // stays quiet until it has been away and come back. No longer "the whole bar": a dismiss on one subject must
+    // not take a sibling down with it before the operator has even seen it.
+    private void _SilenceOne(string key)
     {
-        for (var i = _standing.Count - 1; i >= 0; i--)
-        {
-            if (_silenced.Contains(_standing[i].Key))
-            {
-                continue;
-            }
-
-            (_warnedSignal, UsageWarning) = _standing[i];
-            return;
-        }
-
-        UsageWarning = string.Empty;
-        _warnedSignal = null;
-    }
-
-    // Takes the bar down as a whole, which is what the operator asked for whether they dismissed it or acted on
-    // the resume it offered: everything it could currently say goes quiet until it has been away and come back.
-    // Silencing only the sentence on screen would hand the bar straight to the one behind it, which reads as the
-    // click not having worked.
-    private void _SilenceTheBar()
-    {
-        foreach (var (key, _) in _standing)
-        {
-            _silenced.Add(key);
-        }
-
-        UsageWarning = string.Empty;
-        _warnedSignal = null;
+        _silenced.Add(key);
+        _RebuildWarnings();
     }
 
     // Withdraws the offer to pick this session up later. A resume that is already waiting is deliberately left
@@ -800,6 +801,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             _SyncPendingResumeLabel();
             OnPropertyChanged(nameof(CanOfferResume));
             OnPropertyChanged(nameof(CanChangeResumeMoment));
+            _RebuildWarnings();
         }
     }
 
@@ -841,6 +843,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         OnPropertyChanged(nameof(CanOfferResume));
         OnPropertyChanged(nameof(CanChangeResumeMoment));
+        _RebuildWarnings();
     }
 
     // The line shown while a resume is waiting — a silent timer that fires at 07:30 is a surprise, not a feature.
@@ -857,6 +860,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(HasPendingResume));
         OnPropertyChanged(nameof(CanOfferResume));
         OnPropertyChanged(nameof(CanChangeResumeMoment));
+        _RebuildWarnings();
     }
 
     // Schedules the offered resume: this session, at the allowance's own reset moment, with whatever the prompt field says.
@@ -873,7 +877,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // The pending line follows from the scheduler saying so, not from this command assuming it worked.
         await scheduler.ScheduleAsync(new ScheduledResume(PaneId, moment, prompt, ResumeReason));
 
-        _SilenceTheBar();
+        // AC-683: only the offer's own line goes quiet — it was acted on, a sibling standing beside it was not.
+        if (_offeredSignal is { } offered)
+        {
+            _SilenceOne(offered);
+        }
     }
 
     // Asks the operator for a moment and a prompt, starting from whatever this session would have used. Set by
@@ -902,7 +910,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         await scheduler.ScheduleAsync(new ScheduledResume(PaneId, chosen.Moment, chosen.Prompt, ResumeReason));
 
-        _SilenceTheBar();
+        // AC-683: only the offer's own line goes quiet — it was acted on, a sibling standing beside it was not.
+        if (_offeredSignal is { } offered)
+        {
+            _SilenceOne(offered);
+        }
     }
 
     // Cancels the resume waiting on this session, dropping it from storage rather than only from view.

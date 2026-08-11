@@ -24,6 +24,9 @@ public class SessionUsageThresholdOverrideTests
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 65, null)]);
 
         Assert.True(session.HasUsageWarning, "65% is past the 60 the operator set, though short of the provider's 90");
+        // AC-683: `HasUsageWarning`/`UsageWarning` are derived from `Warnings` now — the collection is the real state.
+        Assert.Single(session.Warnings);
+        Assert.Contains("Week is 65% used", session.Warnings[0].Text);
     }
 
     [Fact]
