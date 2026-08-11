@@ -175,10 +175,9 @@ internal sealed class OpenMicListener(
                             // for, and announcing the end once it finished would be announcing it too late.
                             SpeechEnded?.Invoke(this, EventArgs.Empty);
 
-                            // AC-707: fire-and-forget rather than awaited — awaiting here stalled the capture loop
-                            // for as long as Whisper took, dropping every frame spoken while it transcribed.
-                            // WhisperWorkerSpeechToTextService._gate already serializes clips onto one worker, so
-                            // utterances still finish in order without an await here.
+                            // AC-707: fire-and-forget — awaiting here stalled the capture loop for as long as
+                            // Whisper took, dropping frames. WhisperWorkerSpeechToTextService._gate serializes
+                            // clips onto one worker, so utterances still finish in order.
                             _ = _FinalizeUtteranceAsync([.. utterance], cancellationToken);
                             utterance.Clear();
                             break;
