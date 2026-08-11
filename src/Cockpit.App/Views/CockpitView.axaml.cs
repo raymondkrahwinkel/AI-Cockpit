@@ -1180,13 +1180,9 @@ public partial class CockpitView : UserControl
     // selection so the focus a selection-change itself moves (see _FocusSelectedSessionInput) is a no-op
     // and cannot loop.
     //
-    // AC-704: that guard alone missed a second loop. Single-pane/zoom mode derealizes the pane a selection
-    // change just left (`RefreshPaneVisibility` clears its `IsPaneVisible`), and a control the framework
-    // collapses out from under keyboard focus forces focus somewhere else — sometimes back onto the pane
-    // just hidden. That GotFocus named a session that was never `SelectedSession`, so the old guard let it
-    // through, flipping the selection back and derealizing the *other* pane in its place — back and forth,
-    // ~45% CPU, unresponsive. A pane that is not currently shown cannot legitimately be where the operator
-    // just focused, so any GotFocus naming one is a collapse echo, not a real focus change.
+    // AC-704: the ReferenceEquals guard alone missed a second loop — derealizing the pane a selection just
+    // left could force focus back onto it, and that GotFocus flipped the selection back, fighting
+    // RefreshPaneVisibility (~45% CPU, unresponsive). IsPaneVisible closes it.
     private void OnSessionPaneGotFocus(object? sender, FocusChangedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit
