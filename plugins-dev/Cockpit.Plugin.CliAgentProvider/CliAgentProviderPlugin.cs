@@ -61,6 +61,11 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson, host))
         {
             Options = [sdkSandbox, sdkModelFallback],
+            // AC-713: Codex had no login gate at all before this — every profile read as ready regardless of
+            // whether `codex login`/`CODEX_API_KEY` was actually set up. `codex login status`'s exit code is the
+            // only structured signal the CLI offers (see `CodexLoginStatus`).
+            IsLoggedIn = configJson => CodexLoginStatus.IsLoggedIn(configJson, host.ResolveManagedCliPath),
+            StartLogin = (configJson, ct) => CodexLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
                 var listing = await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken).ConfigureAwait(false);
@@ -84,6 +89,10 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             CreateProvider: _ => new CodexTtyProvider(host.ResolveManagedCliPath),
             Options: [ttySandbox, ttyModelFallback])
         {
+            // Declared on both routes (AC-629), same as Claude — an SDK-only provider would otherwise be the
+            // example that leaves the gate silent.
+            IsLoggedIn = configJson => CodexLoginStatus.IsLoggedIn(configJson, host.ResolveManagedCliPath),
+            StartLogin = (configJson, ct) => CodexLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
                 var listing = await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken).ConfigureAwait(false);

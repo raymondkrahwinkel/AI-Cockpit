@@ -554,7 +554,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 standing.Text,
                 ShowResumeOffer: standing.Key == _offeredSignal && CanOfferResume,
                 ShowChangeResumeMoment: standing.Key == _offeredSignal && CanChangeResumeMoment,
-                ShowKill: standing.Key == MemoryCapWarningKey && IsOverMemoryCap));
+                ShowKill: standing.Key == MemoryCapWarningKey && IsOverMemoryCap,
+                ShowSignInAgain: standing.Key == AuthExpiryWarningKey));
         }
 
         OnPropertyChanged(nameof(UsageWarning));
@@ -741,6 +742,26 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // lands too, and deliberately without the "still running, close it?" prompt: the operator just answered it.
     [RelayCommand]
     private void KillOverCapSession() => RaiseCloseRequested();
+
+    // The key the auth-expiry warning stands under (AC-713), same bookkeeping as the memory cap above.
+    private const string AuthExpiryWarningKey = "cockpit.auth-expiry";
+
+    // AC-713: no countdown — neither CLI publishes a token's expiry, and both refresh their own access token.
+    public void ReportLoginStatus(bool isLoggedIn) =>
+        _RaiseOrClear(
+            AuthExpiryWarningKey,
+            isLoggedIn ? null : "This profile's login is about to expire. Sign in again to keep working.",
+            blocks: true);
+
+    // "Sign in again" on the auth-expiry line. The base does nothing: only a session that actually knows how to
+    // start a login flow overrides this (the SDK route, in `SessionViewModel`) — a TTY session never raises this
+    // warning in the first place, since its pty already shows the CLI's own login prompt on a failed auth.
+    protected virtual void OnSignInAgainRequested()
+    {
+    }
+
+    [RelayCommand]
+    private void SignInAgain() => OnSignInAgainRequested();
 
     // Takes one line down — what the operator asked for on that particular subject (AC-683). What it could say
     // stays quiet until it has been away and come back. No longer "the whole bar": a dismiss on one subject must

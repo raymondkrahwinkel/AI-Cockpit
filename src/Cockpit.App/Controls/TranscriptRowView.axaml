@@ -417,6 +417,12 @@
             <Button Content="{Binding ActionLabel}" Command="{Binding ActionCommand}"
                     Classes="Compact actionButton" HorizontalAlignment="Left"
                     IsVisible="{Binding HasAction}"/>
+
+            <!-- AC-713: the login flow this row's "Login" action (or the panel-wide auth-expiry bar) started —
+                 there is exactly one place a login flow ever plays out, regardless of where it began. -->
+            <Border Classes="paneChrome" Padding="8,6" IsVisible="{Binding HasLoginFlow}">
+                <controls:LoginFlowView DataContext="{Binding LoginFlow}"/>
+            </Border>
         </StackPanel>
     </Border>
 </UserControl>

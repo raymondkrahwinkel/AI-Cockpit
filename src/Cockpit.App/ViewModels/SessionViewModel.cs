@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
@@ -38,6 +39,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // than reaching into that converter's static seam. Null in the design-time/unit-test graph, where a plugin
     // profile's chip falls back to nothing rather than a resolved name (see `StartWithProfileAsync`).
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+
+    // AC-713: the generic login gate/starter, dispatched to whichever provider plugin the profile below names.
+    private readonly IProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginStarter? _loginStarter;
+
+    // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
+    private SessionProfile? _profile;
+
+    // AC-713: polls `_loginChecker.IsLoggedIn(_profile)` for the auth-expiry bar, since the SDK route has no TTY pane to show a login prompt in on its own.
+    private DispatcherTimer? _loginPollTimer;
 
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
     // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
@@ -848,7 +859,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
         SessionStateRecorder? sessionStateRecorder = null,
         IPluginProviderRegistry? pluginProviderRegistry = null,
-        VoiceOverlayCoordinator? voiceOverlay = null)
+        VoiceOverlayCoordinator? voiceOverlay = null,
+        IProfileLoginChecker? loginChecker = null,
+        IProfileLoginStarter? loginStarter = null)
     {
         _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
@@ -856,8 +869,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
+        _loginChecker = loginChecker;
+        _loginStarter = loginStarter;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
+        CloseRequested += (_, _) => _loginPollTimer?.Stop();
     }
 
     // This is the pane kind turn-start delivery works on (AC-394): the host composes its turns as typed calls on a
@@ -915,6 +931,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-410: still set here for a restored pane's first launch — see _restoredOfferSnapshot's own doc for why
         // it has to be captured now rather than read again once the first turn actually completes.
         _restoredOfferSnapshot = RestoreOffer;
+
+        // AC-713: what an auth-related error or the login-poll timer below check against.
+        _profile = profile;
+        _StartLoginPollTimer();
 
         // The reading level (AC-138) opens on the per-session override chosen in the New-session dialog, else the
         // profile's default view, else the app default (Developer). The header dropdown can still switch it live.
@@ -2356,7 +2376,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case SessionError error:
-                Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message));
+                var errorEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message);
+                // AC-713: re-checks the profile's own login gate rather than pattern-matching `error.Message`.
+                if (_profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
+                {
+                    errorEntry.ActionLabel = "Login";
+                    errorEntry.ActionCommand = new RelayCommand(() => _StartLoginFlow(errorEntry));
+                }
+
+                Transcript.Add(errorEntry);
                 // A session error ends the turn without a TurnCompleted, so drop this turn's images here too —
                 // otherwise a later image-less turn's tool call could attach the errored turn's stale images (AC-116).
                 ClearCurrentTurnImages();
@@ -2604,6 +2632,61 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : reason;
     }
 
+    // --- Login flow (AC-713) ----------------------------------------------------------------------------------
+
+    // "Sign in again" on the panel-wide auth-expiry bar: unlike the reactive row (below), there is no existing
+    // row to expand into — the mockup's own answer is to open one, so there is still exactly one place a login
+    // flow ever plays out, regardless of where it started.
+    protected override void OnSignInAgainRequested()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, "Signing in again…");
+        Transcript.Add(entry);
+        _StartLoginFlow(entry);
+    }
+
+    // Starts an in-app login attempt and shows it inline on `entry`, replacing whatever action button asked for
+    // it (`TranscriptEntryViewModel.HasAction` hides itself once `LoginFlow` is set).
+    private void _StartLoginFlow(TranscriptEntryViewModel entry)
+    {
+        if (_profile is null || _loginStarter?.StartLogin(_profile, CancellationToken.None) is not { } flow)
+        {
+            return;
+        }
+
+        var loginFlow = new LoginFlowRowViewModel(flow);
+        // A success is the CLI itself just reporting it — clear the bar now rather than wait for the poll's own
+        // next tick (up to a minute away) to re-read a cache this flow just made stale.
+        loginFlow.Completed = succeeded =>
+        {
+            if (succeeded)
+            {
+                ReportLoginStatus(true);
+            }
+        };
+        entry.LoginFlow = loginFlow;
+    }
+
+    // Polls the profile's login gate for the auth-expiry bar. Same interval as `ClaudeLoginStatus.MaxAge`
+    // (1 minute): a tick mostly just re-reads a cache another poll already refreshed, rather than forcing its own
+    // subprocess every time.
+    private void _StartLoginPollTimer()
+    {
+        if (_loginChecker is null || _profile is null)
+        {
+            return;
+        }
+
+        // AC-564: only subscribe `Tick` for a genuinely new timer, since `ClearContextAsync` re-runs this on the same instance.
+        if (_loginPollTimer is null)
+        {
+            _loginPollTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+            _loginPollTimer.Tick += (_, _) => ReportLoginStatus(_loginChecker.IsLoggedIn(_profile));
+        }
+
+        ReportLoginStatus(_loginChecker.IsLoggedIn(_profile));
+        _loginPollTimer.Start();
+    }
+
     // Pulls the driver's latest limits into the header bars. Read at each turn boundary and once right after start
     // (AC-660) rather than on a timer: those are the only points the provider has fresh figures to report — a
     // session with no limits feed yet simply reads null and keeps the bars hidden.
@@ -2634,6 +2717,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         await _StopRuntimeAsync();
+
+        // AC-713: a running flow's subprocess must not outlive the pane that started it.
+        _loginPollTimer?.Stop();
+        foreach (var entry in Transcript)
+        {
+            if (entry.LoginFlow is { } loginFlow)
+            {
+                await loginFlow.DisposeAsync();
+            }
+        }
     }
 
     // Ends this panel's runtime and detaches from it, leaving the panel itself intact. Two callers: the panel

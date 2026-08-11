@@ -18,6 +18,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
     private readonly ISessionProfileStore? _profileStore;
     private readonly IProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginStarter? _loginStarter;
     private readonly IModelCatalog? _modelCatalog;
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
@@ -74,7 +75,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         IPluginProviderRegistry? pluginProviderRegistry = null,
         IMcpServerCatalog? mcpServerCatalog = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
-        ITtySessionProviderResolver? ttyProviderResolver = null)
+        ITtySessionProviderResolver? ttyProviderResolver = null,
+        IProfileLoginStarter? loginStarter = null)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
@@ -83,11 +85,22 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;
+        _loginStarter = loginStarter;
 
         // Snapshot the plugin-registered providers once per dialog open (#45) — registrations only ever
         // happen at plugin-load time, well before this dialog can be shown, so a live-updating list buys
         // nothing here.
         _providers = pluginProviderRegistry is null ? SessionProviderCatalog.Providers : SessionProviderCatalog.AllProviders(pluginProviderRegistry);
+
+        // AC-713: a running flow's subprocess must not outlive the dialog that started it — closing (Save or
+        // Cancel) must dispose whichever row's `LoginFlow` is still going, not just the selected one.
+        CloseRequested += () =>
+        {
+            foreach (var profile in Profiles)
+            {
+                _ = profile.LoginFlow?.DisposeAsync().AsTask();
+            }
+        };
     }
 
     // Status of the last model refresh (count or a "server not running" hint), shown next to the model picker.
@@ -145,7 +158,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         Profiles.Clear();
         foreach (var profile in profiles)
         {
-            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver));
+            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter));
         }
 
         SelectedProfile = Profiles.FirstOrDefault();
@@ -157,7 +170,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         // A freshly added profile may pick its provider (#26); an existing one is fixed. Defaults to the bundled
         // Claude provider plugin — Claude is a plugin like every other now (Fase 4), not a built-in CLI provider.
         var added = new EditableProfileViewModel(
-            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver);
+            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter);
         Profiles.Add(added);
         SelectedProfile = added;
     }

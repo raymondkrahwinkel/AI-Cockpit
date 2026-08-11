@@ -158,6 +158,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     // Resolves whether the selected provider has a TTY route at all (AC-139), the same question `Cockpit.App.ViewModels.SessionKindDefaults` answers for the New-session dialog — reused here rather than a second guess at the same fact.
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
 
+    // AC-713: dispatches `Login` to whichever provider plugin this row's profile names.
+    private readonly IProfileLoginStarter? _loginStarter;
+
     // The profile's original `PluginProviderConfig` when it was loaded for a provider id that
     // did not resolve in `_pluginProviderRegistry` (the plugin is removed/disabled/failed to
     // load — a normal, lasting state, not a transient error). Carried through `ToProfile`
@@ -335,6 +338,49 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     public string LoginStatusBrushKey => IsLoggedIn ? "CockpitStatusDoneBrush" : "CockpitStatusWaitingBrush";
 
+    // AC-713: secondary entry point to sign in before ever starting a session — same flow the transcript row shows.
+    [ObservableProperty]
+    private LoginFlowRowViewModel? _loginFlow;
+
+    public bool HasLoginFlow => LoginFlow is not null;
+
+    // Disposes the outgoing flow — its `ILoginFlow` owns a real `claude`/`codex` subprocess, which must not be
+    // orphaned just because the operator started a second attempt. `ManageProfilesDialogViewModel.CloseRequested`
+    // disposes whatever is still running when the dialog itself closes.
+    partial void OnLoginFlowChanging(LoginFlowRowViewModel? oldValue, LoginFlowRowViewModel? newValue)
+    {
+        if (oldValue is not null && !ReferenceEquals(oldValue, newValue))
+        {
+            _ = oldValue.DisposeAsync().AsTask();
+        }
+    }
+
+    partial void OnLoginFlowChanged(LoginFlowRowViewModel? value) => OnPropertyChanged(nameof(HasLoginFlow));
+
+    // Whether this row's *current* provider (the picker may have changed since the last save) actually declared a
+    // login at all — not just whether `_loginStarter` is wired. Without this, a Gemini/Kimi/local-model row would
+    // show the whole LOGIN section with a green "logged in" status for a provider that has no login concept.
+    public bool CanStartLogin => _loginStarter?.CanStartLogin(ToProfile()) ?? false;
+
+    [RelayCommand(CanExecute = nameof(CanStartLogin))]
+    private void Login()
+    {
+        if (_loginStarter?.StartLogin(ToProfile(), CancellationToken.None) is not { } flow)
+        {
+            return;
+        }
+
+        var loginFlow = new LoginFlowRowViewModel(flow);
+        loginFlow.Completed = succeeded =>
+        {
+            if (succeeded)
+            {
+                IsLoggedIn = true;
+            }
+        };
+        LoginFlow = loginFlow;
+    }
+
     // Whether this row has the fields its provider needs to launch — a label always, plus a config
     // directory (Claude), a base URL and model (local), or a plugin config view that validates (#45).
     public bool IsValid =>
@@ -378,6 +424,8 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(SupportsEnvVars));
         OnPropertyChanged(nameof(HasTtyProvider));
         OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
+        OnPropertyChanged(nameof(CanStartLogin));
+        LoginCommand.NotifyCanExecuteChanged();
 
         // Point the base URL at the newly chosen provider's default port when adding a profile — including
         // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.
@@ -440,6 +488,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     // `pluginProviderRegistry`: Resolves a plugin provider's config view, for a `PluginProviderConfig` profile or when the operator picks a plugin provider while adding one; `null` when the caller does not care about plugin providers (design-time preview, most existing tests).
     // `availableMcpServerNames`: The MCP servers (registry + plugin-provided) the profile may pre-select from (AC-130); `null`/empty hides the MCP pre-selection entirely (design-time preview, a caller that does not surface it).
     // `ttyProviderResolver`: Resolves whether a provider has a TTY route at all (AC-139), for `HasTtyProvider`; `null` for a caller that does not care (design-time preview, most existing tests) treats every provider as SDK-only.
+    // `loginStarter`: Starts an in-app login attempt for `Login` (AC-713); `null` hides the button (design-time preview, most existing tests).
     public EditableProfileViewModel(
         SessionProfile profile,
         bool isLoggedIn,
@@ -448,10 +497,12 @@ public partial class EditableProfileViewModel : ViewModelBase
         IPluginProviderRegistry? pluginProviderRegistry = null,
         IReadOnlyList<string>? availableMcpServerNames = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
-        ITtySessionProviderResolver? ttyProviderResolver = null)
+        ITtySessionProviderResolver? ttyProviderResolver = null,
+        IProfileLoginStarter? loginStarter = null)
     {
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;
+        _loginStarter = loginStarter;
         _label = profile.Label;
         _configDir = profile.Claude?.ConfigDir ?? string.Empty;
         _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;

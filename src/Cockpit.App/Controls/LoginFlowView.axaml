@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="90"
+             x:Class="Cockpit.App.Controls.LoginFlowView"
+             x:DataType="vm:LoginFlowRowViewModel">
+
+    <!-- AC-713: shared view for a running `ILoginFlow`, however it was started. Hosts set `DataContext="{Binding LoginFlow}"` and gate their own visibility on `HasLoginFlow`. -->
+    <StackPanel Spacing="6">
+        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"/>
+        <Button Content="{Binding LinkToOpen}" Classes="Compact" HorizontalAlignment="Left"
+                Command="{Binding OpenLinkCommand}"
+                IsVisible="{Binding HasLink}"
+                ToolTip.Tip="Opens in your browser."/>
+        <WrapPanel IsVisible="{Binding AwaitsInput}">
+            <TextBox Text="{Binding CodeInput}" Width="220" FontSize="11" Padding="6,4"
+                     Margin="0,0,6,4" PlaceholderText="Paste the code here"/>
+            <Button Content="Submit" Classes="Accent Compact" Margin="0,0,0,4"
+                    Command="{Binding SubmitCommand}"/>
+        </WrapPanel>
+        <TextBlock Text="Waiting for the sign-in to finish…" FontSize="11"
+                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                   IsVisible="{Binding IsSubmitting}"/>
+        <TextBlock Text="Signed in." FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                   IsVisible="{Binding Succeeded}"/>
+        <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="11.5"
+                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                   IsVisible="{Binding HasError}"/>
+    </StackPanel>
+</UserControl>

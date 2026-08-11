@@ -32,11 +32,11 @@
                  beside Start, which is a real change in exchange for none. -->
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                    <!-- Login status is Claude-only — a local provider has no login. -->
-                    <Ellipse Width="8" Height="8" IsVisible="{Binding IsClaudeProfile}"
+                    <!-- AC-713: generalized off IsClaudeProfile to HasLoginConcept, so a provider with no login gate does not show a permanently-green status. -->
+                    <Ellipse Width="8" Height="8" IsVisible="{Binding HasLoginConcept}"
                              Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                     <TextBlock Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"
-                               IsVisible="{Binding IsClaudeProfile}"
+                               IsVisible="{Binding HasLoginConcept}"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     <Button Content="Manage profiles" Classes="Subtle" FontSize="12" VerticalAlignment="Center"
                             Command="{Binding ManageProfilesCommand}"
@@ -105,10 +105,22 @@
                         <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
                                    FontSize="11" Margin="0,3,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                        <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
-                                   FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
-                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                                   IsVisible="{Binding ShowLoginHint}"/>
+                        <!-- AC-713: replaces the old text-only hint ("run 'claude /login' in a terminal…") — this
+                             is the concrete pain point the ticket confirmed visually: without an in-app flow the
+                             Start button below stayed unusable on a not-logged-in profile. -->
+                        <StackPanel Spacing="6" Margin="0,2,0,0" IsVisible="{Binding ShowLoginHint}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Not logged in for this profile." FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                <Button Content="Login" Classes="Compact" Command="{Binding LoginCommand}"
+                                        IsVisible="{Binding CanStartLogin}"/>
+                            </StackPanel>
+                            <!-- Same shared flow view as the transcript row/Manage-profiles dialog (AC-713) — one
+                                 place a login flow plays out, wherever it started. -->
+                            <StackPanel IsVisible="{Binding HasLoginFlow}">
+                                <controls:LoginFlowView DataContext="{Binding LoginFlow}"/>
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 

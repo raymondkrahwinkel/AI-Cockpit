@@ -160,11 +160,35 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     [ObservableProperty]
     private IRelayCommand? _actionCommand;
 
-    public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel) && ActionCommand is not null;
+    public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel) && ActionCommand is not null && LoginFlow is null;
 
     partial void OnActionLabelChanged(string? value) => OnPropertyChanged(nameof(HasAction));
 
     partial void OnActionCommandChanged(IRelayCommand? value) => OnPropertyChanged(nameof(HasAction));
+
+    // --- Login flow (AC-713) ----------------------------------------------------------------------------------
+    // Set once the row's "Login" action started an `ILoginFlow`; the row then renders this instead of the button.
+
+    [ObservableProperty]
+    private LoginFlowRowViewModel? _loginFlow;
+
+    public bool HasLoginFlow => LoginFlow is not null;
+
+    // Disposes the outgoing flow — its `ILoginFlow` owns a real `claude`/`codex` subprocess, which must not be
+    // orphaned just because the row moved on to a different attempt.
+    partial void OnLoginFlowChanging(LoginFlowRowViewModel? oldValue, LoginFlowRowViewModel? newValue)
+    {
+        if (oldValue is not null && !ReferenceEquals(oldValue, newValue))
+        {
+            _ = oldValue.DisposeAsync().AsTask();
+        }
+    }
+
+    partial void OnLoginFlowChanged(LoginFlowRowViewModel? value)
+    {
+        OnPropertyChanged(nameof(HasAction));
+        OnPropertyChanged(nameof(HasLoginFlow));
+    }
 
     partial void OnQuestionPromptsChanged(IReadOnlyList<AskUserQuestionViewModel>? value)
     {

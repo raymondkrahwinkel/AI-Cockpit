@@ -38,6 +38,7 @@ namespace Cockpit.App.ViewModels;
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginStarter? _loginStarter;
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
@@ -461,8 +462,41 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public string LoginStatusLabel => IsSelectedProfileLoggedIn ? "logged in" : "not logged in";
 
-    // Guidance shown (in the body) only when a Claude SDK session isn't logged in — a TTY session logs in via its own TUI, and a local provider has no login.
-    public bool ShowLoginHint => IsClaudeProfile && IsSdk && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
+    // AC-713: whether the *selected* profile's provider declared a login at all, not just "not local" — a
+    // gate-less provider (Gemini, Kimi) reads `IsSelectedProfileLoggedIn == true` and must not look logged in.
+    public bool HasLoginConcept => SelectedProfile is { } profile && (_loginStarter?.CanStartLogin(profile) ?? false);
+
+    // AC-713: an SDK session that is not logged in — a TTY logs in via its own TUI, generalized off `IsClaudeProfile` now that Codex has a gate too.
+    public bool ShowLoginHint => IsSdk && !IsLocalProfile && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
+
+    // AC-713: the in-app sign-in this hint's "Login" button starts, rendered the same way everywhere it can start.
+    [ObservableProperty]
+    private LoginFlowRowViewModel? _loginFlow;
+
+    public bool HasLoginFlow => LoginFlow is not null;
+
+    partial void OnLoginFlowChanged(LoginFlowRowViewModel? value) => OnPropertyChanged(nameof(HasLoginFlow));
+
+    public bool CanStartLogin => HasLoginConcept;
+
+    [RelayCommand(CanExecute = nameof(CanStartLogin))]
+    private void Login()
+    {
+        if (SelectedProfile is not { } profile || _loginStarter?.StartLogin(profile, CancellationToken.None) is not { } flow)
+        {
+            return;
+        }
+
+        var loginFlow = new LoginFlowRowViewModel(flow);
+        loginFlow.Completed = succeeded =>
+        {
+            if (succeeded)
+            {
+                IsSelectedProfileLoggedIn = true;
+            }
+        };
+        LoginFlow = loginFlow;
+    }
 
     public string LoginStatusBrushKey => IsSelectedProfileLoggedIn
         ? "CockpitStatusDoneBrush"
@@ -505,13 +539,15 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IMcpToolTokenEstimator? tokenEstimator = null,
         IProjectStore? projectStore = null,
         IMcpOAuthCoordinator? oauthCoordinator = null,
-        IProjectMemorySourceRegistry? memorySourceRegistry = null)
+        IProjectMemorySourceRegistry? memorySourceRegistry = null,
+        IProfileLoginStarter? loginStarter = null)
     {
         _projectStore = projectStore;
         _memorySources = memorySourceRegistry?.Sources.ToMemorySources();
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
+        _loginStarter = loginStarter;
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _workingPathStore = workingPathStore;
@@ -520,6 +556,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _sessionProviderRegistry = sessionProviderRegistry;
         _worktreeManager = worktreeManager;
         _oauthCoordinator = oauthCoordinator;
+
+        // AC-713: Cancel/Confirm both raise this — a running flow's subprocess must not outlive the dialog that
+        // started it just because the operator closed the window instead of switching profiles (which already
+        // disposes it via `OnLoginFlowChanging`).
+        CloseRequested += result => LoginFlow?.DisposeAsync().AsTask();
     }
 
     // Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the enabled MCP
@@ -978,6 +1019,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // The generic login checker gates whichever provider declares a login; a profile whose provider has no
         // gate (or a profile-less/local session) reports logged in, so gating never falsely blocks it.
         IsSelectedProfileLoggedIn = value is not null && (_loginChecker?.IsLoggedIn(value) ?? true);
+        // AC-713: a running flow belongs to the profile that started it — switching away must not leave a stale
+        // one showing (or submittable) against whatever profile is selected now.
+        LoginFlow = null;
+        OnPropertyChanged(nameof(HasLoginConcept));
+        LoginCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(SelectedProfileConfigDir));
         OnPropertyChanged(nameof(IsClaudeProfile));
         OnPropertyChanged(nameof(IsLocalProfile));
