@@ -7,13 +7,66 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Voice;
 
 /// <summary>
-/// The push-to-talk orchestration end to end, with fakes standing in for the microphone/VAD/STT so the
-/// tests exercise the gating and wiring logic without any native runtime: silence never reaches STT, and
-/// the hold guard is enforced. What Whisper transcribes is what <see cref="IVoicePushToTalkService.EndHoldAsync"/>
-/// returns (AC-546) — no local-LLM cleanup step sits between them any more.
+/// The push-to-talk orchestration end to end, with fakes standing in for the microphone/VAD/STT so the tests
+/// exercise the gating, chunking and wiring logic without any native runtime.
 /// </summary>
 public class VoicePushToTalkServiceTests
 {
+    // One analysis window = 300ms of 16 kHz mono s16 = 16000 * 0.3 * 2 bytes — same size the service windows
+    // capture into internally. Each fake frame below is exactly one window, so the VAD is asked once per
+    // frame and the return sequence drives the chunk boundaries (mirrors OpenMicListenerTests).
+    private const int WindowBytes = 9600;
+
+    [Fact]
+    public async Task EndHoldAsync_LongHoldWithMidSilence_TranscribesMoreThanOnce_AndConcatenatesInRecordingOrder()
+    {
+        // Speech, a silence long enough to close the first chunk (3 windows >= the 800ms timeout), then more
+        // speech that never gets released — closing the second chunk falls to EndHoldAsync's tail handling,
+        // which is the 7th HasSpeechAsync call (6 windows during capture, then the tail gate).
+        var vad = Substitute.For<IVoiceActivityDetector>();
+        vad.HasSpeechAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>())
+            .Returns(true, false, false, false, true, true, true);
+        var speechToText = Substitute.For<ISpeechToTextService>();
+        speechToText.TranscribeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>())
+            .Returns("paragraph one", "paragraph two");
+        var service = _CreateService(vad: vad, speechToText: speechToText, frames: _Windows(6));
+
+        service.BeginHold();
+        var result = await service.EndHoldAsync();
+
+        Assert.Equal("paragraph one paragraph two", result);
+        await speechToText.Received(2).TranscribeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EndHoldAsync_LaterChunkFinishesFirst_MergedTextStaysInRecordingOrder()
+    {
+        // Two chunks close entirely during the hold (each: speech, then 3 silent windows past the 800ms
+        // timeout) — both TranscribeAsync calls are dispatched before EndHoldAsync ever runs. The second
+        // chunk's worker reply arrives first; the merged text must still start with the first chunk's text.
+        var vad = Substitute.For<IVoiceActivityDetector>();
+        vad.HasSpeechAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>())
+            .Returns(true, false, false, false, true, false, false, false);
+
+        var firstChunk = new TaskCompletionSource<string>();
+        var secondChunk = new TaskCompletionSource<string>();
+        var dispatchCount = 0;
+        var speechToText = Substitute.For<ISpeechToTextService>();
+        speechToText.TranscribeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ++dispatchCount == 1 ? firstChunk.Task : secondChunk.Task);
+        var service = _CreateService(vad: vad, speechToText: speechToText, frames: _Windows(8));
+
+        service.BeginHold();
+        var endHold = service.EndHoldAsync();
+
+        secondChunk.SetResult("paragraph two");
+        await Task.Delay(20);
+        firstChunk.SetResult("paragraph one");
+        var result = await endHold;
+
+        Assert.Equal("paragraph one paragraph two", result);
+    }
+
     [Fact]
     public async Task EndHoldAsync_NoSpeechDetected_ReturnsEmpty_AndNeverCallsSpeechToText()
     {
@@ -129,4 +182,14 @@ public class VoicePushToTalkServiceTests
         return vad;
     }
 
+    private static byte[][] _Windows(int count)
+    {
+        var frames = new byte[count][];
+        for (var i = 0; i < count; i++)
+        {
+            frames[i] = new byte[WindowBytes];
+        }
+
+        return frames;
+    }
 }

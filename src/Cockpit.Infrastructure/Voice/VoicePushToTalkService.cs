@@ -8,9 +8,8 @@ using Cockpit.Core.Voice;
 namespace Cockpit.Infrastructure.Voice;
 
 // `IVoicePushToTalkService`: buffers microphone audio for the duration of a hold, then on
-// release gates it through VAD and transcribes. Registered as a singleton — in this single-user desktop
-// cockpit only one session can hold the push-to-talk hotkey at a time (the one with keyboard focus), so
-// one shared hold/capture pipeline is all that is ever needed.
+// release gates it through VAD and transcribes. Registered as a singleton — this single-user desktop
+// cockpit only ever has one hold in flight at a time.
 internal sealed class VoicePushToTalkService(
     IAudioCaptureService captureService,
     IVoiceActivityDetector vad,
@@ -20,9 +19,25 @@ internal sealed class VoicePushToTalkService(
 {
     private static readonly AudioFormat CaptureFormat = new();
 
+    // AC-705: mirrors OpenMicListener's endpointing so a hold splits on trailing silence instead of
+    // waiting for the whole recording. The hard cap covers a paragraph read with no pause — Whisper pads
+    // every clip to a 30s window anyway, so an unbroken chunk is cut here rather than growing unbound.
+    private static readonly TimeSpan ChunkSilenceTimeout = TimeSpan.FromMilliseconds(800);
+    private static readonly TimeSpan MinSpeechToStart = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan ChunkHardCap = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan AnalysisWindow = TimeSpan.FromMilliseconds(300);
+
+    private static readonly int WindowByteCount =
+        (int)(CaptureFormat.SampleRate * AnalysisWindow.TotalSeconds) * (CaptureFormat.BitsPerSample / 8);
+
     private readonly PushToTalkHoldGuard _holdGuard = new();
     private CancellationTokenSource? _captureCancellation;
-    private Task<List<byte>>? _captureTask;
+    private Task<CaptureResult>? _captureTask;
+
+    // One hold's outcome: transcriptions already dispatched for chunks the hold closed on a silence (or the
+    // hard cap) while it was still recording, in the order those chunks were recorded, plus whatever audio
+    // was still open — the tail — when the key came up.
+    private sealed record CaptureResult(List<Task<string>> ChunkTranscriptions, float[] TailSamples);
 
     public event EventHandler<double>? AudioLevelSampled;
 
@@ -63,49 +78,116 @@ internal sealed class VoicePushToTalkService(
         }
 
         await _captureCancellation.CancelAsync().ConfigureAwait(false);
-        var pcmBytes = await _captureTask.ConfigureAwait(false);
+        var capture = await _captureTask.ConfigureAwait(false);
         _holdGuard.Release();
         _captureTask = null;
         _captureCancellation.Dispose();
         _captureCancellation = null;
 
-        var samples = _ToFloatSamples(pcmBytes);
         try
         {
-            if (samples.Length == 0 || !await vad.HasSpeechAsync(samples, cancellationToken).ConfigureAwait(false))
+            // AC-705: chunks are appended in recording order, never completion order — a chunk that comes
+            // back fast must never jump ahead of an earlier one still transcribing. Awaiting the list in
+            // order guarantees that regardless of how many chunks the worker ends up running concurrently.
+            var pieces = new List<string>(capture.ChunkTranscriptions.Count + 1);
+            foreach (var chunkTranscription in capture.ChunkTranscriptions)
+            {
+                var chunkText = await chunkTranscription.ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(chunkText))
+                {
+                    pieces.Add(chunkText);
+                }
+            }
+
+            if (capture.TailSamples.Length > 0 && await vad.HasSpeechAsync(capture.TailSamples, cancellationToken).ConfigureAwait(false))
+            {
+                var tailText = await speechToText.TranscribeAsync(capture.TailSamples, cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(tailText))
+                {
+                    pieces.Add(tailText);
+                }
+            }
+
+            if (pieces.Count == 0)
             {
                 logger.LogInformation("Push-to-talk hold produced no detected speech; discarding");
                 return string.Empty;
             }
 
-            var raw = await speechToText.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return string.Empty;
-            }
-
-            return raw;
+            return pieces.Count == 1 ? pieces[0] : string.Join(' ', pieces);
         }
         catch (Exception ex)
         {
-            // VAD/STT can throw on a failed first-use model download (Whisper + Silero are fetched lazily,
-            // ~1.6 GB) or a native transcription fault. The caller (SessionPanelViewModel.EndVoiceHoldAsync)
-            // catches this to show a "Voice error" status, but without a log line the failure was invisible —
-            // exactly why F9 looked like a dead hotkey. Log it here, then let the caller surface it.
+            // VAD/STT can throw on a failed first-use model download (Whisper + Silero, fetched lazily) or a
+            // native transcription fault. The caller (SessionPanelViewModel.EndVoiceHoldAsync) only shows a
+            // "Voice error" status, so without a log line here the failure was invisible (looked like a dead hotkey).
             logger.LogError(ex, "Voice dictation failed after capture (VAD/STT)");
             throw;
         }
     }
 
-    private async Task<List<byte>> _CaptureAsync(CancellationToken cancellationToken)
+    private async Task<CaptureResult> _CaptureAsync(CancellationToken cancellationToken)
     {
-        var buffer = new List<byte>();
+        var detector = new VadEndpointDetector(ChunkSilenceTimeout, MinSpeechToStart);
+        var pending = new List<byte>();
+        var chunkSamples = new List<float>();
+        var chunkDuration = TimeSpan.Zero;
+        var transcriptions = new List<Task<string>>();
+        float[]? preRoll = null;
+
         try
         {
             await foreach (var frame in captureService.CaptureAsync(CaptureFormat, cancellationToken).ConfigureAwait(false))
             {
                 AudioLevelSampled?.Invoke(this, AudioLevelMeter.NormalizedRms(frame.Span));
-                buffer.AddRange(frame.ToArray());
+                pending.AddRange(frame.ToArray());
+
+                while (pending.Count >= WindowByteCount)
+                {
+                    var windowSamples = _ToFloatSamples(pending, WindowByteCount);
+                    pending.RemoveRange(0, WindowByteCount);
+
+                    // Not tied to `cancellationToken`: a release landing mid-classification must never drop a
+                    // window that was already captured off the mic — every completed window has to land
+                    // somewhere, either in a chunk or in the tail below.
+                    var isSpeech = await vad.HasSpeechAsync(windowSamples, CancellationToken.None).ConfigureAwait(false);
+                    switch (detector.Observe(isSpeech, AnalysisWindow))
+                    {
+                        case VadEndpointSignal.SpeechStarted:
+                            chunkSamples.Clear();
+                            chunkDuration = TimeSpan.Zero;
+                            if (preRoll is not null)
+                            {
+                                // Prepend the window just before speech so the chunk's first phoneme is not clipped.
+                                chunkSamples.AddRange(preRoll);
+                            }
+
+                            chunkSamples.AddRange(windowSamples);
+                            chunkDuration += AnalysisWindow;
+                            break;
+
+                        case VadEndpointSignal.None when detector.IsInSpeech:
+                            chunkSamples.AddRange(windowSamples);
+                            chunkDuration += AnalysisWindow;
+                            if (chunkDuration >= ChunkHardCap)
+                            {
+                                _DispatchChunk(chunkSamples, transcriptions);
+                                chunkSamples.Clear();
+                                chunkDuration = TimeSpan.Zero;
+                            }
+
+                            break;
+
+                        case VadEndpointSignal.SpeechEnded:
+                            chunkSamples.AddRange(windowSamples);
+                            _DispatchChunk(chunkSamples, transcriptions);
+                            chunkSamples.Clear();
+                            chunkDuration = TimeSpan.Zero;
+                            break;
+                    }
+
+                    preRoll = windowSamples;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -113,12 +195,22 @@ internal sealed class VoicePushToTalkService(
             // Expected: EndHoldAsync cancels the capture stream when the hotkey is released.
         }
 
-        return buffer;
+        // Whatever never closed into a chunk: the words spoken right up to release, plus any trailing bytes
+        // too short to fill one more analysis window. Only this still needs transcribing after the key comes up.
+        chunkSamples.AddRange(_ToFloatSamples(pending));
+        return new CaptureResult(transcriptions, [.. chunkSamples]);
     }
 
-    private static float[] _ToFloatSamples(List<byte> pcmS16Bytes)
+    // Fired with no cancellation tied to the hold (AC-705): once a chunk closes it is committed, so releasing
+    // the key must never discard an encoder pass already dispatched to the worker.
+    private void _DispatchChunk(List<float> chunkSamples, List<Task<string>> transcriptions) =>
+        transcriptions.Add(speechToText.TranscribeAsync([.. chunkSamples], CancellationToken.None));
+
+    private static float[] _ToFloatSamples(List<byte> pcmS16Bytes) => _ToFloatSamples(pcmS16Bytes, pcmS16Bytes.Count);
+
+    private static float[] _ToFloatSamples(List<byte> pcmS16Bytes, int byteCount)
     {
-        var sampleCount = pcmS16Bytes.Count / 2;
+        var sampleCount = byteCount / 2;
         var samples = new float[sampleCount];
         for (var i = 0; i < sampleCount; i++)
         {
