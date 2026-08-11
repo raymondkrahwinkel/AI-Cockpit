@@ -544,14 +544,9 @@
                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
                 </StackPanel>
 
-                <!-- The transcript itself: the existing SDK chat rendering (markdown replies, collapsible tool
-                     calls, copyable results) — the same MarkdownView control, the same TranscriptEntryViewModel
-                     bindings and the same toolChip/toolBody/codeBox/transcriptRow style classes SessionView.axaml
-                     uses, just laid out in a narrower frame (HARDE EISEN: "geen tweede renderer"). This template
-                     could not be factored into a shared resource without editing SessionView.axaml, which is
-                     outside this strand's file ownership (AC-543-seams.md) — see the final report for that
-                     follow-up. Trimmed to what the assistant can produce today (AC-542: acting is [c]'s, not this
-                     ticket's): no permission Allow/Deny row, no reasoning/thinking section, no sub-agent nesting. -->
+                <!-- The transcript itself: SessionView.axaml's own row (Controls/TranscriptRowView.axaml, AC-722),
+                     just in a narrower frame — the scroller stays this window's own (always-follow, not
+                     SessionView's stick-only-while-at-bottom), see the code-behind. -->
                 <ScrollViewer x:Name="TranscriptScroll" IsVisible="{Binding HasMessages}">
                     <ItemsControl ItemsSource="{Binding Session.Transcript}">
                         <ItemsControl.ItemsPanel>
@@ -560,117 +555,12 @@
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
+                            <!-- AC-722: same row as SessionView.axaml, via Controls/TranscriptRowView.axaml —
+                                 this is what makes AC-715's question card (and everything else the old, narrower
+                                 copy of this template never grew) work in this window too. -->
                             <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                                <Border Classes="transcriptRow" Classes.userRow="{Binding IsUserRow}"
-                                        Padding="8,5" Margin="8,2" CornerRadius="{StaticResource CockpitControlRadius}">
-                                    <StackPanel Spacing="4">
-
-                                        <!-- Hand-over divider (AC-638): this window drew no Divider row at all, so
-                                             it borrows the shape SessionView.axaml uses. MaxWidth is what makes the
-                                             label wrap — an Auto column measures its child unconstrained. -->
-                                        <Grid IsVisible="{Binding IsDivider}" ColumnDefinitions="*,Auto,*" Margin="0,8">
-                                            <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
-                                                    Background="{StaticResource CockpitHairlineBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Text}" Margin="10,0" FontSize="10.5"
-                                                       VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="220"
-                                                       TextAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                            <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
-                                                    Background="{StaticResource CockpitHairlineBrush}"/>
-                                        </Grid>
-
-                                        <!-- The user's own message: right-aligned bubble, plain text. -->
-                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                                             Classes="transcript" IsVisible="{Binding IsUserRow}"/>
-
-                                        <!-- Assistant reply: markdown through the app's own renderer — the piece
-                                             this whole requirement turns on. -->
-                                        <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                                             IsVisible="{Binding IsAssistantMarkdown}"
-                                                             BasePath="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.WorkingDirectory}"/>
-
-                                        <!-- Question/error/turn-result rows: plain wrapped text. -->
-                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                                             Classes="transcript"
-                                                             IsVisible="{Binding IsPlainNonMarkdown}"/>
-
-                                        <!-- Tool-use row: collapsed by default (IsExpanded starts false), the
-                                             same chevron chip and expandable body/result SessionView.axaml uses. -->
-                                        <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
-                                            <Button Command="{Binding ToggleExpandedCommand}" Classes="toolChip" HorizontalAlignment="Left">
-                                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                                    <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
-                                                    <TextBlock Text="{Binding ToolHeader}"/>
-                                                </StackPanel>
-                                            </Button>
-
-                                            <!-- The consent decision, once it has been made, so a resolved call reads
-                                                 "WebSearch  ·  …   Allowed" rather than looking identical to one still
-                                                 waiting. Same field the main view shows. -->
-                                            <TextBlock Text="{Binding PermissionDecision}" FontStyle="Italic" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                       IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-
-                                            <!-- Allow/Deny. This window used to leave these out — "trimmed to what the
-                                                 assistant can produce today" — on the reading that acting is [c]'s. That
-                                                 was wrong the moment the assistant got tools at all: it launches in
-                                                 "Ask permissions" (SessionOptionCatalog.DefaultPermissionMode), so an
-                                                 ordinary WebSearch raises a consent, and this window is the assistant's
-                                                 ONLY surface — it has no pane, so it is not in the grid and not in the
-                                                 sidebar's session rows where the pending-consent hand is drawn. The
-                                                 request was therefore invisible and unanswerable, and the turn simply
-                                                 stopped: the operator saw a tool row and then nothing, for good.
-                                                 AC-542 decision 1 settles which way to fix it — "consent is always
-                                                 visual; the assistant may ask, never receive" — so the row belongs here
-                                                 rather than the assistant being launched in bypass to make the prompt
-                                                 go away. Bypass would invert that promise in exactly the window that is
-                                                 meant to be the audit surface. -->
-                                            <WrapPanel Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
-                                                <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
-                                                        Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.AllowToolCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                                <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
-                                                        Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.DenyToolCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                            </WrapPanel>
-                                            <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
-                                                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                                                     Classes="toolBody"
-                                                                     Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                                <StackPanel IsVisible="{Binding HasResult}" Spacing="4">
-                                                    <Border IsVisible="{Binding ResultIsCodeLike}" Classes="codeBox">
-                                                        <Grid>
-                                                            <ScrollViewer HorizontalScrollBarVisibility="Auto" MaxHeight="220">
-                                                                <SelectableTextBlock Text="{Binding ResultDisplayText}" Classes="toolBody"/>
-                                                            </ScrollViewer>
-                                                            <Button Content="Copy" Classes="copyBtn" Click="_OnCopyResultClick"
-                                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                    ToolTip.Tip="Copy result to clipboard"/>
-                                                        </Grid>
-                                                    </Border>
-                                                    <SelectableTextBlock Text="{Binding ResultText}" TextWrapping="Wrap"
-                                                                         Classes="toolBody"
-                                                                         Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                                         IsVisible="{Binding !ResultIsCodeLike}"/>
-                                                </StackPanel>
-                                            </StackPanel>
-                                        </StackPanel>
-
-                                        <!-- Standalone tool results: same collapsed-by-default chip. -->
-                                        <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
-                                            <Button Command="{Binding ToggleExpandedCommand}" Classes="toolChip" HorizontalAlignment="Left">
-                                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                                    <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
-                                                    <TextBlock Text="{Binding ToggleLabel}"/>
-                                                </StackPanel>
-                                            </Button>
-                                            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                                                 Classes="toolBody"
-                                                                 Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                                 IsVisible="{Binding IsExpanded}"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
+                                <controls:TranscriptRowView Compact="True"
+                                    Session="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session}"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

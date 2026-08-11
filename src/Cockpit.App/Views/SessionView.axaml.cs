@@ -314,23 +314,6 @@ public partial class SessionView : UserControl
         return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
     }
 
-    // Copies a tool result's formatted text to the clipboard (T6).
-    private void _OnCopyResultClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.ResultDisplayText);
-
-    // Copies an assistant reply's markdown source to the clipboard — the per-reply hover action.
-    private void _OnCopyMessageClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.Text);
-
-    // Both copy buttons sit on a transcript row, so the sender's DataContext is that row — copy the
-    // selected text from it to the clipboard.
-    private void _CopyRowText(object? sender, Func<TranscriptEntryViewModel, string> select)
-    {
-        if (sender is Control { DataContext: TranscriptEntryViewModel entry }
-            && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
-        {
-            _ = clipboard.SetTextAsync(select(entry));
-        }
-    }
-
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
     {
         if (_IsPasteGesture(e))

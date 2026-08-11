@@ -1,0 +1,422 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:views="using:Cockpit.App.Views"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="120"
+             x:Class="Cockpit.App.Controls.TranscriptRowView"
+             x:DataType="vm:TranscriptEntryViewModel">
+
+    <!-- AC-722: one transcript row, shared by SessionView and AssistantChatWindow so a feature added to the
+         row (AC-715's question card) reaches both. `Session` replaces the old `$parent[UserControl]` anchor;
+         `Compact` carries the few numbers that only differ because the assistant window is narrower. -->
+    <!-- Row surface: background/border/alignment come from the transcriptRow style classes
+         (Theme.axaml), never inline — an inline (local) value would beat the .userRow
+         setters and the user bubble could not right-align or re-tint (T2). -->
+    <Border Classes="transcriptRow rowRoot" Classes.userRow="{Binding IsUserRow}"
+            Classes.compact="{Binding $parent[controls:TranscriptRowView].Compact}"
+            Padding="8,5" CornerRadius="{StaticResource CockpitControlRadius}"
+            IsVisible="{Binding IsRowVisible}">
+        <StackPanel Spacing="4">
+
+            <!-- Arrival timestamp (T7): a small faint label at the top of the row, shown
+                 only when the operator enables timestamps in Options. The toggle lives on
+                 the session view model, so bind up to it via the ItemsControl's DataContext.
+                 Suppressed for user and tool-use rows (AC-144): those carry the timestamp
+                 inline in their own header line, so the top label would double it. -->
+            <TextBlock Text="{Binding TimestampText}" FontSize="10"
+                       Foreground="{StaticResource CockpitTextFaintBrush}">
+                <TextBlock.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="$parent[controls:TranscriptRowView].Session.ShowTimestamps"/>
+                        <Binding Path="IsTopTimestampRow"/>
+                    </MultiBinding>
+                </TextBlock.IsVisible>
+            </TextBlock>
+
+            <!-- The user's own message (T2): a header line with the timestamp left and a "You"
+                 label right on one line (AC-144), over plain selectable text; the enclosing row
+                 Border right-aligns and tints it into a bubble (Border.transcriptRow.userRow).
+                 The timestamp only shows when the operator enabled timestamps; "You" stays put. -->
+            <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
+                               HorizontalAlignment="Left" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding $parent[controls:TranscriptRowView].Session.ShowTimestamps}"/>
+                    <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                </Grid>
+                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                           Classes="transcript"/>
+            </StackPanel>
+
+            <!-- Questions / errors / turn-result rows: plain wrapped text, not a bubble or
+                 markdown; indented to sit in the reply column. -->
+            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                       Classes="transcript rowIndent"
+                       IsVisible="{Binding IsPlainNonMarkdown}"/>
+
+            <!-- Context-cleared divider (AC-564): a hairline across the full width with its
+                 label in the middle, so the break reads as a break in the conversation rather
+                 than as one more message in it. -->
+            <Grid IsVisible="{Binding IsDivider}" ColumnDefinitions="*,Auto,*" Margin="0,8">
+                <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
+                        Background="{StaticResource CockpitHairlineBrush}"/>
+                <TextBlock Grid.Column="1" Text="{Binding Text}" Classes="dividerLabel" Margin="10,0" FontSize="10.5"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
+                        Background="{StaticResource CockpitHairlineBrush}"/>
+            </Grid>
+
+            <!-- Assistant reply (T9 / look&feel pass): the model's avatar badge sits left,
+                 with its name over the prose (MarkdownView — the cockpit's own themed
+                 renderer, selectable text, clickable links). The per-reply actions
+                 (copy · read aloud) sit below and fade in on hover/focus (rowActions). -->
+            <Grid IsVisible="{Binding IsAssistantMarkdown}" ColumnDefinitions="Auto,*">
+                <Border Grid.Column="0" Classes="avatarBadge" Margin="0,1,10,0">
+                    <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                Foreground="{StaticResource CockpitAccentBrush}"/>
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="3">
+                    <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
+                               Text="{Binding $parent[controls:TranscriptRowView].Session.Title}"/>
+                    <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                                         BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
+                    <!-- Copy hands over the reply's markdown source verbatim. -->
+                    <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
+                                HorizontalAlignment="Left">
+                        <Button Classes="Subtle Compact" Click="_OnCopyMessageClick"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                ToolTip.Tip="Copy this reply">
+                            <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <!-- Reasoning / extended-thinking (AC-213): the model's streamed thinking, shown
+                 only at Developer — the row's IsRowVisible gates the whole Border off at
+                 Focus/Simple (AC-138), so those levels stay calm. A dimmed, collapsible section
+                 headed "Thinking" (default expanded) that grows in place as deltas append, like
+                 assistant prose; the pulsing "Thinking…" indicator above the composer is separate. -->
+            <StackPanel IsVisible="{Binding IsThinking}" Spacing="4" Classes="rowIndent">
+                <Button Command="{Binding ToggleExpandedCommand}"
+                        Classes="toolChip" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                        <materialIcons:MaterialIcon Kind="ThoughtBubble" Width="13" Height="13"/>
+                        <TextBlock Text="Thinking"/>
+                    </StackPanel>
+                </Button>
+                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                     Classes="toolBody" FontStyle="Italic"
+                                     Foreground="{StaticResource CockpitTextFaintBrush}"
+                                     IsVisible="{Binding IsExpanded}"/>
+            </StackPanel>
+
+            <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
+                 to the full input plus the coupled result (L14, matched on tool_use_id).
+                 A structured/code result renders in a monospace code box with a copy
+                 button (T6); a plain result stays inline text. -->
+            <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4" Classes="rowIndent">
+
+                <!-- Focus fold line (AC-138): a run of auto-executed tool calls collapses to one
+                     "N steps run" line on the run's anchor row; clicking it expands the run's chips
+                     (each row's own ShowToolBlock turns on). Only the anchor shows this line. -->
+                <Button IsVisible="{Binding ShowGroupSummary}" Command="{Binding ToggleGroupCommand}"
+                        Classes="toolChip" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="{Binding GroupToggleIconKind}" Width="12" Height="12"/>
+                        <TextBlock Text="{Binding GroupSummaryText}"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Plain-language consent line (AC-138 Simple): a tool call that asked for approval
+                     stays visible at every level; in Simple it reads in human words ("✓ Changed a
+                     file — you approved this") instead of the tool chip. The Allow/Deny buttons below
+                     still show while it is pending, so consent stays actionable here too. -->
+                <SelectableTextBlock IsVisible="{Binding ShowHumanToolLine}" Text="{Binding HumanToolText}"
+                                     TextWrapping="Wrap" Classes="transcript"/>
+
+                <!-- AC-715: an AskUserQuestion rides the permission callback like any other tool,
+                     but Allow/Deny is not an answer to it — so it renders as the agent's own
+                     options instead of the consent buttons over raw JSON. Non-modal, and it
+                     stays put with the chosen labels once sent. -->
+                <Border IsVisible="{Binding HasQuestionPrompts}" ClipToBounds="True"
+                        CornerRadius="{StaticResource CockpitControlRadius}"
+                        Background="{StaticResource CockpitPanelBgBrush}"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="{StaticResource CockpitAccentBrush}"/>
+                        <StackPanel Margin="11,9,11,10" Spacing="9">
+                            <!-- One card, one block per question (1-4 per call) and one Send at the
+                                 bottom: four cards for one round-trip would be four things to scroll
+                                 past for a decision the agent takes in one go. -->
+                            <ItemsControl ItemsSource="{Binding QuestionPrompts}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="11"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:AskUserQuestionViewModel">
+                                        <StackPanel Spacing="6">
+                                            <DockPanel>
+                                                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="HelpCircleOutline"
+                                                                            Width="14" Height="14" Margin="0,1,7,0"
+                                                                            VerticalAlignment="Top"
+                                                                            Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Header}"
+                                                           IsVisible="{Binding HasHeader}" Margin="8,0,0,0"
+                                                           VerticalAlignment="Top" FontSize="11"
+                                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                <SelectableTextBlock Text="{Binding Question}" TextWrapping="Wrap"
+                                                                     FontWeight="SemiBold" FontSize="12.5"/>
+                                            </DockPanel>
+
+                                            <ItemsControl ItemsSource="{Binding Options}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Spacing="4"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:AskUserQuestionOptionViewModel">
+                                                        <!-- The tick column keeps its width whether or not a tick is in
+                                                             it, so picking one does not shunt the labels sideways. -->
+                                                        <Button Classes="optionChip" Command="{Binding SelectCommand}"
+                                                                IsEnabled="{Binding IsSelectable}">
+                                                            <Grid ColumnDefinitions="Auto,Auto,*">
+                                                                <Panel Grid.Column="0" Width="13" Margin="0,0,7,0">
+                                                                    <materialIcons:MaterialIcon Kind="Check" Width="13" Height="13"
+                                                                                                VerticalAlignment="Center"
+                                                                                                IsVisible="{Binding IsSelected}"
+                                                                                                Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                                </Panel>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Label}" FontWeight="SemiBold"
+                                                                           VerticalAlignment="Center"/>
+                                                                <TextBlock Grid.Column="2" Text="{Binding Description}" Margin="8,0,0,0"
+                                                                           IsVisible="{Binding HasDescription}" TextWrapping="Wrap"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                            </Grid>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- The fallback the SDK guarantees, not the main path: it opens a box
+                                                 only once asked for, and typing in it drops the ticked options. -->
+                                            <Button Content="Other…" Classes="Compact" HorizontalAlignment="Left"
+                                                    Command="{Binding SelectOtherCommand}" IsVisible="{Binding !IsAnswered}"/>
+                                            <!-- CockpitSecondaryBgBrush, not the TextBox default: that is the panel
+                                                 colour this card is already painted in, so the box would vanish. -->
+                                            <TextBox Text="{Binding OtherText}" IsVisible="{Binding IsOtherSelected}"
+                                                     IsReadOnly="{Binding IsAnswered}" AcceptsReturn="False"
+                                                     PlaceholderText="Type your own answer"
+                                                     Background="{StaticResource CockpitSecondaryBgBrush}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
+                                    IsVisible="{Binding IsPendingPermission}"
+                                    IsEnabled="{Binding CanSubmitAnswers}"
+                                    Command="{Binding $parent[controls:TranscriptRowView].Session.SubmitQuestionAnswersCommand}"
+                                    CommandParameter="{Binding}"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- The full tool chip + expandable body: shown at Developer always, at Focus only
+                     when the fold group is expanded (or the call stands alone), and never at Simple.
+                     A member of a folded run (AC-554) nests one level in behind a hairline guide,
+                     so the chips read as belonging to the "N steps run" line above them; the
+                     button itself is not part of this Border and stays on the outer margin. -->
+                <Border Classes="toolGroupMember" Classes.grouped="{Binding IsInGroup}"
+                        IsVisible="{Binding ShowToolBlock}">
+                <StackPanel Spacing="4">
+                <!-- Header row: the tool chip, with the allow/deny outcome trailing on the same
+                     line (T5) so a resolved call reads "Bash · dotnet build   Allowed" instead of
+                     the verdict dropping onto its own line beneath the command. The arrival
+                     timestamp sits right-aligned on this same line (AC-144), only when the
+                     operator enabled timestamps. -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                        <Button Command="{Binding ToggleExpandedCommand}"
+                                Classes="toolChip" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                <TextBlock Text="{Binding ToolHeader}"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="{Binding PermissionDecision}" VerticalAlignment="Center"
+                                   FontStyle="Italic" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding TimestampText}" FontSize="10"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding $parent[controls:TranscriptRowView].Session.ShowTimestamps}"/>
+                </Grid>
+                <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                         Classes="toolBody"
+                                         Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <StackPanel IsVisible="{Binding HasResult}" Spacing="4">
+                        <Border IsVisible="{Binding ResultIsCodeLike}" Classes="codeBox">
+                            <Grid>
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" Classes="codeScroll">
+                                    <SelectableTextBlock Text="{Binding ResultDisplayText}" Classes="toolBody"/>
+                                </ScrollViewer>
+                                <Button Content="Copy" Classes="copyBtn" Click="_OnCopyResultClick"
+                                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        ToolTip.Tip="Copy result to clipboard"/>
+                            </Grid>
+                        </Border>
+                        <SelectableTextBlock Text="{Binding ResultText}" TextWrapping="Wrap"
+                                             Classes="toolBody"
+                                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                             IsVisible="{Binding !ResultIsCodeLike}"/>
+                    </StackPanel>
+                </StackPanel>
+                </StackPanel>
+                </Border>
+
+                <!-- AC-146: a Task/Agent tool call's own sub-agent activity — nested here rather
+                     than flattened into the top-level transcript, and collapsed by default
+                     (Raymond, 2026-07-29): an operator sees that a sub-agent ran and expands to
+                     see what it did. The toggle only shows once at least one event arrived. -->
+                <Button IsVisible="{Binding HasSubAgentRows}" Command="{Binding ToggleSubAgentExpandedCommand}"
+                        Classes="toolChip" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="{Binding SubAgentToggleIconKind}" Width="12" Height="12"/>
+                        <materialIcons:MaterialIcon Kind="RobotOutline" Width="13" Height="13"/>
+                        <TextBlock Text="{Binding SubAgentSummaryText}"/>
+                    </StackPanel>
+                </Button>
+                <ItemsControl IsVisible="{Binding IsSubAgentExpanded}" ItemsSource="{Binding SubAgentRows}" Margin="14,4,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="4"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <!-- A simplified row, one level deep only (today's CLI does not nest a sub-agent inside a
+                             sub-agent): the same tool chip/expand/result affordances as the top level, reusing the
+                             row's own commands and computed properties, without the markdown avatar row a sub-agent's
+                             own narration is not entitled to (it is not the operator's reply). -->
+                        <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                            <Border Classes="transcriptRow" Padding="6,4" CornerRadius="{StaticResource CockpitControlRadius}">
+                                <StackPanel Spacing="4">
+                                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="transcript"
+                                                         FontStyle="Italic" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                         IsVisible="{Binding IsPlainText}"/>
+
+                                    <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Button Grid.Column="0" Command="{Binding ToggleExpandedCommand}"
+                                                    Classes="toolChip" HorizontalAlignment="Left">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                    <TextBlock Text="{Binding ToolHeader}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <TextBlock Grid.Column="1" Text="{Binding PermissionDecision}" VerticalAlignment="Center"
+                                                       FontStyle="Italic" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </Grid>
+                                        <StackPanel IsVisible="{Binding IsExpanded}" Spacing="4" Margin="14,2,0,2">
+                                            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
+                                                                 Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                            <SelectableTextBlock Text="{Binding ResultDisplayText}" TextWrapping="Wrap"
+                                                                 Classes="toolBody" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                 IsVisible="{Binding HasResult}"/>
+                                        </StackPanel>
+                                        <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
+                                             value outranks a style setter, so only blanking is available. -->
+                                        <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
+                                            <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
+                                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
+                                                    Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+
+                                    <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
+                                        <Button Command="{Binding ToggleExpandedCommand}" Classes="toolChip" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                <TextBlock Text="{Binding ToggleLabel}"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
+                                                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                             IsVisible="{Binding IsExpanded}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <!-- Standalone (orphan) tool results: collapsed by default; expand via chevron. -->
+            <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4" Classes="rowIndent">
+                <Button Command="{Binding ToggleExpandedCommand}"
+                        Classes="toolChip" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                        <TextBlock Text="{Binding ToggleLabel}"/>
+                    </StackPanel>
+                </Button>
+                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                           Classes="toolBody"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           IsVisible="{Binding IsExpanded}"/>
+            </StackPanel>
+
+            <!-- Bind to the parent session view model's commands (not the row's), passing
+                 the row as the parameter, so allow/deny/always actually resolve the
+                 session's pending decision and persist the always-allow rule. Compact
+                 row: Allow gets the accent, the rest stay quiet and wrap if narrow. -->
+            <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
+                 value outranks a style setter, so only blanking is available. -->
+            <!-- AC-715: a question row answers with its own Send, so it must not also offer the
+                 four consent buttons — none of them is an answer. -->
+            <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal"
+                       IsVisible="{Binding IsPendingToolPermission}">
+                <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
+                        Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
+                        CommandParameter="{Binding}"/>
+                <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
+                        Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
+                        CommandParameter="{Binding}"/>
+                <Button Content="Always (exact)" Classes="Compact" Margin="0,4,6,0"
+                        Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysExactToolCommand}"
+                        CommandParameter="{Binding}"/>
+                <Button Content="Always (wildcard)" Classes="Compact" Margin="0,4,0,0"
+                        Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysWildcardToolCommand}"
+                        CommandParameter="{Binding}"/>
+            </WrapPanel>
+
+            <!-- AC-715: the row's own optional action — one labelled button any row kind can
+                 carry, so a row that needs an affordance (AC-713's "Login" on an auth-error
+                 row) reuses this instead of growing a card of its own. -->
+            <Button Content="{Binding ActionLabel}" Command="{Binding ActionCommand}"
+                    Classes="Compact actionButton" HorizontalAlignment="Left"
+                    IsVisible="{Binding HasAction}"/>
+        </StackPanel>
+    </Border>
+</UserControl>
