@@ -316,4 +316,81 @@ public class SessionContextMenuTargetViewTests
             window.Close();
         });
     }
+
+    // AC-703: "Move to workspace" did nothing - a second ContextMenu opened from a MenuItem's Click inside an
+    // already-open one never showed (Avalonia raced the parent menu's close against the new popup's open). The fix
+    // builds the submenu on the parent ContextMenu's Opened event instead, so it's there before anything can be clicked.
+    [Fact]
+    public void MoveToWorkspace_OpensASubmenu_AndMovesTheSessionWhenAnEntryIsClicked()
+    {
+        HeadlessAvalonia.Run(() =>
+        {
+            var cockpit = new CockpitViewModel();
+            var desk1 = Workspace.Create("Sessions", WorkspaceType.Sessions);
+            var desk2 = Workspace.Create("Cockpit", WorkspaceType.Sessions);
+            foreach (var session in cockpit.Sessions)
+            {
+                session.WorkspaceId = desk1.Id;
+                desk1 = desk1.WithPane(new WorkspacePane(session.PaneId, PaneKind.AiSession));
+            }
+
+            cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [desk1, desk2], ActiveWorkspaceId = desk1.Id };
+
+            var view = new CockpitView { DataContext = cockpit };
+            var window = new Window { Content = view, Width = 900, Height = 700 };
+            window.Show();
+            window.UpdateLayout();
+
+            var rows = _Rows(_Strip(view));
+            var target = rows[0];
+            var expected = (SessionPanelViewModel)target.DataContext!;
+
+            _RightClick(window, target);
+            var moveItem = _MenuItem(target, "Move to workspace");
+
+            Assert.True(moveItem.IsEnabled, "with a second Sessions workspace available, the item must be clickable");
+            var subItem = Assert.Single(moveItem.Items.OfType<MenuItem>());
+            Assert.Equal("Cockpit", subItem.Header);
+
+            _Click(subItem);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(desk2.Id, expected.WorkspaceId);
+
+            window.Close();
+        });
+    }
+
+    // AC-703 (edge case 1, DoD): with no other Sessions workspace to move to, the operator gets visible feedback -
+    // a disabled item - instead of the old silent no-op that looked identical to the timing bug from the outside.
+    [Fact]
+    public void MoveToWorkspace_IsDisabled_WhenNoOtherSessionsWorkspaceExists()
+    {
+        HeadlessAvalonia.Run(() =>
+        {
+            var cockpit = new CockpitViewModel();
+            var onlyDesk = Workspace.Create("Sessions", WorkspaceType.Sessions);
+            cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [onlyDesk], ActiveWorkspaceId = onlyDesk.Id };
+            foreach (var session in cockpit.Sessions)
+            {
+                session.WorkspaceId = onlyDesk.Id;
+            }
+
+            var view = new CockpitView { DataContext = cockpit };
+            var window = new Window { Content = view, Width = 900, Height = 700 };
+            window.Show();
+            window.UpdateLayout();
+
+            var rows = _Rows(_Strip(view));
+            var target = rows[0];
+
+            _RightClick(window, target);
+            var moveItem = _MenuItem(target, "Move to workspace");
+
+            Assert.False(moveItem.IsEnabled);
+            Assert.Empty(moveItem.Items.OfType<MenuItem>());
+
+            window.Close();
+        });
+    }
 }

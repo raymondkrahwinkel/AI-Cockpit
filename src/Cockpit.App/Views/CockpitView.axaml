@@ -527,7 +527,7 @@
                                              what CockpitViewModel.VisibleSessions now guarantees (see its remarks) — the
                                              sidebar's ItemsControl only tears down and rebuilds the containers a
                                              reconcile actually touches, not every row on every change. -->
-                                        <ContextMenu>
+                                        <ContextMenu Opened="OnSessionContextMenuOpened">
                                             <MenuItem Header="Rename" Click="OnRenameSession"/>
                                             <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
                                             <!-- AC-564: only the SDK route, which has no /clear of its own — a TTY
@@ -540,8 +540,10 @@
                                             <MenuItem Header="Clear status" Click="OnClearSessionStatus"
                                                       IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             <Separator/>
-                                            <!-- AC-674: submenu built in code-behind — a popup ContextMenu can't reach CockpitViewModel via $parent. -->
-                                            <MenuItem Header="Move to workspace" Click="OnMoveSessionToWorkspace"/>
+                                            <!-- AC-674/AC-703: submenu items built in code-behind on ContextMenu.Opened — a popup ContextMenu
+                                                 can't reach CockpitViewModel via $parent, and opening a second ContextMenu from a Click inside
+                                                 this one never showed (Avalonia closes it as part of this menu's own close). -->
+                                            <MenuItem Header="Move to workspace"/>
                                             <Separator/>
                                             <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
                                             <MenuItem Header="Move down" Click="OnMoveSessionDown"/>

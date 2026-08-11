@@ -953,10 +953,17 @@ public partial class CockpitView : UserControl
 
     private void OnClearSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ClearSessionStatusCommand.Execute(s));
 
-    // AC-674: built here rather than bound via ItemsSource — mirrors PluginSessionHeaderHost's action menu.
-    private void OnMoveSessionToWorkspace(object? sender, RoutedEventArgs e)
+    // AC-674/AC-703: built here, not bound via ItemsSource - a popup ContextMenu can't reach CockpitViewModel via $parent.
+    // Populated on Opened, not the item's Click: a second ContextMenu opened from a Click inside an already-open one
+    // never showed (closing this menu during click-routing raced the new popup's open) - Opened avoids the race.
+    private void OnSessionContextMenuOpened(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Control { DataContext: SessionPanelViewModel session } control || DataContext is not CockpitViewModel cockpit)
+        if (sender is not ContextMenu { DataContext: SessionPanelViewModel session } menu || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        if (menu.Items.OfType<MenuItem>().FirstOrDefault(item => (string?)item.Header == "Move to workspace") is not { } moveItem)
         {
             return;
         }
@@ -964,12 +971,9 @@ public partial class CockpitView : UserControl
         var targets = cockpit.Workspaces.Settings.Workspaces
             .Where(workspace => workspace.Type == WorkspaceType.Sessions && workspace.Id != session.WorkspaceId)
             .ToList();
-        if (targets.Count == 0)
-        {
-            return;
-        }
 
-        var items = targets
+        moveItem.IsEnabled = targets.Count > 0;
+        moveItem.ItemsSource = targets
             .Select(workspace =>
             {
                 var item = new MenuItem { Header = workspace.Name };
@@ -977,8 +981,6 @@ public partial class CockpitView : UserControl
                 return item;
             })
             .ToList();
-
-        new ContextMenu { ItemsSource = items, PlacementTarget = control }.Open(control);
     }
 
     private void OnMoveSessionUp(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.MoveSessionUpCommand.Execute(s));

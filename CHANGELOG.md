@@ -119,6 +119,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: "Move to workspace" in a session's right-click menu now actually opens its submenu and moves the session.
+  It used to do nothing on click, with no submenu and no error. With only one Sessions workspace it now shows as
+  disabled instead of silently doing nothing.
 - fixed: the voice assistant no longer forgets the conversation when its context fills up. It used to start over from
   scratch at that point — everything you had said to it was gone, and all that carried across was its standing
   instruction, its memory file and whatever note it last wrote itself. On a provider that can summarise its own
