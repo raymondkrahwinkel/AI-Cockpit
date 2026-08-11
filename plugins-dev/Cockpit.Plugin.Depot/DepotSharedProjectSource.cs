@@ -244,9 +244,8 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
         }
 
         // AC-620's own decision 4: only a project the operator can already write to is offered — Depot has no
-        // create_project call for the dropdown to fall back on, so a Viewer's own projects would otherwise dead-end
-        // in a picker row that fails the moment it is chosen. AC-699: "can write" is DepotProjectRoleParser.CanWrite's
-        // to answer, not a role list repeated here — this one used to miss "Admin" and emptied the whole dropdown.
+        // create_project call to fall back on, so a Viewer's row would dead-end the moment it is chosen. AC-699:
+        // CanWrite answers that, not a role list repeated here — this one missed "Admin" and emptied the dropdown.
         var targets = listed
             .Where(project => !string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
             .Select(project => (project.Slug, project.Name, Role: DepotProjectRoleParser.Parse(project.Role)))
