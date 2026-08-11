@@ -13,9 +13,14 @@ namespace Cockpit.Infrastructure.Voice;
 // model is downloaded and cached on first use via `SupertonicModelCache`, mirroring the Whisper
 // model's lazy download. One voice covers every language: the speaker (timbre) is a fixed sid and the
 // language is passed per utterance as generation data, so a mixed Dutch/English reply never switches voice.
-internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpeechService> logger)
+internal sealed class SherpaOnnxTextToSpeechService(IVoiceSettingsStore settingsStore, ILogger<SherpaOnnxTextToSpeechService> logger)
     : ITextToSpeechService, ISingletonService
 {
+    // Sherpa-onnx takes whatever it is given, including 0 or negative values that would never produce audible
+    // speech (or could misbehave in the native call) — clamped here so a corrupt/hand-edited config can't reach it.
+    private const float MinSpeed = 0.5f;
+    private const float MaxSpeed = 2.0f;
+
     private OfflineTts? _tts;
     private readonly SemaphoreSlim _loadGate = new(1, 1);
 
@@ -23,11 +28,15 @@ internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpee
     // to tell the native engine to keep generating. One shared instance — the callback is stateless.
     private static readonly OfflineTtsCallbackProgressWithArg ContinueGenerating = (_, _, _, _) => 1;
 
+    // Split out from `SynthesizeAsync` so the clamp is unit-testable without the native TTS model.
+    internal static float ClampSpeed(double speed) => Math.Clamp((float)speed, MinSpeed, MaxSpeed);
+
     public async Task<TtsAudio> SynthesizeAsync(string text, int speakerId, string language, CancellationToken cancellationToken = default)
     {
         var tts = await _GetOrLoadModelAsync(cancellationToken).ConfigureAwait(false);
+        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-        var config = new OfflineTtsGenerationConfig { Speed = 1.0f, Sid = speakerId };
+        var config = new OfflineTtsGenerationConfig { Speed = ClampSpeed(settings.TtsSpeed), Sid = speakerId };
         // Supertonic reads the target language from the generation config's "extra" bag (serialized to JSON
         // for the native call); it is what lets one voice pronounce each segment in its tagged language.
         config.Extra["lang"] = language;

@@ -41,6 +41,11 @@ public sealed record VoiceSettings
     // way the Whisper model does. Defaults to sid 1, the first offered voice.
     public int TtsVoiceSid { get; init; } = 1;
 
+    // Read-aloud speaking rate passed to sherpa-onnx's generation config (AC-708). 1.0 is the model's natural
+    // pace; sherpa-onnx itself defines the direction (Supertonic: >1 faster, <1 slower). Clamped to 0.5–2.0 at
+    // the point of use, never persisted or sent to the native call outside that range.
+    public double TtsSpeed { get; init; } = 1.0;
+
     // Preferred base language for read-aloud, as an ISO-639-1 code ("en"/"nl") — the language every enqueued
     // batch is synthesized in. One multilingual voice speaks it, so this is the language, not the timbre (that is
     // `TtsVoiceSid`). Default "en".

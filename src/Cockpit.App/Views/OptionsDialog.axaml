@@ -798,9 +798,18 @@
                                                   SelectedItem="{Binding SelectedTtsVoice}"
                                                   DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
                                         <Button Content="▶ Hear it" Command="{Binding PreviewVoiceCommand}"
-                                                ToolTip.Tip="Speaks one sentence in this voice and language. The voice model downloads on first use, so the very first press can take a moment."/>
+                                                ToolTip.Tip="Speaks one sentence in this voice and language, at the saved speed. The voice model downloads on first use, so the very first press can take a moment."/>
                                         <materialIcons:MaterialIcon Classes="hint"
                                             ToolTip.Tip="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Speed"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <NumericUpDown Value="{Binding VoiceTtsSpeed}" Minimum="0.5" Maximum="2.0"
+                                                       Increment="0.05" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="How fast the assistant speaks. 1.00 is the voice's natural pace; higher is faster."/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <TextBlock Text="Language"
