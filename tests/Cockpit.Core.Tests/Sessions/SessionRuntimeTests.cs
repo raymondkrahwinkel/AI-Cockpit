@@ -112,6 +112,42 @@ public class SessionRuntimeTests
         await driver.Received(1).SendUserMessageAsync("hi", Arg.Any<IReadOnlyList<ImageAttachment>?>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task WhenItsProcessDiesOutOfBand_IsRunningSaysSo_WithoutADispose()
+    {
+        // AC-693: a crash, or a kill from outside this class (AC-661's OS cap, AC-692's button), ends the driver's
+        // event stream and nothing else — no exception, no DisposeAsync. IsRunning used to read `_pump is not null`,
+        // which only ever went false in DisposeAsync, so a dead session kept reporting itself alive and the next send
+        // went into a stdin pipe with no reader ("The pipe is being closed.").
+        var processDied = new TaskCompletionSource();
+        var driver = _DriverDyingOn(processDied.Task, new AssistantTextCompleted { SessionId = "s1", Text = "alive" });
+        var runtime = new SessionRuntime(_FactoryFor(driver), profile: null);
+
+        await runtime.StartAsync(profile: null);
+        await _DrainAsync(runtime, expectedEvents: 1);
+        Assert.True(runtime.IsRunning);
+
+        processDied.SetResult();
+
+        await _UntilAsync(
+            () => !runtime.IsRunning,
+            "the runtime still reported itself running 5s after its process died");
+    }
+
+    private static async Task _UntilAsync(Func<bool> condition, string timeoutMessage)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTimeOffset.UtcNow > deadline)
+            {
+                throw new TimeoutException(timeoutMessage);
+            }
+
+            await Task.Delay(5);
+        }
+    }
+
     /// <summary>
     /// Waits until the runtime has consumed <paramref name="expectedEvents"/> events.
     /// </summary>
@@ -138,15 +174,21 @@ public class SessionRuntimeTests
         }
     }
 
-    private static ISessionDriver _DriverEmitting(params SessionEvent[] events)
+    // A live driver: it emits its events and then keeps the stream open, because its process is still there with
+    // nothing more to say yet. A stream that ends is a process that died, which is what _DriverDyingOn is for.
+    private static ISessionDriver _DriverEmitting(params SessionEvent[] events) =>
+        _DriverDyingOn(new TaskCompletionSource().Task, events);
+
+    private static ISessionDriver _DriverDyingOn(Task processDied, params SessionEvent[] events)
     {
         var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_ => _Stream(events));
+        driver.Events.Returns(_ => _Stream(events, processDied));
         return driver;
     }
 
     private static async IAsyncEnumerable<SessionEvent> _Stream(
         SessionEvent[] events,
+        Task processDied,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var evt in events)
@@ -155,6 +197,9 @@ public class SessionRuntimeTests
             yield return evt;
             await Task.Yield();
         }
+
+        // Stdout's EOF, as the pump sees it: the loop simply ends, with no exception and nothing disposed.
+        await processDied.WaitAsync(cancellationToken);
     }
 
     private static ISessionDriverFactory _FactoryFor(ISessionDriver driver)

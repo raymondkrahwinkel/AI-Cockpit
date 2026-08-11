@@ -1581,11 +1581,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         catch (Exception ex)
         {
             ClearCurrentTurnImages();
-            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Send failed: {ex.Message}"));
+            Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.Error, SendFailureMessage(ex, _runtime is { IsRunning: true })));
             IsBusy = false;
             _RecomputeStatus();
         }
     }
+
+    // AC-693: a write into a dead process's stdin says "The pipe is being closed."; the runtime notices that death a
+    // beat later than the write does, so both the exception and the flag are read. Internal so the rule can be asserted.
+    internal static string SendFailureMessage(Exception exception, bool runtimeIsRunning) =>
+        exception is IOException || !runtimeIsRunning
+            ? "This session's process has stopped, so the message was not sent."
+            : $"Send failed: {exception.Message}";
 
     // The one place this pane hands a turn to its runtime, so that turn-start delivery (AC-394) cannot be reached
     // by one send path and missed by another — `SessionViewModelSendPathTests` holds it to that. Messages

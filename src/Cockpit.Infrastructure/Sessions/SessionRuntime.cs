@@ -54,7 +54,8 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public IReadOnlyList<SessionLiveOption> LiveOptions => _driver?.LiveOptions ?? [];
 
-    public bool IsRunning => _pump is not null;
+    // AC-693: the pump ends when the driver's stream does, so a death out of band shows here, not only at DisposeAsync.
+    public bool IsRunning => _pump is { IsCompleted: false };
 
     public string? LastAssistantText { get; private set; }
 

@@ -649,9 +649,8 @@ public class AssistantSessionHostTests
             TotalCostUsd = 0.01,
         }));
 
-        var second = host.Session;
-        Assert.NotSame(first, second);
-        var divider = Assert.Single(second!.Transcript, entry => entry.IsDivider);
+        var second = _ReplacementOf(host, first);
+        var divider = Assert.Single(second.Transcript, entry => entry.IsDivider);
         Assert.Contains("Context was full", divider.Text, StringComparison.Ordinal);
     }
 
@@ -696,9 +695,8 @@ public class AssistantSessionHostTests
         // as it found it.
         _ReportAFullContext(first, driver, fill: 91);
 
-        var second = host.Session;
-        Assert.NotSame(first, second);
-        Assert.Contains(second!.Transcript, entry => entry.IsDivider);
+        var second = _ReplacementOf(host, first);
+        Assert.Contains(second.Transcript, entry => entry.IsDivider);
 
         // Asked once, not once per reading: the fill only moves after the provider answers, so an unguarded rule
         // would keep asking a provider that is still working on the first ask.
@@ -745,6 +743,24 @@ public class AssistantSessionHostTests
     // A provider that vouches for compacting its own conversation — the one capability AC-664 turns on.
     private static SessionCapabilities _CompactingProvider() =>
         SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true };
+
+    // The hand-over runs fire-and-forget off a property change and tears the old runtime down on the way, which is a
+    // real await — so the replacement lands a beat after the reading that triggered it, not inside it.
+    private static SessionViewModel _ReplacementOf(AssistantSessionHost host, SessionViewModel previous)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (host.Session is null || ReferenceEquals(host.Session, previous))
+        {
+            if (DateTimeOffset.UtcNow > deadline)
+            {
+                throw new TimeoutException("The assistant was not handed over to a fresh session within 5s.");
+            }
+
+            Thread.Sleep(10);
+        }
+
+        return host.Session!;
+    }
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
         SessionCapabilities capabilities)
@@ -997,7 +1013,8 @@ public class AssistantSessionHostTests
     private static async IAsyncEnumerable<SessionEvent> _EmptyEvents(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask;
+        // Open until the runtime cancels it: a live driver's stream ends only when its process does (AC-693).
+        await Task.Delay(Timeout.Infinite, cancellationToken);
         yield break;
     }
 

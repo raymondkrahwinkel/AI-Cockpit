@@ -405,7 +405,8 @@ public class AssistantChatViewModelTests
 
     private static async IAsyncEnumerable<SessionEvent> _NoEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask;
+        // Open until the runtime cancels it: a live driver's stream ends only when its process does (AC-693).
+        await Task.Delay(Timeout.Infinite, cancellationToken);
         yield break;
     }
 
