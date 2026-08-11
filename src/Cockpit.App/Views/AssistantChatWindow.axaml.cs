@@ -278,14 +278,4 @@ public partial class AssistantChatWindow : Window
         InputBox.SelectionStart = InputBox.CaretIndex;
         InputBox.SelectionEnd = InputBox.CaretIndex;
     }
-
-    // Copies a tool result's formatted text to the clipboard — same idiom as SessionView._OnCopyResultClick.
-    private void _OnCopyResultClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Control { DataContext: TranscriptEntryViewModel entry }
-            && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
-        {
-            _ = clipboard.SetTextAsync(entry.ResultDisplayText);
-        }
-    }
 }

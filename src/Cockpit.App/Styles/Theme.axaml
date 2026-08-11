@@ -301,6 +301,38 @@
         <Setter Property="MaxWidth" Value="520"/>
     </Style>
 
+    <!-- AC-722: TranscriptRowView.axaml's root — "rowRoot", not the plain ".transcriptRow" rule above, which the
+         nested sub-agent row (AC-146) also carries and must not gain a margin it never had. "Compact" is the
+         narrower, avatar-less assistant window; these are the only numbers the merged row still varies by. -->
+    <Style Selector="Border.rowRoot">
+        <Setter Property="Margin" Value="0,2"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact">
+        <Setter Property="Margin" Value="8,2"/>
+    </Style>
+    <Style Selector=":is(Control).rowIndent">
+        <Setter Property="Margin" Value="36,0,0,0"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact :is(Control).rowIndent">
+        <Setter Property="Margin" Value="0"/>
+    </Style>
+    <Style Selector="Button.actionButton">
+        <Setter Property="Margin" Value="36,4,0,0"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact Button.actionButton">
+        <Setter Property="Margin" Value="0,4,0,0"/>
+    </Style>
+    <Style Selector="ScrollViewer.codeScroll">
+        <Setter Property="MaxHeight" Value="280"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact ScrollViewer.codeScroll">
+        <Setter Property="MaxHeight" Value="220"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact TextBlock.dividerLabel">
+        <Setter Property="MaxWidth" Value="220"/>
+        <Setter Property="TextAlignment" Value="Center"/>
+    </Style>
+
     <!-- Sender identity: a small model avatar badge to the left of a reply, so a glance tells you who
          is speaking (the SDK/Local-LLM chat had no such cue). Subtle by design — panel fill + hairline,
          the glyph carries the accent. Sized for the per-reply badge; the empty-state reuses it larger. -->

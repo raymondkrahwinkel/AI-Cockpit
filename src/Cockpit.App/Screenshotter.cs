@@ -385,6 +385,7 @@ internal static class Screenshotter
         // neither before, which was the whole premise of the ticket (a running-out allowance was invisible on
         // the assistant's one and only surface).
         ["assistant-chat-warnings"] = (_, _) => _AssistantChatWithWarnings(),
+        ["assistant-chat-question"] = (_, _) => _AssistantChatQuestion(),
 
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
@@ -1322,7 +1323,12 @@ internal static class Screenshotter
     // AC-715: an AskUserQuestion as it arrives — over the permission callback, with the agent's own options in the
     // payload. Two questions, one single-select and one multi-select, because they render the same tick column and
     // only the multi-select one can hold two ticks at once.
-    private static SessionView _AskUserQuestionSession(bool answered)
+    private static SessionView _AskUserQuestionSession(bool answered) =>
+        new() { DataContext = _BuildAskUserQuestionSession(answered) };
+
+    // AC-722: the same question rows _AskUserQuestionSession renders in a session pane, built once here so the
+    // assistant-chat scene below proves the merged TranscriptRowView rather than a second hand-tuned fixture.
+    private static SessionViewModel _BuildAskUserQuestionSession(bool answered)
     {
         const string input = """
         {"questions":[
@@ -1359,7 +1365,7 @@ internal static class Screenshotter
             prompts[0].Options[0].SelectCommand.Execute(null);
         }
 
-        return new SessionView { DataContext = viewModel };
+        return viewModel;
     }
 
     // Renders the MCP-servers dialog in the state that had no way of being looked at (AC-427): an OAuth server, so
@@ -1924,6 +1930,21 @@ internal static class Screenshotter
         session.ReportMemoryAgainstCap((long)(Cap * 1.12));
 
         var host = new _FakeAssistantSessionHost { Session = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-722: an unanswered AskUserQuestion in the pop-out, on the same session _BuildAskUserQuestionSession
+    // builds for the session-pane scenes — the merge's own acceptance test (options/Other-fallback/multiSelect
+    // rendering in the assistant chat, not just SessionView) gets a baseline of its own.
+    private static AssistantChatWindow _AssistantChatQuestion()
+    {
+        var host = new _FakeAssistantSessionHost
+        {
+            Session = _BuildAskUserQuestionSession(answered: false),
+            Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
+        };
+
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
