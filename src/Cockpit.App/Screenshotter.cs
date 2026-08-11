@@ -205,10 +205,9 @@ internal static class Screenshotter
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
-        // AC-696: two sessions on the desk showing while a third runs on another one. Its own scene because the
-        // grid holds a container for every session alive, and the plain "session" scene — one desk, every
-        // session on it — is blind to the difference: this desk's two panes used to lay out as the top row of a
-        // 2x2, with the third desk's session claiming a whole empty row underneath them.
+        // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
+        // "session" one puts every session on one desk and so cannot show the difference: these two used to
+        // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
         ["session-two-desks"] = (_, _) => new MainWindow { DataContext = _TwoSessionDesks() },
         // AC-670: the focus+rail layout, which is the only way to see what a rail tile actually renders as — a
         // miniature of the terminal with the controls you drive it with taken out, one column deep.

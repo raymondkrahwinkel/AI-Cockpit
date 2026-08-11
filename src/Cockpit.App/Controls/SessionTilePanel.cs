@@ -74,12 +74,9 @@ public sealed class SessionTilePanel : Panel
     public static readonly AttachedProperty<int> RailSortKeyProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, int>("RailSortKey");
 
-    // Set the same way, from `SessionPanelViewModel.IsOnActiveDesk` — true for a pane the workspace tab now
-    // showing owns, whether or not zoom currently hides it. The grid sizes itself from these panes alone: this
-    // panel holds a container for *every* session alive (rebinding it to a filtered list would rebuild the
-    // panes and strand their ptys, AC-442), so counting all of them laid a two-pane tab out as a 2×2 — with an
-    // empty row underneath — while a third session ran on another desk (AC-696). Defaults to true so a panel
-    // used without the property still lays out everything it is handed.
+    // Set the same way, from `SessionPanelViewModel.IsOnActiveDesk` — the tab now showing owns this pane, zoom
+    // or no zoom. The grid sizes itself from these alone: it holds a container for every session alive, so
+    // counting all of them laid a two-pane tab out as a 2×2 (AC-696). True by default: no property, no filter.
     public static readonly AttachedProperty<bool> IsOnActiveDeskProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, bool>("IsOnActiveDesk", defaultValue: true);
 
@@ -732,11 +729,9 @@ public sealed class SessionTilePanel : Panel
     private static int LinearIndex(int col, int row, int columns, int rows, bool stackVertically) =>
         stackVertically ? col * rows + row : row * columns + col;
 
-    // Reconciles the cell list with this desk's panes: removes the cells of the ones that are gone (compacting
-    // the rest — see `DropClosedCells`), and gives each new pane the first hole or a new trailing
-    // cell. Runs off every child the active desk owns, visible or collapsed by zoom, so a placement isn't
-    // lost when the grid is temporarily single-pane — but not off the other desks' (AC-696), whose containers
-    // live here too and would otherwise pad the grid with cells nothing on this tab can fill.
+    // Reconciles the cell list with this desk's panes: drops the cells of the ones that are gone (compacting the
+    // rest — see `DropClosedCells`), gives each new pane the first hole or a trailing cell. Runs off every child
+    // the active desk owns, zoom-collapsed included, so a placement survives single-pane; off no other desk's.
     private void ReconcileCells()
     {
         var live = new HashSet<object>();

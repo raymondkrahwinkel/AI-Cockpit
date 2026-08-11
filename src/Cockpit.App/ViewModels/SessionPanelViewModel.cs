@@ -336,11 +336,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isPaneVisible = true;
 
-    // Whether the workspace tab now showing owns this pane — true for a session on the active desk even while
-    // zoom hides it, false for every session running on another desk. `IsPaneVisible` cannot answer that on its
-    // own (zoom collapses the desk's own panes too), and the grid needs the distinction: it holds a container
-    // for every session alive, so without it a two-pane tab lays out as a 2×2 because a third session runs
-    // elsewhere (AC-696). Set by `CockpitViewModel.RefreshPaneVisibility` alongside `IsPaneVisible`.
+    // Whether the workspace tab now showing owns this pane — true even while zoom hides it, which is what
+    // `IsPaneVisible` cannot say (zoom collapses this desk's own panes too). The grid sizes itself from this, or
+    // a two-pane tab lays out as a 2×2 because a third session runs elsewhere (AC-696). Set alongside the other.
     [ObservableProperty]
     private bool _isOnActiveDesk = true;
 
