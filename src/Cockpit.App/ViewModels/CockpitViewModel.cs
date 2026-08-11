@@ -1369,6 +1369,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static readonly IReadOnlyList<TranscriptionModelOption> _curatedModels =
     [
         new("large-v3-turbo", "most accurate · heaviest"),
+        new("large-v3-turbo-q5_0", "turbo accuracy · quantized, lighter"),
         new("medium", "≈1pt less accurate on NL · lighter"),
         new("small", "fast · light"),
         new("base", "faster · less accurate"),

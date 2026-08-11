@@ -112,12 +112,18 @@ internal static class DictationWorker
             var order = WhisperBackendPlanner.BuildOrder(backend, host);
             await WhisperRuntimeActivation.ApplyAsync(order, host, cancellationToken, logger: null, progress).ConfigureAwait(false);
 
-            var modelType = WhisperModelCatalog.Resolve(model);
-            var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken, logger: null, progress).ConfigureAwait(false);
+            var (modelType, quantization) = WhisperModelCatalog.Resolve(model);
+            var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, quantization, cancellationToken, logger: null, progress).ConfigureAwait(false);
 
             _Emit(new(DictationChildMessage.KindProgress, "Loading speech model…"));
             factory = WhisperFactory.FromPath(modelPath);
-            processor = factory.CreateBuilder().WithLanguage(string.IsNullOrWhiteSpace(language) ? "auto" : language).Build();
+            // Threads do nothing on GPU inference but matter a lot on the CPU fallback (AC-706); clamped so a
+            // low-core machine still leaves headroom and a high-core one does not spin up more than useful.
+            var threads = Math.Clamp(Environment.ProcessorCount - 2, 4, 8);
+            processor = factory.CreateBuilder()
+                .WithLanguage(string.IsNullOrWhiteSpace(language) ? "auto" : language)
+                .WithThreads(threads)
+                .Build();
 
             // Ready to take clips — the desktop unblocks its first dictation on this.
             _Emit(new(DictationChildMessage.KindReady));
