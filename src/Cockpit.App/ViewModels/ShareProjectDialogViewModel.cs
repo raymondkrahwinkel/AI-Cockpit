@@ -29,10 +29,14 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             SourceDirectory = "/home/raymond/RiderProjects/payroll",
             DefaultProfileLabel = "Claude — Opus 5",
             McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["Depot: Work", "YouTrack"] },
+            Category = "Synvolution",
             Resources =
             [
                 new ProjectResource("docs/CONVENTIONS.md", ProjectResourceRole.Reference) { Label = "Conventions" },
                 new ProjectResource("~/Notes/payroll.md", ProjectResourceRole.Memory) { Label = "Personal notes" },
+                // AC-699: unlabelled, so it falls back to its role for a name — the shape that showed one row
+                // under the same "Memory" label in both columns.
+                new ProjectResource("/home/raymond/Nextcloud/Memory/Payroll/", ProjectResourceRole.Memory),
                 new ProjectResource("/home/raymond/dumps/payroll-2026.sql", ProjectResourceRole.Reference) { Label = "Testdata dump" },
             ],
         };
@@ -137,6 +141,20 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             }
 
             SelectedTarget = Targets.Count > 0 ? Targets[0] : null;
+
+            // AC-699: a succeeded call with nothing in it is the state that has to say something. A connection
+            // only offers projects the operator may write to, so "empty" reads as a broken dropdown otherwise —
+            // which is exactly how the role-parsing bug behind this ticket stayed invisible.
+            if (Targets.Count == 0)
+            {
+                LoadError = "This connection has no project you can publish to — you need Editor rights or better on one.";
+            }
+        }
+        catch (Exception exception)
+        {
+            // Nothing awaits this method (it is started from a property change), so an exception escaping here is a
+            // silently empty dropdown rather than a crash. Shown instead, same place a failed result lands.
+            LoadError = $"Could not list this connection's projects: {exception.Message}";
         }
         finally
         {
@@ -165,9 +183,12 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             GoesToDepot.Add(new ShareFieldRowViewModel("Behaviour", behaviorPrompt));
         }
 
-        if (_project.McpOverlay.EnabledServerNames is { Count: > 0 } enabledServerNames)
+        // AC-699: a project that narrowed its servers to none still writes that restriction (an empty Enabled list
+        // is a choice, only a null overlay is "no opinion") — so this says so instead of showing no row at all.
+        if (_project.McpOverlay.EnabledServerNames is { } enabledServerNames)
         {
-            GoesToDepot.Add(new ShareFieldRowViewModel("MCP servers", string.Join(" · ", enabledServerNames)));
+            GoesToDepot.Add(new ShareFieldRowViewModel(
+                "MCP servers", enabledServerNames.Count > 0 ? string.Join(" · ", enabledServerNames) : "none — every server starts unticked"));
         }
 
         GoesToDepot.Add(new ShareFieldRowViewModel("Worktree isolation", _project.IsolateInWorktreeByDefault ? "on" : "off"));
@@ -177,6 +198,29 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         if (_project.SourceDirectory is { Length: > 0 } folder)
         {
             StaysOnThisMachine.Add(new ShareFieldRowViewModel("Folder", folder));
+        }
+
+        // AC-699: the fields PublishAsync has nowhere to put — named here rather than left out, since a column
+        // titled "what stays on this machine" that quietly skips half of what stays is the same kind of wrong.
+        if (_project.Category is { Length: > 0 } category)
+        {
+            StaysOnThisMachine.Add(new ShareFieldRowViewModel("Category", category));
+        }
+
+        if (_project.LogoPath is { Length: > 0 } logoPath)
+        {
+            StaysOnThisMachine.Add(new ShareFieldRowViewModel("Logo", logoPath));
+        }
+
+        if (_project.HasAdditionalInfo)
+        {
+            StaysOnThisMachine.Add(new ShareFieldRowViewModel(
+                "Anything else worth keeping", $"{_project.AdditionalInfo.Count} row(s) — never part of a shared project"));
+        }
+
+        if (_project.PluginFields.Count > 0)
+        {
+            StaysOnThisMachine.Add(new ShareFieldRowViewModel("Where it is tracked", string.Join(" · ", _project.PluginFields.Keys)));
         }
 
         foreach (var resource in _project.Resources)
@@ -192,9 +236,10 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             if (ProjectResourcePathPortability.ClassifyScope(resource.Reference) == ProjectResourceScope.Machine)
             {
                 // CockpitProjectResourceEntry.Create writes this as a Placeholder: the role/label still cross to
-                // Depot (a colleague sees the row when they bind), only the path itself does not.
-                GoesToDepot.Add(new ShareFieldRowViewModel(label, "(name only — this machine's own path stays local)"));
-                StaysOnThisMachine.Add(new ShareFieldRowViewModel(label, resource.Reference));
+                // Depot (a colleague sees the row when they bind), only the path itself does not. AC-699: the two
+                // halves say so in their own labels — one row's name repeated in both columns read as a duplicate.
+                GoesToDepot.Add(new ShareFieldRowViewModel($"{label} — name only", "the path itself is filled in on each machine"));
+                StaysOnThisMachine.Add(new ShareFieldRowViewModel($"{label} — path", resource.Reference));
             }
             else
             {

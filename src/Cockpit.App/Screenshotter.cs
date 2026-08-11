@@ -125,7 +125,9 @@ internal static class Screenshotter
         // AC-620, IL#9: the confirmation screen before a local project's first publish — the design-time sample
         // already carries a portable resource, a machine-scope one and a filled connection/target picker, so this
         // scene draws the same populated state the design-time previewer does rather than an empty shell.
-        ["share-project-dialog"] = (_, _) => new ShareProjectDialog { DataContext = new ShareProjectDialogViewModel() },
+        // AC-699: taller than it opens, the way the profile-editor scenes are — both columns run past the resting
+        // height, and the machine-scope rows this ticket relabelled are the ones below the fold.
+        ["share-project-dialog"] = (_, _) => new ShareProjectDialog { DataContext = new ShareProjectDialogViewModel(), Height = 900 },
         // AC-499: the server row's own two states — a family with instances to pick from (its dropdown), and a
         // family with none yet (its empty hint plus "Servers…" in the dropdown's place) — staged together since
         // only one row of each is needed to prove both render, and DialogScreenClamp caps how much of this dialog

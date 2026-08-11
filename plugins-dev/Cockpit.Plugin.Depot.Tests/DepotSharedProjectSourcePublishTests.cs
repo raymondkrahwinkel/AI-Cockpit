@@ -218,6 +218,55 @@ public class DepotSharedProjectSourcePublishTests
             result.Targets.Select(target => target.Id).OrderBy(id => id, StringComparer.Ordinal));
     }
 
+    // AC-699: the exact list_projects payload depot.krahwinkel-it.nl returned for the operator who reported this
+    // (13 projects, every role "Admin", three of them Brains) — the picker was empty against this very response.
+    [Fact]
+    public async Task ListPublishTargetsAsync_TheReportedServersOwnResponse_FillsThePicker()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        _StubListProjects(host, """
+            {"projects":[
+              {"slug":"ai-hub","name":"AI-Hub","role":"Admin","kind":"Project"},
+              {"slug":"ashenmoon","name":"Ashenmoon","role":"Admin","kind":"Project"},
+              {"slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project"},
+              {"slug":"depot","name":"Depot","role":"Admin","kind":"Project"},
+              {"slug":"eve-together","name":"EVE Together","role":"Admin","kind":"Project"},
+              {"slug":"eve-workbench","name":"EVE Workbench","role":"Admin","kind":"Project"},
+              {"slug":"kontena","name":"Kontena","role":"Admin","kind":"Project"},
+              {"slug":"olaf","name":"Olaf","role":"Admin","kind":"Brain"},
+              {"slug":"sql-explorer","name":"SQL Explorer","role":"Admin","kind":"Project"},
+              {"slug":"startpage","name":"Startpage","role":"Admin","kind":"Project"},
+              {"slug":"synvolution-flow","name":"Synvolution Flow","role":"Admin","kind":"Project"},
+              {"slug":"testy","name":"Testy","role":"Admin","kind":"Brain"},
+              {"slug":"vex","name":"Vex","role":"Admin","kind":"Brain"}
+            ]}
+            """);
+
+        var result = await SourceFor(host).ListPublishTargetsAsync(CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(10, result.Targets.Count);
+        Assert.DoesNotContain(result.Targets, target => target.Name is "Olaf" or "Testy" or "Vex");
+    }
+
+    // AC-699, measured against a real server: Depot reports "Admin" for every project a global admin can see
+    // (ListProjectsForUserQuery), which this filter used to read as Unknown — emptying the whole publish dropdown
+    // for exactly the operator most likely to publish.
+    [Fact]
+    public async Task ListPublishTargetsAsync_AdminRole_IsAPublishTargetAndShowsItsRole()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubListProjects(host, """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project"}]}""");
+
+        var result = await SourceFor(host).ListPublishTargetsAsync(CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var target = Assert.Single(result.Targets);
+        Assert.Equal($"{scheme}:cockpit", target.Id);
+        Assert.Equal("Admin", target.Role);
+    }
+
     [Fact]
     public async Task ListPublishTargetsAsync_ExcludesBrainKind()
     {
