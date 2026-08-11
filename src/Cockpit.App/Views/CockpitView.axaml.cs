@@ -1181,11 +1181,16 @@ public partial class CockpitView : UserControl
     // the F9 voice hold all follow the pane the operator is actually in (AC-65). Guarded on the current
     // selection so the focus a selection-change itself moves (see _FocusSelectedSessionInput) is a no-op
     // and cannot loop.
+    //
+    // AC-704: the ReferenceEquals guard alone missed a second loop — derealizing the pane a selection just
+    // left could force focus back onto it, and that GotFocus flipped the selection back, fighting
+    // RefreshPaneVisibility (~45% CPU, unresponsive). IsPaneVisible closes it.
     private void OnSessionPaneGotFocus(object? sender, FocusChangedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit
             || _PaneContainerFromSource(e.Source) is not { DataContext: SessionPanelViewModel session }
-            || ReferenceEquals(cockpit.SelectedSession, session))
+            || ReferenceEquals(cockpit.SelectedSession, session)
+            || !session.IsPaneVisible)
         {
             return;
         }
