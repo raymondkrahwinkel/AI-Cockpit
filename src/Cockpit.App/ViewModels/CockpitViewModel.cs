@@ -2080,6 +2080,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private SttLanguageOption _selectedReadAloudLanguage = new("English", "en");
 
+    // Mirrors `Cockpit.Core.Voice.VoiceSettings.TtsSpeed` (AC-708). Decimal because that is what NumericUpDown
+    // binds; clamped to 0.5–2.0 where it is actually used (`SherpaOnnxTextToSpeechService`), not here.
+    [ObservableProperty]
+    private decimal _voiceTtsSpeed = 1.0m;
+
     [ObservableProperty]
     private string _voiceSettingsStatus = string.Empty;
 
@@ -4333,6 +4338,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
+        VoiceTtsSpeed = (decimal)settings.TtsSpeed;
         SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == settings.ReadAloudLanguage) ?? ReadAloudLanguages[0];
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
 
@@ -4409,6 +4415,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
             TtsVoiceSid = SelectedTtsVoice.Sid,
+            TtsSpeed = (double)VoiceTtsSpeed,
             ReadAloudLanguage = SelectedReadAloudLanguage.Code,
             SttLanguage = SelectedSttLanguage.Code,
             InputDeviceName = SelectedInputDevice.DeviceName ?? "",

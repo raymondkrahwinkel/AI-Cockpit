@@ -32,6 +32,7 @@ public class VoiceSettingsStoreTests : IDisposable
         Assert.False(settings.GlobalPushToTalk);
         Assert.False(settings.AutoSubmitAfterVoice);
         Assert.Equal(1, settings.TtsVoiceSid);
+        Assert.Equal(1.0, settings.TtsSpeed);
         Assert.Equal("auto", settings.SttLanguage);
         Assert.Empty(settings.InputDeviceName);
         Assert.Empty(settings.OutputDeviceName);
@@ -53,6 +54,7 @@ public class VoiceSettingsStoreTests : IDisposable
             GlobalPushToTalk = true,
             AutoSubmitAfterVoice = true,
             TtsVoiceSid = 3,
+            TtsSpeed = 1.4,
             ReadAloudLanguage = "nl",
             SttLanguage = "nl",
             InputDeviceName = "Yeti Stereo Microphone",
@@ -69,6 +71,7 @@ public class VoiceSettingsStoreTests : IDisposable
         Assert.True(loaded.GlobalPushToTalk);
         Assert.True(loaded.AutoSubmitAfterVoice);
         Assert.Equal(3, loaded.TtsVoiceSid);
+        Assert.Equal(1.4, loaded.TtsSpeed);
         Assert.Equal("nl", loaded.ReadAloudLanguage);
         Assert.Equal("nl", loaded.SttLanguage);
         Assert.Equal("Yeti Stereo Microphone", loaded.InputDeviceName);

@@ -27,6 +27,9 @@ internal sealed class VoiceSettingsEntry
     // existed is simply read at the default sid (the old keys are ignored) rather than migrated.
     public int TtsVoiceSid { get; set; } = 1;
 
+    // Read-aloud speaking rate (AC-708). New key; defaults to 1.0 (natural pace) for an existing config.
+    public double TtsSpeed { get; set; } = 1.0;
+
     // Preferred base language for read-aloud ("en"/"nl"). New key; defaults to "en" for an existing config.
     public string ReadAloudLanguage { get; set; } = "en";
 
@@ -54,6 +57,7 @@ internal sealed class VoiceSettingsEntry
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
         TtsVoiceSid = settings.TtsVoiceSid,
+        TtsSpeed = settings.TtsSpeed,
         ReadAloudLanguage = settings.ReadAloudLanguage,
         SttLanguage = settings.SttLanguage,
         InputDeviceName = settings.InputDeviceName,
@@ -76,6 +80,7 @@ internal sealed class VoiceSettingsEntry
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
         TtsVoiceSid = TtsVoiceSid,
+        TtsSpeed = TtsSpeed,
         ReadAloudLanguage = ReadAloudLanguage,
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
