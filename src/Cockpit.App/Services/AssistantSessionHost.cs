@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
@@ -59,6 +61,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private readonly ISessionStateStore _sessionState;
     private readonly IMcpServerCatalog _mcpServers;
     private readonly IAssistantMemory _memory;
+    private readonly IAssistantTranscriptStore _transcript;
     private readonly ILogger<AssistantSessionHost> _logger;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
@@ -76,6 +79,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         ISessionStateStore sessionState,
         IMcpServerCatalog mcpServers,
         IAssistantMemory memory,
+        IAssistantTranscriptStore transcript,
         ILogger<AssistantSessionHost> logger)
     {
         _cockpit = cockpit;
@@ -84,6 +88,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _sessionState = sessionState;
         _mcpServers = mcpServers;
         _memory = memory;
+        _transcript = transcript;
         _logger = logger;
     }
 
@@ -236,7 +241,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private async Task<SessionViewModel?> _StartOrReplaceAsync(
         bool replaceALiveInstance,
         bool startFresh,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? startFreshBecause = null)
     {
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
@@ -258,7 +264,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 await _DisposeQuietlyAsync(previous).ConfigureAwait(true);
             }
 
-            return await _StartAsync(startFresh, cancellationToken).ConfigureAwait(true);
+            return await _StartAsync(startFresh, cancellationToken, startFreshBecause).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -345,7 +351,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    private async Task<SessionViewModel?> _StartAsync(bool startFresh, CancellationToken cancellationToken)
+    private async Task<SessionViewModel?> _StartAsync(
+        bool startFresh, CancellationToken cancellationToken, string? startFreshBecause = null)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
         if (!settings.IsEnabled)
@@ -373,6 +380,19 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         Activity = AssistantActivity.Thinking;
         UnavailableReason = null;
 
+        // Picks up yesterday's conversation when there is one — the same resume the restore path uses, rather
+        // than a retention rule invented here.
+        var resume = startFresh
+            ? SessionResume.New
+            : await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true);
+
+        // AC-684: replay before the launch so the window shows the earlier conversation the moment it attaches,
+        // not after — a resume the provider ends up refusing (below) throws this whole session away anyway.
+        if (resume.Mode == SessionResumeMode.BySessionId)
+        {
+            await _ReplayTranscriptAsync(session, cancellationToken).ConfigureAwait(true);
+        }
+
         await session.StartConfiguredAsync(
             profile,
             // The app defaults, and only as the floor. The Assistant Profile's own permission mode, model and
@@ -383,11 +403,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
-            // Picks up yesterday's conversation when there is one — the same resume the restore path uses, rather
-            // than a retention rule invented here.
-            resume: startFresh
-                ? SessionResume.New
-                : await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
+            resume: resume,
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
             launchOptions: _LaunchOptions(
@@ -397,13 +413,19 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true)),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
-        // AC-638: a hand-over leaves the operator looking at an empty window, so say why in the transcript itself —
-        // the note that carries forward only reaches the system prompt, which is nowhere they can see.
+        // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
+        // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.
         if (startFresh)
         {
             session.Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Divider,
-                "Context was full — a new conversation starts here, picked up from a short note"));
+                startFreshBecause ?? "Context was full — a new conversation starts here, picked up from a short note"));
+        }
+        else if (resume.Mode == SessionResumeMode.BySessionId)
+        {
+            // AC-684: watched rather than awaited — a refused resume surfaces as a normal-looking return from
+            // StartConfiguredAsync, and blocking every successful resume on a grace window would tax the common case.
+            _WatchForUnresolvableResume(session);
         }
 
         _ApplySpeech(session, settings);
@@ -425,6 +447,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // and every send after that leaves it on Thinking for good, because EnsureStartedAsync returns a live
         // instance without touching Activity. Both are the same missing subscription rather than two bugs.
         session.PropertyChanged += _OnSessionPropertyChanged;
+
+        // AC-684: every new row this session ever adds — the replayed history is already in by now, so this only
+        // ever sees rows the operator has not seen persisted yet.
+        session.Transcript.CollectionChanged += _OnTranscriptChanged;
         _SyncActivityWithSession(session);
         return session;
     }
@@ -699,6 +725,100 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             : SessionResume.New;
     }
 
+    // AC-684: repaints a fresh session's transcript with what the operator saw before this launch. A row this
+    // build cannot make sense of is skipped, same contract `SessionStateStore` uses for a line it cannot parse.
+    private async Task _ReplayTranscriptAsync(SessionViewModel session, CancellationToken cancellationToken)
+    {
+        foreach (var saved in await _transcript.LoadAsync(cancellationToken).ConfigureAwait(true))
+        {
+            if (_FromSnapshotEntry(saved) is { } entry)
+            {
+                session.Transcript.Add(entry);
+            }
+        }
+    }
+
+    // AC-684: every new transcript row is worth a snapshot — fire-and-forget, same contract as
+    // `ISessionStateStore.RecordAsync` (a failed save is logged, not the turn that produced the row).
+    // ponytail: whole transcript re-serialized per row; upgrade to a debounced/incremental write if a long-running conversation makes the rewrite measurable.
+    private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (sender is not ObservableCollection<TranscriptEntryViewModel> transcript)
+        {
+            return;
+        }
+
+        _ = _transcript.SaveAsync([.. transcript.Select(_ToSnapshotEntry)], CancellationToken.None);
+    }
+
+    private static AssistantTranscriptSnapshotEntry _ToSnapshotEntry(TranscriptEntryViewModel entry) => new(
+        entry.Kind.ToString(),
+        entry.Text,
+        entry.ToolName,
+        entry.InputJson,
+        entry.ToolUseId,
+        entry.ResultText,
+        entry.IsResultError,
+        entry.Timestamp);
+
+    private static TranscriptEntryViewModel? _FromSnapshotEntry(AssistantTranscriptSnapshotEntry record)
+    {
+        if (!Enum.TryParse<TranscriptEntryKind>(record.Kind, out var kind))
+        {
+            return null;
+        }
+
+        var entry = new TranscriptEntryViewModel(kind, record.Text, record.Timestamp)
+        {
+            ToolName = record.ToolName,
+            InputJson = record.InputJson,
+            ToolUseId = record.ToolUseId,
+        };
+
+        if (record.ResultText is not null)
+        {
+            entry.SetResult(record.ResultText, record.IsResultError);
+        }
+
+        return entry;
+    }
+
+    // AC-684, criterion 4: a `BySessionId` resume the provider refuses surfaces as an immediate failed turn
+    // (AC-539's `error_during_execution`), not an exception. The first row this fresh launch's transcript
+    // receives decides it, once, since nothing has sent the provider a prompt yet to correlate against.
+    private void _WatchForUnresolvableResume(SessionViewModel session)
+    {
+        void OnChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            session.Transcript.CollectionChanged -= OnChanged;
+
+            if (e.NewItems?.Cast<TranscriptEntryViewModel>().FirstOrDefault()
+                    is { Kind: TranscriptEntryKind.TurnCompleted } entry
+                && ReferenceEquals(session, Session))
+            {
+                _ = _RecoverFromUnresolvableResumeAsync(session, entry.Text);
+            }
+        }
+
+        session.Transcript.CollectionChanged += OnChanged;
+    }
+
+    // Drops the session whose resume the provider refused and starts over clean, the same replace-a-dead-instance
+    // shape `_RelieveTheFullContextAsync` uses for AC-596's hand-over — but with its own reason on the divider
+    // rather than that one's "context was full", so the operator reads what actually happened.
+    private async Task _RecoverFromUnresolvableResumeAsync(SessionViewModel session, string reason)
+    {
+        _logger.LogInformation(
+            "The assistant's earlier conversation could not be resumed ({Reason}); starting a new one.", reason);
+
+        await _StartOrReplaceAsync(
+            replaceALiveInstance: true,
+            startFresh: true,
+            CancellationToken.None,
+            startFreshBecause: $"Could not resume the previous conversation ({reason}) — a new one starts here"
+        ).ConfigureAwait(true);
+    }
+
     // The MCP servers the assistant launches with: what it would have had anyway, plus the broad read server that
     // only it may mount (AC-544, criterion 2).
     // *This is the mount rule.* `cockpit-assistant` is registered as an internal endpoint, which means it
@@ -859,6 +979,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // wiring has to come off whether or not the runtime tears down cleanly — a dispose that throws would
         // otherwise leave the dead session subscribed for the life of the process.
         session.PropertyChanged -= _OnSessionPropertyChanged;
+        session.Transcript.CollectionChanged -= _OnTranscriptChanged;
         _cockpit.ReleaseAssistantSession(session);
 
         // An unanswered consent card is answered here, and answered No. The broker has no timeout of its own

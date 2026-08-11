@@ -740,6 +740,145 @@ public class AssistantSessionHostTests
         driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
     }
 
+    // ── Redrawing the transcript after a resume (AC-684) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The provider resumes its own memory already (`_ResolveResumeAsync`'s `BySessionId`); this is the other half
+    /// that was missing — nothing repainted the window. What the store held before this launch is what the
+    /// operator sees the moment the session comes up, in order, dividers included.
+    /// </summary>
+    [Fact]
+    public void ResumingByConversationId_ReplaysThePersistedTranscript_BeforeTheOperatorSeesAnEmptyWindow()
+    {
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
+
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
+        [
+            new("UserText", "fix the layout bug", null, null, null, null, false, DateTimeOffset.Now),
+            new("Divider", "Context was full — a new conversation starts here", null, null, null, null, false, DateTimeOffset.Now),
+        ]);
+
+        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
+
+        Assert.Equal(2, session.Transcript.Count);
+        Assert.Equal(TranscriptEntryKind.UserText, session.Transcript[0].Kind);
+        Assert.Equal("fix the layout bug", session.Transcript[0].Text);
+        Assert.True(session.Transcript[1].IsDivider);
+    }
+
+    /// <summary>
+    /// A row this build does not recognise — an older or newer snapshot shape — is skipped rather than guessed at,
+    /// the same contract <c>SessionStateStore</c> uses for a line it cannot parse. The rest of the transcript still
+    /// comes back.
+    /// </summary>
+    [Fact]
+    public void AnUnrecognisedSavedRow_IsSkipped_RatherThanFailingTheWholeReplay()
+    {
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
+
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
+        [
+            new("SomeFutureKind", "from a newer build", null, null, null, null, false, DateTimeOffset.Now),
+            new("UserText", "still readable", null, null, null, null, false, DateTimeOffset.Now),
+        ]);
+
+        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
+
+        var entry = Assert.Single(session.Transcript);
+        Assert.Equal("still readable", entry.Text);
+    }
+
+    /// <summary>Every new row is worth a snapshot — nothing else remembers what the operator saw across a restart.</summary>
+    [Fact]
+    public void ANewTranscriptRow_IsSaved_SoARestartCanReplayIt()
+    {
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
+
+        Dispatcher.UIThread.Invoke(() => session.Transcript.Add(
+            new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "what is the status of AC-223")));
+
+        transcript.Received().SaveAsync(
+            Arg.Is<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(saved =>
+                saved.Count == 1 && saved[0].Text == "what is the status of AC-223"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Criterion 4: a conversation id the provider no longer recognises (expired, stopped, unknown) surfaces as an
+    /// immediate failed turn (AC-539's <c>error_during_execution</c>), not an exception. Silence here would be the
+    /// operator staring at an empty window with no idea why — this recovers onto a fresh conversation and says so.
+    /// </summary>
+    [Fact]
+    public void AnUnresolvableResume_RecoversOntoAFreshConversation_WithAReadableDividerExplainingWhy()
+    {
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+            [_StateFor(AssistantSessionHost.AssistantPaneId, "gone")]);
+
+        var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState);
+
+        // The signal production reads (AC-539): the very first thing this fresh launch's transcript receives is a
+        // failed turn — nothing here has sent the provider a prompt yet, so nothing else could have produced one.
+        Dispatcher.UIThread.Invoke(() => first.Apply(new TurnCompleted
+        {
+            SessionId = "gone",
+            Subtype = "error_during_execution",
+            Result = null,
+            IsError = true,
+            Errors = ["No conversation found with session ID: gone"],
+        }));
+
+        var second = _ReplacementOf(host, first);
+        var divider = Assert.Single(second.Transcript, entry => entry.IsDivider);
+        Assert.Contains("Could not resume the previous conversation", divider.Text, StringComparison.Ordinal);
+        Assert.Contains("error_during_execution", divider.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(second.Transcript, entry => !entry.IsDivider);
+    }
+
+    /// <summary>
+    /// The mirror of the test above: a turn that fails once the operator is well into a resumed conversation is an
+    /// ordinary failed reply, not a refused resume — the transcript already has more than the one row a genuine
+    /// resume failure produces before anything else, so this must not tear the session down.
+    /// </summary>
+    [Fact]
+    public void AFailedTurnLaterInAResumedConversation_DoesNotReadAsAnUnresolvableResume()
+    {
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
+            [new("UserText", "earlier message", null, null, null, null, false, DateTimeOffset.Now)]);
+
+        var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
+
+        // The operator actually asked something first — the row a real send always adds before its turn can run,
+        // let alone fail. This is what the watcher retires on, harmlessly, before the failure below ever arrives.
+        Dispatcher.UIThread.Invoke(() => first.Transcript.Add(
+            new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "and what about AC-1")));
+
+        Dispatcher.UIThread.Invoke(() => first.Apply(new TurnCompleted
+        {
+            SessionId = "conv-1",
+            Subtype = "error_during_execution",
+            Result = null,
+            IsError = true,
+            Errors = ["Something else went wrong"],
+        }));
+
+        // No replacement happens: give the (fire-and-forget, if it were wrongly triggered) recovery a moment, then
+        // assert the original instance is still standing.
+        Thread.Sleep(200);
+        Assert.Same(first, host.Session);
+    }
+
     // A provider that vouches for compacting its own conversation — the one capability AC-664 turns on.
     private static SessionCapabilities _CompactingProvider() =>
         SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true };
@@ -763,7 +902,7 @@ public class AssistantSessionHostTests
     }
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
-        SessionCapabilities capabilities)
+        SessionCapabilities capabilities, ISessionStateStore? sessionState = null, IAssistantTranscriptStore? transcript = null)
     {
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyEvents());
@@ -773,7 +912,8 @@ public class AssistantSessionHostTests
 
         var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
             () => new SessionViewModel(new SessionManager(factory))));
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit));
+        var host = Dispatcher.UIThread.Invoke(() => _Host(
+            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState, transcript: transcript));
 
         var session = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
         Assert.NotNull(session);
@@ -954,7 +1094,8 @@ public class AssistantSessionHostTests
         ISessionStateStore? sessionState = null,
         bool speakReplies = true,
         CockpitViewModel? cockpit = null,
-        IAssistantMemory? memory = null)
+        IAssistantMemory? memory = null,
+        IAssistantTranscriptStore? transcript = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
@@ -972,9 +1113,15 @@ public class AssistantSessionHostTests
             sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
         }
 
+        if (transcript is null)
+        {
+            transcript = Substitute.For<IAssistantTranscriptStore>();
+            transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>([]);
+        }
+
         return new AssistantSessionHost(
             cockpit ?? new CockpitViewModel(), settings, profiles, sessionState,
-            catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
+            catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(), transcript,
             NullLogger<AssistantSessionHost>.Instance);
     }
 
