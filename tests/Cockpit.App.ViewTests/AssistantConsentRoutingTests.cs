@@ -125,6 +125,42 @@ public class AssistantConsentRoutingTests
         broker.Received().Respond(prompt.Id, ConsentOutcome.Denied, false);
     }
 
+    /// <summary>
+    /// AC-711: the whole Assistant pop-out window going grey and unrecoverable, with no error and no way back
+    /// short of an app restart. <c>AssistantIdentity.PaneId</c> is a reserved identity a replacement instance
+    /// (restart, AC-596's context hand-over, AC-602's idle stop) adopts too — so a prompt whose routing was still
+    /// queued when the live instance got replaced used to land on that unrelated successor instead of being
+    /// denied. Nothing left alive would ever answer it: AC-47's full-pane scrim (<c>ConsentBannerHost</c>) stayed
+    /// up over the pop-out for good, on a freshly started conversation that had nothing to do with the request.
+    /// </summary>
+    [Fact]
+    public void AConsentForTheAssistant_QueuedWhileItIsBeingReplaced_IsDenied_NotOrphanedOnTheReplacement()
+    {
+        var broker = Substitute.For<IConsentBroker>();
+        var prompt = _Prompt(AssistantIdentity.PaneId);
+
+        var (oldSession, newSession) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var cockpit = _Cockpit(broker);
+            var oldSession = cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
+
+            // Opened while `oldSession` is still the live instance — routing is only queued, not run yet.
+            broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, prompt);
+
+            // The instance is replaced before that queued routing gets a turn — exactly what
+            // AssistantSessionHost._StartOrReplaceAsync does around a restart, a hand-over or an idle stop.
+            cockpit.ReleaseAssistantSession(oldSession!);
+            var newSession = cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
+
+            Dispatcher.UIThread.RunJobs();
+            return (oldSession, newSession);
+        });
+
+        Assert.Null(oldSession!.PendingConsent);
+        Assert.Null(newSession!.PendingConsent);
+        broker.Received(1).Respond(prompt.Id, ConsentOutcome.Denied, false);
+    }
+
     private static ConsentPrompt _Prompt(string paneId) => new(
         Guid.NewGuid(),
         new ConsentRequest(

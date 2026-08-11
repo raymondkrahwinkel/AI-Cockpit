@@ -2765,7 +2765,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Route a consent prompt to the pane it belongs to. On the UI thread: it sets an observable property and can
     // raise a toast. A prompt whose pane is gone is denied rather than left hanging — there is nowhere to show it.
-    private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt) =>
+    private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt)
+    {
+        // AC-711: captured now, before the hop below, because the assistant's live instance can be replaced —
+        // restarted, handed over to a fresh conversation (AC-596), or stopped when idle (AC-602) — between this
+        // event firing and the routing actually running. `AssistantIdentity.PaneId` is a reserved identity the
+        // replacement adopts too (state-store continuity across a restart), so resolving purely by pane id below
+        // cannot tell the instance this prompt was raised for apart from an unrelated successor that happens to
+        // reuse the same id. Comparing against the instance that was live right now is what can.
+        var isForAssistant = prompt.Request.Source.PaneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId;
+        var assistantWhenOpened = isForAssistant ? _assistantSession : null;
+
         Dispatcher.UIThread.Post(() =>
         {
             // A request that names a pane goes to that pane; a host-internal caller with no pane of its own (a null
@@ -2780,6 +2790,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var pane = prompt.Request.Source.PaneId is { } paneId
                 ? _ConsentPanes().FirstOrDefault(session => session.PaneId == paneId)
                 : SelectedSession;
+
+            // The assistant was replaced while this routing was still queued: the instance it belongs to is
+            // already gone, and `pane` (if any) is an unrelated successor under the same reused id — not the
+            // session that asked. Nothing will ever answer it, so deny it here rather than orphan AC-47's scrim
+            // on a conversation that has no idea what it is waiting for.
+            if (isForAssistant && !ReferenceEquals(pane, assistantWhenOpened))
+            {
+                pane = null;
+            }
+
             if (pane is null)
             {
                 _consentBroker?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
@@ -2809,6 +2829,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, "Review", () => SelectedSession = pane);
             }
         });
+    }
 
     private void _OnConsentPromptClosed(object? sender, Guid promptId) =>
         Dispatcher.UIThread.Post(() =>
