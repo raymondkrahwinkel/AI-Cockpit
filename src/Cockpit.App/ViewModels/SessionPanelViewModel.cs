@@ -514,19 +514,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private double? _contextThreshold;
 
-    // Which signals are currently over their threshold, what each has to say, and whether the subject blocks the
-    // session outright (the memory cap actually spent) rather than merely limiting it (an allowance running low) —
-    // oldest crossing first. Membership is what makes the bar rise on the crossing rather than on every poll: a
-    // figure that drops back is forgotten, and crossing again says so again — the reset is real, because a
-    // compaction genuinely empties the window and the next fill is news. Every standing, unsilenced entry gets its
-    // own line now (AC-683): the bar used to keep only the most recently crossed on screen, and a dismiss took
-    // every standing sentence down with it whether the operator had seen it or not.
+    // Which signals are over their threshold, what each says, and whether the subject blocks the session outright
+    // (memory cap spent) rather than merely limiting it (allowance running low) — oldest crossing first.
+    // AC-683: every standing, unsilenced entry gets its own line now, not just the most recently crossed one.
     private readonly List<(string Key, string Text, bool Blocks)> _standing = [];
 
     // Which signals the operator has taken down by hand, one key at a time — dismissed, or acted on by scheduling
-    // the resume they offered (AC-683: a dismiss on one subject must not silence a sibling the operator never
-    // saw). Separate from _standing because both are true at once: the figure is still over its threshold, and
-    // that one line is not to speak of it again until it has been away and come back.
+    // the resume they offered. Separate from _standing: the figure can still be over its threshold while its line
+    // stays quiet until it has been away and come back (AC-683: a dismiss must not silence a sibling too).
     private readonly HashSet<string> _silenced = [];
 
     // Which signal the standing resume offer belongs to, if any — the offer's own line is what carries its
@@ -535,8 +530,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // The bar's lines, blocking subjects first and then the order each first crossed (AC-683 criterion 9) — not
     // "last crossed", which used to let a session that would still run happily bump the warning that will not.
-    // Rebuilt from _standing/_silenced by `_RebuildWarnings` rather than patched in place, the same
-    // "clear and re-add" shape `RateLimits`/`UsagePillItems` already use.
+    // Rebuilt whole by `_RebuildWarnings`, the same "clear and re-add" shape `RateLimits`/`UsagePillItems` use.
     public ObservableCollection<SessionWarningItem> Warnings { get; } = [];
 
     // Back-compat for a caller that still asks for "the" warning as a single string (AC-230's original surface):
@@ -547,10 +541,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Whether the session bar shows a usage warning at all.
     public bool HasUsageWarning => Warnings.Count > 0;
 
-    // Rebuilds `Warnings` (and the two derived properties above) from `_standing` minus `_silenced` — the one
-    // place that decides what the bar shows, so a caller cannot update one without the others drifting out of
-    // step. `OrderByDescending` is a stable sort in .NET, so subjects that block equally keep the order they
-    // first crossed in rather than being reshuffled on every rebuild.
+    // Rebuilds `Warnings` (and the derived UsageWarning/HasUsageWarning) from `_standing` minus `_silenced` — the
+    // one place that decides what the bar shows. `OrderByDescending` is a stable sort in .NET, so subjects that
+    // block equally keep the order they first crossed in rather than being reshuffled on every rebuild.
     private void _RebuildWarnings()
     {
         Warnings.Clear();
@@ -576,8 +569,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // Back-compat for a caller that still asks the bar to dismiss itself without saying which line (AC-230's
     // original surface): takes down the top line, the same one `UsageWarning` reads from. New callers use
-    // `DismissWarningCommand` with the line's own key instead, so a click on one subject cannot silence a
-    // sibling the operator never saw.
+    // `DismissWarningCommand` with the line's own key instead.
     [RelayCommand]
     private void DismissUsageWarning()
     {
