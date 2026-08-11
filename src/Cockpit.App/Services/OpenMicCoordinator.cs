@@ -334,6 +334,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     internal void HandleSpeechEnded() => _assistant.ReportTranscribing(true);
 
     // Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — `HandleSpeakingStarted` flips it to speaking once audio actually plays.
+    //
+    // AC-697: this and `HandleSpeakingStarted` still show the assistant's own reply on the pill, since `IVoicePlaybackQueue` has no per-utterance source to mute just the assistant's.
     internal void HandlePlaybackActiveChanged(bool active)
     {
         _isPlaying = active;

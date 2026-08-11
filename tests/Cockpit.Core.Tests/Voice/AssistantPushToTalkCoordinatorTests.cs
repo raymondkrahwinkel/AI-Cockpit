@@ -115,6 +115,25 @@ public class AssistantPushToTalkCoordinatorTests
         pushToTalk.DidNotReceive().BeginHold();
     }
 
+    /// <summary>
+    /// AC-697: the chip already says "assistant unreachable" via <c>AssistantActivity.Unavailable</c> plus
+    /// <c>UnavailableReason</c>, so the pill no longer repeats it. The session route
+    /// (<see cref="VoicePushToTalkCoordinatorTests"/>'s "No session selected" / "Voice is off") has no chip
+    /// equivalent and keeps showing on the pill, untouched.
+    /// </summary>
+    [Fact]
+    public void HoldStarted_WhenTheAssistantIsUnavailable_LeavesThePillHidden_TheChipAlreadySaysWhy()
+    {
+        var (coordinator, overlay, assistant, pushToTalk, _, _) = _Coordinator();
+        assistant.Activity.Returns(AssistantActivity.Unavailable);
+        assistant.UnavailableReason.Returns("No assistant profile is set");
+
+        coordinator.HandleHoldStarted();
+
+        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
+        pushToTalk.DidNotReceive().BeginHold();
+    }
+
     private static (AssistantPushToTalkCoordinator Coordinator, VoiceOverlayViewModel Overlay,
         IAssistantSessionHost Assistant, IVoicePushToTalkService PushToTalk, IVoicePlaybackQueue Playback,
         VoiceOverlayCoordinator OverlayCoordinator) _Coordinator(IOpenMicState? openMicState = null)

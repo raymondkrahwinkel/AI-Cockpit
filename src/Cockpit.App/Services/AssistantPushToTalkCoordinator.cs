@@ -130,13 +130,12 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
             return;
         }
 
-        // The reason the assistant is unreachable — off, no profile, a failed start — is already resolved and in
-        // words on the host. Saying it on the pill rather than only in the log is criterion 1's "with a message
-        // that says why": a key that does nothing and explains nothing is indistinguishable from a broken one.
+        // The chip already carries this reason (`AssistantActivity.Unavailable` + `UnavailableReason`) — writing it
+        // to the pill too said the same thing twice (AC-697). Unlike "the microphone could not open" below, there
+        // is no per-hold detail here the chip is missing.
         if (_assistant.Activity == AssistantActivity.Unavailable)
         {
             _isRecording = false;
-            _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, _assistant.UnavailableReason ?? "The assistant is not available");
             return;
         }
 
