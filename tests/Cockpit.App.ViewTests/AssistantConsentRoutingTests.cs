@@ -127,11 +127,10 @@ public class AssistantConsentRoutingTests
 
     /// <summary>
     /// AC-711: the whole Assistant pop-out window going grey and unrecoverable, with no error and no way back
-    /// short of an app restart. <c>AssistantIdentity.PaneId</c> is a reserved identity a replacement instance
-    /// (restart, AC-596's context hand-over) adopts too — so a prompt whose routing was still
-    /// queued when the live instance got replaced used to land on that unrelated successor instead of being
-    /// denied. Nothing left alive would ever answer it: AC-47's full-pane scrim (<c>ConsentBannerHost</c>) stayed
-    /// up over the pop-out for good, on a freshly started conversation that had nothing to do with the request.
+    /// short of an app restart. The cause: <c>AssistantIdentity.PaneId</c> is a reserved identity a replacement
+    /// instance (restart, AC-596's context hand-over) adopts too, so a prompt queued while the live instance was
+    /// being replaced landed on the unrelated successor and went unanswered — leaving AC-47's full-pane scrim
+    /// (<c>ConsentBannerHost</c>) stuck up over the pop-out for good.
     /// </summary>
     [Fact]
     public void AConsentForTheAssistant_QueuedWhileItIsBeingReplaced_IsDenied_NotOrphanedOnTheReplacement()
