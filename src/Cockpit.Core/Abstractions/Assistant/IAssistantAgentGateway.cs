@@ -252,6 +252,11 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
 // — with any other provider's word for the same launch-time access-control question — is refused outright, whoever
 // asks. See `SpawnOptionOverrides`. One key is the host's own rather than a provider's: `cockpit.memory-cap-mb`
 // (AC-661) sets how much memory this session's whole process tree may hold before the OS cuts it off.
+// `IsolateInWorktree` (AC-719):
+// Tri-state, mirroring the tool's own vocabulary — left out inherits whatever the resolved project (or none) asks
+// for, `true` may isolate even where the project does not, and `false` is refused before a launch is composed at
+// all: overruling isolation *away* would run the session in the operator's real checkout, exactly the working-tree
+// contamination isolation exists to prevent, and on a caller's own initiative rather than the operator's.
 public sealed record AgentSpawnRequest(
     SpawnTarget Target,
     string ProfileLabel,
@@ -259,7 +264,8 @@ public sealed record AgentSpawnRequest(
     string? WorkingDirectory = null,
     string? SessionName = null,
     string? Kind = null,
-    IReadOnlyDictionary<string, string>? OptionOverrides = null);
+    IReadOnlyDictionary<string, string>? OptionOverrides = null,
+    bool? IsolateInWorktree = null);
 
 // What came of a spawn. A refusal carries `Error` and no pane; both are reported to the agent, so a
 // spawn that could not happen is a sentence the operator hears rather than a session that silently is not there.

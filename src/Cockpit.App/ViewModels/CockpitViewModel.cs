@@ -4811,7 +4811,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     //
     // targetWorkspaceId is the one thing a caller may decide for itself (AC-545); see AddSession for what naming it
     // changes and why. Null is every caller that came before, unchanged.
-    private async Task<string?> _LaunchSessionFromResultAsync(NewSessionResult result, string? targetWorkspaceId = null)
+    //
+    // interactive: Whether a failed worktree isolation may ask the operator through a modal dialog (AC-719) — see
+    // _ResolveIsolatedWorkingDirectoryAsync's own remarks. True for every caller before this ticket, unchanged.
+    private async Task<string?> _LaunchSessionFromResultAsync(
+        NewSessionResult result, string? targetWorkspaceId = null, bool interactive = true)
     {
         if (_sessionFactory is null || _ttySessionFactory is null)
         {
@@ -4834,14 +4838,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // is the crash-safe one.
         _PersistNewSessionPane(session, result);
 
-        return await _StartSessionAsync(session, result);
+        return await _StartSessionAsync(session, result, interactive);
     }
 
     // The starting half of a session launch (AC-410): worktree/working-directory resolution through to
     // `ProjectsViewModel.MarkOpenedAsync` — everything `_LaunchSessionFromResultAsync`
     // used to do after minting and attaching the panel. Split out so a restore (which only ever attaches,
     // never starts) does not carry this half, and reused as-is by the fresh-launch path above.
-    private async Task<string?> _StartSessionAsync(SessionPanelViewModel session, NewSessionResult result)
+    private async Task<string?> _StartSessionAsync(SessionPanelViewModel session, NewSessionResult result, bool interactive = true)
     {
         string paneId;
         string? startedWorkingDirectory;
@@ -4851,15 +4855,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             string? workingDirectory;
             try
             {
-                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(sdkSession, result);
+                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(sdkSession, result, interactive);
             }
-            catch (OperationCanceledException)
+            catch (Exception exception)
             {
-                // Isolation failed and running unisolated was declined — undo the half-added session (which also
-                // removes its just-written pane record, via CloseSessionAsync) rather than starting it in the
-                // operator's real working tree.
+                // Isolation failed — the operator declined to run unisolated, or a non-interactive caller was
+                // refused outright without ever being asked. Either way the half-added session must not survive it:
+                // undo it (which also removes its just-written pane record, via CloseSessionAsync) rather than
+                // starting it in the operator's real working tree.
                 await CloseSessionAsync(sdkSession);
-                return null;
+                if (exception is OperationCanceledException)
+                {
+                    return null;
+                }
+
+                // Not a decline — a non-interactive refusal with a reason worth keeping. Rethrow so the caller (the
+                // assistant gateway) reports it rather than the caller seeing a session that silently is not there.
+                throw;
             }
 
             sdkSession.ProjectId = result.ProjectId;
@@ -4874,15 +4886,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             string? workingDirectory;
             try
             {
-                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(ttySession, result);
+                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(ttySession, result, interactive);
             }
-            catch (OperationCanceledException)
+            catch (Exception exception)
             {
-                // Isolation failed and running unisolated was declined — undo the half-added session (which also
-                // removes its just-written pane record, via CloseSessionAsync) rather than starting it in the
-                // operator's real working tree.
+                // Same reasoning as the SDK branch above: cleanup happens whichever of the two the failure is, only
+                // a decline swallows it silently.
                 await CloseSessionAsync(ttySession);
-                return null;
+                if (exception is OperationCanceledException)
+                {
+                    return null;
+                }
+
+                throw;
             }
 
             // Claude's permission-mode/model/effort are its own vocabulary, not every provider's — a plugin
@@ -4951,7 +4967,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // session on its own branch — keyed on the session's pane, so the same session identity is used whichever kind it
     // is — and the session runs there instead of in the folder as given; the branch shows as a header chip. A
     // non-repository folder (or no worktree manager) runs as given, never a silent pretend-isolation.
-    private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(SessionPanelViewModel session, NewSessionResult result)
+    private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(
+        SessionPanelViewModel session, NewSessionResult result, bool interactive = true)
     {
         if (!result.IsolateInWorktree || _worktreeManager is null || string.IsNullOrWhiteSpace(result.WorkingDirectory))
         {
@@ -4993,9 +5010,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             // Isolation was explicitly asked for but the worktree could not be created (a git error, a folder that
             // vanished). Running in the operator's real checkout is the exact working-tree contamination isolation
-            // exists to prevent, so never fall back to it silently: ask, and only run unisolated on an explicit yes.
-            // A no throws OperationCanceledException, which the launch path turns into a cancelled start rather than
-            // contaminating the working tree.
+            // exists to prevent, so never fall back to it silently.
+            //
+            // A non-interactive caller (an assistant spawn, AC-719) never gets the dialog below: a modal on the main
+            // window would stall a turn the caller cannot see, let alone answer, on a desk the operator may not even
+            // be looking at. Refuse with the reason instead — the caller's own catch turns this into a sentence the
+            // assistant can read out, rather than a session that silently is not there.
+            if (!interactive)
+            {
+                throw new InvalidOperationException(
+                    $"worktree isolation failed for '{result.WorkingDirectory}': {exception.Message}");
+            }
+
+            // Ask, and only run unisolated on an explicit yes. A no throws OperationCanceledException, which the
+            // launch path turns into a cancelled start rather than contaminating the working tree.
             var runInFolder = _dialogService is not null && await _dialogService.ShowConfirmationDialogAsync(
                 "Could not isolate this session",
                 $"A git worktree could not be created for this session ({exception.Message}). Run it directly in '{result.WorkingDirectory}' instead? Its edits and commits would then land in that working tree, not an isolated one.",
@@ -6558,52 +6586,77 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // validated (AC-648) — null for "whatever the profile says", which is what every spawn but an overriding one
         // hands in. Merging and refusing happen in `SpawnOptionOverrides`, before this is reached: what arrives here
         // is a launch, not a request to be checked.
-        IReadOnlyDictionary<string, string>? launchOptions = null)
+        IReadOnlyDictionary<string, string>? launchOptions = null,
+        // Tri-state worktree-isolation override (AC-719): null inherits whatever the resolved project asks for (or
+        // false when there is none), true may isolate even where the project does not ask for it. `false` never
+        // reaches here in practice — the assistant gateway refuses it before a launch is even composed, because
+        // overruling isolation *away* would put a spawn in the operator's real checkout, exactly the contamination
+        // isolation exists to prevent — but is honoured the same way false always is if it ever does.
+        bool? isolateInWorktree = null)
     {
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
-        // Everything the profile itself decides, resolved the way the New-session dialog and the project quick start
-        // resolve it — the promise of a spawn is "the dialog, skipped", and a session that came up on a route the
-        // operator did not choose is not that. This started as a hardcoded SDK launch, and a profile set to TTY came
+        // Resolved from the folder as given, or the profile's own default when nobody named one (AC-320) — the same
+        // rule the embedded and plugin start paths are placed by, and never the isolated worktree a start later
+        // derives from it.
+        var profileOnlyDefaults = SessionStartDefaults.Resolve(project: null, profile);
+        var lookupDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? profileOnlyDefaults.WorkingDirectory : workingDirectory;
+        var projectId = await _ProjectIdForDirectoryAsync(lookupDirectory);
+        var project = projectId is { Length: > 0 }
+            ? Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId)
+            : null;
+
+        // Composed through the same door the launcher's Start button and the sidebar's ▶ use (AC-719 addendum 3): a
+        // spawn whose directory resolves to a project inherits isolation, the behaviour prompt, the
+        // instruction/memory/reference rows and the project's own MCP selection in one pass, instead of a second,
+        // drifting copy of that logic assembled by hand here. No project — nobody named one and there is none to
+        // descend from — falls back below to the profile's own half, unchanged from before this ticket.
+        var composed = project is not null && _projectQuickStart is not null
+            ? await _projectQuickStart.ComposeAsync(project, profile)
+            : null;
+
+        // The operator's own words (or, here, the assistant's requestedKind) override the profile's route, exactly
+        // as the New-session dialog's Kind toggle does — "the same profile, but as an SDK session" is an ordinary
+        // request and this is where it lands. This started as a hardcoded SDK launch, and a profile set to TTY came
         // up as an SDK session with the profile's own start options applied to the wrong vocabulary: it looked like
         // it had worked, which is the only reason it took a live test to notice.
-        var kind = requestedKind ?? SessionKindDefaults.ResolveDefaultKind(profile, _ttyProviderResolver);
+        var kind = requestedKind ?? composed?.Kind ?? SessionKindDefaults.ResolveDefaultKind(profile, _ttyProviderResolver);
         var isSdk = kind == SessionKind.Sdk;
+        var directory = string.IsNullOrWhiteSpace(workingDirectory)
+            ? composed?.WorkingDirectory ?? profileOnlyDefaults.WorkingDirectory
+            : workingDirectory;
 
-        // No project — nobody named one and there is no session this descends from — so this yields the profile's own
-        // half: its working directory and its identity system prompt (AC-142), which a spawn had been dropping.
-        var defaults = SessionStartDefaults.Resolve(project: null, profile);
-        var directory = string.IsNullOrWhiteSpace(workingDirectory) ? defaults.WorkingDirectory : workingDirectory;
-
-        var result = new NewSessionResult(
-            kind,
-            profile,
-            // The typed Claude vocabulary is migration-only, and the dialog seeds it with the app defaults whatever
-            // the profile says; a spawn has no operator at the dialog to override them either, so it does the same.
-            SessionOptionCatalog.DefaultPermissionMode,
-            SessionOptionCatalog.DefaultModel,
-            SessionOptionCatalog.DefaultEffort,
-            name,
-            WorkingDirectory: directory,
-            // The provider's own declared start defaults, saved on the profile — or those with this spawn's overrides
-            // already folded in. Only ever for the kind that is actually starting: the two vocabularies never both apply.
-            PluginTtyOptions: isSdk ? null : launchOptions ?? profile.Defaults?.OptionDefaults,
-            SdkLaunchOptions: isSdk ? launchOptions ?? profile.Defaults?.OptionDefaults : null,
-            ReadingLevel: isSdk ? SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel).Value : null,
-            // Nobody said which project this is for and there is no session it descends from, so the folder answers
-            // (AC-320) — the same rule the plugin and embedded paths are placed by.
-            ProjectId: await _ProjectIdForDirectoryAsync(directory),
-            SystemPrompt: defaults.SystemPrompt)
+        var result = (composed ?? new NewSessionResult(
+                kind,
+                profile,
+                // The typed Claude vocabulary is migration-only, and the dialog seeds it with the app defaults
+                // whatever the profile says; a spawn has no operator at the dialog to override them either.
+                SessionOptionCatalog.DefaultPermissionMode,
+                SessionOptionCatalog.DefaultModel,
+                SessionOptionCatalog.DefaultEffort,
+                name,
+                SystemPrompt: profileOnlyDefaults.SystemPrompt))
+            with
         {
+            Kind = kind,
+            SessionName = name,
             NameIsComposed = string.IsNullOrWhiteSpace(sessionName),
+            WorkingDirectory = directory,
+            // The provider's own declared start defaults, saved on the profile — or those with this spawn's
+            // overrides already folded in. Only ever for the kind that is actually starting: the two vocabularies
+            // never both apply. A project carries no provider options of its own, so composed's are the profile's.
+            PluginTtyOptions = isSdk ? null : launchOptions ?? profile.Defaults?.OptionDefaults,
+            SdkLaunchOptions = isSdk ? launchOptions ?? profile.Defaults?.OptionDefaults : null,
+            ReadingLevel = isSdk ? SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel).Value : null,
+            ProjectId = projectId,
+            // The tri-state override applied last, over whatever the project resolved (or false, with no project).
+            IsolateInWorktree = isolateInWorktree ?? composed?.IsolateInWorktree ?? false,
         };
 
-        // IsolateInWorktree is deliberately not carried across. Isolation can raise a modal question on the main
-        // window, and this launch is answered for on the chat window's Allow row by an operator who may be looking at
-        // another desk entirely — a dialog they never see would stall the assistant's turn on a question it cannot
-        // report (criterion 7). Worktree isolation for a spawned session is its own decision, not a side effect.
-
-        if (await _LaunchSessionFromResultAsync(result, workspaceId) is not { } paneId)
+        // Non-interactive (AC-719): a failed isolation refuses with a reason instead of raising a modal on the main
+        // window — the chat window's Allow row is answered by an operator who may be looking at another desk
+        // entirely, and a dialog they never see would stall this turn on a question it cannot report (criterion 7).
+        if (await _LaunchSessionFromResultAsync(result, workspaceId, interactive: false) is not { } paneId)
         {
             return null;
         }

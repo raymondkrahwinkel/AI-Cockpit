@@ -193,6 +193,45 @@ public class ProjectQuickStartTests
         Assert.Equal(SessionKind.Sdk, result!.Kind);
     }
 
+    /// <summary>
+    /// AC-719: the overload a spawn uses, which already knows its profile (the operator or the assistant named it)
+    /// rather than asking the project's own <see cref="Project.DefaultProfileLabel"/> to pick one. Everything else —
+    /// isolation, the standing prompt, the MCP selection — is the one <see cref="ProjectQuickStart.ComposeAsync"/>
+    /// both overloads share, so this only has to pin that the profile requirement drops away.
+    /// </summary>
+    [Fact]
+    public async Task WithAnExplicitProfile_ComposesEvenWithoutADefaultProfileLabel()
+    {
+        var quickStart = Build([ClaudeProfile]);
+        var project = Project.Create("Cockpit") with
+        {
+            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            IsolateInWorktreeByDefault = true,
+            BehaviorPrompt = "Work ticket by ticket.",
+        };
+
+        var result = await quickStart.ComposeAsync(project, ClaudeProfile);
+
+        Assert.Same(ClaudeProfile, result.Profile);
+        Assert.Equal("/home/raymond/RiderProjects/AI-Cockpit", result.WorkingDirectory);
+        Assert.True(result.IsolateInWorktree);
+        Assert.Equal(project.Id, result.ProjectId);
+        Assert.Contains("Work ticket by ticket.", result.SystemPrompt);
+    }
+
+    [Fact]
+    public async Task WithAnExplicitProfile_IgnoresWhatTheProjectsDefaultProfileLabelSays()
+    {
+        // The profile named on the call wins even when the project's own default disagrees — a spawn that named
+        // "local" explicitly must not be quietly switched to whatever the project would otherwise have picked.
+        var quickStart = Build([ClaudeProfile, LocalProfile]);
+        var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
+
+        var result = await quickStart.ComposeAsync(project, LocalProfile);
+
+        Assert.Same(LocalProfile, result.Profile);
+    }
+
     [Fact]
     public async Task AProfileWithoutATuiStartsAnSdkSessionOnItsReadingLevel()
     {
