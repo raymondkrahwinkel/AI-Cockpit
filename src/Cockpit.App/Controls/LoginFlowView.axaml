@@ -14,8 +14,12 @@
                 Command="{Binding OpenLinkCommand}"
                 IsVisible="{Binding HasLink}"
                 ToolTip.Tip="Opens in your browser."/>
+        <TextBlock Text="Opened in your browser." FontSize="11"
+                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                   IsVisible="{Binding LinkOpened}"/>
         <WrapPanel IsVisible="{Binding AwaitsInput}">
             <TextBox Text="{Binding CodeInput}" Width="220" FontSize="11" Padding="6,4"
+                     VerticalContentAlignment="Center"
                      Margin="0,0,6,4" PlaceholderText="Paste the code here"/>
             <Button Content="Submit" Classes="Accent Compact" Margin="0,0,0,4"
                     Command="{Binding SubmitCommand}"/>
