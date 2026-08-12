@@ -64,6 +64,10 @@ public partial class SessionView : UserControl
         // TextBox's own Enter handling (which would otherwise insert a newline).
         InputBox.AddHandler(InputElement.KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
 
+        // AC-740: re-evaluates the @-mention token once the TextBox has applied the keystroke (character typed,
+        // backspace, caret moved). Bubble is fine — nothing else claims KeyUp on this control.
+        InputBox.KeyUp += _OnInputKeyUp;
+
         // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
         // regardless of which control inside the panel has focus — the operator should not have to
         // click into the input first to dictate.
@@ -314,8 +318,51 @@ public partial class SessionView : UserControl
         return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
     }
 
+    // Whether the matching KeyDown already handled this keystroke (paste, recall, stop, send, or the
+    // mention picker's own Up/Down/Tab/Enter/Esc interception below) — a tunnelled KeyDown's own `e.Handled`
+    // cannot be read back from the later KeyUp, so this is how `_OnInputKeyUp` tells caret-driven typing (which
+    // falls through unhandled to the TextBox's default editing) apart from a programmatic text mutation.
+    private bool _lastInputKeyWasHandled;
+
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
     {
+        _OnInputKeyDownCore(e);
+        _lastInputKeyWasHandled = e.Handled;
+    }
+
+    private void _OnInputKeyDownCore(KeyEventArgs e)
+    {
+        // AC-740: the open picker gets first refusal on these five keys, ahead of every handler below — Up
+        // otherwise recalls, Escape otherwise stops the turn, and Enter otherwise sends.
+        if (DataContext is SessionViewModel { MentionPicker.IsOpen: true } mentionVm)
+        {
+            var picker = mentionVm.MentionPicker;
+            switch (e.Key)
+            {
+                case Key.Up:
+                    picker.Move(-1);
+                    e.Handled = true;
+                    return;
+                case Key.Down:
+                    picker.Move(1);
+                    e.Handled = true;
+                    return;
+                case Key.Tab:
+                case Key.Enter:
+                    if (picker.Accept() is { } acceptance)
+                    {
+                        _InsertMention(acceptance);
+                    }
+
+                    e.Handled = true;
+                    return;
+                case Key.Escape:
+                    picker.Dismiss();
+                    e.Handled = true;
+                    return;
+            }
+        }
+
         if (_IsPasteGesture(e))
         {
             // The clipboard read is async but the default TextBox paste runs synchronously on this
@@ -420,6 +467,33 @@ public partial class SessionView : UserControl
         var next = current[..start] + text + current[end..];
         InputBox.Text = next;
         InputBox.CaretIndex = start + text.Length;
+        InputBox.SelectionStart = InputBox.CaretIndex;
+        InputBox.SelectionEnd = InputBox.CaretIndex;
+    }
+
+    // AC-740: re-evaluates the @-mention token after a keystroke the TextBox handled itself — character typed,
+    // backspace, delete, caret moved. `_lastInputKeyWasHandled` is what tells this apart from a programmatic
+    // mutation (voice input, Up-recall, a pasted block): none of those raise a KeyUp here at all except Ctrl+V,
+    // which the matching KeyDown already marks handled.
+    private void _OnInputKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (_lastInputKeyWasHandled || DataContext is not SessionViewModel vm)
+        {
+            return;
+        }
+
+        vm.MentionPicker.OnTextChanged(InputBox.Text ?? string.Empty, InputBox.CaretIndex);
+    }
+
+    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + path + a trailing space.
+    private void _InsertMention(MentionAcceptance acceptance)
+    {
+        var current = InputBox.Text ?? string.Empty;
+        var end = Math.Clamp(InputBox.CaretIndex, 0, current.Length);
+        var start = Math.Clamp(acceptance.TokenStart, 0, end);
+        var replacement = $"@{acceptance.Path} ";
+        InputBox.Text = current[..start] + replacement + current[end..];
+        InputBox.CaretIndex = start + replacement.Length;
         InputBox.SelectionStart = InputBox.CaretIndex;
         InputBox.SelectionEnd = InputBox.CaretIndex;
     }

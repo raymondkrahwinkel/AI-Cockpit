@@ -25,4 +25,7 @@ public sealed record MentionMatch(string Path)
             return slash < 0 ? string.Empty : trimmed[..slash];
         }
     }
+
+    // The row's bold text — the file name, or the directory name with its trailing '/' back on.
+    public string DisplayName => IsDirectory ? FileName + "/" : FileName;
 }

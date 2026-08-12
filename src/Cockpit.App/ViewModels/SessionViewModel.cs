@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -43,6 +44,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-713: the generic login gate/starter, dispatched to whichever provider plugin the profile below names.
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly IProfileLoginStarter? _loginStarter;
+
+    // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
+    private readonly IMentionFileSource? _mentionFileSource;
 
     // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
     private SessionProfile? _profile;
@@ -489,6 +493,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // True while the send queue holds a message, so the queued-chip strip can hide when empty.
     public bool HasQueuedMessages => QueuedMessages.Count > 0;
 
+    // AC-740: the @-mention file-/folder-picker. Reads WorkingDirectory lazily on every '@' rather than once at
+    // construction — this session's own working directory is unset until launch, same reasoning as the
+    // Assistant-chat host that shares this view model.
+    public MentionPickerViewModel MentionPicker { get; }
+
     // When on, every message queued while a turn was in flight is dispatched together as a single follow-up
     // turn once the turn completes (AC-145), instead of one-per-turn. Seeded from the operator's
     // session-behaviour setting at creation and kept live by the cockpit. SDK/chat-session only — TTY has no
@@ -790,6 +799,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public SessionViewModel()
     {
         _eventQueue = new SessionEventQueue(Apply);
+        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563):
         // a hard-coded "Connected (3 MCP servers)." next to an unset selection would have every previewer and
         // render showing a count of three over a hover saying the selection is unknown — the exact divergence
@@ -865,7 +875,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IPluginProviderRegistry? pluginProviderRegistry = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
-        IProfileLoginStarter? loginStarter = null)
+        IProfileLoginStarter? loginStarter = null,
+        IMentionFileSource? mentionFileSource = null)
     {
         _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
@@ -875,6 +886,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _pluginProviderRegistry = pluginProviderRegistry;
         _loginChecker = loginChecker;
         _loginStarter = loginStarter;
+        _mentionFileSource = mentionFileSource;
+        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
         CloseRequested += (_, _) => _loginPollTimer?.Stop();
@@ -901,6 +914,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // embedded run's brief), rather than a second reading of the runtime: a driver that never came up leaves a
     // runtime behind that accepts a send and does nothing with it.
     public override bool CanTakeAPrompt => IsSessionReady;
+
+    // AC-740: no source registered (design-time/unit-test graph) or no working directory yet both answer empty
+    // rather than throw — the picker itself stays closed whenever WorkingDirectory is null (see its own guard),
+    // so this only actually runs once a session has one.
+    private Task<IReadOnlyList<string>> _MentionPathsAsync(CancellationToken cancellationToken) =>
+        _mentionFileSource is not null && WorkingDirectory is { } workingDirectory
+            ? _mentionFileSource.GetPathsAsync(workingDirectory, cancellationToken)
+            : Task.FromResult<IReadOnlyList<string>>([]);
 
     private void _TrackPendingAttachments()
     {
