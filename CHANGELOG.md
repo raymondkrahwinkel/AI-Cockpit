@@ -129,6 +129,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a link in your own chat message is now clickable, opening in your default browser like a link in the
+  assistant's reply already did. It used to just sit there as plain text — your own bubble never had link detection
+  at all, only the assistant's replies did.
 - fixed: a session on a project whose memory lives in a plugin — a Depot project, say — now starts with that plugin's
   MCP server ticked, so it can actually reach the project knowledge the project points at. The server was offered to
   such a session but arrived unticked, and because the project editor's server checklist is the same for every project

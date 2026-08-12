@@ -37,10 +37,9 @@
                 </TextBlock.IsVisible>
             </TextBlock>
 
-            <!-- The user's own message (T2): a header line with the timestamp left and a "You"
-                 label right on one line (AC-144), over plain selectable text; the enclosing row
-                 Border right-aligns and tints it into a bubble (Border.transcriptRow.userRow).
-                 The timestamp only shows when the operator enabled timestamps; "You" stays put. -->
+            <!-- The user's own message (T2): a header line ("You" + timestamp, AC-144) over the
+                 bubble the enclosing Border right-aligns and tints (Border.transcriptRow.userRow).
+                 AC-737: MarkdownView, not SelectableTextBlock, so a pasted link is clickable too. -->
             <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
@@ -50,8 +49,8 @@
                     <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
                 </Grid>
-                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                           Classes="transcript"/>
+                <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                                     BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
             </StackPanel>
 
             <!-- Questions / turn-result rows: plain wrapped text, not a bubble or markdown;
