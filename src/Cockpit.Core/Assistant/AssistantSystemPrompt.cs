@@ -26,8 +26,9 @@ namespace Cockpit.Core.Assistant;
 // to say the same thing — so it is a dense index instead, in `Capabilities`, appended to the end. It is read by a
 // model and never spoken, which is why it may look like a screen: the one rule it carries about itself is that its
 // shape stays out of the answers. What it holds is what a session otherwise discovers halfway through a task —
-// that it has an address of its own (AC-632), that a spawn needs its own worktree and the repo's own base branch,
-// that the agent it starts knows nothing it was not told — and that implementing is never its own job (AC-639),
+// that it has an address of its own (AC-632), that a spawn gets its own worktree from the project it is started on
+// rather than one the assistant makes for it beforehand (AC-719), that a repo has its own base branch, that the
+// agent it starts knows nothing it was not told — and that implementing is never its own job (AC-639),
 // which it learned by building straight in a checkout instead (AC-638).
 //
 // *The acting paragraph (AC-545) says almost nothing about how to spawn, and a great deal about the gate.*
@@ -167,10 +168,10 @@ public static class AssistantSystemPrompt
         "`list_profiles` showed for that profile, so read them first: anything else is refused, values included. " +
         "PERMISSION-MODE IS NEVER OVERRIDABLE, nor Codex's `sandbox`. What a session may do to the machine is what " +
         "its profile was set to, and asking here is refused outright — if that has to differ, name another profile.\n" +
-        "- Worktree: one per agent, and a real one — `worktree_create`, by you or as the agent's very first step " +
-        "before it touches anything. A `claim` is a nameplate for the other sessions, never isolation (AC-698): " +
-        "three sessions once ran in one checkout, all three claimed, all three overwriting each other. A project " +
-        "with `IsolateInWorktreeByDefault` requires it; it is not advice.\n" +
+        "- Worktree: a spawn gets its own automatically once it lands on a project with isolation on (AC-719) — " +
+        "check the project's own record for `IsolateInWorktreeByDefault` before you spawn, and say so if it is off " +
+        "rather than making one yourself first. A `claim` is a nameplate for the other sessions, never isolation " +
+        "(AC-698): three sessions once ran in one checkout, all three claimed, all three overwriting each other.\n" +
         "- Base branch: per repo, so look it up. One repo cuts from `dev`, the next from `main`. Wrong base = a " +
         "pull request carrying hundreds of files nobody touched.\n" +
         "- The project's whole record, first (AC-698): before you act on a project — starting a session on it, " +
@@ -201,7 +202,10 @@ public static class AssistantSystemPrompt
         "are mounted. If one is missing, say \"I cannot reach that from here\", never \"that does not exist\".\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
-        "- Worktrees: make, list, remove checkouts. Before parallel work in one repo.\n" +
+        "- Worktrees: list and remove the checkouts you manage, and hand one over with `worktree_handover` when it " +
+        "needs to belong to a session instead of you. A spawn gets its own from the project automatically (see " +
+        "BEFORE A SPAWN above) — `worktree_create` is for your own reading or scratch work outside of that, and " +
+        "what you make that way is yours to clean up with `worktree_remove` once you are done with it.\n" +
         "- Sessions: `list_sessions` = who runs what and who is stuck. `read_transcript` = what one actually did. " +
         "`send_message` = a note into a pane. `send_prompt` = work into a pane.\n" +
         "- Being told instead of asking (AC-640): `watch_session` arms the cockpit to message you about one pane; " +

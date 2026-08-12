@@ -59,4 +59,7 @@ public enum AssistantSpawnAction
 
     // A turn submitted into a session the assistant did not start — the hand-off `send_prompt` makes.
     Prompt,
+
+    // A worktree re-owned from the assistant onto a session — `worktree_handover` (AC-719).
+    Handover,
 }

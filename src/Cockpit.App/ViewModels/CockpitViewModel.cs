@@ -4984,7 +4984,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             if (existing is not null)
             {
                 var live = _liveSessions?.LiveSessionIds ?? Sessions.Select(s => s.PaneId).ToHashSet(StringComparer.Ordinal);
-                if (live.Contains(existing.SessionId))
+
+                // AC-719: the assistant owns every worktree it makes with worktree_create and is unconditionally
+                // "live" by construction (LiveSessionRegistry), so without this exception the check below would
+                // refuse a spawn started in one of its own pre-made worktrees exactly like a live ordinary
+                // session's — leaving it stuck on the assistant forever. A live ordinary session is still never
+                // taken over.
+                var ownedByAssistant = string.Equals(
+                    existing.SessionId, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal);
+                if (!ownedByAssistant && live.Contains(existing.SessionId))
                 {
                     return result.WorkingDirectory;
                 }

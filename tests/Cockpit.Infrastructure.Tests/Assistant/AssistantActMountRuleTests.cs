@@ -409,6 +409,12 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Calls.Add($"UnwatchSessionAsync({paneId})");
             return Task.FromResult(true);
         }
+
+        public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"HandoverWorktreeAsync({path} -> {paneId})");
+            return Task.FromResult(WorktreeHandoverResult.HandedOver(path, "cockpit/handed-over", "AC-545 tests"));
+        }
     }
 
     /// <summary>

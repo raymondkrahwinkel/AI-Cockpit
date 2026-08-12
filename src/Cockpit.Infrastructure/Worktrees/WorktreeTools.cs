@@ -77,7 +77,7 @@ internal sealed class WorktreeTools
     }
 
     [McpServerTool(Name = "worktree_list")]
-    [Description("List the git worktrees the cockpit is managing, each with its branch, path, repository, owning session, and git state (clean, whether it has uncommitted changes, and how many commits exist only here — not in the base branch and not pushed anywhere).")]
+    [Description("List the git worktrees the cockpit is managing, each with its branch, path, repository, owning session, and git state (clean, whether it has uncommitted changes, and how many commits exist only here — not in the base branch and not pushed anywhere). `ownerLive` tells apart the three things a bare `session` id cannot: true with an ordinary session id means that session is still running (never remove or reassign it); false means the owner is gone and any work is only kept if `retained` says so; true with `session` equal to `cockpit-assistant` means the assistant owns it directly — the assistant is always live by construction, so this stays true until worktree_handover or worktree_remove moves it, never because a sweep missed it. Null when liveness cannot be determined here.")]
     public async Task<string> ListAsync()
     {
         var statuses = await _worktreeManager.GetStatusesAsync();
@@ -91,6 +91,11 @@ internal sealed class WorktreeTools
             uncommittedChanges = status.HasUncommittedChanges,
             commitsOnlyHere = status.StrandableCommits,
             retained = status.Record.IsRetained,
+            // AC-719: the same liveness question the managed-worktrees panel already answers
+            // (WorktreesViewModel.RefreshAsync) — reused here rather than re-derived, so an MCP caller can tell "owner
+            // still running" apart from "owner gone, work retained" instead of guessing from `session` and `retained`
+            // alone, which reads identically for both.
+            ownerLive = _liveSessions is null ? (bool?)null : _liveSessions.LiveSessionIds.Contains(status.Record.SessionId),
         });
 
         return _Serialize(new { ok = true, worktrees });

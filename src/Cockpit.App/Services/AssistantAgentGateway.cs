@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Workspaces;
@@ -41,8 +42,13 @@ internal sealed class AssistantAgentGateway(
     IAgentMessageInbox inbox,
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
-    SessionWatcher watcher) : IAssistantAgentGateway, ISingletonService
+    SessionWatcher watcher,
+    IWorktreeManager? worktreeManager = null) : IAssistantAgentGateway, ISingletonService
 {
+    private static readonly StringComparison _PathComparison =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+
     public async Task<AgentSpawnResult> SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken = default)
     {
         try
@@ -642,6 +648,93 @@ internal sealed class AssistantAgentGateway(
 
     public Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(() => Task.FromResult(watcher.Unwatch(paneId)));
+
+    // AC-719 ronde B: re-owns a worktree the assistant made for itself onto a running session, via the same
+    // ReattachAsync primitive the reattach guard in _ResolveIsolatedWorkingDirectoryAsync uses. Every refusal here
+    // is hard, not best-effort — a wrong target could pull a worktree out from under a session that needed it.
+    public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(async () =>
+        {
+            if (worktreeManager is null)
+            {
+                return await _RefuseHandoverAsync(path, paneId, "Worktree management is not available here.", cancellationToken).ConfigureAwait(true);
+            }
+
+            if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+            {
+                return await _RefuseHandoverAsync(path, paneId, "That is my own session; a worktree cannot be handed to it.", cancellationToken).ConfigureAwait(true);
+            }
+
+            var full = Path.GetFullPath(path);
+            var record = (await worktreeManager.ListAsync(cancellationToken).ConfigureAwait(true))
+                .FirstOrDefault(candidate => string.Equals(Path.GetFullPath(candidate.Path), full, _PathComparison));
+            if (record is null)
+            {
+                return await _RefuseHandoverAsync(path, paneId, "No managed worktree at that path — call worktree_list for the current paths.", cancellationToken).ConfigureAwait(true);
+            }
+
+            if (!string.Equals(record.SessionId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+            {
+                return await _RefuseHandoverAsync(record.Path, paneId, "That worktree is not mine to hand over — it belongs to a different session.", cancellationToken).ConfigureAwait(true);
+            }
+
+            if (cockpit.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal)) is not { } session)
+            {
+                var elsewhere = cockpit.FindSession(paneId);
+                return await _RefuseHandoverAsync(record.Path, paneId, elsewhere is null
+                        ? $"There is no session with pane id '{paneId}' — it may already have been closed."
+                        : $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so a worktree cannot be handed to it.",
+                    cancellationToken).ConfigureAwait(true);
+            }
+
+            if (!session.ShowPluginHeaderItems)
+            {
+                return await _RefuseHandoverAsync(record.Path, paneId, $"'{session.Title}' is a terminal pane, not an agent session.", cancellationToken)
+                    .ConfigureAwait(true);
+            }
+
+            if (await worktreeManager.ReattachAsync(record.Path, paneId, cancellationToken).ConfigureAwait(true) is not { } reattached)
+            {
+                return await _RefuseHandoverAsync(record.Path, paneId, "The worktree could not be re-owned — it may have just been removed.", cancellationToken)
+                    .ConfigureAwait(true);
+            }
+
+            session.WorktreeBranch = reattached.Branch;
+
+            await _RecordAsync(new AssistantSpawnAuditEntry(
+                DateTimeOffset.Now,
+                AssistantSpawnAction.Handover,
+                SpawnCaller.Assistant,
+                CallerPaneId: null,
+                session.WorkspaceId ?? string.Empty,
+                _FindWorkspace(session.WorkspaceId)?.Name,
+                Profile: null,
+                WorkingDirectory: reattached.Path,
+                paneId,
+                session.Title,
+                Refusal: null), cancellationToken).ConfigureAwait(true);
+
+            return WorktreeHandoverResult.HandedOver(reattached.Path, reattached.Branch, session.Title);
+        });
+
+    private async Task<WorktreeHandoverResult> _RefuseHandoverAsync(
+        string path, string paneId, string reason, CancellationToken cancellationToken)
+    {
+        await _RecordAsync(new AssistantSpawnAuditEntry(
+            DateTimeOffset.Now,
+            AssistantSpawnAction.Handover,
+            SpawnCaller.Assistant,
+            CallerPaneId: null,
+            WorkspaceId: string.Empty,
+            WorkspaceName: null,
+            Profile: null,
+            WorkingDirectory: path,
+            paneId,
+            SessionName: null,
+            reason), cancellationToken).ConfigureAwait(true);
+
+        return WorktreeHandoverResult.Refused(reason);
+    }
 
     private Task _RecordAsync(AssistantSpawnAuditEntry entry, CancellationToken cancellationToken) =>
         auditLog.RecordAsync(entry, cancellationToken);

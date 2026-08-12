@@ -431,6 +431,30 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "worktree_handover")]
+    [Description("Hands a worktree you (the assistant) made with worktree_create over to a running agent session, so that session owns it from then on — exactly as if it had made the worktree itself: released and cleaned up when that session closes, never left stuck on you. Use it for a worktree you made ahead of a later start_agent, for one you want to give to a session that is already running, or to re-own a worktree of yours left over from before this tool existed. Nothing is asked of the operator: no file is touched, no worktree is removed, only who owns it changes. REFUSED, HARD, NOT BEST-EFFORT: the worktree at `path` is not yours to give away (it belongs to a different session, or is not a worktree the cockpit manages — call worktree_list for the current paths), `paneId` names no running agent session (already closed, or a plain terminal), or `paneId` is your own.")]
+    public async Task<string> WorktreeHandoverAsync(
+        [Description("The worktree's path, as returned by worktree_create or worktree_list. Must currently be owned by you (the assistant) — never a worktree a session made or is running in.")] string path,
+        [Description("The pane id of the running agent session to hand the worktree to, exactly as list_sessions or start_agent reports it. Never your own.")] string paneId)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.HandoverWorktreeAsync(path, paneId).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new { ok = true, path = result.Path, branch = result.Branch, paneId, name = result.SessionName })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "remember")]
     [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(

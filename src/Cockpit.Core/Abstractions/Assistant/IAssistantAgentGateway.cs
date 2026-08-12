@@ -165,6 +165,30 @@ public interface IAssistantAgentGateway
     /// stopping a session it started, or losing interest in one it armed.
     /// </remarks>
     Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Re-owns the worktree at <paramref name="path"/>, currently the assistant's own, onto <paramref name="paneId"/>
+    /// (AC-719 ronde B) — the worktree then belongs to that session exactly as if it had made the worktree itself:
+    /// released and cleaned up when it closes, never swept while the assistant still nominally held it.
+    /// </summary>
+    /// <remarks>
+    /// For the three cases the automatic re-own on a spawn's own worktree does not reach: a worktree the assistant
+    /// made ahead of a later spawn, handing one to a session that is already running, and the one-time cleanup of a
+    /// worktree left over from before this existed. Refuses when <paramref name="path"/> is not a worktree the
+    /// assistant owns, when <paramref name="paneId"/> names no running agent session, and when it names the
+    /// assistant's own session — nothing here may hand a worktree to itself.
+    /// </remarks>
+    Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default);
+}
+
+// What came of a handover. Same shape and same reason as `AgentStopResult` — a refusal is a sentence the
+// assistant says, not an exception it fails on.
+public sealed record WorktreeHandoverResult(bool Ok, string? Path, string? Branch, string? SessionName, string? Error)
+{
+    public static WorktreeHandoverResult HandedOver(string path, string branch, string sessionName) =>
+        new(true, path, branch, sessionName, null);
+
+    public static WorktreeHandoverResult Refused(string error) => new(false, null, null, null, error);
 }
 
 // What came of arming a watch. Same shape and same reason as `AgentStopResult`: a refusal is a sentence the

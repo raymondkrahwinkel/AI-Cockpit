@@ -151,6 +151,9 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
 
         public Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     public void Dispose() => McpRequestContext.Set(null);
