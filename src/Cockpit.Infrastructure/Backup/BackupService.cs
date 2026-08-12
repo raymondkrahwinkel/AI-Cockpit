@@ -33,7 +33,13 @@ internal sealed class BackupService(
     // readable by other users on the machine.
     internal static string StagingRoot => Path.Combine(CockpitConfigPath.Root, BackupContents.StagingFolder);
 
-    public async Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default)
+    // Offloaded to the thread pool (AC-747): CreateEntryFromFile has no async form, so archiving every file froze
+    // whichever thread called this — the UI thread, in practice. The awaiter still marshals the continuation back
+    // to the caller's dispatcher, so BackupStatus updates land on the UI thread exactly as before.
+    public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
+        Task.Run(() => _WriteCoreAsync(archivePath, options, cancellationToken), cancellationToken);
+
+    private async Task<BackupManifest> _WriteCoreAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken)
     {
         var root = CockpitDirectory;
         if (!Directory.Exists(root))
@@ -193,7 +199,12 @@ internal sealed class BackupService(
             ?? throw new InvalidOperationException("This backup's manifest could not be read.");
     }
 
-    public async Task RestoreAsync(string archivePath, RestoreOptions options, CancellationToken cancellationToken = default)
+    // Same offload as WriteAsync, and for the same reason (AC-747): ZipFile.ExtractToDirectory unpacks the whole
+    // archive synchronously, which blocked the UI thread for as long as the restore took.
+    public Task RestoreAsync(string archivePath, RestoreOptions options, CancellationToken cancellationToken = default) =>
+        Task.Run(() => _RestoreCoreAsync(archivePath, options, cancellationToken), cancellationToken);
+
+    private async Task _RestoreCoreAsync(string archivePath, RestoreOptions options, CancellationToken cancellationToken)
     {
         var manifest = await ReadManifestAsync(archivePath, cancellationToken);
 
