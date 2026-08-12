@@ -144,6 +144,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit no longer lets resident memory climb into the gigabytes and stay there. On a workstation with
+  plenty of free RAM, .NET only hands freed memory back to the operating system when it detects real memory
+  pressure — which rarely happens here — so memory the garbage collector had already marked as dead kept being
+  held onto (measured: resident memory reaching 10.3 GB, with only 3.5 GB of it actually live; separately measured
+  climbing to 6.5 GB within about three hours of normal use). The cockpit now asks the runtime to conserve memory
+  more aggressively, and checks its own memory use roughly five times a second — a check cheap enough not to
+  matter — reclaiming memory the moment there is enough of it worth reclaiming, before it ever grows large enough
+  for that to cause a noticeable pause. An earlier version of this checked far less often and could pause the whole
+  app for minutes on a heap that had been allowed to grow unchecked; catching it early avoids that entirely.
 - fixed: the "While you're talking" heading on the Assistant voice settings page no longer shows with nothing
   underneath it. Its rows were tied to push-to-talk dictation being on, a toggle that lives on the Transcribe page,
   so an operator with the assistant enabled but dictation off saw an empty heading; the heading and its rows now
