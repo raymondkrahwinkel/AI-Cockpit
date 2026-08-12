@@ -38,6 +38,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   first `@`, and a session (or the assistant, before it has started one) without a known working directory yet
   simply leaves the picker closed rather than guessing.
 
+- added: your own messages in a session's transcript now have a copy button too, matching the one that was already
+  there under an assistant's reply — hover or focus the message to see it.
+
 - added: a new "Log diagnostic snapshots" option under Debug settings writes one line to the log every ten
   seconds — memory, GC, handles, threads — so a slow leak or crash leaves a trail to look back on. Off by
   default. Separately, and always on regardless of that setting: if the app's UI freezes for more than a few
