@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Projects;
@@ -36,11 +37,14 @@ public sealed class ProjectQuickStart(
         var configured = await profiles.LoadAsync(cancellationToken).ConfigureAwait(true);
         var profile = configured.FirstOrDefault(candidate =>
             string.Equals(candidate.Label, project.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase));
-        if (profile is null)
-        {
-            return null;
-        }
+        return profile is null ? null : await ComposeAsync(project, profile, cancellationToken).ConfigureAwait(true);
+    }
 
+    // The same compose, for a caller that already knows its profile (AC-719: a spawn names it explicitly) rather
+    // than asking the project's `DefaultProfileLabel` to pick one — this is the core `ComposeAsync(Project)`
+    // resolves a profile for and then calls, so the two doors cannot drift apart.
+    public async Task<NewSessionResult> ComposeAsync(Project project, SessionProfile profile, CancellationToken cancellationToken = default)
+    {
         // The probe is I/O, which Resolve deliberately never does itself (see its own remarks on
         // unresolvedReferences) — a quick start is an actual launch, so it is worth the filesystem check a preview
         // field elsewhere in the dialog skips.

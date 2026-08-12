@@ -127,9 +127,19 @@ internal sealed class AssistantAgentGateway(
                 return await _RefuseSpawnAsync(request, workspace.Name, optionRefusal, cancellationToken).ConfigureAwait(true);
             }
 
+            // AC-719: refused categorically, like permission-mode — a caller that could dial isolation down per
+            // spawn is one hop from the working-tree contamination isolation exists to prevent.
+            if (request.IsolateInWorktree == false)
+            {
+                return await _RefuseSpawnAsync(request, workspace.Name,
+                    "'isolate: false' is not something a spawn may ask for — that would run it in the operator's real "
+                    + "checkout. Leave it out to use the project's own isolation setting, or ask for isolate: true.",
+                    cancellationToken).ConfigureAwait(true);
+            }
+
             var started = await cockpit.StartSessionOnWorkspaceAsync(
                 workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
-                launchOptions).ConfigureAwait(true);
+                launchOptions, request.IsolateInWorktree).ConfigureAwait(true);
 
             if (started is not { } pane)
             {
