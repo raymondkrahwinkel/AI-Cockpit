@@ -6,13 +6,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
-// AC-733: Workstation GC only returns freed heap segments to the OS when it detects memory pressure, so on a
-// workstation with plenty of free RAM the process keeps holding gigabytes of garbage the GC already knows is dead —
-// measured live at 10.3 GB RSS with a 6.74 GB heap that a forced collect shrank to 3.51 GB, moving RSS by ~150 MB.
-// `System.GC.ConserveMemory` (runtimeconfig) addresses the *decision* to reclaim; this addresses the other half —
-// an isolated repro (AC-733) showed a plain blocking Gen2 collect leaves RSS untouched regardless of that setting,
-// while `GCCollectionMode.Aggressive` + `compacting: true` drops RSS to the live set within ~200-450 ms even on a
-// multi-GB heap. So: ask for exactly that collect periodically, instead of waiting for real memory pressure.
+// AC-733: Workstation GC only returns freed heap segments to the OS under real memory pressure, rare on a
+// workstation with free RAM — so dead managed-heap memory piles up as RSS. ConserveMemory alone doesn't move it;
+// only Aggressive+compacting does (measurements: PR #532 / AC-733). So: ask for that, periodically.
 public sealed class PeriodicGcCompactor(ILogger<PeriodicGcCompactor>? logger = null) : ISingletonService, IDisposable
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
