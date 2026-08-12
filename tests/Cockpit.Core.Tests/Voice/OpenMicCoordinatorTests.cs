@@ -295,6 +295,30 @@ public class OpenMicCoordinatorTests
     }
 
     /// <summary>
+    /// AC-729: the assistant reads its own replies through the same playback queue as an ordinary session, but
+    /// the chip (<see cref="AssistantIndicatorCoordinator"/>) already shows its Speaking state — writing it to the
+    /// pill too said the same thing twice, the same reasoning AC-697 already applied to the hold-flow's
+    /// "assistant unreachable" message. A session's own read-aloud (F9/the read-aloud button) is untouched.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheAssistantReadsAloud_ThePillStaysHidden_TheChipAlreadyShowsItSpeaking()
+    {
+        var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
+        var coordinator = _CreateCoordinator(out _, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
+        await coordinator.StartAsync();
+
+        coordinator.HandlePlaybackActiveChanged(true, VoicePlaybackSource.Assistant);
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
+
+        coordinator.HandleSpeakingStarted(VoicePlaybackSource.Assistant);
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
+
+        coordinator.HandlePlaybackActiveChanged(false, VoicePlaybackSource.Assistant);
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
+    }
+
+    /// <summary>
     /// AC-9's microphone half: talking over read-aloud stops it. The hold half already worked and always has
     /// (<c>SessionPanelViewModel.BeginVoiceHold</c>) — a held key needs no threshold, because a room does not
     /// press one by accident. This is the half that has to guess, and it only guesses when asked.

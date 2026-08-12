@@ -141,6 +141,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the floating voice pill no longer shows "Reading aloud"/"Preparing" while the assistant reads out its own
+  reply. That state already appeared on the assistant's own indicator chip, so the pill said the same thing twice —
+  it now stays hidden for the assistant specifically, while read-aloud started from an ordinary session (F9 or the
+  read-aloud button) still shows on the pill exactly as before.
 - fixed: a link in your own chat message is now clickable, opening in your default browser like a link in the
   assistant's reply already did. It used to just sit there as plain text — your own bubble never had link detection
   at all, only the assistant's replies did.

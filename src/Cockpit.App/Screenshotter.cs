@@ -2125,15 +2125,15 @@ internal static class Screenshotter
     // answer — this exists only so AssistantChatViewModel's constructor has something to call StopAll on.
     private sealed class _NullVoicePlaybackQueue : Cockpit.Core.Abstractions.Voice.IVoicePlaybackQueue
     {
-        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language)
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session)
         {
         }
 
-        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId)
+        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session)
         {
         }
 
-        public void NotifyPreparing()
+        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session)
         {
         }
 
@@ -2146,6 +2146,8 @@ internal static class Screenshotter
         }
 
         public int Generation => 0;
+
+        public Cockpit.Core.Voice.VoicePlaybackSource ActiveSource => Cockpit.Core.Voice.VoicePlaybackSource.Session;
     }
 
     private static Bitmap? _LoadAssetBitmap(string uri)

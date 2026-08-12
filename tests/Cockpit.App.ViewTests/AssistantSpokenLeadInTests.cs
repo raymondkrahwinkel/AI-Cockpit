@@ -89,17 +89,19 @@ public class AssistantSpokenLeadInTests
 
         public int Generation => 0;
 
+        public VoicePlaybackSource ActiveSource => VoicePlaybackSource.Session;
+
         public event EventHandler<bool>? PlaybackActiveChanged;
 
         public event EventHandler? SpeakingStarted;
 
-        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language) =>
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session) =>
             Spoken.AddRange(sentences);
 
-        public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId) =>
+        public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session) =>
             Spoken.AddRange(segments.SelectMany(segment => segment.Sentences));
 
-        public void NotifyPreparing()
+        public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session)
         {
             PlaybackActiveChanged?.Invoke(this, true);
             SpeakingStarted?.Invoke(this, EventArgs.Empty);

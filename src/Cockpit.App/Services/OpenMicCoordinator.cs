@@ -8,6 +8,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
@@ -255,7 +256,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             }
         }
 
-        Dispatcher.UIThread.Post(() => HandlePlaybackActiveChanged(active));
+        var source = _playbackQueue.ActiveSource;
+        Dispatcher.UIThread.Post(() => HandlePlaybackActiveChanged(active, source));
     }
 
     // AC-627: the hold wins over open-mic and takes the microphone for its duration.
@@ -303,7 +305,11 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         public void Dispose() => owner._ResumeAfterHold();
     }
 
-    private void _OnSpeakingStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeakingStarted);
+    private void _OnSpeakingStarted(object? sender, EventArgs e)
+    {
+        var source = _playbackQueue.ActiveSource;
+        Dispatcher.UIThread.Post(() => HandleSpeakingStarted(source));
+    }
 
     private void _OnSpeechStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeechStarted);
 
@@ -335,15 +341,30 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     // Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — `HandleSpeakingStarted` flips it to speaking once audio actually plays.
     //
-    // AC-697: this and `HandleSpeakingStarted` still show the assistant's own reply on the pill, since `IVoicePlaybackQueue` has no per-utterance source to mute just the assistant's.
-    internal void HandlePlaybackActiveChanged(bool active)
+    // AC-729: the assistant's own reply no longer reaches the pill — the chip already shows it, same reasoning as
+    // AC-697's hold-flow. `_isPlaying` stays unconditional so a barge-in can still stop it too.
+    internal void HandlePlaybackActiveChanged(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session)
     {
         _isPlaying = active;
+
+        if (source == VoicePlaybackSource.Assistant)
+        {
+            return;
+        }
+
         _overlay.SetReadAloud(active ? VoiceOverlayState.Preparing : null, active ? PreparingStatus : null);
     }
 
     // Test seam: the first synthesized clip started playing, so the overlay moves from "preparing" to "reading aloud".
-    internal void HandleSpeakingStarted() => _overlay.SetReadAloud(VoiceOverlayState.Speaking);
+    internal void HandleSpeakingStarted(VoicePlaybackSource source = VoicePlaybackSource.Session)
+    {
+        if (source == VoicePlaybackSource.Assistant)
+        {
+            return;
+        }
+
+        _overlay.SetReadAloud(VoiceOverlayState.Speaking);
+    }
 
     // Test seam: one microphone level. Feeds the pill's waveform and remembers the latest level, which
     // `HandleSpeechStarted` checks against the threshold — the barge-in stop fires on detected speech,

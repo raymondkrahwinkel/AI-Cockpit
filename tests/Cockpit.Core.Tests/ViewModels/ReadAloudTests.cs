@@ -2,6 +2,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Voice;
 using NSubstitute;
@@ -48,6 +49,36 @@ public class ReadAloudTests
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Here is the answer." })),
             3,
             "en");
+    }
+
+    /// <summary>
+    /// AC-729: `AssistantSessionHost` mints the assistant's own session under the well-known
+    /// <see cref="AssistantIdentity.PaneId"/> (AC-410's identity trick) — the only thing that tells this method
+    /// apart from an ordinary session's own read-aloud, so the tag it hands to the shared playback queue has to
+    /// come from here.
+    /// </summary>
+    [Fact]
+    public void TurnCompleted_OnTheAssistantsOwnSession_TagsTheEnqueueAsAssistantSourced()
+    {
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { TtsVoiceSid = 3 });
+        var vm = new SessionViewModel(
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voiceSettingsStore: voiceSettingsStore, voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+        vm.AdoptPaneId(AssistantIdentity.PaneId);
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is the answer." });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        voicePlaybackQueue.Received(1).NotifyPreparing(VoicePlaybackSource.Assistant);
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Here is the answer." })),
+            3,
+            "en",
+            VoicePlaybackSource.Assistant);
     }
 
     [Fact]
@@ -251,11 +282,13 @@ public class ReadAloudTests
 
         public int Generation { get; private set; }
 
-        public void NotifyPreparing() => StopAll();
+        public VoicePlaybackSource ActiveSource => VoicePlaybackSource.Session;
 
-        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language) => Enqueued.Add(sentences);
+        public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session) => StopAll();
 
-        public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId) =>
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session) => Enqueued.Add(sentences);
+
+        public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session) =>
             Enqueued.Add([.. segments.SelectMany(segment => segment.Sentences)]);
 
         public void StopAll() => Generation++;
