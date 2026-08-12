@@ -12,14 +12,16 @@ internal sealed class ClaudeLoginFlow : ILoginFlow
     private static readonly Regex _UrlPattern = new(@"https?://\S+", RegexOptions.Compiled);
 
     private readonly Process _process;
+    private readonly string _configJson;
     private readonly Channel<LoginFlowStep> _steps =
         Channel.CreateUnbounded<LoginFlowStep>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly TaskCompletionSource<LoginFlowResult> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _cts;
 
-    private ClaudeLoginFlow(Process process, CancellationTokenSource cts)
+    private ClaudeLoginFlow(Process process, string configJson, CancellationTokenSource cts)
     {
         _process = process;
+        _configJson = configJson;
         _cts = cts;
         _ = _PumpOutputAsync();
     }
@@ -51,7 +53,7 @@ internal sealed class ClaudeLoginFlow : ILoginFlow
         }
 
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Could not start '{executablePath}'.");
-        return new ClaudeLoginFlow(process, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
+        return new ClaudeLoginFlow(process, configJson, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
     }
 
     public IAsyncEnumerable<LoginFlowStep> Steps => _steps.Reader.ReadAllAsync(_cts.Token);
@@ -115,11 +117,19 @@ internal sealed class ClaudeLoginFlow : ILoginFlow
             await _process.WaitForExitAsync(_cts.Token).ConfigureAwait(false);
             var stderr = await stderrDrain.ConfigureAwait(false);
 
-            _completion.TrySetResult(_process.ExitCode == 0
-                ? new LoginFlowResult(Success: true, ErrorMessage: null)
-                : new LoginFlowResult(Success: false, ErrorMessage: string.IsNullOrWhiteSpace(stderr)
+            if (_process.ExitCode == 0)
+            {
+                // AC-732: the gate's cache still holds the pre-login "logged out" reading — overwrite it now
+                // rather than let the auth-expiry bar's next poll tick read it before this flow's own refresh does.
+                ClaudeLoginStatus.MarkLoggedIn(_configJson);
+                _completion.TrySetResult(new LoginFlowResult(Success: true, ErrorMessage: null));
+            }
+            else
+            {
+                _completion.TrySetResult(new LoginFlowResult(Success: false, ErrorMessage: string.IsNullOrWhiteSpace(stderr)
                     ? $"claude auth login exited with code {_process.ExitCode}."
                     : stderr.Trim()));
+            }
         }
         catch (OperationCanceledException)
         {

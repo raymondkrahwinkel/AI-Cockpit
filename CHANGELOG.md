@@ -129,6 +129,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the auth-expiry bar no longer flashes back after you've just signed in again through it. Signing in fed the
+  bar's own status straight away, but the login gate behind it kept answering "logged out" from a reading taken
+  before the sign-in, so the bar reappeared for a moment on the next check before correcting itself. A successful
+  sign-in now updates that same reading immediately, so the bar stays gone.
 - fixed: a session on a project whose memory lives in a plugin — a Depot project, say — now starts with that plugin's
   MCP server ticked, so it can actually reach the project knowledge the project points at. The server was offered to
   such a session but arrived unticked, and because the project editor's server checklist is the same for every project
