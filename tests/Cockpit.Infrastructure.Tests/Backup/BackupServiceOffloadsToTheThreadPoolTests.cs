@@ -7,17 +7,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cockpit.Infrastructure.Tests.Backup;
 
 /// <summary>
-/// AC-747: <c>WriteAsync</c>/<c>RestoreAsync</c> used to run their whole synchronous archiving/unpacking loop on
-/// whichever thread called them — the UI thread, in practice — freezing the app for the length of a backup. Both
-/// now hand that work to the thread pool via <c>Task.Run</c>.
-/// <para>
-/// The state root is a fixed OS path (<c>CockpitConfigPath.Root</c>), not test-overridable, so a test that exercises
-/// the real archiving/unpacking loop against a realistic file count is not possible here without archiving the
-/// developer's real, multi-gigabyte Cockpit state directory. What this proves instead: an already-cancelled token
-/// must short-circuit <c>Task.Run</c> before the method body runs at all — the exact mechanism the fix relies on —
-/// which the pre-fix, fully-synchronous body could not do (its own cancellation check only ran after already
-/// touching the state root, one file into the loop).
-/// </para>
+/// AC-747: <c>WriteAsync</c>/<c>RestoreAsync</c> used to run their synchronous archiving/unpacking loop on whichever
+/// thread called them, freezing the UI for the length of a backup; both now offload to <c>Task.Run</c>. The state
+/// root (<c>CockpitConfigPath.Root</c>) is a fixed, non-test-overridable OS path — a real dev machine's is
+/// multi-gigabyte — so instead of archiving it for real, this proves the offload is wired up by showing an
+/// already-cancelled token short-circuits <c>Task.Run</c> before the method body (and the state root) is touched.
 /// </summary>
 public class BackupServiceOffloadsToTheThreadPoolTests
 {

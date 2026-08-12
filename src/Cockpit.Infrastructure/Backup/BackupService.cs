@@ -33,10 +33,9 @@ internal sealed class BackupService(
     // readable by other users on the machine.
     internal static string StagingRoot => Path.Combine(CockpitConfigPath.Root, BackupContents.StagingFolder);
 
-    // Offloaded to the thread pool (AC-747): CreateEntryFromFile has no async form, so archiving every file under
-    // the state root ran on whichever thread called this — the UI thread, in practice — and froze it for the
-    // duration. The awaiter still marshals the continuation back to the caller's dispatcher, so BackupStatus updates
-    // land on the UI thread exactly as before.
+    // Offloaded to the thread pool (AC-747): CreateEntryFromFile has no async form, so archiving every file froze
+    // whichever thread called this — the UI thread, in practice. The awaiter still marshals the continuation back
+    // to the caller's dispatcher, so BackupStatus updates land on the UI thread exactly as before.
     public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
         Task.Run(() => _WriteCoreAsync(archivePath, options, cancellationToken), cancellationToken);
 
