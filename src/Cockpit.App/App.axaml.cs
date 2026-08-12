@@ -343,6 +343,10 @@ public partial class App : Application
         cockpitViewModel.OpenMic = openMicCoordinator;
         _ = openMicCoordinator.StartAsync();
 
+        // AC-718: started here, not as an IHostedService — Dispatcher.UIThread is only safe to touch once
+        // Avalonia's own Setup() has bound it to this thread, which by this point in the lifecycle it has.
+        Program.Services.GetRequiredService<DiagnosticsBackgroundService>().Start();
+
         // AC-234: hand the running app its scheduler — resolved here rather than through the view-model's
         // constructor, so the test and design-time graphs build a cockpit without one and never write to disk.
         // Before the plugins, deliberately: a session takes its copy of this when it is built, and one built while
