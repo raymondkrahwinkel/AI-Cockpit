@@ -39,7 +39,9 @@
 
             <!-- The user's own message (T2): a header line ("You" + timestamp, AC-144) over the
                  bubble the enclosing Border right-aligns and tints (Border.transcriptRow.userRow).
-                 AC-737: MarkdownView, not SelectableTextBlock, so a pasted link is clickable too. -->
+                 AC-737: MarkdownView, not SelectableTextBlock, so a pasted link is clickable too.
+                 AC-745: the same copy action as the assistant reply, mirrored to the right so it
+                 sits under the right-aligned bubble instead of trailing off to its left. -->
             <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
@@ -51,6 +53,14 @@
                 </Grid>
                 <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                      BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
+                <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
+                            HorizontalAlignment="Right">
+                    <Button x:Name="UserRowCopyButton" Classes="Subtle Compact" Click="_OnCopyMessageClick"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Copy this message">
+                        <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
+                    </Button>
+                </StackPanel>
             </StackPanel>
 
             <!-- Questions / turn-result rows: plain wrapped text, not a bubble or markdown;
