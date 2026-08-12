@@ -141,6 +141,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit no longer holds onto multiple gigabytes of memory the garbage collector had already marked as
+  dead. On a workstation with plenty of free RAM, .NET only hands freed memory back to the operating system when it
+  detects real memory pressure — which rarely happens here — so resident memory kept climbing toward its peak and
+  essentially never came back down (measured: 10.3 GB resident with only 3.5 GB of it actually live). The app now
+  asks the runtime to conserve memory more aggressively, and on top of that periodically compacts and returns what
+  it can every 15 minutes, which is what actually moves the number — confirmed on a live instance.
 - fixed: the "Share…" button for a project that was never actually published no longer opens the "Stop sharing?"
   confirmation instead of the publish flow. A project whose memory connection happens to start with the same prefix
   as a shared source (without ever having gone through Share) now correctly shows "Share…" and opens that flow when

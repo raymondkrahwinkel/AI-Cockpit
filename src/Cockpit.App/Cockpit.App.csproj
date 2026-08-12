@@ -13,7 +13,10 @@
 
   <!-- Defensive: nothing in the repo sets GC mode explicitly, so it defaults to Server GC because
        Microsoft.Extensions.Hosting pulls in Microsoft.AspNetCore.App. Server GC's per-core heap adds baseline
-       footprint a desktop app doesn't need, worse on macOS. Not a fix for a measured issue (see AC-686). -->
+       footprint a desktop app doesn't need, worse on macOS. Not a fix for a measured issue (see AC-686).
+       AC-733: Workstation GC also does not hand freed segments back to the OS without memory pressure, which a
+       single-user desktop workstation rarely has — see runtimeconfig.template.json (ConserveMemory) and
+       Services/PeriodicGcCompactor.cs (the compact that actually reclaims it) for the rest of that fix. -->
   <PropertyGroup>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
