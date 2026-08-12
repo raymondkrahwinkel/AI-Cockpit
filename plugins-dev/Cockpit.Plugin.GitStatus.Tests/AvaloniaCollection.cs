@@ -1,5 +1,6 @@
 namespace Cockpit.Plugin.GitStatus.Tests;
 
+// AC-712 scenario test: plugins-dev-only change (no src/), should skip build but keep plugins/plugin-versions running.
 // Marks the tests that need a platform; xunit builds the fixture once for the whole collection.
 [CollectionDefinition("avalonia")]
 public sealed class AvaloniaCollection : ICollectionFixture<HeadlessAvalonia>;
