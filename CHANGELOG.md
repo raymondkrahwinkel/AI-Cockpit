@@ -133,6 +133,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   bar's own status straight away, but the login gate behind it kept answering "logged out" from a reading taken
   before the sign-in, so the bar reappeared for a moment on the next check before correcting itself. A successful
   sign-in now updates that same reading immediately, so the bar stays gone.
+- fixed: a proactive sign-in ("your login is about to expire") no longer loses the "open this link" button before you
+  get a chance to click it. The button disappeared the moment the CLI printed its next line, even though the link
+  itself was still what the sign-in needed — it now stays up for the whole attempt, and clicking it now also leaves a
+  visible "Opened in your browser." note rather than only a hover tooltip.
+- fixed: the placeholder text in the "paste the code here" field of an in-app sign-in was sitting off-centre instead
+  of lining up with the field and the Submit button beside it.
 - fixed: a session on a project whose memory lives in a plugin — a Depot project, say — now starts with that plugin's
   MCP server ticked, so it can actually reach the project knowledge the project points at. The server was offered to
   such a session but arrived unticked, and because the project editor's server checklist is the same for every project
