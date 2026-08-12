@@ -796,9 +796,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // few sample transcript rows so the previewer/Screenshotter render the styled components
     // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
     // DI-backed session.
-    public SessionViewModel()
+    // `mentionFileSource` is the one seam a Screenshotter scene needs to stage the picker with real-looking rows
+    // (Screenshotter has no DI container to resolve the real ISessionManager the full constructor below needs) —
+    // every other design-time/previewer call site leaves it null, same as before this parameter existed.
+    public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
         _eventQueue = new SessionEventQueue(Apply);
+        _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563):
         // a hard-coded "Connected (3 MCP servers)." next to an unset selection would have every previewer and

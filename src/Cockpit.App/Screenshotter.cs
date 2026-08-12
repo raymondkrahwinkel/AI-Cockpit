@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
@@ -262,6 +263,9 @@ internal static class Screenshotter
         ["session-mcp-hover"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader(servers: new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
         ["session-mcp-hover-statusline"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader("AC-563 — wiring the header hover", new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
         ["session-mcp-hover-unknown"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader() },
+        // AC-740: the @-mention picker, staged open by the Hovers table below (typing is a caret-driven gesture,
+        // not something a scene can pre-stage the way a static transcript can).
+        ["session-mention-picker"] = (width, height) => new Window { Width = width, Height = height, Content = _MentionPicker() },
         ["tty"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
         // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
         // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
@@ -489,7 +493,19 @@ internal static class Screenshotter
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-unknown"] = window => _OpenTooltip(window, "ActivityColumn"),
+        // AC-740: opening the picker is a caret-driven gesture (MentionPickerViewModel.OnTextChanged), not a
+        // property a scene can stage ahead of the window existing.
+        ["session-mention-picker"] = _OpenMentionPicker,
     };
+
+    private static void _OpenMentionPicker(Window window)
+    {
+        if (window.Content is SessionView { DataContext: SessionViewModel viewModel })
+        {
+            viewModel.InputText = "@Session";
+            viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
+        }
+    }
 
     private static void _OpenFlyout(Window window, string buttonName)
     {
@@ -1228,6 +1244,25 @@ internal static class Screenshotter
         // one the hover disagrees with, which is the very thing these renders exist to rule out.
         viewModel.Status = viewModel.ConnectedStatusLine;
 
+        return new SessionView { DataContext = viewModel };
+    }
+
+    // AC-740: a handful of paths under a working directory that would resolve to it in a real repo, so the row
+    // template (bold name, dimmed parent directory, trailing '/' on a directory row) has something to show.
+    private sealed class _SampleMentionFileSource : IMentionFileSource
+    {
+        public Task<IReadOnlyList<string>> GetPathsAsync(string workingDirectory, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>>([
+                "src/Views/SessionView.axaml",
+                "src/Views/SessionView.axaml.cs",
+                "src/ViewModels/SessionViewModel.cs",
+                "src/ViewModels/",
+            ]);
+    }
+
+    private static SessionView _MentionPicker()
+    {
+        var viewModel = new SessionViewModel(new _SampleMentionFileSource()) { WorkingDirectory = "/repo" };
         return new SessionView { DataContext = viewModel };
     }
 
