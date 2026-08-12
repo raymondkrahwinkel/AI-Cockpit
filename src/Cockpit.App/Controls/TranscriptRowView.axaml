@@ -14,9 +14,10 @@
          row (AC-715's question card) reaches both. `Session` replaces the old `$parent[UserControl]` anchor;
          `Compact` carries the few numbers that only differ because the assistant window is narrower. -->
     <!-- Row surface: background/border/alignment come from the transcriptRow style classes
-         (Theme.axaml), never inline — an inline (local) value would beat the .userRow
-         setters and the user bubble could not right-align or re-tint (T2). -->
-    <Border Classes="transcriptRow rowRoot" Classes.userRow="{Binding IsUserRow}"
+         (Theme.axaml), never inline — an inline (local) value would beat the setters. The root
+         never carries .userRow itself (AC-749): that bubble tint lives on the inner Border below,
+         so rowActions can sit outside its bounds while still being this root's descendant for hover. -->
+    <Border Classes="transcriptRow rowRoot"
             Classes.compact="{Binding $parent[controls:TranscriptRowView].Compact}"
             Padding="8,5" CornerRadius="{StaticResource CockpitControlRadius}"
             IsVisible="{Binding IsRowVisible}">
@@ -38,21 +39,26 @@
             </TextBlock>
 
             <!-- The user's own message (T2): a header line ("You" + timestamp, AC-144) over the
-                 bubble the enclosing Border right-aligns and tints (Border.transcriptRow.userRow).
+                 bubble this inner Border right-aligns and tints (Border.transcriptRow.userRow).
                  AC-737: MarkdownView, not SelectableTextBlock, so a pasted link is clickable too.
-                 AC-745: the same copy action as the assistant reply, mirrored to the right so it
-                 sits under the right-aligned bubble instead of trailing off to its left. -->
-            <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
-                               HorizontalAlignment="Left" VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding $parent[controls:TranscriptRowView].Session.ShowTimestamps}"/>
-                    <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                </Grid>
-                <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                     BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
+                 AC-745/AC-749: the copy action sits below the bubble, not inside it — a sibling
+                 outside the tinted Border so it never overlaps the bubble's rounded corner. -->
+            <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2" HorizontalAlignment="Right">
+                <Border Classes="transcriptRow userRow" Padding="8,5" MaxWidth="520"
+                        CornerRadius="{StaticResource CockpitControlRadius}">
+                    <StackPanel Spacing="2">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                       IsVisible="{Binding $parent[controls:TranscriptRowView].Session.ShowTimestamps}"/>
+                            <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        </Grid>
+                        <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                                             BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
+                    </StackPanel>
+                </Border>
                 <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                             HorizontalAlignment="Right">
                     <Button x:Name="UserRowCopyButton" Classes="Subtle Compact" Click="_OnCopyMessageClick"
