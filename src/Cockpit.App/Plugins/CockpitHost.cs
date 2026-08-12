@@ -653,14 +653,25 @@ internal sealed class CockpitHost(
             {
                 McpToolInvocationOutcome.Success => PluginMcpToolCallResult.Success(result.Content ?? string.Empty),
                 McpToolInvocationOutcome.AuthorizationRequired => PluginMcpToolCallResult.AuthorizationRequired,
-                _ => PluginMcpToolCallResult.Failed(result.Error ?? "The tool call failed."),
+                _ => PluginMcpToolCallResult.Failed(_UnwrapToolInvocationError(toolName, result.Error ?? "The tool call failed.")),
             };
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             diagnostics.Record(pluginId, pluginName, "mcp-tool-call", exception.Message);
-            return PluginMcpToolCallResult.Failed(exception.Message);
+            return PluginMcpToolCallResult.Failed(_UnwrapToolInvocationError(toolName, exception.Message));
         }
+    }
+
+    // AC-748: the MCP client SDK prefixes a failed tool call's message with "An error occurred invoking
+    // '{toolName}': " before it ever reaches here — on both the outcome-Failed branch above (the tool ran and
+    // reported isError, e.g. Depot's own "[NotFound]" wording) and the exception branch (the invoker itself threw).
+    // Stripping it once here, rather than in each caller that pattern-matches the tool's own error text, is what
+    // makes those matches (like Depot's PublishAsync StartsWith("[NotFound]")) see the tool's original wording again.
+    private static string _UnwrapToolInvocationError(string toolName, string message)
+    {
+        var prefix = $"An error occurred invoking '{toolName}': ";
+        return message.StartsWith(prefix, StringComparison.Ordinal) ? message[prefix.Length..] : message;
     }
 
     // The OAuth server named `name`, wherever it lives: the shared registry first (a

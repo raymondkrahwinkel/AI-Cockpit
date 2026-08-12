@@ -120,6 +120,23 @@ public class CockpitHostCallMcpToolTests
     }
 
     [Fact]
+    public async Task InvokerFails_StripsTheMcpSdkInvocationPrefix_SoCallersSeeTheToolsOwnErrorText()
+    {
+        // AC-748: Depot's own "read" tool reports "[NotFound] '.cockpit/project.json' was not found in project
+        // '<slug>'." — but the MCP SDK wraps that as "An error occurred invoking 'read': ..." before it reaches
+        // here. DepotSharedProjectSource.PublishAsync's StartsWith("[NotFound]") check needs the unwrapped text.
+        var invoker = Substitute.For<IMcpToolInvoker>();
+        invoker.InvokeAsync(Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
+            .Returns(McpToolInvocationResult.Failed("An error occurred invoking 'read': [NotFound] '.cockpit/project.json' was not found in project 'new-project'."));
+        var host = await _BuildHostWithRegisteredServerAsync("Depot: Work", invoker);
+
+        var result = await host.CallMcpToolAsync("Depot: Work", "read");
+
+        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
+        Assert.Equal("[NotFound] '.cockpit/project.json' was not found in project 'new-project'.", result.Error);
+    }
+
+    [Fact]
     public async Task WhenTheInvokerThrows_AnswersFailed_AndRecordsAFailure_RatherThanCrashing()
     {
         var invoker = Substitute.For<IMcpToolInvoker>();
@@ -134,6 +151,20 @@ public class CockpitHostCallMcpToolTests
         var failure = diagnostics.ForFolder("depot");
         Assert.NotNull(failure);
         Assert.Equal("mcp-tool-call", failure!.Phase);
+    }
+
+    [Fact]
+    public async Task WhenTheInvokerThrowsWithTheMcpSdkPrefix_UnwrapsItTheSameWayAsTheFailedOutcome()
+    {
+        var invoker = Substitute.For<IMcpToolInvoker>();
+        invoker.InvokeAsync(Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<McpToolInvocationResult>>(_ => throw new InvalidOperationException("An error occurred invoking 'read': [NotFound] '.cockpit/project.json' was not found in project 'new-project'."));
+        var host = await _BuildHostWithRegisteredServerAsync("Depot: Work", invoker);
+
+        var result = await host.CallMcpToolAsync("Depot: Work", "read");
+
+        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
+        Assert.Equal("[NotFound] '.cockpit/project.json' was not found in project 'new-project'.", result.Error);
     }
 
     private static async Task<CockpitHost> _BuildHostWithRegisteredServerAsync(
