@@ -141,12 +141,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
-- changed: the cockpit now asks the .NET runtime to conserve memory more aggressively (`System.GC.ConserveMemory`).
-  On a workstation with plenty of free RAM, .NET only hands freed memory back to the operating system when it
-  detects real memory pressure — which rarely happens here — so resident memory can climb toward its peak and stay
-  there (measured: 10.3 GB resident with only 3.5 GB of it actually live). A periodic forced compact was also tried,
-  but on a realistic, session-shaped heap it paused the whole app for minutes rather than the sub-second pause a
-  synthetic test suggested, so it was reverted rather than shipped — this setting alone is the safe part of that fix.
+- fixed: the cockpit no longer lets resident memory climb into the gigabytes and stay there. On a workstation with
+  plenty of free RAM, .NET only hands freed memory back to the operating system when it detects real memory
+  pressure — which rarely happens here — so memory the garbage collector had already marked as dead kept being
+  held onto (measured: resident memory reaching 10.3 GB, with only 3.5 GB of it actually live; separately measured
+  climbing to 6.5 GB within about three hours of normal use). The cockpit now asks the runtime to conserve memory
+  more aggressively, and checks its own memory use roughly five times a second — a check cheap enough not to
+  matter — reclaiming memory the moment there is enough of it worth reclaiming, before it ever grows large enough
+  for that to cause a noticeable pause. An earlier version of this checked far less often and could pause the whole
+  app for minutes on a heap that had been allowed to grow unchecked; catching it early avoids that entirely.
 - fixed: the "Share…" button for a project that was never actually published no longer opens the "Stop sharing?"
   confirmation instead of the publish flow. A project whose memory connection happens to start with the same prefix
   as a shared source (without ever having gone through Share) now correctly shows "Share…" and opens that flow when

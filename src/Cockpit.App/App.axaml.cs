@@ -347,6 +347,9 @@ public partial class App : Application
         // Avalonia's own Setup() has bound it to this thread, which by this point in the lifecycle it has.
         Program.Services.GetRequiredService<DiagnosticsBackgroundService>().Start();
 
+        // AC-733: a plain background thread, not UI-bound — started here too, just to sit beside its sibling.
+        Program.Services.GetRequiredService<Services.AdaptiveGcCompactor>().Start();
+
         // AC-234: hand the running app its scheduler — resolved here rather than through the view-model's
         // constructor, so the test and design-time graphs build a cockpit without one and never write to disk.
         // Before the plugins, deliberately: a session takes its copy of this when it is built, and one built while
