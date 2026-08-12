@@ -8,7 +8,44 @@ on:
   pull_request:
 
 jobs:
+  # Categorizes the diff so unrelated jobs below can skip via job-level `if:` rather than a path filter on
+  # `on:` -- a job gated by `if:` still reports (as "skipped", which GitHub counts as a passing required
+  # check), while filtering the trigger itself would mean the workflow never runs and a required check
+  # would hang on "no status" forever. Any file outside src/, plugins-dev/ and docs/*.md falls into `other`,
+  # which forces every downstream job to run -- the safe default for anything not explicitly recognized.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+      plugins_dev: ${{ steps.filter.outputs.plugins_dev }}
+      other: ${{ steps.filter.outputs.other }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Diffing against BASE below needs real history, not the default shallow clone.
+          fetch-depth: 0
+
+      - name: Categorize changed files
+        id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A branch's first push reports an all-zero "before"; there is no range to diff, so run everything.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "src=true" >> "$GITHUB_OUTPUT"
+            echo "plugins_dev=true" >> "$GITHUB_OUTPUT"
+            echo "other=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash scripts/classify-changes.sh "$BASE" HEAD >> "$GITHUB_OUTPUT"
+
+      - name: Guard's own tests
+        run: bash scripts/classify-changes.test.sh
+
   build:
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.other == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -54,6 +91,8 @@ jobs:
   # The plugins live outside the solution (plugins-dev/), so the solution build above never sees them — and a
   # contract change in Cockpit.Plugins.Abstractions breaks them silently until someone rebuilds one by hand.
   plugins:
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.plugins_dev == 'true' || needs.changes.outputs.other == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -85,6 +124,8 @@ jobs:
   # it passes every check here and reaches nobody (AC-276, 2026-07-30). This is the cheapest moment to catch it:
   # before the change is merged and the number is already spent.
   plugin-versions:
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.plugins_dev == 'true' || needs.changes.outputs.other == 'true'
     runs-on: ubuntu-latest
 
     steps:
