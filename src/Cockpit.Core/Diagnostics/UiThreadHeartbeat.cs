@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Diagnostics;
 
-// AC-718: hysteresis for the UI-thread freeze heartbeat, in the same warn-once/calm-later shape as
-// SessionMemoryPressure.Decide — a pure function so the behavior is testable without an actual frozen UI thread.
-// The background thread that pings the dispatcher only calls this once it has seen a first successful pong
-// (arming happens there, not here): before that the dispatcher has not started its loop yet, and every value
-// here would read as an infinite hang.
+// AC-718: hysteresis for the UI-thread freeze heartbeat, same warn-once/calm-later shape as
+// SessionMemoryPressure.Decide — a pure function so it is testable without an actual frozen UI thread.
+// Arming (skip until the first pong) is the caller's job — see DiagnosticsBackgroundService._lastPongTicks.
 public static class UiThreadHeartbeat
 {
     // Above this since the last pong, the dispatcher is not keeping up — warn.

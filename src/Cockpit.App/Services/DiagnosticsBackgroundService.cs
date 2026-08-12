@@ -8,26 +8,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
 
-// AC-718: one background thread doing two independent jobs, because both need to keep running when the UI
-// thread does not — the existing resource sampler is a DispatcherTimer (CockpitView.axaml.cs) and stops ticking
-// the moment it is bound to freezes, precisely when this needs to keep writing.
-//
-// 1. Periodic diagnostics line (opt-in, DebugSettings.LogDiagnosticSnapshots): memory/GC/handles/threads, one
-//    grep-able key=value line every SnapshotInterval, reusing the same reader the Debug tab uses
-//    (DiagnosticsCollector.SelfReadSnapshot) so the panel and the log cannot disagree about what the process
-//    weighs. Off by default; SetSnapshotsEnabled is a plain volatile-bool flip, so a tick with it off costs one
-//    bool read.
-// 2. UI-thread freeze heartbeat (always on, costs nothing while healthy): posts a low-priority ping to the
-//    dispatcher every tick and watches how long it takes to land. Hysteresis lives in UiThreadHeartbeat.Decide,
-//    a pure function, so it is testable without an actual frozen UI thread.
-//
-// Not an IHostedService: those start synchronously from Program.StartHostedServices, ahead of
-// BuildAvaloniaApp().Start... — touching Dispatcher.UIThread that early races Avalonia's own platform setup for
-// ownership of the dispatcher and crashes the app on launch (measured: "The calling thread cannot access this
-// object because a different thread owns it", thrown out of Avalonia's own Setup()). Same reasoning
-// ScheduledResumeCoordinator already documents for the same reason. Start() is instead called from
-// App.axaml.cs, once OnFrameworkInitializationCompleted is running — by then Avalonia's Setup() has already
-// bound Dispatcher.UIThread to the real UI thread.
+// AC-718: one background thread for both jobs below — a UI freeze stops the existing DispatcherTimer sampler
+// (CockpitView.axaml.cs), and both the diagnostics snapshot and the heartbeat need to keep running through it.
 public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposable
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
@@ -40,10 +22,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     private volatile bool _stopping;
     private volatile bool _snapshotsEnabled;
 
-    // Written from the dispatcher post below (UI thread), read from the background thread — Interlocked rather
-    // than a plain field because a torn 64-bit read across two threads is a real possibility. -1 means "no
-    // successful pong yet", which is also how the loop knows not to arm the heartbeat too early (see _Run):
-    // before the desktop lifetime's dispatcher loop is pumping, every value here would read as an infinite hang.
+    // Written on the UI thread (dispatcher post below), read on the background thread — Interlocked guards the
+    // cross-thread 64-bit access. -1 means "no pong yet", which _Run uses to avoid arming the heartbeat before
+    // the dispatcher loop is even pumping.
     private long _lastPongTicks = -1;
 
     public DiagnosticsBackgroundService(ILogger<DiagnosticsBackgroundService> logger)
@@ -55,6 +36,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // at startup load. The heartbeat half is not gated by this; it always runs.
     public void SetSnapshotsEnabled(bool enabled) => _snapshotsEnabled = enabled;
 
+    // AC-718: not an IHostedService — those start via Program.StartHostedServices, before Avalonia's Setup()
+    // binds Dispatcher.UIThread, and touching it that early crashed the app on launch (races Setup() for
+    // dispatcher ownership). Called from App.axaml.cs instead, once the framework init has bound it.
     public void Start()
     {
         _thread = new Thread(_Run) { IsBackground = true, Name = "cockpit-diagnostics" };
@@ -176,10 +160,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     private static string _Compact(long bytes) => ByteSize.Human(bytes).Replace(" ", string.Empty);
 
-    // AC-718: macOS never populates Process.HandleCount — ProcessManager.OSX.cs's EnsureHandleCountPopulated has
-    // no body there, so it silently returns 0 rather than throwing. Same trap ProcessMemoryInfo.cs already works
-    // around for peak resident; here there is no native replacement, so the log says n/a instead of a
-    // misleading 0 that would read as "no handles open".
+    // AC-718: macOS silently returns 0 from Process.HandleCount (ProcessManager.OSX.cs's EnsureHandleCountPopulated
+    // has no body there) rather than throwing — same trap ProcessMemoryInfo.cs already works around for peak
+    // resident. No native replacement here, so n/a rather than a misleading 0.
     private static string _HandleCountText(Process process) =>
         RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
             ? "n/a"
