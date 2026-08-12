@@ -6,11 +6,10 @@ using Cockpit.App.Views;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-746: the "While you're talking" heading on the Assistant sub-page was bound to <c>VoiceEnabled</c> — the
-/// Transcribe page's push-to-talk-dictation toggle, unrelated to this page — while its own heading carried no
-/// binding at all. An operator with the assistant on and dictation off saw an orphaned heading over empty space.
-/// Both the heading and its rows now share one visibility gate: the mic pipeline the section's open-mic/barge-in
-/// features need (<c>VoiceEnabled</c>) and the assistant master switch (<c>AssistantOptions.IsEnabled</c>).
+/// AC-746: the rows were bound to <c>VoiceEnabled</c> — the Transcribe page's dictation toggle, unrelated
+/// here — while the heading itself had no binding, so assistant-on/dictation-off orphaned it over empty space.
+/// Heading and rows now share one gate: the mic pipeline (<c>VoiceEnabled</c>) and the assistant switch
+/// (<c>AssistantOptions.IsEnabled</c>), both of which open-mic/barge-in actually need.
 /// </summary>
 [Collection("avalonia")]
 public class AssistantWhileTalkingSectionTests
