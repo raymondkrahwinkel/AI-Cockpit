@@ -197,6 +197,23 @@ public class ClaudeLoginStatusTests
         Assert.False(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(null)));
     }
 
+    // AC-732: after a successful in-app login, the gate must answer "logged in" right away — not on the poll
+    // tick after next, once its own 1-minute-old "logged out" reading has aged out.
+    [Fact]
+    public async Task MarkLoggedIn_OverwritesAStalePreLoginReadingImmediately()
+    {
+        ClaudeLoginStatus.ResetForTests();
+        var config = ConfigFor("post-login");
+
+        await ClaudeLoginStatus.RefreshAsync(config, Now, null, Answers(false), CancellationToken.None);
+        Assert.False(ClaudeLoginStatus.IsLoggedIn(config, Now, null, Answers(false)));
+
+        ClaudeLoginStatus.MarkLoggedIn(config, Now);
+
+        // Still well inside the old reading's MaxAge window — without the fix this reads the stale "false".
+        Assert.True(ClaudeLoginStatus.IsLoggedIn(config, Now.AddSeconds(1), null, Answers(false)));
+    }
+
     [Fact]
     public async Task TwoProfilesDoNotShareAnAnswer()
     {

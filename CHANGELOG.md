@@ -129,6 +129,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the auth-expiry bar no longer flashes back after you've just signed in again through it. Signing in fed the
+  bar's own status straight away, but the login gate behind it kept answering "logged out" from a reading taken
+  before the sign-in, so the bar reappeared for a moment on the next check before correcting itself. A successful
+  sign-in now updates that same reading immediately, so the bar stays gone.
 - fixed: a proactive sign-in ("your login is about to expire") no longer loses the "open this link" button before you
   get a chance to click it. The button disappeared the moment the CLI printed its next line, even though the link
   itself was still what the sign-in needed — it now stays up for the whole attempt, and clicking it now also leaves a
