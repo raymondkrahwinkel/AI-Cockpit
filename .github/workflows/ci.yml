@@ -8,7 +8,42 @@ on:
   pull_request:
 
 jobs:
+  # Skips downstream jobs via job-level `if:`, never by filtering the `on:` trigger: GitHub counts a job
+  # skipped by `if:` as a passing required check, but a filtered trigger means the workflow never runs at
+  # all -- and a required check would then hang forever waiting on a run that never starts.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+      plugins_dev: ${{ steps.filter.outputs.plugins_dev }}
+      other: ${{ steps.filter.outputs.other }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Diffing against BASE below needs real history, not the default shallow clone.
+          fetch-depth: 0
+
+      - name: Categorize changed files
+        id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A branch's first push reports an all-zero "before"; there is no range to diff, so run everything.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "src=true" >> "$GITHUB_OUTPUT"
+            echo "plugins_dev=true" >> "$GITHUB_OUTPUT"
+            echo "other=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash scripts/classify-changes.sh "$BASE" HEAD >> "$GITHUB_OUTPUT"
+
+      - name: Guard's own tests
+        run: bash scripts/classify-changes.test.sh
+
   build:
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.other == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -26,12 +61,9 @@ jobs:
       - name: Build
         run: dotnet build Cockpit.slnx --configuration Release --no-restore -warnaserror
 
-      # --blame-hang is the half of AC-577 the banned-symbols list cannot reach. That list fails the build when a
-      # test file names Avalonia.Threading itself; the run that started the ticket named nothing — it called a
-      # production gateway that touched Dispatcher.UIThread three layers down, and every Core.Tests file stayed
-      # clean. A hang like that prints no summary and no failing test, and with no timeout on these steps it burns
-      # until GitHub's six-hour job limit. Five minutes per test is far above the slowest one here, and the dump is
-      # off because the sequence file already names the test that was running — which is the whole ask.
+      # --blame-hang catches what the banned-symbols list can't: AC-577 was a hang with no failing test and
+      # no summary, burning toward GitHub's six-hour job limit. Dump is off because the sequence file
+      # already names the test that was running -- the whole ask.
       - name: Test
         run: dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
@@ -54,6 +86,8 @@ jobs:
   # The plugins live outside the solution (plugins-dev/), so the solution build above never sees them — and a
   # contract change in Cockpit.Plugins.Abstractions breaks them silently until someone rebuilds one by hand.
   plugins:
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.plugins_dev == 'true' || needs.changes.outputs.other == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -80,11 +114,12 @@ jobs:
             echo "::endgroup::"
           done
 
-  # Green tests say a plugin works; they say nothing about whether anyone will ever get it. The store offers an
-  # update only when the version string moved, so a plugin changed under its existing number is unpublishable —
-  # it passes every check here and reaches nobody (AC-276, 2026-07-30). This is the cheapest moment to catch it:
-  # before the change is merged and the number is already spent.
+  # A plugin can pass every test here and still be unpublishable: the store only offers an update when the
+  # version string moved (AC-276, 2026-07-30 shipped a fix nobody could get). Catch it before the change
+  # merges and the number is already spent.
   plugin-versions:
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.plugins_dev == 'true' || needs.changes.outputs.other == 'true'
     runs-on: ubuntu-latest
 
     steps:
