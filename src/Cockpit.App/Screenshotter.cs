@@ -385,6 +385,8 @@ internal static class Screenshotter
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
+        // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
+        ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
         // neither before, which was the whole premise of the ticket (a running-out allowance was invisible on
         // the assistant's one and only surface).
@@ -496,11 +498,21 @@ internal static class Screenshotter
         // AC-740: opening the picker is a caret-driven gesture (MentionPickerViewModel.OnTextChanged), not a
         // property a scene can stage ahead of the window existing.
         ["session-mention-picker"] = _OpenMentionPicker,
+        ["assistant-chat-mention-picker"] = _OpenAssistantChatMentionPicker,
     };
 
     private static void _OpenMentionPicker(Window window)
     {
         if (window.Content is SessionView { DataContext: SessionViewModel viewModel })
+        {
+            viewModel.InputText = "@Session";
+            viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
+        }
+    }
+
+    private static void _OpenAssistantChatMentionPicker(Window window)
+    {
+        if (window is AssistantChatWindow { DataContext: ViewModels.AssistantChatViewModel viewModel })
         {
             viewModel.InputText = "@Session";
             viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
@@ -1945,6 +1957,17 @@ internal static class Screenshotter
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 
+    // AC-740 addendum: no session yet, so this also proves the profile-default fallback renders the picker —
+    // not just the session's own working directory, which the SessionView scene already covers.
+    private static AssistantChatWindow _AssistantChatMentionPicker()
+    {
+        var host = new _FakeAssistantSessionHost { Session = null, DefaultWorkingDirectory = "/repo" };
+        var viewModel = new ViewModels.AssistantChatViewModel(
+            host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue(),
+            mentionFileSource: new _SampleMentionFileSource());
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
     // AC-683: the same stacked warnings _StackedWarningsSession renders in a session pane, on the assistant's
     // session instead — the window this ticket's criteria 1-3 add the pill row and the warning bar to, so the
     // scene proves both surfaces render the one SessionViewModel the same way rather than two hand-tuned copies.
@@ -1995,6 +2018,8 @@ internal static class Screenshotter
         public Cockpit.Core.Assistant.AssistantActivity Activity { get; init; }
 
         public string? UnavailableReason { get; init; }
+
+        public string? DefaultWorkingDirectory { get; init; }
 
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 

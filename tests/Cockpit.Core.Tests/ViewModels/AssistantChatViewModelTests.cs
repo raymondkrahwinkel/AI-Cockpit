@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
@@ -58,6 +59,67 @@ public class AssistantChatViewModelTests
 
         await host.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
         Assert.Same(session, host.Session);
+    }
+
+    private static IMentionFileSource _FakeFileSource(out Func<string?> requestedDirectory)
+    {
+        var source = Substitute.For<IMentionFileSource>();
+        string? captured = null;
+        source.GetPathsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                captured = callInfo.ArgAt<string>(0);
+                return Task.FromResult<IReadOnlyList<string>>([]);
+            });
+        requestedDirectory = () => captured;
+        return source;
+    }
+
+    /// <summary>AC-740: the live session's own working directory wins over the Assistant Profile's default — the operator linked it on purpose by starting a session there.</summary>
+    [Fact]
+    public void MentionPicker_UsesTheSessionsOwnWorkingDirectory_OverTheProfileDefault()
+    {
+        var session = new SessionViewModel { WorkingDirectory = "/session-repo" };
+        var host = FakeHost(session);
+        host.DefaultWorkingDirectory.Returns("/profile-default");
+        var fileSource = _FakeFileSource(out var requestedDirectory);
+        var vm = new AssistantChatViewModel(host, FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>(), mentionFileSource: fileSource);
+
+        vm.MentionPicker.OnTextChanged("@foo", 4);
+
+        Assert.Equal("/session-repo", requestedDirectory());
+    }
+
+    /// <summary>AC-740 addendum: before the assistant's own session exists (nothing typed yet), the picker falls back to the Assistant Profile's own default working directory.</summary>
+    [Fact]
+    public void MentionPicker_FallsBackToTheProfileDefault_BeforeASessionExists()
+    {
+        var host = FakeHost(session: null);
+        host.DefaultWorkingDirectory.Returns("/profile-default");
+        var fileSource = _FakeFileSource(out var requestedDirectory);
+        var vm = new AssistantChatViewModel(host, FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>(), mentionFileSource: fileSource);
+
+        vm.MentionPicker.OnTextChanged("@foo", 4);
+
+        Assert.Equal("/profile-default", requestedDirectory());
+    }
+
+    /// <summary>
+    /// AC-740 addendum: neither source known yet — the picker stays shut rather than falling back to the Cockpit
+    /// process's own cwd. NSubstitute's own default for an unstubbed <c>string?</c> member is <c>""</c>, not
+    /// null (found by this test — a bare <see cref="FakeHost"/> would have passed for the wrong reason), so
+    /// "unknown" is stubbed explicitly here rather than left implicit.
+    /// </summary>
+    [Fact]
+    public void MentionPicker_WithNeitherASessionNorAProfileDefault_StaysClosed()
+    {
+        var host = FakeHost(session: null);
+        host.DefaultWorkingDirectory.Returns((string?)null);
+        var vm = new AssistantChatViewModel(host, FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
+
+        vm.MentionPicker.OnTextChanged("@foo", 4);
+
+        Assert.False(vm.MentionPicker.IsOpen);
     }
 
     private static IAssistantSettingsStore FakeSettingsStore(bool speakReplies = true)

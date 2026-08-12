@@ -66,6 +66,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
 
+    // AC-740: backs DefaultWorkingDirectory below. Lazily kicked off by that property's first read, not the
+    // constructor — most windows never open the @-mention picker before a session starts.
+    private string? _defaultWorkingDirectory;
+    private Task? _defaultWorkingDirectoryLoad;
+
     public AssistantSessionHost(
         CockpitViewModel cockpit,
         IAssistantSettingsStore settings,
@@ -100,6 +105,34 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // problem.
     [ObservableProperty]
     private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Voice.";
+
+    // AC-740: the @-mention picker's fallback working directory before any session exists. Null until the
+    // Assistant Profile has loaded at least once; a read is what lazily triggers that load (see the field
+    // comment above), so the very first '@' typed before it resolves reads null — the picker's own
+    // null-workingDirectory guard keeps it shut for that one instant rather than crashing or guessing.
+    public string? DefaultWorkingDirectory
+    {
+        get
+        {
+            _defaultWorkingDirectoryLoad ??= _LoadDefaultWorkingDirectoryAsync();
+            return _defaultWorkingDirectory;
+        }
+    }
+
+    private async Task _LoadDefaultWorkingDirectoryAsync()
+    {
+        try
+        {
+            var slot = await _profiles.LoadAsync(CancellationToken.None).ConfigureAwait(true);
+            _defaultWorkingDirectory = slot.Profile?.DefaultWorkingDirectory;
+            OnPropertyChanged(nameof(DefaultWorkingDirectory));
+        }
+        catch (Exception)
+        {
+            // Best-effort warm cache — a failed load here just leaves the picker's fallback unavailable until a
+            // real session provides a working directory of its own.
+        }
+    }
 
 
     // The assistant hotkey went down or came back up. Reported here rather than left for the indicator to infer
