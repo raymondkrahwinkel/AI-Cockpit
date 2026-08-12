@@ -62,9 +62,20 @@ internal sealed class McpServerCatalog(
         // not just the overlay step below — so a plugin can contribute a server that exists only for one project
         // (its own Depot connection, say) rather than every project seeing every plugin server and the overlay
         // only ever being able to remove one.
+        // AC-736: which servers a plugin contributes only because this project names a memory scheme, asked by taking
+        // the same providers' answer without those schemes — only a plugin knows how its own schemes map back to its
+        // own servers, and asking rather than deriving keeps this true for any such plugin, not Depot alone.
+        var schemeless = projectMemorySchemes.Count == 0
+            ? null
+            : pluginProviders
+                .SelectMany(provider => _ServersOf(provider, projectId, []))
+                .Select(contribution => contribution.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var pluginServers = pluginProviders
             .SelectMany(provider => _ServersOf(provider, projectId, projectMemorySchemes))
             .Select(PluginMcpMapping.ToServerConfig)
+            .Select(server => schemeless?.Contains(server.Name) == false ? server with { ProjectLinked = true } : server)
             .ToList();
 
         var servers = Merge(registry, [.. internalServers, .. pluginServers]);

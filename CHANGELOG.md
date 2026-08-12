@@ -129,6 +129,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session on a project whose memory lives in a plugin — a Depot project, say — now starts with that plugin's
+  MCP server ticked, so it can actually reach the project knowledge the project points at. The server was offered to
+  such a session but arrived unticked, and because the project editor's server checklist is the same for every project
+  it had no row there either, so there was no way to switch it on other than per session, every session.
 - fixed: "Move to workspace" in a session's right-click menu now actually opens its submenu and moves the session.
   It used to do nothing on click, with no submenu and no error. With only one Sessions workspace it now shows as
   disabled instead of silently doing nothing.

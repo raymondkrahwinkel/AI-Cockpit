@@ -160,6 +160,32 @@ public class McpServerCatalogProjectScopingTests
         Assert.Equal(["depot"], provider.LastSchemes);
     }
 
+    // AC-736: a server a plugin contributes only because the project names its scheme is marked as such, so the
+    // project's own overlay can tick it without the operator having named it in a list they never had a row to edit.
+    [Fact]
+    public async Task GetServersForProjectAsync_AServerContributedForTheProjectsScheme_IsMarkedProjectLinked()
+    {
+        var project = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
+        var catalog = _CatalogWith(new _SchemeScopedPluginMcpProvider(), project);
+
+        var forProject = await catalog.GetServersForProjectAsync("project-a");
+
+        Assert.True(forProject.Single(server => server.Name == "depot-server").ProjectLinked);
+    }
+
+    // The other half of the same rule: a plugin that hands every project the same servers has not been asked for
+    // anything by this project, so its servers stay ordinary — the project's overlay still decides them.
+    [Fact]
+    public async Task GetServersForProjectAsync_AProjectAgnosticPluginServer_IsNotMarkedProjectLinked()
+    {
+        var project = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
+        var catalog = _CatalogWith(new _ProjectAgnosticPluginMcpProvider(), project);
+
+        var forProject = await catalog.GetServersForProjectAsync("project-a");
+
+        Assert.False(forProject.Single(server => server.Name == "global-server").ProjectLinked);
+    }
+
     private static McpServerCatalog _CatalogWith(IPluginMcpProvider provider, string knownProjectId) =>
         _CatalogWith(provider, new Project(knownProjectId, "Project"));
 
@@ -187,6 +213,17 @@ public class McpServerCatalogProjectScopingTests
     {
         public IReadOnlyList<McpServerContribution> GetMcpServers() =>
             [new McpServerContribution("global-server", "https://global.example/mcp")];
+    }
+
+    // The shape Depot has (AC-504): a server per connection, contributed only to a project whose Memory row names
+    // that connection's own scheme.
+    private sealed class _SchemeScopedPluginMcpProvider : IPluginMcpProvider
+    {
+        public IReadOnlyList<McpServerContribution> GetMcpServers() =>
+            [new McpServerContribution("depot-server", "https://depot.example/mcp")];
+
+        public IReadOnlyList<McpServerContribution> GetMcpServers(string? projectId, IReadOnlyList<string> projectMemorySchemes) =>
+            projectMemorySchemes.Contains("depot") ? GetMcpServers() : [];
     }
 
     private sealed class _SchemeCapturingPluginMcpProvider : IPluginMcpProvider

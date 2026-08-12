@@ -40,8 +40,8 @@ public class ProjectQuickStartTests
         return new ProjectQuickStart(profileStore, catalog, ttyProviders, new ProjectMemorySourceRegistry());
     }
 
-    private static McpServerConfig Server(string name, bool enabled = true, bool @internal = false, bool alwaysMounted = false) =>
-        new() { Name = name, Enabled = enabled, Internal = @internal, AlwaysMounted = alwaysMounted };
+    private static McpServerConfig Server(string name, bool enabled = true, bool @internal = false, bool alwaysMounted = false, bool projectLinked = false) =>
+        new() { Name = name, Enabled = enabled, Internal = @internal, AlwaysMounted = alwaysMounted, ProjectLinked = projectLinked };
 
     [Fact]
     public async Task WithoutADefaultProfile_ComposesNothing()
@@ -117,6 +117,26 @@ public class ProjectQuickStartTests
         var result = await quickStart.ComposeAsync(project);
 
         Assert.Equivalent(new object[] { "depot", "youtrack" }, result!.EnabledMcpServerNames);
+    }
+
+    // AC-736: the Depot server a project's own `depot:` memory row brings in is offered to that project's sessions
+    // only, so it never had a row in the project editor's (project-agnostic) checklist to be ticked on — a narrowed
+    // list of what is on cannot name it, and before this fix the session it exists for was the one session without it.
+    [Fact]
+    public async Task AServerTheProjectItselfBroughtIn_TicksEvenThoughTheProjectNarrowedTheRest()
+    {
+        var quickStart = Build(
+            [ClaudeProfile],
+            [Server("youtrack"), Server("playwright"), Server("Depot: krahwinkel-it.nl", projectLinked: true)]);
+        var project = Project.Create("Cockpit") with
+        {
+            DefaultProfileLabel = "work",
+            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["youtrack"] },
+        };
+
+        var result = await quickStart.ComposeAsync(project);
+
+        Assert.Equivalent(new object[] { "youtrack", "Depot: krahwinkel-it.nl" }, result!.EnabledMcpServerNames);
     }
 
     [Fact]

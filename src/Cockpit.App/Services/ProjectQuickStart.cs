@@ -104,7 +104,7 @@ public sealed class ProjectQuickStart(
         var catalog = await mcpServers.GetServersForProjectAsync(project.Id, cancellationToken).ConfigureAwait(true);
 
         return McpServerRegistryFilter.OfferedToOperator(catalog)
-            .Where(server => project.McpOverlay.IsSelectedByDefault(server.Name))
+            .Where(server => project.McpOverlay.IsSelectedByDefault(server))
             .Select(server => server.Name)
             // The same comparer the rest of this feature matches names with: a casing difference between the
             // registry and a hand-written overlay would otherwise drop a server from the launch without a word.

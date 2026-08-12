@@ -81,6 +81,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // Set while a profile's MCP pre-selection is being applied, so re-ticking the checklist is not mistaken for the operator toggling it.
     private bool _applyingMcpSelection;
 
+    // The configs `McpServers` was last built from (AC-736), kept because a row carries only a name while the project's pre-selection is answered per config.
+    private IReadOnlyList<McpServerConfig> _offeredServers = [];
+
     // True while the checklist is being rebuilt for a newly chosen project — Start waits for it (`CanStart`).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanStart))]
@@ -649,6 +652,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
 
         var offered = McpServerRegistryFilter.OfferedToOperator(registry);
+        _offeredServers = offered;
 
         McpServers.Clear();
         foreach (var server in offered)
@@ -802,7 +806,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // with, that is the answer, and the profile's saved selection is what a session started without one gets.
         if (SelectedProject is { } project)
         {
-            _ApplyMcpSelection(server => project.McpOverlay.IsSelectedByDefault(server.Name));
+            // Resolved off the configs the checklist was built from, not off the rows: a server the project's own
+            // memory reference brought in ticks itself (AC-736), and only the config carries that.
+            var ticked = _offeredServers
+                .Where(server => project.McpOverlay.IsSelectedByDefault(server))
+                .Select(server => server.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            _ApplyMcpSelection(server => ticked.Contains(server.Name));
             return;
         }
 
