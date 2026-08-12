@@ -4984,7 +4984,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             if (existing is not null)
             {
                 var live = _liveSessions?.LiveSessionIds ?? Sessions.Select(s => s.PaneId).ToHashSet(StringComparer.Ordinal);
-                if (live.Contains(existing.SessionId))
+
+                // AC-719: the assistant is always "live" by construction, so without this exception a spawn into
+                // one of its own pre-made worktrees would be refused exactly like a live ordinary session's — a
+                // live ordinary session's worktree is still never taken over.
+                var ownedByAssistant = string.Equals(
+                    existing.SessionId, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal);
+                if (!ownedByAssistant && live.Contains(existing.SessionId))
                 {
                     return result.WorkingDirectory;
                 }

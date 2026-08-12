@@ -248,6 +248,9 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
         public Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
         {
             Calls.Add($"SendMessageAsync({paneId})");

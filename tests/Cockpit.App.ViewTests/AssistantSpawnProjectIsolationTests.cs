@@ -4,6 +4,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Mcp;
@@ -176,6 +177,36 @@ public class AssistantSpawnProjectIsolationTests
         await worktrees.DidNotReceiveWithAnyArgs().CreateForSessionAsync(default!, default, default!);
     }
 
+    [Fact]
+    public async Task AssistantOwnedWorktree_IsReattachedToTheSpawnedSession()
+    {
+        // AC-719 ronde B: a worktree the assistant made for itself must hand over to the session started in it,
+        // or it stays stuck on the assistant forever (always "live" by construction). A real LiveSessionRegistry
+        // is wired here, not the Sessions fallback the other tests rely on, so that rule is actually exercised.
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = true };
+
+        const string AssistantMadeWorktree = "/repo-wt";
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() =>
+            _Gateway(profile, project, worktrees, liveSessions: new LiveSessionRegistry([])));
+
+        // Path distinct from the repository itself — a real worktree never shares the source checkout's folder —
+        // so EmbeddedSessionProject.Resolve can trace it back to the project through its RepositoryRoot, the same
+        // way the assistant would have named this folder as workingDirectory after making it with worktree_create.
+        var record = new WorktreeRecord(AssistantIdentity.PaneId, Repository, AssistantMadeWorktree, "assistant-made-branch", "abc123", DateTimeOffset.UnixEpoch);
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns([record]);
+        worktrees.ReattachAsync(AssistantMadeWorktree, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult<WorktreeRecord?>(record with { SessionId = callInfo.ArgAt<string>(1) }));
+
+        var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = AssistantMadeWorktree });
+
+        Assert.True(result.Ok, result.Error);
+        var pane = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single());
+        await worktrees.Received(1).ReattachAsync(AssistantMadeWorktree, pane.PaneId, Arg.Any<CancellationToken>());
+        await worktrees.DidNotReceiveWithAnyArgs().CreateForSessionAsync(default!, default, default!);
+    }
+
     private static IWorktreeManager _WorktreeManagerThatIsolatesCleanly()
     {
         var worktrees = Substitute.For<IWorktreeManager>();
@@ -191,7 +222,8 @@ public class AssistantSpawnProjectIsolationTests
         new(SpawnTarget.NamedByTheAssistant(workspaceId), "work");
 
     private static (AssistantAgentGateway Gateway, CockpitViewModel Cockpit, RecordingSpawnTrail Trail, string WorkspaceId) _Gateway(
-        SessionProfile profile, Project project, IWorktreeManager worktreeManager, ISessionDialogService? dialogService = null)
+        SessionProfile profile, Project project, IWorktreeManager worktreeManager, ISessionDialogService? dialogService = null,
+        LiveSessionRegistry? liveSessions = null)
     {
         var desk = Workspace.Create("Release", WorkspaceType.Sessions);
         var settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
@@ -238,7 +270,8 @@ public class AssistantSpawnProjectIsolationTests
             sessionProfileStore: profileStore,
             worktreeManager: worktreeManager,
             projects: projects,
-            projectQuickStart: quickStart);
+            projectQuickStart: quickStart,
+            liveSessions: liveSessions);
         cockpit.Workspaces.Settings = settings;
 
         var trail = new RecordingSpawnTrail();

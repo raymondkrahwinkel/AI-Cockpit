@@ -107,6 +107,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   hears you and the one that answers, and for dictation into a session as well as for the assistant. Pressing the
   key is the promise that a transcription is coming, and the sentence you speak into it used to be time spent
   waiting afterwards.
+- added: the voice assistant can hand a worktree it made for itself over to a running session, so that session owns
+  it from then on and it is cleaned up when that session closes — for a worktree it made ahead of starting a
+  session in it, or for handing one to a session that is already running.
 
 ### Changed
 
@@ -222,6 +225,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   earlier. In practice the next call went through untouched, but a session reading "sign in again" stops and waits for
   something nobody needs to do. It now says the sign-in could not be confirmed and that sending the request again is
   the thing to try. A sign-in with nothing left to renew from is still reported as expired, because there it is.
+- fixed: a worktree the voice assistant made for itself no longer stays "in use" forever once a session actually
+  starts in it. The assistant is always shown as present, so handing such a worktree to the session running in it
+  used to be refused the same way handing a live session's own worktree to someone else is — the folder just sat
+  claimed by the assistant, unremovable and never cleaned up, however long ago the session it was made for had
+  finished. It now changes hands the moment that session starts, so closing the session cleans the worktree up like
+  any other one.
 
 ### Added
 

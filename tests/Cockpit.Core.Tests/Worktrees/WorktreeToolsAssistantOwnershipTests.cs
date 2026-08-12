@@ -15,6 +15,25 @@ namespace Cockpit.Core.Tests.Worktrees;
 public class WorktreeToolsAssistantOwnershipTests
 {
     [Fact]
+    public async Task List_AssistantOwnedWorktree_ReportsOwnerLiveTrue_EvenWithNoPanesOrSourcesWired()
+    {
+        // AC-719 ronde B: worktree_list's `ownerLive` must read true for an assistant-owned worktree from the same
+        // always-live construction WorktreeToolsAssistantOwnershipTests pins for RemoveAsync above — a real
+        // registry, not a mock, is what actually proves the assistant is never absent from it.
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/assistant", "cockpit/x", "abc", DateTimeOffset.UtcNow);
+        manager.GetStatusesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<WorktreeStatus> { new(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0) });
+        var registry = new LiveSessionRegistry([]);
+        var tools = new WorktreeTools(manager, registry);
+
+        using var result = System.Text.Json.JsonDocument.Parse(await tools.ListAsync());
+
+        var entry = result.RootElement.GetProperty("worktrees").EnumerateArray().Single();
+        Assert.True(entry.GetProperty("ownerLive").GetBoolean());
+    }
+
+    [Fact]
     public async Task Remove_AssistantOwnedWorktree_RefusedByAnotherSession_EvenWithNoPanesOrSourcesWired()
     {
         var manager = Substitute.For<IWorktreeManager>();

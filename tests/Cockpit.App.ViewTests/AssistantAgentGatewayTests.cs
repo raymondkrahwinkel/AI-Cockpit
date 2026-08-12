@@ -12,8 +12,10 @@ using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Worktrees;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionBehavior;
@@ -339,6 +341,132 @@ public class AssistantAgentGatewayTests
         Assert.Equal(AssistantSpawnAction.Stop, entry.Action);
         Assert.Equal(terminal.PaneId, entry.PaneId);
         Assert.Equal(result.Error, entry.Refusal);
+    }
+
+    // ── worktree_handover (AC-719 ronde B) — refusals are hard, not best-effort ────────────────────────────────
+
+    [Fact]
+    public async Task Handover_PathNotAManagedWorktree_IsRefused_AndTheRefusalReachesTheTrail()
+    {
+        var worktrees = Substitute.For<IWorktreeManager>();
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<WorktreeRecord>());
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)), worktreeManager: worktrees));
+
+        var result = await gateway.HandoverWorktreeAsync("/wt/nope", "pane-target");
+
+        Assert.False(result.Ok);
+        Assert.Contains("No managed worktree", result.Error);
+        var entry = Assert.Single(trail.Entries);
+        Assert.Equal(AssistantSpawnAction.Handover, entry.Action);
+        Assert.Equal(result.Error, entry.Refusal);
+        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
+    }
+
+    [Fact]
+    public async Task Handover_WorktreeOwnedByADifferentSession_IsRefused()
+    {
+        // Never a confused deputy: only the assistant's own worktrees may be given away, whoever asks.
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var record = new WorktreeRecord("someone-elses-pane", "/repo", "/wt/theirs", "cockpit/x", "abc", DateTimeOffset.UtcNow);
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)), worktreeManager: worktrees));
+
+        var result = await gateway.HandoverWorktreeAsync("/wt/theirs", "pane-target");
+
+        Assert.False(result.Ok);
+        Assert.Contains("not mine to hand over", result.Error);
+        Assert.Single(trail.Entries);
+        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
+    }
+
+    [Fact]
+    public async Task Handover_TargetPaneDoesNotExist_IsRefused()
+    {
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/mine", "cockpit/x", "abc", DateTimeOffset.UtcNow);
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)), worktreeManager: worktrees));
+
+        var result = await gateway.HandoverWorktreeAsync("/wt/mine", "pane-that-closed");
+
+        Assert.False(result.Ok);
+        Assert.Contains("no session with pane id 'pane-that-closed'", result.Error);
+        Assert.Single(trail.Entries);
+        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
+    }
+
+    [Fact]
+    public async Task Handover_TargetIsAPlainTerminalPane_IsRefused()
+    {
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/mine", "cockpit/x", "abc", DateTimeOffset.UtcNow);
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(desk), worktreeManager: worktrees));
+        var terminal = Dispatcher.UIThread.Invoke(() =>
+        {
+            var tty = new TtyViewModel { WorkspaceId = desk.Id, Title = "pwsh", ShowPluginHeaderItems = false };
+            cockpit.Sessions.Add(tty);
+            return tty;
+        });
+
+        var result = await gateway.HandoverWorktreeAsync("/wt/mine", terminal.PaneId);
+
+        Assert.False(result.Ok);
+        Assert.Contains("is a terminal pane", result.Error);
+        Assert.Single(trail.Entries);
+        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
+    }
+
+    [Fact]
+    public async Task Handover_TargetIsTheAssistantsOwnPane_IsRefused()
+    {
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)), worktreeManager: worktrees));
+
+        var result = await gateway.HandoverWorktreeAsync("/wt/mine", AssistantIdentity.PaneId);
+
+        Assert.False(result.Ok);
+        Assert.Contains("cannot be handed to it", result.Error);
+        Assert.Single(trail.Entries);
+        await worktrees.DidNotReceiveWithAnyArgs().ListAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handover_Succeeds_ReattachesTheWorktreeAndRecordsTheTrail()
+    {
+        var desk = _Desk("Release", WorkspaceType.Sessions);
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/mine", "cockpit/x", "abc", DateTimeOffset.UtcNow);
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(desk), worktreeManager: worktrees));
+        var target = Dispatcher.UIThread.Invoke(() =>
+        {
+            var session = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-719 tests" };
+            cockpit.Sessions.Add(session);
+            return session;
+        });
+        worktrees.ReattachAsync("/wt/mine", target.PaneId, Arg.Any<CancellationToken>())
+            .Returns(record with { SessionId = target.PaneId });
+
+        var result = await gateway.HandoverWorktreeAsync("/wt/mine", target.PaneId);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("/wt/mine", result.Path);
+        Assert.Equal("cockpit/x", result.Branch);
+        await worktrees.Received(1).ReattachAsync("/wt/mine", target.PaneId, Arg.Any<CancellationToken>());
+        Assert.Equal("cockpit/x", Dispatcher.UIThread.Invoke(() => target.WorktreeBranch));
+
+        var entry = Assert.Single(trail.Entries);
+        Assert.Equal(AssistantSpawnAction.Handover, entry.Action);
+        Assert.Equal(target.PaneId, entry.PaneId);
+        Assert.Null(entry.Refusal);
     }
 
     [Fact]
@@ -906,7 +1034,8 @@ public class AssistantAgentGatewayTests
         // The profile a spawn runs under and the registry its provider is resolved through — defaulted to a plain
         // Claude-config profile, which is what every test that is not about provider options wants.
         SessionProfile? profile = null,
-        IPluginProviderRegistry? pluginProviders = null)
+        IPluginProviderRegistry? pluginProviders = null,
+        IWorktreeManager? worktreeManager = null)
     {
         var cockpit = host ?? _Cockpit();
         cockpit.Workspaces.Settings = settings;
@@ -925,7 +1054,8 @@ public class AssistantAgentGatewayTests
                 Substitute.For<IAgentMessageInbox>(),
                 Substitute.For<IAgentNotifyAuditLog>(),
                 pluginProviders ?? Substitute.For<IPluginProviderRegistry>(),
-                new SessionWatcher(Substitute.For<IAgentMessageInbox>())),
+                new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
+                worktreeManager),
             cockpit,
             trail);
     }
