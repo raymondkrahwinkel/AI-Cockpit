@@ -141,6 +141,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the "Share…" button for a project that was never actually published no longer opens the "Stop sharing?"
+  confirmation instead of the publish flow. A project whose memory connection happens to start with the same prefix
+  as a shared source (without ever having gone through Share) now correctly shows "Share…" and opens that flow when
+  clicked, matching what the projects list already showed for it.
 - fixed: the floating voice pill no longer shows "Reading aloud"/"Preparing" while the assistant reads out its own
   reply. That state already appeared on the assistant's own indicator chip, so the pill said the same thing twice —
   it now stays hidden for the assistant specifically, while read-aloud started from an ordinary session (F9 or the
