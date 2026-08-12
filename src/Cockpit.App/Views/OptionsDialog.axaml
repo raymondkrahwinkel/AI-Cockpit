@@ -832,39 +832,53 @@
                                             ToolTip.Tip="Which speaker/headset the assistant's speech plays to. 'System default' follows your OS setting."/>
                                     </StackPanel>
 
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
+                                    <!-- AC-746: this is assistant material (open-mic has only talked to the assistant
+                                         since AC-543, and barge-in stops the assistant's own read-aloud), so it needs
+                                         both the mic pipeline (VoiceEnabled) and the assistant on — without either,
+                                         open-mic cannot run. Header + rows share one IsVisible so an empty heading
+                                         can't survive with its content hidden. -->
+                                    <StackPanel Spacing="8">
+                                        <StackPanel.IsVisible>
+                                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                <Binding Path="VoiceEnabled"/>
+                                                <Binding Path="AssistantOptions.IsEnabled"/>
+                                            </MultiBinding>
+                                        </StackPanel.IsVisible>
 
-                                    <TextBlock Text="While you're talking" FontWeight="SemiBold"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
-                                        <CheckBox Content="Stop the assistant when I start talking"
-                                                  IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
-                                        <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops the assistant and needs neither. Use headphones: on speakers the microphone hears the assistant's own voice and stops it straight away."/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                                IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
-                                        <TextBlock Text="…when the microphone is louder than"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
-                                                       Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                                IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
-                                        <ToggleButton Content="Test microphone" IsChecked="{Binding IsTestingMic}" Classes="Compact"/>
-                                        <controls:MicLevelMeter Level="{Binding MicTestLevel}" Threshold="{Binding VoiceStopReadAloudThresholdValue}"
-                                                                Width="200" Height="12" VerticalAlignment="Center"/>
-                                        <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). The assistant only stops speaking when it hears real speech above this level, not on a stray noise. Set the threshold so normal speech crosses it but the room does not."/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
-                                        <TextBlock Text="Open-mic: end utterance after (silence ms)"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
-                                                       Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
-                                        <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="Open mic is turned on/off at runtime from the sidebar mic button, not here — this is only its tuning."/>
+                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,-2,0,6"/>
+
+                                        <TextBlock Text="While you're talking" FontWeight="SemiBold"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <CheckBox Content="Stop the assistant when I start talking"
+                                                      IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
+                                            <materialIcons:MaterialIcon Classes="hint"
+                                                ToolTip.Tip="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops the assistant and needs neither. Use headphones: on speakers the microphone hears the assistant's own voice and stops it straight away."/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                                    IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                                            <TextBlock Text="…when the microphone is louder than"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                       VerticalAlignment="Center"/>
+                                            <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
+                                                           Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                                    IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                                            <ToggleButton Content="Test microphone" IsChecked="{Binding IsTestingMic}" Classes="Compact"/>
+                                            <controls:MicLevelMeter Level="{Binding MicTestLevel}" Threshold="{Binding VoiceStopReadAloudThresholdValue}"
+                                                                    Width="200" Height="12" VerticalAlignment="Center"/>
+                                            <materialIcons:MaterialIcon Classes="hint"
+                                                ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). The assistant only stops speaking when it hears real speech above this level, not on a stray noise. Set the threshold so normal speech crosses it but the room does not."/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <TextBlock Text="Open-mic: end utterance after (silence ms)"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                       VerticalAlignment="Center"/>
+                                            <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
+                                                           Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                            <materialIcons:MaterialIcon Classes="hint"
+                                                ToolTip.Tip="Open mic is turned on/off at runtime from the sidebar mic button, not here — this is only its tuning."/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>

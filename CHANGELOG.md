@@ -141,6 +141,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the "While you're talking" heading on the Assistant voice settings page no longer shows with nothing
+  underneath it. Its rows were tied to push-to-talk dictation being on, a toggle that lives on the Transcribe page,
+  so an operator with the assistant enabled but dictation off saw an empty heading; the heading and its rows now
+  show and hide together, correctly gated on the assistant being enabled.
 - fixed: the "Share…" button for a project that was never actually published no longer opens the "Stop sharing?"
   confirmation instead of the publish flow. A project whose memory connection happens to start with the same prefix
   as a shared source (without ever having gone through Share) now correctly shows "Share…" and opens that flow when
