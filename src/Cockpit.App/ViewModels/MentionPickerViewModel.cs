@@ -5,11 +5,8 @@ using Cockpit.Core.Mentions;
 namespace Cockpit.App.ViewModels;
 
 // Backs the AC-740 @-mention popup, modeled on CommandPaletteDialogViewModel's Query/Visible/Move/Accept shape.
-// Shared by the session composer and the Assistant-chat composer — neither owns it, each hosts an instance.
-//
-// The working directory is read lazily through `workingDirectory`, not captured once: the Assistant-chat's
-// session (and its working directory) doesn't exist until the first message starts it, so this must re-check on
-// every '@' rather than freeze a null read at construction.
+// Shared by both composers. The working directory is read lazily through `workingDirectory` on every '@' rather
+// than captured once — the Assistant-chat's session doesn't exist until the first message starts it.
 public partial class MentionPickerViewModel : ViewModelBase
 {
     public const int MaxMatches = 15;

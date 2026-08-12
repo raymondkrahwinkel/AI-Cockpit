@@ -106,10 +106,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     [ObservableProperty]
     private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Voice.";
 
-    // AC-740: the @-mention picker's fallback working directory before any session exists. Null until the
-    // Assistant Profile has loaded at least once; a read is what lazily triggers that load (see the field
-    // comment above), so the very first '@' typed before it resolves reads null — the picker's own
-    // null-workingDirectory guard keeps it shut for that one instant rather than crashing or guessing.
+    // AC-740: the picker's fallback working directory before a session exists. Lazily loaded on first read
+    // (see the field above); the very first '@' before that resolves reads null, so the picker's own
+    // null-workingDirectory guard just keeps it shut for that one instant.
     public string? DefaultWorkingDirectory
     {
         get

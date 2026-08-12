@@ -1,9 +1,8 @@
 namespace Cockpit.Core.Mentions;
 
-// Finds the @-mention token the caret currently sits inside, if any — the pure detection step behind AC-740's
-// file-/folder-picker. Deliberately conservative: only a caret-driven, unbroken run of non-whitespace after an
-// '@' that starts the text or follows whitespace counts as a token, so "user@example.com" and a lone "@" typed
-// mid-sentence never trigger it, and a space right after '@' closes the token before it can reopen.
+// Finds the @-mention token the caret currently sits inside, if any. Deliberately conservative: only an
+// unbroken run of non-whitespace after an '@' that starts the text or follows whitespace counts, so
+// "user@example.com" never triggers it, and a space right after '@' closes the token before it can reopen.
 public static class MentionQuery
 {
     // The token the caret sits in, as (start index of the '@', query text after it) — or null when the caret

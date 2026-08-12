@@ -318,10 +318,9 @@ public partial class SessionView : UserControl
         return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
     }
 
-    // Whether the matching KeyDown already handled this keystroke (paste, recall, stop, send, or the
-    // mention picker's own Up/Down/Tab/Enter/Esc interception below) — a tunnelled KeyDown's own `e.Handled`
-    // cannot be read back from the later KeyUp, so this is how `_OnInputKeyUp` tells caret-driven typing (which
-    // falls through unhandled to the TextBox's default editing) apart from a programmatic text mutation.
+    // Whether the matching KeyDown already handled this keystroke — a tunnelled KeyDown's own `e.Handled` cannot
+    // be read back from the later KeyUp, so this is how `_OnInputKeyUp` tells caret-driven typing (unhandled,
+    // falls through to the TextBox's default editing) apart from a programmatic text mutation.
     private bool _lastInputKeyWasHandled;
 
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
@@ -471,10 +470,9 @@ public partial class SessionView : UserControl
         InputBox.SelectionEnd = InputBox.CaretIndex;
     }
 
-    // AC-740: re-evaluates the @-mention token after a keystroke the TextBox handled itself — character typed,
-    // backspace, delete, caret moved. `_lastInputKeyWasHandled` is what tells this apart from a programmatic
-    // mutation (voice input, Up-recall, a pasted block): none of those raise a KeyUp here at all except Ctrl+V,
-    // which the matching KeyDown already marks handled.
+    // AC-740: re-evaluates the @-mention token after a keystroke the TextBox itself handled (typed, backspace,
+    // caret moved) — `_lastInputKeyWasHandled` tells this apart from a programmatic mutation (voice, recall, a
+    // pasted block), all of which raise no KeyUp here except Ctrl+V, already marked handled above.
     private void _OnInputKeyUp(object? sender, KeyEventArgs e)
     {
         if (_lastInputKeyWasHandled || DataContext is not SessionViewModel vm)

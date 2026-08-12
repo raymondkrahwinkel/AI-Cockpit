@@ -13,10 +13,8 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-740 addendum: the same @-mention picker in the Assistant-chat pop-out — a second, hand-copied composer
-/// (<see cref="AssistantChatWindow"/>), so every wiring point SessionMentionPickerViewTests pins has to be
-/// re-proven here rather than assumed to follow along. The one thing unique to this window: the working
-/// directory has two sources (the live session's own, then the Assistant Profile's default before one exists),
+/// AC-740 addendum: the same @-mention picker in a hand-copied second composer, whose wiring is re-proven
+/// here rather than assumed. Working directory: the session's own, then the Assistant Profile's default —
 /// never the Cockpit process's own cwd.
 /// </summary>
 [Collection("avalonia")]

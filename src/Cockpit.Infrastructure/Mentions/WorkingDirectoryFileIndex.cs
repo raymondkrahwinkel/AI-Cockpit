@@ -5,13 +5,9 @@ using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Infrastructure.Mentions;
 
-// AC-740's real @-mention file source. `git ls-files` first — tracked plus untracked-but-not-ignored, the same
-// two calls Claude Code's own CLI makes, so .gitignore respect comes for free and there is no second set of
-// ignore rules to keep in step with git's. Outside a repository, an enumerate-fallback with a skiplist and a
-// hard cap stands in. One cached snapshot per working directory with a short TTL, built lazily behind a
-// `Lazy<Task<...>>` so two sessions opening the picker on the same directory around the same moment still only
-// run the build once — the point of the whole exercise is zero disk I/O per keystroke, and a stampede on the
-// first '@' of two panes would undermine that for a much cheaper reason than a slow directory would.
+// AC-740's real @-mention file source: `git ls-files` first (gitignore respect for free), enumerate-fallback
+// with a skiplist outside a repository. One cached snapshot per working directory (short TTL) behind a
+// `Lazy<Task<...>>`, so concurrent opens on the same directory share one build instead of stampeding it.
 internal sealed class WorkingDirectoryFileIndex : IMentionFileSource, ISingletonService
 {
     // ponytail: matches Claude Code's own approximate index lifetime for this feature (its own cache invalidates
@@ -91,10 +87,9 @@ internal sealed class WorkingDirectoryFileIndex : IMentionFileSource, ISingleton
         return paths;
     }
 
-    // git ls-files -z for tracked plus untracked-not-ignored paths, '/'-separated by git itself on every
-    // platform. Null (not an empty list) on anything short of a clean success, so the caller falls back to
-    // enumeration instead of reporting "this repository has no files" for a git that is missing, or a directory
-    // that is not a repository at all.
+    // git ls-files -z for tracked + untracked-not-ignored paths, '/'-separated by git itself. Null (not empty) on
+    // anything short of a clean success, so the caller falls back to enumeration instead of reporting "no files"
+    // for a git that is missing or a directory that isn't a repository.
     private static async Task<List<string>?> _GitFilesAsync(string workingDirectory)
     {
         GitResult tracked;
