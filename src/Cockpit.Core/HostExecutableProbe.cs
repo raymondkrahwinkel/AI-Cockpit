@@ -1,5 +1,6 @@
 namespace Cockpit.Core;
 
+// AC-712 scenario test: src/ change, must always run every job regardless of anything else in the diff.
 // The host-side half of first-run provider detection (AC-510[b]): whether an executable named
 // `claude`/`codex`/`gemini`/… exists on PATH, the one question the host can answer before any
 // provider plugin is installed. Resolves a bare name the same way `Terminal.ShellCatalog` resolves a
