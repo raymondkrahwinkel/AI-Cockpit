@@ -443,6 +443,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Set when an "exit" message is dispatched with auto-close on, so the next completed turn closes the session (T10).
     private bool _closeAfterTurn;
 
+    // The most recently dispatched user turn (text + images), so a failed TurnCompleted row's Retry action
+    // (AC-728) can resend exactly what was sent — the operator does not have to retype it.
+    private (string Text, IReadOnlyList<Core.Sessions.ImageAttachment> Images)? _lastDispatchedUserTurn;
+
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
     // False until the first transcript row arrives, so the panel can show a calm empty-state hint instead of a void.
@@ -1585,6 +1589,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? imageSuffix
             : images.Count == 0 ? text : $"{text}  {imageSuffix}";
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, echo));
+        _lastDispatchedUserTurn = (text, images);
         _currentAssistantEntry = null;
         _CloseThinkingRow();
         IsBusy = true;
@@ -2305,9 +2310,26 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     // AC-720: the subtype alone ("error_during_execution") names nothing actionable — show
                     // the provider's own reason (AC-410's Errors) when the event carries one.
                     var reason = _TurnFailureReason(turn);
-                    Transcript.Add(new TranscriptEntryViewModel(
+                    var failedTurnRow = new TranscriptEntryViewModel(
                         TranscriptEntryKind.TurnCompleted,
-                        reason is null ? $"Turn failed ({turn.Subtype})" : $"Turn failed ({turn.Subtype}): {reason}"));
+                        reason is null ? $"Turn failed ({turn.Subtype})" : $"Turn failed ({turn.Subtype}): {reason}")
+                    {
+                        // AC-728: renders through the same severity card as a driver SessionError (AC-720) —
+                        // a failed turn is as much "a problem" as one, just not SessionErrorKind-classified.
+                        IsFailedTurnRow = true,
+                    };
+
+                    // AC-728: same card + ActionLabel/ActionCommand convention AC-713's "Login" row already
+                    // uses, reusing the same dispatch path a normal prompt-submit takes so Retry needs no route
+                    // of its own. Left unset (no button) when this turn never went through it — a scheduled
+                    // resume's own first turn (SendPromptAsync, AC-410) is the one case that applies to.
+                    if (_lastDispatchedUserTurn is { } lastTurn)
+                    {
+                        failedTurnRow.ActionLabel = "Retry";
+                        failedTurnRow.ActionCommand = new RelayCommand(() => _ = _DispatchMessageAsync(lastTurn.Text, lastTurn.Images));
+                    }
+
+                    Transcript.Add(failedTurnRow);
                 }
 
                 // AC-410: the first turn of a restored pane's own launch settles the resume snapshot, one way or

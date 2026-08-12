@@ -55,14 +55,17 @@
             </StackPanel>
 
             <!-- Questions / turn-result rows: plain wrapped text, not a bubble or markdown;
-                 indented to sit in the reply column. An error row (AC-720) gets its own card below. -->
+                 indented to sit in the reply column. An error or failed-turn row (AC-720/AC-728) gets its
+                 own card below instead. -->
             <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                        Classes="transcript rowIndent"
                        IsVisible="{Binding IsPlainNonMarkdown}"/>
 
             <!-- AC-720: a driver-reported failure renders as a severity-coloured card, never guessing red/amber
-                 for an unclassified type (falls to informational). Raw provider text always shows in full. -->
-            <Border IsVisible="{Binding IsErrorRow}" ClipToBounds="True" Classes="errorCard rowIndent"
+                 for an unclassified type (falls to informational). Raw provider text always shows in full.
+                 AC-728: a failed TurnCompleted row (ShowsFailureCard) shares this same card, always informational
+                 since it carries no SessionErrorKind. -->
+            <Border IsVisible="{Binding ShowsFailureCard}" ClipToBounds="True" Classes="errorCard rowIndent"
                     Classes.blocking="{Binding IsBlockingError}"
                     Classes.temporary="{Binding IsTemporaryError}"
                     Classes.informational="{Binding IsInformationalError}">

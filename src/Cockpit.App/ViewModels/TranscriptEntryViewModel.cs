@@ -60,9 +60,19 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // A driver-reported failure (AC-720), rendered as a severity-coloured card rather than plain text.
     public bool IsErrorRow => Kind == TranscriptEntryKind.Error;
 
-    // Plain rows that are neither the user bubble nor markdown: questions and turn results. An error row
-    // (AC-720) is plain text too, but gets its own severity-coloured card instead of this branch.
-    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow && !IsErrorRow;
+    // Set on a TurnCompleted row that is an actual failure (AC-728) — a failed turn is as much "a problem" as a
+    // driver-reported SessionError, so it renders through the same card rather than growing its own. Unlike
+    // IsErrorRow it carries no SessionErrorKind classification (see ShowsFailureCard/IsInformationalError below),
+    // so it always falls to the safe informational severity. A non-failure TurnCompleted row (e.g. "Signing in
+    // again…") leaves this false and stays plain text.
+    public bool IsFailedTurnRow { get; init; }
+
+    // Whether this row renders as the accent-bordered severity card (AC-720) instead of plain wrapped text.
+    public bool ShowsFailureCard => IsErrorRow || IsFailedTurnRow;
+
+    // Plain rows that are neither the user bubble nor markdown: questions and turn results. An error or
+    // failed-turn row is plain text too, but gets its own severity-coloured card instead of this branch.
+    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow && !ShowsFailureCard;
 
     // Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
     // results). User and tool-use rows carry their timestamp inline in their own header line instead
@@ -170,9 +180,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // Rate limits and outages resolve on their own; the operator's own next attempt is the only "action".
     public bool IsTemporaryError => IsErrorRow && ErrorKind is SessionErrorKind.RateLimited or SessionErrorKind.ServiceUnavailable;
 
-    // Everything else — a parse failure, an empty reply, an unclassified driver — and always the safe
-    // default: never guessed red or amber (AC-720 acceptance criterion).
-    public bool IsInformationalError => IsErrorRow && !IsBlockingError && !IsTemporaryError;
+    // Everything else — a parse failure, an empty reply, an unclassified driver, or a failed turn (AC-728,
+    // which never carries a SessionErrorKind at all) — and always the safe default: never guessed red or
+    // amber (AC-720 acceptance criterion).
+    public bool IsInformationalError => ShowsFailureCard && !IsBlockingError && !IsTemporaryError;
 
     public MaterialIconKind ErrorIconKind => ErrorKind switch
     {
