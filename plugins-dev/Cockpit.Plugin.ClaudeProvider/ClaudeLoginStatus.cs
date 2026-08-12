@@ -50,6 +50,19 @@ internal static class ClaudeLoginStatus
     public static bool IsLoggedIn(string configJson, Func<string, string?>? managedResolver = null) =>
         IsLoggedIn(configJson, DateTimeOffset.UtcNow, managedResolver, _AskCliAsync);
 
+    // AC-732: `claude auth login` exiting 0 already answers the question definitively — write it straight into the
+    // cache instead of leaving the pre-login "logged out" reading to stand until the next poll tick re-reads it.
+    public static void MarkLoggedIn(string configJson) => MarkLoggedIn(configJson, DateTimeOffset.UtcNow);
+
+    // Test seam: same write against an injected clock.
+    internal static void MarkLoggedIn(string configJson, DateTimeOffset now)
+    {
+        var config = ClaudeProviderConfig.Parse(configJson);
+        var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
+        entry.Reading = new _Reading(true, now);
+        entry.RetryNotBefore = default;
+    }
+
     // Test seam: the same decision against an injected clock and an injected "ask the CLI".
     internal static bool IsLoggedIn(
         string configJson,
