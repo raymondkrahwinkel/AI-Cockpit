@@ -58,9 +58,9 @@ public class DialogChromeTests
     {
         var window = (Window)Activator.CreateInstance(dialogType)!;
 
-        // BorderOnly is what the chrome swaps the OS caption for; a dialog that never called it keeps the
-        // platform default and so shows two different title bars in one app.
-        Assert.Equal(WindowDecorations.BorderOnly, window.WindowDecorations);
+        // None is what the chrome swaps the OS caption (and, since AC-678, the OS resize border too) for; a
+        // dialog that never called it keeps the platform default and so shows two different title bars in one app.
+        Assert.Equal(WindowDecorations.None, window.WindowDecorations);
     });
 
     // One entry per dialog excluded above, given the view model it waits for.
@@ -91,7 +91,7 @@ public class DialogChromeTests
     [Theory]
     [MemberData(nameof(DeferredDialogNames))]
     public void TheyWearItOnceTheirViewModelArrives(string name) => HeadlessAvalonia.Run(() =>
-        Assert.Equal(WindowDecorations.BorderOnly, DeferredDialogs[name]().WindowDecorations));
+        Assert.Equal(WindowDecorations.None, DeferredDialogs[name]().WindowDecorations));
 
     [Fact]
     public void TheExcludedDialogs_AreExactlyTheOnesCheckedWithAViewModel()
