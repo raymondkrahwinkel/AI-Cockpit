@@ -274,6 +274,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   claimed by the assistant, unremovable and never cleaned up, however long ago the session it was made for had
   finished. It now changes hands the moment that session starts, so closing the session cleans the worktree up like
   any other one.
+- fixed: the cockpit window (and every dialog, and the assistant's pop-out chat) no longer shows a thin margin
+  around itself while not maximized. It came from the platform's own resize border, kept for edge/corner dragging
+  but visible as an unwanted frame around the whole window; every window that used to have it now draws no
+  decorations of its own at all and gets its resize edges and corners back through its own hit-testing instead.
+  Maximized windows already looked right and are unchanged.
 
 ### Added
 

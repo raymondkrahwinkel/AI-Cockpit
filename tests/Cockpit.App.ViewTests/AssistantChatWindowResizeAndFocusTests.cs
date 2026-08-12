@@ -19,15 +19,15 @@ namespace Cockpit.App.ViewTests;
 public class AssistantChatWindowResizeAndFocusTests
 {
     /// <summary>
-    /// Criterion 1: this window now sits on the app's own "our title bar, the OS's resize border" idiom
-    /// (<c>CockpitWindowChrome.Apply</c>), with the existing minimums as the layout's floor.
+    /// Criterion 1: this window now sits on the app's own "our title bar, our own resize edges" idiom
+    /// (<c>WindowResizeGrip</c>, AC-678), with the existing minimums as the layout's floor.
     /// </summary>
     [Fact]
     public void TheChatWindow_ResizesLikeEveryOtherCockpitWindow() => HeadlessAvalonia.Run(() =>
     {
         var window = new AssistantChatWindow();
 
-        Assert.Equal(WindowDecorations.BorderOnly, window.WindowDecorations);
+        Assert.Equal(WindowDecorations.None, window.WindowDecorations);
         Assert.True(window.CanResize);
         Assert.Equal(340, window.MinWidth);
         Assert.Equal(360, window.MinHeight);

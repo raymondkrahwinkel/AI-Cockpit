@@ -11,11 +11,9 @@ using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
-// Applies the cockpit's custom window chrome to any `Window`: it drops the OS title bar and
-// caption buttons (Avalonia 12 `WindowDecorations.BorderOnly`) while keeping a resizable
-// border, and wraps the window's content under a hairline title bar with its own caption buttons. Shared
-// so every window — the plugin dialogs and the app's own dialogs/main window — looks the same. Dialogs
-// get a Close button only; the main window opts into minimize/maximize.
+// Applies the cockpit's custom window chrome to any `Window`: no OS decorations at all
+// (`WindowDecorations.None` — AC-678, `BorderOnly`'s resize border was a visible margin), a hairline title
+// bar of our own, and `WindowResizeGrip` to replace the resize edges/corners that came with it.
 internal static class CockpitWindowChrome
 {
     // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).
@@ -56,8 +54,9 @@ internal static class CockpitWindowChrome
     // settings (#: settings from anywhere). Omitted, the title bar looks exactly as it did.
     public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null)
     {
-        window.WindowDecorations = WindowDecorations.BorderOnly;
+        window.WindowDecorations = WindowDecorations.None;
         window.ExtendClientAreaToDecorationsHint = true;
+        WindowResizeGrip.Attach(window);
         if (_Brush("CockpitPanelBgBrush") is { } background)
         {
             window.Background = background;

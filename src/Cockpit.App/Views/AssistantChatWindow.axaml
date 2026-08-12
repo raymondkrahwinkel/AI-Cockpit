@@ -15,16 +15,16 @@
         Width="520" Height="640" MinWidth="340" MinHeight="360"
         WindowStartupLocation="CenterOwner"
         Topmost="{Binding AlwaysOnTop}"
-        WindowDecorations="BorderOnly"
+        WindowDecorations="None"
         ExtendClientAreaToDecorationsHint="True"
         Background="{StaticResource CockpitPanelBgBrush}">
 
     <!-- AC-543 criterion 5/7: a pop-out onto the assistant's own standing conversation, not a pane in the
          workspace grid — precedent is Autopilot's plan pop-out (AutopilotPlanWorkspaceBody._ShowPlanningPopoutAsync),
          a small floating window rather than another tab.
-         AC-636 reverses AC-543's "no 'bigger' affordance (COMMENT 6 #1, decided)": `BorderOnly` is the resize
-         border `Controls/CockpitWindowChrome` already gives every dialog, so no grip of our own has to be drawn
-         or kept out of the composer's way. MinWidth/MinHeight stay the floor. -->
+         AC-636 reverses AC-543's "no 'bigger' affordance (COMMENT 6 #1, decided)": `Controls/WindowResizeGrip`
+         gives it the same invisible edges/corners every other cockpit window resizes by (AC-678), so no grip of
+         our own has to be drawn or kept out of the composer's way. MinWidth/MinHeight stay the floor. -->
 
     <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
         <Grid>
