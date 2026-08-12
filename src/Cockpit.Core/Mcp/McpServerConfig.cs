@@ -86,6 +86,11 @@ public sealed record McpServerConfig
     // mounted, and this one wins. Never set for a user-added server.
     public bool AlwaysMounted { get; init; }
 
+    // Whether this server is offered only because the session's project points at it (AC-736) — the Depot connection
+    // a `depot:` Memory row names. It starts ticked whatever `Projects.ProjectMcpOverlay` says: the project
+    // editor's checklist is project-agnostic, so the operator never had a row on which to tick it. Never set for a registry server.
+    public bool ProjectLinked { get; init; }
+
     // Overrides the record's generated `ToString()`, which would otherwise print `ApiKey` in the
     // clear anywhere this lands in a log line or an exception message (Iron Law #8) — the same guard
     // `Cockpit.Plugins.Abstractions.Sessions.PluginMcpServer` carries for the credential it holds.

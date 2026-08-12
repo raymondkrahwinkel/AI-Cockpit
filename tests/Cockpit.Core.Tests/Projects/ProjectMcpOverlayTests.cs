@@ -48,6 +48,21 @@ public class ProjectMcpOverlayTests
         Assert.False(overlay.IsSelectedByDefault("brand-new"));
     }
 
+    /// <summary>
+    /// The one server that hole must not swallow (AC-736): one offered only because this project points at it — the
+    /// Depot connection behind a <c>depot:</c> Memory row — is in no list precisely because the project editor's
+    /// checklist, being project-agnostic, never had a row for it. Absence there is not a decision to leave it off.
+    /// </summary>
+    [Fact]
+    public void IsSelectedByDefault_AProjectLinkedServer_IsTickedByANarrowedProject()
+    {
+        var overlay = new ProjectMcpOverlay { EnabledServerNames = ["youtrack"] };
+        var depot = new McpServerConfig { Name = "Depot: krahwinkel-it.nl", Url = "https://depot.example/mcp", ProjectLinked = true };
+
+        Assert.True(overlay.IsSelectedByDefault(depot));
+        Assert.False(overlay.IsSelectedByDefault(depot with { ProjectLinked = false }), "an ordinary server still answers to the list");
+    }
+
     /// <summary>An empty list is a project that ticked nothing — a real answer, not a project that never answered.</summary>
     [Fact]
     public void IsSelectedByDefault_AnEmptyEnabledList_TicksNothing()

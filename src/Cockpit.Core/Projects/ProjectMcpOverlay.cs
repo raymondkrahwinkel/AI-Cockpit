@@ -54,6 +54,11 @@ public sealed record ProjectMcpOverlay
         ? enabled.Any(name => string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase))
         : !DisabledServerNames.Any(name => string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase));
 
+    // The same answer for a server the catalog already resolved for this project (AC-736): one offered only because
+    // this project points at it (`McpServerConfig.ProjectLinked`) starts ticked whatever the list above holds —
+    // it never had a row in the project editor, so its absence there is no decision the operator ever made.
+    public bool IsSelectedByDefault(McpServerConfig server) => server.ProjectLinked || IsSelectedByDefault(server.Name);
+
     // `servers` as this project's sessions see them: its own servers replacing same-named ones
     // and appended otherwise. Nothing is removed — which servers start ticked is a pre-selection, applied where the
     // checklist is built rather than here, so a project's servers are the registry's plus its own.
