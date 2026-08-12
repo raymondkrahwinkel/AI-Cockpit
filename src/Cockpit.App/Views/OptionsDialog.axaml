@@ -1154,6 +1154,9 @@
                             <CheckBox Content="Show debug controls" IsChecked="{Binding ShowDebugControls}"
                                       ToolTip.Tip="Adds the Redraw button to every TTY session's header — it forces the terminal to repaint when a resize or focus change left the TUI misaligned"/>
 
+                            <CheckBox Content="Log diagnostic snapshots" IsChecked="{Binding LogDiagnosticSnapshots}"
+                                      ToolTip.Tip="Writes one line to the log every few seconds — memory, GC, handles, threads — so a slow leak or a freeze leaves a trail. Off by default; takes effect immediately, no restart needed. The UI-freeze heartbeat itself is separate and always on."/>
+
                             <!-- Render backend (AC-67). Only meaningful on macOS, so shown there — plus in any dev build,
                                  so it can be verified off-Mac. The backend is fixed at startup, so a saved change offers
                                  a restart, the same affordance the Voice tab uses for the Linux global hotkey. -->

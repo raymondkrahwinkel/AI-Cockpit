@@ -139,6 +139,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IScreenshotSettingsStore? _screenshotSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IDebugSettingsStore? _debugSettingsStore;
+    private readonly DiagnosticsBackgroundService? _diagnosticsBackgroundService;
     private readonly IDelegationMcpToggle? _delegationMcpToggle;
     private readonly ISessionResourceResolver? _sessionResourceResolver;
     private readonly IConsentBroker? _consentBroker;
@@ -838,6 +839,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Off by default; pushed to open sessions so a change takes effect without reopening them.
     [ObservableProperty]
     private bool _showDebugControls;
+
+    // Mirrors `Cockpit.Core.Debugging.DebugSettings.LogDiagnosticSnapshots` (AC-718): a background service writes
+    // one diagnostics line to the log every few seconds while this is on. Off by default; pushed to the service
+    // immediately so it takes effect without reopening the dialog.
+    [ObservableProperty]
+    private bool _logDiagnosticSnapshots;
 
     // Whether the orchestrator (delegation) MCP is offered to sessions (AC-40). It is a cockpit-hosted server, no
     // longer listed in the MCP-servers manager, so this Options toggle is where it is turned on or off. On by
@@ -2490,6 +2497,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IRenderingSettingsStore? renderingSettingsStore = null,
         ResourceMonitor? resourceMonitor = null,
         DiagnosticsCollector? diagnosticsCollector = null,
+        DiagnosticsBackgroundService? diagnosticsBackgroundService = null,
         IBackupService? backupService = null,
         IAssistantMemory? assistantMemory = null,
         IUpdateService? updateService = null,
@@ -2684,6 +2692,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _voiceSettingsStore = voiceSettingsStore;
         _terminalSettingsStore = terminalSettingsStore;
         _debugSettingsStore = debugSettingsStore;
+        _diagnosticsBackgroundService = diagnosticsBackgroundService;
         // The orchestrator loads its own setting on startup (before the UI), so its live value seeds the toggle here.
         _delegationMcpToggle = delegationMcpToggle;
         _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
@@ -4054,6 +4063,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    partial void OnLogDiagnosticSnapshotsChanged(bool value) => _diagnosticsBackgroundService?.SetSnapshotsEnabled(value);
+
     // Flips the orchestrator MCP on or off (AC-40) and persists it; it takes effect on the next session's servers.
     partial void OnOrchestratorMcpEnabledChanged(bool value) => _ = _delegationMcpToggle?.SetMcpEnabledAsync(value);
 
@@ -4084,6 +4095,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var settings = await _debugSettingsStore.LoadAsync();
         ShowDebugControls = settings.ShowDebugControls;
+        LogDiagnosticSnapshots = settings.LogDiagnosticSnapshots;
     }
 
     // Persists the debug settings edited in the Options dialog to `cockpit.json`.
@@ -4095,7 +4107,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _debugSettingsStore.SaveAsync(new DebugSettings { ShowDebugControls = ShowDebugControls });
+        await _debugSettingsStore.SaveAsync(new DebugSettings
+        {
+            ShowDebugControls = ShowDebugControls,
+            LogDiagnosticSnapshots = LogDiagnosticSnapshots,
+        });
         DebugSettingsStatus = "Saved";
     }
 
