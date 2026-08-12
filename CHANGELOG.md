@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: typing `@` in a session's prompt box, or the assistant's, now opens a fuzzy file-/folder-picker over that
+  session's working directory — arrow keys to move, Tab or Enter to insert, Esc to close. The inserted path is
+  always relative and forward-slash-separated, with a trailing slash on a folder. Nothing is scanned until the
+  first `@`, and a session (or the assistant, before it has started one) without a known working directory yet
+  simply leaves the picker closed rather than guessing.
+
 - added: Local CI's settings page now has a "run without asking every time" option, off by default. On, a session's
   `run_local_checks` runs straight away instead of stopping for your approval on every single run — it still runs
   whatever the project's workflow says, in a container with this machine's Docker, so that part stays what it always
