@@ -27,6 +27,9 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
     private bool _isSubmitting;
 
     [ObservableProperty]
+    private bool _linkOpened;
+
+    [ObservableProperty]
     private bool _isCompleted;
 
     [ObservableProperty]
@@ -72,7 +75,7 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
     {
         if (LinkToOpen is { } link)
         {
-            ExternalLink.TryOpen(link);
+            LinkOpened = ExternalLink.TryOpen(link);
         }
     }
 
@@ -84,6 +87,7 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
     {
         OnPropertyChanged(nameof(HasLink));
         OpenLinkCommand.NotifyCanExecuteChanged();
+        LinkOpened = false;
     }
 
     partial void OnErrorMessageChanged(string? value) => OnPropertyChanged(nameof(HasError));
@@ -95,7 +99,12 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
             await foreach (var step in _flow.Steps.WithCancellation(_cts.Token))
             {
                 Message = step.Message;
-                LinkToOpen = step.LinkToOpen;
+                // AC-731: sticky — a later step that carries no link (e.g. the CLI's own "paste code" prompt)
+                // must not blank out a link the operator has not opened yet.
+                if (step.LinkToOpen is not null)
+                {
+                    LinkToOpen = step.LinkToOpen;
+                }
                 AwaitsInput = step.AwaitsInput;
             }
 
