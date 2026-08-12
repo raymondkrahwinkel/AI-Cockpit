@@ -341,10 +341,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     // Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — `HandleSpeakingStarted` flips it to speaking once audio actually plays.
     //
-    // AC-729: the assistant's own reply no longer reaches the pill — the chip already carries its Speaking state
-    // (AssistantIndicatorCoordinator), so writing it here too would say the same thing twice, same reasoning as
-    // AC-697's hold-flow. `_isPlaying` still tracks every source unconditionally: a barge-in has to be able to
-    // stop the assistant reading its own answer, not just an ordinary session's.
+    // AC-729: the assistant's own reply no longer reaches the pill — the chip already shows it, same reasoning as
+    // AC-697's hold-flow. `_isPlaying` stays unconditional so a barge-in can still stop it too.
     internal void HandlePlaybackActiveChanged(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session)
     {
         _isPlaying = active;

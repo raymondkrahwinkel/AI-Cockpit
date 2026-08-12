@@ -1326,10 +1326,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // code/tables and swaps paths/URLs for spoken words before anything is queued. A no-op when the playback
     // queue was never wired (design-time/tests) or there is nothing to say.
     //
-    // AC-729: the assistant reads its own replies through this exact method, same as any ordinary session —
-    // `PaneId` is how the two are told apart here (AC-410's identity trick, the same check
-    // `AssistantSessionHost` already makes), so the source tag below reaches `IVoicePlaybackQueue` without this
-    // method needing to know anything about *why* one caller is the assistant and the other is not.
+    // AC-729: `PaneId` (AC-410, the same check `AssistantSessionHost` uses) tells the assistant's own session
+    // apart from an ordinary one, for the source tag below.
     protected Task EnqueueReadAloudAsync(string text)
     {
         if (_voicePlaybackQueue is null)

@@ -57,11 +57,9 @@ public interface IVoicePlaybackQueue
     int Generation { get; }
 
     /// <summary>
-    /// The <see cref="VoicePlaybackSource"/> tag of whatever is currently preparing or playing (AC-729) — the source
-    /// passed to whichever of <see cref="NotifyPreparing"/>/<see cref="Enqueue(IReadOnlyList{string}, int, string, VoicePlaybackSource)"/>
-    /// started the active window. Meaningless while idle; a subscriber to <see cref="PlaybackActiveChanged"/> or
-    /// <see cref="SpeakingStarted"/> reads it at the moment its handler fires, mirroring how <see cref="Generation"/>
-    /// is read around a call rather than passed on the event itself.
+    /// The <see cref="VoicePlaybackSource"/> of whatever is currently preparing or playing (AC-729). Meaningless
+    /// while idle; read it when <see cref="PlaybackActiveChanged"/>/<see cref="SpeakingStarted"/> fires, the same
+    /// way <see cref="Generation"/> is read around a call rather than carried on the event itself.
     /// </summary>
     VoicePlaybackSource ActiveSource { get; }
 }
