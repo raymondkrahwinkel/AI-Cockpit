@@ -4859,10 +4859,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
             catch (Exception exception)
             {
-                // Isolation failed — the operator declined to run unisolated, or a non-interactive caller was
-                // refused outright without ever being asked. Either way the half-added session must not survive it:
-                // undo it (which also removes its just-written pane record, via CloseSessionAsync) rather than
-                // starting it in the operator's real working tree.
+                // Isolation failed — declined, or a non-interactive caller was refused outright. Either way undo
+                // the half-added session (CloseSessionAsync also removes its pane record) rather than starting it
+                // in the operator's real working tree.
                 await CloseSessionAsync(sdkSession);
                 if (exception is OperationCanceledException)
                 {
@@ -5008,14 +5007,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
         catch (Exception exception)
         {
-            // Isolation was explicitly asked for but the worktree could not be created (a git error, a folder that
-            // vanished). Running in the operator's real checkout is the exact working-tree contamination isolation
-            // exists to prevent, so never fall back to it silently.
-            //
-            // A non-interactive caller (an assistant spawn, AC-719) never gets the dialog below: a modal on the main
-            // window would stall a turn the caller cannot see, let alone answer, on a desk the operator may not even
-            // be looking at. Refuse with the reason instead — the caller's own catch turns this into a sentence the
-            // assistant can read out, rather than a session that silently is not there.
+            // The worktree could not be created; running unisolated is the exact contamination isolation exists to
+            // prevent, so this never falls back to it silently. A non-interactive caller (AC-719: an assistant
+            // spawn) never gets the dialog below — a modal it cannot see or answer — so it is refused with the reason.
             if (!interactive)
             {
                 throw new InvalidOperationException(
@@ -6587,11 +6581,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // hands in. Merging and refusing happen in `SpawnOptionOverrides`, before this is reached: what arrives here
         // is a launch, not a request to be checked.
         IReadOnlyDictionary<string, string>? launchOptions = null,
-        // Tri-state worktree-isolation override (AC-719): null inherits whatever the resolved project asks for (or
-        // false when there is none), true may isolate even where the project does not ask for it. `false` never
-        // reaches here in practice — the assistant gateway refuses it before a launch is even composed, because
-        // overruling isolation *away* would put a spawn in the operator's real checkout, exactly the contamination
-        // isolation exists to prevent — but is honoured the same way false always is if it ever does.
+        // Tri-state (AC-719): null inherits the resolved project's own default, true may isolate on top of it.
+        // `false` never reaches here in practice — the assistant gateway refuses it before a launch is composed —
+        // but is honoured the same way false always is if it ever does.
         bool? isolateInWorktree = null)
     {
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
@@ -6606,11 +6598,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId)
             : null;
 
-        // Composed through the same door the launcher's Start button and the sidebar's ▶ use (AC-719 addendum 3): a
-        // spawn whose directory resolves to a project inherits isolation, the behaviour prompt, the
-        // instruction/memory/reference rows and the project's own MCP selection in one pass, instead of a second,
-        // drifting copy of that logic assembled by hand here. No project — nobody named one and there is none to
-        // descend from — falls back below to the profile's own half, unchanged from before this ticket.
+        // Composed through the same door the launcher's Start button and the sidebar's ▶ use (AC-719): a resolved
+        // project's isolation, behaviour prompt, instruction/memory/reference rows and MCP selection all come along
+        // in one pass. No project falls back below to the profile's own half, unchanged from before this ticket.
         var composed = project is not null && _projectQuickStart is not null
             ? await _projectQuickStart.ComposeAsync(project, profile)
             : null;

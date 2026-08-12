@@ -40,12 +40,9 @@ public sealed class ProjectQuickStart(
         return profile is null ? null : await ComposeAsync(project, profile, cancellationToken).ConfigureAwait(true);
     }
 
-    // The same compose, for a caller that already knows which profile it wants rather than asking the project's
-    // own `DefaultProfileLabel` to name one (AC-719): a spawn started with `start_agent` names its profile
-    // explicitly, so the project's saved default has nothing to add there and forcing one would refuse a project
-    // that simply never set one. One seam, two doors — this is the core `ComposeAsync(Project)` resolves a profile
-    // for and then calls; every other rule (isolation, the standing prompt, the project's own MCP selection) lives
-    // here exactly once so the two doors cannot drift into starting subtly different sessions from one project.
+    // The same compose, for a caller that already knows its profile (AC-719: a spawn names it explicitly) rather
+    // than asking the project's `DefaultProfileLabel` to pick one — this is the core `ComposeAsync(Project)`
+    // resolves a profile for and then calls, so the two doors cannot drift apart.
     public async Task<NewSessionResult> ComposeAsync(Project project, SessionProfile profile, CancellationToken cancellationToken = default)
     {
         // The probe is I/O, which Resolve deliberately never does itself (see its own remarks on

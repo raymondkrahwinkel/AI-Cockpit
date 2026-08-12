@@ -253,10 +253,8 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
 // asks. See `SpawnOptionOverrides`. One key is the host's own rather than a provider's: `cockpit.memory-cap-mb`
 // (AC-661) sets how much memory this session's whole process tree may hold before the OS cuts it off.
 // `IsolateInWorktree` (AC-719):
-// Tri-state, mirroring the tool's own vocabulary — left out inherits whatever the resolved project (or none) asks
-// for, `true` may isolate even where the project does not, and `false` is refused before a launch is composed at
-// all: overruling isolation *away* would run the session in the operator's real checkout, exactly the working-tree
-// contamination isolation exists to prevent, and on a caller's own initiative rather than the operator's.
+// Tri-state — left out inherits the resolved project's own default, `true` may isolate on top of it, and `false`
+// is refused before a launch is composed: overruling isolation *away* would run it in the operator's real checkout.
 public sealed record AgentSpawnRequest(
     SpawnTarget Target,
     string ProfileLabel,

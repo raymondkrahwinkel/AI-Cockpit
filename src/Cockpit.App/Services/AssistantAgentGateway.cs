@@ -127,10 +127,8 @@ internal sealed class AssistantAgentGateway(
                 return await _RefuseSpawnAsync(request, workspace.Name, optionRefusal, cancellationToken).ConfigureAwait(true);
             }
 
-            // AC-719: overruling isolation *away* is refused outright, categorically, the same way permission-mode
-            // is — never gated on a project's own setting, because the caller that could dial it down per spawn is
-            // one hop from the working-tree contamination isolation exists to prevent. Omitted or true both pass
-            // straight through: the project's own default applies, or this spawn may isolate on top of it.
+            // AC-719: refused categorically, like permission-mode — a caller that could dial isolation down per
+            // spawn is one hop from the working-tree contamination isolation exists to prevent.
             if (request.IsolateInWorktree == false)
             {
                 return await _RefuseSpawnAsync(request, workspace.Name,
