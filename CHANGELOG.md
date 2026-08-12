@@ -132,6 +132,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: a link in your own chat message is now clickable, opening in your default browser like a link in the
   assistant's reply already did. It used to just sit there as plain text — your own bubble never had link detection
   at all, only the assistant's replies did.
+- fixed: "Install on next start" now really waits for your next start. It used to launch the updater there and then,
+  which gave your running cockpit sixty seconds before the updater stopped waiting and killed it — no warning, no
+  message, the window simply gone, and on Windows sometimes no executable left for the Start-menu or taskbar shortcut
+  to point at. The download now sits untouched until you next open the cockpit, which applies it before the window
+  comes up. If the request cannot be saved you are told so instead of being promised an update that will not happen.
 - fixed: the auth-expiry bar no longer flashes back after you've just signed in again through it. Signing in fed the
   bar's own status straight away, but the login gate behind it kept answering "logged out" from a reading taken
   before the sign-in, so the bar reappeared for a moment on the next check before correcting itself. A successful

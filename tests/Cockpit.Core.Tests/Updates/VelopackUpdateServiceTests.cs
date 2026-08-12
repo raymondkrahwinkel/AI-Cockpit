@@ -263,7 +263,7 @@ public class VelopackUpdateServiceTests : IDisposable
 
         // Nothing was fetched, so applying must be a no-op rather than throw or restart into a bad build.
         service.ApplyDownloadedUpdateAndRestart();
-        service.ApplyDownloadedUpdateSilentlyOnNextStart();
+        Assert.False(service.RequestUpdateOnNextStart());
     }
 
     /// <summary>A copy nobody installed cannot download an update either — the same reading <see cref="CheckAsync"/> gives, and for the same reason.</summary>
@@ -285,14 +285,18 @@ public class VelopackUpdateServiceTests : IDisposable
         Assert.Contains("cannot download an update", result.Failure);
     }
 
-    /// <summary>Neither apply call does anything before a download has ever succeeded — no build to apply means no restart to make.</summary>
+    /// <summary>
+    /// Neither apply call does anything before a download has ever succeeded — no build to apply means no restart to
+    /// make, and no request for the next launch to act on either (AC-738): a marker written without a package behind
+    /// it would send every following launch looking for one.
+    /// </summary>
     [Fact]
     public void ApplyCalls_BeforeAnyDownload_AreNoOps()
     {
         var service = new VelopackUpdateService(NullLogger<VelopackUpdateService>.Instance);
 
         service.ApplyDownloadedUpdateAndRestart();
-        service.ApplyDownloadedUpdateSilentlyOnNextStart();
+        Assert.False(service.RequestUpdateOnNextStart());
     }
 
     private Task<UpdateCheckResult> Check(
