@@ -26,7 +26,7 @@ public interface IUpdateService
     /// </para>
     /// <para>
     /// A successful download is remembered by the service so a later <see cref="ApplyDownloadedUpdateAndRestart"/> or
-    /// <see cref="ApplyDownloadedUpdateSilentlyOnNextStart"/> has something to act on — there is deliberately no
+    /// <see cref="RequestUpdateOnNextStart"/> has something to act on — there is deliberately no
     /// "apply this specific release" overload, because there is only ever one build worth applying: the one just
     /// fetched.
     /// </para>
@@ -43,11 +43,11 @@ public interface IUpdateService
     void ApplyDownloadedUpdateAndRestart();
 
     /// <summary>
-    /// Applies the build fetched by the most recent successful <see cref="DownloadAsync"/> the next time the cockpit
-    /// starts, without touching the session running now (AC-388) — the "install on next start" offer that never
-    /// interrupts whatever is running. A no-op when nothing has been downloaded.
+    /// Asks for the build fetched by the most recent successful <see cref="DownloadAsync"/> to be applied the next
+    /// time the cockpit starts, leaving the session running now completely untouched (AC-388, AC-738).
     /// </summary>
-    void ApplyDownloadedUpdateSilentlyOnNextStart();
+    /// <returns>Whether the request was recorded; false when nothing was downloaded or the request could not be written.</returns>
+    bool RequestUpdateOnNextStart();
 }
 
 /// <summary>Whether to look for updates at all, and which builds to be told about (#71).</summary>

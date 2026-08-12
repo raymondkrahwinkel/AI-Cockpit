@@ -13,6 +13,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Updates;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
@@ -42,14 +43,10 @@ sealed class Program
         // cockpit claiming the single-instance lock mid-update, plugins being installed by an installer, a log
         // being truncated.
         //
-        // SetAutoApplyOnStartup(false) because Velopack's default is to apply a downloaded update during this very
-        // call and restart, which is the silent auto-update this project deliberately does not do: applying is an
-        // action the operator takes. It also protects the headless children this same executable is re-run as (the
-        // calibration and dictation workers below): with the default left on, a staged package would have turned
-        // every one of those spawns into an update-and-exit instead of the measurement it was asked for.
-        //
-        // On an ordinary launch this still reads the installation on disk — it is not a no-op — and then returns.
-        VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
+        // Auto-apply only when the operator asked for it (AC-738): applying is an action they take, and this same
+        // executable is re-run as the headless children below. On an ordinary launch this still reads the
+        // installation on disk — it is not a no-op — and then returns.
+        VelopackApp.Build().SetAutoApplyOnStartup(_AppliesAStagedUpdate(args)).Run();
 
         // Headless calibration child (AC-68): a measurement of one Whisper backend, spawned by the running cockpit
         // because Whisper.net loads its native runtime once per process. This must be the very first thing Main
@@ -305,6 +302,16 @@ sealed class Program
             Environment.Exit(0);
         }
     }
+
+    // Whether this launch applies the package the operator asked for on their last visit (AC-738). Ruled out for the
+    // headless children this executable is re-run as, and for a launch that will stand down against a cockpit that is
+    // already running — applying force-stops that one. The request is taken last, so a launch that cannot use it
+    // leaves it for the one that can.
+    private static bool _AppliesAStagedUpdate(string[] args) =>
+        !Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args)
+        && !Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args)
+        && !SingleInstanceGuard.IsHeldByAnotherCockpit()
+        && UpdateOnNextStart.TakeRequest();
 
     // The notice a refused second start shows (AC-4). Avalonia is started for this one window and nothing else:
     // Start() leaves the ApplicationLifetime null, so App.OnFrameworkInitializationCompleted builds no cockpit —
