@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
@@ -1324,12 +1325,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Extracts the prose from assistant text and enqueues it for read-aloud (#35). The extractor strips
     // code/tables and swaps paths/URLs for spoken words before anything is queued. A no-op when the playback
     // queue was never wired (design-time/tests) or there is nothing to say.
+    //
+    // AC-729: the assistant reads its own replies through this exact method, same as any ordinary session —
+    // `PaneId` is how the two are told apart here (AC-410's identity trick, the same check
+    // `AssistantSessionHost` already makes), so the source tag below reaches `IVoicePlaybackQueue` without this
+    // method needing to know anything about *why* one caller is the assistant and the other is not.
     protected Task EnqueueReadAloudAsync(string text)
     {
         if (_voicePlaybackQueue is null)
         {
             return Task.CompletedTask;
         }
+
+        var source = PaneId == AssistantIdentity.PaneId ? VoicePlaybackSource.Assistant : VoicePlaybackSource.Session;
 
         var sentences = TtsProseExtractor.Extract(text);
         if (ReadAloudAsOneUtterance && sentences.Count > 1)
@@ -1354,7 +1362,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         // Show the overlay now: the first synthesis (and any first-use model download) runs before a word is
         // heard, and that gap otherwise reads as nothing happening.
-        _voicePlaybackQueue.NotifyPreparing();
+        _voicePlaybackQueue.NotifyPreparing(source);
 
         if (_voicePlaybackQueue.Generation != generation)
         {
@@ -1363,7 +1371,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return Task.CompletedTask;
         }
 
-        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage);
+        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source);
         return Task.CompletedTask;
     }
 

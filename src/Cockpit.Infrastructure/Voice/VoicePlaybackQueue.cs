@@ -23,7 +23,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private readonly ILogger<VoicePlaybackQueue> _logger;
 
     // One queued read-aloud batch: language-tagged segments plus the single speaker (sid) that voices them all.
-    private sealed record QueuedUtterance(IReadOnlyList<SpeechSegment> Segments, int SpeakerId);
+    private sealed record QueuedUtterance(IReadOnlyList<SpeechSegment> Segments, int SpeakerId, VoicePlaybackSource Source);
 
     private readonly Channel<QueuedUtterance> _channel = Channel.CreateUnbounded<QueuedUtterance>();
 
@@ -42,6 +42,11 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     // Bumped by StopAll so a caller preparing a batch can tell a barge-in cancelled it mid-rewrite (see Generation).
     private int _generation;
 
+    // The source of whichever batch most recently opened the active window (AC-729) — only written on the
+    // false→true transition inside `_SetPlaybackActive`, guarded by the same gate, so a second source calling
+    // NotifyPreparing/Enqueue while a window is already open never overwrites who is actually being heard.
+    private VoicePlaybackSource _activeSource;
+
     public event EventHandler<bool>? PlaybackActiveChanged;
 
     public event EventHandler? SpeakingStarted;
@@ -57,6 +62,17 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
+    public VoicePlaybackSource ActiveSource
+    {
+        get
+        {
+            lock (_activeGate)
+            {
+                return _activeSource;
+            }
+        }
+    }
+
     public VoicePlaybackQueue(ITextToSpeechService textToSpeech, IAudioPlaybackService audioPlayback, ILogger<VoicePlaybackQueue> logger)
     {
         _textToSpeech = textToSpeech;
@@ -68,17 +84,17 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         _consumerTask = _ConsumeAsync();
     }
 
-    public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language)
+    public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session)
     {
         if (sentences.Count == 0)
         {
             return;
         }
 
-        Enqueue([new SpeechSegment(sentences, language)], speakerId);
+        Enqueue([new SpeechSegment(sentences, language)], speakerId, source);
     }
 
-    public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId)
+    public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session)
     {
         var sentenceCount = segments.Sum(segment => segment.Sentences.Count);
         if (sentenceCount == 0)
@@ -90,10 +106,10 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         // explanation for "read-aloud feels slow" that the per-utterance timing below cannot show on its own.
         _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) across {Segments} language segment(s); {QueueDepth} batch(es) already queued.",
             sentenceCount, segments.Count, _channel.Reader.Count);
-        _channel.Writer.TryWrite(new QueuedUtterance(segments, speakerId));
+        _channel.Writer.TryWrite(new QueuedUtterance(segments, speakerId, source));
     }
 
-    public void NotifyPreparing() => _SetPlaybackActive(true);
+    public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session) => _SetPlaybackActive(true, source);
 
     public void StopAll()
     {
@@ -122,7 +138,9 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     {
         await foreach (var utterance in _channel.Reader.ReadAllAsync())
         {
-            _SetPlaybackActive(true);
+            // A no-op if NotifyPreparing already opened this window for the same source (the ordinary paired
+            // flow); the real transition for a caller that enqueues without preparing first, e.g. `PreviewVoice`.
+            _SetPlaybackActive(true, utterance.Source);
             await _PlayUtteranceAsync(utterance, _playbackCancellation.Token).ConfigureAwait(false);
 
             // Only go idle once nothing is waiting behind this batch, so back-to-back read-aloud turns do
@@ -236,7 +254,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
-    private void _SetPlaybackActive(bool active)
+    private void _SetPlaybackActive(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session)
     {
         // NotifyPreparing (UI thread) and the consumer loop both flip this, so the transition is guarded — the
         // event is raised outside the lock so a handler can never deadlock against it.
@@ -248,6 +266,13 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             }
 
             _isPlaybackActive = active;
+
+            // Only stamped on the way in: a second source calling in while this window is already open (already
+            // handled above by the equality check) must not relabel whichever batch is actually being heard.
+            if (active)
+            {
+                _activeSource = source;
+            }
 
             // Going idle ends the window: the next read-aloud starts preparing again before it speaks. Reset under
             // the same gate that guards the announce check-and-set above.
