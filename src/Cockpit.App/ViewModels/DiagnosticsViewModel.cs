@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.App.Services;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Diagnostics;
+using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.App.ViewModels;
 
@@ -87,6 +88,9 @@ public sealed partial class DiagnosticsViewModel(
         // said where that is — a referral to a file the UI does not name is barely a referral at all.
         builder.AppendLine().AppendLine("Cockpit log");
         builder.AppendLine($"  {CockpitBuild.LogPath}");
+        // AC-718: the log is truncated to this path on every start, so after a freeze the interesting tail is
+        // one generation back in this file — and a second restart discards that copy too.
+        builder.AppendLine($"  Previous run  : {CockpitBuild.LogPath}{CredentialFileHousekeeping.PreviousLogSuffix}   ← the tail from before the last restart (a freeze/crash is usually here, not in the live log)");
 
         builder.AppendLine().AppendLine("Crash / memory logs (newest first)");
         if (snapshot.CrashLogs.Count == 0)

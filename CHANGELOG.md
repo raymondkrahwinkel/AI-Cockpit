@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a new "Log diagnostic snapshots" option under Debug settings writes one line to the log every ten
+  seconds — memory, GC, handles, threads — so a slow leak or crash leaves a trail to look back on. Off by
+  default. Separately, and always on regardless of that setting: if the app's UI freezes for more than a few
+  seconds, that now gets logged too, along with a line once it recovers and how long it was stuck — previously a
+  freeze left no trace at all.
+
 - added: Local CI's settings page now has a "run without asking every time" option, off by default. On, a session's
   `run_local_checks` runs straight away instead of stopping for your approval on every single run — it still runs
   whatever the project's workflow says, in a container with this machine's Docker, so that part stays what it always

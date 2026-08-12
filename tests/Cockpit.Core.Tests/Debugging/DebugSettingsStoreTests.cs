@@ -29,6 +29,7 @@ public class DebugSettingsStoreTests : IDisposable
         var settings = await store.LoadAsync();
 
         Assert.False(settings.ShowDebugControls);
+        Assert.False(settings.LogDiagnosticSnapshots);
     }
 
     [Fact]
@@ -36,10 +37,11 @@ public class DebugSettingsStoreTests : IDisposable
     {
         var store = new DebugSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new DebugSettings { ShowDebugControls = true });
+        await store.SaveAsync(new DebugSettings { ShowDebugControls = true, LogDiagnosticSnapshots = true });
         var loaded = await store.LoadAsync();
 
         Assert.True(loaded.ShowDebugControls);
+        Assert.True(loaded.LogDiagnosticSnapshots);
     }
 
     [Fact]
