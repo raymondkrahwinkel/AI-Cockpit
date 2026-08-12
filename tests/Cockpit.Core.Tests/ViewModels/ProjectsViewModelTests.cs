@@ -725,6 +725,34 @@ public class ProjectsViewModelTests
         await dialogs.DidNotReceive().ShowShareProjectDialogAsync(Arg.Any<Project>(), Arg.Any<IReadOnlyList<ISharedProjectSource>>());
     }
 
+    // AC-744: a project's Memory reference can start with a registered source's prefix without ever having gone
+    // through the publish flow (a manually-typed `depot:cockpit`-style reference, say) — that alone must not read
+    // as "already shared", either for the toggle's label or for which flow clicking it opens.
+    [Fact]
+    public async Task ToggleSharingAsync_PrefixMatchingButNeverPublishedMemoryReference_ReadsAndActsAsNotYetShared()
+    {
+        var local = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("Depot — Work:cockpit", ProjectResourceRole.Memory)],
+        };
+        // The source never lists "Depot — Work:cockpit" — nothing claims its ownership, unlike the genuinely
+        // shared case in ToggleSharingAsync_AlreadySharedProject_ConfirmsThenRemovesOnlyTheBindingRow below.
+        var source = new _FakeSharedProjectSource(
+            "Depot — Work", SharedProjectListResult.Success([]), publishResult: SharedProjectPublishResult.Success("depot:new-project"));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out _, local);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+        viewModel.SelectedProject = local;
+
+        Assert.Equal("Share…", viewModel.ShareToggleLabel);
+
+        await viewModel.ToggleSharingAsync(local);
+
+        await dialogs.Received(1).ShowShareProjectDialogAsync(local, Arg.Any<IReadOnlyList<ISharedProjectSource>>());
+        await dialogs.DidNotReceive().ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+    }
+
     [Fact]
     public async Task ToggleSharingAsync_AlreadySharedProject_ConfirmsThenRemovesOnlyTheBindingRow()
     {
@@ -739,6 +767,9 @@ public class ProjectsViewModelTests
         var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store, bound);
         await viewModel.LoadAsync();
         await viewModel.SharedProjectsLoadTask; // claims the ownership ToggleSharingAsync's _ResolveSharedSource reads
+        viewModel.SelectedProject = bound;
+
+        Assert.Equal("Stop sharing…", viewModel.ShareToggleLabel);
 
         await viewModel.ToggleSharingAsync(bound);
 

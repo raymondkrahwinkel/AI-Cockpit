@@ -476,13 +476,12 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    // The source `project` is bound to (its own Memory-role resource names a SharedProject.Id this source listed),
-    // or null for a plain local project — same prefix-match FinishSettingUpAsync already uses to find a source by
-    // a SharedProject.Id it produced. AC-247: lets ShowProjectDialogAsync read a fresh checksum and decide whether
-    // this editor's Save can write back at all.
+    // The source `project` is genuinely bound to — a Memory reference merely starting with a known source's
+    // prefix is not enough (AC-744): only a project the ownership registry actually claimed (the same check
+    // `_OriginBadge`/`IsShared` gate the badge on) counts as shared, here and for AC-247's write-back gating.
     private ISharedProjectSource? _ResolveSharedSource(Project project)
     {
-        if (_sharedSources is null)
+        if (_sharedSources is null || _ownership?.Resolve(project.Id) is null)
         {
             return null;
         }
