@@ -20,7 +20,8 @@ internal sealed class LocalCiMcpTools(
     SessionCheckouts checkouts,
     ILocalJobRunner runner,
     LocalRunTracker tracker,
-    GitHead head)
+    GitHead head,
+    LocalCiSettings settings)
 {
     [McpServerTool(Name = "run_local_checks")]
     [Description(
@@ -144,6 +145,13 @@ internal sealed class LocalCiMcpTools(
 
     private async Task<bool> _AskOperatorAsync(string command, string checkout, string paneId)
     {
+        // AC-710: the operator's own opt-out, set on this plugin's settings page — off by default. On, this still
+        // runs whatever the workflow says; the operator has chosen to approve that once instead of every run.
+        if (settings.SkipConsent)
+        {
+            return true;
+        }
+
         var decision = await host.RequestConsentAsync(new ConsentRequest(
             Title: "Local CI wants to run a workflow job on this machine",
             Action: $"{command}\n\nin {checkout}",

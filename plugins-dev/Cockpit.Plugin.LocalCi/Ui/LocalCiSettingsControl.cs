@@ -22,6 +22,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
     private readonly TextBlock _actLine = ProviderConfigStatus.CreateLine();
     private readonly TextBox _runnerImage;
     private readonly CheckBox _mcpEnabled;
+    private readonly CheckBox _skipConsent;
     private readonly Button _checkAgain;
 
     public LocalCiSettingsControl(ILocalCiRuntime runtime, LocalCiSettings settings)
@@ -42,6 +43,13 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
         {
             Content = "Offer the cockpit-local-ci tools to sessions",
             IsChecked = settings.McpEnabled,
+            Margin = new(0, 16, 0, 0),
+        };
+
+        _skipConsent = new CheckBox
+        {
+            Content = "Run local checks without asking every time (dangerous)",
+            IsChecked = settings.SkipConsent,
             Margin = new(0, 16, 0, 0),
         };
 
@@ -81,6 +89,15 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
                     Opacity = 0.7,
                     TextWrapping = TextWrapping.Wrap,
                 },
+                _skipConsent,
+                new TextBlock
+                {
+                    Text = "Still runs whatever the project's workflow says, in a container with this machine's "
+                        + "Docker — that does not change. Turning this on means you no longer approve the exact "
+                        + "command each time; off is the default and asks every run.",
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap,
+                },
             },
         };
 
@@ -91,6 +108,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
     {
         _settings.RunnerImage = _runnerImage.Text ?? string.Empty;
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
+        _settings.SkipConsent = _skipConsent.IsChecked ?? false;
         return true;
     }
 

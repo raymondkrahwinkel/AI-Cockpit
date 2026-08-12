@@ -87,7 +87,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         // operator's consent, and the tools take no path — the checkout is the caller's own.
         _ = host.AddMcpEndpoint(
             "cockpit-local-ci",
-            new LocalCiMcpTools(host, checkouts, runner, tracker, head),
+            new LocalCiMcpTools(host, checkouts, runner, tracker, head, settings),
             isEnabled: () => settings.McpEnabled);
 
         // From the session's own header, so the run is about the checkout that session is working in rather than

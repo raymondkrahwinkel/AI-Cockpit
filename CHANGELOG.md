@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Local CI's settings page now has a "run without asking every time" option, off by default. On, a session's
+  `run_local_checks` runs straight away instead of stopping for your approval on every single run — it still runs
+  whatever the project's workflow says, in a container with this machine's Docker, so that part stays what it always
+  was.
+
 - added: when an agent stops to ask you something, the question and the answers it offers now appear as a card in
   the transcript with the choices as buttons — pick one (or several, where it allows that) and press Send, or type
   your own answer under "Other". Before, the same question arrived as a generic Allow/Deny prompt with the options

@@ -22,4 +22,13 @@ internal sealed class LocalCiSettings(IPluginStorage storage)
         get => storage.Get<string>("runnerImage") is { Length: > 0 } image ? image : ActRunOptions.DefaultRunnerImage;
         set => storage.Set("runnerImage", value?.Trim() ?? string.Empty);
     }
+
+    // AC-710: off by default, so a fresh install still asks every time. On, `run_local_checks` runs whatever the
+    // workflow says without the operator confirming it first — still Dangerous, just approved once here instead of
+    // on every run.
+    public bool SkipConsent
+    {
+        get => storage.Get<bool?>("skipConsent") ?? false;
+        set => storage.Set("skipConsent", value);
+    }
 }

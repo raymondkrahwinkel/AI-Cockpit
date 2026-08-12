@@ -114,6 +114,34 @@ public class LocalCiMcpToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task DefaultSettingsStillAskEveryRun()
+    {
+        // AC-710: the setting exists, but a fresh install must keep asking every time — nothing about today's
+        // behaviour changes until the operator opts in.
+        _host.CallerPaneId = "pane-caller";
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        await _Tools(act, skipConsent: false).RunLocalChecks();
+
+        Assert.Single(_host.Asked);
+        Assert.Single(act.Calls);
+    }
+
+    [Fact]
+    public async Task SkipConsentRunsWithoutAskingTheOperator()
+    {
+        // AC-710: with the operator's opt-out on, the run goes straight through — no RequestConsentAsync round-trip.
+        _host.CallerPaneId = "pane-caller";
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        var answer = _Read(await _Tools(act, skipConsent: true).RunLocalChecks());
+
+        Assert.Empty(_host.Asked);
+        Assert.Single(act.Calls);
+        Assert.True(answer.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
     public async Task APassSaysWhereItRanAndCarriesNoLog()
     {
         _host.CallerPaneId = "pane-caller";
@@ -180,12 +208,13 @@ public class LocalCiMcpToolsTests : IDisposable
         Assert.Equal("build", status.GetProperty("lastRun").GetProperty("job").GetString());
     }
 
-    private LocalCiMcpTools _Tools(IStreamingCliRunner act)
+    private LocalCiMcpTools _Tools(IStreamingCliRunner act, bool skipConsent = false)
     {
         var runner = new LocalJobRunner(
             FakeLocalCiRuntime.Ready(), act, new FakeRunContainerCleanup(), () => ActRunOptions.For(8), () => "run-1");
+        var settings = new LocalCiSettings(_host.Storage) { SkipConsent = skipConsent };
 
-        return new LocalCiMcpTools(_host, _checkouts, runner, _tracker, new GitHead(new FakeCliRunner()));
+        return new LocalCiMcpTools(_host, _checkouts, runner, _tracker, new GitHead(new FakeCliRunner()), settings);
     }
 
     private static JsonElement _Read(string json) => JsonDocument.Parse(json).RootElement;
