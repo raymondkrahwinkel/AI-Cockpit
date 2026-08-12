@@ -7,11 +7,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cockpit.Infrastructure.Tests.Backup;
 
 /// <summary>
-/// AC-747: <c>WriteAsync</c>/<c>RestoreAsync</c> used to run their synchronous archiving/unpacking loop on whichever
-/// thread called them, freezing the UI for the length of a backup; both now offload to <c>Task.Run</c>. The state
-/// root (<c>CockpitConfigPath.Root</c>) is a fixed, non-test-overridable OS path — a real dev machine's is
-/// multi-gigabyte — so instead of archiving it for real, this proves the offload is wired up by showing an
-/// already-cancelled token short-circuits <c>Task.Run</c> before the method body (and the state root) is touched.
+/// AC-747: <c>WriteAsync</c>/<c>RestoreAsync</c> now offload to <c>Task.Run</c> instead of freezing the UI thread
+/// for the length of a backup. The state root is a fixed, non-test-overridable OS path (multi-gigabyte on a real
+/// dev machine), so this proves the offload instead: an already-cancelled token must short-circuit <c>Task.Run</c>
+/// before the method body — and the state root — is ever touched.
 /// </summary>
 public class BackupServiceOffloadsToTheThreadPoolTests
 {
