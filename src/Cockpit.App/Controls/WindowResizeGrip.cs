@@ -5,11 +5,9 @@ using Avalonia.Interactivity;
 
 namespace Cockpit.App.Controls;
 
-// AC-678: WindowDecorations.BorderOnly's own resize border was the margin the ticket exists to remove, and
-// dropping it for WindowDecorations.None takes the resize handles with it — every window that used to rely on the
-// platform for edge/corner dragging needs its own now. Split into a pure zone calculation and the pointer wiring
-// around it, the same shape DialogScreenClamp already uses, so the zone boundaries are testable without a live
-// window.
+// AC-678: dropping WindowDecorations.BorderOnly (its resize border was the unwanted margin) for None also
+// drops the platform's own edge/corner dragging, so every window needs its own now. Split into a pure zone
+// calculation and the pointer wiring around it (DialogScreenClamp's shape), so the zones are testable without a window.
 internal static class WindowResizeGrip
 {
     // How wide the invisible grab band is, in DIPs, on each edge.
@@ -25,10 +23,9 @@ internal static class WindowResizeGrip
             return;
         }
 
-        // Tunnel, not the default bubble: this has to see the press before the title bar's own drag handler
-        // (CockpitWindowChrome's wrapper.PointerPressed) or a caption button does, or a press a couple of pixels
-        // inside the top edge would move the window instead of resizing it. Marking the event handled here is
-        // what stops it reaching them.
+        // Tunnel, not bubble: this must see the press before the title bar's own drag handler or a caption
+        // button does, or a press near the top edge would move the window instead of resizing it. Marking the
+        // event handled here is what stops it reaching them.
         window.AddHandler(InputElement.PointerPressedEvent, _OnPressed, RoutingStrategies.Tunnel);
         window.AddHandler(InputElement.PointerMovedEvent, _OnMoved, RoutingStrategies.Tunnel);
     }

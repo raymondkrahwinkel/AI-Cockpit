@@ -11,12 +11,9 @@ using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
-// Applies the cockpit's custom window chrome to any `Window`: it drops the OS decorations entirely
-// (`WindowDecorations.None` — AC-678: `BorderOnly`'s own resize border was a visible margin around every
-// non-maximized window) and wraps the window's content under a hairline title bar with its own caption buttons.
-// `WindowResizeGrip` gives a resizable window its edges and corners back. Shared so every window — the plugin
-// dialogs and the app's own dialogs/main window — looks the same. Dialogs get a Close button only; the main
-// window opts into minimize/maximize.
+// Applies the cockpit's custom window chrome to any `Window`: no OS decorations at all
+// (`WindowDecorations.None` — AC-678, `BorderOnly`'s resize border was a visible margin), a hairline title
+// bar of our own, and `WindowResizeGrip` to replace the resize edges/corners that came with it.
 internal static class CockpitWindowChrome
 {
     // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).

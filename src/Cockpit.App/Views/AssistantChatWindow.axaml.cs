@@ -143,10 +143,9 @@ public partial class AssistantChatWindow : Window
         _attachedSession = null;
     }
 
-    // No OS title bar (WindowDecorations="None", AC-636/AC-678), so the header itself is the drag handle — same
-    // idiom CockpitWindowChrome uses for every other chromeless window in this app, just not reused from there
-    // since that helper builds a title bar with no room for this window's read-aloud toggle. WindowResizeGrip
-    // still covers the edges/corners the header does not.
+    // No OS title bar (WindowDecorations="None", AC-636/AC-678), so the header is the drag handle — same idiom
+    // CockpitWindowChrome uses elsewhere, just not reused since that helper's bar has no room for the
+    // read-aloud toggle. WindowResizeGrip covers the edges/corners the header does not.
     private void _OnHeaderPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.Source is not Button and not ToggleButton)
