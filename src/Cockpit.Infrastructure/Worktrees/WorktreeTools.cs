@@ -91,10 +91,9 @@ internal sealed class WorktreeTools
             uncommittedChanges = status.HasUncommittedChanges,
             commitsOnlyHere = status.StrandableCommits,
             retained = status.Record.IsRetained,
-            // AC-719: the same liveness question the managed-worktrees panel already answers
-            // (WorktreesViewModel.RefreshAsync) — reused here rather than re-derived, so an MCP caller can tell "owner
-            // still running" apart from "owner gone, work retained" instead of guessing from `session` and `retained`
-            // alone, which reads identically for both.
+            // AC-719: the same liveness question WorktreesViewModel.RefreshAsync already answers for the panel,
+            // reused rather than re-derived, so an MCP caller can tell "owner still running" apart from "owner
+            // gone, work retained" instead of guessing from `session`/`retained` alone.
             ownerLive = _liveSessions is null ? (bool?)null : _liveSessions.LiveSessionIds.Contains(status.Record.SessionId),
         });
 

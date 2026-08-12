@@ -180,12 +180,9 @@ public class AssistantSpawnProjectIsolationTests
     [Fact]
     public async Task AssistantOwnedWorktree_IsReattachedToTheSpawnedSession()
     {
-        // AC-719 ronde B: a worktree the assistant made for itself (worktree_create, ahead of this spawn) must
-        // hand over to the session started in it. The assistant is always "live" by construction
-        // (LiveSessionRegistry.PaneId is unconditional), so without the exception below it reads exactly like a
-        // live ordinary session's worktree — never reattached — and stays stuck on the assistant forever, which
-        // is the bug this ticket exists to close. A real LiveSessionRegistry is wired (not the Sessions fallback
-        // the other tests here rely on) so that always-live rule is actually exercised.
+        // AC-719 ronde B: a worktree the assistant made for itself must hand over to the session started in it,
+        // or it stays stuck on the assistant forever (always "live" by construction). A real LiveSessionRegistry
+        // is wired here, not the Sessions fallback the other tests rely on, so that rule is actually exercised.
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
         var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = true };
 
