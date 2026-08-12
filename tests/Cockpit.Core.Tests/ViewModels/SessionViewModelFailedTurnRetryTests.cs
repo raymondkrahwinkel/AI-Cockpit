@@ -9,17 +9,11 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
-/// AC-728: a failed TurnCompleted's row had no way back to the operator except retyping the prompt — the
-/// row's already-wired <c>ActionLabel</c>/<c>ActionCommand</c> mechanism (AC-715) went unused for it. Showing
-/// the CLI's own <c>errors[]</c> reason outside the AC-410 resume path is AC-720's own doing (see
-/// <c>Apply_TurnCompleted_Error_ShowsTheProvidersReasonWhenTheEventCarriesOne</c> in
-/// <c>SessionViewModelTests</c>) — not retested here.
-/// <para>
-/// Per Raymond: the Retry action must read as the same pattern as AC-713's "Login" row, not a variant of its
-/// own — same severity card (AC-720's <c>errorCard</c>), same <c>ActionLabel</c>/<c>ActionCommand</c> button
-/// underneath, rendered through the one shared <c>TranscriptRowView</c> (AC-722) so both <c>SessionView</c>
-/// and <c>AssistantChatWindow</c> get it for free.
-/// </para>
+/// AC-728: a failed TurnCompleted's row had no way back except retyping the prompt — the row's already-wired
+/// <c>ActionLabel</c>/<c>ActionCommand</c> mechanism (AC-715) went unused for it. Retry has to match the
+/// existing Login-row pattern (AC-713/AC-720) — same severity card, same button — not a variant of its own.
+/// Showing <c>errors[]</c> outside the resume path is AC-720's own doing, covered in
+/// <c>SessionViewModelTests</c> already, so not retested here.
 /// </summary>
 public class SessionViewModelFailedTurnRetryTests
 {

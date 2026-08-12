@@ -2319,10 +2319,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                         IsFailedTurnRow = true,
                     };
 
-                    // AC-728: same card + ActionLabel/ActionCommand convention AC-713's "Login" row already
-                    // uses, reusing the same dispatch path a normal prompt-submit takes so Retry needs no route
-                    // of its own. Left unset (no button) when this turn never went through it — a scheduled
-                    // resume's own first turn (SendPromptAsync, AC-410) is the one case that applies to.
+                    // AC-728: same ActionLabel/ActionCommand convention as AC-713's "Login" row. Left unset when
+                    // this turn never went through _DispatchMessageAsync — a scheduled resume's own first turn
+                    // (SendPromptAsync, AC-410) is the one case that applies to.
                     if (_lastDispatchedUserTurn is { } lastTurn)
                     {
                         failedTurnRow.ActionLabel = "Retry";

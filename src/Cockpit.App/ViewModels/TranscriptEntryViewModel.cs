@@ -60,11 +60,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // A driver-reported failure (AC-720), rendered as a severity-coloured card rather than plain text.
     public bool IsErrorRow => Kind == TranscriptEntryKind.Error;
 
-    // Set on a TurnCompleted row that is an actual failure (AC-728) — a failed turn is as much "a problem" as a
-    // driver-reported SessionError, so it renders through the same card rather than growing its own. Unlike
-    // IsErrorRow it carries no SessionErrorKind classification (see ShowsFailureCard/IsInformationalError below),
-    // so it always falls to the safe informational severity. A non-failure TurnCompleted row (e.g. "Signing in
-    // again…") leaves this false and stays plain text.
+    // Set on a TurnCompleted row that is an actual failure (AC-728), so it renders through the same card as a
+    // driver-reported SessionError instead of growing its own. A non-failure TurnCompleted row (e.g. "Signing
+    // in again…") leaves this false and stays plain text.
     public bool IsFailedTurnRow { get; init; }
 
     // Whether this row renders as the accent-bordered severity card (AC-720) instead of plain wrapped text.
