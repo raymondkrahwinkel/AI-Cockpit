@@ -12,8 +12,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// AC-728: a failed TurnCompleted's row had no way back except retyping the prompt — the row's already-wired
 /// <c>ActionLabel</c>/<c>ActionCommand</c> mechanism (AC-715) went unused for it. Retry has to match the
 /// existing Login-row pattern (AC-713/AC-720) — same severity card, same button — not a variant of its own.
-/// Showing <c>errors[]</c> outside the resume path is AC-720's own doing, covered in
-/// <c>SessionViewModelTests</c> already, so not retested here.
 /// </summary>
 public class SessionViewModelFailedTurnRetryTests
 {
