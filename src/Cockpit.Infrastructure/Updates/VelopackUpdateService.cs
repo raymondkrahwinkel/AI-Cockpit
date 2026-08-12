@@ -31,7 +31,7 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
     public (string Version, string Commit) Current { get; } = _Read(typeof(VelopackUpdateService).Assembly);
 
     // The build a successful `DownloadAsync` fetched, and the manager that fetched it — the only two
-    // things `ApplyDownloadedUpdateAndRestart`/`ApplyDownloadedUpdateSilentlyOnNextStart`
+    // things `ApplyDownloadedUpdateAndRestart`/`RequestUpdateOnNextStart`
     // need. This instance is registered as an `ISingletonService`, so the pair survives from the
     // download to whichever apply call the operator eventually clicks; there is deliberately no way to apply
     // anything else, because there is only ever one build worth applying: the one just fetched.
@@ -194,17 +194,11 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
         _pendingManager.ApplyUpdatesAndRestart(_pendingRelease);
     }
 
-    // `silent: true, restart: false` (AC-388): the update lands next launch and this session is left running
-    // untouched, which is the whole point of offering it as the alternative to restarting now.
-    public void ApplyDownloadedUpdateSilentlyOnNextStart()
-    {
-        if (_pendingManager is null || _pendingRelease is null)
-        {
-            return;
-        }
-
-        _pendingManager.WaitExitThenApplyUpdates(_pendingRelease, silent: true, restart: false);
-    }
+    // AC-738: recorded for the next launch, not handed to Velopack now. `WaitExitThenApplyUpdates` does not mean
+    // "next start" — it starts Update.exe immediately, waits sixty seconds for this process and then kills it,
+    // silently. The package stays where Velopack put it; `Program.Main` applies it at the next launch.
+    public bool RequestUpdateOnNextStart() =>
+        _pendingManager is not null && _pendingRelease is not null && UpdateOnNextStart.Request();
 
     // What a copy nobody installed is told. Not phrased as a fault: it is the ordinary state of a checkout, a
     // tarball or a distribution's own package, and it is the same thing the Updates tab says in full.

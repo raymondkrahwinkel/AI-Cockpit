@@ -17,6 +17,11 @@ public sealed class SingleInstanceGuard : IDisposable
     // `NamedWaitHandleOptions` instead, which the prefix cannot express.
     private const string ClaimName = "AI-Cockpit-single-instance";
 
+    // CurrentSessionOnly=false because on Unix every shell is its own session, and the default would scope the claim
+    // to one of them: a cockpit started from a terminal and one started from the desktop launcher would not see each
+    // other. CurrentUserOnly keeps the backing file under this user's own /tmp/.dotnet-uidN/, out of anyone's reach.
+    private static readonly NamedWaitHandleOptions ClaimOptions = new() { CurrentUserOnly = true, CurrentSessionOnly = false };
+
     // Null for a development build, which holds no claim. See `TryAcquire(bool)`.
     private readonly Mutex? _claim;
 
@@ -40,6 +45,23 @@ public sealed class SingleInstanceGuard : IDisposable
     public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, TimeSpan claimWait) =>
         TryAcquire(isDevelopmentBuild, ClaimName, claimWait);
 
+    // Whether some other cockpit already holds the claim, asked without taking it (AC-738). This runs before the
+    // guard itself does — a launch that is about to stand down must not apply a staged update, because applying one
+    // force-stops every process in the installation directory, the running cockpit included.
+    public static bool IsHeldByAnotherCockpit() => IsHeldByAnotherCockpit(ClaimName);
+
+    internal static bool IsHeldByAnotherCockpit(string claimName)
+    {
+        if (!Mutex.TryOpenExisting(claimName, ClaimOptions, out var existing))
+        {
+            return false;
+        }
+
+        existing.Dispose();
+
+        return true;
+    }
+
     internal static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, string claimName, TimeSpan claimWait = default)
     {
         if (isDevelopmentBuild)
@@ -47,13 +69,7 @@ public sealed class SingleInstanceGuard : IDisposable
             return new SingleInstanceGuard(claim: null);
         }
 
-        // CurrentSessionOnly=false because on Unix every shell is its own session, and the default would scope the
-        // claim to one of them: a cockpit started from a terminal and one started from the desktop launcher would
-        // not see each other. That, and not any missing support, is the whole of the "named mutexes don't work on
-        // Linux" folklore. CurrentUserOnly keeps the backing file under this user's own /tmp/.dotnet-uidN/, where
-        // no other user can take our claim or interfere with it.
-        var options = new NamedWaitHandleOptions { CurrentUserOnly = true, CurrentSessionOnly = false };
-        var claim = new Mutex(false, claimName, options, out _);
+        var claim = new Mutex(false, claimName, ClaimOptions, out _);
 
         try
         {

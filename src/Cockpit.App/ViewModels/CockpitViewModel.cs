@@ -3754,10 +3754,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         updates.ApplyDownloadedUpdateAndRestart();
     }
 
-    // Downloads the build on offer and applies it the next time the cockpit starts, without touching this session
-    // (criterion 3, criterion 7's conservative alternative to restarting now): `WaitExitThenApplyUpdates(silent:
-    // true, restart: false)` underneath. Never restarts on its own — that would be exactly the silent apply
-    // criterion 6 rules out.
+    // Downloads the build on offer and asks for it to be applied the next time the cockpit starts, leaving this
+    // session alone (criterion 3, criterion 7's conservative alternative to restarting now). A request that could not
+    // be written says so (AC-738): the failure this replaces was a promise the operator had no way to check.
     [RelayCommand]
     public async Task InstallUpdateOnNextStartAsync()
     {
@@ -3771,8 +3770,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        updates.ApplyDownloadedUpdateSilentlyOnNextStart();
-        UpdateStatus = $"Downloaded {UpdateName}. It will be installed the next time the cockpit starts.";
+        UpdateStatus = updates.RequestUpdateOnNextStart()
+            ? $"Downloaded {UpdateName}. It will be installed the next time the cockpit starts."
+            : $"Downloaded {UpdateName}, but the request to install it on the next start could not be saved. Use \"Update now\" instead.";
     }
 
     // The download half shared by `UpdateNowAsync` and `InstallUpdateOnNextStartAsync`.

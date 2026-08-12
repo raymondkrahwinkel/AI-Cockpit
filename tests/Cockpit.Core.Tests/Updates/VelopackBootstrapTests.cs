@@ -14,7 +14,7 @@ namespace Cockpit.Core.Tests.Updates;
 /// </summary>
 public class VelopackBootstrapTests
 {
-    private const string TheHook = "VelopackApp.Build().SetAutoApplyOnStartup(false).Run();";
+    private const string TheHook = "VelopackApp.Build().SetAutoApplyOnStartup(_AppliesAStagedUpdate(args)).Run();";
 
     /// <summary>
     /// Installing, updating and uninstalling all re-run the executable with arguments Velopack handles, and the
@@ -83,14 +83,41 @@ public class VelopackBootstrapTests
 
     /// <summary>
     /// Velopack applies a staged update during <c>Run()</c> and restarts, unless told not to. This project does not
-    /// do silent updates — applying is an action the operator takes — and this executable is also re-run as the
-    /// headless calibration and dictation workers, which would have become update-and-exit instead of doing the
-    /// measurement they were spawned for.
+    /// do that on its own — applying is an action the operator takes — so the decision is the request they left
+    /// behind, never a constant <c>true</c>.
     /// </summary>
     [Fact]
-    public void TheVelopackHook_DoesNotApplyAnUpdateOnItsOwn()
+    public void TheVelopackHook_AppliesAnUpdateOnlyWhenOneWasAskedFor()
     {
-        Assert.Contains("SetAutoApplyOnStartup(false)", _FirstStatementInMain(), StringComparison.Ordinal);
+        Assert.Contains("SetAutoApplyOnStartup(_AppliesAStagedUpdate(args))", _FirstStatementInMain(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Three launches must never apply a staged package: the two headless children, which would update-and-exit
+    /// instead of doing the measurement they were spawned for, and a second cockpit that is about to stand down —
+    /// applying force-stops every process in the installation directory, the running cockpit with it. All three are
+    /// ruled out <em>before</em> the request is taken, so a launch that cannot use it leaves it behind.
+    /// </summary>
+    /// <remarks>
+    /// Source-read for the same reason as the hook above: what is pinned is order, and a loaded assembly no longer
+    /// says which check came first.
+    /// </remarks>
+    [Theory]
+    [InlineData("HeadlessCalibration.IsRequested(args)")]
+    [InlineData("HeadlessDictation.IsRequested(args)")]
+    [InlineData("SingleInstanceGuard.IsHeldByAnotherCockpit()")]
+    public void TheStagedUpdateDecision_RulesOutALaunchThatCannotApply_BeforeTakingTheRequest(string check)
+    {
+        var source = File.ReadAllText(_ProgramPath());
+
+        var decision = source.IndexOf("private static bool _AppliesAStagedUpdate", StringComparison.Ordinal);
+        Assert.True(decision >= 0, "Program.cs no longer has _AppliesAStagedUpdate — this test reads that method");
+
+        var body = source[decision..];
+        var take = body.IndexOf("UpdateOnNextStart.TakeRequest()", StringComparison.Ordinal);
+        Assert.True(take >= 0, "_AppliesAStagedUpdate no longer takes the request");
+
+        Assert.Contains(check, body[..take], StringComparison.Ordinal);
     }
 
     /// <summary>
