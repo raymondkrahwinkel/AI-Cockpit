@@ -448,3 +448,5 @@ Voice models are downloaded on first use and are **not** covered by AI-Cockpit's
 - **Whisper** (dictation) ggml models and the **Whisper.net** runtime carry their own upstream licences.
 
 See [`NOTICE`](NOTICE) for the full third-party attribution list (models, runtimes and libraries).
+
+<!-- AC-712 scenario test: docs-only change, should skip build/plugins/plugin-versions -->
