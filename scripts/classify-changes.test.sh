@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for scripts/classify-changes.sh. Builds a throwaway repository, then re-bases the same starting
-# point onto one commit per scenario (docs-only, plugins-dev-only, src, mixed, ambiguous) and checks the
-# three flags the guard prints. Every downstream `if:` in ci.yml hinges on these flags, so a wrong flag
-# here means a job silently skips (a missed regression) or silently always runs (defeats the ticket).
-#
+
+# Re-bases one commit per scenario onto a shared base and checks classify-changes.sh's flags for each --
+# a wrong flag here means a job silently skips a real regression, or silently always runs and defeats the
+# ticket's point.
+
 #   scripts/classify-changes.test.sh
 set -euo pipefail
 
