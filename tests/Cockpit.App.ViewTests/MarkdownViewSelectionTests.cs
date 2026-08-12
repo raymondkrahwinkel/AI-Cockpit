@@ -54,8 +54,10 @@ public sealed class MarkdownViewSelectionTests
             // Let the deferred focus/layout posts SessionView.OnAttachedToVisualTree queues actually run.
             Dispatcher.UIThread.RunJobs();
 
+            // AC-737: the user row now builds a MarkdownView too (just hidden for a non-user row), so
+            // matching on markdown text alone is no longer unique — narrow to the one actually shown.
             var markdown = view.GetVisualDescendants().OfType<MarkdownView>()
-                .Single(m => m.Markdown == "Hello world this is a paragraph of selectable text.");
+                .Single(m => m.Markdown == "Hello world this is a paragraph of selectable text." && m.IsEffectivelyVisible);
             var text = markdown.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
             var from = text.TranslatePoint(new Point(2, text.Bounds.Height / 2), window)!.Value;
             var to = text.TranslatePoint(new Point(text.Bounds.Width - 2, text.Bounds.Height / 2), window)!.Value;
@@ -88,8 +90,9 @@ public sealed class MarkdownViewSelectionTests
         {
             Dispatcher.UIThread.RunJobs();
 
+            // AC-737: same disambiguation as the test above — the hidden user-row MarkdownView shares this text.
             var markdown = view.GetVisualDescendants().OfType<MarkdownView>()
-                .Single(m => m.Markdown == "Hello world this is");
+                .Single(m => m.Markdown == "Hello world this is" && m.IsEffectivelyVisible);
             var text = markdown.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
             var from = text.TranslatePoint(new Point(2, text.Bounds.Height / 2), window)!.Value;
 

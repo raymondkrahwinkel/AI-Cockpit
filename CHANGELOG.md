@@ -129,6 +129,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a link in your own chat message is now clickable, opening in your default browser like a link in the
+  assistant's reply already did. It used to just sit there as plain text — your own bubble never had link detection
+  at all, only the assistant's replies did.
 - fixed: "Install on next start" now really waits for your next start. It used to launch the updater there and then,
   which gave your running cockpit sixty seconds before the updater stopped waiting and killed it — no warning, no
   message, the window simply gone, and on Windows sometimes no executable left for the Start-menu or taskbar shortcut

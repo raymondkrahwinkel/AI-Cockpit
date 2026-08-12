@@ -42,8 +42,10 @@ public sealed class AssistantChatWindowSelectionTests
         try
         {
             var plain = (SelectableTextBlock)plainWindow.Content!;
+            // AC-737: the user row also builds a MarkdownView on the same Text binding (hidden for this
+            // AssistantText row), so matching by markdown text alone is no longer unique.
             var paragraph = window.GetVisualDescendants().OfType<MarkdownView>()
-                .Single(m => m.Markdown == "Some prose.")
+                .Single(m => m.Markdown == "Some prose." && m.IsEffectivelyVisible)
                 .GetVisualDescendants().OfType<SelectableTextBlock>().Single();
 
             Assert.NotNull(plain.SelectionBrush);
