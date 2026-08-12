@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: typing `@` in a session's prompt box, or the assistant's, now opens a fuzzy file-/folder-picker over that
+  session's working directory — arrow keys to move, Tab or Enter to insert, Esc to close. The inserted path is
+  always relative and forward-slash-separated, with a trailing slash on a folder. Nothing is scanned until the
+  first `@`, and a session (or the assistant, before it has started one) without a known working directory yet
+  simply leaves the picker closed rather than guessing.
+
 - added: a new "Log diagnostic snapshots" option under Debug settings writes one line to the log every ten
   seconds — memory, GC, handles, threads — so a slow leak or crash leaves a trail to look back on. Off by
   default. Separately, and always on regardless of that setting: if the app's UI freezes for more than a few

@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
@@ -262,6 +263,9 @@ internal static class Screenshotter
         ["session-mcp-hover"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader(servers: new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
         ["session-mcp-hover-statusline"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader("AC-563 — wiring the header hover", new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
         ["session-mcp-hover-unknown"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader() },
+        // AC-740: the @-mention picker, staged open by the Hovers table below (typing is a caret-driven gesture,
+        // not something a scene can pre-stage the way a static transcript can).
+        ["session-mention-picker"] = (width, height) => new Window { Width = width, Height = height, Content = _MentionPicker() },
         ["tty"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
         // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
         // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
@@ -381,6 +385,8 @@ internal static class Screenshotter
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
+        // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
+        ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
         // neither before, which was the whole premise of the ticket (a running-out allowance was invisible on
         // the assistant's one and only surface).
@@ -489,7 +495,29 @@ internal static class Screenshotter
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-unknown"] = window => _OpenTooltip(window, "ActivityColumn"),
+        // AC-740: opening the picker is a caret-driven gesture (MentionPickerViewModel.OnTextChanged), not a
+        // property a scene can stage ahead of the window existing.
+        ["session-mention-picker"] = _OpenMentionPicker,
+        ["assistant-chat-mention-picker"] = _OpenAssistantChatMentionPicker,
     };
+
+    private static void _OpenMentionPicker(Window window)
+    {
+        if (window.Content is SessionView { DataContext: SessionViewModel viewModel })
+        {
+            viewModel.InputText = "@Session";
+            viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
+        }
+    }
+
+    private static void _OpenAssistantChatMentionPicker(Window window)
+    {
+        if (window is AssistantChatWindow { DataContext: ViewModels.AssistantChatViewModel viewModel })
+        {
+            viewModel.InputText = "@Session";
+            viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
+        }
+    }
 
     private static void _OpenFlyout(Window window, string buttonName)
     {
@@ -1231,6 +1259,25 @@ internal static class Screenshotter
         return new SessionView { DataContext = viewModel };
     }
 
+    // AC-740: a handful of paths under a working directory that would resolve to it in a real repo, so the row
+    // template (bold name, dimmed parent directory, trailing '/' on a directory row) has something to show.
+    private sealed class _SampleMentionFileSource : IMentionFileSource
+    {
+        public Task<IReadOnlyList<string>> GetPathsAsync(string workingDirectory, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>>([
+                "src/Views/SessionView.axaml",
+                "src/Views/SessionView.axaml.cs",
+                "src/ViewModels/SessionViewModel.cs",
+                "src/ViewModels/",
+            ]);
+    }
+
+    private static SessionView _MentionPicker()
+    {
+        var viewModel = new SessionViewModel(new _SampleMentionFileSource()) { WorkingDirectory = "/repo" };
+        return new SessionView { DataContext = viewModel };
+    }
+
     // AC-562: the sliders flyout with the reading level in it, in both states criterion 3 separates — a
     // provider that declares live controls, and one that declares none, where the button used to disappear
     // and take the reading level with it.
@@ -1910,6 +1957,17 @@ internal static class Screenshotter
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 
+    // AC-740 addendum: no session yet, so this also proves the profile-default fallback renders the picker —
+    // not just the session's own working directory, which the SessionView scene already covers.
+    private static AssistantChatWindow _AssistantChatMentionPicker()
+    {
+        var host = new _FakeAssistantSessionHost { Session = null, DefaultWorkingDirectory = "/repo" };
+        var viewModel = new ViewModels.AssistantChatViewModel(
+            host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue(),
+            mentionFileSource: new _SampleMentionFileSource());
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
     // AC-683: the same stacked warnings _StackedWarningsSession renders in a session pane, on the assistant's
     // session instead — the window this ticket's criteria 1-3 add the pill row and the warning bar to, so the
     // scene proves both surfaces render the one SessionViewModel the same way rather than two hand-tuned copies.
@@ -1960,6 +2018,8 @@ internal static class Screenshotter
         public Cockpit.Core.Assistant.AssistantActivity Activity { get; init; }
 
         public string? UnavailableReason { get; init; }
+
+        public string? DefaultWorkingDirectory { get; init; }
 
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 

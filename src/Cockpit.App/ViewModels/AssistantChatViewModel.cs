@@ -4,6 +4,7 @@ using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 
@@ -46,6 +47,14 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
 
     /// <summary>Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.</summary>
     Task SendAsync(string text, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-740: the Assistant Profile's own default working directory, once known — read synchronously so the
+    /// @-mention picker's <c>Func&lt;string?&gt;</c> can fall back to it before any session (and so no
+    /// <see cref="Session"/>) exists. Null until the profile has loaded at least once; a read is what lazily
+    /// triggers that load, not construction, so a window that never opens the picker never pays for it.
+    /// </summary>
+    string? DefaultWorkingDirectory { get; }
 
     /// <summary>
     /// Re-reads the settings and stands the assistant down if the feature was switched off — mid-sentence
@@ -124,6 +133,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // trail with nothing recorded in it would, rather than throwing.
     private readonly IAssistantSpawnAuditLog? _spawnAuditLog;
 
+    // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
+    private readonly IMentionFileSource? _mentionFileSource;
+
     // Session is exposed only through the property below, not as [ObservableProperty] on a field, because it is
     // never assigned locally — it always reads straight through to the host. What can change is *which* session
     // the host reports, so change notification is driven by watching the host's own PropertyChanged instead
@@ -172,16 +184,29 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         IAssistantSettingsStore settingsStore,
         IVoicePlaybackQueue playbackQueue,
         IAssistantSpawnAuditLog? spawnAuditLog = null,
-        AssistantIndicatorViewModel? indicator = null)
+        AssistantIndicatorViewModel? indicator = null,
+        IMentionFileSource? mentionFileSource = null)
     {
         _host = host;
         _settingsStore = settingsStore;
         _playbackQueue = playbackQueue;
         _spawnAuditLog = spawnAuditLog;
         _indicator = indicator;
+        _mentionFileSource = mentionFileSource;
+        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => Session?.WorkingDirectory ?? _host.DefaultWorkingDirectory);
         _observedSession = _host.Session;
         _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
+    }
+
+    // AC-740: null source (design-time/unit-test graph) or no working directory yet (no session started, and the
+    // Assistant Profile's own default not loaded/set either) both answer empty rather than throw.
+    private Task<IReadOnlyList<string>> _MentionPathsAsync(CancellationToken cancellationToken)
+    {
+        var workingDirectory = Session?.WorkingDirectory ?? _host.DefaultWorkingDirectory;
+        return _mentionFileSource is not null && workingDirectory is not null
+            ? _mentionFileSource.GetPathsAsync(workingDirectory, cancellationToken)
+            : Task.FromResult<IReadOnlyList<string>>([]);
     }
 
     // Read-through, like `Session` below: never assigned locally, only ever reports whatever `_indicator` holds.
@@ -192,6 +217,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     // Whether there is anything to show yet — a fresh install, or a window opened before the first message, both read as "no session" rather than an empty transcript on a phantom one.
     public bool HasSession => Session is not null;
+
+    // AC-740: the @-mention picker, shared shape with SessionView's via MentionPickerViewModel. This window's
+    // working directory has two sources, tried in order — the live session's own, then the Assistant Profile's
+    // default before any session exists — never the Cockpit process's own cwd.
+    public MentionPickerViewModel MentionPicker { get; }
 
     // Whether the transcript has any rows — separate from `HasSession` because a session can exist (started) with nothing said in it yet.
     public bool HasMessages => Session?.HasTranscript ?? false;

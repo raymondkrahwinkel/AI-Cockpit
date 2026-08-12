@@ -34,6 +34,10 @@ public partial class AssistantChatWindow : Window
         // (SessionView._OnInputKeyDown). Tunnel so this pre-empts the TextBox's own Enter handling.
         InputBox.AddHandler(InputElement.KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
 
+        // AC-740: re-evaluates the @-mention token once the TextBox has applied the keystroke — same split as
+        // SessionView's.
+        InputBox.KeyUp += _OnInputKeyUp;
+
         Opened += _OnOpened;
     }
 
@@ -189,8 +193,48 @@ public partial class AssistantChatWindow : Window
         }
     }
 
+    // Whether the matching KeyDown already handled this keystroke — see SessionView's own field for the full
+    // reasoning; same split here.
+    private bool _lastInputKeyWasHandled;
+
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
     {
+        _OnInputKeyDownCore(e);
+        _lastInputKeyWasHandled = e.Handled;
+    }
+
+    private void _OnInputKeyDownCore(KeyEventArgs e)
+    {
+        // AC-740: the open picker gets first refusal on these five keys, ahead of every handler below.
+        if (DataContext is AssistantChatViewModel { MentionPicker.IsOpen: true } mentionVm)
+        {
+            var picker = mentionVm.MentionPicker;
+            switch (e.Key)
+            {
+                case Key.Up:
+                    picker.Move(-1);
+                    e.Handled = true;
+                    return;
+                case Key.Down:
+                    picker.Move(1);
+                    e.Handled = true;
+                    return;
+                case Key.Tab:
+                case Key.Enter:
+                    if (picker.Accept() is { } acceptance)
+                    {
+                        _InsertMention(acceptance);
+                    }
+
+                    e.Handled = true;
+                    return;
+                case Key.Escape:
+                    picker.Dismiss();
+                    e.Handled = true;
+                    return;
+            }
+        }
+
         // CTRL+V taken over whole (AC-630), for the same reason SessionView does: the clipboard read is async
         // while the TextBox's own paste is not, so leaving the default in place races binary content into the box.
         if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
@@ -275,6 +319,31 @@ public partial class AssistantChatWindow : Window
         var current = InputBox.Text ?? string.Empty;
         InputBox.Text = current[..start] + text + current[end..];
         InputBox.CaretIndex = start + text.Length;
+        InputBox.SelectionStart = InputBox.CaretIndex;
+        InputBox.SelectionEnd = InputBox.CaretIndex;
+    }
+
+    // AC-740: re-evaluates the @-mention token after a keystroke the TextBox handled itself — see SessionView's
+    // own for the full reasoning.
+    private void _OnInputKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (_lastInputKeyWasHandled || DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        vm.MentionPicker.OnTextChanged(InputBox.Text ?? string.Empty, InputBox.CaretIndex);
+    }
+
+    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + path + a trailing space.
+    private void _InsertMention(MentionAcceptance acceptance)
+    {
+        var current = InputBox.Text ?? string.Empty;
+        var end = Math.Clamp(InputBox.CaretIndex, 0, current.Length);
+        var start = Math.Clamp(acceptance.TokenStart, 0, end);
+        var replacement = $"@{acceptance.Path} ";
+        InputBox.Text = current[..start] + replacement + current[end..];
+        InputBox.CaretIndex = start + replacement.Length;
         InputBox.SelectionStart = InputBox.CaretIndex;
         InputBox.SelectionEnd = InputBox.CaretIndex;
     }
