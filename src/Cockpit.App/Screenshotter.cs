@@ -242,6 +242,10 @@ internal static class Screenshotter
         // "a link is there" and "it reads as a link, and the one next to it is a different link" are separate
         // claims and only the second is visible.
         ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
+        // AC-745: the user's own message bubble now carries the same hover copy action the assistant reply
+        // already had — focused via the Hovers table below, since the row keeps it at opacity 0 until then.
+        ["session-user-row-copy"] = (width, height) => new Window { Width = width, Height = height, Content = _UserRowCopySession() },
+        ["assistant-chat-user-row-copy"] = (_, _) => _AssistantChatUserRowCopy(),
         // AC-715: the clarifying-question card in its two states — waiting for an answer, and answered. Two scenes
         // because neither renders the other's surface, and because a passing test can say the labels are bound
         // while the screen still shows raw JSON.
@@ -495,6 +499,10 @@ internal static class Screenshotter
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-unknown"] = window => _OpenTooltip(window, "ActivityColumn"),
+        // AC-745: the rowActions fade lives at opacity 0 until the row's Border is hovered or, as here,
+        // keyboard-focused — focusing the button itself is the cheapest way to trigger the same :focus-within.
+        ["session-user-row-copy"] = window => _Named<Button>(window, "UserRowCopyButton").Focus(),
+        ["assistant-chat-user-row-copy"] = window => _Named<Button>(window, "UserRowCopyButton").Focus(),
         // AC-740: opening the picker is a caret-driven gesture (MentionPickerViewModel.OnTextChanged), not a
         // property a scene can stage ahead of the window existing.
         ["session-mention-picker"] = _OpenMentionPicker,
@@ -1312,6 +1320,28 @@ internal static class Screenshotter
         });
 
         return new SessionView { DataContext = viewModel };
+    }
+
+    // AC-745: a plain user message, the row the copy button was missing from — the Hovers table focuses the
+    // button once this window is up so the fade-in the row shares with the assistant reply actually shows.
+    private static SessionView _UserRowCopySession()
+    {
+        var viewModel = new SessionViewModel { Title = "personal - webshop" };
+        viewModel.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "remember to check the deploy logs"));
+        return new SessionView { DataContext = viewModel };
+    }
+
+    // AC-745: the same row on the assistant pop-out, proving the shared TranscriptRowView control (AC-722)
+    // carries the button here too rather than assuming it — AC-715 found this window keeping its own copy of
+    // a row once before.
+    private static AssistantChatWindow _AssistantChatUserRowCopy()
+    {
+        var session = new SessionViewModel { Title = "personal - webshop" };
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "remember to check the deploy logs"));
+
+        var host = new _FakeAssistantSessionHost { Session = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 
     // The session's own warning bar approaching its memory cap, and past it (AC-661/AC-700). Driven through the
