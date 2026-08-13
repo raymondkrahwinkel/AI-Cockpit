@@ -6589,7 +6589,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // `StartSessionForPluginAsync`, which leaves the text in the composer for the operator to send: a
     // spawn is approved on screen with this prompt spelled out in the Allow row, so starting the work is what was
     // agreed to, and a worker sitting on an unsent message would be a session the operator was told had started.
-    internal async Task<(string PaneId, string Name)?> StartSessionOnWorkspaceAsync(
+    internal async Task<(string PaneId, string Name, bool? PromptDelivered)?> StartSessionOnWorkspaceAsync(
         string workspaceId,
         SessionProfile profile,
         string? prompt,
@@ -6673,6 +6673,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
+        bool? promptDelivered = null;
         if (!string.IsNullOrWhiteSpace(prompt))
         {
             // By pane id rather than "the one just added": a session the operator opened at the same moment must not
@@ -6683,10 +6684,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // InjectAndSubmit publishes to whoever is listening at that instant, which for a pane nobody has drawn yet
             // is nobody — the brief vanished and this method still returned a pane id, so the spawn tool reported
             // ok:true on a session that came up empty. Twice in a row, which is how it was caught.
-            FindSession(paneId)?.SubmitPromptWhenReady(prompt);
+            //
+            // AC-760: kept rather than discarded — a stale-composer brief on a TTY pane whose CLI was not yet
+            // reading stdin hides behind that exact same ok:true unless this return value reaches the caller.
+            promptDelivered = FindSession(paneId)?.SubmitPromptWhenReady(prompt);
         }
 
-        return (paneId, name);
+        return (paneId, name, promptDelivered);
     }
 
     // Closes `session` for the host-side spawn service (AC-545) — the assistant asked, and the

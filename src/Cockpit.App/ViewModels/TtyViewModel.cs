@@ -896,8 +896,32 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     private Action<string>? _promptSink;
 
-    // The pty sink is the whole answer here: with one, a prompt is typed and submitted; without one, there is nowhere to type it.
-    public override bool CanTakeAPrompt => PromptSink is not null;
+    // AC-760: `PromptSink` turns non-null as soon as the pty exists, well before the CLI actually reads stdin;
+    // `TtyView` measures that gap (bracketed paste / a fallback deadline) and reports it via `MarkHostedTuiReady`.
+    // `ResetHostedTuiReadiness` clears it so a relaunched pane does not inherit "ready" from the session before it.
+    private bool _hostedTuiReady;
+
+    // Called by the view once, from the single place its own readiness answer turns true — mirrors how the
+    // `PromptSink` setter above is the one place *its* answer changes. Delivers a brief that was held waiting on
+    // exactly this, the same way assigning `PromptSink` already does.
+    public void MarkHostedTuiReady()
+    {
+        if (_hostedTuiReady)
+        {
+            return;
+        }
+
+        _hostedTuiReady = true;
+        DeliverHeldPrompt();
+    }
+
+    // Called by the view right before it launches a new pty into a pane it is reusing, so the gate above starts
+    // closed again rather than carrying over the previous session's answer.
+    public void ResetHostedTuiReadiness() => _hostedTuiReady = false;
+
+    // The pty sink is necessary but not sufficient: it exists once the process is spawned, but a prompt written to
+    // it before the CLI reads stdin in raw mode is the exact failure AC-760 reports — text lands, Enter does not.
+    public override bool CanTakeAPrompt => PromptSink is not null && _hostedTuiReady;
 
     public override Task<bool> SendPromptAsync(string prompt)
     {

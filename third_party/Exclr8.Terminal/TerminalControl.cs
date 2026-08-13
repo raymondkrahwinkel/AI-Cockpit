@@ -258,6 +258,10 @@ public class TerminalControl : Control, IDisposable
     /// Null until the shell emits one.</summary>
     public string? WorkingDirectory => _buffer.WorkingDirectory;
 
+    /// <summary>Whether the hosted program has enabled bracketed paste (DECSET 2004) —
+    /// the signal that it is reading stdin in raw mode.</summary>
+    public bool BracketedPaste => _buffer.BracketedPaste;
+
     /// <summary>OSC 133 — FinalTerm/iTerm2 semantic prompt markers
     /// (PromptStart/PromptEnd/CommandStart/CommandEnd + exit code).
     /// Hosts use these to draw command-status gutters, jump-to-prompt

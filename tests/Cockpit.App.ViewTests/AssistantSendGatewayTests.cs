@@ -73,6 +73,9 @@ public class AssistantSendGatewayTests
         var session = new TtyViewModel { PromptSink = written.Add };
         session.VoiceTranscriptReady += written.Add;
         session.SetAutoSubmitScheduler(submit => submit());
+        // AC-760: the pty existing is not readiness — this is the view's third seam, the hosted CLI actually
+        // reading stdin (DECSET 2004, or its fallback deadline).
+        session.MarkHostedTuiReady();
         cockpit.Sessions.Add(session);
 
         var result = await gateway.SendPromptAsync(session.PaneId, "run the tests");
@@ -102,8 +105,12 @@ public class AssistantSendGatewayTests
         Assert.False(result.Delivered);
         Assert.Empty(written);
 
-        // And it is still owed: the moment the pane can take a turn, it gets the one it was handed.
+        // And it is still owed: the moment the pane can take a turn, it gets the one it was handed. The pty existing
+        // is one half of that (AC-760: the other is the hosted CLI's own readiness signal).
         session.PromptSink = _ => { };
+        Assert.Empty(written);
+
+        session.MarkHostedTuiReady();
         Assert.Equal(new[] { "run the tests", "\r" }, written);
     });
 

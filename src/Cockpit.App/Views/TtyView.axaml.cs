@@ -63,6 +63,13 @@ public partial class TtyView : UserControl
     private readonly List<byte> _outputPending = [];
     private DispatcherTimer? _outputFlush;
 
+    // AC-760: a held brief may reach the pty only once the CLI is actually reading stdin, not merely once the
+    // process exists — readiness rides the DECSET 2004 flag through the same flush that drains every pty byte.
+    // ponytail: 15s fallback for a CLI that never enables bracketed paste, fixed rather than a setting.
+    private static readonly TimeSpan HostedTuiReadyFallback = TimeSpan.FromSeconds(15);
+    private DateTime? _firstPtyOutputAtUtc;
+    private bool _hostedTuiReady;
+
     // #58 confirmation logging: every Exclr8 Resized event and every pty.Resize call, so the net-zero
     // round-trip signature (>=2 Resized with different sizes within the settle window, followed by one
     // pty.Resize equal to the previous pty size) can be confirmed from %APPDATA%\Cockpit\logs\cockpit.log.
@@ -712,6 +719,16 @@ public partial class TtyView : UserControl
             // races from the app's own startup so they don't leave stacked partial renders behind.
             Terminal.PrepareForNewSession();
 
+            // AC-760: this view (and possibly its view model) can be reused for a fresh pty (e.g. AC-564's
+            // restart-without-resume), so the readiness gate must reset with it — otherwise a re-launch would
+            // inherit "ready" from the session before.
+            _firstPtyOutputAtUtc = null;
+            _hostedTuiReady = false;
+            if (DataContext is TtyViewModel readinessTarget)
+            {
+                readinessTarget.ResetHostedTuiReadiness();
+            }
+
             var pty = _pendingLaunch.Launcher.Launch(
                 _pendingLaunch.Provider,
                 _pendingLaunch.Profile,
@@ -943,33 +960,61 @@ public partial class TtyView : UserControl
     // the _outputFlush field comment. A no-op when nothing is pending, so an idle session costs nothing.
     private void _FlushOutput()
     {
-        byte[] chunk;
+        byte[]? chunk = null;
         lock (_outputLock)
         {
-            if (_outputPending.Count == 0)
+            if (_outputPending.Count > 0)
             {
-                return;
+                chunk = [.. _outputPending];
+                _outputPending.Clear();
+            }
+        }
+
+        if (chunk is { Length: > 0 })
+        {
+            _firstPtyOutputAtUtc ??= DateTime.UtcNow;
+
+            Terminal.Write(chunk);
+
+            // AC-34: while an agent is coupled to this pane, hand it the same bytes just rendered, so read_terminal
+            // returns what happened since the coupling. Gated on IsCoupled so an uncoupled pane pays nothing.
+            if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals && terminals.IsCoupled(paneId))
+            {
+                terminals.CaptureOutput(paneId, Encoding.UTF8.GetString(chunk));
             }
 
-            chunk = [.. _outputPending];
-            _outputPending.Clear();
+            // AC-75: output means the pty is still drawing (a thinking spinner ticking, text streaming), so the session
+            // is visibly alive — keep its sidebar dot off a false "Done" while a long think/plan phase writes no
+            // transcript line.
+            _viewModel?.NotifyTerminalOutput();
         }
 
-        Terminal.Write(chunk);
+        // AC-760: checked on every tick (not only when a chunk arrived) so the 15s fallback still fires once the
+        // CLI has gone quiet after its first burst without ever announcing bracketed paste.
+        _CheckHostedTuiReadiness();
+    }
 
-        // AC-34: while an agent is coupled to this pane, hand it the same bytes the terminal just rendered, so
-        // read_terminal returns what happened since the coupling. Gated on IsCoupled so an uncoupled pane pays nothing
-        // (no decode, no buffering) and its output is never captured. Raw terminal bytes for now — a clean-text view
-        // via the VT parser is a later refinement (design §4/§6).
-        if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals && terminals.IsCoupled(paneId))
+    // The gate a held opening brief waits behind: `TerminalControl.BracketedPaste` flips true the moment the hosted
+    // CLI sends DECSET 2004, which happens in the CLI's very first output burst (measured ~0.27s after spawn for
+    // `claude` — AC-760 grooming). The fallback covers a CLI that never sends it.
+    private void _CheckHostedTuiReadiness()
+    {
+        if (_hostedTuiReady)
         {
-            terminals.CaptureOutput(paneId, Encoding.UTF8.GetString(chunk));
+            return;
         }
 
-        // AC-75: output means the pty is still drawing (a thinking spinner ticking, text streaming), so the session
-        // is visibly alive — keep its sidebar dot off a false "Done" while a long think/plan phase writes no
-        // transcript line. Only reached with a non-empty chunk (this method returns early when nothing is pending).
-        _viewModel?.NotifyTerminalOutput();
+        var fallbackElapsed = _firstPtyOutputAtUtc is { } since && DateTime.UtcNow - since >= HostedTuiReadyFallback;
+        if (!Terminal.BracketedPaste && !fallbackElapsed)
+        {
+            return;
+        }
+
+        _hostedTuiReady = true;
+        if (DataContext is TtyViewModel viewModel)
+        {
+            viewModel.MarkHostedTuiReady();
+        }
     }
 
     private void OnUnloaded(object? sender, RoutedEventArgs e)

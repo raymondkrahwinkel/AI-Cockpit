@@ -30,6 +30,7 @@ public sealed class InboxWakeSchedulerEndToEndTests
             var to = new TtyViewModel { SessionStatus = SessionStatus.Idle };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
+            to.MarkHostedTuiReady();
             vm.Sessions.Add(to);
             return (vm, to, captured);
         });
