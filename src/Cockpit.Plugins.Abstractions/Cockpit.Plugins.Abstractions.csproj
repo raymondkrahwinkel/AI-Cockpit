@@ -371,7 +371,13 @@
          question while leaving the agent waiting. Default-implemented onto the plain allow, so a provider without
          such a tool and every already-compiled plugin are unaffected. Additions only — a minor; major and
          abstractionsVersion stay 1. -->
-    <Version>1.52.0</Version>
+    <!-- 1.53.0 (AC-767): added ICockpitHost.GetManagedCliAutoUpdateAsync/SetManagedCliAutoUpdateAsync (both
+         default-implemented — true / no-op) and the "Update automatically" checkbox in the shared
+         ManagedCliConfigSection, so the background update check can install a newer managed CLI itself unless the
+         operator turned that off for it. Existing plugins keep compiling untouched, and since the panel is the
+         host's own copy (plugins reference it compile-only), an already-built plugin shows the checkbox with no
+         rebuild. Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.53.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

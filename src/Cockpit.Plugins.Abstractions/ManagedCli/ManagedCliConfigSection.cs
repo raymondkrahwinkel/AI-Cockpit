@@ -26,6 +26,11 @@ public sealed class ManagedCliConfigSection
     private readonly TextBlock _status = ProviderConfigStatus.CreateLine();
     private readonly Button _installButton = new() { Content = "Install" };
     private readonly Button _removeButton = new() { Content = "Remove", IsVisible = false };
+    private readonly CheckBox _autoUpdateCheckBox = new() { Content = "Update automatically", IsChecked = true, IsVisible = false };
+
+    // True while `_LoadAutoUpdateStateAsync` is setting `IsChecked` from what the host reports, so that assignment
+    // does not itself read back as the operator toggling the box and write the value it just loaded.
+    private bool _loadingAutoUpdateState;
 
     /// <summary>The control to place in the provider config view's field stack.</summary>
     public Control View { get; }
@@ -43,6 +48,7 @@ public sealed class ManagedCliConfigSection
 
         _installButton.Click += async (_, _) => await _InstallAsync();
         _removeButton.Click += (_, _) => _Remove();
+        _autoUpdateCheckBox.IsCheckedChanged += async (_, _) => await _AutoUpdateToggledAsync();
 
         View = new StackPanel
         {
@@ -56,6 +62,7 @@ public sealed class ManagedCliConfigSection
                     Spacing = 8,
                     Children = { _installButton, _removeButton },
                 },
+                _autoUpdateCheckBox,
                 _status,
             },
         };
@@ -75,13 +82,45 @@ public sealed class ManagedCliConfigSection
             ProviderConfigStatus.Set(_status, "Installed", isOk: true);
             _installButton.Content = "Update";
             _removeButton.IsVisible = true;
+            _autoUpdateCheckBox.IsVisible = true;
+            _ = _LoadAutoUpdateStateAsync();
         }
         else
         {
             _SetMuted($"Not installed. Install to let Cockpit download and manage {_displayName}.");
             _installButton.Content = "Install";
             _removeButton.IsVisible = false;
+            _autoUpdateCheckBox.IsVisible = false;
         }
+    }
+
+    // Loads whether auto-update is on for this CLI from the host, so the checkbox reflects what the background
+    // update check will actually do rather than always starting on the default-checked state.
+    private async Task _LoadAutoUpdateStateAsync()
+    {
+        bool enabled;
+        try
+        {
+            enabled = await _host.GetManagedCliAutoUpdateAsync(_cliName).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            return; // leave the checkbox at its current state rather than fail the whole panel
+        }
+
+        _loadingAutoUpdateState = true;
+        _autoUpdateCheckBox.IsChecked = enabled;
+        _loadingAutoUpdateState = false;
+    }
+
+    private async Task _AutoUpdateToggledAsync()
+    {
+        if (_loadingAutoUpdateState)
+        {
+            return;
+        }
+
+        await _host.SetManagedCliAutoUpdateAsync(_cliName, _autoUpdateCheckBox.IsChecked == true).ConfigureAwait(true);
     }
 
     // Ask the provider whether the installed copy is the latest, so "Update" is offered only when a newer version

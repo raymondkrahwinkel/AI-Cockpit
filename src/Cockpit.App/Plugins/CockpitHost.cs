@@ -821,6 +821,16 @@ internal sealed class CockpitHost(
             ? managedCli.GetStatusAsync(cliName, cancellationToken)
             : Task.FromResult(new ManagedCliStatus(null, null));
 
+    public Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default) =>
+        services.GetService<IManagedCliAutoUpdateStore>() is { } autoUpdateStore
+            ? autoUpdateStore.IsEnabledAsync(cliName, cancellationToken)
+            : Task.FromResult(true);
+
+    public Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) =>
+        services.GetService<IManagedCliAutoUpdateStore>() is { } autoUpdateStore
+            ? autoUpdateStore.SetAsync(cliName, enabled, cancellationToken)
+            : Task.CompletedTask;
+
     // Opens the cockpit's New-session dialog (#AC-96) pre-filled from `prefill`, on the UI thread,
     // and — once the operator confirms — reports the started session's pane id through `onStarted`,
     // or fires `onCancelled` when they dismiss it or no session started. Exactly one callback runs.
