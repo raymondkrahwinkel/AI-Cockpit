@@ -427,10 +427,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
             if (byId.TryGetValue(boundTo, out var sharedProject))
             {
-                // AC-247/AC-763: every claimed field, Logo included, unlocks once the source itself says this role
-                // can write (SharedProject.CanWriteBack) — ProjectDialogViewModel.SaveAsync now has somewhere to
-                // send that edit (ISharedProjectSource.WriteBackAsync), the blob path CockpitProjectLogoBlob
-                // (AC-244) already provided but nothing called until now. No per-field override needed any more.
+                // AC-247/AC-763: every claimed field, Logo included, unlocks once the source says this role can
+                // write (SharedProject.CanWriteBack) — SaveAsync now has somewhere to send that edit
+                // (ISharedProjectSource.WriteBackAsync), so no per-field override is needed any more.
                 _ownership?.Register(new ProjectOwnershipRegistration(
                     project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role)));
 

@@ -100,11 +100,9 @@ public static class CockpitProjectLogoBlob
         }
     }
 
-    // AC-763. Soft-deletes the blob via Depot's own `delete` tool — no pre-signed URL/HTTP leg, unlike
-    // Upload/Download, since `delete` is an ordinary MCP call. Idempotent on purpose: a retry after a save that
-    // failed partway (or two machines removing the same shared logo close together) must not turn "already gone"
-    // into an error — Depot's own not-found wording (the same `"[NotFound]"` prefix `DepotSharedProjectSource.PublishAsync`
-    // already reads) is what tells that apart from a real failure.
+    // AC-763. Soft-deletes via Depot's own `delete` tool — no pre-signed URL/HTTP leg, unlike Upload/Download.
+    // Idempotent on purpose (a retry must not turn "already gone" into an error): the same `[NotFound]` prefix
+    // `DepotSharedProjectSource.PublishAsync` already reads tells that apart from a real failure.
     public static async Task<CockpitProjectLogoDeleteResult> DeleteAsync(
         ICockpitHost host, string mcpServerName, string depotProjectSlug, CancellationToken cancellationToken = default)
     {

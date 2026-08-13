@@ -241,11 +241,9 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         };
     }
 
-    // AC-763: ProjectsViewModel._WithStoredLogoAsync (which turns a project's LogoPath into a copy the cockpit
-    // owns) only knows how to read a local path or an http(s) URL, not raw bytes — this bridges the downloaded
-    // logo into that same shape rather than widening IProjectLogoStore's contract for one caller.
-    // ponytail: the temp file is never deleted here — a logo is a few KB and this is the OS temp folder, not a
-    // leak that grows; delete-after-copy in ProjectsViewModel if an accumulation of these ever matters.
+    // AC-763: ProjectsViewModel._WithStoredLogoAsync only reads a local path or URL, not raw bytes — this
+    // bridges the downloaded logo into that shape instead of widening IProjectLogoStore for one caller.
+    // ponytail: the temp file is never deleted — a few KB in the OS temp folder, not a growing leak.
     private string? _WriteTempLogoFileOrNull()
     {
         if (_logoBytes is not { Length: > 0 } bytes)

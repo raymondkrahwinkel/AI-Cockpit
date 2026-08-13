@@ -24,10 +24,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // which cannot yet be claimed (a claim is keyed by an id nothing has assigned).
     private readonly Project? _originalProject;
 
-    // What LogoSource held when this dialog opened (AC-763) — compared against in _BuildLogoEditAsync to tell
-    // "the operator picked a new logo" from "they left it alone", the same role _writeBack.Baseline's own fields
-    // play for Name/Description/etc., just not through SharedProjectBinding: a downloaded logo never becomes
-    // editable text the way those fields do, so there is nothing there to diff against.
+    // What LogoSource held when this dialog opened (AC-763) — _BuildLogoEditAsync's own baseline to tell
+    // "picked a new logo" from "left it alone", the same role _writeBack.Baseline plays for Name/Description
+    // but outside SharedProjectBinding: a downloaded logo never becomes editable text to diff against.
     private readonly string _originalLogoSource = string.Empty;
 
     // Where (AC-247) SaveAsync writes a claimed field's edit back to, or null for a new project, a project no
@@ -883,11 +882,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         !_FieldEquals(mine.BehaviorPrompt, baseline.BehaviorPrompt) ? mine.BehaviorPrompt : latest.BehaviorPrompt,
         mine.IsolateInWorktreeByDefault != baseline.IsolateInWorktreeByDefault ? mine.IsolateInWorktreeByDefault : latest.IsolateInWorktreeByDefault,
         !_SameNames(mine.EnabledMcpServerNames, baseline.EnabledMcpServerNames) ? mine.EnabledMcpServerNames : latest.EnabledMcpServerNames,
-        // AC-763: no "latest" to fall back to (SharedProjectBinding carries no re-applicable logo edit, only
-        // downloaded bytes, and only PrepareBindingAsync ever populates those) — mine.LogoEdit carries through
-        // unconditionally. Null (untouched) retried against a fresh baseChecksum still resolves correctly: a
-        // source's own WriteBackAsync re-reads its current state on every call and carries an untouched logo
-        // through from that fresh read, not from what this dialog saw when it opened.
+        // AC-763: no "latest" logo to fall back to (SharedProjectBinding carries no re-applicable edit) —
+        // mine.LogoEdit carries through unconditionally. A retried null (untouched) still resolves correctly:
+        // WriteBackAsync re-reads its current state on every call and carries an untouched logo from that.
         mine.LogoEdit);
 
     private static bool _FieldEquals(string? left, string? right) =>

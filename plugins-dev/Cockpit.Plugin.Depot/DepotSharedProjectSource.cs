@@ -195,11 +195,9 @@ internal sealed class DepotSharedProjectSource(
                 currentRead.Error is { Length: > 0 } error ? error : "Depot did not return a project definition.");
         }
 
-        // AC-763: the blob move happens before the checksum-guarded write below, and a failure here returns
-        // immediately — never a half-applied state where project.json ends up pointing at a logo that was never
-        // actually uploaded (or still names one that was just deleted). A blob orphaned by a save that goes on to
-        // lose the checksum race is harmless leftover, not corruption: the next save re-reads `current` fresh and
-        // either re-uploads or re-deletes it.
+        // AC-763: the blob move happens before the checksum-guarded write below, so a failure here returns
+        // immediately rather than leave project.json pointing at a logo that never actually landed. A blob
+        // orphaned by a lost checksum race is harmless — the next save re-reads `current` and retries it.
         string? logoPath;
         switch (edit.LogoEdit)
         {
