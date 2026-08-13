@@ -98,6 +98,10 @@ public interface ICockpitHost
     void AddWorkflowTemplate(WorkflowTemplate template);                         // default no-op
     void AddTtyProvider(TtyProviderRegistration registration);                   // default no-op
     void AddManagedCli(ManagedCliDescriptor descriptor);                         // default no-op
+    Task<bool> GetManagedCliAutoUpdateAsync(string cliName,
+                                            CancellationToken cancellationToken = default); // default true
+    Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled,
+                                      CancellationToken cancellationToken = default); // default no-op
     Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null); // default no-op
     void AddProjectField(ProjectFieldRegistration registration);                 // default no-op
     IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }               // default []
@@ -687,6 +691,14 @@ Registers a terminal (TTY) provider, so a plugin can back a terminal pane with i
 ### `void AddManagedCli(ManagedCliDescriptor descriptor)`
 
 Registers a CLI the host downloads and unpacks on demand; a machine with no managed copy falls back to the one on `PATH`. Default no-op.
+
+### `Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default)`
+
+Whether the host's background update check installs a newer version of `cliName` itself rather than only toasting that one exists (AC-767) — what the shared `ManagedCliConfigSection`'s "Update automatically" checkbox reads. Default `true`.
+
+### `Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default)`
+
+Turns auto-update for `cliName` on or off — what the checkbox writes. Default no-op.
 
 ### `Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null)`
 

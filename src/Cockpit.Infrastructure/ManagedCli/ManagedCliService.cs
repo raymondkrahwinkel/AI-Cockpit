@@ -189,10 +189,12 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             {
                 // Already on disk — a managed install is content-addressed by version, so re-fetching the same one
                 // is wasted bytes. An update to a newer version is a separate, explicit EnsureInstalled of that version.
+                _CleanupOldVersions(cliName, version);
                 return ManagedCliInstallResult.Ok(version, finalPath);
             }
 
             await _DownloadVerifyPlaceAsync(plan, versionDirectory, cancellationToken).ConfigureAwait(false);
+            _CleanupOldVersions(cliName, version);
             return ManagedCliInstallResult.Ok(version, finalPath);
         }
         catch (OperationCanceledException)
@@ -371,6 +373,36 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         && cliName.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) < 0
         && cliName != "."
         && cliName != "..";
+
+    // After a successful install, a managed CLI keeps only its current version on disk — otherwise auto-update
+    // (AC-767) grows the cli root unboundedly and invisibly (~264 MB per claude version). Best-effort: a version
+    // directory a running session still has open fails to delete on Windows (IOException) and is left for a later
+    // pass, which is not an error, just a retry.
+    private void _CleanupOldVersions(string cliName, string keepVersion)
+    {
+        var cliDirectory = Path.Combine(_cliRoot, cliName);
+        if (!Directory.Exists(cliDirectory))
+        {
+            return;
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(cliDirectory))
+        {
+            if (string.Equals(Path.GetFileName(directory), keepVersion, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _logger?.LogDebug(exception, "Could not remove old version directory '{Directory}' of managed CLI '{CliName}'; will retry next pass.", directory, cliName);
+            }
+        }
+    }
 
     private static string? _NewestVersionDirectory(string cliDirectory)
     {

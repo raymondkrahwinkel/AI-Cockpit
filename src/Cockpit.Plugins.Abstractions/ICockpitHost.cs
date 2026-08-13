@@ -891,6 +891,23 @@ public interface ICockpitHost
         Task.FromResult(new ManagedCliStatus(null, null));
 
     /// <summary>
+    /// Whether the background update check installs a newer version of a managed CLI itself, instead of only
+    /// toasting that one exists (AC-767) — what the shared <see cref="ManagedCli.ManagedCliConfigSection"/>'s
+    /// "Update automatically" checkbox reads. Default <see langword="true"/>: an installation that never touched
+    /// this setting keeps auto-updating, and existing <see cref="ICockpitHost"/> implementations (test fakes, older
+    /// plugin builds) keep compiling untouched.
+    /// </summary>
+    Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(true);
+
+    /// <summary>
+    /// Turns auto-update for a managed CLI on or off (AC-767) — what the checkbox writes. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations keep compiling untouched; only the app's own host persists it.
+    /// </summary>
+    Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    /// <summary>
     /// Registers something this plugin gives every session as it starts (AC-165): environment variables, asked for
     /// per session so the answer can depend on the project it belongs to. The host asks each registered provider
     /// once per launch, merges what they return, and hands it to whichever provider is starting — so a plugin

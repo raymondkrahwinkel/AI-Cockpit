@@ -173,4 +173,10 @@ internal sealed class CockpitConfigFile
     // to see something new, without reusing or clearing this flag.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? FirstRunWizardVersion { get; set; }
+
+    // Managed-CLI names (AC-767) for which the background updater must not auto-install a newer version — an
+    // exception list rather than an allow list, same shape as HiddenSharedProjectIds above, so an absent section
+    // means auto-update is on for every CLI, existing or future, with no migration; owned by
+    // ManagedCliAutoUpdateStore.
+    public List<string> ManagedCliAutoUpdateDisabled { get; set; } = [];
 }
