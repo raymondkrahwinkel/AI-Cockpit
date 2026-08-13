@@ -11,9 +11,9 @@ using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
-// Applies the cockpit's custom window chrome to any `Window`: no OS decorations at all
-// (`WindowDecorations.None` — AC-678, `BorderOnly`'s resize border was a visible margin), a hairline title
-// bar of our own, and `WindowResizeGrip` to replace the resize edges/corners that came with it.
+// Applies the cockpit's custom window chrome to any `Window`: a hairline title bar of our own, and
+// `WindowResizeGrip` for the decorations and the resize edges/corners underneath it (AC-678 dropped the OS
+// ones because `BorderOnly`'s resize border was a visible margin; macOS keeps them, see AC-755).
 internal static class CockpitWindowChrome
 {
     // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).
@@ -54,9 +54,8 @@ internal static class CockpitWindowChrome
     // settings (#: settings from anywhere). Omitted, the title bar looks exactly as it did.
     public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null)
     {
-        window.WindowDecorations = WindowDecorations.None;
         window.ExtendClientAreaToDecorationsHint = true;
-        WindowResizeGrip.Attach(window);
+        WindowResizeGrip.Apply(window);
         if (_Brush("CockpitPanelBgBrush") is { } background)
         {
             window.Background = background;

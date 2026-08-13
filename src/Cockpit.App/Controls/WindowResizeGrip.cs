@@ -13,10 +13,27 @@ internal static class WindowResizeGrip
     // How wide the invisible grab band is, in DIPs, on each edge.
     internal const double BorderThickness = 6;
 
+    // Gives a window the way it is resized on this platform: no OS decoration and a grip of our own, or —
+    // on macOS — the platform's own resize border and the margin that comes with it.
+    public static void Apply(Window window)
+    {
+        window.WindowDecorations = DecorationsFor(OperatingSystem.IsMacOS());
+        if (window.WindowDecorations == WindowDecorations.None)
+        {
+            _Attach(window);
+        }
+    }
+
+    // AC-755: macOS can do neither half of AC-678. Avalonia.Native's BeginResizeDrag is an empty method
+    // (AvaloniaUI/Avalonia#3834), and WindowDecorations.None leaves NSWindowStyleMaskResizable off the window
+    // whatever CanResize says (WindowImpl.mm, CalculateStyleMask) — so there every window was stuck at its size.
+    internal static WindowDecorations DecorationsFor(bool isMacOs) =>
+        isMacOs ? WindowDecorations.BorderOnly : WindowDecorations.None;
+
     // Wires pointer handling for a window that has lost its own OS resize border. A window that opted out of
     // resizing (CanResize="False" — every SizeToContent dialog) gets neither the cursor nor the drag: there is
     // nothing on its edge to grab.
-    public static void Attach(Window window)
+    private static void _Attach(Window window)
     {
         if (!window.CanResize)
         {
