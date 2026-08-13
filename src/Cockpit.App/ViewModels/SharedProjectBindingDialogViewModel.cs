@@ -87,6 +87,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         _behaviorPrompt = binding.BehaviorPrompt;
         _isolateInWorktreeByDefault = binding.IsolateInWorktreeByDefault;
         _enabledMcpServerNames = binding.EnabledMcpServerNames;
+        _logoBytes = binding.LogoBytes;
 
         foreach (var resource in binding.Resources)
         {
@@ -157,6 +158,10 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
 
     private readonly IReadOnlyList<string>? _enabledMcpServerNames;
 
+    // The shared logo's own bytes (AC-763), already downloaded by PrepareBindingAsync — null when the source has
+    // none, or the download itself failed. See ToProject's own remarks on why this becomes a temp file.
+    private readonly byte[]? _logoBytes;
+
     // Resource rows already portable by shape — copied straight onto the new project, never shown or asked about here (AC-605's table: nothing to ask when it already travels).
     private readonly List<ProjectResource> _portableResources = [];
 
@@ -221,6 +226,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
             DefaultProfileLabel = SelectedProfileLabel,
             BehaviorPrompt = _behaviorPrompt,
             IsolateInWorktreeByDefault = _isolateInWorktreeByDefault,
+            LogoPath = _WriteTempLogoFileOrNull(),
             McpOverlay = overlay,
             Resources =
             [
@@ -233,6 +239,21 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
             // AC-762: the ◆ badge's fallback for a cold start — see Project.SharedSourceName.
             SharedSourceName = SourceName,
         };
+    }
+
+    // AC-763: ProjectsViewModel._WithStoredLogoAsync only reads a local path or URL, not raw bytes — this
+    // bridges the downloaded logo into that shape instead of widening IProjectLogoStore for one caller.
+    // ponytail: the temp file is never deleted — a few KB in the OS temp folder, not a growing leak.
+    private string? _WriteTempLogoFileOrNull()
+    {
+        if (_logoBytes is not { Length: > 0 } bytes)
+        {
+            return null;
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"cockpit-shared-logo-{Guid.NewGuid():n}.png");
+        File.WriteAllBytes(path, bytes);
+        return path;
     }
 
     [RelayCommand]

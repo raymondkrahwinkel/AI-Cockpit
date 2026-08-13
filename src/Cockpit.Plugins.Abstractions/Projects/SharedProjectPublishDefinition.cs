@@ -14,6 +14,7 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// <param name="IsolateInWorktreeByDefault">Whether new sessions here isolate in their own git worktree by default.</param>
 /// <param name="EnabledMcpServerNames">Names of MCP servers new sessions here start ticked. Null means no opinion — every offered server ticked, the same idiom <see cref="SharedProjectBinding.EnabledMcpServerNames"/> already carries.</param>
 /// <param name="Resources">The project's own resource rows, unfiltered — see <see cref="SharedProjectPublishResource"/>.</param>
+/// <param name="LogoBytes">The project's own logo, as the cockpit's local store already holds it (AC-763) — null for a project with none.</param>
 public sealed record SharedProjectPublishDefinition(
     string Name,
     string? Description,
@@ -21,4 +22,5 @@ public sealed record SharedProjectPublishDefinition(
     string? BehaviorPrompt,
     bool IsolateInWorktreeByDefault,
     IReadOnlyList<string>? EnabledMcpServerNames,
-    IReadOnlyList<SharedProjectPublishResource> Resources);
+    IReadOnlyList<SharedProjectPublishResource> Resources,
+    byte[]? LogoBytes = null);

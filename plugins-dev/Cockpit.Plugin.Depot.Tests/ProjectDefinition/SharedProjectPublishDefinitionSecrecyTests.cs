@@ -16,6 +16,7 @@ public class SharedProjectPublishDefinitionSecrecyTests
         nameof(SharedProjectPublishDefinition.IsolateInWorktreeByDefault),
         nameof(SharedProjectPublishDefinition.EnabledMcpServerNames),
         nameof(SharedProjectPublishDefinition.Resources),
+        nameof(SharedProjectPublishDefinition.LogoBytes),
     ];
 
     [Fact]

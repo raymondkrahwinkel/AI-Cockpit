@@ -16,8 +16,14 @@ public class DepotSharedProjectSourcePrepareBindingTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
 
-    private static ISharedProjectSource SourceFor(ICockpitHost host) =>
-        DepotMemorySource.BuildSharedProjectSources([Connection()], host).Single();
+    private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient? httpClient = null) =>
+        DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
+
+    private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond(request));
+    }
 
     private static string _Scheme(ICockpitHost host) =>
         DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
@@ -162,6 +168,57 @@ public class DepotSharedProjectSourcePrepareBindingTests
         Assert.True(result.Succeeded);
         var resource = Assert.Single(result.Binding!.Resources);
         Assert.Equal("docs/ok.md", resource.Reference);
+    }
+
+    [Fact]
+    public async Task PrepareBindingAsync_DefinitionNamesALogo_DownloadsItOntoTheBinding()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "handbook", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Handbook","logo":".cockpit/logo.png"}"""));
+        host.CallMcpToolAsync(Arg.Any<string>(), "request_download", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"downloadUrl":"https://depot.example.com/blob/download/xyz"}""")));
+        var expectedBytes = new byte[] { 137, 80, 78, 71 };
+        using var httpClient = new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(expectedBytes),
+        }));
+
+        var result = await SourceFor(host, httpClient).PrepareBindingAsync($"{scheme}:handbook", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(expectedBytes, result.Binding!.LogoBytes);
+    }
+
+    [Fact]
+    public async Task PrepareBindingAsync_NoLogoOnTheDefinition_NeverAttemptsADownload()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "bare", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Bare"}"""));
+
+        var result = await SourceFor(host).PrepareBindingAsync($"{scheme}:bare", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Null(result.Binding!.LogoBytes);
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), "request_download", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PrepareBindingAsync_TheLogoDownloadFails_StillSucceedsWithoutOne()
+    {
+        // AC-763: a logo is decoration — a failed download costs the picture, not the whole bind (SharedProjectBinding.LogoBytes' own remarks).
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "handbook", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Handbook","logo":".cockpit/logo.png"}"""));
+        host.CallMcpToolAsync(Arg.Any<string>(), "request_download", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("blob not found")));
+
+        var result = await SourceFor(host).PrepareBindingAsync($"{scheme}:handbook", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Null(result.Binding!.LogoBytes);
     }
 
     [Fact]

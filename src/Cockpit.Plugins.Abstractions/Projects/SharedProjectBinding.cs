@@ -52,6 +52,14 @@ public sealed record SharedProjectBinding(string Name)
     /// in-progress edit, which is exactly what would defeat the point of an optimistic-concurrency token.
     /// </summary>
     public string? Checksum { get; init; }
+
+    /// <summary>
+    /// The shared logo's own PNG bytes (AC-763), already downloaded from the source's blob store — null when the
+    /// shared definition names no logo, or a source that has no logo of its own at all. Also null when a download
+    /// was attempted and failed: a logo is decoration, the same "costs the picture, not the whole bind" rule
+    /// <c>Cockpit.Infrastructure.Projects.ProjectLogoStore.SaveAsync</c> already follows for a local one.
+    /// </summary>
+    public byte[]? LogoBytes { get; init; }
 }
 
 /// <summary>One <see cref="SharedProjectBinding.Resources"/> row (AC-246) — <see cref="Role"/> a plain string, the same "not an enum across this boundary" idiom <see cref="SharedProject.Role"/> already uses.</summary>

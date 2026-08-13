@@ -53,8 +53,9 @@ public interface ISharedProjectSource
     /// when the operator saves the project editor for an already-bound project whose fields
     /// <c>ProjectsViewModel._ClaimBoundProjects</c> claimed as this source's. Every field this source's own
     /// portable definition carries but <see cref="SharedProjectDefinitionEdit"/> does not mention (<c>GitUrl</c>,
-    /// <c>Resources</c>, a logo) must be carried through untouched, never dropped just because this call did not
-    /// name them.
+    /// <c>Resources</c>) must be carried through untouched, never dropped just because this call did not name
+    /// them — <see cref="SharedProjectDefinitionEdit.LogoEdit"/> is the one claimed field with its own explicit
+    /// "untouched" state (null) rather than relying on this rule.
     /// <para>
     /// Must not throw for an ordinary failure — report it through <see cref="SharedProjectWriteBackResult.Failed"/>,
     /// the same contract <see cref="ListAsync"/> and <see cref="PrepareBindingAsync"/> already keep for their own

@@ -75,10 +75,12 @@ internal static class DepotMemorySource
     // `SharedProject.Id` this returns is exactly the `MemoryRef` a project would carry once bound
     // to it, and `Ui.DepotSettingsControl` can sync both registrations by the same key when a
     // connection is added, renamed or removed.
+    // `httpClient`: AC-763's own blob PUT/GET, threaded through purely as a test seam — production callers omit
+    // it and get DepotSharedProjectSource's/CockpitProjectLogoBlob's own default client.
     public static IReadOnlyList<ISharedProjectSource> BuildSharedProjectSources(
-        IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost host) =>
+        IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost host, HttpClient? httpClient = null) =>
         BuildRegistrationPairs(connections, host)
-            .Select(pair => (ISharedProjectSource)new DepotSharedProjectSource(pair.Connection, pair.Registration.Scheme, host))
+            .Select(pair => (ISharedProjectSource)new DepotSharedProjectSource(pair.Connection, pair.Registration.Scheme, host, httpClient))
             .ToList();
 
     // AC-499: Title keeps naming the connection ("Depot project — Wispslate") even though the picker's own dropdown

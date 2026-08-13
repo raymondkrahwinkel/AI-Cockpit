@@ -14,8 +14,14 @@ public class DepotSharedProjectSourcePublishTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
 
-    private static ISharedProjectSource SourceFor(ICockpitHost host) =>
-        DepotMemorySource.BuildSharedProjectSources([Connection()], host).Single();
+    private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient? httpClient = null) =>
+        DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
+
+    private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond(request));
+    }
 
     private static string _Scheme(ICockpitHost host) =>
         DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
@@ -93,6 +99,56 @@ public class DepotSharedProjectSourcePublishTests
             Arg.Any<string>(), "write",
             Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && !args.ContainsKey("baseChecksum")),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PublishAsync_ProjectHasALogo_UploadsItThenWritesTheBlobPath()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "new-project", _NotFound("new-project"));
+        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"uploadUrl":"https://depot.example.com/blob/upload/abc"}""")));
+        var written = _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
+        using var httpClient = new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Created)));
+
+        var result = await SourceFor(host, httpClient).PublishAsync(
+            $"{scheme}:new-project", Definition() with { LogoBytes = [1, 2, 3] }, CancellationToken.None);
+
+        Assert.Equal(SharedProjectPublishOutcome.Success, result.Outcome);
+        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(written(), out var sent, out _));
+        Assert.Equal(CockpitProjectLogoBlob.BlobPath, sent!.Logo);
+    }
+
+    [Fact]
+    public async Task PublishAsync_LogoUploadFails_ReportsFailedWithoutWritingTheDefinitionAtAll()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "new-project", _NotFound("new-project"));
+        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("no permission")));
+
+        var result = await SourceFor(host).PublishAsync(
+            $"{scheme}:new-project", Definition() with { LogoBytes = [1, 2, 3] }, CancellationToken.None);
+
+        Assert.Equal(SharedProjectPublishOutcome.Failed, result.Outcome);
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PublishAsync_NoLogo_NeverAttemptsAnUpload()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "new-project", _NotFound("new-project"));
+        _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
+
+        await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
+
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

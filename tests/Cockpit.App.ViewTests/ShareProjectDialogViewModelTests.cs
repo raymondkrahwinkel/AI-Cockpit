@@ -94,14 +94,23 @@ public class ShareProjectDialogViewModelTests
         var project = Project(additionalInfo: [new ProjectInfoField("Repository", "https://github.com/example/payroll")]) with
         {
             Category = "Synvolution",
-            LogoPath = "/home/raymond/logos/payroll.png",
         };
         var viewModel = ShareProjectDialogViewModel.Create(project, []);
 
         Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Category" && row.Value == "Synvolution");
-        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Logo");
         Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Anything else worth keeping");
-        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label is "Category" or "Logo");
+        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label == "Category");
+    }
+
+    // AC-763: the logo now travels with the rest of the definition, so it belongs in the column that promises that.
+    [Fact]
+    public void Rows_ALogo_GoesToDepotRatherThanStayingOnThisMachine()
+    {
+        var project = Project() with { LogoPath = "/home/raymond/logos/payroll.png" };
+        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+
+        Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Logo" && row.Value == "/home/raymond/logos/payroll.png");
+        Assert.DoesNotContain(viewModel.StaysOnThisMachine, row => row.Label == "Logo");
     }
 
     // A connection whose projects the operator may all only read lists nothing to publish to — silence there reads
@@ -235,6 +244,43 @@ public class ShareProjectDialogViewModelTests
             Assert.DoesNotContain(SecretValue, resource.Reference, StringComparison.Ordinal);
             Assert.DoesNotContain(SecretValue, resource.Label ?? "", StringComparison.Ordinal);
         });
+    }
+
+    // AC-763: the logo now reaches PublishAsync too — read straight off disk, since Project.LogoPath already names
+    // the cockpit's own stored copy by the time a project can be shared at all.
+    [Fact]
+    public async Task ShareAsync_ProjectHasAStoredLogo_ReadsItIntoThePublishedDefinition()
+    {
+        var logoPath = Path.GetTempFileName();
+        var bytes = new byte[] { 137, 80, 78, 71 };
+        try
+        {
+            await File.WriteAllBytesAsync(logoPath, bytes);
+            var project = Project() with { LogoPath = logoPath };
+            var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out var sent);
+            var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+            viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
+
+            await viewModel.ShareCommand.ExecuteAsync(null);
+
+            Assert.Equal(bytes, sent().LogoBytes);
+        }
+        finally
+        {
+            File.Delete(logoPath);
+        }
+    }
+
+    [Fact]
+    public async Task ShareAsync_ProjectHasNoLogo_SendsNoLogoBytes()
+    {
+        var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out var sent);
+        var viewModel = ShareProjectDialogViewModel.Create(Project(), [source]);
+        viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
+
+        await viewModel.ShareCommand.ExecuteAsync(null);
+
+        Assert.Null(sent().LogoBytes);
     }
 
     // IL#9: measured against the rendered markup, not the view model alone — a binding typo could pass every

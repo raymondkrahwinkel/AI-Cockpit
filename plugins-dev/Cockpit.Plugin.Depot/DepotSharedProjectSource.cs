@@ -15,7 +15,8 @@ namespace Cockpit.Plugin.Depot;
 // ponytail: one MCP round trip per listed project on top of the initial `list_projects` call, every time the
 // Projects workspace loads — no caching. Acceptable for the handful of projects a connection realistically carries
 // today; batch or cache here first if a connection with hundreds of shared projects makes this the slow part.
-internal sealed class DepotSharedProjectSource(DepotConnectionRegistration connection, string scheme, ICockpitHost host)
+internal sealed class DepotSharedProjectSource(
+    DepotConnectionRegistration connection, string scheme, ICockpitHost host, HttpClient? httpClient = null)
     : ISharedProjectSource
 {
     public string Key => scheme;
@@ -137,7 +138,24 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
                 definitionResult.Error is { Length: > 0 } error ? error : "Depot did not return a project definition.");
         }
 
-        return SharedProjectBindingResult.Success(_ToBinding(slug, definition, definitionResult.Checksum));
+        var binding = _ToBinding(slug, definition, definitionResult.Checksum);
+
+        // AC-763: a bind is the moment a shared logo first has to become visible on this machine, without the
+        // operator picking anything — so it is worth the extra round trip here, unlike WriteBackAsync's own
+        // conflict snapshot (_ToBinding's other caller), which never shows a logo and would only pay for one.
+        if (definition.Logo is { Length: > 0 })
+        {
+            var download = await CockpitProjectLogoBlob.DownloadAsync(host, connection.McpServerName, slug, httpClient, cancellationToken)
+                .ConfigureAwait(false);
+            if (download.Outcome == PluginMcpToolCallOutcome.Success)
+            {
+                binding = binding with { LogoBytes = download.Bytes };
+            }
+
+            // A failed download costs the picture, not the bind — SharedProjectBinding.LogoBytes' own remarks.
+        }
+
+        return SharedProjectBindingResult.Success(binding);
     }
 
     // AC-247. Re-reads id's current definition first — not for its own checksum (the caller's baseChecksum, from
@@ -177,6 +195,51 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
                 currentRead.Error is { Length: > 0 } error ? error : "Depot did not return a project definition.");
         }
 
+        // AC-763: the blob move happens before the checksum-guarded write below, so a failure here returns
+        // immediately rather than leave project.json pointing at a logo that never actually landed. A blob
+        // orphaned by a lost checksum race is harmless — the next save re-reads `current` and retries it.
+        string? logoPath;
+        switch (edit.LogoEdit)
+        {
+            case null:
+                logoPath = current.Logo;
+                break;
+
+            case { PngBytes: { Length: > 0 } pngBytes }:
+                var upload = await CockpitProjectLogoBlob.UploadAsync(host, connection.McpServerName, slug, pngBytes, httpClient, cancellationToken)
+                    .ConfigureAwait(false);
+                if (upload.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+                {
+                    return SharedProjectWriteBackResult.PermissionDenied("Sign in to this Depot connection to save this project's logo.");
+                }
+
+                if (upload.Outcome != PluginMcpToolCallOutcome.Success)
+                {
+                    return SharedProjectWriteBackResult.Failed(upload.Error is { Length: > 0 } error ? error : "Could not save this project's logo.");
+                }
+
+                logoPath = CockpitProjectLogoBlob.BlobPath;
+                break;
+
+            default: // Cleared, or Replace called with no bytes — either way, nothing to keep.
+                if (current.Logo is { Length: > 0 })
+                {
+                    var delete = await CockpitProjectLogoBlob.DeleteAsync(host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
+                    if (delete.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+                    {
+                        return SharedProjectWriteBackResult.PermissionDenied("Sign in to this Depot connection to save this project's logo.");
+                    }
+
+                    if (delete.Outcome != PluginMcpToolCallOutcome.Success)
+                    {
+                        return SharedProjectWriteBackResult.Failed(delete.Error is { Length: > 0 } error ? error : "Could not remove this project's logo.");
+                    }
+                }
+
+                logoPath = null;
+                break;
+        }
+
         var merged = new CockpitProjectDefinition
         {
             Name = edit.Name,
@@ -192,7 +255,7 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
             // already had. Always reflect what edit actually says, never fall back to what was already there.
             McpOverlay = edit.EnabledMcpServerNames is { } enabled ? new CockpitProjectMcpOverlayEntry { Enabled = [.. enabled] } : null,
             Resources = current.Resources,
-            Logo = current.Logo,
+            Logo = logoPath,
         };
 
         var writeResult = await CockpitProjectDefinitionStore.WriteAsync(
@@ -300,6 +363,26 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
         var filtered = CockpitProjectResourceFilter.Apply(
             definition.Resources.Select(resource => (resource.Role, resource.Reference, resource.Label)));
 
+        // AC-763, same ordering reasoning as WriteBackAsync: upload before writing the definition that references
+        // it, and fail the whole publish rather than leave a project.json that names a logo that never landed.
+        string? logoPath = null;
+        if (definition.LogoBytes is { Length: > 0 } logoBytes)
+        {
+            var upload = await CockpitProjectLogoBlob.UploadAsync(host, connection.McpServerName, slug, logoBytes, httpClient, cancellationToken)
+                .ConfigureAwait(false);
+            if (upload.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+            {
+                return SharedProjectPublishResult.Failed("Sign in to this Depot connection to publish this project's logo.");
+            }
+
+            if (upload.Outcome != PluginMcpToolCallOutcome.Success)
+            {
+                return SharedProjectPublishResult.Failed(upload.Error is { Length: > 0 } error ? error : "Could not publish this project's logo.");
+            }
+
+            logoPath = CockpitProjectLogoBlob.BlobPath;
+        }
+
         var toWrite = new CockpitProjectDefinition
         {
             Name = definition.Name,
@@ -309,6 +392,7 @@ internal sealed class DepotSharedProjectSource(DepotConnectionRegistration conne
             IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
             McpOverlay = definition.EnabledMcpServerNames is { } enabled ? new CockpitProjectMcpOverlayEntry { Enabled = [.. enabled] } : null,
             Resources = filtered.Portable.Count == 0 ? null : [.. filtered.Portable],
+            Logo = logoPath,
         };
 
         var writeResult = await CockpitProjectDefinitionStore.WriteAsync(

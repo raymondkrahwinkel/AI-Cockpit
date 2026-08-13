@@ -86,6 +86,38 @@ public class SharedProjectBindingDialogViewModelTests
     }
 
     [Fact]
+    public async Task ToProject_ABindingWithLogoBytes_MaterializesThemAsTheLogoPath()
+    {
+        // AC-763: ProjectsViewModel._WithStoredLogoAsync only knows how to copy from a path or URL, so ToProject
+        // must bridge the downloaded bytes into a file it can read.
+        var bytes = new byte[] { 137, 80, 78, 71 };
+        var source = _SourceReturning(SharedProjectBindingResult.Success(new SharedProjectBinding("Handbook") { LogoBytes = bytes }));
+        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
+            _SharedProject, "Work", source, _ProfileStoreWith("Zyra"));
+        viewModel!.SelectedProfileLabel = "Zyra";
+
+        var project = viewModel.ToProject();
+
+        Assert.False(string.IsNullOrEmpty(project.LogoPath));
+        Assert.True(File.Exists(project.LogoPath));
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(project.LogoPath!));
+        File.Delete(project.LogoPath!);
+    }
+
+    [Fact]
+    public async Task ToProject_ABindingWithNoLogo_LeavesLogoPathNull()
+    {
+        var source = _SourceReturning(SharedProjectBindingResult.Success(new SharedProjectBinding("Handbook")));
+        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
+            _SharedProject, "Work", source, _ProfileStoreWith("Zyra"));
+        viewModel!.SelectedProfileLabel = "Zyra";
+
+        var project = viewModel.ToProject();
+
+        Assert.Null(project.LogoPath);
+    }
+
+    [Fact]
     public async Task ToProject_TheBindingRow_IsAlwaysTheFirstMemoryRow()
     {
         // This is exactly what ProjectsViewModel.LoadSharedProjectsAsync/_ClaimBoundProjects reads (boundIds,
