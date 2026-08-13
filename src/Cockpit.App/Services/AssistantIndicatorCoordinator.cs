@@ -7,6 +7,8 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
@@ -29,6 +31,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private readonly IAssistantSettingsStore _settings;
     private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly IAssistantSpawnAuditLog _spawnAuditLog;
+    private readonly ILogger<AssistantIndicatorCoordinator> _logger;
 
     // The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).
     private AssistantChatWindow? _chatWindow;
@@ -42,7 +45,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         VoiceOverlayCoordinator overlay,
         IAssistantSettingsStore settings,
         IVoicePlaybackQueue playbackQueue,
-        IAssistantSpawnAuditLog spawnAuditLog)
+        IAssistantSpawnAuditLog spawnAuditLog,
+        ILogger<AssistantIndicatorCoordinator>? logger = null)
     {
         _assistant = assistant;
         _openMic = openMic;
@@ -50,6 +54,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _settings = settings;
         _playbackQueue = playbackQueue;
         _spawnAuditLog = spawnAuditLog;
+        _logger = logger ?? NullLogger<AssistantIndicatorCoordinator>.Instance;
     }
 
     // The chip the sidebar binds to. One instance, fed from here.
@@ -182,36 +187,44 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
     // The chip is clicked: bring the assistant up if this is the first time, and show the conversation. Equal to
     // holding the hotkey as far as starting goes — a voice feature reachable only by a key shuts people out.
+    // Fire-and-forget from the click handler below, so a failure here used to vanish silently (AC-765) — caught
+    // and logged instead, rather than leaving the operator clicking a button that does nothing.
     private async Task _OpenChatAsync()
     {
-        await _assistant.EnsureStartedAsync().ConfigureAwait(true);
-
-        if (_chatWindow is null)
+        try
         {
-            _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator);
-            _chatWindow = new AssistantChatWindow { DataContext = _chatViewModel };
+            await _assistant.EnsureStartedAsync().ConfigureAwait(true);
 
-            // Dropped on close so the next click builds a fresh window — but nothing about the session is touched
-            // here, which is the whole of criterion 7: the window is a peephole, not the owner.
-            _chatWindow.Closed += (_, _) => { _chatWindow = null; _chatViewModel = null; };
-
-            // Shown without an owner, and closed with the cockpit by hand instead. Ownerless is deliberate: an owned
-            // window minimises and restores with its owner, and this one has to stay reachable while the cockpit is
-            // in the background — that is the whole point of a global hotkey. But Avalonia's default shutdown is
-            // "when the last window closes", so an ownerless window that outlives the main one keeps the entire
-            // process alive: the cockpit vanished from the screen, the chat pop-out stayed sitting there, and the
-            // app went on running with its global hotkeys still registered — which is what then refused F10 to the
-            // next launch, since the key was still held by a process nobody could see.
-            if (Avalonia.Application.Current?.ApplicationLifetime
-                is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            if (_chatWindow is null)
             {
-                main.Closed += _OnMainWindowClosed;
-                _chatWindow.Closed += (_, _) => main.Closed -= _OnMainWindowClosed;
-            }
-        }
+                _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator);
+                _chatWindow = new AssistantChatWindow { DataContext = _chatViewModel };
 
-        _chatWindow.Show();
-        _chatWindow.Activate();
+                // Dropped on close so the next click builds a fresh window — but nothing about the session is touched
+                // here, which is the whole of criterion 7: the window is a peephole, not the owner.
+                _chatWindow.Closed += (_, _) => { _chatWindow = null; _chatViewModel = null; };
+
+                // Shown without an owner, and closed with the cockpit by hand instead. Ownerless is deliberate: an owned
+                // window minimises and restores with its owner, and this one has to stay reachable while the cockpit is
+                // in the background — that is the whole point of a global hotkey. But Avalonia's default shutdown is
+                // "when the last window closes", so an ownerless window that outlives the main one keeps the entire
+                // process alive: the cockpit vanished from the screen, the chat pop-out stayed sitting there, and the
+                // app went on running with its global hotkeys still registered — which is what then refused F10 to the
+                // next launch, since the key was still held by a process nobody could see.
+                if (Avalonia.Application.Current?.ApplicationLifetime
+                    is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+                {
+                    main.Closed += _OnMainWindowClosed;
+                    _chatWindow.Closed += (_, _) => main.Closed -= _OnMainWindowClosed;
+                }
+            }
+
+            WindowActivation.BringToFront(_chatWindow);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Opening the assistant chat window failed.");
+        }
     }
 
     // The cockpit's own window closed, so the pop-out onto it goes too — see `_OpenChatAsync` for why by hand.

@@ -612,9 +612,7 @@ public partial class App : Application
             return;
         }
 
-        _mainWindow.Show();
-        _mainWindow.WindowState = WindowState.Normal;
-        _mainWindow.Activate();
+        WindowActivation.BringToFront(_mainWindow);
     }
 
     // Really quits the app (tray "Quit") — lets MainWindow's close through, then the normal teardown runs.
