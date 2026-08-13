@@ -63,6 +63,27 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _logos = logos;
         _ownership = ownership;
         _sharedSources = sharedSources;
+
+        // AC-762: a source that registers after the startup race already lost it (App.axaml.cs's plugin phase 2
+        // runs after CockpitViewModel's constructor kicks off the first LoadAsync) gets its own retry instead of
+        // leaving every card on that source stuck until the operator happens to open Manage projects.
+        if (_sharedSources is not null)
+        {
+            _sharedSources.Registered += _OnSharedSourceRegistered;
+        }
+    }
+
+    private void _OnSharedSourceRegistered(ISharedProjectSource source) => _BeginSharedProjectsLoad();
+
+    // Cancels a still-running load and starts a fresh one — the same dance `LoadAsync` does after re-reading
+    // settings, factored out so a source registering later (`_OnSharedSourceRegistered`) can trigger the same
+    // retry without re-reading `_settings` from disk for no reason.
+    private void _BeginSharedProjectsLoad()
+    {
+        _sharedProjectsLoadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _sharedProjectsLoadCts = cts;
+        SharedProjectsLoadTask = LoadSharedProjectsAsync(cts.Token);
     }
 
     // The saved projects in the order they are stored — what the manager lists and edits.
@@ -253,10 +274,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
         _Republish();
 
-        _sharedProjectsLoadCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _sharedProjectsLoadCts = cts;
-        SharedProjectsLoadTask = LoadSharedProjectsAsync(cts.Token);
+        _BeginSharedProjectsLoad();
     }
 
     // Fills `SharedProjectGroups` from every registered `ISharedProjectSource` (AC-245).
@@ -307,14 +325,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
 
         var groups = new List<SharedProjectGroupViewModel>();
+        var reconciledProjects = new List<Project>();
         foreach (var (source, result) in sources.Zip(results))
         {
             // Claiming runs over every project this source reported, bound or not — a project already bound is
             // exactly the one this claim is for (it is what makes the editor draw the ◆ Shared badge on it), even
             // though it never appears in this source's own group below (it already shows under "On this machine").
-            if (result.Succeeded && _ownership is not null)
+            if (result.Succeeded)
             {
-                _ClaimBoundProjects(result.Projects, source.SourceName);
+                reconciledProjects.AddRange(_ReconcileSharedSourceClaims(result.Projects, source));
             }
 
             var visible = result.Succeeded
@@ -327,6 +346,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             }
 
             groups.Add(new SharedProjectGroupViewModel(source.SourceName, visible, result.Succeeded ? null : result.Error));
+        }
+
+        if (reconciledProjects.Count > 0)
+        {
+            var reconciled = _settings;
+            foreach (var project in reconciledProjects)
+            {
+                reconciled = reconciled.WithUpdated(project);
+            }
+
+            await _PersistAsync(reconciled).ConfigureAwait(true);
         }
 
         SharedProjectGroups.Clear();
@@ -379,19 +409,27 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    // Claims every local project bound to one of `sharedProjects` as owned by `sourceName` — see `LoadSharedProjectsAsync`'s own remarks.
-    private void _ClaimBoundProjects(IReadOnlyList<SharedProject> sharedProjects, string sourceName)
+    // Claims every local project bound to one of `sharedProjects` as owned by `source` (see `LoadSharedProjectsAsync`'s
+    // own remarks), and returns every project whose `Project.SharedSourceName` needs persisting to match: confirmed
+    // when a project this source still lists was not already carrying it, cleared when a project's own persisted
+    // claim names this exact source but this — successful — list no longer contains the project it is bound to
+    // (AC-762: unshared elsewhere, so the cold-start fallback must stop claiming it too). The clear branch is
+    // scoped by `SharedSourceName` rather than by a key-prefix match on the binding, so a project bound to some
+    // other source entirely is never touched by a source that happens not to list it.
+    private List<Project> _ReconcileSharedSourceClaims(IReadOnlyList<SharedProject> sharedProjects, ISharedProjectSource source)
     {
-        if (sharedProjects.Count == 0)
-        {
-            return;
-        }
-
         var byId = sharedProjects.ToDictionary(project => project.Id, StringComparer.Ordinal);
+        var updated = new List<Project>();
+
         foreach (var project in _settings.Projects)
         {
             var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
-            if (boundTo is { Length: > 0 } && byId.TryGetValue(boundTo, out var sharedProject))
+            if (boundTo is not { Length: > 0 })
+            {
+                continue;
+            }
+
+            if (byId.TryGetValue(boundTo, out var sharedProject))
             {
                 // AC-247: every claimed field but Logo unlocks once the source itself says this role can write
                 // (SharedProject.CanWriteBack) — ProjectDialogViewModel.SaveAsync now has somewhere to send that
@@ -399,16 +437,27 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                 // artifact-upload path exists yet for writing a shared logo back, so an "editable" claim there
                 // would still drop what the operator picked, silently, on save — the exact failure mode
                 // ProjectFieldOwnership.IsEditable's own contract exists to prevent.
-                _ownership!.Register(new ProjectOwnershipRegistration(
-                    project.Id, new ProjectFieldOwnership(sourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role))
+                _ownership?.Register(new ProjectOwnershipRegistration(
+                    project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role))
                 {
                     Overrides = new Dictionary<HostProjectField, ProjectFieldOwnership?>
                     {
-                        [HostProjectField.Logo] = new ProjectFieldOwnership(sourceName, Role: sharedProject.Role),
+                        [HostProjectField.Logo] = new ProjectFieldOwnership(source.SourceName, Role: sharedProject.Role),
                     },
                 });
+
+                if (!string.Equals(project.SharedSourceName, source.SourceName, StringComparison.Ordinal))
+                {
+                    updated.Add(project with { SharedSourceName = source.SourceName });
+                }
+            }
+            else if (string.Equals(project.SharedSourceName, source.SourceName, StringComparison.Ordinal))
+            {
+                updated.Add(project with { SharedSourceName = null });
             }
         }
+
+        return updated;
     }
 
     // One source's projects, or a timeout failure if it does not answer within `_SharedProjectSourceTimeout`
@@ -477,11 +526,19 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     }
 
     // The source `project` is genuinely bound to — a Memory reference merely starting with a known source's
-    // prefix is not enough (AC-744): only a project the ownership registry actually claimed (the same check
-    // `_OriginBadge`/`IsShared` gate the badge on) counts as shared, here and for AC-247's write-back gating.
+    // prefix is not enough (AC-744): only a project actually claimed as shared counts, here and for AC-247's
+    // write-back gating. "Claimed" is either a live ownership claim or, when none has arrived yet or the source
+    // failed this run (AC-762), the persisted `Project.SharedSourceName` — same either/or `_OriginBadge` reads,
+    // so the share toggle never disagrees with what the badge just showed.
     private ISharedProjectSource? _ResolveSharedSource(Project project)
     {
-        if (_sharedSources is null || _ownership?.Resolve(project.Id) is null)
+        if (_sharedSources is null)
+        {
+            return null;
+        }
+
+        var isClaimed = _ownership?.Resolve(project.Id) is not null || project.SharedSourceName is { Length: > 0 };
+        if (!isClaimed)
         {
             return null;
         }
@@ -617,13 +674,18 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private ProjectCardViewModel _ToCard(Project project) =>
         new(project, _OriginBadge(project)) { IsSelected = project.Id == SelectedProject?.Id };
 
-    // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on
-    // `project` (AC-604's own seam, claimed for a bound project by
-    // `_ClaimBoundProjects`) — the per-card replacement for AC-245's "On this machine" heading.
+    // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on `project`
+    // (AC-604's own seam, claimed for a bound project by `_ReconcileSharedSourceClaims`) — the per-card
+    // replacement for AC-245's "On this machine" heading. Falls back to `Project.SharedSourceName` (AC-762) when
+    // there is no live claim yet: the ownership registry is in-memory and rebuilt from a slow, unretried network
+    // call, so a project that is genuinely shared must not render as local for however long that call has not
+    // finished or has failed — the badge means "published", not "there is a live connection right now".
     private string _OriginBadge(Project project) =>
         _ownership?.Resolve(project.Id)?.Values.FirstOrDefault(ownership => ownership is not null) is { } claim
             ? $"◆ {claim.SourceName}"
-            : "● This machine";
+            : project.SharedSourceName is { Length: > 0 } lastKnown
+                ? $"◆ {lastKnown}"
+                : "● This machine";
 
     partial void OnSelectedProjectChanged(Project? value)
     {
@@ -718,6 +780,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         var withoutBinding = project with
         {
             Resources = [.. resources.Take(index), .. resources.Skip(index + 1)],
+            // AC-762: the cold-start fallback must lose the badge here too, not only the live claim.
+            SharedSourceName = null,
         };
 
         await _PersistAsync(_settings.WithUpdated(withoutBinding));

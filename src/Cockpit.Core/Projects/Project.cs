@@ -139,6 +139,15 @@ public sealed record Project(string Id, string Name)
     // way every other credential in `cockpit.json` already is (AC-353) — no new storage mechanism.
     public string? ProjectPassword { get; init; }
 
+    // AC-762: the last known name of the shared-project source this project was published to — set by the share
+    // and bind flows, cleared by "Stop sharing", confirmed or cleared by the next successful list call from that
+    // source. `IProjectOwnershipRegistry` (AC-604) is purely in-memory and rebuilt from a slow, unretried network
+    // call at startup; without this field a project that is genuinely shared renders identically to a never-shared
+    // one for as long as that call has not yet succeeded — "we don't know yet" showing as the positive claim "this
+    // is local". This is the fallback the badge and the share toggle read when there is no live claim, never a
+    // second source of truth: a successful list call always wins over what is stored here.
+    public string? SharedSourceName { get; init; }
+
     // A record's compiler-generated ToString() would otherwise print ProjectPassword in the clear — masked here
     // the same way ProjectInfoField.Mask hides a secret AdditionalInfo value (Iron Law #8). `PrintMembers`
     // (the usual record idiom) trips this SDK's IDE0051 analyzer as a false "unused member", hence ToString().
@@ -151,7 +160,7 @@ public sealed record Project(string Id, string Name)
         builder.Append($"IsolateInWorktreeByDefault = {IsolateInWorktreeByDefault}, McpOverlay = {McpOverlay}, Resources = {Resources}, ");
         builder.Append($"MemoryRef = {MemoryRef}, LogoPath = {LogoPath}, LastOpenedAt = {LastOpenedAt}, AdditionalInfo = {AdditionalInfo}, ");
         builder.Append($"HasAdditionalInfo = {HasAdditionalInfo}, ProjectPassword = {(ProjectPassword is null ? null : ProjectInfoField.Mask)}, ");
-        builder.Append($"Category = {Category}, PluginFields = {PluginFields} }}");
+        builder.Append($"Category = {Category}, PluginFields = {PluginFields}, SharedSourceName = {SharedSourceName} }}");
         return builder.ToString();
     }
 

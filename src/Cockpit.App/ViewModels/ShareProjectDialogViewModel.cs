@@ -271,9 +271,17 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
 
             // Prepended, same reason SharedProjectBindingDialogViewModel.ToProject prepends its own binding row: it
             // is what Project.MemoryRef/_ClaimBoundProjects resolve to, ahead of any resource already carried.
+            // AC-762 bijvangst: replaces an existing Memory row instead of stacking a second one — sharing twice
+            // used to leave a stale row behind that "Stop sharing" (which removes only the first match) never reached.
             var bound = _project with
             {
-                Resources = [new ProjectResource(boundId, ProjectResourceRole.Memory), .. _project.Resources],
+                Resources =
+                [
+                    new ProjectResource(boundId, ProjectResourceRole.Memory),
+                    .. _project.Resources.Where(resource => resource.Role != ProjectResourceRole.Memory),
+                ],
+                // AC-762: the ◆ badge's fallback for a cold start — see Project.SharedSourceName.
+                SharedSourceName = source.SourceName,
             };
             CloseRequested?.Invoke(bound);
         }

@@ -429,8 +429,13 @@ public class ProjectsViewModelTests
 
         await viewModel.FinishSettingUpCommand.ExecuteAsync(shared);
 
-        await store.Received(1).SaveAsync(
+        // Two saves: the bind itself, then AC-762's own reconciliation (LoadSharedProjectsAsync sees the source
+        // still lists "depot:one" and confirms SharedSourceName on the freshly bound project).
+        await store.Received(2).SaveAsync(
             Arg.Is<ProjectSettings>(settings => settings.Projects.Any(project => project.Id == bound.Id)),
+            Arg.Any<CancellationToken>());
+        await store.Received(1).SaveAsync(
+            Arg.Is<ProjectSettings>(settings => settings.Projects.Any(project => project.Id == bound.Id && project.SharedSourceName == "depot")),
             Arg.Any<CancellationToken>());
         // Bound now — boundIds picks up its own Memory row on the very next reload this call already triggered,
         // so the row must not still be sitting under "Shared via …" for the operator to bind a second time by
@@ -581,6 +586,100 @@ public class ProjectsViewModelTests
         var (viewModel, _) = BuildWithSharedSources([source], bound);
 
         await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        var card = Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards);
+        Assert.Equal("◆ Depot — Work", card.OriginBadge);
+    }
+
+    // AC-762: the ownership registry is purely in-memory and rebuilt from a slow, unretried network call, so a
+    // project that was genuinely published must not render as local for however long that call has not finished
+    // (or has failed) — Project.SharedSourceName is the persisted "last known truth" fallback for exactly that gap.
+
+    [Fact]
+    public async Task ProjectCardViewModel_APublishedProject_ShowsItsBadgeBeforeAnySharedProjectsLoadEverRan()
+    {
+        // No shared sources at all here — the point is that the badge does not depend on LoadSharedProjectsAsync
+        // (or the ownership registry it feeds) ever running, only on the persisted field from a previous publish.
+        var published = Project.Create("Cockpit") with { MemoryRef = "depot:one", SharedSourceName = "Depot — Work" };
+        var (viewModel, _, _) = Build(published);
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal("◆ Depot — Work", Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards).OriginBadge);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_AFailedSource_LeavesThePersistedBadgeStanding()
+    {
+        var published = Project.Create("Cockpit") with { MemoryRef = "Depot — Work:one", SharedSourceName = "Depot — Work" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Failed("timed out"));
+        var (viewModel, _) = BuildWithSharedSources([source], published);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        Assert.Equal("◆ Depot — Work", Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards).OriginBadge);
+        viewModel.SelectedProject = viewModel.Projects.Single();
+        Assert.Equal("Stop sharing…", viewModel.ShareToggleLabel);
+    }
+
+    [Fact]
+    public async Task LoadSharedProjectsAsync_ASuccessfulListNoLongerContainingTheProject_ClearsThePersistedBadge()
+    {
+        // AC-762 acceptance criterion: unshared outside Cockpit (in Depot directly) — the next successful list
+        // from that same source is what corrects the cached claim, since the persisted field is a cache, not a
+        // second source of truth.
+        var stale = Project.Create("Cockpit") with { MemoryRef = "depot:one", SharedSourceName = "Depot — Work" };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([]));
+        var (viewModel, _) = BuildWithSharedSources([source], stale);
+
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        Assert.Equal("● This machine", Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards).OriginBadge);
+    }
+
+    [Fact]
+    public async Task ToggleSharingAsync_StopSharing_ClearsThePersistedBadgeToo()
+    {
+        var bound = Project.Create("PayrollProcessor") with
+        {
+            Resources = [new ProjectResource("Depot — Work:payroll-processor", ProjectResourceRole.Memory)],
+            SharedSourceName = "Depot — Work",
+        };
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("Depot — Work:payroll-processor", "PayrollProcessor")]));
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store, bound);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+
+        await viewModel.ToggleSharingAsync(bound);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<ProjectSettings>(settings => settings.Projects.Single().SharedSourceName == null),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SourceRegisteredAfterTheStartupLoad_RetriesAutomaticallyAndFillsInTheBadge()
+    {
+        // Mirrors the AC-762 race: App.axaml.cs's plugin phase 2 registers a shared-project source after
+        // CockpitViewModel's constructor already kicked off the first LoadAsync — this source simply was not
+        // there yet when that first load ran.
+        var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [bound] });
+        var ownership = new ProjectOwnershipRegistry();
+        var registry = new _FakeSharedProjectSourceRegistry([]);
+        var viewModel = new ProjectsViewModel(store, dialogs: null, ownership: ownership, sharedSources: registry);
+        await viewModel.LoadAsync();
+        await viewModel.SharedProjectsLoadTask;
+        Assert.Equal("● This machine", Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards).OriginBadge);
+
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:one", "One")]));
+        registry.Register(source);
         await viewModel.SharedProjectsLoadTask;
 
         var card = Assert.Single(viewModel.ProjectCategoryGroups.Single().Cards);
@@ -798,15 +897,22 @@ public class ProjectsViewModelTests
         await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
     }
 
-    private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> sources) : ISharedProjectSourceRegistry
+    private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> initialSources) : ISharedProjectSourceRegistry
     {
-        public IReadOnlyList<ISharedProjectSource> Sources => sources;
+        private readonly List<ISharedProjectSource> _sources = [.. initialSources];
 
-        public bool Register(ISharedProjectSource source) => true;
+        public IReadOnlyList<ISharedProjectSource> Sources => _sources;
 
-        public void Remove(string key)
+        public event Action<ISharedProjectSource>? Registered;
+
+        public bool Register(ISharedProjectSource source)
         {
+            _sources.Add(source);
+            Registered?.Invoke(source);
+            return true;
         }
+
+        public void Remove(string key) => _sources.RemoveAll(source => source.Key == key);
     }
 
     private sealed class _FakeSharedProjectSource : ISharedProjectSource

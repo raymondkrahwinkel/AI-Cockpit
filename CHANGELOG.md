@@ -144,6 +144,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a project you shared to Depot now shows its "Shared" badge and "Stop sharing…" button right away on
+  restart, instead of looking unshared until you open Manage projects. The badge now remembers the last known
+  publish, so a slow, unreachable, or not-yet-signed-in connection no longer makes a genuinely shared project look
+  local. Sharing the same project a second time no longer leaves a stale connection behind that made "Stop sharing"
+  silently do nothing.
+
 - fixed: the session header's usage indicator (context/5-hour/weekly) no longer drops a figure it already knew.
   A session that received an incomplete usage reading — before its first turn, right after a compaction, or
   simply because the reply arrived a beat late — used to have that missing figure blanked out instead of kept;

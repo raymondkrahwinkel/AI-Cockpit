@@ -78,6 +78,10 @@ internal sealed class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ProjectPassword { get; set; }
 
+    // Absent for a project never published — AC-762's cold-start fallback for the ◆ badge.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SharedSourceName { get; set; }
+
     public static ProjectEntry FromDomain(Project project) => new()
     {
         Id = project.Id,
@@ -107,6 +111,7 @@ internal sealed class ProjectEntry
             ? null
             : project.PluginFields.ToDictionary(link => link.Key, link => link.Value, StringComparer.Ordinal),
         ProjectPassword = project.ProjectPassword,
+        SharedSourceName = project.SharedSourceName,
     };
 
     public Project ToDomain() => new(Id, Name)
@@ -142,5 +147,6 @@ internal sealed class ProjectEntry
             ? ReadOnlyDictionary<string, string>.Empty
             : new Dictionary<string, string>(PluginFields, StringComparer.Ordinal),
         ProjectPassword = ProjectPassword,
+        SharedSourceName = SharedSourceName,
     };
 }
