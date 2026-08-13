@@ -6685,9 +6685,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // is nobody — the brief vanished and this method still returned a pane id, so the spawn tool reported
             // ok:true on a session that came up empty. Twice in a row, which is how it was caught.
             //
-            // AC-760: its own true/false is kept rather than discarded — the earlier bug (above) hid an empty pane
-            // behind ok:true, and a stale-composer brief on a TTY pane whose CLI was not yet reading stdin hides
-            // behind the exact same ok:true if this return value is thrown away instead of carried out to the caller.
+            // AC-760: kept rather than discarded — a stale-composer brief on a TTY pane whose CLI was not yet
+            // reading stdin hides behind that exact same ok:true unless this return value reaches the caller.
             promptDelivered = FindSession(paneId)?.SubmitPromptWhenReady(prompt);
         }
 

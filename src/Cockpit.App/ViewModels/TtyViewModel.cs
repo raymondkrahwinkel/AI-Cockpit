@@ -896,10 +896,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     private Action<string>? _promptSink;
 
-    // AC-760: `PromptSink` turns non-null as soon as the pty process exists, well before the hosted CLI is actually
-    // reading stdin — `TtyView` is where that gap is measured (bracketed paste / a fallback deadline) and
-    // `MarkHostedTuiReady` is how it reports the answer changed. False again after `ResetHostedTuiReadiness`, so a
-    // pane relaunched onto a fresh pty (AC-564-style restart) does not inherit "ready" from the session before it.
+    // AC-760: `PromptSink` turns non-null as soon as the pty exists, well before the CLI actually reads stdin;
+    // `TtyView` measures that gap (bracketed paste / a fallback deadline) and reports it via `MarkHostedTuiReady`.
+    // `ResetHostedTuiReadiness` clears it so a relaunched pane does not inherit "ready" from the session before it.
     private bool _hostedTuiReady;
 
     // Called by the view once, from the single place its own readiness answer turns true — mirrors how the

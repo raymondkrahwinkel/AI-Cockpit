@@ -10,16 +10,11 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-760: <c>start_agent</c> used to hand a held opening brief to the pty the instant the process existed
-/// (<c>TtyViewModel.PromptSink</c> turning non-null), not once the hosted CLI was actually reading stdin. Both
-/// existing guards against a lost Enter — AC-752's bracketed-paste wrap and AC-64's CR gap — depend on terminal
-/// state the CLI has not set up yet at that moment, so the brief landed in the composer with no submit.
-/// <para>
-/// The fix rides the CLI's own readiness announcement: DECSET 2004 (bracketed paste), which
-/// <see cref="TerminalControl.BracketedPaste"/> already parses. <c>TtyView._CheckHostedTuiReadiness</c> is the gate;
-/// these pin it directly, the same way <c>TtyInjectedTextPasteTests</c> pins <c>_WriteToPty</c> — by reflecting into
-/// the view rather than driving a real pty launch.
-/// </para>
+/// AC-760: a held opening brief used to reach the pty the instant the process existed, before the hosted CLI was
+/// actually reading stdin — landing in the composer with no submit. The fix rides the CLI's own readiness signal,
+/// DECSET 2004, via <see cref="TerminalControl.BracketedPaste"/>; <c>TtyView._CheckHostedTuiReadiness</c> is the
+/// gate. These pin it directly by reflecting into the view, the same way <c>TtyInjectedTextPasteTests</c> pins
+/// <c>_WriteToPty</c>, rather than driving a real pty launch.
 /// </summary>
 [Collection("avalonia")]
 public class TtyPromptReadinessTests

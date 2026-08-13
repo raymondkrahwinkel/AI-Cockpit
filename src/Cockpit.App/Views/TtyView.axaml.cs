@@ -63,11 +63,9 @@ public partial class TtyView : UserControl
     private readonly List<byte> _outputPending = [];
     private DispatcherTimer? _outputFlush;
 
-    // AC-760: a held opening brief may only go to the pty once the hosted CLI is actually reading stdin, not once
-    // the pty process merely exists (`StartPty` returning). DECSET 2004 (bracketed paste) is the CLI announcing
-    // that itself, so readiness rides the same flush that already drains every pty byte — no extra polling.
-    // ponytail: a CLI that never enables bracketed paste would hold the brief forever without this; 15s is a fixed
-    // fallback rather than a setting, until a real CLI needs a different number.
+    // AC-760: a held brief may reach the pty only once the CLI is actually reading stdin, not merely once the
+    // process exists — readiness rides the DECSET 2004 flag through the same flush that drains every pty byte.
+    // ponytail: 15s fallback for a CLI that never enables bracketed paste, fixed rather than a setting.
     private static readonly TimeSpan HostedTuiReadyFallback = TimeSpan.FromSeconds(15);
     private DateTime? _firstPtyOutputAtUtc;
     private bool _hostedTuiReady;
@@ -978,10 +976,8 @@ public partial class TtyView : UserControl
 
             Terminal.Write(chunk);
 
-            // AC-34: while an agent is coupled to this pane, hand it the same bytes the terminal just rendered, so
-            // read_terminal returns what happened since the coupling. Gated on IsCoupled so an uncoupled pane pays nothing
-            // (no decode, no buffering) and its output is never captured. Raw terminal bytes for now — a clean-text view
-            // via the VT parser is a later refinement (design §4/§6).
+            // AC-34: while an agent is coupled to this pane, hand it the same bytes just rendered, so read_terminal
+            // returns what happened since the coupling. Gated on IsCoupled so an uncoupled pane pays nothing.
             if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals && terminals.IsCoupled(paneId))
             {
                 terminals.CaptureOutput(paneId, Encoding.UTF8.GetString(chunk));
