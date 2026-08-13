@@ -562,6 +562,37 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal(15d, window.UsedPercent, precision: 10);
     }
 
+    // AC-761 F2 / acceptance criterion 5: a cold get_context_usage (~1.5s) alongside a get_usage (~0.7s) still
+    // lands inside the widened grace, because the two now run in parallel — sequentially they would sum to
+    // ~2.2s, past the old 2s grace, and the second request would not even have been sent yet at that point.
+    [Fact]
+    public async Task ACold0_7sUsageReplyAndA1_5sContextReply_BothLandWithinTheGrace()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        fake.AutoRefuseUsagePolls = false;
+        var writtenAfterStart = fake.WrittenLines.Count;
+
+        await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
+
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage", writtenAfterStart);
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage", writtenAfterStart);
+
+        _ = Task.Delay(TimeSpan.FromMilliseconds(700))
+            .ContinueWith(_ => fake.PushStdoutAsync(_ControlSuccess(usageId, """{"rate_limits":{"five_hour":{"utilization":9}}}""")));
+        _ = Task.Delay(TimeSpan.FromMilliseconds(1500))
+            .ContinueWith(_ => fake.PushStdoutAsync(_ControlSuccess(contextId, """{"percentage":3}""")));
+
+        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+
+        var status = driver.Status;
+        Assert.NotNull(status);
+        Assert.Equal(3d, status.ContextUsedPercent);
+        var window = Assert.Single(status.RateLimits);
+        Assert.Equal(9d, window.UsedPercent, precision: 10);
+    }
+
     // Without the grace this waits out `_UsageRequestTimeout` (15s) and the session looks stuck.
     [Fact]
     public async Task ACliThatNeverAnswersThePoll_StillCompletesTheTurn()

@@ -70,6 +70,28 @@ public class SessionUsageDisplayTests
     }
 
     [Fact]
+    public void APartialSnapshot_LeavesTheOmittedSignalsShowingTheirLastKnownValue()
+    {
+        // AC-761 F1 / acceptance criterion 2: a snapshot with only ctx must not clear the two rate windows a
+        // fuller snapshot already reported.
+        var session = Build();
+
+        session.ApplyUsage(Signals,
+        [
+            new PluginUsageReading("context", 20, null),
+            new PluginUsageReading("five-hour", 18, DateTimeOffset.Parse("2026-07-14T22:00:00Z")),
+            new PluginUsageReading("weekly", 7, DateTimeOffset.Parse("2026-07-20T00:00:00Z")),
+        ]);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 21, null)]);
+
+        Assert.Equal(21, session.ContextUsedPercent);
+        Assert.Equal(2, session.RateLimits.Count);
+        Assert.Contains(session.RateLimits, w => w.Label == "5h" && w.UsedPercent == 18);
+        Assert.Contains(session.RateLimits, w => w.Label == "wk" && w.UsedPercent == 7);
+    }
+
+    [Fact]
     public void AReadingForASignalNobodyDeclared_IsDropped()
     {
         // Guessing at an unknown key would put a mislabelled bar in the header. A renamed signal costs its bar
@@ -289,16 +311,17 @@ public class SessionUsageDisplayTests
     }
 
     [Fact]
-    public void AfterACompaction_TheContextFigureGoesBackToSilence()
+    public void AfterACompaction_TheContextFigureKeepsShowingItsLastKnownValue()
     {
-        // Claude reports no context percentage right after a /compact. The bar must go quiet rather than keep
-        // showing the number from before, which would be a claim about a window that just emptied.
+        // AC-761 F1: Claude reports no context percentage right after a /compact — a snapshot that omits a
+        // signal must not blank it out, since a known-but-stale figure beats no figure at all until the next
+        // one lands (a session that never completes another turn used to show nothing here permanently).
         var session = Build();
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 88, null)]);
 
         session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 20, null)]);
 
-        Assert.Null(session.ContextUsedPercent);
+        Assert.Equal(88, session.ContextUsedPercent);
         Assert.Single(session.RateLimits);
     }
 }

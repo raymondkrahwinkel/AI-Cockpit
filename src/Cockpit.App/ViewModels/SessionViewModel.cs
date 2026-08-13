@@ -54,6 +54,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-713: polls `_loginChecker.IsLoggedIn(_profile)` for the auth-expiry bar, since the SDK route has no TTY pane to show a login prompt in on its own.
     private DispatcherTimer? _loginPollTimer;
 
+    // AC-761 F3: catches a `get_usage`/`get_context_usage` reply that missed its turn's publish grace — a plain
+    // re-read of `_runtime.CurrentStatus`, no CLI traffic of its own, for a session that has since gone idle.
+    private DispatcherTimer? _usageCatchUpTimer;
+
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
     // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
     // StartWithProfileAsync. The manager owns it and is the one place it gets stopped.
@@ -894,7 +898,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
-        CloseRequested += (_, _) => _loginPollTimer?.Stop();
+        CloseRequested += (_, _) =>
+        {
+            _loginPollTimer?.Stop();
+            _usageCatchUpTimer?.Stop();
+        };
     }
 
     // This is the pane kind turn-start delivery works on (AC-394): the host composes its turns as typed calls on a
@@ -1113,6 +1121,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ContextUsedPercent = null;
         RateLimits.Clear();
         LimitsTooltip = string.Empty;
+        // AC-761 F1: without this, the next _RefreshLimits() call would merge the old conversation's readings
+        // back in and undo the clear above.
+        ResetUsageHistory();
 
         // A restore offer belongs to the conversation this pane was restored with; that conversation is no longer
         // the one running here, so the banner must not go on offering to resume it.
@@ -1199,6 +1210,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // figures in now rather than leaving the header pill empty until the first turn completes. A driver
             // with nothing yet reads null and _RefreshLimits leaves the bars as they were.
             _RefreshLimits();
+            _StartUsageCatchUpTimer();
 
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;
@@ -2749,22 +2761,60 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _loginPollTimer.Start();
     }
 
-    // Pulls the driver's latest limits into the header bars. Read at each turn boundary and once right after start
-    // (AC-660) rather than on a timer: those are the only points the provider has fresh figures to report — a
-    // session with no limits feed yet simply reads null and keeps the bars hidden.
+    // AC-761: fallback signal for a profile with no registered plugin provider (an unmigrated legacy Claude
+    // profile) — the same numbers ClaudeUsageSignals declares, so it still gets a threshold instead of none.
+    private static readonly PluginUsageSignal _FallbackContextSignal =
+        new("context", "ctx", PluginUsageSignalKind.Fill, DefaultThresholdPercent: 50) { Description = "Context window" };
+
+    private const double _FallbackAllowanceThresholdPercent = 90;
+
+    // Pulls the driver's latest limits into the header bars — turn boundary, right after start (AC-660), and now
+    // also the idle catch-up timer (AC-761 F3). Routed through the shared ApplyUsage (AC-761) instead of setting
+    // ContextUsedPercent/RateLimits directly, so a merge survives an incomplete snapshot and gets a threshold.
     private void _RefreshLimits()
     {
-        if (_runtime?.CurrentStatus is { HasAny: true } status)
+        if (_runtime?.CurrentStatus is not { HasAny: true } status)
         {
-            ContextUsedPercent = status.ContextUsedPercent;
-            RateLimits.Clear();
-            foreach (var window in status.RateLimits)
-            {
-                RateLimits.Add(window);
-            }
-
-            LimitsTooltip = status.Describe();
+            return;
         }
+
+        var providerId = _profile?.ProviderConfig is PluginProviderConfig plugin ? plugin.ProviderId : null;
+        var declared = providerId is not null ? _pluginProviderRegistry?.Resolve(providerId)?.UsageSignals : null;
+        UsageProviderId = providerId;
+
+        var signals = new List<PluginUsageSignal>();
+        var readings = new List<PluginUsageReading>(status.RateLimits.Count + 1);
+
+        if (status.ContextUsedPercent is { } context)
+        {
+            var signal = declared?.FirstOrDefault(s => s.Kind == PluginUsageSignalKind.Fill) ?? _FallbackContextSignal;
+            signals.Add(signal);
+            readings.Add(new PluginUsageReading(signal.Key, context, null));
+        }
+
+        foreach (var window in status.RateLimits)
+        {
+            var signal = declared?.FirstOrDefault(s => s.Label == window.Label)
+                ?? new PluginUsageSignal(window.Label, window.Label, PluginUsageSignalKind.Allowance, _FallbackAllowanceThresholdPercent);
+            signals.Add(signal);
+            readings.Add(new PluginUsageReading(signal.Key, window.UsedPercent, window.ResetsAt));
+        }
+
+        ApplyUsage(signals, readings);
+    }
+
+    // AC-761 F3: starts (once) the light idle timer that re-reads the driver's already-known status every 30s, so
+    // a reply that landed after its turn's publish grace is not stuck there until the next turn completes.
+    private void _StartUsageCatchUpTimer()
+    {
+        if (_usageCatchUpTimer is not null)
+        {
+            return;
+        }
+
+        _usageCatchUpTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _usageCatchUpTimer.Tick += (_, _) => _RefreshLimits();
+        _usageCatchUpTimer.Start();
     }
 
     protected override async ValueTask DisposeCoreAsync()
@@ -2782,6 +2832,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-713: a running flow's subprocess must not outlive the pane that started it.
         _loginPollTimer?.Stop();
+        _usageCatchUpTimer?.Stop();
         foreach (var entry in Transcript)
         {
             if (entry.LoginFlow is { } loginFlow)

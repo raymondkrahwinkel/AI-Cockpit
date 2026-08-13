@@ -90,7 +90,9 @@ public class SessionViewModelTests
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
         Assert.Equal(25, vm.ContextUsedPercent);
-        Assert.Equal(new[] { new SessionRateWindow("5h", 60, reset), new SessionRateWindow("wk", 80, null) }, vm.RateLimits);
+        // AC-761: _RefreshLimits now routes through ApplyUsage, so an SDK session's windows carry a threshold too
+        // (the fallback 90 — this profile names no registered plugin provider to declare its own).
+        Assert.Equal(new[] { new SessionRateWindow("5h", 60, reset, 90), new SessionRateWindow("wk", 80, null, 90) }, vm.RateLimits);
         Assert.Contains("Context window: 25% used", vm.LimitsTooltip);
 
         await vm.DisposeAsync();
@@ -117,7 +119,7 @@ public class SessionViewModelTests
 
         // No TurnCompleted here — this is the resumed pane sitting idle, exactly what the operator sees on reopen.
         Assert.Equal(37, vm.ContextUsedPercent);
-        Assert.Equal(new[] { new SessionRateWindow("5h", 12, reset) }, vm.RateLimits);
+        Assert.Equal(new[] { new SessionRateWindow("5h", 12, reset, 90) }, vm.RateLimits);
         Assert.True(vm.HasUsagePillRegion);
 
         await vm.DisposeAsync();
@@ -139,7 +141,7 @@ public class SessionViewModelTests
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
         Assert.Equal(2, vm.ContextUsedPercent);
-        Assert.Equal(new[] { new SessionRateWindow("5h", 15, reset) }, vm.RateLimits);
+        Assert.Equal(new[] { new SessionRateWindow("5h", 15, reset, 90) }, vm.RateLimits);
         Assert.True(vm.HasUsagePillRegion);
 
         await vm.DisposeAsync();
