@@ -69,15 +69,14 @@ public partial class MentionPickerViewModel : ViewModelBase
 
         _suppressedTokenStart = -1;
         TokenStart = token.Start;
+
+        // Re-ranking hangs off OnQueryChanged alone. Filtering here as well ranked every keystroke twice, and a
+        // keystroke that leaves the token's text alone (a caret move, a re-evaluation) now costs nothing at all.
         Query = token.Query;
         if (!IsOpen)
         {
             IsOpen = true;
             _ = _LoadAsync();
-        }
-        else
-        {
-            _ApplyFilter();
         }
     }
 
@@ -169,15 +168,31 @@ public partial class MentionPickerViewModel : ViewModelBase
 
     private void _ApplyFilter()
     {
-        Matches.Clear();
-        if (_candidates is { } candidates)
+        var ranked = _candidates is { } candidates
+            ? MentionMatcher.Rank(candidates, Query, MaxMatches)
+            : [];
+
+        // Rewritten in place rather than cleared and refilled: Matches is bound to the popup's ListBox, and a
+        // Clear is a reset that throws away and rebuilds every container — on every keystroke, while the operator
+        // is typing into the box right underneath it. A row whose path is unchanged now raises nothing at all.
+        for (var i = 0; i < ranked.Count; i++)
         {
-            foreach (var path in MentionMatcher.Rank(candidates, Query, MaxMatches))
+            if (i == Matches.Count)
             {
-                Matches.Add(new MentionMatch(path));
+                Matches.Add(new MentionMatch(ranked[i]));
             }
+            else if (!string.Equals(Matches[i].Path, ranked[i], StringComparison.Ordinal))
+            {
+                Matches[i] = new MentionMatch(ranked[i]);
+            }
+        }
+
+        for (var i = Matches.Count - 1; i >= ranked.Count; i--)
+        {
+            Matches.RemoveAt(i);
         }
 
         Selected = Matches.Count > 0 ? Matches[0] : null;
     }
+
 }
