@@ -30,7 +30,7 @@ public partial class AssistantChatWindow : Window
     public AssistantChatWindow()
     {
         InitializeComponent();
-        WindowResizeGrip.Attach(this);
+        WindowResizeGrip.Apply(this);
 
         // Enter sends; Shift+Enter inserts a newline — the same convention as the main session composer
         // (SessionView._OnInputKeyDown). Tunnel so this pre-empts the TextBox's own Enter handling.
@@ -143,7 +143,7 @@ public partial class AssistantChatWindow : Window
         _attachedSession = null;
     }
 
-    // No OS title bar (WindowDecorations="None", AC-636/AC-678), so the header is the drag handle — same idiom
+    // No OS title bar (WindowResizeGrip.Apply, AC-636/AC-678), so the header is the drag handle — same idiom
     // CockpitWindowChrome uses elsewhere, just not reused since that helper's bar has no room for the
     // read-aloud toggle. WindowResizeGrip covers the edges/corners the header does not.
     private void _OnHeaderPressed(object? sender, PointerPressedEventArgs e)

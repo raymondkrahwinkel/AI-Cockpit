@@ -1222,10 +1222,14 @@
                             <Border Background="{StaticResource CockpitSecondaryBgBrush}"
                                     BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                                     CornerRadius="6" Padding="12" Margin="0,4">
-                                <SelectableTextBlock Text="{Binding Diagnostics.Report}"
-                                                     FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
-                                                     Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                     TextWrapping="NoWrap"/>
+                                <!-- AC-755: the report holds paths and OS lines longer than the dialog is wide, and
+                                     the tab's own ScrollViewer only scrolls down, so they were simply cut off. -->
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                    <SelectableTextBlock Text="{Binding Diagnostics.Report}"
+                                                         FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
+                                                         Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                         TextWrapping="NoWrap"/>
+                                </ScrollViewer>
                             </Border>
                         </StackPanel>
                     </ScrollViewer>

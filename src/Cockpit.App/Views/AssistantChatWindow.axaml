@@ -15,7 +15,6 @@
         Width="520" Height="640" MinWidth="340" MinHeight="360"
         WindowStartupLocation="CenterOwner"
         Topmost="{Binding AlwaysOnTop}"
-        WindowDecorations="None"
         ExtendClientAreaToDecorationsHint="True"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -23,8 +22,8 @@
          workspace grid — precedent is Autopilot's plan pop-out (AutopilotPlanWorkspaceBody._ShowPlanningPopoutAsync),
          a small floating window rather than another tab.
          AC-636 reverses AC-543's "no 'bigger' affordance (COMMENT 6 #1, decided)": `Controls/WindowResizeGrip`
-         gives it the same invisible edges/corners every other cockpit window resizes by (AC-678), so no grip of
-         our own has to be drawn or kept out of the composer's way. MinWidth/MinHeight stay the floor. -->
+         gives it the same edges/corners — and the same decorations — every other cockpit window resizes by
+         (AC-678/AC-755), from the constructor. MinWidth/MinHeight stay the floor. -->
 
     <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
         <Grid>

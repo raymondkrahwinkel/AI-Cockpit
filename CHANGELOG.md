@@ -144,6 +144,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: windows on macOS can be resized again. A recent change removed the border every window used to have and
+  replaced the resizing it carried with the cockpit's own — which macOS supports in neither half, so every window
+  there was stuck at the size it opened at. macOS keeps the platform's own resize border again; Windows and Linux
+  are unaffected and keep the borderless look.
+
+- fixed: the diagnostics report under Options → Debug scrolls sideways, so lines longer than the dialog is wide —
+  paths, OS build strings — can be read instead of being cut off.
+
 - fixed: the cockpit no longer lets resident memory climb into the gigabytes and stay there. On a workstation with
   plenty of free RAM, .NET only hands freed memory back to the operating system when it detects real memory
   pressure — which rarely happens here — so memory the garbage collector had already marked as dead kept being

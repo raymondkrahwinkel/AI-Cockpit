@@ -49,6 +49,16 @@ public class WindowResizeGripTests
     }
 
     [Fact]
+    public void OnMacOs_TheWindowKeepsThePlatformsOwnResizeBorder() =>
+        // AC-755: there our own grip cannot work at all — Avalonia.Native's BeginResizeDrag does nothing, and
+        // None leaves NSWindowStyleMaskResizable off the window — so it must not be the one asked for.
+        Assert.Equal(WindowDecorations.BorderOnly, WindowResizeGrip.DecorationsFor(isMacOs: true));
+
+    [Fact]
+    public void OnEveryOtherPlatform_TheWindowStillWearsNoOsDecorationAtAll() =>
+        Assert.Equal(WindowDecorations.None, WindowResizeGrip.DecorationsFor(isMacOs: false));
+
+    [Fact]
     public void ANarrowerBand_ShrinksTheZoneWithIt()
     {
         // A custom thickness (rather than the default) still governs the calculation — the parameter is not
