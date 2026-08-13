@@ -333,12 +333,12 @@ public partial class TtyView : UserControl
         return pasted.Task;
     }
 
-    // Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (`OnTerminalBytesToPty`).
+    // Writes a finished voice transcript into the pty — the same path a scheduled resume takes (`_WriteToPty(string)`).
     private void _OnVoiceTranscriptReady(string text) => _WriteToPty(text);
 
-    // Writes text into the pty's stdin, the path a typed keystroke takes. Shared by the voice transcript and by a
-    // scheduled resume (AC-234), so text that did not come from the keyboard still arrives the one way the TUI
-    // understands.
+    // AC-752: claude's CLI treats any stdin chunk >=64 bytes as a paste, swallowing a `\r` inside it as a literal
+    // newline instead of Enter. Route the text through bracketed paste (as `_OnPasteTextAsync` already does) and
+    // write a trailing CR raw right after, on the UI thread so the two land in order.
     private void _WriteToPty(string text)
     {
         var pty = _pty;
@@ -347,7 +347,21 @@ public partial class TtyView : UserControl
             return;
         }
 
-        _WriteToPty(pty, Encoding.UTF8.GetBytes(text));
+        var hasTrailingReturn = text.Length > 0 && text[^1] == '\r';
+        var typed = hasTrailingReturn ? text[..^1] : text;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (typed.Length > 0)
+            {
+                Terminal.Paste(typed);
+            }
+
+            if (hasTrailingReturn)
+            {
+                _WriteToPty(pty, [(byte)'\r']);
+            }
+        });
     }
 
     private void WireTerminal()

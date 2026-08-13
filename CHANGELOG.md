@@ -157,6 +157,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   underneath it. Its rows were tied to push-to-talk dictation being on, a toggle that lives on the Transcribe page,
   so an operator with the assistant enabled but dictation off saw an empty heading; the heading and its rows now
   show and hide together, correctly gated on the assistant being enabled.
+- fixed: a prompt over 62 characters — sent by the operator, a voice transcript, a scheduled resume, or a spawned
+  session's opening message — could type into the running `claude` session but never submit, leaving it sitting in
+  the composer looking sent. The CLI treats any stdin chunk of 64 bytes or more as a paste, so the Enter riding
+  along inside that same write landed as a literal newline instead of registering as a key. The text now goes
+  through the terminal's own paste mechanism (the same one already used for pasting a screenshot's path), with
+  Enter written on its own right after.
 - fixed: making a backup (or restoring one) no longer freezes the cockpit for as long as the archive takes to
   build or unpack. The window stays responsive — draggable, other tabs and sessions usable — while a backup with a
   realistic amount of stored data runs in the background.
