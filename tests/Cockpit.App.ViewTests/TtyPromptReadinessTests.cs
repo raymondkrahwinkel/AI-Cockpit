@@ -10,11 +10,10 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-760: a held opening brief used to reach the pty the instant the process existed, before the hosted CLI was
-/// actually reading stdin — landing in the composer with no submit. The fix rides the CLI's own readiness signal,
-/// DECSET 2004, via <see cref="TerminalControl.BracketedPaste"/>; <c>TtyView._CheckHostedTuiReadiness</c> is the
-/// gate. These pin it directly by reflecting into the view, the same way <c>TtyInjectedTextPasteTests</c> pins
-/// <c>_WriteToPty</c>, rather than driving a real pty launch.
+/// AC-760: a held brief used to reach the pty the instant the process existed, before the CLI actually read
+/// stdin — landing in the composer with no submit. The fix rides DECSET 2004 via
+/// <see cref="TerminalControl.BracketedPaste"/>, gated by <c>TtyView._CheckHostedTuiReadiness</c>; these pin it by
+/// reflecting into the view, like <c>TtyInjectedTextPasteTests</c> does, rather than driving a real pty launch.
 /// </summary>
 [Collection("avalonia")]
 public class TtyPromptReadinessTests
