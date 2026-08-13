@@ -336,13 +336,9 @@ public partial class TtyView : UserControl
     // Writes a finished voice transcript into the pty — the same path a scheduled resume takes (`_WriteToPty(string)`).
     private void _OnVoiceTranscriptReady(string text) => _WriteToPty(text);
 
-    // Writes injected text into the pty's stdin — voice transcripts, a scheduled resume (AC-234), and a submitted
-    // prompt (`PromptSink`) all share this. Unlike a typed keystroke, this can be long, and claude's CLI treats any
-    // stdin chunk of >=64 bytes as a paste (AC-752) — a `\r` riding inside such a chunk becomes a literal newline in
-    // the pasted text instead of registering as Enter. The text goes through the terminal's own bracketed paste
-    // (`Terminal.Paste`, the same route `_OnPasteTextAsync` uses for an operator's paste) so the CLI reads it as
-    // pasted content regardless of length; a trailing CR — the caller's Enter — is written raw right after, on the
-    // UI thread so the two land in order. A CR directly after the paste's closing `ESC[201~` registers as Enter.
+    // AC-752: claude's CLI treats any stdin chunk >=64 bytes as a paste, swallowing a `\r` inside it as a literal
+    // newline instead of Enter. Route the text through bracketed paste (as `_OnPasteTextAsync` already does) and
+    // write a trailing CR raw right after, on the UI thread so the two land in order.
     private void _WriteToPty(string text)
     {
         var pty = _pty;

@@ -10,14 +10,8 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-752: claude's CLI (2.1.228) treats any stdin chunk of &gt;=64 bytes as a paste, and a <c>\r</c> riding inside
-/// such a chunk becomes a literal newline in the pasted text instead of registering as Enter — so a prompt/voice
-/// transcript/scheduled resume over 62 characters, written as text+CR in one go, silently never submits.
-/// <c>TtyView._WriteToPty(string)</c> is the shared entry for all three; it now routes the text through the
-/// terminal's own bracketed paste (<see cref="Exclr8.Terminal.TerminalControl.Paste"/>, the same route
-/// <c>_OnPasteTextAsync</c> uses for an operator's paste) and writes a trailing CR raw, right after — the same
-/// sequence <c>_OnPasteTextAsync</c> already relied on being safe. These pin the actual byte stream that lands in
-/// the pty's stdin.
+/// AC-752: <c>TtyView._WriteToPty(string)</c> now routes injected text through bracketed paste and writes a
+/// trailing CR raw, right after. These pin the actual byte stream that lands in the pty's stdin.
 /// </summary>
 [Collection("avalonia")]
 public class TtyInjectedTextPasteTests
