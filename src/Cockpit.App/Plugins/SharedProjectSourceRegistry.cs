@@ -20,6 +20,13 @@ public interface ISharedProjectSourceRegistry
 
     /// <summary>Every source registered so far, in registration order.</summary>
     IReadOnlyList<ISharedProjectSource> Sources { get; }
+
+    /// <summary>
+    /// Raised right after a source is added (AC-762) — plugins register in a later startup phase than the window
+    /// that kicks off the first <c>ProjectsViewModel.LoadSharedProjectsAsync</c>, so a source arriving after that
+    /// race has already been lost is otherwise never retried until the operator opens Manage projects.
+    /// </summary>
+    event Action<ISharedProjectSource>? Registered;
 }
 
 internal sealed class SharedProjectSourceRegistry : ISharedProjectSourceRegistry, ISingletonService
@@ -27,6 +34,8 @@ internal sealed class SharedProjectSourceRegistry : ISharedProjectSourceRegistry
     private readonly Dictionary<string, ISharedProjectSource> _sources = new(StringComparer.Ordinal);
 
     public IReadOnlyList<ISharedProjectSource> Sources => [.. _sources.Values];
+
+    public event Action<ISharedProjectSource>? Registered;
 
     public bool Register(ISharedProjectSource source)
     {
@@ -36,6 +45,7 @@ internal sealed class SharedProjectSourceRegistry : ISharedProjectSourceRegistry
         }
 
         _sources.Add(source.Key, source);
+        Registered?.Invoke(source);
         return true;
     }
 

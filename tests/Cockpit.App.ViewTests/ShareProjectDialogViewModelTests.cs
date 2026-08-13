@@ -166,6 +166,29 @@ public class ShareProjectDialogViewModelTests
         var binding = Assert.Single(closed!.Resources);
         Assert.Equal(ProjectResourceRole.Memory, binding.Role);
         Assert.Equal("depot:payroll-processor", binding.Reference);
+        // AC-762: the ◆ badge's cold-start fallback is set the moment publishing succeeds.
+        Assert.Equal("Work", closed.SharedSourceName);
+    }
+
+    // AC-762 bijvangst: sharing an already-shared project used to prepend a second Memory row instead of replacing
+    // the first, so "Stop sharing" (which removes only the first match) left the stale row's binding intact.
+    [Fact]
+    public async Task ShareAsync_Success_AProjectAlreadySharedOnce_ReplacesTheExistingMemoryRowRatherThanStacking()
+    {
+        var project = Project(resources: [new ProjectResource("depot:payroll-processor-old", ProjectResourceRole.Memory)]);
+        var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out _);
+        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+
+        Project? closed = null;
+        viewModel.CloseRequested += result => closed = result;
+        viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
+
+        await viewModel.ShareCommand.ExecuteAsync(null);
+
+        Assert.NotNull(closed);
+        var binding = Assert.Single(closed!.Resources);
+        Assert.Equal(ProjectResourceRole.Memory, binding.Role);
+        Assert.Equal("depot:payroll-processor", binding.Reference);
     }
 
     [Fact]

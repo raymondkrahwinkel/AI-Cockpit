@@ -230,6 +230,8 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
                     .Where(row => !string.IsNullOrWhiteSpace(row.Reference))
                     .Select(row => new ProjectResource(row.Reference.Trim(), row.Role) { Label = row.Label }),
             ],
+            // AC-762: the ◆ badge's fallback for a cold start — see Project.SharedSourceName.
+            SharedSourceName = SourceName,
         };
     }
 

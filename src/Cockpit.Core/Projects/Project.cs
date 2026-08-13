@@ -139,6 +139,11 @@ public sealed record Project(string Id, string Name)
     // way every other credential in `cockpit.json` already is (AC-353) — no new storage mechanism.
     public string? ProjectPassword { get; init; }
 
+    // AC-762: last known shared-project source name — set by share/bind, cleared by "Stop sharing", confirmed or
+    // cleared by the next successful list. Fallback for when `IProjectOwnershipRegistry` has no live claim yet;
+    // never a second source of truth, a successful list always wins.
+    public string? SharedSourceName { get; init; }
+
     // A record's compiler-generated ToString() would otherwise print ProjectPassword in the clear — masked here
     // the same way ProjectInfoField.Mask hides a secret AdditionalInfo value (Iron Law #8). `PrintMembers`
     // (the usual record idiom) trips this SDK's IDE0051 analyzer as a false "unused member", hence ToString().
@@ -151,7 +156,7 @@ public sealed record Project(string Id, string Name)
         builder.Append($"IsolateInWorktreeByDefault = {IsolateInWorktreeByDefault}, McpOverlay = {McpOverlay}, Resources = {Resources}, ");
         builder.Append($"MemoryRef = {MemoryRef}, LogoPath = {LogoPath}, LastOpenedAt = {LastOpenedAt}, AdditionalInfo = {AdditionalInfo}, ");
         builder.Append($"HasAdditionalInfo = {HasAdditionalInfo}, ProjectPassword = {(ProjectPassword is null ? null : ProjectInfoField.Mask)}, ");
-        builder.Append($"Category = {Category}, PluginFields = {PluginFields} }}");
+        builder.Append($"Category = {Category}, PluginFields = {PluginFields}, SharedSourceName = {SharedSourceName} }}");
         return builder.ToString();
     }
 
