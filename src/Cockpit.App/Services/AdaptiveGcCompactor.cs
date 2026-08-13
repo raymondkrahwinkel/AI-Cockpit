@@ -11,7 +11,8 @@ namespace Cockpit.App.Services;
 public sealed class AdaptiveGcCompactor(
     ILogger<AdaptiveGcCompactor>? logger = null,
     Func<long>? heapBytesProbe = null,
-    Action? compact = null) : ISingletonService, IDisposable
+    Action? compact = null,
+    Func<DateTime>? utcNow = null) : ISingletonService, IDisposable
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMilliseconds(200);
 
@@ -29,6 +30,11 @@ public sealed class AdaptiveGcCompactor(
     // blocking compact rather than risk the multi-minute pause measured on an uncontrolled multi-GB heap.
     private const long MaxSafeHeapBytesToCompact = 3L * 1024 * 1024 * 1024;
 
+    // AC-770: above the ceiling, retry at most this often (still bounded pause risk) instead of never again —
+    // and log at most this often too, so an unresolved leak that camps above the ceiling can't flood the log.
+    private static readonly TimeSpan OverCeilingLogInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan OverCeilingCompactCooldown = TimeSpan.FromSeconds(30);
+
     private readonly ILogger<AdaptiveGcCompactor> _logger = logger ?? NullLogger<AdaptiveGcCompactor>.Instance;
 
     // Both injectable so a test can drive the growth gate without growing a real heap past 300 MB, and without
@@ -37,8 +43,15 @@ public sealed class AdaptiveGcCompactor(
 
     private readonly Action _compact = compact ?? (() => GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true));
 
+    // Injectable so a test can drive the cooldown/rate-limit without sleeping for real.
+    private readonly Func<DateTime> _utcNow = utcNow ?? (() => DateTime.UtcNow);
+
     // Only ever read and written by the one monitor thread (or a test driving CheckOnce directly).
     private long _compactAtBytes = CompactThresholdBytes;
+    private DateTime? _overCeilingSince;
+    private DateTime? _lastOverCeilingWarnUtc;
+    private DateTime? _lastOverCeilingCompactAttemptUtc;
+    private bool _loggedOverCeilingError;
 
     private Thread? _thread;
     private volatile bool _stopping;
@@ -62,6 +75,13 @@ public sealed class AdaptiveGcCompactor(
         try
         {
             var heapBytes = _heapBytes();
+
+            if (heapBytes <= MaxSafeHeapBytesToCompact)
+            {
+                _overCeilingSince = null;
+                _loggedOverCeilingError = false;
+            }
+
             if (heapBytes < _compactAtBytes)
             {
                 return;
@@ -69,10 +89,35 @@ public sealed class AdaptiveGcCompactor(
 
             if (heapBytes > MaxSafeHeapBytesToCompact)
             {
-                _logger.LogWarning(
-                    "Managed heap reached {Heap}, past the safe compact ceiling — skipping an automatic compact to avoid a long pause.",
-                    ByteSize.Human(heapBytes));
-                return;
+                var now = _utcNow();
+                _overCeilingSince ??= now;
+
+                if (!_loggedOverCeilingError)
+                {
+                    if (now - _overCeilingSince.Value >= OverCeilingLogInterval)
+                    {
+                        _logger.LogError(
+                            "Managed heap has stayed above the safe compact ceiling ({Heap}) for over a minute — probable leak, a heap dump is recommended.",
+                            ByteSize.Human(heapBytes));
+                        _loggedOverCeilingError = true;
+                    }
+                    else if (_lastOverCeilingWarnUtc is null || now - _lastOverCeilingWarnUtc.Value >= OverCeilingLogInterval)
+                    {
+                        _logger.LogWarning(
+                            "Managed heap reached {Heap}, past the safe compact ceiling — skipping an automatic compact to avoid a long pause.",
+                            ByteSize.Human(heapBytes));
+                        _lastOverCeilingWarnUtc = now;
+                    }
+                }
+
+                // AC-770: don't latch forever — retry a bounded compact attempt once the cooldown elapses, since
+                // a heap stuck above the ceiling never recovers on its own if it never compacts again.
+                if (_lastOverCeilingCompactAttemptUtc is not null && now - _lastOverCeilingCompactAttemptUtc.Value < OverCeilingCompactCooldown)
+                {
+                    return;
+                }
+
+                _lastOverCeilingCompactAttemptUtc = now;
             }
 
             var before = ProcessMemoryInfo.Current().ResidentBytes;

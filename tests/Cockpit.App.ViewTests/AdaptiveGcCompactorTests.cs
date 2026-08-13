@@ -56,6 +56,33 @@ public class AdaptiveGcCompactorTests
         Assert.Equal(2, compacts);
     }
 
+    /// <summary>
+    /// AC-770: the guard above <c>MaxSafeHeapBytesToCompact</c> used to skip every check forever once the heap
+    /// crossed it — since the heap never drops back under 3 GB on its own, that latched the compactor into a
+    /// permanent no-op loop. It must instead retry after a cooldown.
+    /// </summary>
+    [Fact]
+    public void CheckOnce_RetriesACompactAfterTheCooldownInsteadOfLatchingForever()
+    {
+        var logger = new _CapturingLogger();
+        var compacts = 0;
+        var heapBytes = 4L * 1024 * 1024 * 1024; // over the 3 GB ceiling
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++, () => now);
+
+        compactor.CheckOnce();
+        Assert.Equal(1, compacts);
+
+        heapBytes += 200L * 1024 * 1024; // clear the growth gate so the next check is live again
+        now = now.AddSeconds(29);
+        compactor.CheckOnce();
+        Assert.Equal(1, compacts); // still cooling down
+
+        now = now.AddSeconds(2); // 31s since the first attempt — cooldown elapsed
+        compactor.CheckOnce();
+        Assert.Equal(2, compacts);
+    }
+
     private sealed class _CapturingLogger : ILogger<AdaptiveGcCompactor>
     {
         public List<string> Messages { get; } = [];
