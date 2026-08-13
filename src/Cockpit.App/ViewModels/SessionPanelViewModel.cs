@@ -457,22 +457,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _limitsTooltip = string.Empty;
 
-    // Folds a provider's usage readings into the header (AC-229), matching each to the signal that declared it.
-    // On the shared base because it is the one place both session kinds can meet: whatever route reported the
-    // figures, they land here and the same header renders them.
-    //
-    // The host reads nothing into the values beyond the `PluginUsageSignalKind` the provider gave
-    // them — a fill is the context bar, an allowance is a window with a reset. A reading whose key matches no
-    // declaration is dropped rather than guessed at, so a provider that renames a signal loses a bar instead of
-    // gaining a mislabelled one.
+    // Folds a provider's usage readings into the header (AC-229) — an unmatched key is dropped rather than
+    // guessed at. AC-761 F1: merges into the last known reading per key instead of replacing the set, so an
+    // incomplete snapshot keeps its last known value; `ResetUsageHistory` is what forgets one.
     public void ApplyUsage(IReadOnlyList<PluginUsageSignal> signals, IReadOnlyList<PluginUsageReading> readings)
     {
-        var described = new List<string>(readings.Count);
-        double? context = null;
-        var windows = new List<SessionRateWindow>(readings.Count);
-
-        _thresholds.Clear();
-
         foreach (var reading in readings)
         {
             if (signals.FirstOrDefault(signal => signal.Key == reading.SignalKey) is not { } declared)
@@ -480,17 +469,29 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 continue;
             }
 
+            _lastReadings[reading.SignalKey] = (declared, reading);
+        }
+
+        var described = new List<string>(_lastReadings.Count);
+        double? context = null;
+        var windows = new List<SessionRateWindow>(_lastReadings.Count);
+
+        _thresholds.Clear();
+
+        foreach (var (declared, reading) in _lastReadings.Values)
+        {
+            var threshold = _ResolveThreshold(declared);
+
             if (declared.Kind is PluginUsageSignalKind.Fill)
             {
                 context = reading.UsedPercent;
-                ContextThreshold = _ResolveThreshold(declared);
+                ContextThreshold = threshold;
             }
             else
             {
-                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt, _ResolveThreshold(declared)));
+                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt, threshold));
             }
 
-            var threshold = _ResolveThreshold(declared);
             _thresholds[declared.Label] = threshold;
             described.Add(_DescribeReading(declared, reading));
             _RaiseOrClearWarning(declared, reading, threshold);
@@ -505,6 +506,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         LimitsTooltip = string.Join(Environment.NewLine, described);
+    }
+
+    // The last known reading per signal key, merged into by every `ApplyUsage` call (AC-761 F1).
+    private readonly Dictionary<string, (PluginUsageSignal Signal, PluginUsageReading Reading)> _lastReadings = [];
+
+    // AC-761 F1 / AC-564: forgets every merged reading and threshold, so a context-clear or session end does not
+    // let a stale figure from the old conversation resurface on the next `ApplyUsage` call.
+    protected void ResetUsageHistory()
+    {
+        _lastReadings.Clear();
+        _thresholds.Clear();
     }
 
     // The threshold each rendered figure was measured against, by the label it renders under, so the pill and the

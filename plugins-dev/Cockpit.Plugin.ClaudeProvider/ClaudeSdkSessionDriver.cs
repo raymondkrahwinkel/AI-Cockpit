@@ -460,10 +460,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // A reply that never comes must not keep its awaiter alive for the session's lifetime.
     private static readonly TimeSpan _UsageRequestTimeout = TimeSpan.FromSeconds(15);
 
-    // How long the turn's events wait for the poll. The round-trip measures in milliseconds, so this is slack,
-    // and far under `_UsageRequestTimeout` on purpose: worse than a stale pill is a session that looks stuck.
-    // Past it the events go out anyway and the answer lands for the next turn.
-    private static readonly TimeSpan _UsagePublishGrace = TimeSpan.FromSeconds(2);
+    // How long the turn's events wait for the poll — past it they go out anyway and the answer lands next turn.
+    // AC-761 F2: widened from 2s, since a cold get_context_usage alone measured ~1.6s.
+    private static readonly TimeSpan _UsagePublishGrace = TimeSpan.FromSeconds(3);
 
     // Asks the CLI for the two figures the pill renders — `get_usage` (what `/usage` prints) and
     // `get_context_usage` (what `/context` prints) — then publishes the turn's events. Replaces AC-549's
@@ -490,15 +489,25 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     {
         try
         {
-            if (_MayPollAllowances()
-                && await _RequestControlAsync(new { subtype = "get_usage" }).ConfigureAwait(false) is { } usage)
+            var mayPollAllowances = _MayPollAllowances();
+
+            // AC-761 F2: both requests in flight together rather than one after the other — sequential, the two
+            // round-trips could together outrun _UsagePublishGrace on a cold connection.
+            var usageTask = mayPollAllowances
+                ? _RequestControlAsync(new { subtype = "get_usage" })
+                : Task.FromResult<JsonElement?>(null);
+            var contextTask = _RequestControlAsync(new { subtype = "get_context_usage" });
+
+            await Task.WhenAll(usageTask, contextTask).ConfigureAwait(false);
+
+            if (mayPollAllowances && usageTask.Result is { } usage)
             {
                 _usage.ObserveAccountWindows(ClaudeUsageWindows.Read(usage));
                 // Stamped on success only, so a failed request is retried next turn instead of costing the interval.
                 Interlocked.Exchange(ref _lastAllowancePollTicks, DateTimeOffset.UtcNow.Ticks);
             }
 
-            if (await _RequestControlAsync(new { subtype = "get_context_usage" }).ConfigureAwait(false) is { } context)
+            if (contextTask.Result is { } context)
             {
                 _usage.ObserveContextUsage(context);
             }

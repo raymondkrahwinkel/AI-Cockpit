@@ -144,6 +144,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the session header's usage indicator (context/5-hour/weekly) no longer drops a figure it already knew.
+  A session that received an incomplete usage reading — before its first turn, right after a compaction, or
+  simply because the reply arrived a beat late — used to have that missing figure blanked out instead of kept;
+  it now keeps showing the last known value until a fresh one replaces it. The two requests behind the figures
+  also now go out together instead of one after the other, and a session sitting idle gets a light 30-second
+  catch-up so a late reply is not stuck showing nothing until the next turn.
+
 - fixed: typing in the cockpit — the assistant's chat box most visibly — no longer stutters. The memory-reclaiming
   compact added recently decided purely on how large the managed heap was, so once a cockpit's ordinary working
   set stayed above that size it compacted again on every check: measured on a live instance, 133 pauses a minute of

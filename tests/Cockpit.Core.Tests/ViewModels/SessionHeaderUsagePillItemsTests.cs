@@ -73,6 +73,25 @@ public class SessionHeaderUsagePillItemsTests
     }
 
     [Fact]
+    public void AWindowPill_SurvivesAnUpdateThatOmitsIt()
+    {
+        // AC-761 F1: a snapshot reporting only ctx must not blank the 5h pill a fuller snapshot already showed.
+        var vm = new SessionViewModel { UsagePillVisibleFields = [UsagePillField.Context, UsagePillField.FiveHourWindow] };
+        var context = new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, DefaultThresholdPercent: 50);
+        var fiveHour = new PluginUsageSignal("five-hour", "5h", PluginUsageSignalKind.Allowance, DefaultThresholdPercent: 90);
+
+        vm.ApplyUsage([context, fiveHour],
+        [
+            new PluginUsageReading("context", 20, null),
+            new PluginUsageReading("five-hour", 18, null),
+        ]);
+        vm.ApplyUsage([context, fiveHour], [new PluginUsageReading("context", 21, null)]);
+
+        Assert.Equal(2, vm.UsagePillItems.Count);
+        Assert.Contains(vm.UsagePillItems, item => item.DisplayText == "5h 18%");
+    }
+
+    [Fact]
     public void SessionUsage_ShowsTheSummaryWithoutASeverityColour()
     {
         var vm = new SessionViewModel
