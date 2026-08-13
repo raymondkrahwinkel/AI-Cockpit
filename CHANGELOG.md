@@ -151,6 +151,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   also now go out together instead of one after the other, and a session sitting idle gets a light 30-second
   catch-up so a late reply is not stuck showing nothing until the next turn.
 
+- fixed: starting a terminal-route session with an opening message no longer sometimes leaves that message sitting
+  typed but unsent, especially on a profile whose startup hooks take a few seconds. The message used to be handed
+  to the terminal the instant its process existed, before the hosted CLI was actually reading input; now it waits
+  until the CLI itself signals it is ready (falling back to a short fixed wait for one that never does), so the
+  message always arrives as a submitted turn instead of text left in the composer.
+
 - fixed: typing in the cockpit — the assistant's chat box most visibly — no longer stutters. The memory-reclaiming
   compact added recently decided purely on how large the managed heap was, so once a cockpit's ordinary working
   set stayed above that size it compacted again on every check: measured on a live instance, 133 pauses a minute of

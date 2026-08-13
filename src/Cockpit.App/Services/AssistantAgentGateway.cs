@@ -168,7 +168,7 @@ internal sealed class AssistantAgentGateway(
                 pane.Name,
                 Refusal: null), cancellationToken).ConfigureAwait(true);
 
-            return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory);
+            return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered);
         }).ConfigureAwait(false);
     }
 

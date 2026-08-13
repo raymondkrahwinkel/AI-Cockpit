@@ -29,6 +29,9 @@ public class TtyPromptSinkTeardownTests
 
             // What TtyView does once the pty is up: hands the pane the route into its stdin.
             tty.PromptSink = written.Add;
+            // AC-760: the pty existing is not enough on its own any more — the hosted CLI reading stdin is a
+            // separate signal TtyView's readiness gate reports once it sees it (or its fallback deadline elapses).
+            tty.MarkHostedTuiReady();
             return (tty, written);
         });
 

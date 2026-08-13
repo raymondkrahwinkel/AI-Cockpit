@@ -103,6 +103,11 @@ public class TtyInjectedTextTests
     /// data context attaches, but only wires <see cref="TtyViewModel.PromptSink"/> once the pty process has actually
     /// spawned — so between those two moments there is a listener and still nowhere for text to go. A brief handed
     /// over then must wait for the pty, not be published into the gap.
+    /// <para>
+    /// AC-760: the pty existing is necessary but no longer sufficient — <see cref="TtyViewModel.CanTakeAPrompt"/> also
+    /// needs <see cref="TtyViewModel.MarkHostedTuiReady"/>, the signal that the hosted CLI is actually reading stdin
+    /// (not just that its process was spawned). This pins both halves of that gate separately.
+    /// </para>
     /// </summary>
     [Fact]
     public void SubmitPromptWhenReady_BeforeThePtyIsUp_HoldsTheBrief_ThenSendsItWhenTheSinkArrives()
@@ -117,25 +122,46 @@ public class TtyInjectedTextTests
         Assert.Empty(writes);
         Assert.True(vm.HasPromptWaitingToBeDelivered);
 
-        // What TtyView.StartPty does the instant the pty exists — and the measured moment text written into that pty
-        // reaches the child process.
+        // What TtyView.StartPty does the instant the pty exists — necessary, not sufficient (AC-760): the process
+        // existing is not yet the CLI reading stdin, so the brief stays held.
         vm.PromptSink = _ => { };
+
+        Assert.Empty(writes);
+        Assert.True(vm.HasPromptWaitingToBeDelivered);
+
+        // What TtyView's readiness gate calls once the hosted CLI has announced itself (DECSET 2004) or the
+        // fallback deadline elapsed — the moment text written into the pty now actually reaches the child process.
+        vm.MarkHostedTuiReady();
 
         Assert.Equal(new[] { "start on the migration", "\r" }, writes);
         Assert.False(vm.HasPromptWaitingToBeDelivered);
     }
 
-    /// <summary>A pane whose pty is already up takes the brief straight away — the wait is for the condition, not for a delay.</summary>
+    /// <summary>A pane whose pty is already up and whose hosted CLI is already ready takes the brief straight away — the wait is for the condition, not for a delay.</summary>
     [Fact]
-    public void SubmitPromptWhenReady_OnAPaneWhosePtyIsAlreadyUp_SendsImmediately()
+    public void SubmitPromptWhenReady_OnAPaneThatIsAlreadyReady_SendsImmediately()
     {
         var writes = new List<string>();
         var vm = _NewTty(writes);
         vm.SetAutoSubmitScheduler(submit => submit());
         vm.PromptSink = _ => { };
+        vm.MarkHostedTuiReady();
 
         Assert.True(vm.SubmitPromptWhenReady("start on the migration"));
         Assert.Equal(new[] { "start on the migration", "\r" }, writes);
+    }
+
+    /// <summary>AC-760: the pty being up is not readiness — a sink with no readiness signal still refuses to send.</summary>
+    [Fact]
+    public void SubmitPromptWhenReady_OnAPaneWhosePtyIsUpButNotYetReady_StillHoldsTheBrief()
+    {
+        var writes = new List<string>();
+        var vm = _NewTty(writes);
+        vm.PromptSink = _ => { };
+
+        Assert.False(vm.SubmitPromptWhenReady("start on the migration"));
+        Assert.Empty(writes);
+        Assert.True(vm.HasPromptWaitingToBeDelivered);
     }
 
     /// <summary>A TTY panel that records into <paramref name="writes"/> every write it asks the view to make into the pty, in order.</summary>

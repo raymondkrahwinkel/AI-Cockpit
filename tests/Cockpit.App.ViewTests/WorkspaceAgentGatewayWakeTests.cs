@@ -60,9 +60,11 @@ public class WorkspaceAgentGatewayWakeTests
             var target = new TtyViewModel { SessionStatus = targetStatus };
 
             // The pty sink is both what makes the pane able to take a prompt and the only place a wake becomes
-            // visible — a wake that fires writes here, and one that is refused leaves it empty.
+            // visible — a wake that fires writes here, and one that is refused leaves it empty. AC-760: the sink
+            // alone is no longer sufficient — MarkHostedTuiReady is the readiness half of the same gate.
             var sent = new List<string>();
             target.PromptSink = text => sent.Add(text);
+            target.MarkHostedTuiReady();
 
             cockpit.Sessions.Add(sender);
             cockpit.Sessions.Add(target);
@@ -100,6 +102,7 @@ public class WorkspaceAgentGatewayWakeTests
             var to = new DeliveringTerminal { SessionStatus = SessionStatus.Done };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
+            to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
             return (vm, from, to, captured);
@@ -247,6 +250,7 @@ public class WorkspaceAgentGatewayWakeTests
             var to = new TtyViewModel { WorkspaceId = "ws-2", SessionStatus = SessionStatus.Done };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
+            to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
             return (vm, from, to, captured);
@@ -304,6 +308,7 @@ public class WorkspaceAgentGatewayWakeTests
             var to = new TtyViewModel { WorkspaceId = "ws-2", SessionStatus = SessionStatus.Done };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
+            to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
             return (vm, from, to, captured);
@@ -353,6 +358,7 @@ public class WorkspaceAgentGatewayWakeTests
             var from = new TtyViewModel();
             var to = new TtyViewModel { SessionStatus = SessionStatus.Done };
             to.PromptSink = _ => throw new IOException("the terminal went away");
+            to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
             return (vm, from, to);

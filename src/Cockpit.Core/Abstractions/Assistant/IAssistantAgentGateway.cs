@@ -284,10 +284,16 @@ public sealed record AgentSpawnRequest(
 
 // What came of a spawn. A refusal carries `Error` and no pane; both are reported to the agent, so a
 // spawn that could not happen is a sentence the operator hears rather than a session that silently is not there.
-public sealed record AgentSpawnResult(bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error)
+//
+// `PromptDelivered` (AC-760): null when no `Prompt` was given (nothing to report on). True when the opening brief
+// was submitted on the spot; false when the pane exists but the hosted CLI was not yet reading stdin, so the brief
+// is being held rather than lost — the same distinction `AgentPromptResult.Delivered` already draws for `send_prompt`,
+// now drawn here too so `ok: true` can no longer mean "typed but never sent" (AC-760's reported bug).
+public sealed record AgentSpawnResult(
+    bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error, bool? PromptDelivered = null)
 {
-    public static AgentSpawnResult Started(string paneId, string sessionName, string? workingDirectory) =>
-        new(true, paneId, sessionName, workingDirectory, null);
+    public static AgentSpawnResult Started(string paneId, string sessionName, string? workingDirectory, bool? promptDelivered = null) =>
+        new(true, paneId, sessionName, workingDirectory, null, promptDelivered);
 
     public static AgentSpawnResult Refused(string error) => new(false, null, null, null, error);
 }
