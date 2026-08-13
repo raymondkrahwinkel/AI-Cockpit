@@ -15,8 +15,19 @@ public class DepotSharedProjectSourceWriteBackTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
 
-    private static ISharedProjectSource SourceFor(ICockpitHost host) =>
-        DepotMemorySource.BuildSharedProjectSources([Connection()], host).Single();
+    private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient? httpClient = null) =>
+        DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
+
+    // A blob PUT that always succeeds — the two Logo-upload tests below only care about what WriteBackAsync sends
+    // to `request_upload`/`write`, not about the HTTP leg CockpitProjectLogoBlob.UploadAsync also performs.
+    private static HttpClient _AlwaysSucceedsHttpClient() =>
+        new(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Created)));
+
+    private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond(request));
+    }
 
     private static string _Scheme(ICockpitHost host) =>
         DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
@@ -56,8 +67,9 @@ public class DepotSharedProjectSourceWriteBackTests
         return () => sent ?? throw new InvalidOperationException("write was never called");
     }
 
-    private static SharedProjectDefinitionEdit Edit(string name = "Edited name", string? description = "Edited description") =>
-        new(name, description, BehaviorPrompt: "Edited behaviour", IsolateInWorktreeByDefault: true, EnabledMcpServerNames: ["github"]);
+    private static SharedProjectDefinitionEdit Edit(
+        string name = "Edited name", string? description = "Edited description", SharedProjectLogoEdit? logoEdit = null) =>
+        new(name, description, BehaviorPrompt: "Edited behaviour", IsolateInWorktreeByDefault: true, EnabledMcpServerNames: ["github"], LogoEdit: logoEdit);
 
     [Fact]
     public async Task WriteBackAsync_Success_ReturnsTheChecksumTheWriteConfirmed()
@@ -110,11 +122,11 @@ public class DepotSharedProjectSourceWriteBackTests
     }
 
     [Fact]
-    public async Task WriteBackAsync_GitUrlAndLogoSurviveUntouched()
+    public async Task WriteBackAsync_GitUrlAndUntouchedLogoSurviveUntouched()
     {
-        // Neither field is part of SharedProjectDefinitionEdit (GitUrl is not claimable; Logo has no
-        // artifact-upload path yet) — WriteBackAsync must carry both through from its own pre-write read rather
-        // than dropping them because the edit does not mention them.
+        // GitUrl is not claimable at all; Logo is claimable (AC-763) but Edit()'s default LogoEdit is null
+        // ("untouched") — WriteBackAsync must carry both through from its own pre-write read rather than dropping
+        // them because the edit does not mention (GitUrl) or touch (Logo) them.
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
         _StubRead(host, "cockpit", _ReadEnvelope(
@@ -125,6 +137,82 @@ public class DepotSharedProjectSourceWriteBackTests
 
         Assert.Equal("git@github.com:example/cockpit.git", sent().GitUrl);
         Assert.Equal(".cockpit/logo.png", sent().Logo);
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WriteBackAsync_LogoReplaced_UploadsTheBytesThenWritesTheBlobPath()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
+        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"uploadUrl":"https://depot.example.com/blob/upload/abc"}""")));
+        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
+        using var httpClient = _AlwaysSucceedsHttpClient();
+
+        var result = await SourceFor(host, httpClient).WriteBackAsync(
+            $"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Replace([1, 2, 3])), "chk-before", CancellationToken.None);
+
+        Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
+        Assert.Equal(CockpitProjectLogoBlob.BlobPath, sent().Logo);
+        await host.Received(1).CallMcpToolAsync(
+            Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WriteBackAsync_LogoUploadFails_ReturnsFailedWithoutWritingProjectJsonAtAll()
+    {
+        // AC-763 acceptance criterion 6/7: a failed upload must not leave a half-applied state — not even the
+        // operator's other, otherwise-unrelated edits (Name/Description/...) in the same save reach project.json.
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
+        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("no permission")));
+
+        var result = await SourceFor(host).WriteBackAsync(
+            $"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Replace([1, 2, 3])), "chk-before", CancellationToken.None);
+
+        Assert.Equal(SharedProjectWriteBackOutcome.Failed, result.Outcome);
+        Assert.Equal("no permission", result.Error);
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WriteBackAsync_LogoCleared_DeletesTheBlobThenClearsTheField()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit","logo":".cockpit/logo.png"}"""));
+        host.CallMcpToolAsync(Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("{}")));
+        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
+
+        var result = await SourceFor(host).WriteBackAsync(
+            $"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Cleared), "chk-before", CancellationToken.None);
+
+        Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
+        Assert.Null(sent().Logo);
+        await host.Received(1).CallMcpToolAsync(
+            Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WriteBackAsync_LogoClearedButNoneExisted_SkipsTheDeleteCall()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var scheme = _Scheme(host);
+        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
+        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
+
+        await SourceFor(host).WriteBackAsync($"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Cleared), "chk-before", CancellationToken.None);
+
+        Assert.Null(sent().Logo);
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

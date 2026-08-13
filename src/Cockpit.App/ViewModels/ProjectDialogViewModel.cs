@@ -24,6 +24,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // which cannot yet be claimed (a claim is keyed by an id nothing has assigned).
     private readonly Project? _originalProject;
 
+    // What LogoSource held when this dialog opened (AC-763) — compared against in _BuildLogoEditAsync to tell
+    // "the operator picked a new logo" from "they left it alone", the same role _writeBack.Baseline's own fields
+    // play for Name/Description/etc., just not through SharedProjectBinding: a downloaded logo never becomes
+    // editable text the way those fields do, so there is nothing there to diff against.
+    private readonly string _originalLogoSource = string.Empty;
+
     // Where (AC-247) SaveAsync writes a claimed field's edit back to, or null for a new project, a project no
     // source claims, or one whose fresh checksum read failed at open time — see CreateAsync's own remarks.
     private ProjectSharedWriteBackContext? _writeBack;
@@ -82,6 +88,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         GitUrl = project.GitUrl;
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
         LogoSource = project.LogoPath ?? string.Empty;
+        _originalLogoSource = LogoSource;
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
         _additionalServers = project.McpOverlay.AdditionalServers;
         // Matching a Memory row's reference against a registered source has to wait until CreateAsync has built
@@ -685,7 +692,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         // read this editor opened with, which CreateAsync also used to populate these very fields — see its own
         // remarks) to tell "I touched this field" apart from "I left it alone" — never against a later merged
         // retry, which would make a field the operator touched once look untouched on a second conflict.
-        var operatorEdit = _BuildEdit();
+        var operatorEdit = await _BuildEditAsync().ConfigureAwait(true);
 
         // Nothing to write back: close exactly as a project with no write-back context does. Skipping the call
         // outright — rather than sending an edit identical to the baseline and letting it round-trip harmlessly —
@@ -770,14 +777,42 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
 
-    // What the operator typed for the five write-back-eligible fields (AC-247) — Logo is excluded (see
-    // ProjectFieldOwnership's own remarks in ProjectsViewModel._ClaimBoundProjects: no artifact-upload path yet).
-    private SharedProjectDefinitionEdit _BuildEdit() => new(
+    // What the operator typed for the six write-back-eligible fields (AC-247/AC-763).
+    private async Task<SharedProjectDefinitionEdit> _BuildEditAsync() => new(
         Name.Trim(),
         _NullIfBlank(Description),
         _NullIfBlank(BehaviorPrompt),
         IsolateInWorktreeByDefault,
-        _ComputeEnabledMcpServerNames());
+        _ComputeEnabledMcpServerNames(),
+        await _BuildLogoEditAsync().ConfigureAwait(true));
+
+    // Null (untouched) unless LogoSource moved from what this dialog opened with (AC-763) — LogoSource is always a
+    // local file path here (PickLogo's own picker, or the already-stored copy's path; never a URL an operator
+    // types in, unlike IProjectLogoStore.SaveAsync's own broader contract), so reading it is a plain file read.
+    private async Task<SharedProjectLogoEdit?> _BuildLogoEditAsync()
+    {
+        var edited = _NullIfBlank(LogoSource);
+        if (string.Equals(edited, _NullIfBlank(_originalLogoSource), StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (edited is null)
+        {
+            return SharedProjectLogoEdit.Cleared;
+        }
+
+        try
+        {
+            return SharedProjectLogoEdit.Replace(await File.ReadAllBytesAsync(edited).ConfigureAwait(true));
+        }
+        catch (Exception)
+        {
+            // A logo is decoration (ProjectLogoStore.SaveAsync's own reasoning): a file that vanished between
+            // picking and saving costs the picture, not the rest of this save.
+            return null;
+        }
+    }
 
     // The same "null means no opinion, otherwise every ticked name plus whatever this build has no row for"
     // logic ToProject's own editedOverlay already computes for the local project — shared here rather than
@@ -790,8 +825,15 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // "Hun versie nemen" (AC-247): adopts the fresh remote state onto every claimed, editable field this dialog
     // shows — the operator's own edit to any of them is discarded, exactly what that button promises. Local-only
     // fields (Profile, Folder) are untouched; they were never part of the write-back to begin with.
-    private void _ApplyRemoteValues(SharedProjectBinding latest) => _ApplyValues(
-        latest.Name, latest.Description, latest.BehaviorPrompt, latest.IsolateInWorktreeByDefault, latest.EnabledMcpServerNames);
+    private void _ApplyRemoteValues(SharedProjectBinding latest)
+    {
+        _ApplyValues(latest.Name, latest.Description, latest.BehaviorPrompt, latest.IsolateInWorktreeByDefault, latest.EnabledMcpServerNames);
+
+        // AC-763: `latest` carries no fresh logo bytes (see _MergeOntoLatest's own remarks) to show instead, so
+        // the closest this button can do is discard whatever the operator picked here and fall back to what this
+        // dialog opened with — never leave the operator's own unsent pick on screen after "take theirs".
+        LogoSource = _originalLogoSource;
+    }
 
     // SaveAsync's own success path (both the plain write and a resolved merge retry): what actually reached the
     // source is what belongs on screen and in ToProject's own output — see SaveAsync's remarks on why `pendingEdit`,
@@ -821,7 +863,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // in Depot's own copy as "the operator touched this," which is backwards for a guard whose whole job is
     // recognising nothing happened.
     private static bool _MatchesBaseline(SharedProjectDefinitionEdit edit, SharedProjectBinding baseline) =>
-        _FieldEquals(edit.Name, baseline.Name)
+        edit.LogoEdit is null
+        && _FieldEquals(edit.Name, baseline.Name)
         && _FieldEquals(edit.Description, baseline.Description)
         && _FieldEquals(edit.BehaviorPrompt, baseline.BehaviorPrompt)
         && edit.IsolateInWorktreeByDefault == baseline.IsolateInWorktreeByDefault
@@ -839,7 +882,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
         !_FieldEquals(mine.Description, baseline.Description) ? mine.Description : latest.Description,
         !_FieldEquals(mine.BehaviorPrompt, baseline.BehaviorPrompt) ? mine.BehaviorPrompt : latest.BehaviorPrompt,
         mine.IsolateInWorktreeByDefault != baseline.IsolateInWorktreeByDefault ? mine.IsolateInWorktreeByDefault : latest.IsolateInWorktreeByDefault,
-        !_SameNames(mine.EnabledMcpServerNames, baseline.EnabledMcpServerNames) ? mine.EnabledMcpServerNames : latest.EnabledMcpServerNames);
+        !_SameNames(mine.EnabledMcpServerNames, baseline.EnabledMcpServerNames) ? mine.EnabledMcpServerNames : latest.EnabledMcpServerNames,
+        // AC-763: no "latest" to fall back to (SharedProjectBinding carries no re-applicable logo edit, only
+        // downloaded bytes, and only PrepareBindingAsync ever populates those) — mine.LogoEdit carries through
+        // unconditionally. Null (untouched) retried against a fresh baseChecksum still resolves correctly: a
+        // source's own WriteBackAsync re-reads its current state on every call and carries an untouched logo
+        // through from that fresh read, not from what this dialog saw when it opened.
+        mine.LogoEdit);
 
     private static bool _FieldEquals(string? left, string? right) =>
         string.Equals(_NullIfBlank(left ?? string.Empty), _NullIfBlank(right ?? string.Empty), StringComparison.Ordinal);

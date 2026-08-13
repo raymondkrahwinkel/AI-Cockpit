@@ -705,10 +705,11 @@ public class ProjectsViewModelTests
     }
 
     [Fact]
-    public async Task ClaimBoundProjects_ARoleThatCanWriteBack_ClaimsEveryFieldEditableExceptLogo()
+    public async Task ClaimBoundProjects_ARoleThatCanWriteBack_ClaimsEveryFieldEditableIncludingLogo()
     {
-        // AC-247: SharedProject.CanWriteBack (the source's own Editor/Owner check) drives IsEditable — Logo stays
-        // an override to locked regardless, since no artifact-upload path exists yet for writing it back.
+        // AC-247/AC-763: SharedProject.CanWriteBack (the source's own Editor/Owner check) drives IsEditable for
+        // every claimed field alike now that the blob path (AC-244) is actually wired up — Logo no longer gets a
+        // special override back to locked.
         var bound = Project.Create("Cockpit") with { MemoryRef = "depot:one" };
         var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
         [
@@ -725,7 +726,7 @@ public class ProjectsViewModelTests
         Assert.True(claim[HostProjectField.Behavior]!.IsEditable);
         Assert.True(claim[HostProjectField.McpOverlay]!.IsEditable);
         Assert.True(claim[HostProjectField.WorktreeSwitch]!.IsEditable);
-        Assert.False(claim[HostProjectField.Logo]!.IsEditable, "no write-back path exists yet for a shared logo");
+        Assert.True(claim[HostProjectField.Logo]!.IsEditable);
     }
 
     [Fact]

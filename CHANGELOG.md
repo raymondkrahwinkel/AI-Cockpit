@@ -144,6 +144,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a shared project's logo can now be changed by anyone with Editor access or better, instead of always
+  showing as read-only. Picking a new logo (or removing it) now saves it to Depot too, so everyone bound to that
+  project sees the same picture — a logo already in Depot also shows up automatically the moment you bind to that
+  project, and sharing a project for the first time now takes its logo along.
+
 - fixed: a project you shared to Depot now shows its "Shared" badge and "Stop sharing…" button right away on
   restart, instead of looking unshared until you open Manage projects. The badge now remembers the last known
   publish, so a slow, unreachable, or not-yet-signed-in connection no longer makes a genuinely shared project look

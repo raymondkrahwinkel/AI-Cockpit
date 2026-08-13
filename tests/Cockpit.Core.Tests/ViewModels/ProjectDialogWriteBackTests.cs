@@ -243,4 +243,91 @@ public class ProjectDialogWriteBackTests
         Assert.NotNull(closed);
         Assert.Empty(source.Calls);
     }
+
+    [Fact]
+    public async Task SaveAsync_LogoPicked_SendsAReplaceLogoEditWithTheFilesBytes()
+    {
+        var project = Project.Create("Cockpit");
+        var source = new _FakeSource(SharedProjectWriteBackResult.Success("chk-after"));
+        var viewModel = await ViewModelAsync(project, source, Baseline());
+        var picked = Path.GetTempFileName();
+        var bytes = new byte[] { 137, 80, 78, 71 };
+        try
+        {
+            await File.WriteAllBytesAsync(picked, bytes);
+            viewModel.LogoSource = picked;
+
+            await viewModel.SaveCommand.ExecuteAsync(null);
+
+            var sent = Assert.Single(source.Calls).Edit.LogoEdit;
+            Assert.NotNull(sent);
+            Assert.Equal(bytes, sent!.PngBytes);
+        }
+        finally
+        {
+            File.Delete(picked);
+        }
+    }
+
+    [Fact]
+    public async Task SaveAsync_OnlyTheLogoWasTouched_StillCallsWriteBackAsyncRatherThanSkippingIt()
+    {
+        // AC-763: _MatchesBaseline must count an untouched-but-for-the-logo edit as a real change — otherwise a
+        // logo-only save would silently never reach Depot.
+        var project = Project.Create("Cockpit");
+        var source = new _FakeSource(SharedProjectWriteBackResult.Success("chk-after"));
+        var viewModel = await ViewModelAsync(project, source, Baseline());
+        var picked = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(picked, [1]);
+            viewModel.LogoSource = picked; // every other field left exactly as CreateAsync populated it
+
+            await viewModel.SaveCommand.ExecuteAsync(null);
+
+            Assert.Single(source.Calls);
+        }
+        finally
+        {
+            File.Delete(picked);
+        }
+    }
+
+    [Fact]
+    public async Task SaveAsync_LogoCleared_SendsAClearedLogoEdit()
+    {
+        var project = Project.Create("Cockpit") with { LogoPath = "/home/erik/logo.png" };
+        var source = new _FakeSource(SharedProjectWriteBackResult.Success("chk-after"));
+        var viewModel = await ViewModelAsync(project, source, Baseline());
+        viewModel.ClearLogoCommand.Execute(null);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        var sent = Assert.Single(source.Calls).Edit.LogoEdit;
+        Assert.NotNull(sent);
+        Assert.Null(sent!.PngBytes);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ConflictThenTakeTheirs_RevertsAnyPickedLogoToo()
+    {
+        var project = Project.Create("Cockpit");
+        var source = new _FakeSource(SharedProjectWriteBackResult.Conflict(Baseline(name: "Remote edit", checksum: "chk-now")));
+        var viewModel = await ViewModelAsync(project, source, Baseline());
+        viewModel.ConflictRequested += (_, _) => Task.FromResult<ProjectDefinitionConflictResolution?>(new(TakeTheirs: true));
+        var picked = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(picked, [1]);
+            viewModel.LogoSource = picked;
+
+            await viewModel.SaveCommand.ExecuteAsync(null);
+
+            Assert.Equal(string.Empty, viewModel.LogoSource); // this project opened with no logo at all
+        }
+        finally
+        {
+            File.Delete(picked);
+        }
+    }
 }

@@ -427,20 +427,12 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
             if (byId.TryGetValue(boundTo, out var sharedProject))
             {
-                // AC-247: every claimed field but Logo unlocks once the source itself says this role can write
-                // (SharedProject.CanWriteBack) — ProjectDialogViewModel.SaveAsync now has somewhere to send that
-                // edit (ISharedProjectSource.WriteBackAsync). Logo overrides back to locked regardless: no
-                // artifact-upload path exists yet for writing a shared logo back, so an "editable" claim there
-                // would still drop what the operator picked, silently, on save — the exact failure mode
-                // ProjectFieldOwnership.IsEditable's own contract exists to prevent.
+                // AC-247/AC-763: every claimed field, Logo included, unlocks once the source itself says this role
+                // can write (SharedProject.CanWriteBack) — ProjectDialogViewModel.SaveAsync now has somewhere to
+                // send that edit (ISharedProjectSource.WriteBackAsync), the blob path CockpitProjectLogoBlob
+                // (AC-244) already provided but nothing called until now. No per-field override needed any more.
                 _ownership?.Register(new ProjectOwnershipRegistration(
-                    project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role))
-                {
-                    Overrides = new Dictionary<HostProjectField, ProjectFieldOwnership?>
-                    {
-                        [HostProjectField.Logo] = new ProjectFieldOwnership(source.SourceName, Role: sharedProject.Role),
-                    },
-                });
+                    project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role)));
 
                 if (!string.Equals(project.SharedSourceName, source.SourceName, StringComparison.Ordinal))
                 {

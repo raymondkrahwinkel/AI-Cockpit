@@ -100,6 +100,35 @@ public static class CockpitProjectLogoBlob
         }
     }
 
+    // AC-763. Soft-deletes the blob via Depot's own `delete` tool — no pre-signed URL/HTTP leg, unlike
+    // Upload/Download, since `delete` is an ordinary MCP call. Idempotent on purpose: a retry after a save that
+    // failed partway (or two machines removing the same shared logo close together) must not turn "already gone"
+    // into an error — Depot's own not-found wording (the same `"[NotFound]"` prefix `DepotSharedProjectSource.PublishAsync`
+    // already reads) is what tells that apart from a real failure.
+    public static async Task<CockpitProjectLogoDeleteResult> DeleteAsync(
+        ICockpitHost host, string mcpServerName, string depotProjectSlug, CancellationToken cancellationToken = default)
+    {
+        var result = await host.CallMcpToolAsync(
+            mcpServerName,
+            "delete",
+            new Dictionary<string, object?> { ["project"] = depotProjectSlug, ["path"] = BlobPath, ["kind"] = "artifact" },
+            projectId: null,
+            cancellationToken).ConfigureAwait(false);
+
+        if (result.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+        {
+            return CockpitProjectLogoDeleteResult.AuthorizationRequired;
+        }
+
+        if (result.Outcome == PluginMcpToolCallOutcome.Success
+            || (result.Error is { } error && error.StartsWith("[NotFound]", StringComparison.Ordinal)))
+        {
+            return CockpitProjectLogoDeleteResult.Success;
+        }
+
+        return CockpitProjectLogoDeleteResult.Failed(result.Error is { Length: > 0 } message ? message : "Depot did not confirm the delete.");
+    }
+
     private static bool _TryReadUrl(string json, string propertyName, out string url)
     {
         url = string.Empty;
