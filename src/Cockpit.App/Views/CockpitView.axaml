@@ -1077,8 +1077,10 @@
                                                             <!-- AC-620: which Depot connection this project is shared through — never shown
                                                                  for a plain local project (IsShared false), only what changed. -->
                                                             <Border Grid.Column="2" Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
-                                                                    Margin="8,0,0,0" VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding OriginBadge}"/>
+                                                                    Margin="8,0,0,0" VerticalAlignment="Center" MaxWidth="100">
+                                                                <!-- AC-754: a long Depot connection name (eg. "Depot — depot.krahwinkel-it.nl")
+                                                                     otherwise grows the Auto column past the card and overlaps the title. -->
+                                                                <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
                                                             </Border>
                                                         </Grid>
                                                         <!-- The description carries the card: it is what a colleague reads to know
