@@ -21,6 +21,41 @@ public class AdaptiveGcCompactorTests
         Assert.Empty(logger.Messages);
     }
 
+    /// <summary>
+    /// AC-756: a heap whose <em>live</em> set sits above the floor must be compacted once, not on every check.
+    /// Measured before this guard: 133 compacts/minute of ~250 ms each, which froze the UI thread over half the
+    /// time and showed up as stuttering while typing.
+    /// </summary>
+    [Fact]
+    public void CheckOnce_CompactsOnceWhileTheLiveHeapStaysAboveTheFloor()
+    {
+        var logger = new _CapturingLogger();
+        var compacts = 0;
+        var compactor = new AdaptiveGcCompactor(logger, () => 400L * 1024 * 1024, () => compacts++);
+
+        compactor.CheckOnce();
+        compactor.CheckOnce();
+        compactor.CheckOnce();
+
+        Assert.Equal(1, compacts);
+        Assert.Single(logger.Messages);
+    }
+
+    [Fact]
+    public void CheckOnce_CompactsAgainOnceTheHeapHasGrownPastTheLastCompact()
+    {
+        var logger = new _CapturingLogger();
+        var compacts = 0;
+        var heapBytes = 400L * 1024 * 1024;
+        var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++);
+
+        compactor.CheckOnce();
+        heapBytes = 501L * 1024 * 1024;
+        compactor.CheckOnce();
+
+        Assert.Equal(2, compacts);
+    }
+
     private sealed class _CapturingLogger : ILogger<AdaptiveGcCompactor>
     {
         public List<string> Messages { get; } = [];
