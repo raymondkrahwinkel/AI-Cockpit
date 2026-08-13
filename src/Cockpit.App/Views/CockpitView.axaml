@@ -1077,7 +1077,7 @@
                                                             <!-- AC-620: which Depot connection this project is shared through — never shown
                                                                  for a plain local project (IsShared false), only what changed. -->
                                                             <Border Grid.Column="2" Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
-                                                                    Margin="8,0,0,0">
+                                                                    Margin="8,0,0,0" VerticalAlignment="Center">
                                                                 <TextBlock Text="{Binding OriginBadge}"/>
                                                             </Border>
                                                         </Grid>
