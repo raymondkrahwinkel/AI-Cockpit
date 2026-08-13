@@ -144,6 +144,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: typing in the cockpit — the assistant's chat box most visibly — no longer stutters. The memory-reclaiming
+  compact added recently decided purely on how large the managed heap was, so once a cockpit's ordinary working
+  set stayed above that size it compacted again on every check: measured on a live instance, 133 pauses a minute of
+  roughly a quarter-second each, freeing under a megabyte, which left the interface frozen more than half the time.
+  A compact now waits until the heap has actually grown past what the previous one settled at, so it still catches
+  a heap growing fast while it is cheap to compact, and stops repeating itself over memory that is genuinely in use.
+
+- fixed: typing a file mention is no longer noticeably slower than typing anything else. Every keystroke inside an
+  `@…` ranked the working directory twice over, and then threw away and rebuilt every row of the open suggestion
+  list — measured at roughly 8.7 ms a keystroke against 1 ms for ordinary typing. It now ranks once and rewrites
+  the list in place, leaving a row that has not changed alone: about 3.3 ms a keystroke on the same measurement.
+
 - fixed: windows on macOS can be resized again. A recent change removed the border every window used to have and
   replaced the resizing it carried with the cockpit's own — which macOS supports in neither half, so every window
   there was stuck at the size it opened at. macOS keeps the platform's own resize border again; Windows and Linux

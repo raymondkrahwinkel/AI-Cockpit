@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.ViewTests;
@@ -22,6 +23,47 @@ public class MentionPickerViewModelTests
         Assert.True(viewModel.IsOpen);
         Assert.False(viewModel.IsLoading);
         Assert.Equal(2, viewModel.Matches.Count);
+    }
+
+    /// <summary>
+    /// AC-756: Matches is bound to the popup's ListBox, so clearing and refilling it rebuilds every row container
+    /// on every keystroke while the operator is typing underneath it. A keystroke that narrows the query must
+    /// rewrite the list in place — a Reset is the expensive notification, whatever the rows end up being.
+    /// </summary>
+    [Fact]
+    public void OnTextChanged_WhileOpen_NeverResetsTheMatchesCollection()
+    {
+        var viewModel = _WithFiles(["src/Foo.cs", "src/Bar.cs", "src/FooBar.cs"]);
+        viewModel.OnTextChanged("@", 1);
+        var resets = 0;
+        viewModel.Matches.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+            {
+                resets++;
+            }
+        };
+
+        viewModel.OnTextChanged("@f", 2);
+        viewModel.OnTextChanged("@fo", 3);
+        viewModel.OnTextChanged("@foo", 4);
+
+        Assert.Equal(0, resets);
+    }
+
+    [Fact]
+    public void OnTextChanged_WhileOpen_RaisesNothingWhenTheRankingIsUnchanged()
+    {
+        var viewModel = _WithFiles(["src/Alpha.cs"]);
+        viewModel.OnTextChanged("@a", 2);
+        Assert.Single(viewModel.Matches);
+        var changes = 0;
+        viewModel.Matches.CollectionChanged += (_, _) => changes++;
+
+        viewModel.OnTextChanged("@al", 3);
+        viewModel.OnTextChanged("@alp", 4);
+
+        Assert.Equal(0, changes);
     }
 
     [Fact]
