@@ -150,6 +150,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: once memory usage grew past a safety ceiling meant to skip a background compact under extreme load, the
+  compactor stopped ever compacting again and repeated the same warning in the log several times a second,
+  indefinitely. It now retries a compact periodically instead of giving up for good, and logs a single clear
+  error — rather than an endless stream of warnings — if usage stays elevated.
+
 - fixed: clicking the assistant button again while its chat window was already open, but minimized or sitting
   behind other windows, no longer left it there — it now comes to the front.
 
