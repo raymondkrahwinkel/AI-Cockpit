@@ -131,9 +131,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   it from then on and it is cleaned up when that session closes — for a worktree it made ahead of starting a
   session in it, or for handing one to a session that is already running.
 
-- added: the assistant now keeps its managed CLIs (Claude, Codex) up to date on its own, installing new versions
-  in the background instead of only telling you one is available. Each CLI has its own on/off switch for this in
-  CLI settings, on by default.
+- added: the CLIs the cockpit manages for you (Claude, Codex) now keep themselves up to date — the background check
+  installs a newer version instead of only telling you one exists, and says afterwards what it moved. Each CLI has
+  its own "Update automatically" tick-box in its managed-CLI block, on by default. A finished install now also
+  leaves only the newest version behind rather than stacking old ones up on disk, the manual Update button
+  included.
 
 ### Changed
 
