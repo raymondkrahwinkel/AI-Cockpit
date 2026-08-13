@@ -409,13 +409,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    // Claims every local project bound to one of `sharedProjects` as owned by `source` (see `LoadSharedProjectsAsync`'s
-    // own remarks), and returns every project whose `Project.SharedSourceName` needs persisting to match: confirmed
-    // when a project this source still lists was not already carrying it, cleared when a project's own persisted
-    // claim names this exact source but this — successful — list no longer contains the project it is bound to
-    // (AC-762: unshared elsewhere, so the cold-start fallback must stop claiming it too). The clear branch is
-    // scoped by `SharedSourceName` rather than by a key-prefix match on the binding, so a project bound to some
-    // other source entirely is never touched by a source that happens not to list it.
+    // Claims every local project bound to `sharedProjects` as owned by `source`, and returns every project whose
+    // `SharedSourceName` needs persisting to match (AC-762): confirmed when still listed, cleared only when a
+    // project's own claim names this exact `source` but its successful list no longer contains it.
     private List<Project> _ReconcileSharedSourceClaims(IReadOnlyList<SharedProject> sharedProjects, ISharedProjectSource source)
     {
         var byId = sharedProjects.ToDictionary(project => project.Id, StringComparer.Ordinal);
@@ -525,11 +521,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    // The source `project` is genuinely bound to — a Memory reference merely starting with a known source's
-    // prefix is not enough (AC-744): only a project actually claimed as shared counts, here and for AC-247's
-    // write-back gating. "Claimed" is either a live ownership claim or, when none has arrived yet or the source
-    // failed this run (AC-762), the persisted `Project.SharedSourceName` — same either/or `_OriginBadge` reads,
-    // so the share toggle never disagrees with what the badge just showed.
+    // The source `project` is genuinely bound to — a matching Memory-reference prefix alone is not enough (AC-744).
+    // "Claimed" is a live ownership claim or, absent that (AC-762), the persisted `SharedSourceName` — same
+    // either/or `_OriginBadge` reads, so the share toggle never disagrees with what the badge just showed.
     private ISharedProjectSource? _ResolveSharedSource(Project project)
     {
         if (_sharedSources is null)
@@ -674,12 +668,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private ProjectCardViewModel _ToCard(Project project) =>
         new(project, _OriginBadge(project)) { IsSelected = project.Id == SelectedProject?.Id };
 
-    // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on `project`
-    // (AC-604's own seam, claimed for a bound project by `_ReconcileSharedSourceClaims`) — the per-card
-    // replacement for AC-245's "On this machine" heading. Falls back to `Project.SharedSourceName` (AC-762) when
-    // there is no live claim yet: the ownership registry is in-memory and rebuilt from a slow, unretried network
-    // call, so a project that is genuinely shared must not render as local for however long that call has not
-    // finished or has failed — the badge means "published", not "there is a live connection right now".
+    // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on `project` (AC-604, claimed by
+    // `_ReconcileSharedSourceClaims`) — falls back to `SharedSourceName` (AC-762) so a genuinely shared project
+    // never renders as local just because that in-memory, network-rebuilt claim has not arrived or failed.
     private string _OriginBadge(Project project) =>
         _ownership?.Resolve(project.Id)?.Values.FirstOrDefault(ownership => ownership is not null) is { } claim
             ? $"◆ {claim.SourceName}"
