@@ -41,6 +41,23 @@ public sealed class AssistantActToolDescriptionTests
             .ToArray());
     }
 
+    /// <summary>AC-768: the call blocks on its own gate, so no description may ask for a pending approval to be
+    /// announced — only the caveat itself may say the phrase, and there only to forbid it.</summary>
+    [Fact]
+    public void NoActingTool_TellsTheAssistantToAnnounceAnApprovalThatIsStillWaiting()
+    {
+        var caveat = _TheSharedCaveat();
+
+        var announcing = _EveryDescribedTool()
+            .Where(tool => tool.Description
+                .Replace(caveat, string.Empty, StringComparison.Ordinal)
+                .Contains("waiting on their screen", StringComparison.OrdinalIgnoreCase))
+            .Select(tool => tool.Name)
+            .ToArray();
+
+        Assert.Empty(announcing);
+    }
+
     private static IReadOnlyList<(string Name, string Description)> _EveryDescribedTool() =>
         [.. typeof(AssistantAgentMcpTools)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance)
