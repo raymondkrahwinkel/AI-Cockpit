@@ -139,10 +139,9 @@ public sealed record Project(string Id, string Name)
     // way every other credential in `cockpit.json` already is (AC-353) — no new storage mechanism.
     public string? ProjectPassword { get; init; }
 
-    // AC-762: last known name of the shared-project source this project was published to — set by the share/bind
-    // flows, cleared by "Stop sharing", confirmed or cleared by the next successful list from that source.
-    // Fallback the badge/share toggle read when `IProjectOwnershipRegistry` (in-memory, network-rebuilt) has no
-    // live claim yet — never a second source of truth, a successful list call always wins over this.
+    // AC-762: last known shared-project source name — set by share/bind, cleared by "Stop sharing", confirmed or
+    // cleared by the next successful list. Fallback for when `IProjectOwnershipRegistry` has no live claim yet;
+    // never a second source of truth, a successful list always wins.
     public string? SharedSourceName { get; init; }
 
     // A record's compiler-generated ToString() would otherwise print ProjectPassword in the clear — masked here
