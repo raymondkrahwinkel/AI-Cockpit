@@ -131,6 +131,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   it from then on and it is cleaned up when that session closes — for a worktree it made ahead of starting a
   session in it, or for handing one to a session that is already running.
 
+- added: the assistant now keeps its managed CLIs (Claude, Codex) up to date on its own, installing new versions
+  in the background instead of only telling you one is available. Each CLI has its own on/off switch for this in
+  CLI settings, on by default.
+
 ### Changed
 
 - changed: the Assistant Profile's instruction box adds to the assistant's own instructions rather than replacing
@@ -143,6 +147,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   touching the guidance that keeps lighter models from analysing a step instead of building it.
 
 ### Fixed
+
+- fixed: clicking the assistant button again while its chat window was already open, but minimized or sitting
+  behind other windows, no longer left it there — it now comes to the front.
+
+- fixed: the assistant no longer announces that an approval is waiting on your screen after that approval has
+  already been handled, including when approvals are turned off altogether.
 
 - fixed: a shared project's logo can now be changed by anyone with Editor access or better, instead of always
   showing as read-only. Picking a new logo (or removing it) now saves it to Depot too, so everyone bound to that
