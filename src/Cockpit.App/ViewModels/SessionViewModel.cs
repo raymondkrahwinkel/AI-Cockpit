@@ -695,6 +695,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 entry.ReadingLevel = ReadingLevel;
                 entry.PropertyChanged += _OnEntryPermissionChanged;
             }
+
+            // An append only ever changes the run it lands in, so re-fold that run instead of the whole
+            // transcript — the full walk was O(n) per row, O(n²) over a session's life, on the UI thread (AC-787).
+            if (e.Action is NotifyCollectionChangedAction.Add && e.NewStartingIndex >= 0)
+            {
+                _RegroupAround(e.NewStartingIndex, e.NewStartingIndex + e.NewItems.Count - 1);
+                return;
+            }
         }
 
         _RecomputeReadingGroups();
@@ -706,9 +714,28 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // the tool-use event), which pulls it out of any auto-fold run — so re-fold when either flag flips.
         if (e.PropertyName is nameof(TranscriptEntryViewModel.IsPendingPermission) or nameof(TranscriptEntryViewModel.PermissionDecision))
         {
-            _RecomputeReadingGroups();
+            if (sender is TranscriptEntryViewModel entry && _IndexOfLast(entry) is var index and >= 0)
+            {
+                _RegroupAround(index, index);
+            }
+
             OnPropertyChanged(nameof(HasPendingPermission));
         }
+    }
+
+    // Searched from the end: the row a permission lands on is the turn's newest, so this stops within a few rows
+    // rather than walking a transcript that grows all session. -1 for a row already dropped from the transcript.
+    private int _IndexOfLast(TranscriptEntryViewModel entry)
+    {
+        for (var index = Transcript.Count - 1; index >= 0; index--)
+        {
+            if (ReferenceEquals(Transcript[index], entry))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     // Whether a tool call is waiting on the operator's Allow/Deny *right now*.
@@ -726,8 +753,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Re-forms the Focus "N steps run" fold groups (AC-138): a group is a maximal run of two or more consecutive
     // auto tool calls, its first row the anchor that carries the expand toggle and the rest folding under it. Only
     // Focus folds — Developer shows every row, Simple hides auto tools outright — so at the other levels every row is
-    // simply un-grouped. Walks the rows once and preserves an anchor's expanded state, so a run growing mid-turn does
-    // not snap shut under the operator.
+    // simply un-grouped. The whole-transcript pass — for a reading-level switch or a reset; a row arriving or
+    // changing takes `_RegroupAround` instead.
     private void _RecomputeReadingGroups()
     {
         if (ReadingLevel != ReadingLevel.Focus)
@@ -740,8 +767,48 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        var index = 0;
-        while (index < Transcript.Count)
+        _FormGroups(0, Transcript.Count - 1);
+    }
+
+    // Re-forms only the runs a change at [low, high] can touch: a row's group depends on its neighbours and no
+    // further, so widening to the enclosing auto-tool run on either side leaves the rest of the transcript alone.
+    private void _RegroupAround(int low, int high)
+    {
+        high = Math.Min(high, Transcript.Count - 1);
+        if (low < 0 || high < low)
+        {
+            return;
+        }
+
+        if (ReadingLevel != ReadingLevel.Focus)
+        {
+            for (var index = low; index <= high; index++)
+            {
+                _ClearGroup(Transcript[index]);
+            }
+
+            return;
+        }
+
+        while (low > 0 && Transcript[low - 1].IsAutoTool)
+        {
+            low--;
+        }
+
+        while (high + 1 < Transcript.Count && Transcript[high + 1].IsAutoTool)
+        {
+            high++;
+        }
+
+        _FormGroups(low, high);
+    }
+
+    // Walks [start, end] — whose ends are run boundaries — and forms every maximal run of two or more auto tool
+    // calls in it into a group, preserving an anchor's expanded state so a run growing mid-turn does not snap shut.
+    private void _FormGroups(int start, int end)
+    {
+        var index = start;
+        while (index <= end)
         {
             if (!Transcript[index].IsAutoTool)
             {
@@ -751,7 +818,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
 
             var runStart = index;
-            while (index < Transcript.Count && Transcript[index].IsAutoTool)
+            while (index <= end && Transcript[index].IsAutoTool)
             {
                 index++;
             }
@@ -2895,13 +2962,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // never by blocking on it. Every caller today is already on it and takes the first branch; an off-thread one
         // would post rather than wait, because a blocking hop here sits in front of the child kill below and that
         // dependency on a live dispatcher is exactly what hung shutdown before (#32).
-        if (Dispatcher.UIThread.CheckAccess())
+        if (_eventQueue.HasWork)
         {
-            _eventQueue.Flush();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(_eventQueue.Flush);
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                _eventQueue.Flush();
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(_eventQueue.Flush);
+            }
         }
 
         if (_runtime is null)

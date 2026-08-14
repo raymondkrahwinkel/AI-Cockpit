@@ -1746,8 +1746,25 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnSidebarIndexChanged(int value) => OnPropertyChanged(nameof(RailSortKey));
 
+    // What owns this pane's place in the DI container, handed over by whoever resolved it: a pane resolved straight
+    // from the root provider stays rooted there — transcript and all — for the run however carefully it was closed,
+    // and one resolved into a scope of its own takes that scope with it here instead (AC-787).
+    private IAsyncDisposable? _lifetimeScope;
+    private bool _disposed;
+
+    public void OwnLifetimeScope(IAsyncDisposable scope) => _lifetimeScope = scope;
+
     public async ValueTask DisposeAsync()
     {
+        // Disposing the scope below disposes what it handed out, which is this pane again — and the close paths in
+        // CockpitViewModel are not the only caller either.
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         // Closing a session that is reading responses aloud must silence it too — otherwise its queued
         // and in-flight utterances keep playing after the panel is gone. The playback queue is one shared
         // singleton (#35), so this is the same blanket stop push-to-talk uses; gating it on this session's
@@ -1762,6 +1779,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         Resumes = null;
 
         await DisposeCoreAsync();
+
+        if (_lifetimeScope is { } scope)
+        {
+            _lifetimeScope = null;
+            await scope.DisposeAsync();
+        }
     }
 
     // Kind-specific teardown (kill the CLI process, stop the transcript tailer), run after read-aloud is silenced.

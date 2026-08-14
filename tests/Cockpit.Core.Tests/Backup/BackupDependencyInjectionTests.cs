@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Infrastructure;
@@ -22,10 +23,7 @@ public class BackupDependencyInjectionTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
 
-        services.AddTransient<Func<SessionViewModel>>(
-            provider => () => provider.GetRequiredService<SessionViewModel>());
-        services.AddTransient<Func<TtyViewModel>>(
-            provider => () => provider.GetRequiredService<TtyViewModel>());
+        services.AddSessionPanes();
 
         return services.BuildServiceProvider();
     }

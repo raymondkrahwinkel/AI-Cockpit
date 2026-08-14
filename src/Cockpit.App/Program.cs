@@ -176,15 +176,7 @@ sealed class Program
 
         services.AddSingleton(pluginManager);
 
-        // Factory delegate so CockpitViewModel can mint a new SessionViewModel (and,
-        // transitively, its own ISessionDriver/CLI process) per "New session" click without
-        // holding an injected IServiceProvider itself (service-locator anti-pattern — Code.md §2).
-        services.AddTransient<Func<SessionViewModel>>(
-            provider => () => provider.GetRequiredService<SessionViewModel>());
-
-        // Same factory pattern for the TTY-mode panel (#9 experiment).
-        services.AddTransient<Func<TtyViewModel>>(
-            provider => () => provider.GetRequiredService<TtyViewModel>());
+        services.AddSessionPanes();
 
         Services = services.BuildServiceProvider();
 
