@@ -28,6 +28,12 @@ public partial class FilePreviewWindow : Window
     private const int MaxListedRows = 500;
     private const float SvgRasterSize = 1600f;
 
+    // Ctrl+scroll zoom range for image/SVG (and later PDF) previews (AC-730), same pattern as AC-778's
+    // ImagePreviewWindow but with this ticket's own 10-800% range.
+    private const double MinZoom = 0.10;
+    private const double MaxZoom = 8.0;
+    private const double ZoomStepBase = 1.1;
+
     // Same fallback list as MarkdownView's own MonoFont — a font resource lookup needs live Application
     // resources, and this has to render in a headless test harness too.
     private static readonly FontFamily MonoFont = new("Cascadia Mono, Noto Sans Mono, DejaVu Sans Mono, monospace");
@@ -39,12 +45,20 @@ public partial class FilePreviewWindow : Window
     private readonly Stack<string> _history = new();
     private string _path = string.Empty;
     private Bitmap? _bitmap;
+    private Image? _previewImage;
+    private double _zoom = 1.0;
 
     public FilePreviewWindow()
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this, "Voorbeeld");
         SizeChanged += (_, e) => _lastSize = e.NewSize;
+
+        // Tunnel + handledEventsToo, same as ImagePreviewWindow (AC-778): this must see the wheel before
+        // BodyScroller's own presenter claims it for scrolling. Only Ctrl+scroll is intercepted, so plain
+        // scroll still scrolls a code preview taller than the window.
+        BodyScroller.AddHandler(InputElement.PointerWheelChangedEvent, _OnBodyWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
+        KeyDown += _OnKeyDown;
     }
 
     public static void Show(string path, int? line, Window owner) => Build(path, line).Show(owner);
@@ -97,6 +111,52 @@ public partial class FilePreviewWindow : Window
 
     private void _OnOpen(object? sender, RoutedEventArgs e) => ExternalLink.TryOpenWithSystemApp(_path);
 
+    // .html/.htm always classify as FilePreviewKind.Text (LooksLikeText), so this checks the extension
+    // directly rather than adding a kind only this button would ever read.
+    private static bool _IsHtml(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".htm", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Ctrl+scroll zooms an image/SVG/PDF preview; plain scroll is left alone so BodyScroller still scrolls a
+    // code preview taller than the window. No-op when the current body is not an image (_previewImage null).
+    private void _OnBodyWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (_previewImage is null || !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _ApplyZoom(_zoom * Math.Pow(ZoomStepBase, e.Delta.Y));
+    }
+
+    private void _OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_previewImage is not null && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key is Key.D0 or Key.NumPad0)
+        {
+            _ApplyZoom(1.0);
+            e.Handled = true;
+        }
+    }
+
+    private void _OnImageDoubleTapped(object? sender, TappedEventArgs e) => _ApplyZoom(1.0);
+
+    private void _ApplyZoom(double zoom)
+    {
+        if (_previewImage is null)
+        {
+            return;
+        }
+
+        _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
+        var transform = (ScaleTransform)_previewImage.RenderTransform!;
+        transform.ScaleX = _zoom;
+        transform.ScaleY = _zoom;
+    }
+
     // A directory row or a "back"/"up" jump lands here too — same load, same classification, same body switch;
     // a directory is just another kind this window can show.
     private async Task _NavigateAsync(string path, int? line, bool recordHistory = true)
@@ -121,6 +181,7 @@ public partial class FilePreviewWindow : Window
         PathText.Text = path;
         MetaText.Text = loaded.Meta;
         OpenButton.IsVisible = loaded.Kind != FilePreviewKind.Missing;
+        OpenInBrowserButton.IsVisible = loaded.Kind != FilePreviewKind.Missing && _IsHtml(path);
         UpButton.IsVisible = loaded.Kind == FilePreviewKind.Directory;
 
         BodyHost.Content = _BuildBody(loaded, line);
@@ -339,21 +400,27 @@ public partial class FilePreviewWindow : Window
         return rows;
     }
 
-    private Control _BuildBody(_Loaded loaded, int? line) => loaded.Kind switch
+    private Control _BuildBody(_Loaded loaded, int? line)
     {
-        FilePreviewKind.Image or FilePreviewKind.Svg => _ImageBody(loaded.Bitmap!),
-        FilePreviewKind.Markdown or FilePreviewKind.Csv => new MarkdownView { Markdown = loaded.Text },
-        FilePreviewKind.Json or FilePreviewKind.Text => _CodeBody(loaded.Text ?? string.Empty, line),
-        FilePreviewKind.Directory => _DirectoryBody(loaded.Entries ?? []),
-        FilePreviewKind.Missing => _MissingBody(),
-        _ => _OtherBody(),
-    };
+        // Reset for every navigation: the previous body's Image (if any) is about to be discarded, and a
+        // non-image body must leave Ctrl+scroll/Ctrl+0 as no-ops rather than reaching into a stale reference.
+        _previewImage = null;
+        _zoom = 1.0;
 
-    private static Control _ImageBody(Bitmap bitmap) => new Border
+        return loaded.Kind switch
+        {
+            FilePreviewKind.Image or FilePreviewKind.Svg => _ImageBody(loaded.Bitmap!),
+            FilePreviewKind.Markdown or FilePreviewKind.Csv => new MarkdownView { Markdown = loaded.Text },
+            FilePreviewKind.Json or FilePreviewKind.Text => _CodeBody(loaded.Text ?? string.Empty, line),
+            FilePreviewKind.Directory => _DirectoryBody(loaded.Entries ?? []),
+            FilePreviewKind.Missing => _MissingBody(),
+            _ => _OtherBody(),
+        };
+    }
+
+    private Control _ImageBody(Bitmap bitmap)
     {
-        Background = CheckerboardBrush(),
-        Padding = new Thickness(16),
-        Child = new Image
+        var image = new Image
         {
             Source = bitmap,
             Stretch = Stretch.Uniform,
@@ -361,8 +428,18 @@ public partial class FilePreviewWindow : Window
             MaxHeight = bitmap.PixelSize.Height,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-        },
-    };
+            RenderTransform = new ScaleTransform(1, 1),
+        };
+        image.DoubleTapped += _OnImageDoubleTapped;
+        _previewImage = image;
+
+        return new Border
+        {
+            Background = CheckerboardBrush(),
+            Padding = new Thickness(16),
+            Child = image,
+        };
+    }
 
     // A tiled two-tone pattern behind an image (AC-642), so transparency reads as transparency rather than as
     // the panel's own flat background. Built from the same near-black tokens the rest of the app already uses —
@@ -526,7 +603,7 @@ public partial class FilePreviewWindow : Window
 
     private static Control _OtherBody() => new TextBlock
     {
-        Text = "Geen voorbeeld voor dit bestandstype.",
+        Text = "Geen voorbeeld voor dit bestandstype — gebruik Openen hieronder.",
         FontSize = 12.5,
         Margin = new Thickness(24),
         HorizontalAlignment = HorizontalAlignment.Center,

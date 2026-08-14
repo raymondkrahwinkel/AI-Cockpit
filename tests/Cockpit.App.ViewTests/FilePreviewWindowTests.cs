@@ -1,8 +1,10 @@
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.LogicalTree;
+using Avalonia.Media;
 using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
@@ -86,7 +88,41 @@ public sealed class FilePreviewWindowTests : IDisposable
 
             Assert.Equal("bestand", _KindText(window));
             var text = Assert.IsType<TextBlock>(_Body(window));
-            Assert.Equal("Geen voorbeeld voor dit bestandstype.", text.Text);
+            Assert.Equal("Geen voorbeeld voor dit bestandstype — gebruik Openen hieronder.", text.Text);
+        });
+    }
+
+    [Fact]
+    public async Task HtmlFile_ShowsCodeByDefaultWithAnOpenInBrowserButton()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var path = Path.Combine(_dir, "page.html");
+            await File.WriteAllTextAsync(path, "<html><body>hi</body></html>");
+
+            var window = FilePreviewWindow.Build(path, null);
+            await Task.Delay(200);
+
+            Assert.Equal("code", _KindText(window));
+            Assert.IsType<Grid>(_Body(window));
+            var openInBrowser = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "OpenInBrowserButton");
+            Assert.True(openInBrowser.IsVisible);
+        });
+    }
+
+    [Fact]
+    public async Task TextFile_HidesOpenInBrowserButton()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var path = Path.Combine(_dir, "Foo.cs");
+            await File.WriteAllTextAsync(path, "line one");
+
+            var window = FilePreviewWindow.Build(path, null);
+            await Task.Delay(200);
+
+            var openInBrowser = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "OpenInBrowserButton");
+            Assert.False(openInBrowser.IsVisible);
         });
     }
 
@@ -158,6 +194,78 @@ public sealed class FilePreviewWindowTests : IDisposable
 
             Assert.True(bodyHost.Bounds.Width > before);
             window.Close();
+        });
+    }
+
+    // Ctrl+scroll zoom's only branchy logic is the clamp — invoked directly since Avalonia's headless input
+    // harness has no way to raise a wheel event carrying `KeyModifiers.Control` (same approach as AC-778's
+    // ImagePreviewWindowTests.CtrlScrollZoom_ClampsToConfiguredRange).
+    [Fact]
+    public async Task CtrlScrollZoom_ClampsToConfiguredRange()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var path = Path.Combine(_dir, "pic.png");
+            await File.WriteAllBytesAsync(path, _TinyPng());
+
+            var window = FilePreviewWindow.Build(path, null);
+            await Task.Delay(200);
+
+            var applyZoom = typeof(FilePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var image = (Image)((Border)_Body(window)).Child!;
+            var transform = (ScaleTransform)image.RenderTransform!;
+
+            applyZoom.Invoke(window, [100.0]);
+            Assert.Equal(8.0, transform.ScaleX);
+
+            applyZoom.Invoke(window, [0.001]);
+            Assert.Equal(0.10, transform.ScaleX);
+        });
+    }
+
+    [Fact]
+    public async Task Zoom_ResetsToActualSizeOnDoubleTapAndOnLoadingAnotherFile()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var path = Path.Combine(_dir, "pic.png");
+            await File.WriteAllBytesAsync(path, _TinyPng());
+
+            var window = FilePreviewWindow.Build(path, null);
+            await Task.Delay(200);
+
+            var applyZoom = typeof(FilePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var doubleTap = typeof(FilePreviewWindow).GetMethod("_OnImageDoubleTapped", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            applyZoom.Invoke(window, [4.0]);
+
+            doubleTap.Invoke(window, [null, null]);
+            var transform = (ScaleTransform)((Image)((Border)_Body(window)).Child!).RenderTransform!;
+            Assert.Equal(1.0, transform.ScaleX);
+
+            applyZoom.Invoke(window, [4.0]);
+            var navigate = typeof(FilePreviewWindow).GetMethod("_NavigateAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            await (Task)navigate.Invoke(window, [path, null, true])!;
+
+            var reloadedTransform = (ScaleTransform)((Image)((Border)_Body(window)).Child!).RenderTransform!;
+            Assert.Equal(1.0, reloadedTransform.ScaleX);
+        });
+    }
+
+    // A code preview has no Image, so Ctrl+scroll must no-op instead of throwing on a null RenderTransform.
+    [Fact]
+    public async Task CtrlScrollZoom_IsANoOpOnACodePreview()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var path = Path.Combine(_dir, "Foo.cs");
+            await File.WriteAllTextAsync(path, "line one");
+
+            var window = FilePreviewWindow.Build(path, null);
+            await Task.Delay(200);
+
+            var applyZoom = typeof(FilePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            applyZoom.Invoke(window, [4.0]); // must not throw
+            Assert.IsType<Grid>(_Body(window));
         });
     }
 
