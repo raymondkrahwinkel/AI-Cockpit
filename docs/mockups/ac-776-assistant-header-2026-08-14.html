@@ -79,6 +79,20 @@
      alleen de 1px-divider scheidt het van zijn buurman, geen tweede rand op een rand. */
   .pill .seg.ovf{border:0;border-radius:0;background:none;padding:2px 8px;
                  color:var(--text-faint);letter-spacing:1px}
+
+  /* A5: hier is de ⋯ écht aanklikbaar, met native <details> — geen JS, zelfde truc als de
+     accordion in AC-772's mockup. De pill moet dan zijn overflow:hidden opgeven (anders klipt
+     hij het paneel weg), dus krijgen de buitenste segmenten hun ronding met de hand. */
+  .pill.host{overflow:visible;position:relative}
+  details.flyhost{display:flex}
+  details.flyhost>summary{list-style:none;cursor:pointer;display:flex;align-items:center;
+       font-size:10px;padding:2px 9px;color:var(--text-faint);letter-spacing:1px;user-select:none;
+       border-radius:var(--pill-r) 0 0 var(--pill-r)}
+  details.flyhost>summary::-webkit-details-marker{display:none}
+  details.flyhost>summary:hover{background:var(--inset);color:var(--text-2)}
+  details.flyhost[open]>summary{background:var(--inset);color:var(--text)}
+  details.flyhost .fly{position:absolute;top:calc(100% + 6px);left:0;z-index:20;margin:0}
+  .pill.host .seg:last-child{border-radius:0 var(--pill-r) var(--pill-r) 0}
   .pill{display:inline-flex;align-items:stretch;background:var(--secondary);border:1px solid var(--hairline);
         border-radius:var(--pill-r);overflow:hidden}
   .seg{font-size:10px;padding:2px 8px;display:flex;align-items:center;color:var(--text-2);white-space:nowrap}
@@ -440,7 +454,8 @@ hetzelfde probleem, dezelfde oplossing.</p>
 
 <div class="cols">
 <div class="col">
-<p class="note"><b>Past het? Eén regel.</b> Identiek aan A4.</p>
+<p class="note"><b>Past het? Eén regel</b> — en de <code>⋯</code> hieronder werkt echt: klik hem open en dicht.
+Zo staat het volledige beeld er in één keer, in plaats van als los paneel ernaast.</p>
 <div class="win">
   <div class="hdr">
     <div class="avatar">✦</div>
@@ -453,16 +468,43 @@ hetzelfde probleem, dezelfde oplossing.</p>
         <div class="seg">ctx 39%</div><div class="div"></div>
         <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
       </div>
-      <div class="pill">
-        <div class="seg ovf">⋯</div><div class="div"></div>
+      <div class="pill host">
+        <details class="flyhost" open>
+          <summary>⋯</summary>
+          <div class="fly wide">
+            <div class="fly-h">Sessies (6)</div>
+            <div class="fly-hr"></div>
+            <div class="srow"><span class="dot busy" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">AC-774 grooming</div><div class="s">Busy · Review-desk · "transcript virtualiseren"</div></div>
+              <div class="go">↗</div></div>
+            <div class="srow"><span class="dot waiting" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">depot-fix</div><div class="s">Waiting for input · Cockpit-desk</div></div>
+              <div class="go">↗</div></div>
+            <div class="srow"><span class="dot done" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">ci-run</div><div class="s">Done · Cockpit-desk</div></div>
+              <div class="go">↗</div></div>
+            <div class="srow"><span class="dot bg" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">AC-770 review</div><div class="s">Working (background) · Review-desk</div></div>
+              <div class="go">↗</div></div>
+            <div class="srow"><span class="dot idle" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">scratch</div><div class="s">Idle · Cockpit-desk</div></div>
+              <div class="go">↗</div></div>
+            <div class="srow"><span class="dot idle" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">personal - webshop</div><div class="s">Idle · geen desk</div></div>
+              <div class="go">↗</div></div>
+          </div>
+        </details>
+        <div class="div"></div>
         <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
         <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
         <div class="seg nm"><span class="dot done"></span>ci-run</div>
       </div>
     </div>
-    <div class="transcript">… transcript …</div>
+    <div class="transcript" style="min-height:300px">… transcript …</div>
   </div>
 </div>
+<p class="cap">De flyout hangt aan de <code>⋯</code>, links uitgelijnd eronder — <code>Placement="BottomEdgeAlignedLeft"</code>.
+De drie zichtbare segmenten staan er ook nog: de pill blijft leesbaar terwijl de lijst openstaat.</p>
 </div>
 <div class="col">
 <p class="note"><b>Past het niet? Tweede regel</b> — en dan is er ineens plek voor álle namen, in plaats van voor
@@ -481,8 +523,24 @@ hetzelfde probleem, dezelfde oplossing.</p>
       </div>
     </div>
     <div class="pillrow">
-      <div class="pill">
-        <div class="seg ovf">⋯</div><div class="div"></div>
+      <div class="pill host">
+        <details class="flyhost">
+          <summary>⋯</summary>
+          <div class="fly">
+            <div class="fly-h">Sessies (3)</div>
+            <div class="fly-hr"></div>
+            <div class="srow"><span class="dot waiting" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">depot-fix</div><div class="s">Waiting for input · Cockpit-desk</div></div>
+              <div class="go">↗</div></div>
+            <div class="srow"><span class="dot busy" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">AC-774 grooming</div><div class="s">Busy · Review-desk</div></div>
+              <div class="go">↗</div></div>
+            <div class="srow"><span class="dot done" style="margin-top:4px"></span>
+              <div class="meta"><div class="t">ci-run</div><div class="s">Done · Cockpit-desk</div></div>
+              <div class="go">↗</div></div>
+          </div>
+        </details>
+        <div class="div"></div>
         <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
         <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
         <div class="seg nm"><span class="dot done"></span>ci-run</div>
@@ -491,7 +549,7 @@ hetzelfde probleem, dezelfde oplossing.</p>
     <div class="transcript">… transcript …</div>
   </div>
 </div>
-<p class="cap">340px. De tweede regel bestaat alleen zolang hij nodig is.</p>
+<p class="cap">340px. De tweede regel bestaat alleen zolang hij nodig is. Ook deze <code>⋯</code> werkt — klik hem open.</p>
 </div>
 </div>
 
