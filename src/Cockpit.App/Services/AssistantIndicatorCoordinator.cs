@@ -31,6 +31,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private readonly IAssistantSettingsStore _settings;
     private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly IAssistantSpawnAuditLog _spawnAuditLog;
+    private readonly CockpitViewModel _cockpit;
     private readonly ILogger<AssistantIndicatorCoordinator> _logger;
 
     // The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).
@@ -46,6 +47,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         IAssistantSettingsStore settings,
         IVoicePlaybackQueue playbackQueue,
         IAssistantSpawnAuditLog spawnAuditLog,
+        CockpitViewModel cockpit,
         ILogger<AssistantIndicatorCoordinator>? logger = null)
     {
         _assistant = assistant;
@@ -54,6 +56,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _settings = settings;
         _playbackQueue = playbackQueue;
         _spawnAuditLog = spawnAuditLog;
+        _cockpit = cockpit;
         _logger = logger ?? NullLogger<AssistantIndicatorCoordinator>.Instance;
     }
 
@@ -197,7 +200,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
             if (_chatWindow is null)
             {
-                _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator);
+                _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator, cockpit: _cockpit);
                 _chatWindow = new AssistantChatWindow { DataContext = _chatViewModel };
 
                 // Dropped on close so the next click builds a fresh window — but nothing about the session is touched

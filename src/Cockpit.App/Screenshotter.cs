@@ -397,6 +397,14 @@ internal static class Screenshotter
         ["assistant-chat-warnings"] = (_, _) => _AssistantChatWithWarnings(),
         ["assistant-chat-question"] = (_, _) => _AssistantChatQuestion(),
 
+        // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
+        // staged open by the Hovers table below (criterion 12's four scenes: all-statuses, the opened session
+        // list, the 340px narrow wrap, and Deel 2's opened history/export dropdown).
+        ["assistant-chat-session-pill"] = (_, _) => _AssistantChatSessionPill(sessionCount: 6),
+        ["assistant-chat-session-pill-list-open"] = (_, _) => _AssistantChatSessionPill(sessionCount: 6),
+        ["assistant-chat-session-pill-narrow"] = (_, _) => _AssistantChatSessionPill(sessionCount: 6, width: 340),
+        ["assistant-chat-history-dropdown-open"] = (_, _) => _AssistantChat(withConversation: true),
+
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
         // developer's own screen happens to produce.
@@ -507,6 +515,9 @@ internal static class Screenshotter
         // property a scene can stage ahead of the window existing.
         ["session-mention-picker"] = _OpenMentionPicker,
         ["assistant-chat-mention-picker"] = _OpenAssistantChatMentionPicker,
+        // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
+        ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
+        ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
     };
 
     private static void _OpenMentionPicker(Window window)
@@ -2035,6 +2046,48 @@ internal static class Screenshotter
 
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-776 Deel 1: the session-status pill, one segment per live session next to the usage pill. A real
+    // CockpitViewModel here (not the lightweight _FakeAssistantSessionHost the other scenes get away with) —
+    // the pill reads CockpitViewModel.Sessions directly, the same live collection the sidebar itself renders,
+    // so a fake host has nothing for it to bind to. `sessionCount` covers both the "all statuses" scene (one of
+    // each) and the narrow-wrap scene (enough long names to force the WrapPanel's second line).
+    private static AssistantChatWindow _AssistantChatSessionPill(int sessionCount, double? width = null)
+    {
+        var cockpit = new CockpitViewModel();
+        cockpit.Sessions.Clear();
+
+        SessionStatus[] statuses =
+        [
+            SessionStatus.Busy, SessionStatus.WaitingForInput, SessionStatus.NeedsAttention,
+            SessionStatus.WorkingBackground, SessionStatus.Done, SessionStatus.Idle,
+        ];
+        string[] names = ["AC-774", "depot-fix", "ci-run", "AC-561-mockup-review", "cleanup-worktrees", "release-notes"];
+
+        for (var i = 0; i < sessionCount; i++)
+        {
+            var session = new ViewModels.SessionViewModel { Title = names[i % names.Length] };
+            session.AdoptPaneId($"scene-session-{i}");
+            session.SessionStatus = statuses[i % statuses.Length];
+            cockpit.Sessions.Add(session);
+        }
+
+        // A usage pill next to it (else there is nothing for the session pill to share a line with, and the
+        // narrow-wrap scene would not actually wrap — see UsagePillUnreportedWindowTests' own remarks on why a
+        // bare SessionViewModel reports no usage at all).
+        var assistantSession = new ViewModels.SessionViewModel { UsagePillVisibleFields = [Cockpit.Core.UsagePill.UsagePillField.Context] };
+        assistantSession.ContextUsedPercent = 37;
+        var host = new _FakeAssistantSessionHost { Session = assistantSession, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var viewModel = new ViewModels.AssistantChatViewModel(
+            host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue(), cockpit: cockpit);
+        var window = new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+        if (width is { } w)
+        {
+            window.Width = w;
+        }
+
+        return window;
     }
 
     // Bare-minimum IAssistantSessionHost: nothing mutates Session/Activity/UnavailableReason after a scene

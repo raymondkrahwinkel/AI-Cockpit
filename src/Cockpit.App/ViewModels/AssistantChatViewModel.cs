@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Voice;
@@ -136,6 +137,13 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
     private readonly IMentionFileSource? _mentionFileSource;
 
+    // AC-776: optional so every construction path predating this ticket (tests, Screenshotter) keeps compiling.
+    // The one thing this view model reaches for outside its own host — see LiveSessions' remarks for why a whole
+    // CockpitViewModel rather than a narrower gateway.
+    private readonly CockpitViewModel? _cockpit;
+
+    private IReadOnlyDictionary<string, string> _deskNameByPaneId = new Dictionary<string, string>(StringComparer.Ordinal);
+
     // Session is exposed only through the property below, not as [ObservableProperty] on a field, because it is
     // never assigned locally — it always reads straight through to the host. What can change is *which* session
     // the host reports, so change notification is driven by watching the host's own PropertyChanged instead
@@ -185,7 +193,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         IVoicePlaybackQueue playbackQueue,
         IAssistantSpawnAuditLog? spawnAuditLog = null,
         AssistantIndicatorViewModel? indicator = null,
-        IMentionFileSource? mentionFileSource = null)
+        IMentionFileSource? mentionFileSource = null,
+        CockpitViewModel? cockpit = null)
     {
         _host = host;
         _settingsStore = settingsStore;
@@ -193,10 +202,17 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         _spawnAuditLog = spawnAuditLog;
         _indicator = indicator;
         _mentionFileSource = mentionFileSource;
+        _cockpit = cockpit;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => Session?.WorkingDirectory ?? _host.DefaultWorkingDirectory);
         _observedSession = _host.Session;
         _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
+
+        if (_cockpit is not null)
+        {
+            _cockpit.Sessions.CollectionChanged += _OnCockpitSessionsChanged;
+            _RebuildLiveSessions();
+        }
     }
 
     // AC-740: null source (design-time/unit-test graph) or no working directory yet (no session started, and the
@@ -244,6 +260,64 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     // Backs the flyout's empty-state line. Raised by hand in `LoadSpawnLogAsync` — the load runs once per open rather than being observed continuously, so there is nothing to watch.
     public bool HasSpawnLogEntries => SpawnLogEntries.Count > 0;
+
+    // AC-776: every live agent session — exactly what `list_sessions` reports (`AssistantReadGateway._ListSessions`'s
+    // own filter, reused rather than copied), rebuilt whenever a session starts or stops. Holds the real
+    // `SessionPanelViewModel` instances rather than a row DTO or a new wrapper view model, so the header's
+    // segments bind directly to them and stay live off the same `PropertyChanged` the sidebar already fires
+    // (`OnSessionStatusChanged`) — nothing here has to re-announce a status change itself.
+    public ObservableCollection<SessionPanelViewModel> LiveSessions { get; } = new();
+
+    // Whether the session pill has anything to show — its own flag (AC-776 pitfall 3), not borrowed from the
+    // usage pill's `HasUsagePillRegion`: a session badge must not disappear just because the assistant itself has
+    // not reported usage yet.
+    public bool HasLiveSessions => LiveSessions.Count > 0;
+
+    // A session's desk, by pane id, for the tooltip and the session-list flyout — `SessionPanelViewModel` itself
+    // only carries the raw `WorkspaceId`, not a display name, so this is resolved once per rebuild the same way
+    // `AssistantReadGateway._ListSessions` resolves it (`SessionWorkspacePlacement` + the workspace settings list)
+    // rather than adding a workspace-name property to a view model every session kind shares.
+    public IReadOnlyDictionary<string, string> DeskNameByPaneId
+    {
+        get => _deskNameByPaneId;
+        private set => SetProperty(ref _deskNameByPaneId, value);
+    }
+
+    private void _OnCockpitSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _RebuildLiveSessions();
+
+    private void _RebuildLiveSessions()
+    {
+        if (_cockpit is null)
+        {
+            return;
+        }
+
+        var firstWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(_cockpit.Workspaces.Settings);
+        var namesById = _cockpit.Workspaces.Settings.Workspaces.ToDictionary(
+            workspace => workspace.Id, workspace => workspace.Name, StringComparer.Ordinal);
+
+        var sessions = _cockpit.AllSessions()
+            .Where(session => session.ShowPluginHeaderItems
+                && !string.Equals(session.PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+            .ToList();
+
+        LiveSessions.Clear();
+        foreach (var session in sessions)
+        {
+            LiveSessions.Add(session);
+        }
+
+        DeskNameByPaneId = sessions.ToDictionary(
+            session => session.PaneId,
+            session =>
+            {
+                var workspaceId = SessionWorkspacePlacement.Resolve(session, firstWorkspaceId);
+                return workspaceId is not null && namesById.TryGetValue(workspaceId, out var name) ? name : workspaceId ?? "—";
+            },
+            StringComparer.Ordinal);
+
+        OnPropertyChanged(nameof(HasLiveSessions));
+    }
 
     // Opens the window's view onto the assistant (criterion 1: the first chip click is the "operator handling"
     // that is allowed to start it lazily) — called by the view once, when it attaches. Never called from the
@@ -487,6 +561,13 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     {
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _WatchTranscript(_observedSession, next: null);
+
+        // AC-776/AC-774: the one subscription this view model holds on something other than its own host — must
+        // come off on close, or every reopened chat window leaves another handler chained to the live session list.
+        if (_cockpit is not null)
+        {
+            _cockpit.Sessions.CollectionChanged -= _OnCockpitSessionsChanged;
+        }
     }
 }
 
