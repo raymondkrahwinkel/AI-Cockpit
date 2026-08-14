@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>AC-778 — Geplakte afbeeldingen klikbaar: mini-gallerij met zoom</title>
+<style>
+  /* Tokens overgenomen uit src/Cockpit.App/Styles/Theme.axaml — niet verzonnen.
+     HTML-PROXY voor Avalonia-vensters, geen tweede stack: elke control hieronder is uitgedrukt in
+     wat TranscriptRowView.axaml en FilePreviewWindow.axaml al gebruiken (Border, StackPanel, Image met
+     Stretch=Uniform op een checkerboard-Border, ScreenshotPreviewWindow-stijl knoppenrij). Zelfde stramien
+     als AC-772 en AC-776's mockups. Het v1-voorstel en de 8 acceptatiecriteria staan al vast in het ticket —
+     dit beeldt dát voorstel uit, het stelt geen nieuwe varianten voor. */
+  :root{
+    --window:#0f1116; --panel:#1a1d24; --secondary:#0c0e12; --chrome:#12141a; --inset:#202430;
+    --hairline:#2a2f39; --hairline-hover:#38404d; --hairline-soft:#20242c;
+    --text:#e8eaef; --text-2:#949aa5; --text-faint:#656c78;
+    --accent:#2563eb; --accent-hover:#1d4ed8; --on-accent:#fff;
+    --st-busy:#22D3EE; --st-waiting:#E0A33E; --st-done:#5AA576; --st-bg:#A67CD8; --st-err:#D64545;
+    --ctl-r:9px; --panel-r:12px; --pill-r:20px;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--window);color:var(--text);
+       font:14px/1.55 Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:34px 24px 90px}
+  h1{font-size:22px;margin:0 0 6px;font-weight:600}
+  .sub{color:var(--text-2);margin:0 0 8px;max-width:88ch}
+  .sub b{color:var(--text)}
+  h2{font-size:16px;margin:48px 0 5px;font-weight:600}
+  h2 .n{color:var(--text-faint);font-weight:400;margin-right:9px}
+  h3{font-size:13.5px;margin:26px 0 6px;font-weight:600;color:var(--text)}
+  .note{color:var(--text-2);margin:0 0 14px;max-width:88ch;font-size:13px}
+  .note b{color:var(--text)}
+  code{font-family:var(--mono);font-size:12px;background:var(--inset);padding:1px 5px;border-radius:3px}
+  hr{border:0;border-top:1px solid var(--hairline-soft);margin:40px 0 0}
+  .banner{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.35);border-radius:var(--panel-r);
+          padding:12px 16px;margin:14px 0 0;font-size:13px;color:var(--text-2)}
+  .banner b{color:var(--text)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--hairline-soft);vertical-align:top}
+  th{color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td b{color:var(--text)}
+  td{color:var(--text-2)}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:3px;
+       background:var(--inset);color:var(--text-2);margin-right:4px;vertical-align:1px}
+  .tag.ac{background:rgba(37,99,235,.14);color:#8fb3ff}
+  .cap{font-size:11px;color:var(--text-faint);margin:7px 0 0}
+  .cols{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+  .col{flex:1;min-width:330px}
+
+  /* --- chatvenster als proxy (SessionView / AssistantChatWindow delen TranscriptRowView) --- */
+  .win{width:420px;background:var(--window);border:1px solid var(--hairline);border-radius:10px;
+       overflow:hidden;margin:10px 0 0}
+  .hdr{background:var(--chrome);border-bottom:1px solid var(--hairline-soft);padding:9px 12px;
+      display:flex;align-items:center;gap:8px}
+  .avatar{width:28px;height:28px;border-radius:9px;background:var(--inset);flex:none;
+          display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:13px}
+  .hname{font-size:13.5px;font-weight:600;line-height:1.25}
+  .hprof{font-size:11px;color:var(--text-faint);line-height:1.25}
+  .body{padding:12px 12px 14px;background:var(--window)}
+
+  /* Userbubble = Border.transcriptRow.userRow, rechts uitgelijnd, net als TranscriptRowView.axaml:47 */
+  .row{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+  .bubble{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--ctl-r);
+          padding:8px 10px;max-width:300px}
+  .bubble .who{font-size:10.5px;color:var(--text-faint);text-align:right;margin:0 0 3px}
+  .bubble .txt{font-size:12.5px;color:var(--text);line-height:1.4}
+
+  /* Het [+N image]-fragment vandaag: platte tekst, ingebakken in de markdown-string
+     (SessionViewModel.cs:1628-1634). Geen los element, dus ook geen hover/klik-affordance. */
+  .plain-suffix{color:var(--text)}
+
+  /* Voorstel: hetzelfde fragment als klikbaar chip-element, alleen wanneer TranscriptEntryViewModel.Images
+     bytes draagt. Zelfde grijstinten als de bestaande toolChip-stijl (geen nieuwe kleur verzonnen). */
+  .imgchip{display:inline-flex;align-items:center;gap:5px;background:var(--inset);
+           border:1px solid var(--hairline);border-radius:var(--pill-r);padding:2px 9px 2px 7px;
+           font-size:11px;color:var(--text-2);cursor:pointer;margin-top:2px}
+  .imgchip:hover{border-color:var(--hairline-hover);color:var(--text);background:#262b36}
+  .imgchip .ic{font-size:11px;line-height:1}
+  .imgchip.disabled{cursor:default;opacity:.55}
+  .imgchip.disabled:hover{border-color:var(--hairline);color:var(--text-2);background:var(--inset)}
+  .tip{position:relative;display:inline-block;background:var(--chrome);border:1px solid var(--hairline);
+       border-radius:6px;padding:4px 8px;font-size:10.5px;color:var(--text-2);margin:6px 0 0}
+
+  /* --- preview-venster (nieuw te bouwen, stijl geleend van FilePreviewWindow/ScreenshotPreviewWindow) --- */
+  .gwin{width:460px;background:var(--panel);border:1px solid var(--hairline);border-radius:10px;
+        overflow:hidden;margin:10px 0 0;box-shadow:0 12px 34px rgba(0,0,0,.5)}
+  .gwin .ghdr{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;
+              border-bottom:1px solid var(--hairline-soft)}
+  .gwin .gtitle{font-size:13px;font-weight:600;color:var(--text)}
+  .gwin .gsub{font-size:10.5px;color:var(--text-faint);margin-top:1px}
+  .gwin .gclose{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+                color:var(--text-2);font-size:12px}
+  .checker{
+    background-image:
+      linear-gradient(45deg,#20242c 25%,transparent 25%),
+      linear-gradient(-45deg,#20242c 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#20242c 75%),
+      linear-gradient(-45deg,transparent 75%,#20242c 75%);
+    background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;
+    background-color:var(--secondary);
+  }
+  .gbody{position:relative;height:260px;display:flex;align-items:center;justify-content:center}
+  .gimg{width:190px;height:150px;border-radius:4px;background:linear-gradient(135deg,#3a4152,#232733);
+        display:flex;align-items:center;justify-content:center;color:var(--text-faint);font-size:11px}
+  .gnav{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;
+        background:rgba(15,17,22,.7);border:1px solid var(--hairline);display:flex;align-items:center;
+        justify-content:center;color:var(--text);font-size:14px}
+  .gnav.prev{left:10px} .gnav.next{right:10px}
+  .gcount{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(15,17,22,.75);
+          border:1px solid var(--hairline);border-radius:var(--pill-r);padding:2px 10px;font-size:10.5px;
+          color:var(--text-2)}
+  .gtoolbar{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;
+            border-top:1px solid var(--hairline-soft);background:var(--panel)}
+  .seg2{display:inline-flex;border:1px solid var(--hairline);border-radius:var(--ctl-r);overflow:hidden}
+  .seg2 .s{padding:4px 10px;font-size:11px;color:var(--text-2)}
+  .seg2 .s.active{background:var(--accent);color:var(--on-accent)}
+  .gbtn{font-size:11px;color:var(--text-2);border:1px solid var(--hairline);border-radius:var(--ctl-r);
+        padding:4px 9px;background:transparent}
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+         color:var(--text-faint);font-size:11.5px;text-align:center;padding:0 30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AC-778 — Geplakte afbeelding in de transcript klikbaar, met mini-gallerij en zoom</h1>
+<p class="sub">Het v1-voorstel en de 8 acceptatiecriteria staan al vast in het ticket — dit beeldt dat voorstel
+uit voor Raymonds beoordeling, het stelt <b>geen nieuwe varianten</b> voor. Alle controls en kleuren komen uit
+de bestaande code: het label zit vandaag ingebakken in de markdown-string
+(<code>SessionViewModel.cs:1628-1634</code>), gerenderd door de gedeelde <code>TranscriptRowView.axaml</code>
+(SDK-sessie én Assistant-chat, sinds AC-722). Het checkerboard/<code>Stretch="Uniform"</code>-uiterlijk van het
+preview-venster is geleend van <code>FilePreviewWindow.axaml.cs</code> (<code>_ImageBody</code>,
+<code>_CheckerboardBrush</code>).</p>
+
+<div class="banner">
+<b>Dit is grooming, geen implementatie</b> — bespreekbijlage bij het ticket, geen wijziging in de hoofdcodebase.
+Niet mergen zonder Raymonds keuze.
+</div>
+
+<hr>
+<h2><span class="n">0</span>Vandaag — platte tekst, niets is klikbaar</h2>
+<p class="note">Het <code>[+1 image]</code>-fragment is onderdeel van de markdown-string van het bericht, geen
+los bindbaar element. Er is niets om op te klikken en de bytes zijn na het versturen sowieso al weg
+(<code>ClaudeSdkSessionDriver._BuildContentBlocks</code> stuurt base64 rechtstreeks de CLI-stdin in).</p>
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+  </div>
+  <div class="body">
+    <div class="row">
+      <div class="bubble">
+        <div class="who">You</div>
+        <div class="txt">kijk hier gaat het mis <span class="plain-suffix">[+1&nbsp;image]</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="cap">Geen hover-effect, geen cursor-verandering — gewoon tekst.</p>
+
+<hr>
+<h2><span class="n">A</span>Voorstel — het label wordt een klikbaar element (AC 1, 5)</h2>
+<p class="note">Zodra <code>TranscriptEntryViewModel</code> beeldbytes draagt (nieuw veld, bv.
+<code>IReadOnlyList&lt;ImageAttachment&gt;? Images</code>), rendert <code>TranscriptRowView</code> het fragment
+als los chip-element in plaats van als tekst-suffix — zelfde grijstinten als de bestaande
+<code>toolChip</code>-stijl, geen nieuwe kleur. Werkt identiek in de SDK-sessie en het Assistant-chatvenster,
+want beide lopen door dezelfde view (AC 5).</p>
+
+<div class="cols">
+<div class="col">
+<h3>Eén afbeelding</h3>
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+  </div>
+  <div class="body">
+    <div class="row">
+      <div class="bubble">
+        <div class="who">You</div>
+        <div class="txt">kijk hier gaat het mis</div>
+        <div><span class="imgchip"><span class="ic">🖼</span>+1 image</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="tip">cursor: hand · hover verlicht de chip</div>
+</div>
+
+<div class="col">
+<h3>Meerdere afbeeldingen (N&gt;1)</h3>
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+  </div>
+  <div class="body">
+    <div class="row">
+      <div class="bubble">
+        <div class="who">You</div>
+        <div class="txt">drie schermafbeeldingen van de crash</div>
+        <div><span class="imgchip"><span class="ic">🖼</span>+3 images</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="cap">Precies de afbeeldingen van dít bericht (AC 2) — een ander bericht in dezelfde transcript met een
+eigen <code>[+N image]</code> opent zijn eigen set, nooit de verkeerde.</p>
+</div>
+</div>
+
+<hr>
+<h2><span class="n">B</span>Klikken opent het preview-venster (AC 2, 3, 4)</h2>
+<p class="note">Nieuw, klein venster — geen bestaand venster past (<code>FilePreviewWindow</code> leest van
+bestandspad, <code>ScreenshotPreviewWindow</code> is een confirm-dialoog). Checkerboard + <code>Image
+Stretch="Uniform"</code>, letterlijk <code>FilePreviewWindow._ImageBody</code>'s stijl. Vorige/volgende alleen
+zichtbaar bij 2+ afbeeldingen (AC 3); fit-to-window is de standaardstand, de 1:1-toggle ernaast (AC 4).</p>
+
+<div class="cols">
+<div class="col">
+<h3>B1 — meerdere afbeeldingen, fit-to-window</h3>
+<div class="gwin">
+  <div class="ghdr">
+    <div><div class="gtitle">Geplakte afbeeldingen</div><div class="gsub">bericht van 14:07 · SDK-sessie</div></div>
+    <div class="gclose">✕</div>
+  </div>
+  <div class="gbody checker">
+    <div class="gcount">2 / 3</div>
+    <div class="gnav prev">‹</div>
+    <div class="gimg">screenshot-2.png<br>1920×1040</div>
+    <div class="gnav next">›</div>
+  </div>
+  <div class="gtoolbar">
+    <div class="seg2"><span class="s active">Fit</span><span class="s">1:1</span></div>
+    <div class="gbtn">Sluiten</div>
+  </div>
+</div>
+</div>
+
+<div class="col">
+<h3>B2 — 1:1/vergroot-weergave (AC 4)</h3>
+<p class="note">Toggle rechtsonder wisselt tussen fit-to-window (bovenstaand) en 1:1-pixels; bij 1:1 groter dan
+het venster scrollt de <code>ScrollViewer</code> mee, zoals <code>FilePreviewWindow.BodyScroller</code> al doet.</p>
+<div class="gwin">
+  <div class="ghdr">
+    <div><div class="gtitle">Geplakte afbeelding</div><div class="gsub">bericht van 14:07 · SDK-sessie</div></div>
+    <div class="gclose">✕</div>
+  </div>
+  <div class="gbody checker">
+    <div class="gimg" style="width:260px;height:260px">1:1 — 1920×1040<br>(scrollt buiten beeld)</div>
+  </div>
+  <div class="gtoolbar">
+    <div class="seg2"><span class="s">Fit</span><span class="s active">1:1</span></div>
+    <div class="gbtn">Sluiten</div>
+  </div>
+</div>
+</div>
+</div>
+
+<hr>
+<h2><span class="n">C</span>Bytes niet meer in memory (AC 6)</h2>
+<p class="note">Na herstart van app/sessie is de chip niet meer klikbaar — geen exception, geen leeg venster dat
+opent. Twee manieren om dat te tonen; de chip zelf blijft in beide gevallen zichtbaar als geheugensteun dat er
+ooit een afbeelding bij hoorde.</p>
+<div class="cols">
+<div class="col">
+<h3>C1 — chip uitgeschakeld, geen klik-affordance</h3>
+<div class="win">
+  <div class="body" style="padding-top:14px">
+    <div class="row">
+      <div class="bubble">
+        <div class="who">You</div>
+        <div class="txt">kijk hier gaat het mis</div>
+        <div><span class="imgchip disabled"><span class="ic">🖼</span>+1 image</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="tip">cursor: pijl (geen hand) · geen hover-effect</div>
+<p class="cap"><span class="tag ac">AC 6</span> Kleinste wijziging: <code>IsEnabled</code> op de chip, gebonden
+aan of de bytes nog leven.</p>
+</div>
+<div class="col">
+<h3>C2 — nette melding ná een klik-poging</h3>
+<div class="gwin">
+  <div class="ghdr">
+    <div><div class="gtitle">Geplakte afbeelding</div><div class="gsub">bericht van gisteren 09:14</div></div>
+    <div class="gclose">✕</div>
+  </div>
+  <div class="gbody checker">
+    <div class="empty">🖼<br><b style="color:var(--text-2)">Niet meer beschikbaar</b><br>Deze afbeelding is niet
+    bewaard na het herstarten van de sessie.</div>
+  </div>
+  <div class="gtoolbar"><div></div><div class="gbtn">Sluiten</div></div>
+</div>
+<p class="cap"><span class="tag ac">AC 6</span> Alleen relevant als de chip zelf niet uitgeschakeld wordt
+(C1) — anders is dit pad onbereikbaar. Beide zijn geldig, C1 is de goedkopere van de twee.</p>
+</div>
+</div>
+
+<hr>
+<h2><span class="n">D</span>Wat hier niet verandert</h2>
+<table>
+<tr><th style="width:30%">Plek</th><th>Blijft ongewijzigd</th></tr>
+<tr><td><b>Pre-send chip</b> (<code>QueuedMessageViewModel</code>)</td>
+    <td><span class="tag ac">AC 7</span> De "nog niet verstuurd"-chip vóór het versturen is een aparte codepath en
+    krijgt geen klik-gedrag — alleen het <i>verstuurde</i> label in de transcript wordt klikbaar.</td></tr>
+<tr><td><b>SDK-sessie ↔ Assistant-chat</b></td>
+    <td><span class="tag ac">AC 5</span> Geen tweede implementatie: beide vensters tonen dezelfde
+    <code>TranscriptRowView</code>, dus de chip en het preview-venster verschijnen in allebei zodra ze hier
+    gebouwd zijn.</td></tr>
+<tr><td><b>Bewaartermijn</b></td>
+    <td>Puur in-memory, voor de levensduur van de draaiende sessie — geen schijf-opslag in v1. Bewaren over een
+    herstart heen is het open beslispunt dat Raymond nog moet maken (zie ticketbeschrijving, "Buiten scope v1").</td></tr>
+</table>
+
+</div>
+</body>
+</html>
