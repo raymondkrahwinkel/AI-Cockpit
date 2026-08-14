@@ -1006,33 +1006,47 @@
                          arrange nothing is not a choice. -->
                     <StackPanel HorizontalAlignment="Center" Margin="0,0,0,6"
                                 IsVisible="{Binding Projects.HasProjects}">
-                        <!-- Plain ToggleButtons, not Subtle ones: Subtle's checked state is deliberately
-                             transparent (it exists for icon toggles), which would leave a segmented control with no
-                             way to show which segment you are on. -->
-                        <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="3"
+                        <!-- One framed track holding all segments (AC-789), not a row of separate pills: the border
+                             and the inset surface belong to this Border, `ToggleButton.Segment` draws neither. -->
+                        <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="2"
                                 HorizontalAlignment="Center"
-                                Background="{StaticResource CockpitSecondaryBgBrush}"
+                                Background="{StaticResource CockpitInsetBgBrush}"
                                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <ToggleButton Classes="Compact" Content="Cards"
+                            <StackPanel Orientation="Horizontal" Spacing="1">
+                                <ToggleButton Classes="Compact Segment"
                                               IsChecked="{Binding Projects.IsCardsLayout, Mode=OneWay}"
                                               Command="{Binding Projects.SetLayoutModeCommand}"
                                               CommandParameter="Cards"
-                                              ToolTip.Tip="One card per project"/>
-                                <ToggleButton Classes="Compact" Content="List"
+                                              ToolTip.Tip="One card per project">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <materialIcons:MaterialIcon Kind="ViewGridOutline" Width="14" Height="14"/>
+                                        <TextBlock Text="Cards"/>
+                                    </StackPanel>
+                                </ToggleButton>
+                                <ToggleButton Classes="Compact Segment"
                                               IsChecked="{Binding Projects.IsListLayout, Mode=OneWay}"
                                               Command="{Binding Projects.SetLayoutModeCommand}"
                                               CommandParameter="List"
-                                              ToolTip.Tip="Wide rows — twice as many projects on a screen"/>
+                                              ToolTip.Tip="Wide rows — twice as many projects on a screen">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <materialIcons:MaterialIcon Kind="ViewListOutline" Width="14" Height="14"/>
+                                        <TextBlock Text="List"/>
+                                    </StackPanel>
+                                </ToggleButton>
                                 <!-- Not offered until LastOpenedAt is verified reliable enough to order by
                                      (ProjectsDisplaySettings.ContinueLayoutAvailable) — a segment that lands on an
                                      empty date is worse than no segment. -->
-                                <ToggleButton Classes="Compact" Content="Continue"
+                                <ToggleButton Classes="Compact Segment"
                                               IsVisible="{Binding Projects.ShowContinueLayoutOption}"
                                               IsChecked="{Binding Projects.IsContinueLayout, Mode=OneWay}"
                                               Command="{Binding Projects.SetLayoutModeCommand}"
                                               CommandParameter="Continue"
-                                              ToolTip.Tip="Carry on where you left off"/>
+                                              ToolTip.Tip="Carry on where you left off">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <materialIcons:MaterialIcon Kind="Restore" Width="14" Height="14"/>
+                                        <TextBlock Text="Continue"/>
+                                    </StackPanel>
+                                </ToggleButton>
                             </StackPanel>
                         </Border>
                         <TextBlock Text="Remembered for next time — change it whenever you like"

@@ -725,6 +725,40 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
 
+    <!-- Segment of a segmented control (AC-789): the frame belongs to the surrounding Border, so a segment draws
+         no border of its own and the checked one is marked by a raised surface instead of the accent fill — an
+         accent-filled segment reads as the page's primary action rather than as "you are here". -->
+    <Style Selector="ToggleButton.Segment">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+    </Style>
+    <Style Selector="ToggleButton.Segment /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Segment:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.Segment:checked">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="ToggleButton.Segment:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Segment:checked:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.Segment materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.Segment:checked materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+
     <!-- ComboBox: the same box as a TextBox, so a form reads as one column of controls rather than as
          inputs and pickers drawn by two different hands. -->
     <Style Selector="ComboBox">
