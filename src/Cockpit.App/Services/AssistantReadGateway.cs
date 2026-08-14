@@ -3,7 +3,6 @@ using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.Services;
@@ -38,14 +37,14 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
             ? Task.FromResult(_ListProjects())
             : Dispatcher.UIThread.InvokeAsync(_ListProjects).GetTask();
 
-    // The registered sources and every already-bound project's shared id, so a source's rows can be filtered down
-    // to what AC-797 promises: not yet bound here. Read together on the UI thread — `cockpit.Projects.Projects` is
-    // only safe to enumerate there — then the per-source network calls run off it.
+    // The registered sources and the bound/hidden filter ids, read together on the UI thread via
+    // `ProjectsViewModel.SharedProjectVisibilityFilterIds` (AC-797) — the same rule the Projects workspace
+    // itself filters on, not a second copy of it. The per-source network calls then run off the UI thread.
     public async Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedProjectsAsync()
     {
-        var (sources, boundIds) = Dispatcher.UIThread.CheckAccess()
-            ? _SharedProjectSourcesAndBoundIds()
-            : await Dispatcher.UIThread.InvokeAsync(_SharedProjectSourcesAndBoundIds).GetTask().ConfigureAwait(false);
+        var (sources, boundIds, hiddenIds) = Dispatcher.UIThread.CheckAccess()
+            ? _SharedProjectSourcesAndVisibilityFilterIds()
+            : await Dispatcher.UIThread.InvokeAsync(_SharedProjectSourcesAndVisibilityFilterIds).GetTask().ConfigureAwait(false);
 
         if (sources.Count == 0)
         {
@@ -64,22 +63,18 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
                 result.Error,
                 result.Succeeded
                     ? [.. result.Projects
-                        .Where(project => !boundIds.Contains(project.Id))
+                        .Where(project => !boundIds.Contains(project.Id) && !hiddenIds.Contains(project.Id))
                         .Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, project.Role))]
                     : [])),
         ];
     }
 
-    private (IReadOnlyList<ISharedProjectSource> Sources, HashSet<string> BoundIds) _SharedProjectSourcesAndBoundIds() =>
-        (
-            sharedProjectSources.Sources,
-            new HashSet<string>(
-                cockpit.Projects.Projects
-                    .SelectMany(project => project.Resources)
-                    .Where(resource => resource.Role == ProjectResourceRole.Memory)
-                    .Select(resource => resource.Reference),
-                StringComparer.Ordinal)
-        );
+    private (IReadOnlyList<ISharedProjectSource> Sources, HashSet<string> BoundIds, HashSet<string> HiddenIds)
+        _SharedProjectSourcesAndVisibilityFilterIds()
+    {
+        var (boundIds, hiddenIds) = cockpit.Projects.SharedProjectVisibilityFilterIds();
+        return (sharedProjectSources.Sources, boundIds, hiddenIds);
+    }
 
     // An SDK session's transcript is in memory and is read on the UI thread; a TTY session's is a file its CLI
     // wrote, and reading it is not something to do on the thread that draws (AC-609). So the pane is resolved on

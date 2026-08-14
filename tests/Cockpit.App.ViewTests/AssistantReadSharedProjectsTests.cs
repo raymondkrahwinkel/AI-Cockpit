@@ -2,14 +2,32 @@ using Avalonia.Threading;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Abstractions.TranscriptDisplay;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Layout;
+using Cockpit.Core.Notifications;
 using Cockpit.Core.Projects;
+using Cockpit.Core.SessionBehavior;
+using Cockpit.Core.Terminal;
+using Cockpit.Core.TranscriptDisplay;
+using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Projects;
+using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-797: <c>AssistantReadGateway.ListSharedProjectsAsync</c> — one failed source must not cost another
-/// source's rows, and a project already bound here must not be offered again.
+/// source's rows, and a project already bound or hidden here must not be offered again. Built through
+/// <c>ProjectsViewModel</c>'s real settings, the same route <c>ProjectsWorkspaceSharedProjectsTests</c> uses,
+/// since the filter this tool shares with the Projects workspace (<c>SharedProjectVisibilityFilterIds</c>) reads
+/// from there rather than from the plain observable lists.
 /// </summary>
 [Collection("avalonia")]
 public class AssistantReadSharedProjectsTests
@@ -20,8 +38,7 @@ public class AssistantReadSharedProjectsTests
         var working = new _FakeSharedProjectSource(
             "Depot — Work", SharedProjectListResult.Success([new SharedProject("depot:proj-1", "Marketing site")]));
         var broken = new _FakeSharedProjectSource("Depot — Personal", exception: new InvalidOperationException("not signed in"));
-        var gateway = Dispatcher.UIThread.Invoke(() =>
-            new AssistantReadGateway(new CockpitViewModel(), new _FakeSharedProjectSourceRegistry([working, broken])));
+        var gateway = await _BuildAsync([working, broken], ProjectSettings.Empty);
 
         var sources = await gateway.ListSharedProjectsAsync();
 
@@ -43,21 +60,74 @@ public class AssistantReadSharedProjectsTests
             new SharedProject("depot:proj-1", "Marketing site"),
             new SharedProject("depot:proj-2", "Internal wiki"),
         ]));
-        var (gateway, _) = Dispatcher.UIThread.Invoke(() =>
+        var bound = new Project("local-1", "Marketing site")
         {
-            var cockpit = new CockpitViewModel();
-            cockpit.Projects.Projects.Add(new Project("local-1", "Marketing site")
-            {
-                Resources = [new ProjectResource("depot:proj-1", ProjectResourceRole.Memory)],
-            });
-            return (new AssistantReadGateway(cockpit, new _FakeSharedProjectSourceRegistry([source])), cockpit);
-        });
+            Resources = [new ProjectResource("depot:proj-1", ProjectResourceRole.Memory)],
+        };
+        var gateway = await _BuildAsync([source], ProjectSettings.Empty with { Projects = [bound] });
 
         var sources = await gateway.ListSharedProjectsAsync();
 
-        var row = Assert.Single(sources);
-        var project = Assert.Single(row.Projects);
+        var project = Assert.Single(Assert.Single(sources).Projects);
         Assert.Equal("depot:proj-2", project.Id);
+    }
+
+    [Fact]
+    public async Task ListSharedProjectsAsync_LeavesOutAProjectHiddenOnThisMachine()
+    {
+        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success(
+        [
+            new SharedProject("depot:proj-1", "Marketing site"),
+            new SharedProject("depot:proj-2", "Internal wiki"),
+        ]));
+        var gateway = await _BuildAsync([source], ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:proj-1"] });
+
+        var sources = await gateway.ListSharedProjectsAsync();
+
+        var project = Assert.Single(Assert.Single(sources).Projects);
+        Assert.Equal("depot:proj-2", project.Id);
+    }
+
+    private static async Task<AssistantReadGateway> _BuildAsync(IReadOnlyList<ISharedProjectSource> sources, ProjectSettings settings)
+    {
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+        var projects = new ProjectsViewModel(store, dialogs: null);
+        await projects.LoadAsync();
+
+        return Dispatcher.UIThread.Invoke(() =>
+            new AssistantReadGateway(_NewCockpit(projects), new _FakeSharedProjectSourceRegistry(sources)));
+    }
+
+    private static CockpitViewModel _NewCockpit(ProjectsViewModel projects)
+    {
+        var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
+        notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
+        var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
+        transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
+        var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
+        sessionBehaviorSettingsStore.LoadAsync().Returns(new SessionBehaviorSettings());
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
+
+        return new CockpitViewModel(
+            () => new SessionViewModel(),
+            () => new TtyViewModel(),
+            Substitute.For<ISessionDialogService>(),
+            Substitute.For<IAudioCaptureService>(),
+            Substitute.For<IAudioPlaybackService>(),
+            Substitute.For<IAttentionNotifier>(),
+            notificationSettingsStore,
+            transcriptDisplaySettingsStore,
+            sessionBehaviorSettingsStore,
+            layoutSettingsStore,
+            voiceSettingsStore,
+            terminalSettingsStore,
+            projects: projects);
     }
 
     private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> initialSources) : ISharedProjectSourceRegistry
