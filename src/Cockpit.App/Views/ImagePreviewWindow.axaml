@@ -25,7 +25,8 @@
     </Grid>
 
     <Border Background="{StaticResource CockpitSecondaryBgBrush}">
-      <ScrollViewer Name="BodyScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+      <!-- Scrolling off while Fit is the active mode, on for 1:1 — see _SetStretch. -->
+      <ScrollViewer Name="BodyScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled">
         <Border Name="Checkerboard" Padding="16">
           <Image Name="PreviewImage" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
                  RenderTransformOrigin="0.5,0.5">
