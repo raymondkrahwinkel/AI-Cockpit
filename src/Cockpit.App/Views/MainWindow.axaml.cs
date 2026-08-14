@@ -18,6 +18,12 @@ public partial class MainWindow : Window
     private PixelPoint _normalPosition;
     private Size _normalSize;
 
+    // AC-779: OnClosing defers the real close until the bounds save completes (see below) rather than blocking
+    // the UI thread on it; these track that in-flight save so a second close request while it is still running
+    // doesn't start a duplicate one.
+    private bool _boundsSaved;
+    private Task? _saveBoundsThenCloseTask;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -77,12 +83,38 @@ public partial class MainWindow : Window
             return;
         }
 
+        // AC-779: the bounds save used to block this thread with GetAwaiter().GetResult(); a slow write (AV scan,
+        // network profile) froze the close. Deferred one round trip instead — cancel this close, await the save,
+        // then replay Close() so the real shutdown below runs once it's done.
+        if (!_boundsSaved)
+        {
+            e.Cancel = true;
+            _saveBoundsThenCloseTask ??= _SaveBoundsThenCloseAsync();
+            return;
+        }
+
         // The one that answers "why was the cockpit gone when I came back?": with no shutdown asked for, a close
         // arriving here is the last window going, which ends the app — and knowing whether one ever arrived is the
         // difference between something closing the window and the process being ended from outside.
         LifecycleLog.Write($"Main window closing for real (quit requested: {App?.IsQuitting}); the app will end with it.");
-        _SaveBounds();
         base.OnClosing(e);
+    }
+
+    private async Task _SaveBoundsThenCloseAsync()
+    {
+        // A failed save must not leave the window refusing to close forever (e.Cancel above already stopped the
+        // first attempt) — so this still counts as done and lets the close through either way.
+        try
+        {
+            await _SaveBoundsAsync();
+        }
+        catch (Exception ex)
+        {
+            LifecycleLog.Write($"Saving window bounds on close failed, closing anyway: {ex.Message}");
+        }
+
+        _boundsSaved = true;
+        Close();
     }
 
     protected override void OnResized(WindowResizedEventArgs e)
@@ -95,11 +127,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void _SaveBounds()
+    private Task _SaveBoundsAsync()
     {
         if (_windowBoundsStore is null)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         var bounds = new WindowBounds(
@@ -109,8 +141,9 @@ public partial class MainWindow : Window
             (int)_normalSize.Height,
             WindowState == WindowState.Maximized);
 
-        // Synchronous on shutdown: a small config write we want completed before the process exits.
-        _windowBoundsStore.SaveAsync(bounds).GetAwaiter().GetResult();
+        // Awaited rather than blocked on (AC-779): WindowBoundsStore.SaveAsync is genuinely async I/O all the way
+        // down (ConfigureAwait(false) throughout), so this never needs a Task.Run to avoid blocking the caller.
+        return _windowBoundsStore.SaveAsync(bounds);
     }
 
     // True when the saved rectangle overlaps a currently-connected screen, so a window saved on a monitor that

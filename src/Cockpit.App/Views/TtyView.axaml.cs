@@ -704,7 +704,7 @@ public partial class TtyView : UserControl
 
     }
 
-    private void StartPty()
+    private async void StartPty()
     {
         if (!_launchPending || _pendingLaunch is null || _lastColumns <= 0 || _lastRows <= 0)
         {
@@ -712,6 +712,12 @@ public partial class TtyView : UserControl
         }
 
         _launchPending = false;
+
+        // Captured before the await below: _pendingLaunch/_lastColumns/_lastRows could otherwise change out from
+        // under this call while it is waiting on the background thread (AC-779).
+        var launch = _pendingLaunch;
+        var columns = (short)_lastColumns;
+        var rows = (short)_lastRows;
 
         try
         {
@@ -729,32 +735,35 @@ public partial class TtyView : UserControl
                 readinessTarget.ResetHostedTuiReadiness();
             }
 
-            var pty = _pendingLaunch.Launcher.Launch(
-                _pendingLaunch.Provider,
-                _pendingLaunch.Profile,
-                _pendingLaunch.Options,
-                (short)_lastColumns,
-                (short)_lastRows,
-                _pendingLaunch.WorkingDirectory,
-                _pendingLaunch.Resume,
+            // AC-779: Launcher.Launch can block for AC-646's 5s OAuth-renewal budget plus the pty spawn — offloaded
+            // to the thread pool so that wait lands there instead of freezing the UI, same as AC-747's offload.
+            // The await marshals the result back onto this thread exactly as before.
+            var pty = await Task.Run(() => launch.Launcher.Launch(
+                launch.Provider,
+                launch.Profile,
+                launch.Options,
+                columns,
+                rows,
+                launch.WorkingDirectory,
+                launch.Resume,
                 // AC-13: the pane id becomes COCKPIT_PANE_ID in the CLI's environment, so the agent can set its own statusline.
                 _viewModel?.PaneId,
                 // #44: the per-session MCP checklist, so the provider narrows the registry to the operator's selection.
-                _pendingLaunch.EnabledMcpServerNames,
+                launch.EnabledMcpServerNames,
                 // AC-165: what the plugins gave this session, resolved before the launch was configured.
-                _pendingLaunch.Contributed,
+                launch.Contributed,
                 // AC-218: the project this session runs under, so the MCP fan-out resolves against its registry view.
-                _pendingLaunch.ProjectId);
+                launch.ProjectId));
             _pty = pty;
-            _ptyColumns = _lastColumns;
-            _ptyRows = _lastRows;
+            _ptyColumns = columns;
+            _ptyRows = rows;
 
             // The session's own usage lands in the file its statusline writes; the launched process is what knows
             // which file that is, and the provider that wrote it is what knows how to read it (AC-229).
             if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is TtyViewModel viewModel)
             {
-                var provider = _ttyProviders?.Resolve(_pendingLaunch.Provider.ProviderId);
-                viewModel.UsageProviderId = _pendingLaunch.Provider.ProviderId;
+                var provider = _ttyProviders?.Resolve(launch.Provider.ProviderId);
+                viewModel.UsageProviderId = launch.Provider.ProviderId;
                 viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], provider?.ReadUsage);
             }
             // A scheduled resume (AC-234) arrives the way a keystroke does — the pty's stdin — so the view, which
