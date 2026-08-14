@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 
@@ -26,6 +27,23 @@ public partial class AssistantChatWindow : Window
     private NotifyCollectionChangedEventHandler? _transcriptHandler;
     private PropertyChangedEventHandler? _sessionHandler;
     private SessionViewModel? _attachedSession;
+
+    private ScrollViewer? _transcriptScroll;
+
+    // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-774, so the
+    // virtualising panel measures against the viewport rather than the infinite height an enclosing ScrollViewer
+    // hands it — mirrors SessionView.axaml.cs's own TranscriptScroll exactly (AC-686). A name inside a template
+    // is not a code-behind field, so it is resolved from the template instead.
+    internal ScrollViewer TranscriptScroll =>
+        _transcriptScroll ??= _ResolveTranscriptScroll();
+
+    // ApplyTemplate, not just a visual-tree walk: this is first asked for from the attach that wires the scroll
+    // handlers, and at that point the transcript has not been measured, so its template child does not exist yet.
+    private ScrollViewer _ResolveTranscriptScroll()
+    {
+        TranscriptItems.ApplyTemplate();
+        return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().First();
+    }
 
     public AssistantChatWindow()
     {

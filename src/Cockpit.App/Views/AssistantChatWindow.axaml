@@ -595,25 +595,38 @@
 
                 <!-- The transcript itself: SessionView.axaml's own row (Controls/TranscriptRowView.axaml, AC-722),
                      just in a narrower frame — the scroller stays this window's own (always-follow, not
-                     SessionView's stick-only-while-at-bottom), see the code-behind. -->
-                <ScrollViewer x:Name="TranscriptScroll" IsVisible="{Binding HasMessages}">
-                    <ItemsControl ItemsSource="{Binding Session.Transcript}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <!-- AC-722: same row as SessionView.axaml, via Controls/TranscriptRowView.axaml —
-                                 this is what makes AC-715's question card (and everything else the old, narrower
-                                 copy of this template never grew) work in this window too. -->
-                            <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                                <controls:TranscriptRowView Compact="True"
-                                    Session="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session}"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                     SessionView's stick-only-while-at-bottom), see the code-behind.
+                     Virtualised (AC-774): AC-722 shared TranscriptRowView with SessionView but only wired
+                     SessionView's own copy to the viewport-safe VirtualizingStackPanel (AC-686) — this copy kept
+                     the plain StackPanel inside an enclosing ScrollViewer, so every row a session ever produced
+                     stayed a live control tree forever. Mirrors SessionView.axaml's ItemsControl exactly: the
+                     ScrollViewer lives in the ItemsControl's own template so the panel measures against a real
+                     viewport, not the infinite height an enclosing ScrollViewer would hand it. x:Name still reads
+                     TranscriptScroll — the code-behind and the follow tests ask for the transcript's scroll owner
+                     by that name. -->
+                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.Transcript}" IsVisible="{Binding HasMessages}">
+                    <ItemsControl.Template>
+                        <ControlTemplate TargetType="ItemsControl">
+                            <ScrollViewer x:Name="TranscriptScroll">
+                                <ItemsPresenter x:Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"/>
+                            </ScrollViewer>
+                        </ControlTemplate>
+                    </ItemsControl.Template>
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <!-- AC-722: same row as SessionView.axaml, via Controls/TranscriptRowView.axaml —
+                             this is what makes AC-715's question card (and everything else the old, narrower
+                             copy of this template never grew) work in this window too. -->
+                        <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                            <controls:TranscriptRowView Compact="True"
+                                Session="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </Grid>
         </DockPanel>
 
