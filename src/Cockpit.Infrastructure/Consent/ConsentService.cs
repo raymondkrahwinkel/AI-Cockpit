@@ -67,7 +67,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
             && bypassPolicy?.ShouldBypass(verifiedPaneId, _SourceKey(request), request.Risk != ConsentRisk.LowRisk) == true)
         {
             await _RecordAsync(request, ConsentOutcome.Approved, remembered: false, bypassed: true).ConfigureAwait(false);
-            return new ConsentDecision(ConsentOutcome.Approved, Remembered: false);
+            return new ConsentDecision(ConsentOutcome.Approved, Remembered: false, Bypassed: true);
         }
 
         // A remembered scope skips the prompt — but only for the low-risk class, so a single earlier approval can

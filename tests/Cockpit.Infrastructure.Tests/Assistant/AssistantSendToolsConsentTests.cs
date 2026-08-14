@@ -182,11 +182,65 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
         Assert.Empty(_gateway.Calls);
     }
 
+    // ── AC-759: what the consent check actually did is reported, not assumed ─────────────────────────────────────
+
+    /// <summary>
+    /// AC-759 criterion 2: a card that was actually raised and clicked reports "asked" — the state a fresh
+    /// install is not in by default (<see cref="AssistantSettings.ConsentBypassAll"/>), but the one every tool
+    /// description's caveat still promises can happen.
+    /// </summary>
+    [Fact]
+    public async Task ASendCallThatWasActuallyAsked_ReportsApprovalAsked()
+    {
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var message = _Json(await _Tools().SendMessageAsync(TargetPane, "heads-up", "the branch moved"));
+        var prompt = _Json(await _Tools().SendPromptAsync(TargetPane, "run the tests"));
+
+        Assert.Equal("asked", (string)message["approval"]!);
+        Assert.Equal("asked", (string)prompt["approval"]!);
+    }
+
+    /// <summary>
+    /// AC-759 criterion 1: the default install (<c>ConsentBypassAll</c> true) never raises a card at all — the
+    /// broker's decision carries <see cref="ConsentDecision.Bypassed"/>, and that is what the tool reports rather
+    /// than the generic "it went through" an unconditional caveat used to leave the assistant to guess at.
+    /// </summary>
+    [Fact]
+    public async Task ASendCallThatWasBypassed_ReportsApprovalBypassed_NotAsked()
+    {
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+        _consent.Bypassed = true;
+
+        var result = _Json(await _Tools().SendPromptAsync(TargetPane, "run the tests"));
+
+        Assert.Equal("bypassed", (string)result["approval"]!);
+    }
+
+    /// <summary>
+    /// AC-759 criterion 6: a refusal is a refusal, carrying its own reason and nothing that could read as a
+    /// half-formed approval. <c>approval</c> only ever describes a decision that let the call through.
+    /// </summary>
+    [Fact]
+    public async Task ADeniedSendCall_CarriesNoApprovalField()
+    {
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+        _consent.Approve = false;
+
+        var message = _Json(await _Tools().SendMessageAsync(TargetPane, "heads-up", "the branch moved"));
+        var prompt = _Json(await _Tools().SendPromptAsync(TargetPane, "run the tests"));
+
+        Assert.Null(message["approval"]);
+        Assert.Null(prompt["approval"]);
+    }
+
     private sealed class RecordingBroker : IConsentBroker
     {
         public List<ConsentRequest> Asked { get; } = [];
 
         public bool Approve { get; set; } = true;
+
+        public bool Bypassed { get; set; }
 
         public event EventHandler<ConsentPrompt>? PromptOpened;
 
@@ -198,7 +252,7 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
             PromptOpened?.Invoke(this, null!);
             PromptClosed?.Invoke(this, Guid.Empty);
             return Task.FromResult(new ConsentDecision(
-                Approve ? ConsentOutcome.Approved : ConsentOutcome.Denied, false));
+                Approve ? ConsentOutcome.Approved : ConsentOutcome.Denied, Remembered: false, Bypassed: Approve && Bypassed));
         }
 
         public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)

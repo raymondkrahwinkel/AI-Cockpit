@@ -58,6 +58,26 @@ public sealed class AssistantActToolDescriptionTests
         Assert.Empty(announcing);
     }
 
+    /// <summary>
+    /// AC-759: a description that says a click is <em>needed</em> without saying "by default" reads as a promise —
+    /// and on a default install the consent-card half of that promise is already false
+    /// (<c>AssistantSettings.ConsentBypassAll</c> starts on). Every such claim has to carry its own qualifier
+    /// rather than relying on the shared caveat three sentences later to walk it back.
+    /// </summary>
+    [Fact]
+    public void NoDescriptionClaimsTheClickIsUnconditional()
+    {
+        var unconditional = _EveryDescribedTool()
+            .Where(tool => tool.Description.Contains("NEEDS THE OPERATOR", StringComparison.Ordinal)
+                || tool.Description.Contains("NEEDS THEIR CLICK", StringComparison.Ordinal)
+                || tool.Description.Contains("STILL HAS TO APPROVE", StringComparison.Ordinal))
+            .Where(tool => !tool.Description.Contains("BY DEFAULT", StringComparison.Ordinal))
+            .Select(tool => tool.Name)
+            .ToArray();
+
+        Assert.Empty(unconditional);
+    }
+
     private static IReadOnlyList<(string Name, string Description)> _EveryDescribedTool() =>
         [.. typeof(AssistantAgentMcpTools)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance)
