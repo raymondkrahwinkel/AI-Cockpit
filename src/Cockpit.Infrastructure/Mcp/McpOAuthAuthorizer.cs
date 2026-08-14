@@ -28,8 +28,17 @@ internal interface IMcpOAuthAuthorizer
     /// A caller that has to report the outcome to the operator passes a <paramref name="stageRecorder"/> and is told
     /// how far the authorization got (AC-457); one that only needs the credential leaves it out.
     /// </para>
+    /// <para>
+    /// <paramref name="renewalMargin"/> is how much life the caller needs the token to still have (AC-771). The SDK
+    /// renews a token only once it is expired to the second, so a caller that keeps a margin has to say so here or
+    /// its renewal is a connect that changes nothing. Left at zero by a caller that will use whatever is stored.
+    /// </para>
     /// </summary>
-    ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true, McpSignInStageRecorder? stageRecorder = null);
+    ClientOAuthOptions CreateOptions(
+        McpServerConfig server,
+        bool interactive = true,
+        McpSignInStageRecorder? stageRecorder = null,
+        TimeSpan renewalMargin = default);
 }
 
 internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMcpOAuthTokenStore tokenStore)
@@ -40,7 +49,11 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
     // browser window appearing on the machine running the suite.
     internal Func<Uri, bool>? BrowserOpener { get; init; }
 
-    public ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true, McpSignInStageRecorder? stageRecorder = null)
+    public ClientOAuthOptions CreateOptions(
+        McpServerConfig server,
+        bool interactive = true,
+        McpSignInStageRecorder? stageRecorder = null,
+        TimeSpan renewalMargin = default)
     {
         var options = new ClientOAuthOptions
         {
@@ -58,7 +71,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
             // would work and then be thrown away with the connection. Storing it is what lets one login serve the
             // spawned agents too, and survive a restart.
-            TokenCache = new McpOAuthTokenCache(server.IdentityKey, server.Name, server.Url, tokenStore, logger),
+            TokenCache = new McpOAuthTokenCache(server.IdentityKey, server.Name, server.Url, tokenStore, logger, renewalMargin),
         };
 
         // A configured client id takes precedence; otherwise let the server register us dynamically (RFC 7591).

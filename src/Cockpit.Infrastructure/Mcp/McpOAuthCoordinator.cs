@@ -26,6 +26,11 @@ internal sealed class McpOAuthCoordinator(
     // enough to survive the round trip it is about to be spent on and no more.
     private static readonly TimeSpan RequestExpiryMargin = TimeSpan.FromMinutes(2);
 
+    // AC-771: when a renewal *starts*, deliberately earlier than the margin above, which is only what one call needs
+    // to survive its round trip. The gap between the two is a grace period — calls keep being served from the token
+    // in hand while the renewal is retried — so a token endpoint that is briefly down costs nothing.
+    private static readonly TimeSpan RequestRenewalLead = TimeSpan.FromMinutes(10);
+
     // The same question asked for a *session* (AC-524), where the answer is held for hours instead of
     // milliseconds. Deliberately wider than the one-hour access token the servers in use here issue: at 55 minutes a
     // stored token is reused only in the first five minutes of its life, so in practice every session starts on a
@@ -86,7 +91,7 @@ internal sealed class McpOAuthCoordinator(
 
             // replacing: null — SignOutAsync above emptied the store, so anything found afterwards came out of this
             // sign-in and nothing has to be compared against a leftover.
-            var signedIn = await _ConnectAndReadAsync(server, interactive: true, RequestExpiryMargin, replacing: null, cancellationToken).ConfigureAwait(false);
+            var signedIn = await _ConnectAndReadAsync(server, interactive: true, RequestRenewalLead, RequestExpiryMargin, serveTheHeldTokenInstead: false, replacing: null, cancellationToken).ConfigureAwait(false);
 
             // Put the old one back only when the flow left nothing behind — not merely when the answer was "not
             // authorized". A sign-in that succeeds and issues a short-lived token gets that verdict too (the answer
@@ -100,7 +105,9 @@ internal sealed class McpOAuthCoordinator(
             return signedIn;
         }
 
-        return await _RenewIfNeededAsync(server, RequestExpiryMargin, cancellationToken).ConfigureAwait(false);
+        // The credential is spent on one call and asked for again on the next, so a renewal that did not happen is
+        // not a reason to refuse a token that still covers this call — it is a reason to try again next time.
+        return await _RenewIfNeededAsync(server, RequestRenewalLead, RequestExpiryMargin, serveTheHeldTokenInstead: true, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default)
@@ -110,7 +117,10 @@ internal sealed class McpOAuthCoordinator(
             return McpOAuthAccess.NotRequired;
         }
 
-        return await _RenewIfNeededAsync(server, SessionExpiryMargin, cancellationToken).ConfigureAwait(false);
+        // No such grace here, and that asymmetry is the point: this answer is written into a config the session
+        // reads once and holds for hours. Serving a token that is merely good *now* is precisely the session that
+        // loses its server an hour in — the defect AC-524 exists for.
+        return await _RenewIfNeededAsync(server, SessionExpiryMargin, SessionExpiryMargin, serveTheHeldTokenInstead: false, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<McpOAuthAccess> RenewRejectedAsync(McpServerConfig server, string rejectedAccessToken, CancellationToken cancellationToken = default)
@@ -147,8 +157,10 @@ internal sealed class McpOAuthCoordinator(
             server.Name,
             stored.ExpiresAt);
 
-        // The per-request margin, not the session one: this token is about to be spent on the call that was refused.
-        return await _ConnectAndReadAsync(server, interactive: false, RequestExpiryMargin, stored.AccessToken, cancellationToken).ConfigureAwait(false);
+        // The per-request pair, not the session one: this token is about to be spent on the call that was refused.
+        // And no falling back to what is held, however much life its clock claims — the server just refused that
+        // exact token, so handing it back is a round trip spent on an answer already known.
+        return await _ConnectAndReadAsync(server, interactive: false, RequestRenewalLead, RequestExpiryMargin, serveTheHeldTokenInstead: false, stored.AccessToken, cancellationToken).ConfigureAwait(false);
     }
 
     // The ladder every automatic use of a credential walks, in this order and no other: a token with room to spare
@@ -156,9 +168,15 @@ internal sealed class McpOAuthCoordinator(
     // ordinary case for as long as that grant lives; only when the renewal cannot happen is the operator asked for
     // anything. Asking while a usable refresh token is sitting there would be a defect, not caution.
     //
-    // `margin`: How much life a stored token must have left to be used as it stands — the caller's, because a
-    // token spent on one request and a token held for a whole session are not the same question.
-    private async Task<McpOAuthAccess> _RenewIfNeededAsync(McpServerConfig server, TimeSpan margin, CancellationToken cancellationToken)
+    // `renewAt`: How much life left starts a renewal. `usableFrom`: how much a token needs to be handed over at all,
+    // never wider than `renewAt` — the gap between them is the grace period. `serveTheHeldTokenInstead`: whether a
+    // renewal that produced nothing may be answered with the token already held, when it still clears `usableFrom`.
+    private async Task<McpOAuthAccess> _RenewIfNeededAsync(
+        McpServerConfig server,
+        TimeSpan renewAt,
+        TimeSpan usableFrom,
+        bool serveTheHeldTokenInstead,
+        CancellationToken cancellationToken)
     {
         // A token is stored under the server's stable id (AC-403), but that still does not make it right for the
         // address this server points at now — a project's own entry replaces a registry server by name and may carry
@@ -178,7 +196,7 @@ internal sealed class McpOAuthCoordinator(
             stored = null;
         }
 
-        if (stored is not null && stored.IsUsableAt(DateTimeOffset.UtcNow, margin))
+        if (stored is not null && stored.IsUsableAt(DateTimeOffset.UtcNow, renewAt))
         {
             return _Authorized(server, stored.AccessToken);
         }
@@ -199,9 +217,9 @@ internal sealed class McpOAuthCoordinator(
             "The access token for MCP server {Server} expires at {ExpiresAt} and is inside the {Margin} margin this use keeps, so it is being renewed.",
             server.Name,
             stored.ExpiresAt,
-            margin);
+            renewAt);
 
-        return await _ConnectAndReadAsync(server, interactive: false, margin, stored.AccessToken, cancellationToken).ConfigureAwait(false);
+        return await _ConnectAndReadAsync(server, interactive: false, renewAt, usableFrom, serveTheHeldTokenInstead, stored.AccessToken, cancellationToken).ConfigureAwait(false);
     }
 
     // Connects once and reports what that left in the store. The SDK owns both the refresh grant and the full
@@ -213,14 +231,21 @@ internal sealed class McpOAuthCoordinator(
     // The access token that was in the store before this ran, or `null` when there was none. It is
     // what tells a renewal that produced something unusable apart from one that produced nothing at all — the store
     // still holds the old record either way, and the two need opposite things said about them.
-    private async Task<McpOAuthAccess> _ConnectAndReadAsync(McpServerConfig server, bool interactive, TimeSpan margin, string? replacing, CancellationToken cancellationToken)
+    private async Task<McpOAuthAccess> _ConnectAndReadAsync(
+        McpServerConfig server,
+        bool interactive,
+        TimeSpan renewAt,
+        TimeSpan usableFrom,
+        bool serveTheHeldTokenInstead,
+        string? replacing,
+        CancellationToken cancellationToken)
     {
         // An interactive sign-in stays outside the single-flight gate: the operator pressed the button, this method
         // already cleared the stored token so the flow would actually run, and joining somebody else's silent
         // renewal would make that button do nothing again.
         var (stage, explained, unreachable, grantRejected) = interactive
-            ? await _HandshakeAsync(server, interactive: true, cancellationToken).ConfigureAwait(false)
-            : await _SharedRenewalAsync(server, cancellationToken).ConfigureAwait(false);
+            ? await _HandshakeAsync(server, interactive: true, renewAt, cancellationToken).ConfigureAwait(false)
+            : await _SharedRenewalAsync(server, renewAt, cancellationToken).ConfigureAwait(false);
 
         // Read after the renewal, never from before it: a caller that queued behind someone else's renewal almost
         // always finds a fresh token here, and the whole point of waiting was to use it rather than to redeem the
@@ -230,10 +255,24 @@ internal sealed class McpOAuthCoordinator(
             && token.IsForResource(server.Url)
             && !string.Equals(token.AccessToken, replacing, StringComparison.Ordinal);
 
-        if (renewed && token!.IsUsableAt(DateTimeOffset.UtcNow, margin))
+        if (renewed && token!.IsUsableAt(DateTimeOffset.UtcNow, usableFrom))
         {
             logger.LogInformation(
                 "Renewed the authorization for MCP server {Server}; the new access token runs to {ExpiresAt}.",
+                server.Name,
+                token.ExpiresAt);
+
+            return _Authorized(server, token.AccessToken) with { SignInStage = stage };
+        }
+
+        // AC-771: the renewal produced nothing, but what is held still covers this call — so it is used, and every
+        // call until the expiry tries the renewal again. Only where a credential is spent per call: a session holds
+        // its answer for hours, and a token the server has just refused is one this end's clock is wrong about.
+        if (!renewed && serveTheHeldTokenInstead && token is not null && token.IsForResource(server.Url)
+            && token.IsUsableAt(DateTimeOffset.UtcNow, usableFrom))
+        {
+            logger.LogInformation(
+                "Renewing the authorization for MCP server {Server} did not succeed, but the access token in hand runs to {ExpiresAt} and still covers this call, so it is used and the renewal is attempted again on the next one.",
                 server.Name,
                 token.ExpiresAt);
 
@@ -259,7 +298,7 @@ internal sealed class McpOAuthCoordinator(
                 "MCP server {Server} renewed to an access token that expires at {ExpiresAt}, sooner than the {Margin} this use has to hold it for.",
                 server.Name,
                 token!.ExpiresAt,
-                margin);
+                usableFrom);
         }
 
         // An interactive failure is already in front of the operator — they pressed the button and the dialog is
@@ -293,14 +332,18 @@ internal sealed class McpOAuthCoordinator(
 
     // One silent renewal per server at a time (see `_renewals`). Callers that arrive while one runs
     // wait for its outcome rather than starting a second, and then re-read the store for themselves.
-    private Task<HandshakeOutcome> _SharedRenewalAsync(McpServerConfig server, CancellationToken cancellationToken)
+    //
+    // The margin belongs to whoever starts the renewal, and a joiner is never worse off: the winner renews because
+    // its own was not met, so everyone waiting finds a fresh token. Keying the table by margin instead would let two
+    // renewals run at once — the replayed refresh grant `_renewals` exists to prevent.
+    private Task<HandshakeOutcome> _SharedRenewalAsync(McpServerConfig server, TimeSpan margin, CancellationToken cancellationToken)
     {
         Task<HandshakeOutcome> renewal;
         lock (_renewalsLock)
         {
             if (!_renewals.TryGetValue(server.IdentityKey, out var running))
             {
-                running = _RenewAndClearAsync(server);
+                running = _RenewAndClearAsync(server, margin);
                 _renewals[server.IdentityKey] = running;
             }
 
@@ -325,11 +368,11 @@ internal sealed class McpOAuthCoordinator(
     // stale (cleanup done, completion not yet observed) and wait on that instead of starting its own. Measured, not
     // theoretical: both shapes flaked in CI (`McpOAuthSessionMarginTests`) before this fix — a TTY launch's
     // five-second abandon budget is exactly the load that used to make the slower shape ordinary rather than rare.
-    private Task<HandshakeOutcome> _RenewAndClearAsync(McpServerConfig server) => Task.Run(async () =>
+    private Task<HandshakeOutcome> _RenewAndClearAsync(McpServerConfig server, TimeSpan margin) => Task.Run(async () =>
     {
         try
         {
-            return await _RenewAsync(server).ConfigureAwait(false);
+            return await _RenewAsync(server, margin).ConfigureAwait(false);
         }
         finally
         {
@@ -343,13 +386,13 @@ internal sealed class McpOAuthCoordinator(
     // The shared renewal itself. It never faults, by construction: this task is handed to every waiting caller, and
     // a faulted one would be re-thrown into each of them — including onto paths that only ever read the store to
     // find out what happened. Whatever went wrong is folded into the outcome instead.
-    private async Task<HandshakeOutcome> _RenewAsync(McpServerConfig server)
+    private async Task<HandshakeOutcome> _RenewAsync(McpServerConfig server, TimeSpan margin)
     {
         try
         {
             // CancellationToken.None on purpose: this work is shared, so honouring the first caller's token would
             // let whoever happened to arrive first cancel a renewal the others are still waiting on.
-            return await _HandshakeAsync(server, interactive: false, CancellationToken.None).ConfigureAwait(false);
+            return await _HandshakeAsync(server, interactive: false, margin, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -481,7 +524,10 @@ internal sealed class McpOAuthCoordinator(
     // not rather than write a second next to it. <c>Unreachable</c> separates "the server said no" from "the server
     // said nothing" (AC-524): only the first is something signing in again can fix, and telling an operator to sign
     // in while the host is down is advice that cannot work.
-    private async Task<HandshakeOutcome> _HandshakeAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken)
+    // <c>margin</c> is how much life the caller needs left in the token, and it is handed to the SDK rather than kept
+    // here (AC-771): the SDK renews on `IsExpired` alone, so a margin this side never told it about was a renewal
+    // that quietly did not happen.
+    private async Task<HandshakeOutcome> _HandshakeAsync(McpServerConfig server, bool interactive, TimeSpan margin, CancellationToken cancellationToken)
     {
         if (server.Transport != McpTransport.Http || string.IsNullOrWhiteSpace(server.Url))
         {
@@ -504,7 +550,7 @@ internal sealed class McpOAuthCoordinator(
                     Name = server.Name,
                     Endpoint = new Uri(server.Url),
                     TransportMode = HttpTransportMode.AutoDetect,
-                    OAuth = authorizer.CreateOptions(server, interactive, stageRecorder),
+                    OAuth = authorizer.CreateOptions(server, interactive, stageRecorder, margin),
                 },
                 new HttpClient(grantWatcher),
                 loggerFactory: null,

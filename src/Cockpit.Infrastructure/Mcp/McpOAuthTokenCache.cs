@@ -19,7 +19,15 @@ namespace Cockpit.Infrastructure.Mcp;
 // `store`: Where the token lands.
 // `logger`: Where a renewal leaves its trace (AC-524) — this class used to write nothing at all, which
 // made an expiry an anecdote instead of an event anyone could go and look up.
-internal sealed class McpOAuthTokenCache(string serverId, string serverName, string? resourceUrl, IMcpOAuthTokenStore store, ILogger logger) : ITokenCache
+// `renewalMargin`: How much life the caller needs the token to have left, subtracted from what this reports (AC-771).
+// Zero for a connect that only wants to use whatever is stored.
+internal sealed class McpOAuthTokenCache(
+    string serverId,
+    string serverName,
+    string? resourceUrl,
+    IMcpOAuthTokenStore store,
+    ILogger logger,
+    TimeSpan renewalMargin = default) : ITokenCache
 {
     public async ValueTask StoreTokensAsync(TokenContainer token, CancellationToken cancellationToken = default)
     {
@@ -89,9 +97,13 @@ internal sealed class McpOAuthTokenCache(string serverId, string serverName, str
 
         // ExpiresIn is relative to ObtainedAt, so the pair has to be rebuilt from the absolute instant we stored:
         // handing back the original ExpiresIn with a fresh ObtainedAt would present an expired token as brand new.
+        //
+        // AC-771: less the caller's margin. The SDK renews on `TokenContainer.IsExpired` alone — dead on the second,
+        // no margin of its own — so a margin it was never told about was a renewal the coordinator asked for, that
+        // quietly did not happen, and then read as a renewal that had failed.
         var obtainedAt = DateTimeOffset.UtcNow;
         int? remaining = stored.ExpiresAt is { } expiresAt
-            ? (int)Math.Max(0, Math.Round((expiresAt - obtainedAt).TotalSeconds))
+            ? (int)Math.Max(0, Math.Round((expiresAt - renewalMargin - obtainedAt).TotalSeconds))
             : null;
 
         return new TokenContainer

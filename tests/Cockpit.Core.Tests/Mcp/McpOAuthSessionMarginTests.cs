@@ -93,6 +93,30 @@ public class McpOAuthSessionMarginTests
     }
 
     [Fact]
+    public async Task EachUsesMargin_IsHandedToTheRenewal_NotKeptOnThisSideOfIt()
+    {
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
+        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromHours(1));
+        var coordinator = new McpOAuthCoordinator(store, authorizer, new CapturingLogger<McpOAuthCoordinator>());
+
+        await coordinator.AcquireForSessionAsync(_Server());
+        Assert.Equal(TimeSpan.FromMinutes(55), authorizer.LastRenewalMargin);
+
+        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
+        await coordinator.AcquireAsync(_Server(), interactive: false);
+
+        // Ten, not two: on the request path the number handed over is when renewing *starts*, which is deliberately
+        // earlier than the two minutes a call needs to survive its own round trip. The gap between them is the grace
+        // period in which a failing token endpoint is retried while calls carry on being served.
+        Assert.Equal(TimeSpan.FromMinutes(10), authorizer.LastRenewalMargin);
+
+        // AC-771: the margin decides both whether a renewal is wanted and whether the SDK performs one, and only the
+        // SDK can act on it. One that stops here is a coordinator asking for renewals in a window where none can
+        // happen, and then reading the unchanged store as a failure.
+    }
+
+    [Fact]
     public async Task AcquireForSession_WhenEveryTokenThisServerIssuesIsShorterThanTheMargin_SaysSoRatherThanHandingOneOver()
     {
         var store = new FakeMcpOAuthTokenStore();

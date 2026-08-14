@@ -14,7 +14,11 @@ internal sealed class FakeMcpOAuthAuthorizer : IMcpOAuthAuthorizer
     /// <summary>What the authorization step is to claim it reached; nothing is recorded when this is null.</summary>
     public McpSignInStage? StageReached { get; init; }
 
-    public ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true, McpSignInStageRecorder? stageRecorder = null)
+    public ClientOAuthOptions CreateOptions(
+        McpServerConfig server,
+        bool interactive = true,
+        McpSignInStageRecorder? stageRecorder = null,
+        TimeSpan renewalMargin = default)
     {
         if (StageReached is { } stage)
         {
