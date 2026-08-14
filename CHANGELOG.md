@@ -156,6 +156,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   folder already did. Which profile actually ran is reported back, so a start that used the project's default is
   never a silent guess.
 
+- added: the "+N image" label on a message you pasted images into is now clickable, opening a small preview
+  window with previous/next navigation and a fit-to-window/actual-size toggle — the images used to be gone from
+  view the moment you sent the message. Works the same in a session and in the assistant chat. The images stay
+  available for as long as the cockpit keeps running; after a restart the label is shown but no longer opens
+  anything, rather than failing.
+
 ### Changed
 
 - changed: a project card is quieter. One button carries on with the project, sharing stays visible beside it, and

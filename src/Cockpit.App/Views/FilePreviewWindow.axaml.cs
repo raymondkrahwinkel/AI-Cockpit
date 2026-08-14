@@ -351,7 +351,7 @@ public partial class FilePreviewWindow : Window
 
     private static Control _ImageBody(Bitmap bitmap) => new Border
     {
-        Background = _CheckerboardBrush(),
+        Background = CheckerboardBrush(),
         Padding = new Thickness(16),
         Child = new Image
         {
@@ -367,7 +367,8 @@ public partial class FilePreviewWindow : Window
     // A tiled two-tone pattern behind an image (AC-642), so transparency reads as transparency rather than as
     // the panel's own flat background. Built from the same near-black tokens the rest of the app already uses —
     // this is chrome, not a picture, so it stays on theme tokens like everything else here.
-    private static IBrush _CheckerboardBrush()
+    // Internal: AC-778's ImagePreviewWindow reuses this exact pattern rather than redrawing it.
+    internal static IBrush CheckerboardBrush()
     {
         const double cell = 8;
         var light = new GeometryGroup { FillRule = FillRule.NonZero };

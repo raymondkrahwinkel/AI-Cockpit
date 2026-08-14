@@ -4,6 +4,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 
 namespace Cockpit.App.Controls;
 
@@ -50,6 +51,16 @@ public partial class TranscriptRowView : UserControl
             && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
             _ = clipboard.SetTextAsync(select(entry));
+        }
+    }
+
+    // AC-778: opens the mini-gallery for this row's own images, starting at the first one.
+    private void _OnImagesClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: TranscriptEntryViewModel { Images: { Count: > 0 } images } }
+            && TopLevel.GetTopLevel(this) is Window owner)
+        {
+            ImagePreviewWindow.Show(images, 0, owner);
         }
     }
 }

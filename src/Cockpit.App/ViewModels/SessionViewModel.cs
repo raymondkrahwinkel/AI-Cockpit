@@ -1625,13 +1625,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _closeAfterTurn = true;
         }
 
-        var imageSuffix = images.Count == 0
-            ? string.Empty
-            : $"[+{images.Count} image{(images.Count == 1 ? "" : "s")}]";
-        var echo = string.IsNullOrEmpty(text)
-            ? imageSuffix
-            : images.Count == 0 ? text : $"{text}  {imageSuffix}";
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, echo));
+        // AC-778: the images ride along on the row itself (not just a "[+N image]" suffix baked into the text)
+        // so the row's own chip can reopen them later in this same running session.
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, text)
+        {
+            Images = images.Count == 0 ? null : images,
+        });
         _lastDispatchedUserTurn = (text, images);
         _currentAssistantEntry = null;
         _CloseThinkingRow();

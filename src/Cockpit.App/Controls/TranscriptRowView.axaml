@@ -57,6 +57,19 @@
                         </Grid>
                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                              BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
+                        <!-- AC-778: the "[+N image]" fragment as its own clickable element (not text baked into
+                             the markdown string above) — opens a mini-gallery with the bytes this row still
+                             holds in memory. A row without images (or, in principle, one whose bytes are no
+                             longer available) simply shows no chip. -->
+                        <Button Classes="Subtle Compact" Click="_OnImagesClick"
+                                IsVisible="{Binding HasImages}" HorizontalAlignment="Right"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                ToolTip.Tip="Open the images from this message">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <materialIcons:MaterialIcon Kind="ImageMultipleOutline" Width="13" Height="13"/>
+                                <TextBlock Text="{Binding ImageChipLabel}"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                 </Border>
                 <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
