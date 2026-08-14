@@ -13,6 +13,7 @@ using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.Theming;
+using Cockpit.Infrastructure.Pdf;
 using Cockpit.Infrastructure.Svg;
 
 namespace Cockpit.App.Views;
@@ -249,7 +250,22 @@ public partial class FilePreviewWindow : Window
             return new _Loaded(FilePreviewKind.Image, name, "afbeelding", pixelMeta, bitmap, null, false, null);
         }
 
-        // Other (pdf, video, exe, archief, ...) gets no preview at all — reading it as text would UTF-8-decode
+        if (kind == FilePreviewKind.Pdf)
+        {
+            var rasterized = PdfRasterizer.Rasterize(File.ReadAllBytes(path));
+            if (rasterized.Png is { } png)
+            {
+                using var stream = new MemoryStream(png);
+                var pages = rasterized.PageCount == 1 ? "1 pagina" : $"{rasterized.PageCount} pagina's";
+                return new _Loaded(FilePreviewKind.Pdf, name, "pdf", $"{pages} · {meta}", new Bitmap(stream), null, false, null);
+            }
+
+            // Encrypted/corrupt: falls back to the existing Other card below, but the reason still reaches the
+            // operator through the meta line above it rather than a blank pane (AC-730 acceptance criterion 6).
+            return new _Loaded(FilePreviewKind.Other, name, "pdf", $"{meta} · kon niet worden geopend: {rasterized.Error}", null, null, false, null);
+        }
+
+        // Other (video, exe, archief, ...) gets no preview at all — reading it as text would UTF-8-decode
         // binary bytes into replacement characters and show that as "code", which is worse than the plain
         // "no preview" state _OtherBody already draws.
         if (kind == FilePreviewKind.Other)
@@ -409,7 +425,7 @@ public partial class FilePreviewWindow : Window
 
         return loaded.Kind switch
         {
-            FilePreviewKind.Image or FilePreviewKind.Svg => _ImageBody(loaded.Bitmap!),
+            FilePreviewKind.Image or FilePreviewKind.Svg or FilePreviewKind.Pdf => _ImageBody(loaded.Bitmap!),
             FilePreviewKind.Markdown or FilePreviewKind.Csv => new MarkdownView { Markdown = loaded.Text },
             FilePreviewKind.Json or FilePreviewKind.Text => _CodeBody(loaded.Text ?? string.Empty, line),
             FilePreviewKind.Directory => _DirectoryBody(loaded.Entries ?? []),

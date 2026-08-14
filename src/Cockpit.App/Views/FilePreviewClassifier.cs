@@ -38,6 +38,11 @@ internal static class FilePreviewClassifier
             return FilePreviewKind.Csv;
         }
 
+        if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return FilePreviewKind.Pdf;
+        }
+
         return LooksLikeText(head) ? FilePreviewKind.Text : FilePreviewKind.Other;
     }
 
