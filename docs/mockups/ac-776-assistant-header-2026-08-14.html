@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>AC-776 — Assistant-header: statusbadges per sessie + één dropdown</title>
+<style>
+  /* Tokens overgenomen uit src/Cockpit.App/Styles/Theme.axaml — niet verzonnen.
+     Dit is een HTML-PROXY voor een Avalonia-venster, geen tweede stack: elke variant hieronder
+     is uitgedrukt in controls die AssistantChatWindow.axaml al gebruikt (Border, StackPanel,
+     ItemsControl, Ellipse, Button.Flyout, MenuFlyout). Zelfde stramien als AC-772's mockups.
+     Statuskleuren = de echte SessionStatusBrushKey-mapping (SessionPanelViewModel.cs:1709). */
+  :root{
+    --window:#0f1116; --panel:#1a1d24; --secondary:#0c0e12; --chrome:#12141a; --inset:#202430;
+    --hairline:#2a2f39; --hairline-hover:#38404d; --hairline-soft:#20242c;
+    --text:#e8eaef; --text-2:#949aa5; --text-faint:#656c78;
+    --accent:#2563eb; --on-accent:#fff;
+    /* CockpitStatus*Color, Theme.axaml regel 133-139 */
+    --st-busy:#22D3EE; --st-waiting:#E0A33E; --st-done:#5AA576; --st-bg:#A67CD8; --st-err:#D64545;
+    --st-idle:#656c78; /* Idle valt terug op CockpitTextFaintBrush */
+    --ctl-r:9px; --panel-r:12px; --pill-r:20px;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--window);color:var(--text);
+       font:14px/1.55 Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:34px 24px 90px}
+  h1{font-size:22px;margin:0 0 6px;font-weight:600}
+  .sub{color:var(--text-2);margin:0 0 8px;max-width:88ch}
+  .sub b{color:var(--text)}
+  h2{font-size:16px;margin:48px 0 5px;font-weight:600}
+  h2 .n{color:var(--text-faint);font-weight:400;margin-right:9px}
+  h3{font-size:13.5px;margin:26px 0 6px;font-weight:600;color:var(--text)}
+  .note{color:var(--text-2);margin:0 0 14px;max-width:88ch;font-size:13px}
+  .note b{color:var(--text)}
+  code{font-family:var(--mono);font-size:12px;background:var(--inset);padding:1px 5px;border-radius:3px}
+  hr{border:0;border-top:1px solid var(--hairline-soft);margin:40px 0 0}
+  .banner{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.35);border-radius:var(--panel-r);
+          padding:12px 16px;margin:14px 0 0;font-size:13px;color:var(--text-2)}
+  .banner b{color:var(--text)}
+  .verdict{background:var(--panel);border:1px solid var(--hairline);border-left:3px solid var(--accent);
+           border-radius:0 var(--panel-r) var(--panel-r) 0;padding:12px 16px;margin:16px 0 0;font-size:13px;
+           color:var(--text-2)}
+  .verdict b{color:var(--text)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--hairline-soft);vertical-align:top}
+  th{color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td b{color:var(--text)}
+  td{color:var(--text-2)}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:3px;
+       background:var(--inset);color:var(--text-2);margin-right:4px;vertical-align:1px}
+  .tag.win{background:rgba(90,165,118,.15);color:var(--st-done)}
+  .tag.cost{background:rgba(224,163,62,.14);color:var(--st-waiting)}
+  .tag.no{background:rgba(214,69,69,.14);color:var(--st-err)}
+  .cap{font-size:11px;color:var(--text-faint);margin:7px 0 0}
+  .cols{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+  .col{flex:1;min-width:330px}
+
+  /* --- het venster als proxy --- */
+  .win{width:520px;background:var(--window);border:1px solid var(--hairline);border-radius:10px;
+       overflow:hidden;margin:10px 0 0}
+  .win.narrow{width:340px}
+  .hdr{background:var(--chrome);border-bottom:1px solid var(--hairline-soft);padding:9px 12px;
+       display:flex;align-items:center;gap:8px}
+  .avatar{width:28px;height:28px;border-radius:9px;background:var(--inset);flex:none;
+          display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:13px}
+  .hname{font-size:13.5px;font-weight:600;line-height:1.25}
+  .hprof{font-size:11px;color:var(--text-faint);line-height:1.25}
+  .hbtns{margin-left:auto;display:flex;align-items:center;gap:4px}
+  .ib{width:24px;height:24px;border-radius:var(--ctl-r);display:flex;align-items:center;justify-content:center;
+      font-size:13px;color:var(--text-2);background:transparent;border:1px solid transparent}
+  .ib.solid{background:var(--panel);border-color:var(--hairline);color:var(--text)}
+  .ib.hot{outline:2px solid var(--accent);outline-offset:1px}
+  .body{padding:0 10px 12px;background:var(--window)}
+  .pillrow{display:flex;align-items:center;gap:0;margin:6px 0 0}
+  .pill{display:inline-flex;align-items:stretch;background:var(--secondary);border:1px solid var(--hairline);
+        border-radius:var(--pill-r);overflow:hidden}
+  .seg{font-size:10px;padding:2px 8px;display:flex;align-items:center;color:var(--text-2);white-space:nowrap}
+  .seg.warn{color:var(--st-waiting)}
+  .div{width:1px;background:var(--hairline)}
+  .chev{font-size:10px;padding:2px 6px;display:flex;align-items:center;color:var(--text-faint)}
+  .transcript{margin:10px 0 0;padding:12px 10px;border-radius:8px;background:var(--secondary);
+              border:1px solid var(--hairline-soft);color:var(--text-faint);font-size:11.5px;min-height:52px}
+
+  /* --- badges --- */
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+  .dot.sm{width:6px;height:6px}
+  .busy{background:var(--st-busy)} .waiting{background:var(--st-waiting)}
+  .done{background:var(--st-done)} .bg{background:var(--st-bg)}
+  .idle{background:var(--st-idle)} .err{background:var(--st-err)}
+  .dots{display:flex;align-items:center;gap:5px;padding:2px 9px}
+  .more{font-size:10px;color:var(--text-faint);margin-left:1px}
+  .cchip{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--text-2);padding:2px 7px}
+  .namechips{display:flex;align-items:center;gap:6px;margin:6px 0 0;flex-wrap:nowrap;overflow:hidden}
+  .nchip{display:inline-flex;align-items:center;gap:5px;background:var(--secondary);
+         border:1px solid var(--hairline);border-radius:var(--pill-r);padding:2px 9px 2px 7px;
+         font-size:10.5px;color:var(--text-2);white-space:nowrap;max-width:150px}
+  .nchip .nm{overflow:hidden;text-overflow:ellipsis}
+  .ovf{border:1px solid var(--hairline);border-radius:var(--pill-r);background:var(--secondary);
+       padding:2px 8px;font-size:10.5px;color:var(--text-faint)}
+
+  /* --- flyouts / menus --- */
+  .fly{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--panel-r);
+       box-shadow:0 8px 24px rgba(0,0,0,.45);padding:4px;width:270px;margin:8px 0 0}
+  .fly.wide{width:290px}
+  .fly-h{font-size:11.5px;font-weight:600;color:var(--text-2);padding:6px 8px 4px}
+  .fly-hr{height:1px;background:var(--hairline);margin:2px 0}
+  .mi{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--text)}
+  .mi:hover{background:var(--inset)}
+  .mi .ic{width:15px;text-align:center;color:var(--text-2);font-size:12px}
+  .mi .sm{margin-left:auto;color:var(--text-faint);font-size:11px}
+  .srow{display:flex;align-items:flex-start;gap:8px;padding:6px 9px;border-radius:7px}
+  .srow .meta{min-width:0;flex:1}
+  .srow .t{font-size:12px;color:var(--text);font-weight:600;line-height:1.3;
+           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .srow .s{font-size:10.5px;color:var(--text-faint);line-height:1.35}
+  .srow .go{font-size:11px;color:var(--text-faint)}
+  .logrow{padding:6px 9px;font-size:11px;color:var(--text-2);line-height:1.4}
+  .logrow .w{color:var(--text-faint);font-size:10.5px}
+  .logrow b{color:var(--text);font-size:11px}
+  .tip{position:relative;display:inline-block;background:var(--chrome);border:1px solid var(--hairline);
+       border-radius:6px;padding:4px 8px;font-size:10.5px;color:var(--text-2);margin:6px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AC-776 — Assistant-header: statusbadge per sessie, en de twee knoppen in één dropdown</h1>
+<p class="sub">Twee losse wensen uit Raymonds screenshot van 2026-08-14, allebei in
+<code>src/Cockpit.App/Views/AssistantChatWindow.axaml</code>. <b>Dit is grooming, geen implementatie</b> — dezelfde
+opzet als AC-772: varianten naast elkaar, uitgedrukt in bestaande controls en bestaande tokens, zodat de keuze
+van Raymond komt en niet van mij. Alles wat hier gekleurd of gelabeld is, komt uit de echte code: de statuskleuren
+zijn <code>SessionStatusBrushKey</code>'s mapping (<code>SessionPanelViewModel.cs:1709</code>), de segmenten zijn
+<code>Session.UsagePillItems</code>, en elk menu hieronder is een <code>Flyout</code> of <code>MenuFlyout</code> die
+elders in dit project al staat.</p>
+
+<div class="banner">
+<b>De twee plekken liggen niet in dezelfde rij.</b> De knoppenrij is de header-<code>Grid</code> (regel 38–172);
+de "ctx/5h"-rij is de usage-pill die AC-683 eronder hing (regel 178–243), een aparte <code>Border</code> met
+een eigen <code>IsVisible</code>. Het zijn dus twee onafhankelijke wijzigingen die alleen een screenshot
+samenvoegt — ze kunnen los gebouwd en los teruggedraaid worden.
+</div>
+
+<hr>
+<h2><span class="n">0</span>Het venster zoals het nu is</h2>
+<p class="note">Letterlijk uit de AXAML getranscribeerd, zodat de varianten hierna met hetzelfde vergeleken worden.
+De knoppen zijn, van links naar rechts: luistermodus, voorlezen, <b>historie</b> (🕘, kolom 4 — nu al een
+<code>Flyout</code> met het hele spawn-log-paneel erin), <b>opslaan</b> (⤓, kolom 5 — een <code>Click</code>-handler),
+en sluiten.</p>
+
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns">
+      <div class="ib">🎙</div><div class="ib solid">🔊</div>
+      <div class="ib hot">🕘</div><div class="ib hot">⤓</div><div class="ib">✕</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="pillrow">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div>
+        <div class="chev">⌄</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+<p class="cap">Twee losse icoonknoppen (blauw kader in het screenshot) en de usage-pill (rood kader).</p>
+
+<hr>
+<h2><span class="n">A</span>De statusbadges — drie varianten</h2>
+<p class="note">Alle drie tekenen dezelfde <code>Ellipse</code> die de sidebar al gebruikt
+(<code>CockpitView.axaml:558</code>), gevuld via <code>SessionStatusBrushKey</code> + <code>StatusBrushConverter</code>.
+Ze verschillen alleen in <b>waar</b> ze staan, <b>hoeveel</b> ze zeggen, en <b>wat er gebeurt als het er veel worden</b>.
+Voorbeeldtoestand overal hetzelfde: 3 sessies — AC-774 bezig, depot-fix wacht op input, ci-run klaar.</p>
+
+<div class="cols">
+<div class="col">
+<h3>A1 — bolletjes als extra pill-segment</h3>
+<p class="note">Een vierde segment in dezelfde pill, achter een divider. Mechanisch identiek aan wat er al staat:
+één extra item in <code>UsagePillItems</code>-stijl met <code>ShowLeadingDivider</code>.</p>
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">🎙</div><div class="ib solid">🔊</div><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div>
+        <div class="dots"><span class="dot busy"></span><span class="dot waiting"></span><span class="dot done"></span></div>
+        <div class="div"></div><div class="chev">⌄</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+<div class="tip">hover op een bolletje: <b>AC-774 — Busy</b></div>
+<p class="cap"><span class="tag win">geen extra hoogte</span><span class="tag win">bestaand mechanisme</span>
+<span class="tag cost">zegt niet wélke sessie</span></p>
+<p class="note" style="margin-top:10px">Bij veel sessies: maximaal 6 bolletjes, de rest als <code>+n</code>.</p>
+<div class="pillrow"><div class="pill">
+  <div class="seg">ctx 39%</div><div class="div"></div><div class="seg">5h 11%</div><div class="div"></div>
+  <div class="dots">
+    <span class="dot busy"></span><span class="dot busy"></span><span class="dot waiting"></span>
+    <span class="dot bg"></span><span class="dot done"></span><span class="dot idle"></span>
+    <span class="more">+4</span></div>
+  <div class="div"></div><div class="chev">⌄</div>
+</div></div>
+</div>
+
+<div class="col">
+<h3>A2 — geteld per status</h3>
+<p class="note">Niet één bolletje per sessie, maar één chip per <i>status</i> met een telling erachter. Schaalt naar
+elk aantal sessies zonder overflow-regel — de breedte hangt af van het aantal statussen (max 5), niet van het aantal
+sessies. Statussen zonder sessies worden weggelaten.</p>
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">🎙</div><div class="ib solid">🔊</div><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div>
+        <div class="cchip"><span class="dot sm busy"></span>1</div>
+        <div class="cchip"><span class="dot sm waiting"></span>1</div>
+        <div class="cchip"><span class="dot sm done"></span>1</div>
+        <div class="div"></div><div class="chev">⌄</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+<div class="tip">hover: <b>1 sessie wacht op input</b></div>
+<p class="cap"><span class="tag win">schaalt oneindig</span><span class="tag win">geen overflow nodig</span>
+<span class="tag cost">verliest de sessie-identiteit helemaal</span></p>
+<p class="note" style="margin-top:10px">Bij 10 sessies verandert alleen het getal, niet de breedte:</p>
+<div class="pillrow"><div class="pill">
+  <div class="seg">ctx 39%</div><div class="div"></div><div class="seg">5h 11%</div><div class="div"></div>
+  <div class="cchip"><span class="dot sm busy"></span>4</div>
+  <div class="cchip"><span class="dot sm waiting"></span>1</div>
+  <div class="cchip"><span class="dot sm bg"></span>2</div>
+  <div class="cchip"><span class="dot sm done"></span>3</div>
+  <div class="div"></div><div class="chev">⌄</div>
+</div></div>
+</div>
+</div>
+
+<h3>A3 — naam-chips op een eigen rij, met <code>⋯</code>-overflow</h3>
+<p class="note">De enige variant die zegt wélke sessie wat doet zonder te hoveren. Kost één regel hoogte onder de
+pill. De overflow is letterlijk het patroon van <code>PluginToolbarHost._OverflowButton</code>
+(<code>Controls/PluginToolbarHost.cs:94</code>): een <code>Flyout</code> met een <code>StackPanel</code> van rijen,
+<code>Placement="BottomEdgeAlignedRight"</code>.</p>
+
+<div class="cols">
+<div class="col">
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">🎙</div><div class="ib solid">🔊</div><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
+      </div>
+    </div>
+    <div class="namechips">
+      <span class="nchip"><span class="dot sm busy"></span><span class="nm">AC-774</span></span>
+      <span class="nchip"><span class="dot sm waiting"></span><span class="nm">depot-fix</span></span>
+      <span class="nchip"><span class="dot sm done"></span><span class="nm">ci-run</span></span>
+      <span class="ovf">⋯</span>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+<p class="cap"><span class="tag win">zegt wélke sessie</span><span class="tag cost">kost een regel hoogte</span>
+<span class="tag cost">bij 340px (MinWidth) passen er ~2</span></p>
+</div>
+<div class="col">
+<p class="note">De <code>⋯</code>-flyout — dezelfde rij-opbouw als het spawn-log-paneel dat er al is, plus de
+statusline die de sessie zelf zet (<code>set_status</code>), want dat is het veld dat "wat doet-ie" beantwoordt
+in plaats van alleen "doet-ie iets".</p>
+<div class="fly wide">
+  <div class="fly-h">Sessies (6)</div>
+  <div class="fly-hr"></div>
+  <div class="srow"><span class="dot busy" style="margin-top:4px"></span>
+    <div class="meta"><div class="t">AC-774 grooming</div><div class="s">Busy · Review-desk · "transcript virtualiseren"</div></div>
+    <div class="go">↗</div></div>
+  <div class="srow"><span class="dot waiting" style="margin-top:4px"></span>
+    <div class="meta"><div class="t">depot-fix</div><div class="s">Waiting for input · Cockpit-desk</div></div>
+    <div class="go">↗</div></div>
+  <div class="srow"><span class="dot done" style="margin-top:4px"></span>
+    <div class="meta"><div class="t">ci-run</div><div class="s">Done · Cockpit-desk</div></div>
+    <div class="go">↗</div></div>
+  <div class="srow"><span class="dot bg" style="margin-top:4px"></span>
+    <div class="meta"><div class="t">AC-770 review</div><div class="s">Working (background) · Review-desk</div></div>
+    <div class="go">↗</div></div>
+  <div class="srow"><span class="dot idle" style="margin-top:4px"></span>
+    <div class="meta"><div class="t">scratch</div><div class="s">Idle · Cockpit-desk</div></div>
+    <div class="go">↗</div></div>
+  <div class="srow"><span class="dot idle" style="margin-top:4px"></span>
+    <div class="meta"><div class="t">personal - webshop</div><div class="s">Idle · geen desk</div></div>
+    <div class="go">↗</div></div>
+</div>
+</div>
+</div>
+
+<div class="verdict">
+<b>Mijn voorkeur, niet mijn beslissing: A1 met de flyout van A3 eronder.</b> De bolletjes staan altijd in beeld en
+kosten geen hoogte; de klik erop opent precies het lijstje uit A3, met namen, status, desk en statusline. Dan is
+"in één oogopslag" ingelost door de bolletjes en "welke dan" door één klik — en de <code>340px</code>-ondergrens
+van dit venster (<code>MinWidth</code>) blijft heel, wat bij A3-als-hoofdvorm niet lukt. A2 is de winnaar zodra
+tien sessies normaal worden; vandaag zijn het er drie.
+</div>
+
+<h3>Twee keuzes die los van de vorm staan</h3>
+<table>
+<tr><th style="width:22%">Vraag</th><th style="width:39%">Optie</th><th>Wat het kost / oplevert</th></tr>
+<tr><td rowspan="3"><b>Welke sessies?</b></td>
+    <td><b>Alle levende sessies</b> — precies wat <code>list_sessions</code> teruggeeft
+        (<code>AllSessions()</code> gefilterd op <code>ShowPluginHeaderItems</code> en niet de assistant zelf)</td>
+    <td><span class="tag win">nul nieuw werk</span> Eén expressie, al geschreven in
+        <code>AssistantReadGateway._ListSessions()</code>. Toont ook sessies die Raymond zelf startte — meer dan
+        het ticket vroeg, maar wel het antwoord op "wat loopt er".</td></tr>
+<tr><td><b>Alleen door de assistant gespawnd</b> — de spawn-trail (<code>AssistantSpawnAuditEntry.PaneId</code>)
+        gesneden met de levende panes</td>
+    <td><span class="tag cost">extra bestandslezing</span> Kan wél: de trail draagt een <code>PaneId</code>. Maar
+        de trail wordt vandaag lui gelezen (alleen als de flyout opengaat) en zou nu bij elke opening van dit
+        venster meegelezen moeten worden.</td></tr>
+<tr><td><b>Alleen niet-idle</b></td>
+    <td><span class="tag no">afgeraden</span> Een rij die leegloopt zodra alles klaar is, leest als "kapot" in
+        plaats van als "rustig".</td></tr>
+<tr><td rowspan="3"><b>Wat doet een klik?</b></td>
+    <td><b>Niets</b> — puur informatief, alleen tooltip</td>
+    <td><span class="tag win">goedkoopst</span> Verdedigbaar: dit venster is een kijkgat, geen bedieningspaneel.</td></tr>
+<tr><td><b>Flyout met de lijst</b> (A3-paneel)</td>
+    <td><span class="tag win">aanbevolen</span> Blijft binnen dit venster, geen navigatie, geen nieuwe service.</td></tr>
+<tr><td><b>Springen naar die sessie</b></td>
+    <td><span class="tag cost">grootste stap</span> Vraagt desk-activatie + pane-selectie én het hoofdvenster naar
+        voren halen vanuit een <i>ownerless</i> topmost-venster. Aparte ronde waard, niet deze.</td></tr>
+</table>
+
+<hr>
+<h2><span class="n">B</span>De twee knoppen → één dropdown</h2>
+<p class="note">De vangst zit hem hierin: <b>de historie-knop is geen commando.</b> Het is nu al een
+<code>Button.Flyout</code> met een 280px-paneel erin (kop "Spawn log", lege staat, <code>ScrollViewer</code> met
+<code>MaxHeight=320</code>, en lui laden via <code>Opened="_OnSpawnLogFlyoutOpened"</code>). De download-knop
+ís een gewoon commando. Een <code>MenuFlyout</code> met twee <code>MenuItem</code>s is dus geen 1-op-1-conversie:
+één van de twee items moet een heel paneel kunnen openen.</p>
+
+<div class="cols">
+<div class="col">
+<h3>B1 — <code>MenuFlyout</code>, spawn-log in een submenu</h3>
+<p class="note">Het patroon van <code>CockpitView.axaml:288–306</code> (de "nieuwe sessie / nieuwe terminal"-chevron),
+inclusief <code>MenuItem.Icon</code>. Het spawn-log-paneel wordt de <code>Header</code> van één
+<code>MenuItem</code> in het submenu, met <code>StaysOpenOnClick</code>; <code>SubmenuOpened</code> vervangt de
+huidige <code>Opened</code> als lui-laad-haak.</p>
+<div class="fly">
+  <div class="mi"><span class="ic">🕘</span>Spawn log<span class="sm">›</span></div>
+  <div class="mi"><span class="ic">⤓</span>Sla dit gesprek op als tekst</div>
+</div>
+<p class="cap"><span class="tag win">precies het bestaande menu-patroon</span>
+<span class="tag cost">een paneel in een submenu-item is een truc, geen precedent in dit project</span></p>
+</div>
+
+<div class="col">
+<h3>B2 — <code>Flyout</code> met twee rijen (PluginToolbarHost-stijl)</h3>
+<p class="note">Het andere bestaande patroon: <code>Controls/PluginToolbarHost.cs:94–120</code>. Een gewone
+<code>Flyout</code> mag alles bevatten, dus het spawn-log-paneel past er zonder truc in — het klapt onder zijn
+eigen rij open in dezelfde flyout.</p>
+<div class="fly">
+  <div class="mi"><span class="ic">🕘</span>Spawn log<span class="sm">▾</span></div>
+  <div class="fly-hr"></div>
+  <div class="logrow"><span class="w">09:12</span> <b>start</b> <span class="w">assistant</span><br>
+    Review-desk · claude-sonnet<br>AC-774 grooming</div>
+  <div class="logrow"><span class="w">08:47</span> <b>stop</b> <span class="w">assistant</span><br>ci-run</div>
+  <div class="fly-hr"></div>
+  <div class="mi"><span class="ic">⤓</span>Sla dit gesprek op als tekst</div>
+</div>
+<p class="cap"><span class="tag win">geen truc nodig</span><span class="tag win">precedent in dit project</span>
+<span class="tag cost">extra open/dicht-state in de VM</span></p>
+</div>
+</div>
+
+<h3>B3 — <code>MenuFlyout</code>, en de historie verhuist naar een dialoog</h3>
+<p class="note">Het menu wordt twee echte commando's; het spawn-log-paneel wordt een klein venster in plaats van
+een flyout. Het schoonste menu, en de duurste wijziging — er komt een venster bij dat er nu niet is. Genoemd voor
+de volledigheid, niet aanbevolen: het ticket vroeg om twee knoppen samen te voegen, niet om een venster erbij.</p>
+<div class="fly">
+  <div class="mi"><span class="ic">🕘</span>Spawn log…</div>
+  <div class="mi"><span class="ic">⤓</span>Sla dit gesprek op als tekst</div>
+</div>
+
+<div class="verdict">
+<b>Voorstel: B2.</b> Het is het enige van de drie waarbij niets nieuws bedacht hoeft te worden — het paneel dat er
+staat verhuist ongewijzigd mee, de lui-laad-haak blijft <code>Opened</code> op dezelfde <code>Flyout</code>, en het
+overflow-patroon dat het gebruikt staat al in dit project. B1 is mooier zodra het menu ooit een derde commando
+krijgt; op twee items is dat vooruitbetalen. De knop zelf wordt <code>Classes="Subtle Compact"</code> met
+<code>MaterialIconKind.DotsHorizontal</code>, net als de plugin-overflow.
+</div>
+
+<hr>
+<h2><span class="n">C</span>Technisch voorstel</h2>
+<table>
+<tr><th style="width:26%">Onderdeel</th><th>Wat er gebeurt</th></tr>
+<tr><td><b>Statusbron</b></td><td>Geen nieuwe. <code>SessionPanelViewModel.SessionStatus</code> +
+  <code>SessionStatusBrushKey</code> + <code>SessionStatusLabel</code> bestaan, en
+  <code>OnSessionStatusChanged</code> (regel 1730) meldt beide afgeleiden al, dus een binding is meteen live.</td></tr>
+<tr><td><b>Sessielijst</b></td><td><code>CockpitViewModel.AllSessions()</code>, gefilterd zoals
+  <code>AssistantReadGateway._ListSessions()</code> het doet — <code>ShowPluginHeaderItems</code> én niet
+  <code>AssistantIdentity.PaneId</code>. Diezelfde filter, niet een tweede kopie ervan.</td></tr>
+<tr><td><b>Bedrading</b></td><td><code>AssistantChatViewModel</code> kent vandaag alleen zijn eigen host
+  (<code>IAssistantSessionHost</code>). <code>AssistantIndicatorCoordinator</code> (regel 200) bouwt de VM en is een
+  <code>ISingletonService</code>, dus die kan de roster meekrijgen uit DI —
+  <code>AssistantReadGateway</code> zit er al als singleton in met de <code>CockpitViewModel</code>. Eén extra
+  constructor-parameter, optioneel, zodat de zeven <code>Screenshotter</code>-scènes en de tests blijven
+  compileren.</td></tr>
+<tr><td><b>Rij-template</b></td><td>Bind rechtstreeks op <code>SessionPanelViewModel</code>: geen nieuwe
+  rij-view-model. De <code>DataTemplate</code> is dezelfde <code>Ellipse</code> als
+  <code>CockpitView.axaml:558</code>.</td></tr>
+<tr><td><b>Zichtbaarheid</b></td><td><span class="tag cost">valkuil</span> De pill-<code>Border</code> heeft
+  <code>IsVisible="{Binding Session.HasUsagePillRegion}"</code>. Badges die daarbinnen hangen verdwijnen mee zodra
+  de assistant nog geen usage gerapporteerd heeft. De conditie moet "pill-regio óf minstens één sessie"
+  worden.</td></tr>
+<tr><td><b>Levensduur</b></td><td>AC-774 ging over een lek in exact dit venster. Een roster die zich abonneert op
+  <code>PropertyChanged</code> van elke sessie moet zich bij <code>Closed</code> weer afmelden —
+  <code>AssistantChatViewModel</code> is al <code>IDisposable</code> en het venster laat de VM al los bij sluiten
+  (coordinator, regel 205).</td></tr>
+<tr><td><b>Tests</b></td><td><code>tests/Cockpit.App.ViewTests/</code> heeft de precedenten:
+  <code>SessionOutstandingWorkStatusTests</code> en <code>UsagePillUnreportedWindowTests</code>. Plus een
+  <code>Screenshotter</code>-scène voor de badge-rij, zoals elke andere headerwijziging er een kreeg.</td></tr>
+</table>
+
+<hr>
+<h2><span class="n">D</span>Acceptatiecriteria (concept, voor de ticketbeschrijving)</h2>
+<ol class="note" style="max-width:92ch">
+<li>De usage-rij van <code>AssistantChatWindow</code> toont een statusbadge per levende agent-sessie, met de kleur
+  uit <code>SessionStatusBrushKey</code> — dezelfde kleur die de sidebar voor die sessie toont. Geen tweede
+  kleurenschema, geen tweede status-enum.</li>
+<li>De rij volgt live: een sessie die van Busy naar Done gaat verandert van kleur zonder dat het venster
+  heropend of iets aangeklikt hoeft te worden.</li>
+<li>De assistant-sessie zelf staat er niet bij, en plain terminals ook niet — dezelfde filter als
+  <code>list_sessions</code>, niet een eigen variant erop.</li>
+<li>Bij meer sessies dan er passen loopt de rij niet door en klipt hij niet: hij toont er ten hoogste <i>n</i> en de
+  rest als <code>+n</code> (A1) of als telling (A2). Bij <code>MinWidth=340</code> blijft de pill leesbaar.</li>
+<li>Zonder sessies is er geen lege rij en geen gat; de usage-pill ziet er dan uit als vandaag.</li>
+<li>De historie- en de download-knop zijn vervangen door één knop met een dropdown die beide acties bevat. Het
+  spawn-log-paneel behoudt zijn lege staat, zijn <code>MaxHeight</code> en zijn lui laden — het wordt niet bij het
+  openen van het venster gelezen.</li>
+<li>Het opslaan van het gesprek doet vanuit het menu exact wat de knop deed: platte tekst, alle rijen, ook de
+  gevouwen.</li>
+<li>De header wordt niet breder en het venster niet hoger dan vandaag (A1/A2); bij A3 komt er precies één rij bij.</li>
+<li>Een <code>Screenshotter</code>-scène toont de badge-rij met alle statussen, en één met de geopende dropdown.</li>
+</ol>
+
+<h3>Buiten scope</h3>
+<p class="note">Wat "ctx" en "5h" meten of hoe ze berekend worden (ongewijzigd) · springen naar een sessie vanaf een
+badge (aparte ronde, zie A-tabel) · de statusbadges in enig ander venster · de spawn-trail zelf, zijn velden of
+zijn bewaartermijn · de sessie-statussen zelf (Idle/Busy/… blijven zoals ze zijn).</p>
+
+<h3>Omvang en model-advies</h3>
+<p class="note">Twee onafhankelijke wijzigingen in één bestand plus één klein view-model, geen nieuwe abstractie,
+geen migratie. <b>Sonnet 5 op medium effort</b> is ruim genoeg — het werk is "hergebruik wat er staat op de goede
+plek", niet ontwerpen. Eén voorwaarde: de bouw-agent moet eerst de bestaande <code>Ellipse</code>-binding in
+<code>CockpitView.axaml</code> en het <code>Flyout</code>-patroon in <code>PluginToolbarHost.cs</code> lezen, want
+de hele opdracht is die twee op de derde plek zetten. Wordt de A3-variant met desk-navigatie gekozen, dan wordt het
+Opus op medium — dan raakt het venster-activatie en dat is geen kopieerwerk meer.</p>
+
+</div>
+</body>
+</html>
