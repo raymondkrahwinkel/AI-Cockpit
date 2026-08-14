@@ -324,8 +324,13 @@ in plaats van alleen "doet-ie iets".</p>
 vormtaal als de usage-pill (zelfde <code>CockpitSecondaryBgBrush</code>, zelfde <code>CockpitHairlineBrush</code>,
 zelfde <code>CockpitPillRadius</code>, zelfde 1px-dividers tussen de segmenten), en die staat rechts op dezelfde
 rij. De rij vult zich <b>van rechts naar links</b>: de usage-pill staat vast links, de sessie-pill groeit naar
-links mee met het aantal sessies, en wat niet meer past valt er aan de <i>linker</i>kant af achter een
-<code>⋯</code>.</p>
+links mee met het aantal sessies, en wat niet meer past valt er aan de <i>linker</i>kant af.</p>
+<p class="note"><b>De <code>⋯</code> staat er altijd</b>, als vaste eerste segment aan de linkerkant — niet alleen
+wanneer er iets wegvalt. Dat is wat de lijst-flyout tot een <i>permanente</i> ingang maakt: één plek waar de hele
+lijst zit, of er nu twee sessies lopen of twintig, in plaats van een knop die pas verschijnt als het misgaat. Vallen
+er sessies af, dan draagt datzelfde segment het aantal (<code>⋯3</code>); passen ze allemaal, dan staat er alleen
+<code>⋯</code>. Zo verandert de <i>plek</i> van de affordance nooit, alleen wat erop staat — en hoeven de segmenten
+zelf niets te doen bij een klik.</p>
 
 <div class="win">
   <div class="hdr">
@@ -340,6 +345,7 @@ links mee met het aantal sessies, en wat niet meer past valt er aan de <i>linker
         <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
       </div>
       <div class="pill">
+        <div class="seg ovf">⋯</div><div class="div"></div>
         <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
         <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
         <div class="seg nm"><span class="dot done"></span>ci-run</div>
@@ -348,7 +354,7 @@ links mee met het aantal sessies, en wat niet meer past valt er aan de <i>linker
     <div class="transcript">… transcript …</div>
   </div>
 </div>
-<p class="cap">Drie sessies: alles past, geen <code>⋯</code>.</p>
+<p class="cap">Drie sessies: alles past, en de <code>⋯</code> staat er evengoed — daar zit de lijst.</p>
 
 <div class="cols" style="margin-top:16px">
 <div class="col">
@@ -445,6 +451,7 @@ hetzelfde probleem, dezelfde oplossing.</p>
         <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
       </div>
       <div class="pill">
+        <div class="seg ovf">⋯</div><div class="div"></div>
         <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
         <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
         <div class="seg nm"><span class="dot done"></span>ci-run</div>
@@ -472,6 +479,7 @@ hetzelfde probleem, dezelfde oplossing.</p>
     </div>
     <div class="pillrow">
       <div class="pill">
+        <div class="seg ovf">⋯</div><div class="div"></div>
         <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
         <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
         <div class="seg nm"><span class="dot done"></span>ci-run</div>
@@ -500,6 +508,9 @@ rechterrand — het "van rechts naar links" uit A4 sneuvelt op de brede regel. D
     <code>RailLayoutMath</code> + <code>SessionTilePanel</code>, dus het precedent bestaat — maar het is wel een
     control erbij.</td></tr>
 </table>
+<p class="note" style="margin-top:12px">De vaste <code>⋯</code> uit A4 blijft ook hier staan, links in de pill: op
+één regel én op twee. Dat is precies waarom hij vast hoort te zijn — bij A5 valt er zelden nog iets af, en een
+<code>⋯</code> die alleen bij overflow verschijnt zou de lijst dus vrijwel onbereikbaar maken.</p>
 
 <div class="banner">
 <b>De springende transcript is hier geen bezwaar.</b> Een rij die erbij komt duwt het gesprek omlaag — maar dat doet
@@ -547,7 +558,9 @@ laatste is een control erbij die niemand vraagt zolang het er zes zijn.
     <td><b>Niets</b> — puur informatief, alleen tooltip</td>
     <td><span class="tag win">goedkoopst</span> Verdedigbaar: dit venster is een kijkgat, geen bedieningspaneel.</td></tr>
 <tr><td><b>Flyout met de lijst</b> (A3-paneel)</td>
-    <td><span class="tag win">aanbevolen</span> Blijft binnen dit venster, geen navigatie, geen nieuwe service.</td></tr>
+    <td><span class="tag win">aanbevolen</span> Blijft binnen dit venster, geen navigatie, geen nieuwe service. Bij
+    A4/A5 hangt hij aan de vaste <code>⋯</code> links, dus hij is altijd bereikbaar en de badges zelf hoeven niet
+    klikbaar te zijn — een bolletje van 8px is sowieso geen fijn doelwit.</td></tr>
 <tr><td><b>Springen naar die sessie</b></td>
     <td><span class="tag cost">grootste stap</span> Vraagt desk-activatie + pane-selectie én het hoofdvenster naar
         voren halen vanuit een <i>ownerless</i> topmost-venster. Aparte ronde waard, niet deze.</td></tr>
