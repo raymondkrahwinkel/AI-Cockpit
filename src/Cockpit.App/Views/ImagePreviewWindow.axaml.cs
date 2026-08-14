@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -80,17 +81,21 @@ public partial class ImagePreviewWindow : Window
 
     private void _OnNext(object? sender, RoutedEventArgs e) => _ShowImage(_index + 1);
 
-    private void _OnFit(object? sender, RoutedEventArgs e)
-    {
-        PreviewImage.Stretch = Stretch.Uniform;
-        _ApplyZoom(1.0);
-    }
+    private void _OnFit(object? sender, RoutedEventArgs e) => _SetStretch(Stretch.Uniform);
 
     // 1:1: the image keeps its own pixel size and the surrounding ScrollViewer picks up scrollbars once it no
     // longer fits — no pan/deep-zoom (out of v1 scope), just the plain "actual size" the ticket asks for.
-    private void _OnActualSize(object? sender, RoutedEventArgs e)
+    private void _OnActualSize(object? sender, RoutedEventArgs e) => _SetStretch(Stretch.None);
+
+    // Fit only fits while the scroller constrains the image: a ScrollViewer that may scroll measures its child
+    // unbounded, and Stretch.Uniform then resolves to the image's own pixels — the same box 1:1 gives, which is
+    // why both buttons looked dead. So scrolling goes off for Fit and back on for 1:1.
+    private void _SetStretch(Stretch stretch)
     {
-        PreviewImage.Stretch = Stretch.None;
+        PreviewImage.Stretch = stretch;
+        var scrollbars = stretch == Stretch.None ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+        BodyScroller.HorizontalScrollBarVisibility = scrollbars;
+        BodyScroller.VerticalScrollBarVisibility = scrollbars;
         _ApplyZoom(1.0);
     }
 
