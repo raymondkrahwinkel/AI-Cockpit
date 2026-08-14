@@ -48,6 +48,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
     private readonly IMentionFileSource? _mentionFileSource;
 
+    // AC-775: the process-wide usage cache shared across sessions on the same underlying credential. Null in
+    // the design-time/unit-test graph, where `_RefreshLimits` simply falls back to the driver's own status.
+    private readonly ISharedUsageCache? _sharedUsageCache;
+
     // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
     private SessionProfile? _profile;
 
@@ -884,7 +888,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
         IProfileLoginStarter? loginStarter = null,
-        IMentionFileSource? mentionFileSource = null)
+        IMentionFileSource? mentionFileSource = null,
+        ISharedUsageCache? sharedUsageCache = null)
     {
         _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
@@ -895,6 +900,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _loginChecker = loginChecker;
         _loginStarter = loginStarter;
         _mentionFileSource = mentionFileSource;
+        _sharedUsageCache = sharedUsageCache;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
@@ -2771,9 +2777,25 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Pulls the driver's latest limits into the header bars — turn boundary, right after start (AC-660), and now
     // also the idle catch-up timer (AC-761 F3). Routed through the shared ApplyUsage (AC-761) instead of setting
     // ContextUsedPercent/RateLimits directly, so a merge survives an incomplete snapshot and gets a threshold.
+    //
+    // AC-775: a fresh reading from this session's own driver is written through to the shared cache (keyed on
+    // the profile's underlying credential, never its label) for any sibling session on the same account to
+    // read; a session with nothing fresh of its own reads that cache instead of showing stale/no bars. An
+    // empty or expired cache falls straight back through to today's behaviour below — no new failure mode.
     private void _RefreshLimits()
     {
-        if (_runtime?.CurrentStatus is not { HasAny: true } status)
+        var status = _runtime?.CurrentStatus;
+
+        if (status is { HasAny: true })
+        {
+            _sharedUsageCache?.Set(_profile?.ProviderConfig, status);
+        }
+        else
+        {
+            status = _sharedUsageCache?.TryGet(_profile?.ProviderConfig);
+        }
+
+        if (status is not { HasAny: true })
         {
             return;
         }
