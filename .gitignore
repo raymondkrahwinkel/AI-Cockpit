@@ -29,6 +29,7 @@ publish/
 
 # Session scratch notes an agent may drop here — never part of the repository
 scratchpad/
+.scratch/
 
 # Per-machine Claude Code settings (enabled plugins and the like). Written into the checkout by the tool
 # itself, so without this it turns up untracked in every status and rides along on the next `git add -A`.

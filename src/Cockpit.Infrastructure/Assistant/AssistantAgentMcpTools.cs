@@ -557,6 +557,128 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "create_project")]
+    [Description("Creates a brand-new local project — not one shared by a colleague, that is bind_shared_project — and returns its id. Exactly what \"New project\" on the Projects page does for the same answers: same name rule, same save — but not the dialog's full field set: this sets name, description, folder, default profile, behaviour prompt, worktree isolation, MCP selection, category and plugin fields, and nothing past those, so memory/resources, a logo, a git URL and the free-form \"additional info\" box still need the operator to open the dialog themselves. CALL list_shared_projects FIRST WHEN THE NAME MIGHT ALREADY BE SHARED: a name matching a project a connection already shares is refused rather than quietly duplicated next to it — bind_shared_project is very likely the door meant instead. ONLY name IS REQUIRED. Every other field is optional and, left out, the project simply has no opinion on it: no folder (an administrative project is a perfectly good project), every MCP server offered, no worktree isolation, no behaviour prompt. FOUR FIELDS DECIDE HOW EVERY SESSION ON THIS PROJECT RUNS, NOT MERELY HOW IT IS LABELLED — sourceDirectory, enabledMcpServerNames, isolateInWorktreeByDefault and behaviorPrompt — and that is what separates this tool from create_workspace, which only ever opens an empty tab: read these four back to the operator before you ask, because they are what start_agent will use on every session here afterwards, without asking again. sourceDirectory, WHEN GIVEN, MUST BE A FULL PATH THAT ALREADY EXISTS: this tool does not clone or create a folder, so ask the operator for one that is already checked out, or leave it out. pluginFields KEYS MUST BE ONES A PLUGIN REGISTERED (list_projects shows what an existing project is already linked under) — a made-up key is refused rather than stored where no plugin will ever read it. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: an Allow/Deny row appears in the cockpit's chat window showing the name and the four session-behaviour fields above, and nothing is written until it is answered." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: a blank name, a name already shared elsewhere, a folder that is not there, or an unknown plugin field key — read the reason out and carry on. THIS STARTS NOTHING: no session runs and no work begins, which is still a separate start_agent with its own approval. IT DOES NOT TAKE A PASSWORD OR A SHARED-SOURCE NAME — those belong to a project already bound to a shared definition (bind_shared_project), not a fresh local one.")]
+    public async Task<string> CreateProjectAsync(
+        [Description("The project's display name. Required — the one thing every other surface shows it by. Free to collide with another local project's name, but refused if a connection already shares a project under this exact name; call list_shared_projects to check first if that seems likely.")] string name,
+        [Description("Free-text note on what this project is, shown under its name in the launcher and the manager. Left out, none.")] string? description = null,
+        [Description("The folder its sessions start in — one of the four fields that decide how every session here runs. Give a full path that already exists; this tool does not clone. Left out, this is an administrative project with no folder of its own.")] string? sourceDirectory = null,
+        [Description("The profile its sessions start under, by label exactly as the cockpit knows it. Left out, a session started here falls back to whatever it would otherwise use.")] string? defaultProfileLabel = null,
+        [Description("Appended to every session's system prompt here, on top of whatever its profile already says — one of the four fields that decide how every session here runs. Left out, nothing is appended.")] string? behaviorPrompt = null,
+        [Description("Whether new sessions here isolate in their own git worktree by default — one of the four fields that decide how every session here runs. Left out, false: sessions run in the operator's real checkout unless told otherwise per spawn.")] bool isolateInWorktreeByDefault = false,
+        [Description("Names of MCP servers this project's sessions start ticked — one of the four fields that decide how every session here runs. Left out, every offered server starts ticked, following the registry as it changes.")] string[]? enabledMcpServerNames = null,
+        [Description("Which group this project sits under in the manager's list. Left out, it groups under \"Uncategorized\".")] string? category = null,
+        [Description("What this project is called elsewhere, keyed by the field a plugin registered — e.g. {\"youtrack.project\": \"AC\"}, the same shape list_projects reports. A key no installed plugin registered is refused.")] Dictionary<string, string>? pluginFields = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            // The card below renders labelled lines verbatim, so a newline in a single-line field would forge one
+            // nobody approved — same reason `bind_shared_project` refuses rather than escapes. `behaviorPrompt`/
+            // `description` are legitimately multi-line and are normalised and bounded, not refused, below.
+            // `category` is deliberately not checked here (AC-799 review finding 11): unlike the fields below it
+            // never reaches the card, so the one thing this guard exists for — a newline forging a line under a
+            // value nobody approved — cannot happen through it.
+            var lineChecks = new List<(string Name, string Value)> { ("name", name) };
+            if (sourceDirectory is not null)
+            {
+                lineChecks.Add(("sourceDirectory", sourceDirectory));
+            }
+
+            if (defaultProfileLabel is not null)
+            {
+                lineChecks.Add(("defaultProfileLabel", defaultProfileLabel));
+            }
+
+            foreach (var serverName in enabledMcpServerNames ?? [])
+            {
+                lineChecks.Add(("an entry in enabledMcpServerNames", serverName));
+            }
+
+            if (_RefuseIfNotOneLine([.. lineChecks]) is { } malformed)
+            {
+                return malformed;
+            }
+
+            var normalizedDescription = AgentMessageContent.Normalize(description, out _);
+            var normalizedBehaviorPrompt = AgentMessageContent.Normalize(behaviorPrompt, out _);
+            if (normalizedDescription.Length > AgentMessageContent.MaxBodyLength)
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"`description` is {normalizedDescription.Length} characters and the limit is {AgentMessageContent.MaxBodyLength}. Shorten it, or leave it out.",
+                });
+            }
+
+            if (normalizedBehaviorPrompt.Length > AgentMessageContent.MaxBodyLength)
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"`behaviorPrompt` is {normalizedBehaviorPrompt.Length} characters and the limit is {AgentMessageContent.MaxBodyLength}. Shorten it, or leave it out.",
+                });
+            }
+
+            // An empty array and no argument at all mean the same thing — "every server, following the registry"
+            // (`ProjectMcpOverlay.IsSelectedByDefault` reads a non-null empty list as "nothing is selected", the
+            // opposite of what the card below would otherwise say) — so this collapses `[]` to `null` once, before
+            // either the card or the gateway sees it (AC-799 review finding 1). Without this the two disagreed: the
+            // card would say "every server" while what got stored selected none.
+            var normalizedEnabledMcpServerNames = enabledMcpServerNames is { Length: 0 } ? null : enabledMcpServerNames;
+
+            // LowRisk — weighed against `ConsentRisk`'s own text, not borrowed from `bind_shared_project`
+            // (AC-799 review finding 4). Its bar is "an idempotent, low-consequence action", and this does not
+            // clear the first half on its own: every call makes a fresh `Project.Create` id, so a repeated or
+            // "remembered" call is a second project, not a no-op the way re-adding an already-bound shared project
+            // is. Two things narrow that gap rather than close it: (a) `ConsentService` keys "remember" on the
+            // whole `Action` string, so a remembered approval only ever covers a byte-identical repeat — varying
+            // one field defeats it, it does not ride on it; (b) this card is the only place the operator ever sees
+            // `behaviorPrompt` at all — `start_agent` folds a project's `BehaviorPrompt` into the system prompt via
+            // `ComposeAsync` without showing it on its own card, so scrutinising it loosely here leaves it
+            // unscrutinised everywhere. What still holds unconditionally is the low-consequence half: this writes a
+            // project record and starts nothing, and a session only actually runs behind `start_agent`'s own
+            // separate approval. LowRisk on the strength of (a) and (b), not because non-idempotence stopped mattering.
+            var approval = await _ApprovedAsync(
+                "The assistant wants to create a new project",
+                $"Create project '{name}'\n"
+                + $"folder: {(string.IsNullOrWhiteSpace(sourceDirectory) ? "(none)" : sourceDirectory)}\n"
+                + $"MCP servers: {(normalizedEnabledMcpServerNames is { Length: > 0 } names ? string.Join(", ", names) : "(every server, following the registry)")}\n"
+                + $"isolate in worktree by default: {isolateInWorktreeByDefault}\n\n"
+                + $"behaviour prompt: {(normalizedBehaviorPrompt.Length == 0 ? "(none)" : normalizedBehaviorPrompt)}",
+                ConsentSourceCatalog.AssistantProjectCreate,
+                "assistant.create-project",
+                ConsentRisk.LowRisk).ConfigureAwait(false);
+            if (!approval.Ok)
+            {
+                return _Serialize(new { ok = false, error = approval.Error });
+            }
+
+            var result = await gateway.CreateProjectAsync(
+                name,
+                normalizedDescription.Length == 0 ? null : normalizedDescription,
+                sourceDirectory,
+                defaultProfileLabel,
+                normalizedBehaviorPrompt.Length == 0 ? null : normalizedBehaviorPrompt,
+                isolateInWorktreeByDefault,
+                normalizedEnabledMcpServerNames,
+                category,
+                pluginFields).ConfigureAwait(false);
+
+            return result.Ok
+                ? _Serialize(new { ok = true, projectId = result.ProjectId, name = result.Name, approval = approval.Label })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "remember")]
     [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(
