@@ -2863,6 +2863,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-713: a running flow's subprocess must not outlive the pane that started it.
         _loginPollTimer?.Stop();
         _usageCatchUpTimer?.Stop();
+        // AC-786: stopped directly rather than left to its own !IsBusy guard, which never fires once the
+        // runtime is torn down mid-turn — the guard belongs to the Tick handler's own rescheduling, not dispose.
+        _StopSignOfLifeClock();
         foreach (var entry in Transcript)
         {
             if (entry.LoginFlow is { } loginFlow)
