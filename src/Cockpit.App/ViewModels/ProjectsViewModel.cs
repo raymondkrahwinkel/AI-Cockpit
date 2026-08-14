@@ -406,13 +406,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             return;
         }
 
-        var boundIds = new HashSet<string>(
-            _settings.Projects
-                .SelectMany(project => project.Resources)
-                .Where(resource => resource.Role == ProjectResourceRole.Memory)
-                .Select(resource => resource.Reference),
-            StringComparer.Ordinal);
-        var hiddenIds = new HashSet<string>(_settings.HiddenSharedProjectIds, StringComparer.Ordinal);
+        var (boundIds, hiddenIds) = SharedProjectVisibilityFilterIds();
 
         var results = await Task.WhenAll(sources.Select(source => _ListWithTimeoutAsync(source, cancellationToken)))
             .ConfigureAwait(true);
@@ -546,6 +540,20 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         return updated;
     }
+
+    // The ids a shared project is filtered against before it counts as visible here: already bound to a local
+    // project, or hidden on this machine. Internal so AC-797's `AssistantReadGateway` applies the exact same rule
+    // instead of a second copy that can drift from this one.
+    internal (HashSet<string> BoundIds, HashSet<string> HiddenIds) SharedProjectVisibilityFilterIds() =>
+        (
+            new HashSet<string>(
+                _settings.Projects
+                    .SelectMany(project => project.Resources)
+                    .Where(resource => resource.Role == ProjectResourceRole.Memory)
+                    .Select(resource => resource.Reference),
+                StringComparer.Ordinal),
+            new HashSet<string>(_settings.HiddenSharedProjectIds, StringComparer.Ordinal)
+        );
 
     // One source's projects, or a timeout failure if it does not answer within `_SharedProjectSourceTimeout`
     // — and, defensively, a failure if the source throws instead of reporting one through
