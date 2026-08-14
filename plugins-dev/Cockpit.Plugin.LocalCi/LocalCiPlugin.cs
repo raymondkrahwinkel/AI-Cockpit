@@ -70,10 +70,16 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         // it is both where the last run is shown and where the pane-to-checkout answer the MCP tools need is
         // learned. There is no lookup for that: see SessionCheckouts.
         var checkouts = new SessionCheckouts();
+
+        // A closed pane must drop out of both places this plugin keeps it: the checkout map the MCP tools read, and
+        // (via the badge) the plugin-lived tracker's subscriber list. Without dropping it, a closed session's
+        // context — and through it the whole session and its transcript visual tree — is held for the life of the
+        // app. The badge unsubscribes itself on the same SessionClosed signal; this drops the checkout entry.
+        host.Sessions.SessionClosed += (_, paneId) => checkouts.Forget(paneId);
         host.AddSessionHeaderItem(session =>
         {
             checkouts.Remember(session);
-            return new LocalCiSessionBadge(session, tracker);
+            return new LocalCiSessionBadge(session, tracker, host.Sessions);
         });
 
         // The gate, as something the two places that open a pull request can ask about. Off in every checkout

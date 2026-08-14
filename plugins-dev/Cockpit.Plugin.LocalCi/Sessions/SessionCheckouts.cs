@@ -28,6 +28,17 @@ internal sealed class SessionCheckouts
         }
     }
 
+    // Drops a pane on session close. Without it, `Remember` only ever grows `_byPane` — and each entry pins a
+    // session's context (and through it the whole session) for the life of the app. Called from the plugin's
+    // `ICockpitSessionObserver.SessionClosed` hook. A pane that was never remembered is a no-op.
+    public void Forget(string paneId)
+    {
+        lock (_gate)
+        {
+            _byPane.Remove(paneId);
+        }
+    }
+
     // The checkout that pane is working in, or null when the pane is unknown or has not said yet. Read live from
     // the session rather than from a copy taken when it was remembered: a session's working directory arrives
     // after the panel is built, so a snapshot would be null for the whole life of the session.

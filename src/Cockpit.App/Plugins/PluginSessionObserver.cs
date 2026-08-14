@@ -49,6 +49,8 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
 
     public event EventHandler<SessionToolActivity>? ToolActivityObserved;
 
+    public event EventHandler<string>? SessionClosed;
+
     public IReadOnlyList<SessionImageAttachment> GetCurrentTurnImages(string paneId)
     {
         // The auto-attach path calls this on the UI thread, but the fallback MCP tool calls it from the endpoint's
@@ -158,6 +160,11 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
         session.ToolActivityProduced -= _OnSessionToolActivity;
         session.PropertyChanged -= _OnSessionPropertyChanged;
         session.RateLimits.CollectionChanged -= onRateLimitsChanged;
+
+        // A session leaving the collection is it closing — the one place a plugin can learn to drop what it kept
+        // keyed to that pane. PaneId is still readable on the detached session; capture it before the handler runs.
+        var paneId = session.PaneId;
+        _OnUiThread(() => SessionClosed?.Invoke(this, paneId));
     }
 
     private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
