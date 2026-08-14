@@ -98,6 +98,70 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-775: two profiles sharing one underlying credential (same ConfigDir) but different labels must show
+    // the same figure within the TTL — the regression this ticket exists to close is caching on the label
+    // instead. Session B's own driver reports nothing (a sibling that has not polled yet); it must still pick
+    // up A's fresh reading from the shared cache rather than showing no bars.
+    [Fact]
+    public async Task TwoSessions_SameCredentialDifferentLabel_ShareTheCachedUsage()
+    {
+        var cache = new SharedUsageCache();
+        var profileA = new SessionProfile("profile-a", new ClaudeConfig(@"C:\fake\.claude"));
+        var profileB = new SessionProfile("profile-b", new ClaudeConfig(@"C:\fake\.claude"));
+        var reset = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+
+        var driverA = Substitute.For<ISessionDriver>();
+        driverA.Events.Returns(EmptyEvents());
+        driverA.CurrentStatus.Returns(new SessionStatusFeed(44, [new SessionRateWindow("5h", 70, reset)]));
+        var vmA = new SessionViewModel(new SessionManager(FactoryFor(driverA)), sharedUsageCache: cache);
+        await vmA.StartConfiguredAsync(
+            profileA, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+        vmA.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        var driverB = Substitute.For<ISessionDriver>();
+        driverB.Events.Returns(EmptyEvents());
+        var vmB = new SessionViewModel(new SessionManager(FactoryFor(driverB)), sharedUsageCache: cache);
+        await vmB.StartConfiguredAsync(
+            profileB, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        Assert.Equal(44, vmB.ContextUsedPercent);
+        Assert.Equal(new[] { new SessionRateWindow("5h", 70, reset, 90) }, vmB.RateLimits);
+
+        await vmA.DisposeAsync();
+        await vmB.DisposeAsync();
+    }
+
+    // AC-775: two profiles on genuinely different credentials must never see each other's reading, even under
+    // the same provider type.
+    [Fact]
+    public async Task TwoSessions_DifferentCredential_NeverShareTheCachedUsage()
+    {
+        var cache = new SharedUsageCache();
+        var profileA = new SessionProfile("profile-a", new ClaudeConfig(@"C:\fake\.claude-a"));
+        var profileC = new SessionProfile("profile-c", new ClaudeConfig(@"C:\fake\.claude-c"));
+        var reset = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+
+        var driverA = Substitute.For<ISessionDriver>();
+        driverA.Events.Returns(EmptyEvents());
+        driverA.CurrentStatus.Returns(new SessionStatusFeed(44, [new SessionRateWindow("5h", 70, reset)]));
+        var vmA = new SessionViewModel(new SessionManager(FactoryFor(driverA)), sharedUsageCache: cache);
+        await vmA.StartConfiguredAsync(
+            profileA, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+        vmA.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        var driverC = Substitute.For<ISessionDriver>();
+        driverC.Events.Returns(EmptyEvents());
+        var vmC = new SessionViewModel(new SessionManager(FactoryFor(driverC)), sharedUsageCache: cache);
+        await vmC.StartConfiguredAsync(
+            profileC, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        Assert.Null(vmC.ContextUsedPercent);
+        Assert.Empty(vmC.RateLimits);
+
+        await vmA.DisposeAsync();
+        await vmC.DisposeAsync();
+    }
+
     // AC-660: reported as "the usage pill is missing entirely" on 3 of 4 open SDK panes. Root cause — a resumed
     // pane's driver can already know the resumed conversation's real usage the moment it starts (ClaudeSdkSessionDriver
     // now polls for it on resume), but before this fix the header only ever pulled CurrentStatus at a TurnCompleted
