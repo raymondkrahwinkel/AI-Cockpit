@@ -1818,6 +1818,41 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-778: the bytes ride along on the echoed transcript row itself, not just as a suffix baked into its text.
+    // Dispatched via the queue (rather than `AddPastedImage`, which decodes a `Bitmap` and needs a real Avalonia
+    // platform this host does not initialize) — the same `_DispatchMessageAsync` funnel either way.
+    [Fact]
+    public async Task QueuedSend_WithAnImage_AttachesItToTheEchoedTranscriptRow()
+    {
+        var (vm, _) = await StartedVm();
+        vm.CombineQueuedMessages = true;
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null); // dispatched immediately, turn now in flight
+
+        var image = ImageAttachment.FromBytes([1, 2, 3], "image/png");
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("look at this", [image], m => vm.QueuedMessages.Remove(m)));
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        var echoed = vm.Transcript.Last(entry => entry.Kind == TranscriptEntryKind.UserText);
+        Assert.True(echoed.HasImages);
+        Assert.Equal("image/png", Assert.Single(echoed.Images!).MediaType);
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Send_WithoutAnImage_LeavesTheEchoedTranscriptRowWithoutImages()
+    {
+        var (vm, _) = await StartedVm();
+        vm.InputText = "just text";
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        var echoed = Assert.Single(vm.Transcript, entry => entry.Kind == TranscriptEntryKind.UserText);
+        Assert.False(echoed.HasImages);
+        await vm.DisposeAsync();
+    }
+
     [Fact]
     public async Task RecallLastQueuedMessage_PullsTheNewestQueuedMessageBackIntoTheInput()
     {

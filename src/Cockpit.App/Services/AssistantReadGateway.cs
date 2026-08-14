@@ -84,7 +84,7 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
                         transcript.Count,
                         [
                             .. transcript.Skip(skip).Select(entry =>
-                                new AssistantTranscriptEntry(entry.Kind.ToString(), entry.Text, entry.ResultText)),
+                                new AssistantTranscriptEntry(entry.Kind.ToString(), entry.TextWithImageSuffix, entry.ResultText)),
                         ]),
                     null);
 

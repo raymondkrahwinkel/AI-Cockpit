@@ -145,6 +145,25 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public string? ToolUseId { get; init; }
 
+    // --- Pasted images (AC-778) --------------------------------------------------------------------------------
+    // Images attached to this row's own message, held in memory for the life of the running session so the
+    // "[+N image]" fragment can reopen them. Null on rows without images, and on a row built without wiring
+    // them at all (no code path leaves it null after being set — there is no transcript persistence to replay
+    // from, see AC-778's research — so that case is the row's built-in "not available" fallback: no chip shown).
+
+    public IReadOnlyList<ImageAttachment>? Images { get; init; }
+
+    public bool HasImages => Images is { Count: > 0 };
+
+    public string ImageChipLabel => ImageCountLabel.Format(Images?.Count ?? 0);
+
+    // `Text` plus the chip's own label, for callers that read a row's content as one string rather than through
+    // the chip (copy-to-clipboard, session-watch pattern matching, the assistant's read-transcript MCP surface)
+    // — the same fragment `Text` itself used to carry before the chip took over rendering it.
+    public string TextWithImageSuffix => !HasImages
+        ? Text
+        : string.IsNullOrEmpty(Text) ? ImageChipLabel : $"{Text}  {ImageChipLabel}";
+
     // --- Clarifying questions (AC-715) ------------------------------------------------------------------------
     // An AskUserQuestion rides the permission callback like a tool approval, but Allow/Deny is not an answer to it:
     // a row carrying parsed questions renders them as its own card, and keeps them there once answered.

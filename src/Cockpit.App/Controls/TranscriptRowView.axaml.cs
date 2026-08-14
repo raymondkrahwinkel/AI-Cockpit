@@ -4,6 +4,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 
 namespace Cockpit.App.Controls;
 
@@ -40,8 +41,9 @@ public partial class TranscriptRowView : UserControl
     // Copies a tool result's formatted text to the clipboard (T6).
     private void _OnCopyResultClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.ResultDisplayText);
 
-    // Copies an assistant reply's markdown source to the clipboard — the per-reply hover action.
-    private void _OnCopyMessageClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.Text);
+    // Copies an assistant reply's markdown source to the clipboard — the per-reply hover action. On a user row
+    // this includes the image chip's own label (AC-778), matching what the row used to have baked into `Text`.
+    private void _OnCopyMessageClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.TextWithImageSuffix);
 
     // Both copy buttons sit on this row, so the sender's DataContext is the row's own view model.
     private void _CopyRowText(object? sender, Func<TranscriptEntryViewModel, string> select)
@@ -50,6 +52,16 @@ public partial class TranscriptRowView : UserControl
             && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
             _ = clipboard.SetTextAsync(select(entry));
+        }
+    }
+
+    // AC-778: opens the mini-gallery for this row's own images, starting at the first one.
+    private void _OnImagesClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: TranscriptEntryViewModel { Images: { Count: > 0 } images } }
+            && TopLevel.GetTopLevel(this) is Window owner)
+        {
+            ImagePreviewWindow.Show(images, 0, owner);
         }
     }
 }

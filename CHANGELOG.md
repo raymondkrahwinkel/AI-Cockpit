@@ -156,6 +156,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   folder already did. Which profile actually ran is reported back, so a start that used the project's default is
   never a silent guess.
 
+- added: the "+N image" label on a message you pasted images into is now clickable, opening a small preview
+  window with previous/next navigation and a fit-to-window/actual-size toggle — the images used to be gone from
+  view the moment you sent the message. Works the same in a session and in the assistant chat. The images stay
+  available for as long as the cockpit keeps running; after a restart the label is shown but no longer opens
+  anything, rather than failing.
+
 - added: a "Compact" button next to Dismiss on the context-window warning, for a provider that supports it — click
   it to ask the provider to summarise the conversation and carry on, instead of waiting for it to happen on its own
   once the window is nearly full. Disabled while the session is already working, and it disappears again on its own

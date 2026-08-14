@@ -391,8 +391,8 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
                 _NeedsAttention(session) || session.HasPendingPermission,
                 true,
                 session.Transcript.Count,
-                [.. session.Transcript.Skip(Math.Max(since, session.Transcript.Count - MaxNewRows)).Select(row => row.Text)],
-                [.. session.Transcript.Skip(Math.Max(0, session.Transcript.Count - TailRows)).Select(row => row.Text)]),
+                [.. session.Transcript.Skip(Math.Max(since, session.Transcript.Count - MaxNewRows)).Select(row => row.TextWithImageSuffix)],
+                [.. session.Transcript.Skip(Math.Max(0, session.Transcript.Count - TailRows)).Select(row => row.TextWithImageSuffix)]),
 
             { } pane => new WatchedPane(pane.Title, pane.SessionStatus, _NeedsAttention(pane), false, 0, [], []),
 
