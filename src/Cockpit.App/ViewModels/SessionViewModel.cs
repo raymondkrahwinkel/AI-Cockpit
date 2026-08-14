@@ -587,6 +587,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private string _connectedToolsHeading = string.Empty;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CompactCommand))]
     private bool _isBusy;
 
 
@@ -1382,6 +1383,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return false;
         }
     }
+
+    // AC-782: the bar's own Compact button, beside Dismiss on the context-fill line. Guarded on the same `IsBusy`
+    // the automatic 80%-trigger already checks before it asks (`AssistantSessionHost.ShouldHandOver`), so a click
+    // during an in-flight turn — automatic or a second click on this one — does nothing instead of asking twice.
+    [RelayCommand(CanExecute = nameof(_CanCompact))]
+    private async Task CompactAsync() => await CompactContextAsync();
+
+    private bool _CanCompact => !IsBusy;
 
     private async Task _SetPermissionModeSafeAsync(string mode)
     {

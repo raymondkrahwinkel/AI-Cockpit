@@ -527,10 +527,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private double? _contextThreshold;
 
-    // Which signals are over their threshold, what each says, and whether the subject blocks the session outright
-    // (memory cap spent) rather than merely limiting it (allowance running low) — oldest crossing first.
-    // AC-683: every standing, unsilenced entry gets its own line now, not just the most recently crossed one.
-    private readonly List<(string Key, string Text, bool Blocks)> _standing = [];
+    // Which signals are over their threshold, what each says, whether the subject blocks the session outright
+    // (memory cap spent) rather than merely limiting it (allowance running low) — oldest crossing first (AC-683).
+    // Kind is null for a line no usage signal raised (memory cap, auth expiry) — AC-782 reads it for the Compact line.
+    private readonly List<(string Key, string Text, bool Blocks, PluginUsageSignalKind? Kind)> _standing = [];
 
     // Which signals the operator has taken down by hand, one key at a time — dismissed, or acted on by scheduling
     // the resume they offered. Separate from _standing: the figure can still be over its threshold while its line
@@ -568,7 +568,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 ShowResumeOffer: standing.Key == _offeredSignal && CanOfferResume,
                 ShowChangeResumeMoment: standing.Key == _offeredSignal && CanChangeResumeMoment,
                 ShowKill: standing.Key == MemoryCapWarningKey && IsOverMemoryCap,
-                ShowSignInAgain: standing.Key == AuthExpiryWarningKey));
+                ShowSignInAgain: standing.Key == AuthExpiryWarningKey,
+                ShowCompact: standing.Kind == PluginUsageSignalKind.Fill && Capabilities.SupportsContextCompaction));
         }
 
         OnPropertyChanged(nameof(UsageWarning));
@@ -619,7 +620,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             // the context empties on a /clear and the bar goes on saying it is half full until someone clicks a
             // notice about a window that no longer exists away by hand. Being away also lifts the silence, so a
             // signal that comes back is news again rather than staying muted for the life of the session.
-            _RaiseOrClear(signal.Key, says: null);
+            _RaiseOrClear(signal.Key, says: null, kind: signal.Kind);
 
             if (_offeredSignal == signal.Key)
             {
@@ -634,7 +635,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         var returns = reading.ResetsAt is { } at ? $", back {at.ToLocalTime():ddd HH:mm}" : string.Empty;
         var says = $"{name} is {used:0}% used{returns}.";
 
-        _RaiseOrClear(signal.Key, says);
+        _RaiseOrClear(signal.Key, says, kind: signal.Kind);
 
         // The offer waits for the allowance to actually be spent, not for the threshold that warns about it
         // (Raymond, 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from
@@ -678,7 +679,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // `says` of null is "nothing to say about this any more". `blocks` is AC-683's severity flag — true only for
     // a subject that blocks the session outright (the memory cap actually spent), which is what sorts it above
     // subjects that merely limit it.
-    private void _RaiseOrClear(string key, string? says, bool blocks = false)
+    private void _RaiseOrClear(string key, string? says, bool blocks = false, PluginUsageSignalKind? kind = null)
     {
         if (says is null)
         {
@@ -694,11 +695,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             // Still over its line, so its crossing has been spent and the bar does not go back up — a bar that
             // returns at 91%, 92%, 93% is noise. What it would say is kept current all the same: a figure that
             // climbs while another warning covers it must not come back afterwards understating itself.
-            _standing[already] = (key, says, blocks);
+            _standing[already] = (key, says, blocks, kind);
         }
         else
         {
-            _standing.Add((key, says, blocks));
+            _standing.Add((key, says, blocks, kind));
         }
 
         _RebuildWarnings();

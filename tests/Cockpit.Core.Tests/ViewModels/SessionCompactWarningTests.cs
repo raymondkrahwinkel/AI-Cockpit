@@ -1,0 +1,95 @@
+using System.Runtime.CompilerServices;
+using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
+
+namespace Cockpit.Core.Tests.ViewModels;
+
+/// <summary>
+/// AC-782: the bar's Compact button belongs on the context-fill line, only when the provider supports compaction,
+/// and never doubles up with the automatic 80%-trigger while a compaction is already in flight.
+/// </summary>
+public class SessionCompactWarningTests
+{
+    private static readonly PluginUsageSignal Context =
+        new("context", "ctx", PluginUsageSignalKind.Fill, 50) { Description = "Context window" };
+
+    private static readonly PluginUsageSignal Weekly =
+        new("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" };
+
+    [Fact]
+    public void TheContextFillLine_ShowsCompact_WhenTheProviderSupportsIt()
+    {
+        var panel = new TtyViewModel { Capabilities = SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true } };
+
+        panel.ApplyUsage([Context], [new PluginUsageReading("context", 60, null)]);
+
+        Assert.True(panel.Warnings.Single(w => w.Key == "context").ShowCompact);
+    }
+
+    [Fact]
+    public void AnAllowanceLine_NeverShowsCompact_EvenWithTheCapability()
+    {
+        var panel = new TtyViewModel { Capabilities = SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true } };
+
+        panel.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 95, null)]);
+
+        Assert.False(panel.Warnings.Single(w => w.Key == "weekly").ShowCompact);
+    }
+
+    [Fact]
+    public void TheContextFillLine_HidesCompact_WithoutTheCapability()
+    {
+        // Default SessionCapabilities.ClaudeCli does not declare SupportsContextCompaction — the pre-AC-664 shape.
+        var panel = new TtyViewModel();
+
+        panel.ApplyUsage([Context], [new PluginUsageReading("context", 60, null)]);
+
+        Assert.False(panel.Warnings.Single(w => w.Key == "context").ShowCompact);
+    }
+
+    [Fact]
+    public async Task TheCompactCommand_CannotRunWhileTheSessionIsBusy()
+    {
+        var (vm, _) = await _StartedAsync();
+
+        Assert.True(vm.CompactCommand.CanExecute(null));
+
+        vm.IsBusy = true;
+        Assert.False(vm.CompactCommand.CanExecute(null));
+
+        vm.IsBusy = false;
+        Assert.True(vm.CompactCommand.CanExecute(null));
+
+        await vm.DisposeAsync();
+    }
+
+    private static async Task<(SessionViewModel Vm, ISessionDriver Driver)> _StartedAsync()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyEvents());
+        driver.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false)
+        {
+            SupportsContextCompaction = true,
+        });
+
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var vm = new SessionViewModel(new SessionManager(factory));
+        await vm.StartConfiguredAsync(
+            new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude")),
+            SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+        return (vm, driver);
+    }
+
+    private static async IAsyncEnumerable<SessionEvent> _EmptyEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+        yield break;
+    }
+}

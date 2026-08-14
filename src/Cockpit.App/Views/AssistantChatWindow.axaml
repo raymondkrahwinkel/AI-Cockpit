@@ -389,6 +389,11 @@
                                             Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.KillOverCapSessionCommand}"
                                             IsVisible="{Binding ShowKill}"
                                             ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
+                                    <!-- AC-782: manual context compaction, next to the automatic 80% trigger. -->
+                                    <Button Content="Compact" Classes="Compact" Margin="0,0,6,4"
+                                            Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.CompactCommand}"
+                                            IsVisible="{Binding ShowCompact}"
+                                            ToolTip.Tip="Ask the provider to summarise this conversation and carry on in it."/>
                                     <!-- AC-713: opens in the row this starts (a fresh one, if none is open yet) —
                                          not here, so a login flow always plays out in the same place regardless
                                          of where it began. -->
