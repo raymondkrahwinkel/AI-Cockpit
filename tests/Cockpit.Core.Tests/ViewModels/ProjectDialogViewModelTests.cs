@@ -28,6 +28,9 @@ public class ProjectDialogViewModelTests
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(servers);
+        // AC-766: CreateAsync now reads GetServersForProjectAsync(project?.Id) — stubbed for any id (including
+        // null) so every existing test, written against the project-agnostic call, keeps seeing the same servers.
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(servers);
         return catalog;
     }
 
@@ -147,6 +150,94 @@ public class ProjectDialogViewModelTests
         Assert.True(viewModel.IsEditing);
         Assert.False(viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession);
         Assert.True(viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession);
+    }
+
+    private static McpServerConfig ProjectLinkedServer(string name = "Depot: krahwinkel-it.nl") =>
+        new() { Name = name, Url = "https://depot.example/mcp", ProjectLinked = true };
+
+    private static IMcpServerCatalog ScopedCatalog(params McpServerConfig[] servers)
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(servers);
+        return catalog;
+    }
+
+    // AC-766 criterion 4: the checklist finally has a row for a server the catalog resolved for this project's
+    // own scheme, and it starts ticked (AC-736's promise, now actually visible here).
+    [Fact]
+    public async Task CreateAsync_ExistingProject_ShowsAProjectLinkedServerTickedByDefault()
+    {
+        var project = Project.Create("Cockpit");
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), ScopedCatalog(ProjectLinkedServer()));
+
+        var row = viewModel.McpServers.Single();
+        Assert.Equal("Depot: krahwinkel-it.nl", row.Name);
+        Assert.True(row.IsEnabledForSession);
+        Assert.True(row.IsProjectLinked);
+    }
+
+    // AC-766 criterion 6 (regression): a project with a Depot connection that has never been resaved carries
+    // ProjectMcpOverlay.None, which has no DisabledServerNames entry for a server it has never had a row for —
+    // this must not read as "off".
+    [Fact]
+    public async Task CreateAsync_AProjectThatNeverChoseMcpServers_ShowsAProjectLinkedServerTicked()
+    {
+        var project = Project.Create("Cockpit");
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), ScopedCatalog(ProjectLinkedServer()));
+
+        Assert.True(viewModel.McpServers.Single().IsEnabledForSession);
+    }
+
+    // AC-766 criterion 5, the save half: unticking a project-linked row cannot land in EnabledServerNames — it
+    // never had a row an operator could have named there — so it has to be recorded as an explicit "off" instead.
+    [Fact]
+    public async Task ToProject_UncheckingAProjectLinkedServer_RecordsItInDisabledServerNames()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), ScopedCatalog(ProjectLinkedServer(), Server("youtrack")));
+        viewModel.Name = "Cockpit";
+        viewModel.McpServers.Single(server => server.Name == "Depot: krahwinkel-it.nl").IsEnabledForSession = false;
+
+        var overlay = viewModel.ToProject().McpOverlay;
+
+        Assert.Contains("Depot: krahwinkel-it.nl", overlay.DisabledServerNames);
+        Assert.DoesNotContain("Depot: krahwinkel-it.nl", overlay.EnabledServerNames ?? []);
+    }
+
+    // AC-766 criterion 5, the reopen half: a project saved with that "off" decision reads back unticked, not just
+    // written correctly.
+    [Fact]
+    public async Task CreateAsync_AProjectWithADisabledProjectLinkedServer_ReopensUnticked()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            McpOverlay = new ProjectMcpOverlay { DisabledServerNames = ["Depot: krahwinkel-it.nl"] },
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), ScopedCatalog(ProjectLinkedServer()));
+
+        Assert.False(viewModel.McpServers.Single().IsEnabledForSession);
+    }
+
+    // AC-247/AC-763 (grooming aandachtspunt): a project-linked server's name is a machine-local connection, not a
+    // fact a shared project definition can state. Unchecking the *ordinary* server here forces EnabledServerNames
+    // to actually be built, so this proves the still-ticked project-linked row is filtered out of it, not merely
+    // absent because the list happened to stay null.
+    [Fact]
+    public async Task ToProject_AProjectLinkedServer_NeverReachesEnabledServerNames_TickedOrNot()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), ScopedCatalog(ProjectLinkedServer(), Server("youtrack")));
+        viewModel.Name = "Cockpit";
+        viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession = false;
+
+        var overlay = viewModel.ToProject().McpOverlay;
+
+        Assert.NotNull(overlay.EnabledServerNames);
+        Assert.DoesNotContain("Depot: krahwinkel-it.nl", overlay.EnabledServerNames!);
     }
 
     [Fact]

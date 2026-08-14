@@ -154,6 +154,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   server (a Depot connection, say) at all — previously it was only ever offered to sessions on the specific
   project it was bound to, so the assistant (which has no project) could never see or mount it, no matter how
   it was configured.
+- fixed: a project with a Depot connection (or any other project-bound server) now shows it as a row in the
+  project editor's server checklist, ticked by default — it used to be invisible there no matter how the
+  project was configured, so there was no way to see it, let alone turn it off for that project. Unticking it
+  and saving now sticks: reopening the project, or starting a session on it, keeps it off, while a project that
+  is never resaved keeps mounting it exactly as before.
 
 - fixed: once memory usage grew past a safety ceiling meant to skip a background compact under extreme load, the
   compactor stopped ever compacting again and repeated the same warning in the log several times a second,

@@ -12,6 +12,14 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
 {
     public string Name { get; }
 
+    // Whether the catalog offered this row only because the project being edited names its scheme
+    // (McpServerConfig.ProjectLinked, AC-766) — never true outside the project editor, since only a scoped
+    // catalog query can mark one. Read by ProjectDialogViewModel to route an unticked row to
+    // ProjectMcpOverlay.DisabledServerNames instead of the ordinary EnabledServerNames list: a project-linked
+    // server never had a row before its own project asked for it, so "off" for it can only ever be an explicit
+    // decision recorded there.
+    public bool IsProjectLinked { get; }
+
     [ObservableProperty]
     private bool _isEnabledForSession = true;
 
@@ -58,8 +66,9 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
                 : "Couldn't reach this server to count its tools — it may be offline, need a sign-in, or its plugin isn't loaded."
         : $"{estimate.ToolCount} tool{(estimate.ToolCount == 1 ? string.Empty : "s")}, ~{McpToolTokenMath.Format(estimate.EstimatedTokens)} tokens (estimate)";
 
-    public McpServerSelectionItemViewModel(string name)
+    public McpServerSelectionItemViewModel(string name, bool isProjectLinked = false)
     {
         Name = name;
+        IsProjectLinked = isProjectLinked;
     }
 }
