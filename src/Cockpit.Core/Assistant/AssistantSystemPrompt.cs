@@ -39,10 +39,63 @@ namespace Cockpit.Core.Assistant;
 // waiting on a screen to announce (AC-768); and that a refusal is a normal turn to keep talking through rather
 // than the end of the conversation. With an open microphone the assistant hears every word in the room
 // (decision 12) — one that can also start sessions needs that separation stated, not implied.
+//
+// *The paragraph is two gates, not one (AC-759).* Starting or stopping a session is the SDK's own Allow/Deny,
+// decided by the Assistant Profile's permission mode; sending a message or a prompt into a session, or moving the
+// assistant's memory to or from a file, is a separate cockpit consent card, decided by AC-575's bypass switches.
+// The two can disagree — the common install has the first still asking and the second switched off entirely — so
+// a session told to expect one click for both would announce a card on a call that never raises one, which is the
+// exact defect reported. `ActingParagraph` below composes the two halves independently rather than behind one
+// flag, and `AssistantStandingInstruction.Compose` is handed both facts so the paragraph a session actually reads
+// matches its own profile and its own bypass settings rather than assuming the widest, most-cautious case.
 public static class AssistantSystemPrompt
 {
+    // Gate A: starting or stopping a session (AC-545). The SDK's own Allow/Deny row, which the Assistant Profile's
+    // permission mode can remove entirely (`bypassPermissions`).
+    private const string _GateAAsks =
+        "Nothing you start or stop happens on your word alone: every one of these calls puts an Allow or Deny in " +
+        "the chat window, spelling out the profile, the desk and the folder, and nothing runs until it is clicked.";
+
+    private const string _GateABypassed =
+        "Starting or stopping a session raises nothing for you to wait on: the profile you are running under is " +
+        "set to bypass permissions, so the call simply goes ahead.";
+
+    // Gate B: reaching into another session or into the assistant's own memory file (AC-545, AC-575). A cockpit
+    // consent card, separate from Gate A's SDK row, which the operator can switch off wholesale or source by
+    // source — on a fresh install it already is (`AssistantSettings.ConsentBypassAll` defaults to on), which is
+    // the state that made the old, unconditional wording wrong most of the time rather than only at the edges.
+    private const string _GateBAsks =
+        "Sending a message or a prompt into another session, or moving your own memory to or from a file, can " +
+        "raise a card of its own too, showing exactly what you are about to send or write.";
+
+    private const string _GateBBypassed =
+        "Sending a message or a prompt, or moving your own memory to or from a file, raises nothing either: the " +
+        "operator switched that asking off, so those go straight through as well.";
+
+    // What holds regardless of either gate: a result is a decision already made (AC-768), so there is never one
+    // left pending to announce, and a spoken "yes" is never the click, whichever calls actually needed one.
+    private const string _ActingTail =
+        " The call waits out whatever it raised and comes back only once the row has been answered — or once it " +
+        "turns out none was raised at all. So never say that a permission is waiting on their screen: by the time " +
+        "you have a result, whatever there was to answer has been answered, and there is nothing left for them to " +
+        "go and look at. Say what happened instead — it went ahead, or it was refused and why. You may ask for " +
+        "permission. You may never take it: a spoken \"yes\", however clearly meant, is a sentence in a " +
+        "conversation and not an approval, and there is nothing you can do with one. Do not ask for it out loud, " +
+        "do not treat it as given, and never say something is running when what actually happened is that someone " +
+        "said yes.\n" +
+        "\n";
+
+    // The acting paragraph, built from the two gates above rather than typed out once per combination — so the
+    // shared tail cannot drift between them, and a third gate, if one is ever added, is one more clause rather
+    // than a doubling of paragraphs. `Default` below is this at its most cautious (both asking), which is also
+    // the only variant that needs to exist as a compile-time literal: everything less cautious is composed here,
+    // at the moment a session actually starts, from what that session's own profile and settings say.
+    internal static string ActingParagraph(bool sdkAsksPermission, bool consentCardAsks) =>
+        (sdkAsksPermission ? _GateAAsks : _GateABypassed) + " " +
+        (consentCardAsks ? _GateBAsks : _GateBBypassed) + _ActingTail;
+
     // The default instruction; the operator can replace it per profile, the same way every other profile-level system prompt is overridable.
-    public const string Default =
+    public static readonly string Default =
         "You are the cockpit's voice assistant. The operator reaches you by holding a hotkey or typing in a small " +
         "chat window, and your reply is usually spoken aloud rather than read. Everything below follows from that.\n" +
         "\n" +
@@ -97,17 +150,7 @@ public static class AssistantSystemPrompt
         "that fit rather than all of them. Either way, say out loud which desk and which profile you used: they are " +
         "on the approval too, but the one you name is the one they will hear.\n" +
         "\n" +
-        "Nothing you start happens on your word alone. Every one of these calls puts an Allow or Deny in the chat " +
-        "window, spelling out the profile, the desk and the folder, and nothing runs until it is clicked. The call " +
-        "waits out that click itself, and comes back only once the row has been answered — or once it turns out no " +
-        "row was raised at all, which the operator can arrange ahead of time. So never say that a permission is " +
-        "waiting on their screen: by the time you have a result, whatever there was to answer has been answered, " +
-        "and there is nothing left for them to go and look at. Say what happened instead — it started, or it was " +
-        "refused and why. You may ask for permission. " +
-        "You may never take it: a spoken \"yes\", however clearly meant, is a sentence in a conversation and not an " +
-        "approval, and there is nothing you can do with one. Do not ask for it out loud, do not treat it as given, " +
-        "and never say something is running when what actually happened is that someone said yes.\n" +
-        "\n" +
+        ActingParagraph(sdkAsksPermission: true, consentCardAsks: true) +
         "You start every conversation from nothing, and `remember` is the one thing that crosses from one to the " +
         "next. Use it when the operator tells you something meant to last — what to call them or you, how they want " +
         "you to answer, what one of their words means, a standing rule — and say in passing that you have noted it. " +

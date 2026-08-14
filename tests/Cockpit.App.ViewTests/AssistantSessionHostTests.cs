@@ -382,6 +382,52 @@ public class AssistantSessionHostTests
             options[WellKnownPluginSessionOptions.PermissionMode]);
     }
 
+    // ── AC-759: the acting paragraph's SDK gate agrees with the profile's own permission mode ────────────────────
+
+    [Fact]
+    public void SdkAsksPermission_TrueForAProfileThatNamesNoPermissionMode()
+    {
+        // The app floor (SessionOptionCatalog.DefaultPermissionMode) is a confining mode, so a profile that says
+        // nothing still asks — the same fallback StartConfiguredAsync's own typed argument falls back to.
+        Assert.True(AssistantSessionHost._SdkAsksPermission(_Profile()));
+    }
+
+    [Fact]
+    public void SdkAsksPermission_FalseForAProfileSetToBypassPermissions()
+    {
+        var profile = _ProfileWithDefaults(
+            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue));
+
+        Assert.False(AssistantSessionHost._SdkAsksPermission(profile));
+    }
+
+    [Fact]
+    public void LaunchOptions_OnABypassPermissionsProfile_ComposesTheGateBypassedParagraph()
+    {
+        var options = AssistantSessionHost._LaunchOptions(
+            _ProfileWithDefaults((WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)),
+            replacesStandingInstruction: false,
+            memory: null,
+            currentState: null,
+            sdkAsksPermission: false,
+            consentCardAsks: true);
+
+        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+
+        Assert.NotEqual(AssistantSystemPrompt.Default, instruction);
+        Assert.Contains("set to bypass permissions, so the call simply goes ahead", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchOptions_ForAProfileThatSaysNothing_KeepsBothGatesAsking_SoTheAppendedPromptIsStillDefault()
+    {
+        // The two new parameters default to "still asks" (AC-759), so every existing call site that has not been
+        // taught about the gates — every test above this one — keeps composing exactly what it always composed.
+        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
+
+        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+    }
+
     [Fact]
     public void LaunchOptions_CarryTheProfilesOwnModelAndEffort()
     {

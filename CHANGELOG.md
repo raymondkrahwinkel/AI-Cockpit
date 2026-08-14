@@ -161,6 +161,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: the assistant no longer announces that an approval is waiting on your screen after that approval has
   already been handled, including when approvals are turned off altogether.
 
+- fixed: the assistant no longer tells you a click is coming for starting/stopping a session, sending a message
+  or a prompt into one, or exporting/importing its own memory, when you have switched that particular asking off.
+  Each of those calls now also reports, after the fact, whether it actually asked, went through because you had
+  switched it off, or went through because you had told it to remember your answer.
+
 - fixed: a shared project's logo can now be changed by anyone with Editor access or better, instead of always
   showing as read-only. Picking a new logo (or removing it) now saves it to Depot too, so everyone bound to that
   project sees the same picture — a logo already in Depot also shows up automatically the moment you bind to that

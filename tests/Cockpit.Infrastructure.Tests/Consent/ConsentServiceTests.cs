@@ -352,6 +352,7 @@ public sealed class ConsentServiceTests
             var decision = await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk));
 
             Assert.True(decision.IsApproved);
+            Assert.True(decision.Bypassed, "AC-759: a caller reading only IsApproved cannot tell this from a card the operator actually clicked.");
             Assert.Empty(prompts);
 
             // Its own audit value, not Approved-with-a-flag: the trail has to distinguish an approval the operator

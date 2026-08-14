@@ -85,11 +85,38 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
         Assert.Empty(_consent.Asked);
     }
 
+    // ── AC-759: what the consent check actually did is reported, not assumed ─────────────────────────────────────
+
+    [Fact]
+    public async Task AnExportThatWasBypassed_ReportsApprovalBypassed()
+    {
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+        _consent.Bypassed = true;
+
+        var result = _Json(await _Tools(_consent).ExportAssistantMemoryAsync(@"C:\nowhere\export.zip"));
+
+        Assert.Equal("bypassed", (string)result["approval"]!);
+    }
+
+    /// <summary>AC-759 criterion 6: a denied import carries no approval field, only its refusal reason.</summary>
+    [Fact]
+    public async Task ADeniedImport_CarriesNoApprovalField()
+    {
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+        _consent.Approve = false;
+
+        var result = _Json(await _Tools(_consent).ImportAssistantMemoryAsync(@"C:\nowhere\export.zip"));
+
+        Assert.Null(result["approval"]);
+    }
+
     private sealed class RecordingBroker : IConsentBroker
     {
         public List<ConsentRequest> Asked { get; } = [];
 
         public bool Approve { get; set; } = true;
+
+        public bool Bypassed { get; set; }
 
         public event EventHandler<ConsentPrompt>? PromptOpened;
 
@@ -101,7 +128,7 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
             PromptOpened?.Invoke(this, null!);
             PromptClosed?.Invoke(this, Guid.Empty);
             return Task.FromResult(new ConsentDecision(
-                Approve ? ConsentOutcome.Approved : ConsentOutcome.Denied, false));
+                Approve ? ConsentOutcome.Approved : ConsentOutcome.Denied, Remembered: false, Bypassed: Approve && Bypassed));
         }
 
         public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)

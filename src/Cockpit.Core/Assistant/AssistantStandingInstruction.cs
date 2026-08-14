@@ -19,16 +19,35 @@ public static class AssistantStandingInstruction
 
     // The instruction a session starts under: the built-in one (or the operator's, if they replaced it), then
     // whatever they wrote, then what was remembered (AC-595) and where the conversation stood (AC-596).
+    //
+    // `sdkAsksPermission`/`consentCardAsks` (AC-759): the two facts the acting paragraph's two gates need, read by
+    // the caller off the Assistant Profile and the consent-bypass settings respectively and handed in rather than
+    // looked up here — this type stays a pure formatter, and the two default to "still asks", the safest reading
+    // when a caller has not looked (there is exactly one today: `AssistantSessionHost`, which always has). That
+    // default is also what makes the common no-gate-info call sites (most of this file's own tests) keep returning
+    // `AssistantSystemPrompt.Default` byte for byte.
     public static string Compose(
         string? operatorInstruction,
         bool replacesDefault,
         string? memory,
-        string? currentState = null)
+        string? currentState = null,
+        bool sdkAsksPermission = true,
+        bool consentCardAsks = true)
     {
+        // `Default` already *is* `ActingParagraph(true, true)` in place, so the common case — nothing to swap in —
+        // costs no allocation beyond `Default` itself; only a call that actually needs the less-cautious wording
+        // pays for the substitution.
+        var baseInstruction = sdkAsksPermission && consentCardAsks
+            ? AssistantSystemPrompt.Default
+            : AssistantSystemPrompt.Default.Replace(
+                AssistantSystemPrompt.ActingParagraph(true, true),
+                AssistantSystemPrompt.ActingParagraph(sdkAsksPermission, consentCardAsks),
+                StringComparison.Ordinal);
+
         var written = operatorInstruction?.Trim();
         var instruction = string.IsNullOrEmpty(written)
-            ? AssistantSystemPrompt.Default
-            : replacesDefault ? written : AssistantSystemPrompt.Default + "\n\n" + written;
+            ? baseInstruction
+            : replacesDefault ? written : baseInstruction + "\n\n" + written;
 
         // Last, and each under a heading of its own: this is the operator's material and the assistant's own note
         // rather than the product's rules, and one that cannot tell them apart recites a remembered line as a rule.

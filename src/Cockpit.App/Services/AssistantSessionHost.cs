@@ -427,7 +427,15 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 profile,
                 slot.ReplacesStandingInstruction,
                 await _memory.ReadAsync(cancellationToken).ConfigureAwait(true),
-                await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true)),
+                await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true),
+                _SdkAsksPermission(profile),
+                // Gate B (AC-759): read off ConsentBypassAll alone, not the two per-source lists too — the
+                // paragraph is describing what the operator should generally expect, and the per-call `approval`
+                // field (AssistantAgentMcpTools) is what corrects the record exactly when only one source was
+                // switched off individually. Reading the lists here would let the paragraph promise a click that a
+                // specific source's own bypass then never raises — the same defect this ticket reported, one gate
+                // over.
+                consentCardAsks: !settings.ConsentBypassAll),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
         // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
@@ -892,20 +900,41 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // on the same key. AC-594: what the operator typed is *added* to `AssistantSystemPrompt.Default` — replacing it
     // outright is the advanced choice on the Assistant Profile, because that default carries the language rule, the
     // speak-don't-write rule, the honesty clause and the whole permission paragraph.
+    //
+    // `sdkAsksPermission`/`consentCardAsks` default to "still asks" (AC-759) so every call site that does not name
+    // a profile-specific gate state — every existing test but the two written for this ticket — keeps composing
+    // the same instruction it always did. `EnsureStartedAsync` above is the one caller that knows better and says so.
     internal static IReadOnlyDictionary<string, string> _LaunchOptions(
         Cockpit.Core.Profiles.SessionProfile profile,
         bool replacesStandingInstruction,
         string? memory,
-        string? currentState = null)
+        string? currentState = null,
+        bool sdkAsksPermission = true,
+        bool consentCardAsks = true)
     {
         var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
             ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        options[WellKnownPluginSessionOptions.AppendSystemPrompt] =
-            AssistantStandingInstruction.Compose(profile.SystemPrompt, replacesStandingInstruction, memory, currentState);
+        options[WellKnownPluginSessionOptions.AppendSystemPrompt] = AssistantStandingInstruction.Compose(
+            profile.SystemPrompt, replacesStandingInstruction, memory, currentState, sdkAsksPermission, consentCardAsks);
 
         return options;
+    }
+
+    // Gate A (AC-759): whether the SDK still raises its own Allow/Deny for a session on this profile. Reads the
+    // same option map `_LaunchOptions` seeds its dictionary from, and falls back to the same app floor
+    // `StartConfiguredAsync` above is given — a profile that names no permission mode starts on that floor, so this
+    // has to agree with it or the paragraph and the actual gate could name different states.
+    internal static bool _SdkAsksPermission(Cockpit.Core.Profiles.SessionProfile profile)
+    {
+        var mode = profile.Defaults?.OptionDefaults is { } defaults
+            && defaults.TryGetValue(WellKnownPluginSessionOptions.PermissionMode, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : SessionOptionCatalog.DefaultPermissionMode.Value;
+
+        return !string.Equals(mode, SessionOptionCatalog.BypassPermissionModeValue, StringComparison.Ordinal);
     }
 
     private void _SetUnavailable(string reason)
