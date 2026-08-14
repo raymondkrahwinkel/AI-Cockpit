@@ -16,10 +16,9 @@ public static class DependencyInjection
         return services;
     }
 
-    // A pane gets a scope of its own rather than coming out of the root container. Microsoft.DI holds on to every
-    // IAsyncDisposable a container hands out until that container is disposed — for the root, app exit — so panes
-    // resolved from it were never collected, and a closed session kept its whole transcript, images and all, for
-    // the run (AC-787). The scope goes with the pane, which disposes it along with itself.
+    // A pane gets a scope of its own rather than coming out of the root container: Microsoft.DI holds every
+    // IAsyncDisposable a container hands out until that container is disposed — app exit, for the root — so a closed
+    // pane kept its whole transcript for the run (AC-787). The scope goes with the pane and is disposed with it.
     private static T ResolveOwnedPane<T>(IServiceProvider provider) where T : SessionPanelViewModel
     {
         var scope = provider.CreateAsyncScope();

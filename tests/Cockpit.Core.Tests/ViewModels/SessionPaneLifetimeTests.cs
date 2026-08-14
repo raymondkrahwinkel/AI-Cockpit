@@ -8,11 +8,9 @@ using Cockpit.Infrastructure;
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
-/// What happens to a session pane after it is closed (AC-787). Microsoft.DI holds a reference to every
-/// <see cref="IAsyncDisposable"/> its container hands out until that container is disposed — for the root provider,
-/// app exit — so a pane resolved straight from it was never collected: closing a session stopped its timers and
-/// killed its CLI process, but left the view model and its whole transcript, base64 image bytes and all, in memory
-/// for the rest of the run. The cockpit measured 1.3 GB → 3.7 GB in an afternoon of opening and closing panes.
+/// What happens to a session pane after it is closed (AC-787): a pane resolved straight from the root provider was
+/// held by it until app exit, so closing a session stopped its timers and killed its CLI process but left the view
+/// model and its whole transcript in memory. The cockpit measured 1.3 GB → 3.7 GB in an afternoon of that.
 /// </summary>
 [CollectionDefinition(SessionPaneLifetimeTests.Alone, DisableParallelization = true)]
 [Collection(SessionPaneLifetimeTests.Alone)]

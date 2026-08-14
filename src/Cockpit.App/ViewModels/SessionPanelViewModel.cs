@@ -1746,10 +1746,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnSidebarIndexChanged(int value) => OnPropertyChanged(nameof(RailSortKey));
 
-    // What owns this pane's place in the DI container, handed over by whoever resolved it. Microsoft.DI keeps a
-    // reference to every IAsyncDisposable it hands out until it is disposed itself, so a pane resolved straight from
-    // the root provider stays rooted — with its whole transcript — for the run, however carefully it was closed
-    // (AC-787). A pane resolved into its own scope takes the scope with it here instead.
+    // What owns this pane's place in the DI container, handed over by whoever resolved it: a pane resolved straight
+    // from the root provider stays rooted there — transcript and all — for the run however carefully it was closed,
+    // and one resolved into a scope of its own takes that scope with it here instead (AC-787).
     private IAsyncDisposable? _lifetimeScope;
     private bool _disposed;
 
