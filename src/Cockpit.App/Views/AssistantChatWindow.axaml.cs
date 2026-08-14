@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -45,6 +46,91 @@ public partial class AssistantChatWindow : Window
         return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().First();
     }
 
+    // True while this itself is moving the viewport, so ScrollIntoView's own layout pass is never
+    // mistaken for a reason to re-enter (SessionView._following, AC-528).
+    private bool _following;
+
+    // The last row the reading level actually shows (SessionView._NewestVisibleIndex, AC-621): folded tool calls
+    // and Thinking rows stay in the collection but render hidden below Developer level, and following one of
+    // those can never terminate — it has no height to bring into view.
+    private int _NewestVisibleIndex()
+    {
+        for (var i = TranscriptItems.ItemCount - 1; i >= 0; i--)
+        {
+            if (TranscriptItems.ItemsView[i] is TranscriptEntryViewModel { IsRowVisible: true })
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    // AC-777: ScrollToEnd() jumped to Extent, which a virtualizing panel only estimates until the next arrange —
+    // see ticket for the full analysis.
+    private void _FollowNewest()
+    {
+        if (_following || TranscriptItems.ItemCount == 0 || _NewestRowIsFullyVisible())
+        {
+            return;
+        }
+
+        var newestIndex = _NewestVisibleIndex();
+        if (newestIndex < 0)
+        {
+            return;
+        }
+
+        _following = true;
+        try
+        {
+            if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
+            {
+                TranscriptItems.ScrollIntoView(newestIndex);
+            }
+
+            if (_NewestRowIsFullyVisible())
+            {
+                return;
+            }
+
+            if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest ||
+                newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll) is not { } bottom)
+            {
+                return;
+            }
+
+            var shortfall = bottom.Y - TranscriptScroll.Viewport.Height;
+            if (shortfall > 0)
+            {
+                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(TranscriptScroll.Offset.Y + shortfall);
+            }
+        }
+        finally
+        {
+            _following = false;
+        }
+    }
+
+    // Whether the newest visible row is on screen in full — see SessionView's own copy for why this measures the
+    // row rather than asking `Extent`, which is the estimate that caused AC-777 in the first place.
+    private bool _NewestRowIsFullyVisible()
+    {
+        var newestIndex = _NewestVisibleIndex();
+        if (newestIndex < 0)
+        {
+            return true;
+        }
+
+        if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest)
+        {
+            return false;
+        }
+
+        var bottom = newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll);
+        return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
+    }
+
     public AssistantChatWindow()
     {
         InitializeComponent();
@@ -66,6 +152,8 @@ public partial class AssistantChatWindow : Window
     // detaches this peephole's own event subscription, never the session — see its own remarks.
     protected override void OnClosed(EventArgs e)
     {
+        TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
+
         if (DataContext is AssistantChatViewModel vm)
         {
             vm.PropertyChanged -= _OnViewModelPropertyChanged;
@@ -89,8 +177,23 @@ public partial class AssistantChatWindow : Window
             _ = vm.EnsureOpenedAsync();
         }
 
+        // AC-777: AppendText never touches CollectionChanged, so a growing reply needs ScrollChanged too — see
+        // ticket for the full analysis.
+        TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
+
         Dispatcher.UIThread.Post(() => InputBox.Focus());
-        Dispatcher.UIThread.Post(TranscriptScroll.ScrollToEnd);
+        Dispatcher.UIThread.Post(_FollowNewest);
+    }
+
+    private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        // Our own correction, and the layout pass it drives: not a reason to re-enter (SessionView's same guard).
+        if (_following)
+        {
+            return;
+        }
+
+        _FollowNewest();
     }
 
     // The host can flip Session from null to a real one after EnsureOpenedAsync's lazy start completes
@@ -119,7 +222,7 @@ public partial class AssistantChatWindow : Window
             return;
         }
 
-        _transcriptHandler ??= (_, _) => Dispatcher.UIThread.Post(TranscriptScroll.ScrollToEnd);
+        _transcriptHandler ??= (_, _) => Dispatcher.UIThread.Post(_FollowNewest);
         session.Transcript.CollectionChanged += _transcriptHandler;
 
         _sessionHandler ??= _OnSessionPropertyChanged;
@@ -139,7 +242,7 @@ public partial class AssistantChatWindow : Window
         if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission)
             && sender is SessionViewModel { HasPendingPermission: true })
         {
-            Dispatcher.UIThread.Post(TranscriptScroll.ScrollToEnd);
+            Dispatcher.UIThread.Post(_FollowNewest);
         }
     }
 
