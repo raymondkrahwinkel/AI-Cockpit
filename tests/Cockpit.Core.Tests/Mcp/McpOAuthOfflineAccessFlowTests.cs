@@ -147,6 +147,127 @@ public class McpOAuthOfflineAccessFlowTests
     }
 
     [Fact]
+    public async Task Acquire_NonInteractively_ForATokenInsideTheMarginButStillAlive_ActuallyRenewsIt()
+    {
+        // AC-771, end to end against a real token endpoint rather than a faked seam — because the defect lived
+        // precisely on the seam a fake would have stood in for.
+        //
+        // The stored token has ninety seconds left: spent by the coordinator's two-minute request margin, and alive
+        // by the SDK's, which has no margin at all (`TokenContainer.IsExpired` is `UtcNow >= ObtainedAt + ExpiresIn`).
+        // It is also a token this server accepts, so nothing forces a refresh from the far end either. Without the
+        // margin reaching the SDK, the connect below succeeds on the token already held, the store comes back
+        // unchanged, and the coordinator reads that as a renewal that failed — which reached the agent as
+        // "could not renew its sign-in" on an ordinary call, for the last two minutes of every token's life.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(90),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
+
+        Assert.Equal(McpAuthState.Authorized, access.State);
+        Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, access.AccessToken);
+
+        // Exactly one, from the far side's own count: the fix has to make the renewal happen, not make it happen
+        // repeatedly — a refresh grant this server rotates is not something to spend twice on one call.
+        Assert.Equal(1, server.RefreshAttempts);
+    }
+
+    [Fact]
+    public async Task AcquireForSession_ForATokenInsideTheSessionMarginButStillAlive_ActuallyRenewsIt()
+    {
+        // The same defect on the wider margin, and the more damaging of the two: a session keeps its credential for
+        // hours, so it asks for fifty-five minutes of life. A one-hour token therefore failed this from five minutes
+        // old onwards — fifty-five of every sixty minutes — and a session that met it started without the server.
+        // Invisible so far only because the loopback endpoint (AC-524) puts most servers on the request margin.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.AcquireForSessionAsync(_Server(server.Url));
+
+        Assert.Equal(McpAuthState.Authorized, access.State);
+        Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, access.AccessToken);
+        Assert.Equal(1, server.RefreshAttempts);
+    }
+
+    [Fact]
+    public async Task RenewRejected_ForATokenTheServerRefuses_RenewsThroughTheRealSdk_NotJustTheClock()
+    {
+        // The third route into the same method, and the only one whose renewal does not come from the margin at all:
+        // here the token has half an hour on our clock and the server refuses it anyway (a grant revoked at the far
+        // end, or a rotation race lost). The margin subtracted above leaves it alive, so what has to drive the
+        // refresh is the server's own 401 during the handshake — an assumption about the SDK's behaviour, and this
+        // ticket exists because assumptions about the SDK's behaviour went three tickets without being measured.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = "a-token-this-server-no-longer-honours",
+            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.RenewRejectedAsync(_Server(server.Url), "a-token-this-server-no-longer-honours");
+
+        Assert.Equal(McpAuthState.Authorized, access.State);
+        Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, access.AccessToken);
+    }
+
+    [Fact]
+    public async Task Acquire_NonInteractively_ForATokenWithRoomToSpare_SpendsNoRefreshGrantAtAll()
+    {
+        // The mirror, and the one that would make this fix worse than the defect: a margin applied to every read
+        // would rotate the refresh grant on every connect. The authorization servers in use here rotate on refresh,
+        // so that is not churn but a replayed grant waiting to happen — the outage `_renewals` exists to prevent.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
+
+        // Thirty minutes clears the two-minute request margin, so the stored token is handed over as it stands and
+        // the token endpoint is never called.
+        Assert.Equal(McpAuthState.Authorized, access.State);
+        Assert.Equal(InProcessOAuthMcpServer.AccessToken, access.AccessToken);
+        Assert.Equal(0, server.RefreshAttempts);
+    }
+
+    [Fact]
     public async Task Acquire_Interactively_SurvivesABrowserConsentThatTakesLongerThanTheDefaultDiscoverProbeTimeout()
     {
         // AC-505 follow-up (2026-07-29, live-verified against production Depot): ModelContextProtocol.Core 2.0.0
