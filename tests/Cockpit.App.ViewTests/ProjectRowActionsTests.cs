@@ -12,10 +12,8 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-772: the Manage-projects window now hosts the same <c>ProjectRowView</c> the Projects page's List layout does,
-/// so its rows carry buttons where they used to carry nothing. That collides with the window's own row handlers —
-/// a <c>Button</c> handles Click but not DoubleTapped, so a double-click on Start would run the button's action twice
-/// and then open the editor over it. Measured against the real markup, since the collision only exists in the tree.
+/// AC-772: the Manage-projects window's rows carry buttons now, and a <c>Button</c> handles Click but not
+/// DoubleTapped — so a double-click on one used to reach the row's own handler and open the editor as well.
 /// </summary>
 [Collection("avalonia")]
 public class ProjectRowActionsTests

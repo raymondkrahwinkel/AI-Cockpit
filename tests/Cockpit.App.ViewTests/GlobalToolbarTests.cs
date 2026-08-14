@@ -27,10 +27,8 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-772: the toolbar moved from the session grid's own header to the workspace tab strip, so its actions are
-/// reachable from every workspace type — not only from a Sessions workspace that already has a session in it, which
-/// is what left Depot's servers unreachable from the page the operator lands on. Measured against the real markup:
-/// where the host sits in the tree is exactly what this ticket changed, so a view model assertion would prove nothing.
+/// AC-772: the toolbar moved to the workspace tab strip, so its actions are reachable from every workspace type.
+/// Measured against the real markup — where the host sits in the tree is the whole change.
 /// </summary>
 [Collection("avalonia")]
 public class GlobalToolbarTests

@@ -6,10 +6,8 @@ using Cockpit.Infrastructure.Projects;
 namespace Cockpit.Core.Tests.Projects;
 
 /// <summary>
-/// AC-772: the Projects page's layout choice, persisted per operator in the <c>projectsDisplay</c> section of
-/// <c>cockpit.json</c>. Same shape as <see cref="LayoutSettingsStoreTests"/>, plus the one rule this store has of its
-/// own: a stored <c>Continue</c> falls back to <c>Cards</c> while that layout is not offered, so neither a
-/// hand-edited config nor a preference written by a later build can leave the page on a layout this one hides.
+/// AC-772: the Projects page's layout choice in the <c>projectsDisplay</c> section of <c>cockpit.json</c>. Same
+/// shape as the layout store, plus its own rule — a stored <c>Continue</c> falls back while that layout is hidden.
 /// </summary>
 public class ProjectsDisplaySettingsStoreTests : IDisposable
 {
