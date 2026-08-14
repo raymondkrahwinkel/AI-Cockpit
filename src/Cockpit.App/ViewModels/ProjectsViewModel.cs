@@ -304,17 +304,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (_displaySettings is not null)
         {
-            try
-            {
-                LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
-            }
-            catch (Exception)
-            {
-                // An unreadable cockpit.json (and its backup) throws out of the config reader. A display preference
-                // is the least of what is wrong at that point, and it must not take the project list — or the
-                // shared-projects load below, or the window this method is awaited by — down with it. The page
-                // opens on the default layout instead.
-            }
+            // Deliberately unguarded. It reads the same cockpit.json the project store just read a line above,
+            // through the same `CockpitConfigFileAccess` — so an unreadable file has already thrown out of this
+            // method before we get here, and a try/catch around this call would only pretend to cover a case it
+            // cannot reach. Whatever protects that read protects this one.
+            LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
         }
 
         _BeginSharedProjectsLoad();
@@ -369,9 +363,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             }
             catch (Exception)
             {
-                // Same reasoning as the read in `LoadAsync`: the page has already switched, and a config file this
-                // build cannot write is not something to take the window down over. The choice simply does not
-                // survive a restart.
+                // The write, unlike the read in `LoadAsync`, can fail on its own — a read-only disk, a permission
+                // change, a config write gate — and it does so from a command, where an exception has no caller to
+                // land on. The page has already switched by then; the choice simply does not survive a restart.
             }
         }
     }
