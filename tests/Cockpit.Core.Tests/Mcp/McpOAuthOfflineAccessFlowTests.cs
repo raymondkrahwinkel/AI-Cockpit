@@ -211,6 +211,94 @@ public class McpOAuthOfflineAccessFlowTests
     }
 
     [Fact]
+    public async Task Acquire_WhenTheTokenEndpointIsHavingABadMinute_KeepsServingOnTheTokenInHand()
+    {
+        // The grace period, and the reason the renewal is started ten minutes out rather than two: a token endpoint
+        // that is down — Depot restarting, a slow minute, a lost packet — must not cost the call. Five minutes left
+        // is past the point where renewing begins and well clear of the two minutes a call needs, so the honest
+        // answer is to use what is held and try again on the next call.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        server.FailNextRefreshes(5);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
+
+        Assert.Equal(McpAuthState.Authorized, access.State);
+        Assert.Equal(InProcessOAuthMcpServer.AccessToken, access.AccessToken);
+
+        // It really did try, which is what makes this a grace period rather than a margin quietly ignored — the next
+        // call tries again, and one of them lands long before the credential runs out.
+        Assert.True(server.RefreshAttempts >= 1);
+    }
+
+    [Fact]
+    public async Task Acquire_WhenTheGraceRanOutAndTheEndpointIsStillFailing_StopsServingRatherThanPretending()
+    {
+        // The other end of the same grace period. One minute left is inside what a call needs to survive its own
+        // round trip, so there is nothing honest left to hand over — and an agent told "send it again" while the
+        // credential is genuinely dying would keep sending it into the same wall.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        server.FailNextRefreshes(5);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
+
+        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
+
+        // A 500 from the token endpoint is not the authorization server declaring the grant dead, so it must not be
+        // reported as one (AC-646) — the agent is told to send it again, not to go and sign in.
+        Assert.Equal(McpOAuthAttentionReason.RenewalCouldNotBeConfirmed, access.Reason);
+    }
+
+    [Fact]
+    public async Task AcquireForSession_WhenTheTokenEndpointIsHavingABadMinute_StillRefusesATokenerThatWillNotOutlastTheSession()
+    {
+        // The asymmetry, pinned: the same failure that a single call rides out must stop a session start. This
+        // answer goes into a config the session reads once and holds for hours, so a token with half an hour left is
+        // the session that loses its server halfway through — which is the whole of AC-524.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        server.FailNextRefreshes(5);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.AcquireForSessionAsync(_Server(server.Url));
+
+        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
+    }
+
+    [Fact]
     public async Task RenewRejected_ForATokenTheServerRefuses_RenewsThroughTheRealSdk_NotJustTheClock()
     {
         // The third route into the same method, and the only one whose renewal does not come from the margin at all:

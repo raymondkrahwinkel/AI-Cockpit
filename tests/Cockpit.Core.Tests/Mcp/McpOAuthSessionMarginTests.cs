@@ -105,7 +105,11 @@ public class McpOAuthSessionMarginTests
 
         await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
         await coordinator.AcquireAsync(_Server(), interactive: false);
-        Assert.Equal(TimeSpan.FromMinutes(2), authorizer.LastRenewalMargin);
+
+        // Ten, not two: on the request path the number handed over is when renewing *starts*, which is deliberately
+        // earlier than the two minutes a call needs to survive its own round trip. The gap between them is the grace
+        // period in which a failing token endpoint is retried while calls carry on being served.
+        Assert.Equal(TimeSpan.FromMinutes(10), authorizer.LastRenewalMargin);
 
         // AC-771: the margin decides whether a renewal is wanted *and* whether the SDK performs one, and the SDK is
         // the only one of the two that can act on it. A margin that stops here is a coordinator asking for renewals
