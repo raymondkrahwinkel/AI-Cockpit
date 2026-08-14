@@ -100,20 +100,6 @@
   .btn.sm{padding:4px 10px;font-size:11.5px}
   .btn.tiny{padding:4px 9px;font-size:11px}
 
-  /* --- P1: split layout met live preview --- */
-  .split{display:flex;gap:0}
-  .split-form{flex:1 1 62%;min-width:0}
-  .split-preview{flex:0 0 34%;background:var(--secondary);border-left:1px solid var(--hairline);
-                 padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:10px}
-  .split-preview .pv-label{font-size:10.5px;color:var(--text-faint);text-transform:uppercase;
-                            letter-spacing:.05em;align-self:flex-start}
-  .card{width:100%;max-width:230px;background:var(--panel);border:1px solid var(--hairline);
-        border-radius:var(--panel-r);padding:14px}
-  .card-h{display:flex;align-items:center;gap:10px}
-  .card-n{font-size:14.5px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .card-d{font-size:12px;color:var(--text-2);margin:9px 0 0}
-  .btn.full{width:100%;margin-top:11px}
-
   /* --- native <details> als accordion — geen JS --- */
   details.advanced{border:1px solid var(--hairline);border-radius:var(--panel-r);background:var(--secondary);
                    padding:0;margin-top:4px}
@@ -147,6 +133,11 @@ native HTML-element — het klapt hieronder écht open/dicht, geen JavaScript. I
   v1-afbakening. Onderaan een aanbeveling voor hoe dat op te knippen.
 </div>
 
+<div class="banner">
+  <b>Update — Raymond koos P1, zonder het preview-paneel.</b> De live-preview uit de eerste versie van dit
+  voorstel is geschrapt; P1 is nu alleen de Basics/Advanced-vouw, één kolom, geen splitsing.
+</div>
+
 <hr>
 
 <h2><span class="n">0</span>Wat er nu mis is, kort</h2>
@@ -159,102 +150,85 @@ native HTML-element — het klapt hieronder écht open/dicht, geen JavaScript. I
 
 <hr>
 
-<h2><span class="n">1</span>Voorstel P1 — Basics altijd zichtbaar, de rest achter één Advanced-vouw</h2>
+<h2><span class="n">1</span>Voorstel P1 — Basics altijd zichtbaar, de rest achter één Advanced-vouw <span class="tag win">gekozen</span></h2>
 <p class="note">Zelfde zes secties, andere volgorde van zichtbaarheid: <b>Basics</b> (Name, Logo, Category,
 Description, Folder, Profile) blijft altijd open — dat is wat elk project nodig heeft. Alles wat er in de praktijk
 zelden aangeraakt wordt (Behaviour, Where it is tracked, Memory/instructions/reference voorbij de eerste
-Memory-rij, worktree-isolatie, MCP overlay) valt onder één <code>&lt;details&gt;</code>-vouw, dicht bij
-openen. Erbij: een live-preview van de kaart naast het formulier, zodat "Facturen" meteen zichtbaar wordt als de
-kaart die een collega straks ziet.</p>
+Memory-rij, worktree-isolatie, MCP overlay) valt onder één <code>&lt;details&gt;</code>-vouw, dicht bij openen.</p>
 
-<div class="win" style="max-width:900px">
+<div class="win" style="max-width:640px">
   <div class="win-title"><b>Facturen</b><span class="win-sub">Edit project</span></div>
-  <div class="split">
-    <div class="split-form">
-      <div class="fdlg" style="padding-right:16px">
-        <div class="fsec">
-          <div class="fsec-h">Basics</div><div class="fsec-hr"></div>
-          <div class="frow">
-            <div class="fcol">
-              <div class="flabel">Name *</div>
-              <div class="fhint">What you call this project.</div>
-              <div class="finput">Facturen</div>
-            </div>
-            <div class="fcol" style="flex:0 0 200px">
-              <div class="flabel">Logo</div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <span class="logo g sm" style="display:flex;align-items:center;justify-content:center">FA</span>
-                <span class="btn tiny">Choose…</span>
-              </div>
-            </div>
-          </div>
-          <div class="fcol" style="margin-bottom:14px">
-            <div class="flabel">Category</div>
-            <div class="finput">Work</div>
-            <div class="chipset"><span class="fchip on">Work</span><span class="fchip">Privé</span></div>
-          </div>
-          <div class="fcol" style="margin-bottom:14px">
-            <div class="flabel">Description</div>
-            <div class="fhint">What a colleague reads on its card.</div>
-            <div class="finput area">Inkomende facturen lezen en klaarzetten voor de boekhouding.</div>
-          </div>
-          <div class="fcol" style="margin-bottom:14px">
-            <div class="flabel">Folder</div>
-            <div class="fhint">Where its sessions start. Leave empty for a project without files of its own.</div>
-            <div style="display:flex;gap:6px">
-              <div class="finput" style="flex:1">D:\Work\facturen</div>
-              <span class="btn tiny">Choose…</span>
-            </div>
-          </div>
-          <div class="fcol">
-            <div class="flabel">Profile</div>
-            <div class="fhint">Which profile starts by default.</div>
-            <div class="fselect">Backoffice assistant<span>▾</span></div>
+  <div class="fdlg">
+    <div class="fsec">
+      <div class="fsec-h">Basics</div><div class="fsec-hr"></div>
+      <div class="frow">
+        <div class="fcol">
+          <div class="flabel">Name *</div>
+          <div class="fhint">What you call this project.</div>
+          <div class="finput">Facturen</div>
+        </div>
+        <div class="fcol" style="flex:0 0 200px">
+          <div class="flabel">Logo</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="logo g sm" style="display:flex;align-items:center;justify-content:center">FA</span>
+            <span class="btn tiny">Choose…</span>
           </div>
         </div>
-
-        <details class="advanced">
-          <summary>Advanced <span class="adv-count">tracking, memory, worktree, MCP — 4 items</span></summary>
-          <div class="adv-body">
-            <div class="fsec" style="margin-top:8px">
-              <div class="flabel">Behaviour</div>
-              <div class="fhint">Optional — how should the profile behave here?</div>
-              <div class="finput area">Controleer BTW-nummers voordat je een factuur goedkeurt.</div>
-            </div>
-            <div class="fsec">
-              <div class="flabel">Where it is tracked</div>
-              <div class="fselect">AC — AI-Cockpit<span>▾</span></div>
-            </div>
-            <div class="fsec">
-              <div class="flabel">Memory, instructions and reference <span class="origin shared">◆ Shared</span></div>
-              <div class="fselect" style="max-width:220px;margin-bottom:4px">Depot <span>▾</span></div>
-              <div class="finput">depot:cockpit</div>
-              <span class="btn tiny" style="margin-top:6px">+ Add row</span>
-            </div>
-            <div class="fsec">
-              <span class="checkline" style="font-size:12px"><span class="bx"></span>Isolate new sessions in a git worktree</span>
-            </div>
-            <div class="fsec" style="margin-bottom:0">
-              <div class="flabel">MCP overlay</div>
-              <div class="mcprow"><span class="checkline"><span class="bx on"></span>filesystem</span></div>
-              <div class="mcprow"><span class="checkline"><span class="bx on"></span>youtrack</span></div>
-              <div class="mcprow"><span class="checkline"><span class="bx"></span>docker</span></div>
-            </div>
-          </div>
-        </details>
+      </div>
+      <div class="fcol" style="margin-bottom:14px">
+        <div class="flabel">Category</div>
+        <div class="finput">Work</div>
+        <div class="chipset"><span class="fchip on">Work</span><span class="fchip">Privé</span></div>
+      </div>
+      <div class="fcol" style="margin-bottom:14px">
+        <div class="flabel">Description</div>
+        <div class="fhint">What a colleague reads on its card.</div>
+        <div class="finput area">Inkomende facturen lezen en klaarzetten voor de boekhouding.</div>
+      </div>
+      <div class="fcol" style="margin-bottom:14px">
+        <div class="flabel">Folder</div>
+        <div class="fhint">Where its sessions start. Leave empty for a project without files of its own.</div>
+        <div style="display:flex;gap:6px">
+          <div class="finput" style="flex:1">D:\Work\facturen</div>
+          <span class="btn tiny">Choose…</span>
+        </div>
+      </div>
+      <div class="fcol">
+        <div class="flabel">Profile</div>
+        <div class="fhint">Which profile starts by default.</div>
+        <div class="fselect">Backoffice assistant<span>▾</span></div>
       </div>
     </div>
 
-    <div class="split-preview">
-      <span class="pv-label">Preview</span>
-      <div class="card">
-        <div class="card-h"><span class="logo g sm" style="display:flex;align-items:center;justify-content:center">FA</span><span class="card-n">Facturen</span></div>
-        <p class="card-d">Inkomende facturen lezen en klaarzetten voor de boekhouding.</p>
-        <span class="btn p full">▶ Start</span>
+    <details class="advanced">
+      <summary>Advanced <span class="adv-count">tracking, memory, worktree, MCP — 4 items</span></summary>
+      <div class="adv-body">
+        <div class="fsec" style="margin-top:8px">
+          <div class="flabel">Behaviour</div>
+          <div class="fhint">Optional — how should the profile behave here?</div>
+          <div class="finput area">Controleer BTW-nummers voordat je een factuur goedkeurt.</div>
+        </div>
+        <div class="fsec">
+          <div class="flabel">Where it is tracked</div>
+          <div class="fselect">AC — AI-Cockpit<span>▾</span></div>
+        </div>
+        <div class="fsec">
+          <div class="flabel">Memory, instructions and reference <span class="origin shared">◆ Shared</span></div>
+          <div class="fselect" style="max-width:220px;margin-bottom:4px">Depot <span>▾</span></div>
+          <div class="finput">depot:cockpit</div>
+          <span class="btn tiny" style="margin-top:6px">+ Add row</span>
+        </div>
+        <div class="fsec">
+          <span class="checkline" style="font-size:12px"><span class="bx"></span>Isolate new sessions in a git worktree</span>
+        </div>
+        <div class="fsec" style="margin-bottom:0">
+          <div class="flabel">MCP overlay</div>
+          <div class="mcprow"><span class="checkline"><span class="bx on"></span>filesystem</span></div>
+          <div class="mcprow"><span class="checkline"><span class="bx on"></span>youtrack</span></div>
+          <div class="mcprow"><span class="checkline"><span class="bx"></span>docker</span></div>
+        </div>
       </div>
-      <p class="note" style="text-align:center;font-size:11px;margin:6px 0 0">Zo ziet de kaart eruit op de
-      Projects-pagina. In de mockup statisch — in Avalonia bindt dit live mee met de velden links.</p>
-    </div>
+    </details>
   </div>
   <div class="footer">
     <span style="font-size:11px;color:var(--text-2)">* required</span>
@@ -263,7 +237,8 @@ kaart die een collega straks ziet.</p>
 </div>
 <p class="cap">Klik "Advanced" — dit is een echte <code>&lt;details&gt;</code>, hij klapt open/dicht.</p>
 <p class="note" style="margin-top:14px"><span class="tag win">+</span> Zes secties worden twee: wat iedereen
-nodig heeft, en wat bijna niemand nodig heeft. De preview maakt het formulier minder abstract.<br>
+nodig heeft, en wat bijna niemand nodig heeft. Eén kolom, geen splitsing — het scherm hoeft niet breder te worden
+dan het vandaag is.<br>
 <span class="tag cost">−</span> Wie wél vaak in "Advanced" moet zijn (een developer die MCP-servers per project
 instelt) klikt voortaan één keer extra open. Onthoudt de vouwstand niet standaard tussen projecten — zou wel
 kunnen als dat in de praktijk irriteert.</p>
@@ -322,10 +297,10 @@ kijkt. Zelfde soort tabel als bij de Projects-pagina, nu voor dit scherm.</p>
 
 <h2><span class="n">4</span>Aanbeveling</h2>
 <div class="verdict">
-  <b>Beide, en beide zijn klein genoeg om los te leveren.</b> P1 (Basics/Advanced + preview) is de goedkoopste
-  winst: geen nieuw scherm, alleen een <code>Expander</code> om vier secties heen en een preview-paneel dat het
-  bestaande kaart-uiterlijk hergebruikt. P2 (quick-add) is een nieuw, klein venster maar hooguit 60 regels AXAML —
-  het roept gewoon het bestaande <code>ProjectDialogViewModel</code> aan met minder velden zichtbaar, geen nieuwe
+  <b>P1 gekozen (zonder preview), P2 blijft een optie ernaast.</b> P1 is de goedkoopste winst: geen nieuw scherm,
+  geen nieuwe kolom, alleen een <code>Expander</code> om vier secties heen — één regel markup meer dan het
+  bestaande scherm al had. P2 (quick-add) is een nieuw, klein venster maar hooguit 60 regels AXAML — het roept
+  gewoon het bestaande <code>ProjectDialogViewModel</code> aan met minder velden zichtbaar, geen nieuwe
   save-logica.
   <br><br>
   <b>Scope-voorstel:</b> dit hoort niet in AC-772's v1 (die sluit structurele wijzigingen aan dit scherm nu juist
