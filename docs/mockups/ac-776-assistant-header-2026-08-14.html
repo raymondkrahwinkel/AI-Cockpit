@@ -140,6 +140,11 @@
   .logrow b{color:var(--text);font-size:11px}
   .tip{position:relative;display:inline-block;background:var(--chrome);border:1px solid var(--hairline);
        border-radius:6px;padding:4px 8px;font-size:10.5px;color:var(--text-2);margin:6px 0 0}
+  /* Een echte Avalonia-tooltip, nagetekend: chrome-vlak, hairline, geen schaduwtoeter. */
+  .tipbox{display:inline-block;background:var(--chrome);border:1px solid var(--hairline);
+          border-radius:6px;padding:6px 10px;margin:8px 0 0;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  .tipbox .tt{font-size:11.5px;font-weight:600;color:var(--text);line-height:1.35}
+  .tipbox .ts{font-size:10.5px;color:var(--text-2);line-height:1.35}
 </style>
 </head>
 <body>
@@ -363,9 +368,9 @@ zelf niets te doen bij een klik.</p>
       </div>
       <div class="pill">
         <div class="seg ovf">⋯</div><div class="div"></div>
-        <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
-        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
-        <div class="seg nm"><span class="dot done"></span>ci-run</div>
+        <div class="seg nm" title="AC-774 grooming&#10;Busy · Review-desk&#10;transcript virtualiseren"><span class="dot busy"></span>AC-774</div><div class="div"></div>
+        <div class="seg nm" title="depot-fix&#10;Waiting for input · Cockpit-desk"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm" title="ci-run&#10;Done · Cockpit-desk"><span class="dot done"></span>ci-run</div>
       </div>
     </div>
     <div class="transcript">… transcript …</div>
@@ -391,8 +396,8 @@ De volgorde is niet willekeurig: wat aandacht vraagt staat rechts, tegen de rand
       </div>
       <div class="pill">
         <div class="seg ovf">⋯3</div><div class="div"></div>
-        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
-        <div class="seg nm"><span class="dot busy"></span>AC-774</div>
+        <div class="seg nm" title="depot-fix&#10;Waiting for input · Cockpit-desk"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm" title="AC-774 grooming&#10;Busy · Review-desk&#10;transcript virtualiseren"><span class="dot busy"></span>AC-774</div>
       </div>
     </div>
     <div class="transcript">… transcript …</div>
@@ -416,7 +421,7 @@ wacht op jou".</p>
       </div>
       <div class="pill">
         <div class="seg ovf">⋯5</div><div class="div"></div>
-        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div>
+        <div class="seg nm" title="depot-fix&#10;Waiting for input · Cockpit-desk"><span class="dot waiting"></span>depot-fix</div>
       </div>
     </div>
     <div class="transcript">… transcript …</div>
@@ -495,9 +500,9 @@ Zo staat het volledige beeld er in één keer, in plaats van als los paneel erna
           </div>
         </details>
         <div class="div"></div>
-        <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
-        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
-        <div class="seg nm"><span class="dot done"></span>ci-run</div>
+        <div class="seg nm" title="AC-774 grooming&#10;Busy · Review-desk&#10;transcript virtualiseren"><span class="dot busy"></span>AC-774</div><div class="div"></div>
+        <div class="seg nm" title="depot-fix&#10;Waiting for input · Cockpit-desk"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm" title="ci-run&#10;Done · Cockpit-desk"><span class="dot done"></span>ci-run</div>
       </div>
     </div>
     <div class="transcript" style="min-height:300px">… transcript …</div>
@@ -505,6 +510,7 @@ Zo staat het volledige beeld er in één keer, in plaats van als los paneel erna
 </div>
 <p class="cap">De flyout hangt aan de <code>⋯</code>, links uitgelijnd eronder — <code>Placement="BottomEdgeAlignedLeft"</code>.
 De drie zichtbare segmenten staan er ook nog: de pill blijft leesbaar terwijl de lijst openstaat.</p>
+
 </div>
 <div class="col">
 <p class="note"><b>Past het niet? Tweede regel</b> — en dan is er ineens plek voor álle namen, in plaats van voor
@@ -541,9 +547,9 @@ De drie zichtbare segmenten staan er ook nog: de pill blijft leesbaar terwijl de
           </div>
         </details>
         <div class="div"></div>
-        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
-        <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
-        <div class="seg nm"><span class="dot done"></span>ci-run</div>
+        <div class="seg nm" title="depot-fix&#10;Waiting for input · Cockpit-desk"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm" title="AC-774 grooming&#10;Busy · Review-desk&#10;transcript virtualiseren"><span class="dot busy"></span>AC-774</div><div class="div"></div>
+        <div class="seg nm" title="ci-run&#10;Done · Cockpit-desk"><span class="dot done"></span>ci-run</div>
       </div>
     </div>
     <div class="transcript">… transcript …</div>
@@ -553,7 +559,31 @@ De drie zichtbare segmenten staan er ook nog: de pill blijft leesbaar terwijl de
 </div>
 </div>
 
-<p class="note" style="margin-top:16px"><b>Wat je inlevert, en wat je terugkrijgt.</b> Eén ding: een
+<h3 style="margin-top:28px">Hover: een tooltip per sessie</h3>
+<p class="note">Ook gratis: de usage-segmenten hebben er al een — <code>ToolTip.Tip="{Binding Tooltip}"</code> op
+regel 198 van hetzelfde bestand. Hetzelfde op een sessiesegment kost één attribuut. <b>Hover in deze mockup over een
+segment hierboven</b> om het te proberen; hiernaast staat wat er dan komt.</p>
+<div class="cols">
+<div class="col" style="min-width:200px;flex:0 0 auto">
+  <div class="tipbox">
+    <div class="tt">AC-774 grooming</div>
+    <div class="ts">Busy · Review-desk</div>
+    <div class="ts">"transcript virtualiseren"</div>
+  </div>
+  <p class="cap">Hover op <span class="dot busy" style="display:inline-block;vertical-align:0"></span> AC-774</p>
+</div>
+<div class="col">
+<p class="note" style="margin:0 0 10px">Drie regels, in deze volgorde: <b>de volledige naam</b> — de pill trimt hem
+als hij niet past, de tooltip herstelt hem —, dan <b>status en desk</b>, dan de <b>statusline</b> die de sessie zelf
+zet met <code>set_status</code>. Die derde regel valt weg bij een sessie die er geen heeft; de tooltip is dan twee
+regels, niet één lege.</p>
+<p class="note" style="margin:0">Dat de flyout hiernaast nog bestaansrecht houdt is geen dubbeling: de tooltip
+beantwoordt één sessie, de flyout toont ze allemaal tegelijk — inclusief de sessies die op een smal venster
+helemaal niet in de pill staan. Hoveren over iets dat er niet is, kan niet.</p>
+</div>
+</div>
+
+<p class="note" style="margin-top:22px"><b>Wat je inlevert, en wat je terugkrijgt.</b> Eén ding: een
 <code>WrapPanel</code> pakt links. De sessie-pill komt dus tégen de usage-pill aan te staan in plaats van tegen de
 rechterrand — het "van rechts naar links" uit A4 sneuvelt op de brede regel. Daar staat veel tegenover:</p>
 <table>
