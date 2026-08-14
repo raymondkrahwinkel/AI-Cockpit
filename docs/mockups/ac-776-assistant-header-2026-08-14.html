@@ -75,7 +75,10 @@
   .pillrow.split{justify-content:space-between;gap:8px}
   .pill .seg.nm{gap:5px;color:var(--text-2)}
   .pill .seg .dot{margin-right:5px}
-  .pill .seg.ovf{color:var(--text-faint);letter-spacing:1px}
+  /* .ovf is óók de losse chip in A3 (mét rand); binnen een pill is het een gewoon segment —
+     alleen de 1px-divider scheidt het van zijn buurman, geen tweede rand op een rand. */
+  .pill .seg.ovf{border:0;border-radius:0;background:none;padding:2px 8px;
+                 color:var(--text-faint);letter-spacing:1px}
   .pill{display:inline-flex;align-items:stretch;background:var(--secondary);border:1px solid var(--hairline);
         border-radius:var(--pill-r);overflow:hidden}
   .seg{font-size:10px;padding:2px 8px;display:flex;align-items:center;color:var(--text-2);white-space:nowrap}
