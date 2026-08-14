@@ -261,11 +261,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // Backs the flyout's empty-state line. Raised by hand in `LoadSpawnLogAsync` — the load runs once per open rather than being observed continuously, so there is nothing to watch.
     public bool HasSpawnLogEntries => SpawnLogEntries.Count > 0;
 
-    // AC-776: every live agent session — exactly what `list_sessions` reports (`AssistantReadGateway._ListSessions`'s
-    // own filter, reused rather than copied), rebuilt whenever a session starts or stops. Holds the real
-    // `SessionPanelViewModel` instances rather than a row DTO or a new wrapper view model, so the header's
-    // segments bind directly to them and stay live off the same `PropertyChanged` the sidebar already fires
-    // (`OnSessionStatusChanged`) — nothing here has to re-announce a status change itself.
+    // AC-776: every live agent session, filtered like AssistantReadGateway._ListSessions and rebuilt on
+    // start/stop — real SessionPanelViewModel instances, not a DTO, so the header binds to them directly.
     public ObservableCollection<SessionPanelViewModel> LiveSessions { get; } = new();
 
     // Whether the session pill has anything to show — its own flag (AC-776 pitfall 3), not borrowed from the
@@ -273,10 +270,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // not reported usage yet.
     public bool HasLiveSessions => LiveSessions.Count > 0;
 
-    // A session's desk, by pane id, for the tooltip and the session-list flyout — `SessionPanelViewModel` itself
-    // only carries the raw `WorkspaceId`, not a display name, so this is resolved once per rebuild the same way
-    // `AssistantReadGateway._ListSessions` resolves it (`SessionWorkspacePlacement` + the workspace settings list)
-    // rather than adding a workspace-name property to a view model every session kind shares.
+    // AC-776: resolved once per rebuild via AssistantReadGateway._ListSessions's own workspace-lookup — see
+    // the ticket for why this isn't a property on SessionPanelViewModel itself.
     public IReadOnlyDictionary<string, string> DeskNameByPaneId
     {
         get => _deskNameByPaneId;

@@ -3,10 +3,8 @@ using Avalonia.Data.Converters;
 
 namespace Cockpit.App.Converters;
 
-// AC-776: a session's desk, for the session-status pill's flyout list and tooltip. Two bound values because the
-// name lives in `AssistantChatViewModel.DeskNameByPaneId` (resolved once per rebuild, see that property's remarks)
-// while the row itself is a `SessionPanelViewModel`, which only carries the raw `PaneId` — a plain single-value
-// converter has no way to reach the dictionary.
+// AC-776: two bound values because the desk name lives in AssistantChatViewModel.DeskNameByPaneId, keyed by the
+// row's PaneId — see the ticket for why.
 public sealed class SessionDeskNameConverter : IMultiValueConverter
 {
     public static readonly SessionDeskNameConverter Instance = new();

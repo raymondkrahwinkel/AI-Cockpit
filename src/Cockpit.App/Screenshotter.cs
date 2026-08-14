@@ -2048,11 +2048,8 @@ internal static class Screenshotter
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 
-    // AC-776 Deel 1: the session-status pill, one segment per live session next to the usage pill. A real
-    // CockpitViewModel here (not the lightweight _FakeAssistantSessionHost the other scenes get away with) —
-    // the pill reads CockpitViewModel.Sessions directly, the same live collection the sidebar itself renders,
-    // so a fake host has nothing for it to bind to. `sessionCount` covers both the "all statuses" scene (one of
-    // each) and the narrow-wrap scene (enough long names to force the WrapPanel's second line).
+    // AC-776: a real CockpitViewModel, not the usual fake host — the pill reads CockpitViewModel.Sessions
+    // directly. `sessionCount`/`width` cover both the all-statuses scene and the narrow-wrap scene.
     private static AssistantChatWindow _AssistantChatSessionPill(int sessionCount, double? width = null)
     {
         var cockpit = new CockpitViewModel();
