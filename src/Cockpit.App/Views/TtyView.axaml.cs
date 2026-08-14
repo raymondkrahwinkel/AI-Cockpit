@@ -1055,6 +1055,11 @@ public partial class TtyView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PromptSink = null;
+            // OnDataContextChanged's matching unsubscribes never run on a normal close, so this is the only place
+            // these three ever drop (AC-758).
+            _viewModel.LaunchRequested -= OnLaunchRequested;
+            _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
+            _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
         _pty?.Dispose();
