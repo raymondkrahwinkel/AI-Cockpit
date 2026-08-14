@@ -263,6 +263,19 @@ public class AssistantSessionHostTests
         Assert.DoesNotContain("off-server", selection);
     }
 
+    // AC-766: this is the mount-side half of the fix — a plugin-provided server the catalog now offers unscoped
+    // (Depot, say) is not marked ProjectLinked there (no single project points at it in that call), and the
+    // no-selection fan-out must carry it through anyway; ProjectLinked is not one of the things it checks.
+    [Fact]
+    public void McpSelection_WithNoSavedSelection_IncludesAPluginServerNotTiedToAnyProject()
+    {
+        var selection = AssistantSessionHost.McpSelection(_Profile(), [
+            new McpServerConfig { Name = "Depot: wispslate", Enabled = true, ProjectLinked = false },
+        ]);
+
+        Assert.Contains("Depot: wispslate", selection);
+    }
+
     [Fact]
     public void McpSelection_NeverWidensToOtherInternalEndpoints()
     {
