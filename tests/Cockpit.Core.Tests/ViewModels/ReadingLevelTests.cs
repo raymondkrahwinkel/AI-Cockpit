@@ -183,6 +183,49 @@ public class ReadingLevelTests
     }
 
     [Fact]
+    public void Focus_ASecondRunGrowingRowByRow_LeavesTheEarlierRunGrouped()
+    {
+        // Rows are only re-folded around where they land (AC-787), so a run forming late in a long transcript must
+        // not cost the earlier ones their grouping.
+        var vm = NewSession();
+        vm.ReadingLevel = ReadingLevel.Focus;
+        vm.Transcript.Add(AutoTool("Read"));
+        vm.Transcript.Add(AutoTool("Bash"));
+        vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "thinking out loud"));
+        vm.Transcript.Add(AutoTool("Grep"));
+        vm.Transcript.Add(AutoTool("Glob"));
+        vm.Transcript.Add(AutoTool("Edit"));
+
+        Assert.True(vm.Transcript[0].IsGroupAnchor);
+        Assert.Equal(2, vm.Transcript[0].GroupCount);
+        Assert.True(vm.Transcript[1].IsInGroup);
+        Assert.False(vm.Transcript[2].IsInGroup);
+        Assert.True(vm.Transcript[3].IsGroupAnchor);
+        Assert.Equal(3, vm.Transcript[3].GroupCount);
+        Assert.All(vm.Transcript.Skip(3), row => Assert.True(row.IsInGroup));
+    }
+
+    [Fact]
+    public void Focus_ARowThatStopsAskingForApproval_JoinsTheRunsEitherSideOfIt()
+    {
+        // The row that changed is the one re-folded, so the rows around it — a run each side, previously broken
+        // apart by this one — have to be taken in with it.
+        var vm = NewSession();
+        vm.ReadingLevel = ReadingLevel.Focus;
+        vm.Transcript.Add(AutoTool("Bash"));
+        var consent = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "edit") { ToolName = "Edit", IsPendingPermission = true };
+        vm.Transcript.Add(consent);
+        vm.Transcript.Add(AutoTool("Grep"));
+        Assert.All(vm.Transcript, row => Assert.False(row.IsInGroup));
+
+        consent.IsPendingPermission = false;
+
+        Assert.True(vm.Transcript[0].IsGroupAnchor);
+        Assert.Equal(3, vm.Transcript[0].GroupCount);
+        Assert.All(vm.Transcript, row => Assert.True(row.IsInGroup));
+    }
+
+    [Fact]
     public async Task StartConfigured_SeedsTheReadingLevelFromTheProfileDefault()
     {
         var profile = Profile with { Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty) { DefaultReadingLevel = ReadingLevel.Simple } };
