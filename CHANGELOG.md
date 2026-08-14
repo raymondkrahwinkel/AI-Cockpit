@@ -198,6 +198,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: launching a new TTY session, and closing the main window, could freeze the whole app for a few seconds —
+  both were doing blocking work (an MCP token renewal, a settings write) directly on the UI thread. Both now run
+  off it, so neither can stall the interface anymore.
+- fixed: a closed session pane's memory (its whole rendered view, not just its data) could be kept alive forever —
+  the pane stayed subscribed to its own session for events it never dropped on close. Closing a session now lets
+  it, and everything it drew, actually be freed.
 - fixed: a signed-in MCP server no longer refuses calls for a couple of minutes near the end of every access
   token's life. The cockpit renews a token while it still has a margin left, but the renewal itself only ran
   once the token was dead to the second — so in the window between the two, an ordinary tool call came back as
