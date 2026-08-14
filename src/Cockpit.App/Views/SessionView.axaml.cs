@@ -210,26 +210,16 @@ public partial class SessionView : UserControl
     // ScrollChanged, so following it lands right back on a fresh estimate — measured, that is a layout loop the
     // manager gives up on ("Infinite layout loop detected"). Asking for the last row terminates instead: once it
     // is in view the guard above says so and this does nothing.
-    // The last row that is actually on screen, which is not the last row. A reading level hides rows: at Focus the
-    // steps of a folded run collapse behind their anchor, and the newest row is then very often one of them.
+    // The last row, which is now also the last row the reading level shows: the transcript binds to
+    // `SessionViewModel.VisibleTranscript`, so a folded step or a Thinking row is not an item here at all.
     //
-    // Following a hidden row cannot terminate. It has no height to bring into view, so the follow is never
-    // satisfied, asks for it again on the next scroll change, and each ask realises the row and its template
-    // afresh — read off a hung session's stacks as ScrollIntoView → Measure → ApplyTemplate → styling, over and
-    // over. That is the Focus pane freezing, and why Developer never froze: there, every row is visible and the
-    // follow converges on the first try.
-    private int _NewestVisibleIndex()
-    {
-        for (var i = TranscriptItems.ItemCount - 1; i >= 0; i--)
-        {
-            if (TranscriptItems.ItemsView[i] is TranscriptEntryViewModel { IsRowVisible: true })
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
+    // It used to be one, at zero height, and following a hidden row cannot terminate: it has no height to bring
+    // into view, so the follow was never satisfied, asked again on the next scroll change, and each ask realised
+    // the row and its template afresh — read off a hung session's stacks as ScrollIntoView → Measure →
+    // ApplyTemplate → styling, over and over. That was the Focus pane freezing (AC-611), and why Developer never
+    // froze: there every row was visible and the follow converged on the first try. Filtering the collection
+    // removes the case rather than steering around it.
+    private int _NewestVisibleIndex() => TranscriptItems.ItemCount - 1;
 
     private void _FollowNewest()
     {

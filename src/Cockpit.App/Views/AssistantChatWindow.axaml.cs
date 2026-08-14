@@ -50,21 +50,10 @@ public partial class AssistantChatWindow : Window
     // mistaken for a reason to re-enter (SessionView._following, AC-528).
     private bool _following;
 
-    // The last row the reading level actually shows (SessionView._NewestVisibleIndex, AC-621): folded tool calls
-    // and Thinking rows stay in the collection but render hidden below Developer level, and following one of
-    // those can never terminate — it has no height to bring into view.
-    private int _NewestVisibleIndex()
-    {
-        for (var i = TranscriptItems.ItemCount - 1; i >= 0; i--)
-        {
-            if (TranscriptItems.ItemsView[i] is TranscriptEntryViewModel { IsRowVisible: true })
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
+    // The last row (SessionView._NewestVisibleIndex): this window binds to `Session.VisibleTranscript` too, so a
+    // folded tool call or a Thinking row is not an item here — following one of those could never terminate,
+    // having no height to bring into view.
+    private int _NewestVisibleIndex() => TranscriptItems.ItemCount - 1;
 
     // AC-777: ScrollToEnd() jumped to Extent, which a virtualizing panel only estimates until the next arrange —
     // see ticket for the full analysis.
