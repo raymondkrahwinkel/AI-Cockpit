@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Services;
+using Cockpit.App;
 using Cockpit.App.ViewModels;
 using Cockpit.Infrastructure;
 
@@ -23,10 +24,7 @@ public class VoicePushToTalkCoordinatorDependencyInjectionTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
 
-        services.AddTransient<Func<SessionViewModel>>(
-            provider => () => provider.GetRequiredService<SessionViewModel>());
-        services.AddTransient<Func<TtyViewModel>>(
-            provider => () => provider.GetRequiredService<TtyViewModel>());
+        services.AddSessionPanes();
 
         return services.BuildServiceProvider();
     }

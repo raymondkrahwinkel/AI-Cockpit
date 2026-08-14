@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Services;
+using Cockpit.App;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
@@ -29,10 +30,7 @@ public class LiveSessionRegistryDependencyInjectionTests
             services.AddSingleton(extraSource);
         }
 
-        services.AddTransient<Func<SessionViewModel>>(
-            provider => () => provider.GetRequiredService<SessionViewModel>());
-        services.AddTransient<Func<TtyViewModel>>(
-            provider => () => provider.GetRequiredService<TtyViewModel>());
+        services.AddSessionPanes();
 
         return services.BuildServiceProvider();
     }

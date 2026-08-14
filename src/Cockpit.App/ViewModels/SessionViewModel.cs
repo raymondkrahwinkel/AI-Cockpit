@@ -2962,13 +2962,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // never by blocking on it. Every caller today is already on it and takes the first branch; an off-thread one
         // would post rather than wait, because a blocking hop here sits in front of the child kill below and that
         // dependency on a live dispatcher is exactly what hung shutdown before (#32).
-        if (Dispatcher.UIThread.CheckAccess())
+        if (_eventQueue.HasWork)
         {
-            _eventQueue.Flush();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(_eventQueue.Flush);
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                _eventQueue.Flush();
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(_eventQueue.Flush);
+            }
         }
 
         if (_runtime is null)

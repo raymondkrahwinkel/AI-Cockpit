@@ -68,6 +68,11 @@ internal sealed class SessionEventQueue
         Interlocked.Exchange(ref _drainPending, 0);
     }
 
+    // Whether a flush would do anything. A pane that closes off the UI thread posts its flush, and a posted action
+    // holds the pane until the dispatcher gets to it — worth not asking for when there is nothing to apply and no
+    // flag to clear (AC-787).
+    public bool HasWork => !_pending.IsEmpty || Volatile.Read(ref _drainPending) != 0;
+
     // Takes one event from the runtime's pump thread and makes sure a drain is coming.
     public void Enqueue(SessionEvent evt)
     {

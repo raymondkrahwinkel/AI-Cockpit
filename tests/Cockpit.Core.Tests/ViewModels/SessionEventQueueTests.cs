@@ -39,6 +39,22 @@ public class SessionEventQueueTests
     }
 
     [Fact]
+    public void HasWork_IsFalseUntilSomethingIsQueued_AndClearsWithTheFlush()
+    {
+        // What a closing pane checks before posting a flush at a dispatcher: a posted action holds the pane until
+        // the dispatcher runs it, and an idle queue has nothing worth being held for (AC-787).
+        var pump = new ManualPump();
+        var queue = new SessionEventQueue(_ => { }, pump.Post);
+        Assert.False(queue.HasWork);
+
+        queue.Enqueue(Text("x", block: 0));
+        Assert.True(queue.HasWork);
+
+        queue.Flush();
+        Assert.False(queue.HasWork);
+    }
+
+    [Fact]
     public void Drain_AppliesEveryEnqueuedEvent_InArrivalOrder()
     {
         var pump = new ManualPump();

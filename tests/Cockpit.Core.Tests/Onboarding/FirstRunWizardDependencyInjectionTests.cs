@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Cockpit.App;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Abstractions;
@@ -25,10 +26,7 @@ public class FirstRunWizardDependencyInjectionTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
 
-        services.AddTransient<Func<SessionViewModel>>(
-            provider => () => provider.GetRequiredService<SessionViewModel>());
-        services.AddTransient<Func<TtyViewModel>>(
-            provider => () => provider.GetRequiredService<TtyViewModel>());
+        services.AddSessionPanes();
 
         configure?.Invoke(services);
 
