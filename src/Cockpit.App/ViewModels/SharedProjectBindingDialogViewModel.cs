@@ -165,7 +165,9 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // Resource rows already portable by shape — copied straight onto the new project, never shown or asked about here (AC-605's table: nothing to ask when it already travels).
     private readonly List<ProjectResource> _portableResources = [];
 
-    public string DialogTitle => $"Finish setting up — {ProjectName}";
+    // Named after the button that opens it (AC-772): the card says "Add to my projects…", so a window titled
+    // "Finish setting up" would read as having landed somewhere else.
+    public string DialogTitle => $"Add to my projects — {ProjectName}";
 
     public string Hint => $"This project comes from {SourceName}. Name, behaviour, MCP choice and memory are already set up — fill in what is yours.";
 

@@ -1,23 +1,31 @@
 using System.Collections.Specialized;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
-using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Controls;
 
-// Renders the plugin-registered Sessions-toolbar actions (`ICockpitHost.AddToolbarAction`, AC-91) as compact
-// icon buttons next to the workspace gear. Up to `InlineLimit` show inline; beyond that they collapse
+// Renders the registered toolbar actions (`ICockpitHost.AddToolbarAction`, AC-91) as compact buttons on the
+// workspace tab strip (AC-772), where they are reachable from every workspace type rather than only from a
+// Sessions workspace that already has a session in it. Up to `InlineLimit` show inline; beyond that they collapse
 // into a single overflow (⋯) button with a flyout, so the narrow strip never overflows. Contributes nothing and
-// takes no space when no plugin registers an action. Reads its `CockpitViewModel` from the inherited
-// `StyledElement.DataContext`, so it renders wherever that view model is in scope (incl. headless).
+// takes no space when nothing registers an action — which is what a fresh install without plugins looks like.
+// Reads its `CockpitViewModel` from the inherited `StyledElement.DataContext`, so it renders wherever that view
+// model is in scope (incl. headless).
 internal sealed class PluginToolbarHost : StackPanel
 {
     private const int InlineLimit = 3;
+
+    // Past this the label trims. Wide enough for "Depot servers", narrow enough that three of them still leave the
+    // tab strip its own room on a small window.
+    private const double LabelMaxWidth = 110;
+
     private CockpitViewModel? _cockpit;
 
     public PluginToolbarHost()
@@ -69,7 +77,7 @@ internal sealed class PluginToolbarHost : StackPanel
         {
             foreach (var action in actions)
             {
-                Children.Add(_IconButton(action.Action));
+                Children.Add(_IconButton(action));
             }
         }
         else
@@ -78,33 +86,58 @@ internal sealed class PluginToolbarHost : StackPanel
         }
     }
 
-    private static Button _IconButton(ToolbarAction action)
+    private Button _IconButton(PluginToolbarAction entry)
     {
-        // Default button chrome (like the workspace gear next to it) so it reads as a button, not a bare icon.
+        var action = entry.Action;
+
+        // Icon plus label, not a bare icon (AC-772): an icon alone on a strip that is now always on screen is a
+        // guess for anyone who did not install the plugin themselves. The label trims rather than pushes the tab
+        // strip aside, so a long title costs the toolbar width it has and no more.
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        content.Children.Add(new MaterialIcon
+        {
+            Kind = action.Icon ?? MaterialIconKind.PuzzleOutline,
+            Width = 14,
+            Height = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = action.Title,
+            MaxWidth = LabelMaxWidth,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        // Default button chrome (like the workspace gear) so it reads as a button, not a bare icon.
         var button = new Button
         {
             Padding = new Thickness(8, 4),
-            Content = new MaterialIcon { Kind = action.Icon ?? MaterialIconKind.PuzzleOutline, Width = 14, Height = 14 },
+            Content = content,
         };
+        // The tooltip carries the untrimmed title; the automation name is what a screen reader announces, which a
+        // tooltip on its own never reaches.
         ToolTip.SetTip(button, action.Title);
-        button.Click += async (_, _) => await _Invoke(action);
+        AutomationProperties.SetName(button, action.Title);
+        button.Click += async (_, _) => await _Invoke(entry);
         return button;
     }
 
-    private static Button _OverflowButton(IReadOnlyList<PluginToolbarAction> actions)
+    private Button _OverflowButton(IReadOnlyList<PluginToolbarAction> actions)
     {
         var button = new Button
         {
             Padding = new Thickness(8, 4),
             Content = new MaterialIcon { Kind = MaterialIconKind.DotsHorizontal, Width = 14, Height = 14 },
         };
-        ToolTip.SetTip(button, "Plugin actions");
+        ToolTip.SetTip(button, "More actions");
+        AutomationProperties.SetName(button, "More actions");
 
         var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight };
         var panel = new StackPanel { Spacing = 2, MinWidth = 200, Margin = new Thickness(4) };
         foreach (var action in actions)
         {
-            panel.Children.Add(_OverflowRow(action.Action, flyout));
+            panel.Children.Add(_OverflowRow(action, flyout));
         }
 
         flyout.Content = panel;
@@ -112,8 +145,9 @@ internal sealed class PluginToolbarHost : StackPanel
         return button;
     }
 
-    private static Button _OverflowRow(ToolbarAction action, Flyout flyout)
+    private Button _OverflowRow(PluginToolbarAction entry, Flyout flyout)
     {
+        var action = entry.Action;
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         content.Children.Add(new MaterialIcon { Kind = action.Icon ?? MaterialIconKind.PuzzleOutline, Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center });
         content.Children.Add(new TextBlock { Text = action.Title, VerticalAlignment = VerticalAlignment.Center });
@@ -125,23 +159,27 @@ internal sealed class PluginToolbarHost : StackPanel
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Content = content,
         };
+        AutomationProperties.SetName(row, action.Title);
         row.Click += async (_, _) =>
         {
             flyout.Hide();
-            await _Invoke(action);
+            await _Invoke(entry);
         };
         return row;
     }
 
-    private static async Task _Invoke(ToolbarAction action)
+    private async Task _Invoke(PluginToolbarAction entry)
     {
         try
         {
-            await action.OnInvoke();
+            await entry.Action.OnInvoke();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // Fail-soft: a plugin's toolbar action must not crash the cockpit UI.
+            // Fail-soft, but not silent (AC-772 criterion 6): the cockpit stays up, and the failure lands in
+            // PluginDiagnostics next to every other contribution failure, so the startup banner and the plugin
+            // manager can say which plugin broke instead of the operator seeing a button that does nothing.
+            _cockpit?.ReportToolbarActionFailure(entry.PluginId, entry.Action.Title, exception.Message);
         }
     }
 

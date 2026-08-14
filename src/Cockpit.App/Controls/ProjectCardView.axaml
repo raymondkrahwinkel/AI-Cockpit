@@ -1,0 +1,120 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:materialIcons="using:Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.ProjectCardView"
+             x:DataType="vm:ProjectCardViewModel">
+
+    <!-- One project as a card (AC-772). One control rather than a copy per screen: the Projects workspace and the
+         Manage-projects window drew the same card from two independent templates, so every language fix and every
+         layout change had to be made twice — and the two drifted apart in exactly the way ProjectLogoBadge was
+         extracted to stop. The buttons bind to `Actions` on the card itself, not to the surrounding view's data
+         context, which is what makes the control host-agnostic.
+
+         In rest the card offers three clickable things: the one button that carries on with this project, the share
+         action, and the ⋯. Everything else lives in that ⋯ — including the project's own information rows, which
+         are links and would otherwise blow the same budget. -->
+    <Border Width="278" Margin="8" Padding="16"
+            CornerRadius="{StaticResource CockpitPanelRadius}"
+            Background="{StaticResource CockpitPanelBgBrush}"
+            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+        <StackPanel Spacing="10">
+            <!-- The logo carries the recognition: a colleague finds their project by its picture before they have
+                 read a word. Without one the well shows the project's initial, so every card is the same shape
+                 either way. -->
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <controls:ProjectLogoBadge Grid.Column="0" Size="34" Margin="0,0,10,0"
+                                           LogoPath="{Binding Project.LogoPath}"
+                                           ProjectName="{Binding Project.Name}"
+                                           WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
+                <TextBlock Grid.Column="1" Text="{Binding Project.Name}" FontSize="15" FontWeight="SemiBold"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Column="2" Classes="Subtle" Padding="6,2" VerticalAlignment="Center"
+                        ToolTip.Tip="More for this project"
+                        AutomationProperties.Name="More for this project">
+                    <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="14" Height="14"/>
+                    <Button.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedRight">
+                            <StackPanel Spacing="2" MinWidth="220" Margin="4">
+                                <!-- AC-620: which connection this project is shared through. In the ⋯ rather than on
+                                     the card face, where it competed with the name for the same row. -->
+                                <TextBlock Text="{Binding OriginBadge}" FontSize="11" Margin="8,4"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Open folder"
+                                        ToolTip.ShowOnDisabled="True"
+                                        ToolTip.Tip="{Binding Project.SourceDirectory}"
+                                        IsEnabled="{Binding Project.SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                        Command="{Binding Actions.OpenFolder}"
+                                        CommandParameter="{Binding Project}"/>
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Edit this project…"
+                                        Command="{Binding Actions.Edit}"
+                                        CommandParameter="{Binding Project}"/>
+                                <!-- Hidden on a project with nothing to start on: the dialog it opens is the same
+                                     one "Pick how it runs" already leads to, so offering both would be two doors
+                                     into one room. -->
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Start, but change something first…"
+                                        IsVisible="{Binding CanStart}"
+                                        Command="{Binding Actions.StartWithOptions}"
+                                        CommandParameter="{Binding Project}"/>
+                                <!-- Whatever else the operator keeps with this project (AC-295) — a repository, a
+                                     website, a contact. Still one click away rather than behind the editor, which is
+                                     what that ticket was about; off the card face, which is what this one is. -->
+                                <controls:ProjectInfoList Margin="8,6,8,0"
+                                                          Fields="{Binding Project.AdditionalInfo}"
+                                                          IsVisible="{Binding Project.HasAdditionalInfo}"/>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+
+            <!-- The description carries the card: it is what a colleague reads to know which one is theirs. A card
+                 without one closes up instead of holding the space open — an empty gap reads as something that
+                 failed to load. -->
+            <TextBlock Text="{Binding Project.Description}" FontSize="12" TextWrapping="Wrap"
+                       VerticalAlignment="Top"
+                       IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <TextBlock Text="{Binding Project.LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
+                       FontSize="11"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+            <!-- Start only promises a start when the project can actually deliver one. Without a profile it has
+                 nothing to run on, and the card asks for the missing piece instead — quietly, and not on an Accent
+                 button (AC-772 criterion 12): the two used to be equally loud, so "finish setting up" read as a
+                 fault report rather than the last small step it is. -->
+            <Button Classes="Accent" HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" Padding="12,7"
+                    IsVisible="{Binding CanStart}"
+                    Command="{Binding Actions.Start}"
+                    CommandParameter="{Binding Project}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                    <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13" VerticalAlignment="Center"/>
+                    <TextBlock Text="Start" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,7"
+                    IsVisible="{Binding !CanStart}"
+                    Content="Pick how it runs"
+                    ToolTip.Tip="Choose which assistant this project runs on — one click and it's done."
+                    Command="{Binding Actions.Edit}"
+                    CommandParameter="{Binding Project}"/>
+
+            <!-- Sharing stays a visible button rather than moving into the ⋯. That it was invisible is the whole
+                 complaint AC-620/AC-667 opened with, and this ticket does not get to undo it. -->
+            <Button Classes="Subtle" HorizontalAlignment="Center" Padding="6,2" FontSize="11"
+                    Content="{Binding ShareLabel}"
+                    ToolTip.Tip="{Binding ShareTooltip}"
+                    Command="{Binding Actions.ToggleSharing}"
+                    CommandParameter="{Binding Project}"/>
+        </StackPanel>
+    </Border>
+</UserControl>

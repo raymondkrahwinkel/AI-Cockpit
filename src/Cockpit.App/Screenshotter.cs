@@ -194,6 +194,15 @@ internal static class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
+        // AC-772 criterion 15: the Projects page itself (the workspace, not the Manage-projects window) in each of
+        // its layouts. One scene per layout — the toggle's whole claim is that the three are equal ways to see the
+        // same projects, and only a render per layout says whether that holds.
+        ["projects-workspace-cards"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards),
+        ["projects-workspace-list"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.List),
+        // Rendered even though the segment is not offered yet (ProjectsDisplaySettings.ContinueLayoutAvailable):
+        // the layout is built, and a scene is what will show whether it is worth offering once LastOpenedAt is
+        // verified.
+        ["projects-workspace-continue"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Continue),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -1205,8 +1214,9 @@ internal static class Screenshotter
         return dialog;
     }
 
-    // Renders the sessions workspace with a couple of plugin toolbar actions seeded (AC-91) so the quick-action
-    // buttons next to the workspace gear are verifiable headless.
+    // Renders the cockpit with a couple of toolbar actions seeded (AC-91) so the quick-action buttons are verifiable
+    // headless. Since AC-772 they sit on the workspace tab strip rather than in the session grid's own header, which
+    // is what this scene now shows.
     private static MainWindow _ToolbarActions()
     {
         var cockpit = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true };
@@ -1214,6 +1224,33 @@ internal static class Screenshotter
             "docker", new Cockpit.Plugins.Abstractions.ToolbarAction("Docker settings", Material.Icons.MaterialIconKind.Docker, () => Task.CompletedTask)));
         cockpit.PluginToolbarActions.Add(new Plugins.PluginToolbarAction(
             "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", Material.Icons.MaterialIconKind.Kubernetes, () => Task.CompletedTask)));
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // The Projects page in one of its layouts (AC-772 criterion 15) — one scene per layout, since the whole point of
+    // the toggle is that the three are different arrangements of the same projects and only a render says whether
+    // each one holds together. The shared "From your team" section renders in all three, which is what criterion 20
+    // asks and what a per-layout render is the only way to see.
+    private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+
+        // Staged onto the cockpit's own view model rather than swapping in a sample: the view binds `Projects.…` on
+        // this instance. A headless render has no `ISharedProjectSource` to list from, the same reason
+        // `_ProjectEditorWithMemorySourceReachability` stages its state directly instead of going through a real
+        // check delegate.
+        cockpit.Projects.CardActions = new ViewModels.ProjectCardActions(
+            cockpit.StartProjectSessionCommand,
+            cockpit.NewSessionForProjectCommand,
+            cockpit.EditProjectCommand,
+            cockpit.OpenProjectFolderCommand,
+            cockpit.ShareProjectCommand);
+        cockpit.Projects.StageDesignSample();
+        cockpit.Projects.StageDesignSharedProjects();
+        cockpit.Projects.LayoutMode = layout;
+
+        cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
 
         return new MainWindow { DataContext = cockpit };
     }

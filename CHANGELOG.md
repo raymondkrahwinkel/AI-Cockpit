@@ -32,6 +32,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the quick-action buttons plugins contribute now sit on the workspace tab strip, so they are reachable from
+  every screen — the Projects page and a dashboard included, and from a Sessions workspace before it has a session in
+  it. They used to appear only above an open session grid, which is what made a plugin's own settings unreachable
+  from the screen you land on. A cockpit without plugins shows no strip at all and loses no height to it, and an
+  action that fails now says so in the plugin diagnostics instead of doing nothing.
+
+- added: the Projects page can be shown as cards or as a wide list — pick it on the page itself, and it is remembered
+  for next time. The list fits about twice as many projects on a screen; the cards keep the bigger logo you find a
+  project by.
+
+- added: projects your team shares that you have not added yet now appear under "From your team" on the Projects page
+  in either layout, marked "Ready to add", with the same wording and the same card the Manage-projects window shows.
+
 - added: typing `@` in a session's prompt box, or the assistant's, now opens a fuzzy file-/folder-picker over that
   session's working directory — arrow keys to move, Tab or Enter to insert, Esc to close. The inserted path is
   always relative and forward-slash-separated, with a trailing slash on a folder. Nothing is scanned until the
@@ -145,6 +158,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a project card is quieter. One button carries on with the project, sharing stays visible beside it, and
+  everything else — open folder, edit, start with something changed, the project's own links — moved under a single
+  `⋯`. A project that still needs an assistant picked now says "Pick how it runs" in an ordinary button instead of
+  announcing itself in the same loud blue as Start, which read as something being broken.
+
+- changed: plainer wording on the Projects page and in the Manage-projects window. "Shared via …" is now "From your
+  team", "Not set up yet" is "Ready to add", and a shared project you have not added yet offers "Add to my
+  projects…" rather than the "Finish setting up…" a half-configured local project also used. The page no longer
+  claims everything is already set up while a card underneath says otherwise.
+
+- changed: the Manage-projects window and the Projects page now draw a project the same way, from one shared
+  building block — so wording and layout stay in step instead of drifting apart between the two screens.
+
 - changed: the Assistant Profile's instruction box adds to the assistant's own instructions rather than replacing
   them. Typing "your name is Zyra" used to silently switch off everything else it knows about talking to you — that
   it answers in your language, that it is being listened to rather than read, that it never treats a spoken "yes" as
@@ -153,6 +179,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: Autopilot's per-step opening brief — resent in full to every fresh step session — dropped a sentence
   repeated verbatim between its execution mandate and its closing instruction, and two filler transitions, without
   touching the guidance that keeps lighter models from analysing a step instead of building it.
+
+### Removed
+
+- removed: the counts across the top of the Projects page (projects / worked on / sessions open). They sat in front
+  of the projects you came for and answered no question that screen raises.
 
 ### Fixed
 

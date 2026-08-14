@@ -117,23 +117,9 @@
             <Setter Property="RenderTransform" Value="translateY(0)"/>
         </Style>
 
-        <!-- AC-620: a project card's own "which Depot connection" badge — shown only for a bound project
-             (OriginBadge starts with "◆ "), never for a local one ("● This machine" says nothing a launcher card
-             needs). Same pill geometry and colour as ProjectDialog.axaml's per-field origin badge
-             (Border.originBadge.shared) — duplicated rather than shared across windows, since Avalonia styles do
-             not cross a UserControl/Window boundary. -->
-        <Style Selector="Border.sharedProjectBadge">
-            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
-            <Setter Property="Padding" Value="8,1"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Background" Value="{StaticResource CockpitIsolatedBadgeBgBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
-        </Style>
-        <Style Selector="Border.sharedProjectBadge > TextBlock">
-            <Setter Property="FontSize" Value="10.5"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
-        </Style>
+        <!-- Border.sharedProjectBadge lived here until AC-772, when the card it styles became a control the
+             Manage-projects window hosts too — a local style does not cross that boundary, so it moved to
+             Styles/Theme.axaml. -->
     </UserControl.Styles>
 
     <DockPanel LastChildFill="True">
@@ -706,6 +692,14 @@
                         </Button.Flyout>
                     </Button>
 
+                    <!-- The quick actions (AC-772). Here rather than in the session grid's own header, which is
+                         where they used to sit: that header only exists on a Sessions workspace that already has a
+                         session in it, so Depot's servers were unreachable from the Projects page the operator
+                         lands on. The strip itself is always on screen, so this is the one row that is. Docked
+                         after the +, which puts it to the left of it and keeps the + on the edge where it was.
+                         Renders nothing at all when no action is registered — a fresh install loses no height. -->
+                    <controls:PluginToolbarHost DockPanel.Dock="Right" Margin="0,0,6,0"/>
+
                     <!-- The drag lives on the strip, not on the tabs: a move rebuilds the tabs, so a handler on
                          the dragged Border would stop firing the moment it did its job once. -->
                     <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}"
@@ -996,51 +990,64 @@
                 <StackPanel MaxWidth="920" Margin="24,28" HorizontalAlignment="Center">
                     <TextBlock Text="What do you want to work on?" FontSize="21" FontWeight="SemiBold"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="Pick a project to begin. Everything it needs is already set up."
+                    <!-- Not "everything it needs is already set up" any more (AC-772): that sentence contradicted the
+                         card right underneath it saying a project still needed a profile. -->
+                    <TextBlock Text="Pick a project to begin."
                                FontSize="13" Margin="0,6,0,18" HorizontalAlignment="Center"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
 
-                    <!-- The summary line: how much there is, how much of it is actually in use, and what was last
-                         worked on — the three things worth knowing before choosing. Hidden with no projects, where
-                         a row of zeroes would say nothing the empty state does not say better. -->
-                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
-                                Margin="0,0,0,20" IsVisible="{Binding Projects.HasProjects}">
-                        <Border Padding="14,10" CornerRadius="{StaticResource CockpitPanelRadius}"
-                                Background="{StaticResource CockpitPanelBgBrush}"
+                    <!-- The statistics row (projects / worked on / sessions open) stood here. Removed (AC-772): it is
+                         a dashboard gesture in front of the thing you came for, and it answers no question this
+                         screen raises. -->
+
+                    <!-- The layout choice (AC-772). Three arrangements of the same page, remembered per operator —
+                         and set here rather than in an Options page, since this is the only screen it changes and
+                         you can see what it does while you pick it. Hidden with no projects: a choice of how to
+                         arrange nothing is not a choice. -->
+                    <StackPanel HorizontalAlignment="Center" Margin="0,0,0,6"
+                                IsVisible="{Binding Projects.HasProjects}">
+                        <!-- Plain ToggleButtons, not Subtle ones: Subtle's checked state is deliberately
+                             transparent (it exists for icon toggles), which would leave a segmented control with no
+                             way to show which segment you are on. -->
+                        <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="3"
+                                HorizontalAlignment="Center"
+                                Background="{StaticResource CockpitSecondaryBgBrush}"
                                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Projects.ProjectCount}" FontSize="19" FontWeight="SemiBold"
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="projects" FontSize="11" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <ToggleButton Classes="Compact" Content="Cards"
+                                              IsChecked="{Binding Projects.IsCardsLayout, Mode=OneWay}"
+                                              Command="{Binding Projects.SetLayoutModeCommand}"
+                                              CommandParameter="Cards"
+                                              ToolTip.Tip="One card per project"/>
+                                <ToggleButton Classes="Compact" Content="List"
+                                              IsChecked="{Binding Projects.IsListLayout, Mode=OneWay}"
+                                              Command="{Binding Projects.SetLayoutModeCommand}"
+                                              CommandParameter="List"
+                                              ToolTip.Tip="Wide rows — twice as many projects on a screen"/>
+                                <!-- Not offered until LastOpenedAt is verified reliable enough to order by
+                                     (ProjectsDisplaySettings.ContinueLayoutAvailable) — a segment that lands on an
+                                     empty date is worse than no segment. -->
+                                <ToggleButton Classes="Compact" Content="Continue"
+                                              IsVisible="{Binding Projects.ShowContinueLayoutOption}"
+                                              IsChecked="{Binding Projects.IsContinueLayout, Mode=OneWay}"
+                                              Command="{Binding Projects.SetLayoutModeCommand}"
+                                              CommandParameter="Continue"
+                                              ToolTip.Tip="Carry on where you left off"/>
                             </StackPanel>
                         </Border>
-                        <Border Padding="14,10" CornerRadius="{StaticResource CockpitPanelRadius}"
-                                Background="{StaticResource CockpitPanelBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Projects.OpenedProjectCount}" FontSize="19" FontWeight="SemiBold"
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="worked on" FontSize="11" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Padding="14,10" CornerRadius="{StaticResource CockpitPanelRadius}"
-                                Background="{StaticResource CockpitPanelBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Sessions.Count}" FontSize="19" FontWeight="SemiBold"
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="sessions open" FontSize="11" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            </StackPanel>
-                        </Border>
+                        <TextBlock Text="Remembered for next time — change it whenever you like"
+                                   FontSize="11" Margin="0,6,0,12" HorizontalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     </StackPanel>
 
                     <!-- Grouped by category (AC-618/AC-655): the same `ProjectCategoryGroups` the Manage-projects
                          dialog already builds, so this picker and that dialog agree on headings and order instead
-                         of each sorting the same projects its own way. -->
-                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}" IsVisible="{Binding Projects.HasProjects}">
+                         of each sorting the same projects its own way.
+
+                         The card itself is `ProjectCardView` (AC-772) — one control, shared with the List layout
+                         below and with the Manage-projects window, so a wording or layout change is made once. -->
+                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}"
+                                  IsVisible="{Binding Projects.IsCardsLayout}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
                                 <StackPanel Spacing="4" Margin="0,10,0,0">
@@ -1057,114 +1064,7 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:ProjectCardViewModel">
-                                                <Border Width="278" Margin="8" Padding="16"
-                                                        CornerRadius="{StaticResource CockpitPanelRadius}"
-                                                        Background="{StaticResource CockpitPanelBgBrush}"
-                                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                                                    <StackPanel Spacing="10">
-                                                        <!-- The logo carries the recognition: a colleague finds their project by its
-                                                             picture before they have read a word. Without one the well shows the
-                                                             project's initial, so every card is the same shape either way. -->
-                                                        <Grid ColumnDefinitions="Auto,*,Auto">
-                                                            <controls:ProjectLogoBadge Grid.Column="0" Size="34"
-                                                                                       Margin="0,0,10,0"
-                                                                                       LogoPath="{Binding Project.LogoPath}"
-                                                                                       ProjectName="{Binding Project.Name}"
-                                                                                       WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
-                                                            <TextBlock Grid.Column="1" Text="{Binding Project.Name}" FontSize="15" FontWeight="SemiBold"
-                                                                       VerticalAlignment="Center"
-                                                                       TextTrimming="CharacterEllipsis"/>
-                                                            <!-- AC-620: which Depot connection this project is shared through — never shown
-                                                                 for a plain local project (IsShared false), only what changed. -->
-                                                            <Border Grid.Column="2" Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
-                                                                    Margin="8,0,0,0" VerticalAlignment="Center" MaxWidth="100">
-                                                                <!-- AC-754: a long Depot connection name (eg. "Depot — depot.krahwinkel-it.nl")
-                                                                     otherwise grows the Auto column past the card and overlaps the title. -->
-                                                                <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
-                                                            </Border>
-                                                        </Grid>
-                                                        <!-- The description carries the card: it is what a colleague reads to know
-                                                             which one is theirs. A card without one closes up instead of holding
-                                                             the space open — an empty gap reads as something that failed to load. -->
-                                                        <TextBlock Text="{Binding Project.Description}" FontSize="12" TextWrapping="Wrap"
-                                                                   VerticalAlignment="Top"
-                                                                   IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                                        <!-- Whatever else the operator keeps with this project (AC-295) — a
-                                                             repository, a website, a contact. Here rather than only in the editor:
-                                                             its whole point is being read and followed while working, and a link you
-                                                             have to open a settings dialog to reach is a link you copy out by hand. -->
-                                                        <controls:ProjectInfoList Fields="{Binding Project.AdditionalInfo}"
-                                                                                  IsVisible="{Binding Project.HasAdditionalInfo}"/>
-                                                        <TextBlock Text="{Binding Project.LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
-                                                                   FontSize="11"
-                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                                        <!-- Start only promises a start when the project can actually deliver one.
-                                                             Without a profile it has nothing to run on and would fall through to
-                                                             the dialog — the same thing the button below it does, which is exactly
-                                                             how the two came to look identical. Then the card asks for the missing
-                                                             piece instead. -->
-                                                        <!-- $parent[UserControl], not $parent[ItemsControl]: this card sits inside two
-                                                             nested ItemsControls (categories, then cards), so the nearest ItemsControl
-                                                             ancestor is the inner one — DataContext ProjectCategoryGroupViewModel, not
-                                                             CockpitViewModel. CockpitView itself is the nearest ancestor typed right
-                                                             (same fix as ProjectsDialog.axaml's own nested-groups row). -->
-                                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
-                                                                HorizontalContentAlignment="Center" Padding="12,7"
-                                                                IsVisible="{Binding Project.DefaultProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
-                                                                CommandParameter="{Binding Project}">
-                                                            <StackPanel Orientation="Horizontal" Spacing="7">
-                                                                <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13"
-                                                                                            VerticalAlignment="Center"/>
-                                                                <TextBlock Text="Start" VerticalAlignment="Center"/>
-                                                            </StackPanel>
-                                                        </Button>
-                                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
-                                                                HorizontalContentAlignment="Center" Padding="12,7"
-                                                                IsVisible="{Binding Project.DefaultProfileLabel, Converter={x:Static StringConverters.IsNullOrEmpty}}"
-                                                                ToolTip.Tip="This project has no profile yet, so there is nothing to start it on. Pick one and Start appears."
-                                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
-                                                                CommandParameter="{Binding Project}">
-                                                            <StackPanel Orientation="Horizontal" Spacing="7">
-                                                                <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"
-                                                                                            VerticalAlignment="Center"/>
-                                                                <TextBlock Text="Finish setting up" VerticalAlignment="Center"/>
-                                                            </StackPanel>
-                                                        </Button>
-                                                        <!-- The quieter half: everything that is not "carry on with this", kept
-                                                             below the one button that is. AC-620: a WrapPanel, not a StackPanel —
-                                                             Share…/Stop sharing… makes this four items wide, and Raymond's own
-                                                             call was to let it wrap to a second line rather than hide the new
-                                                             action behind a ⋯-overflow (that was the whole complaint this ticket
-                                                             opened with: delen was invisible). -->
-                                                        <WrapPanel HorizontalAlignment="Center">
-                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Open folder"
-                                                                    ToolTip.ShowOnDisabled="True"
-                                                                    ToolTip.Tip="{Binding Project.SourceDirectory}"
-                                                                    IsEnabled="{Binding Project.SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenProjectFolderCommand}"
-                                                                    CommandParameter="{Binding Project}"/>
-                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Edit"
-                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
-                                                                    CommandParameter="{Binding Project}"/>
-                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Start with options…"
-                                                                    ToolTip.Tip="Open the New-session dialog on this project, to change something before it starts"
-                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).NewSessionForProjectCommand}"
-                                                                    CommandParameter="{Binding Project}"/>
-                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Share…"
-                                                                    IsVisible="{Binding !IsShared}"
-                                                                    ToolTip.Tip="Publish this project to Depot so colleagues can bind to the same definition"
-                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShareProjectCommand}"
-                                                                    CommandParameter="{Binding Project}"/>
-                                                            <Button Classes="Subtle" Padding="6,2" Margin="2" FontSize="11" Content="Stop sharing…"
-                                                                    IsVisible="{Binding IsShared}"
-                                                                    ToolTip.Tip="Remove this project's connection on this machine — nothing in Depot is affected"
-                                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShareProjectCommand}"
-                                                                    CommandParameter="{Binding Project}"/>
-                                                        </WrapPanel>
-                                                    </StackPanel>
-                                                </Border>
+                                                <controls:ProjectCardView/>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -1173,14 +1073,52 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <!-- AC-248: the same "Shared via {source}" groups ProjectsDialog.axaml already renders (AC-245),
-                         now also on the default landing screen — that separate Manage-projects window used to be
-                         the only place a shared-but-unbound project showed up at all. -->
+                    <!-- The List layout (AC-772): the same projects, the same categories and the same actions, in
+                         wide rows instead of cards. Two panels rather than one panel that reshapes itself — the two
+                         arrangements share their content through `ProjectCardViewModel` and their wording through
+                         the row/card controls, which is where sharing actually pays. -->
+                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}"
+                                  IsVisible="{Binding Projects.IsListLayout}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
+                                <StackPanel Spacing="4" Margin="0,10,0,0">
+                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                               IsVisible="{Binding HasHeader}"/>
+                                    <ItemsControl ItemsSource="{Binding Cards}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                                <controls:ProjectRowView/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- The Continue layout (AC-772): what was worked on last, first — the page answering "what was
+                         I doing" rather than "what is there". Not offered yet; see the segment's own remark. -->
+                    <ItemsControl ItemsSource="{Binding Projects.RecentCards}"
+                                  IsVisible="{Binding Projects.IsContinueLayout}" Margin="0,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                <controls:ProjectRowView/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- AC-248: the projects a colleague shares that this machine has not added yet, which used to
+                         show up only in the separate Manage-projects window. Declared once, outside the three layout
+                         panels above, so every layout shows it and none of them can drift (AC-772 criterion 20) —
+                         and drawn by the same `SharedProjectCardView` that window uses, so the wording matches
+                         there too. "From your team", not "Shared via": the old heading left it open whether it was
+                         shared *by* the operator or *with* them. -->
                     <ItemsControl ItemsSource="{Binding Projects.SharedProjectGroups}" IsVisible="{Binding Projects.HasSharedProjects}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
                                 <StackPanel Spacing="4" Margin="0,10,0,0">
-                                    <TextBlock Text="{Binding SourceName, StringFormat='Shared via {0}'}" FontSize="13" FontWeight="SemiBold"
+                                    <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="13" FontWeight="SemiBold"
                                                HorizontalAlignment="Center"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                     <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
@@ -1196,38 +1134,11 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="sharedProjects:SharedProject">
-                                                <Border Width="278" Margin="8" Padding="16"
-                                                        CornerRadius="{StaticResource CockpitPanelRadius}"
-                                                        Background="{StaticResource CockpitPanelBgBrush}" Opacity="0.85"
-                                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                                                    <StackPanel Spacing="8">
-                                                        <Grid ColumnDefinitions="*,Auto">
-                                                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
-                                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                                            <Border Grid.Column="1" Margin="8,0,0,0" Padding="7,2"
-                                                                    CornerRadius="{StaticResource CockpitPillRadius}"
-                                                                    Background="{StaticResource CockpitStatusWaitingChipTintBrush}"
-                                                                    VerticalAlignment="Top">
-                                                                <TextBlock Text="Not set up yet" FontSize="10"
-                                                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
-                                                            </Border>
-                                                        </Grid>
-                                                        <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
-                                                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                                        <TextBlock Text="{Binding Role}" FontSize="11"
-                                                                   IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                                        <!-- Three-deep nested ItemsControls, so $parent[UserControl] (not [ItemsControl])
-                                                             reaches CockpitView itself. FinishSettingUpCommand lives on Projects, unlike
-                                                             the local-project cards' commands above. -->
-                                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
-                                                                HorizontalContentAlignment="Center" Padding="12,7"
-                                                                Content="Finish setting up…"
-                                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.FinishSettingUpCommand}"
-                                                                CommandParameter="{Binding}"/>
-                                                    </StackPanel>
-                                                </Border>
+                                                <!-- Three-deep nested ItemsControls, so $parent[UserControl] (not [ItemsControl])
+                                                     reaches CockpitView itself. FinishSettingUpCommand lives on Projects, unlike
+                                                     the local-project cards' commands, which travel on the card. -->
+                                                <controls:SharedProjectCardView
+                                                    AddCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.FinishSettingUpCommand}"/>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -1319,9 +1230,10 @@
 
                     <!-- Mirrors the dashboard's gear (its columns/rows/grid lines): each workspace type sets what it
                          actually has, in the same place. -->
-                    <!-- Plugin quick-actions (AC-91) sit just left of the gear; both hug the right. -->
+                    <!-- The quick actions used to sit here, left of the gear; they moved to the workspace tab strip
+                         (AC-772) so they are reachable from every workspace type, not only from a Sessions
+                         workspace with a session in it. -->
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
-                        <controls:PluginToolbarHost VerticalAlignment="Center"/>
                         <Button x:Name="WorkspaceLayoutButton" Padding="8,4"
                                 ToolTip.Tip="How this workspace arranges its sessions">
                         <materialIcons:MaterialIcon Kind="Cog" Width="14" Height="14"/>
