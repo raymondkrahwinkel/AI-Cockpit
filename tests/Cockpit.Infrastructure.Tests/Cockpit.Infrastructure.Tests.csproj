@@ -11,12 +11,9 @@
     <!-- The logo store rasterises an SVG through Skia. In the app those natives arrive with Avalonia; a test
          assembly has no UI framework, so it brings them itself — otherwise the SVG tests fail on a missing
          libSkiaSharp rather than on anything about the code. -->
-    <!-- AC-730: PDFtoImage (Cockpit.Infrastructure) pulls SkiaSharp.NativeAssets.Win32/macOS >= 4.150.1
-         transitively, so these three pins moved up together to stay above that floor instead of downgrading it
-         (NU1605). -->
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.150.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="4.150.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="4.150.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" />
   </ItemGroup>
 
   <ItemGroup>

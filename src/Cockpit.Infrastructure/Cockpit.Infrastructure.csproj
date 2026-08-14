@@ -45,8 +45,13 @@
     <!-- Rasterises page 1 of a PDF preview to a bitmap (AC-730). PDFium (native, the renderer Chrome ships) +
          SkiaSharp — the marginal native weight is PDFium alone, since Svg.Skia above already pulls in Skia's own
          natives. MIT-licensed; picked over pure-managed Melville.Pdf.SkiaSharp for the renderer maturity a
-         preview must not fall over on (see AC-730 for the full library comparison). -->
-    <PackageReference Include="PDFtoImage" Version="5.3.0" />
+         preview must not fall over on (see AC-730 for the full library comparison).
+         Pinned to 5.2.1, not the newer 5.3.0: that release bumps its SkiaSharp floor to 4.150.1, which forces
+         the whole solution onto a SkiaSharp major every plugin's bundled native asset was built against
+         (they still ship 3.119.x/native ABI 119.0) — every Avalonia.Skia plugin test then fails at startup on
+         a managed/native SkiaSharp version mismatch, not just this project. 5.2.1 only needs SkiaSharp
+         >= 3.119.2, already satisfied by the 3.119.4 pinned elsewhere, so it adds no floor at all. -->
+    <PackageReference Include="PDFtoImage" Version="5.2.1" />
     <!-- Linux/macOS pty host for TTY mode (#9): forkpty()+execvp() run entirely in a native shim
          (avoids the .NET 7+ W^X/fork pitfall of forking from managed code), env injection via
          PtyOptions.Environment. Windows keeps the existing hand-rolled ConPtyProcess. -->
