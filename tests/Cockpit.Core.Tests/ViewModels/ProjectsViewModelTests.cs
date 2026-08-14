@@ -63,6 +63,38 @@ public class ProjectsViewModelTests
         Assert.Equal(ProjectsLayoutMode.Cards, viewModel.LayoutMode);
     }
 
+    // Clicking the segment you are already on: the ToggleButton has flipped its own IsChecked off by then, so the
+    // view model has to re-raise even though nothing changed — otherwise the control is left with no segment
+    // selected until the operator switches layout and back.
+    [Fact]
+    public async Task SetLayoutMode_ToTheLayoutAlreadyShowing_StillReAssertsTheSegments()
+    {
+        var (viewModel, _, _) = Build();
+        var raised = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => raised.Add(args.PropertyName);
+
+        await viewModel.SetLayoutModeCommand.ExecuteAsync("Cards");
+
+        Assert.Contains(nameof(ProjectsViewModel.IsCardsLayout), raised);
+        Assert.Equal(ProjectsLayoutMode.Cards, viewModel.LayoutMode);
+    }
+
+    // The Continue layout holds its own card instances for the same projects, so a selection change has to reach
+    // them too — otherwise it keeps highlighting whatever was selected when it was last built.
+    [Fact]
+    public async Task SelectingAProject_SyncsTheContinueLayoutsCardsToo()
+    {
+        var (viewModel, _, _) = Build(Project.Create("Cockpit"), Project.Create("Depot"));
+        await viewModel.LoadAsync();
+
+        viewModel.SelectedProject = viewModel.Projects.Single(project => project.Name == "Depot");
+
+        var depot = viewModel.RecentCards.Single(card => card.Project.Name == "Depot");
+        var cockpit = viewModel.RecentCards.Single(card => card.Project.Name == "Cockpit");
+        Assert.True(depot.IsSelected);
+        Assert.False(cockpit.IsSelected);
+    }
+
     [Fact]
     public async Task LoadAsync_PublishesTheSavedProjects()
     {

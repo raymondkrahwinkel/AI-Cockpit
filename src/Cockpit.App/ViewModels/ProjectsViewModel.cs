@@ -304,7 +304,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (_displaySettings is not null)
         {
-            LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
+            try
+            {
+                LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
+            }
+            catch (Exception)
+            {
+                // An unreadable cockpit.json (and its backup) throws out of the config reader. A display preference
+                // is the least of what is wrong at that point, and it must not take the project list — or the
+                // shared-projects load below, or the window this method is awaited by — down with it. The page
+                // opens on the default layout instead.
+            }
         }
 
         _BeginSharedProjectsLoad();
@@ -341,6 +351,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         var normalized = new ProjectsDisplaySettings { LayoutMode = parsed }.Normalized();
         if (normalized.LayoutMode == LayoutMode)
         {
+            // Clicking the segment you are already on: a ToggleButton has flipped its own IsChecked to false by the
+            // time this runs, so returning without a word would leave the control with nothing selected. Re-raising
+            // is what pushes the one-way binding back over that local flip.
+            _NotifyLayoutSegments();
+
             return;
         }
 
@@ -348,8 +363,26 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (_displaySettings is not null)
         {
-            await _displaySettings.SaveAsync(normalized).ConfigureAwait(true);
+            try
+            {
+                await _displaySettings.SaveAsync(normalized).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                // Same reasoning as the read in `LoadAsync`: the page has already switched, and a config file this
+                // build cannot write is not something to take the window down over. The choice simply does not
+                // survive a restart.
+            }
         }
+    }
+
+    // The three segments read off `LayoutMode` through separate computed properties, so a re-assert has to name all
+    // three — the one turning on and the two turning off.
+    private void _NotifyLayoutSegments()
+    {
+        OnPropertyChanged(nameof(IsCardsLayout));
+        OnPropertyChanged(nameof(IsListLayout));
+        OnPropertyChanged(nameof(IsContinueLayout));
     }
 
     // Fills `SharedProjectGroups` from every registered `ISharedProjectSource` (AC-245).
@@ -767,8 +800,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(ShareToggleLabel));
 
         // AC-709: keeps every already-materialized card's selected style in sync — a plain assignment here
-        // (rather than going through a full _Republish) is what OnProjectPressed does on every click.
-        foreach (var card in ProjectCategoryGroups.SelectMany(group => group.Cards))
+        // (rather than going through a full _Republish) is what OnProjectPressed does on every click. `RecentCards`
+        // holds its own card instances for the same projects (AC-772), so leaving it out would let the Continue
+        // layout keep highlighting whatever was selected when it was last built.
+        var cards = ProjectCategoryGroups.SelectMany(group => group.Cards).Concat(RecentCards);
+        foreach (var card in cards)
         {
             card.IsSelected = card.Project.Id == value?.Id;
         }

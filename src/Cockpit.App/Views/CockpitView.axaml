@@ -117,23 +117,9 @@
             <Setter Property="RenderTransform" Value="translateY(0)"/>
         </Style>
 
-        <!-- AC-620: a project card's own "which Depot connection" badge — shown only for a bound project
-             (OriginBadge starts with "◆ "), never for a local one ("● This machine" says nothing a launcher card
-             needs). Same pill geometry and colour as ProjectDialog.axaml's per-field origin badge
-             (Border.originBadge.shared) — duplicated rather than shared across windows, since Avalonia styles do
-             not cross a UserControl/Window boundary. -->
-        <Style Selector="Border.sharedProjectBadge">
-            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
-            <Setter Property="Padding" Value="8,1"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Background" Value="{StaticResource CockpitIsolatedBadgeBgBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
-        </Style>
-        <Style Selector="Border.sharedProjectBadge > TextBlock">
-            <Setter Property="FontSize" Value="10.5"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
-        </Style>
+        <!-- Border.sharedProjectBadge lived here until AC-772, when the card it styles became a control the
+             Manage-projects window hosts too — a local style does not cross that boundary, so it moved to
+             Styles/Theme.axaml. -->
     </UserControl.Styles>
 
     <DockPanel LastChildFill="True">

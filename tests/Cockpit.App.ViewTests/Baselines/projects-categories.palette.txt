@@ -10,11 +10,14 @@
 #FF20242C  CockpitHairlineSoftColor
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
+#FF332B47  CockpitIsolatedBadgeBgColor
 #FF656C78  CockpitTextFaintColor
 #FF949AA5  CockpitTextSecondaryColor
+#FFA78BDA  CockpitIsolatedBadgeTextColor
 #FFE8EAEF  CockpitTextPrimaryColor
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0
 radius  12,12,12,12
+radius  20,20,20,20
 radius  8,8,8,8
 radius  9,9,9,9

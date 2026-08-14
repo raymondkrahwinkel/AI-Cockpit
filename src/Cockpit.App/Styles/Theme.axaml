@@ -1243,6 +1243,25 @@
         <Setter Property="BorderThickness" Value="1.5"/>
     </Style>
 
+    <!-- AC-620: a project's own "which connection is this shared through" badge — shown only for a bound project
+         (OriginBadge starts with "◆ "), never for a local one ("● This machine" says nothing a card needs to add).
+         Same pill geometry and colour as ProjectDialog.axaml's per-field origin badge (Border.originBadge.shared).
+         Here rather than in CockpitView's own styles since AC-772: the card that carries it is a shared control now,
+         and the Manage-projects window that also hosts it is a different window — which a local style does not
+         reach. -->
+    <Style Selector="Border.sharedProjectBadge">
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="Padding" Value="8,1"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource CockpitIsolatedBadgeBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+    </Style>
+    <Style Selector="Border.sharedProjectBadge > TextBlock">
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+    </Style>
+
     <!-- ListBox (profile manager): flat, transparent; the selected row gets a quiet panel-bg fill
          (matching the sidebar's active treatment) instead of the default Fluent-blue highlight. -->
     <Style Selector="ListBox">

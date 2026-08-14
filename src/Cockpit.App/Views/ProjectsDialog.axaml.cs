@@ -1,7 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 
@@ -26,6 +28,11 @@ public partial class ProjectsDialog : Window
     // highlights when you hit a narrow strip of it reads as broken.
     private void OnProjectPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (_CameFromAButton(e.Source))
+        {
+            return;
+        }
+
         if (sender is Control { DataContext: ProjectCardViewModel card } && DataContext is ProjectsViewModel projects)
         {
             projects.SelectedProject = card.Project;
@@ -34,9 +41,20 @@ public partial class ProjectsDialog : Window
 
     private void OnProjectDoubleTapped(object? sender, TappedEventArgs e)
     {
+        if (_CameFromAButton(e.Source))
+        {
+            return;
+        }
+
         if (sender is Control { DataContext: ProjectCardViewModel card } && DataContext is ProjectsViewModel projects)
         {
             _ = projects.EditAsync(card.Project);
         }
     }
+
+    // The row carries buttons of its own since AC-772, and a Button handles Click but not DoubleTapped — so a
+    // double-click on Start reached this handler as well, launching two sessions and then opening the editor over
+    // them. A button's own action is the whole of what that click meant; the row's is for the rest of it.
+    private static bool _CameFromAButton(object? source) =>
+        source is Visual visual && visual.FindAncestorOfType<Button>(includeSelf: true) is not null;
 }
