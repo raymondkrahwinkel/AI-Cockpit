@@ -72,6 +72,10 @@
   .ib.hot{outline:2px solid var(--accent);outline-offset:1px}
   .body{padding:0 10px 12px;background:var(--window)}
   .pillrow{display:flex;align-items:center;gap:0;margin:6px 0 0}
+  .pillrow.split{justify-content:space-between;gap:8px}
+  .pill .seg.nm{gap:5px;color:var(--text-2)}
+  .pill .seg .dot{margin-right:5px}
+  .pill .seg.ovf{color:var(--text-faint);letter-spacing:1px}
   .pill{display:inline-flex;align-items:stretch;background:var(--secondary);border:1px solid var(--hairline);
         border-radius:var(--pill-r);overflow:hidden}
   .seg{font-size:10px;padding:2px 8px;display:flex;align-items:center;color:var(--text-2);white-space:nowrap}
@@ -170,8 +174,8 @@ en sluiten.</p>
 <p class="cap">Twee losse icoonknoppen (blauw kader in het screenshot) en de usage-pill (rood kader).</p>
 
 <hr>
-<h2><span class="n">A</span>De statusbadges — drie varianten</h2>
-<p class="note">Alle drie tekenen dezelfde <code>Ellipse</code> die de sidebar al gebruikt
+<h2><span class="n">A</span>De statusbadges — vier varianten</h2>
+<p class="note">Alle vier tekenen dezelfde <code>Ellipse</code> die de sidebar al gebruikt
 (<code>CockpitView.axaml:558</code>), gevuld via <code>SessionStatusBrushKey</code> + <code>StatusBrushConverter</code>.
 Ze verschillen alleen in <b>waar</b> ze staan, <b>hoeveel</b> ze zeggen, en <b>wat er gebeurt als het er veel worden</b>.
 Voorbeeldtoestand overal hetzelfde: 3 sessies — AC-774 bezig, depot-fix wacht op input, ci-run klaar.</p>
@@ -315,12 +319,115 @@ in plaats van alleen "doet-ie iets".</p>
 </div>
 </div>
 
+<h3>A4 — dezelfde rij, tweede pill rechts <span class="tag win">op verzoek van Raymond</span></h3>
+<p class="note">A3's namen, maar zonder de extra regel: de sessies krijgen hun <i>eigen</i> pill in dezelfde
+vormtaal als de usage-pill (zelfde <code>CockpitSecondaryBgBrush</code>, zelfde <code>CockpitHairlineBrush</code>,
+zelfde <code>CockpitPillRadius</code>, zelfde 1px-dividers tussen de segmenten), en die staat rechts op dezelfde
+rij. De rij vult zich <b>van rechts naar links</b>: de usage-pill staat vast links, de sessie-pill groeit naar
+links mee met het aantal sessies, en wat niet meer past valt er aan de <i>linker</i>kant af achter een
+<code>⋯</code>.</p>
+
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">🎙</div><div class="ib solid">🔊</div><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow split">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
+      </div>
+      <div class="pill">
+        <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
+        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm"><span class="dot done"></span>ci-run</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+<p class="cap">Drie sessies: alles past, geen <code>⋯</code>.</p>
+
+<div class="cols" style="margin-top:16px">
+<div class="col">
+<p class="note"><b>Zes sessies, 520px.</b> De pill loopt tegen de usage-pill aan; het overschot valt links af.
+De volgorde is niet willekeurig: wat aandacht vraagt staat rechts, tegen de rand aan waar het oog al is.</p>
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">🎙</div><div class="ib solid">🔊</div><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow split">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
+      </div>
+      <div class="pill">
+        <div class="seg ovf">⋯3</div><div class="div"></div>
+        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm"><span class="dot busy"></span>AC-774</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+</div>
+<div class="col">
+<p class="note"><b>Op de ondergrens, 340px</b> (<code>MinWidth</code> van dit venster). Er is ruimte voor één
+sessie plus de teller — en dat is nog steeds een antwoord, niet een kapotte rij: "er lopen er zes, de bovenste
+wacht op jou".</p>
+<div class="win narrow">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow split">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div><div class="chev">⌄</div>
+      </div>
+      <div class="pill">
+        <div class="seg ovf">⋯5</div><div class="div"></div>
+        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+<p class="cap">Klik op <code>⋯5</code> opent hetzelfde lijstje als bij A3.</p>
+</div>
+</div>
+
+<p class="note" style="margin-top:16px"><b>Wat A4 technisch kost, eerlijk gezegd.</b> De vorm is gratis: het is
+dezelfde <code>Border</code> met dezelfde tokens, in een <code>DockPanel</code> met de usage-pill op
+<code>Dock="Left"</code> en deze op <code>Dock="Right"</code>. Het <i>gedrag</i> is dat niet. "Toon zoveel er
+passen, laat de rest links vallen" is een meting, geen vaste regel — Avalonia's <code>StackPanel</code> kan dat
+niet en zal gewoon klippen of de usage-pill wegduwen. Twee uitwegen:</p>
+<table>
+<tr><th style="width:30%">Aanpak</th><th>Wat het betekent</th></tr>
+<tr><td><b>Vaste cap</b><br><span class="tag win">een middag</span></td>
+    <td>Toon er ten hoogste 3 (bij <code>&lt;420px</code>: 1), de rest als <code>⋯n</code>. De grens is een getal
+    in de view-model, geen meting. Bij een lange sessienaam kan het nog steeds krap worden — daarom een
+    <code>MaxWidth</code> per segment met <code>TextTrimming="CharacterEllipsis"</code>, wat de sidebar ook
+    doet.</td></tr>
+<tr><td><b>Echt meten</b><br><span class="tag cost">een eigen panel</span></td>
+    <td>Een <code>Panel</code> die in <code>MeasureOverride</code> van rechts naar links vult tot de ruimte op is
+    — precies wat <code>Controls/SessionTilePanel</code> + <code>RailLayoutMath</code> al doen voor de rail. Het
+    precedent bestaat dus, maar het is een control erbij voor een rij van hooguit zes bolletjes.</td></tr>
+</table>
+
 <div class="verdict">
-<b>Mijn voorkeur, niet mijn beslissing: A1 met de flyout van A3 eronder.</b> De bolletjes staan altijd in beeld en
-kosten geen hoogte; de klik erop opent precies het lijstje uit A3, met namen, status, desk en statusline. Dan is
-"in één oogopslag" ingelost door de bolletjes en "welke dan" door één klik — en de <code>340px</code>-ondergrens
-van dit venster (<code>MinWidth</code>) blijft heel, wat bij A3-als-hoofdvorm niet lukt. A2 is de winnaar zodra
-tien sessies normaal worden; vandaag zijn het er drie.
+<b>Mijn voorkeur, niet mijn beslissing: A4 met de vaste cap, en de klik op <code>⋯</code> opent het lijstje van
+A3.</b> A4 doet wat A3 deed — namen in beeld — zonder de regel hoogte en zonder de tweede vormtaal: twee pillen
+naast elkaar lezen als één balk, en dat is precies wat de header nu al belooft. Was A4 er niet geweest, dan A1;
+A2 wordt de winnaar zodra tien sessies normaal zijn (dan is er geen naam meer die past), en A3 blijft de beste
+keus als de rij ooit méér per sessie moet tonen dan een naam. Kies wél de vaste cap boven het eigen panel: dat
+laatste is een control erbij die niemand vraagt zolang het er zes zijn.
 </div>
 
 <h3>Twee keuzes die los van de vorm staan</h3>
@@ -452,14 +559,15 @@ krijgt; op twee items is dat vooruitbetalen. De knop zelf wordt <code>Classes="S
 <li>De assistant-sessie zelf staat er niet bij, en plain terminals ook niet — dezelfde filter als
   <code>list_sessions</code>, niet een eigen variant erop.</li>
 <li>Bij meer sessies dan er passen loopt de rij niet door en klipt hij niet: hij toont er ten hoogste <i>n</i> en de
-  rest als <code>+n</code> (A1) of als telling (A2). Bij <code>MinWidth=340</code> blijft de pill leesbaar.</li>
+  rest als <code>+n</code> (A1), als telling (A2) of als <code>⋯n</code> aan de linkerkant (A4). Bij
+  <code>MinWidth=340</code> blijft de pill leesbaar en duwt hij de usage-pill niet weg.</li>
 <li>Zonder sessies is er geen lege rij en geen gat; de usage-pill ziet er dan uit als vandaag.</li>
 <li>De historie- en de download-knop zijn vervangen door één knop met een dropdown die beide acties bevat. Het
   spawn-log-paneel behoudt zijn lege staat, zijn <code>MaxHeight</code> en zijn lui laden — het wordt niet bij het
   openen van het venster gelezen.</li>
 <li>Het opslaan van het gesprek doet vanuit het menu exact wat de knop deed: platte tekst, alle rijen, ook de
   gevouwen.</li>
-<li>De header wordt niet breder en het venster niet hoger dan vandaag (A1/A2); bij A3 komt er precies één rij bij.</li>
+<li>De header wordt niet breder en het venster niet hoger dan vandaag (A1/A2/A4); bij A3 komt er precies één rij bij.</li>
 <li>Een <code>Screenshotter</code>-scène toont de badge-rij met alle statussen, en één met de geopende dropdown.</li>
 </ol>
 
@@ -473,8 +581,10 @@ zijn bewaartermijn · de sessie-statussen zelf (Idle/Busy/… blijven zoals ze z
 geen migratie. <b>Sonnet 5 op medium effort</b> is ruim genoeg — het werk is "hergebruik wat er staat op de goede
 plek", niet ontwerpen. Eén voorwaarde: de bouw-agent moet eerst de bestaande <code>Ellipse</code>-binding in
 <code>CockpitView.axaml</code> en het <code>Flyout</code>-patroon in <code>PluginToolbarHost.cs</code> lezen, want
-de hele opdracht is die twee op de derde plek zetten. Wordt de A3-variant met desk-navigatie gekozen, dan wordt het
-Opus op medium — dan raakt het venster-activatie en dat is geen kopieerwerk meer.</p>
+de hele opdracht is die twee op de derde plek zetten. <b>A4 met de vaste cap valt hier ook onder</b> — het is
+dezelfde <code>Border</code> met dezelfde tokens in een <code>DockPanel</code>. Opus op medium wordt het pas bij
+twee keuzes: A4 mét een eigen metend panel in plaats van de cap, of springen-naar-een-sessie — dat laatste raakt
+venster-activatie en is geen kopieerwerk meer.</p>
 
 </div>
 </body>
