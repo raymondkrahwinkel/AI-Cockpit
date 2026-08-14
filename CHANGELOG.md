@@ -156,6 +156,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   folder already did. Which profile actually ran is reported back, so a start that used the project's default is
   never a silent guess.
 
+- added: a "Compact" button next to Dismiss on the context-window warning, for a provider that supports it — click
+  it to ask the provider to summarise the conversation and carry on, instead of waiting for it to happen on its own
+  once the window is nearly full. Disabled while the session is already working, and it disappears again on its own
+  once the summarise brings the window back under the warning line.
+
 ### Changed
 
 - changed: a project card is quieter. One button carries on with the project, sharing stays visible beside it, and
