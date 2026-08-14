@@ -194,14 +194,11 @@ internal static class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
-        // AC-772 criterion 15: the Projects page itself (the workspace, not the Manage-projects window) in each of
-        // its layouts. One scene per layout — the toggle's whole claim is that the three are equal ways to see the
-        // same projects, and only a render per layout says whether that holds.
+        // AC-772 criterion 15: the Projects workspace, not the Manage-projects window, once per layout.
         ["projects-workspace-cards"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards),
         ["projects-workspace-list"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.List),
-        // Rendered even though the segment is not offered yet (ProjectsDisplaySettings.ContinueLayoutAvailable):
-        // the layout is built, and a scene is what will show whether it is worth offering once LastOpenedAt is
-        // verified.
+        // Rendered although the segment is not offered yet (ProjectsDisplaySettings.ContinueLayoutAvailable) — the
+        // layout is built, and this is what will show whether it is worth offering.
         ["projects-workspace-continue"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Continue),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
@@ -1228,18 +1225,14 @@ internal static class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
-    // The Projects page in one of its layouts (AC-772 criterion 15) — one scene per layout, since the whole point of
-    // the toggle is that the three are different arrangements of the same projects and only a render says whether
-    // each one holds together. The shared "From your team" section renders in all three, which is what criterion 20
-    // asks and what a per-layout render is the only way to see.
+    // AC-772 criteria 15 and 20: the Projects workspace in one layout, since only a render per layout shows whether
+    // each holds together and that all three carry the "From your team" section.
     private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout)
     {
         var cockpit = new ViewModels.CockpitViewModel();
 
-        // Staged onto the cockpit's own view model rather than swapping in a sample: the view binds `Projects.…` on
-        // this instance. A headless render has no `ISharedProjectSource` to list from, the same reason
-        // `_ProjectEditorWithMemorySourceReachability` stages its state directly instead of going through a real
-        // check delegate.
+        // Staged onto the cockpit's own view model, which is the one the view binds to; a headless render has no
+        // `ISharedProjectSource` to list from.
         cockpit.Projects.CardActions = new ViewModels.ProjectCardActions(
             cockpit.StartProjectSessionCommand,
             cockpit.NewSessionForProjectCommand,

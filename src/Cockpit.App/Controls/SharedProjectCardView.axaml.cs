@@ -5,11 +5,8 @@ using Avalonia.Markup.Xaml;
 
 namespace Cockpit.App.Controls;
 
-// A shared project this machine has not added yet, drawn the same way everywhere it appears (AC-772).
-//
-// The command is a property rather than something the control reaches for itself: it lives on `ProjectsViewModel`,
-// and the two screens that host this control sit at different depths of nested ItemsControls, so neither `$parent`
-// path would work for both. One binding at each use site is the price of the control being host-agnostic.
+// AC-772: a shared project this machine has not added yet, drawn the same way everywhere it appears. The command is
+// a property because its two hosts nest it at different depths, so no single `$parent` path reaches both.
 public partial class SharedProjectCardView : UserControl
 {
     // Runs with the `SharedProject` as its parameter. Null leaves the button inert, which is what the previewer and

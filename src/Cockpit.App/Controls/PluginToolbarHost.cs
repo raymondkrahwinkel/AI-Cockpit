@@ -11,13 +11,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Controls;
 
-// Renders the registered toolbar actions (`ICockpitHost.AddToolbarAction`, AC-91) as compact buttons on the
-// workspace tab strip (AC-772), where they are reachable from every workspace type rather than only from a
-// Sessions workspace that already has a session in it. Up to `InlineLimit` show inline; beyond that they collapse
-// into a single overflow (⋯) button with a flyout, so the narrow strip never overflows. Contributes nothing and
-// takes no space when nothing registers an action — which is what a fresh install without plugins looks like.
-// Reads its `CockpitViewModel` from the inherited `StyledElement.DataContext`, so it renders wherever that view
-// model is in scope (incl. headless).
+// Renders the registered toolbar actions (`ICockpitHost.AddToolbarAction`, AC-91) as compact buttons on the workspace
+// tab strip (AC-772), which is on screen for every workspace type. Beyond `InlineLimit` they collapse into one ⋯
+// flyout, and with nothing registered the host takes no space at all. Reads its view model from `DataContext`.
 internal sealed class PluginToolbarHost : StackPanel
 {
     private const int InlineLimit = 3;

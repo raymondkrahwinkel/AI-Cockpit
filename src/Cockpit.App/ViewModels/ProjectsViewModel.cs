@@ -304,10 +304,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (_displaySettings is not null)
         {
-            // Deliberately unguarded. It reads the same cockpit.json the project store just read a line above,
-            // through the same `CockpitConfigFileAccess` — so an unreadable file has already thrown out of this
-            // method before we get here, and a try/catch around this call would only pretend to cover a case it
-            // cannot reach. Whatever protects that read protects this one.
+            // Deliberately unguarded: it reads the same cockpit.json the project store read a line above, so an
+            // unreadable file has already thrown and a catch here would cover a case it cannot reach.
             LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
         }
 
@@ -794,9 +792,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(ShareToggleLabel));
 
         // AC-709: keeps every already-materialized card's selected style in sync — a plain assignment here
-        // (rather than going through a full _Republish) is what OnProjectPressed does on every click. `RecentCards`
-        // holds its own card instances for the same projects (AC-772), so leaving it out would let the Continue
-        // layout keep highlighting whatever was selected when it was last built.
+        // (rather than going through a full _Republish) is what OnProjectPressed does on every click. AC-772:
+        // `RecentCards` holds its own instances for the same projects, so it has to be reached too.
         var cards = ProjectCategoryGroups.SelectMany(group => group.Cards).Concat(RecentCards);
         foreach (var card in cards)
         {

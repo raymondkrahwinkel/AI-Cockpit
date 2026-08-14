@@ -8,9 +8,6 @@ namespace Cockpit.App.ViewModels;
 // every bound project. See `ProjectsViewModel`'s own remarks on where `OriginBadge` comes
 // from. An ObservableObject rather than a record (AC-709): `IsSelected` needs to change in place and notify the
 // card's own Border, the same reason `SessionPanelViewModel.IsSelected` isn't a plain field either.
-//
-// AC-772 gave it `Actions` as well, so `ProjectCardView`/`ProjectRowView` can draw the buttons from the card alone
-// — see `ProjectCardActions` for why the commands travel with the data instead of being reached through the view.
 public sealed partial class ProjectCardViewModel(Project project, string originBadge, ProjectCardActions? actions = null) : ObservableObject
 {
     public Project Project { get; } = project;
