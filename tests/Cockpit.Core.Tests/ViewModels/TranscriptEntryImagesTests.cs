@@ -50,4 +50,37 @@ public class TranscriptEntryImagesTests
         Assert.True(entry.HasImages);
         Assert.Equal("[+2 images]", entry.ImageChipLabel);
     }
+
+    // `TextWithImageSuffix` is what copy-to-clipboard, session-watch pattern matching and the assistant's
+    // read-transcript MCP surface read instead of the bare `Text` — losing the image mention from any of those
+    // would be a silent regression (review caught this: `Text` used to carry the suffix itself).
+    [Fact]
+    public void TextWithImageSuffix_WithoutImages_IsJustTheText()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "just text");
+
+        Assert.Equal("just text", entry.TextWithImageSuffix);
+    }
+
+    [Fact]
+    public void TextWithImageSuffix_WithImagesAndText_AppendsTheLabel()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "look at this")
+        {
+            Images = [new ImageAttachment("image/png", "AAAA")],
+        };
+
+        Assert.Equal("look at this  [+1 image]", entry.TextWithImageSuffix);
+    }
+
+    [Fact]
+    public void TextWithImageSuffix_ImageOnlyMessage_IsJustTheLabel()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, string.Empty)
+        {
+            Images = [new ImageAttachment("image/png", "AAAA")],
+        };
+
+        Assert.Equal("[+1 image]", entry.TextWithImageSuffix);
+    }
 }

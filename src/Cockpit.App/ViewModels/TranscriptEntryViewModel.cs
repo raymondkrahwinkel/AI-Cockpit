@@ -155,9 +155,14 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public bool HasImages => Images is { Count: > 0 };
 
-    public string ImageChipLabel => Images is { Count: > 0 } images
-        ? $"[+{images.Count} image{(images.Count == 1 ? "" : "s")}]"
-        : string.Empty;
+    public string ImageChipLabel => ImageCountLabel.Format(Images?.Count ?? 0);
+
+    // `Text` plus the chip's own label, for callers that read a row's content as one string rather than through
+    // the chip (copy-to-clipboard, session-watch pattern matching, the assistant's read-transcript MCP surface)
+    // — the same fragment `Text` itself used to carry before the chip took over rendering it.
+    public string TextWithImageSuffix => !HasImages
+        ? Text
+        : string.IsNullOrEmpty(Text) ? ImageChipLabel : $"{Text}  {ImageChipLabel}";
 
     // --- Clarifying questions (AC-715) ------------------------------------------------------------------------
     // An AskUserQuestion rides the permission callback like a tool approval, but Allow/Deny is not an answer to it:

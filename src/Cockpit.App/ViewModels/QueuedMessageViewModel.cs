@@ -32,7 +32,7 @@ public partial class QueuedMessageViewModel : ViewModelBase
 
     private static string _BuildDisplay(string text, int imageCount)
     {
-        var suffix = imageCount == 0 ? string.Empty : $"[+{imageCount} image{(imageCount == 1 ? "" : "s")}]";
+        var suffix = ImageCountLabel.Format(imageCount);
         if (string.IsNullOrWhiteSpace(text))
         {
             return suffix;

@@ -28,11 +28,13 @@ public partial class ImagePreviewWindow : Window
         Build(images, startIndex).Show(owner);
 
     // The render harness's own step (the same split FilePreviewWindow.Build/ScreenshotPreviewWindow.Build make):
-    // the window built and showing its first image, without being put on screen.
+    // the window built and showing its first image, without being put on screen. `_ShowImage` is the one place
+    // that guards a bad index (empty list, or one out of range) — an out-of-range `startIndex` here just leaves
+    // the window on its unpopulated defaults rather than this method second-guessing it too.
     internal static ImagePreviewWindow Build(IReadOnlyList<ImageAttachment> images, int startIndex)
     {
         var window = new ImagePreviewWindow { _images = images };
-        window._ShowImage(Math.Clamp(startIndex, 0, Math.Max(0, images.Count - 1)));
+        window._ShowImage(startIndex);
         return window;
     }
 
