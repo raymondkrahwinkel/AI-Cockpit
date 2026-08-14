@@ -244,12 +244,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             .OrderBy(entry => _MenuOrderOf(entry.PluginId))
             .ToList();
 
-    // The plugin Sessions-toolbar buttons in the operator's chosen order/visibility (#72) — the same hide/order rules as the left menu, so a plugin hidden there does not surface a toolbar button either.
+    // The toolbar buttons in the operator's chosen order/visibility (#72) — the same hide/order rules as the left
+    // menu, so a plugin hidden there does not surface a toolbar button either. This is the one list the strip draws
+    // from (AC-772): a cockpit-owned action is an entry here like any other, not a second registry beside it.
     public IReadOnlyList<PluginToolbarAction> VisibleToolbarActions =>
         PluginToolbarActions
             .Where(action => !_IsHiddenInMenu(action.PluginId))
             .OrderBy(action => _MenuOrderOf(action.PluginId))
             .ToList();
+
+    // A toolbar action threw (AC-772 criterion 6). Recorded under the action's own title rather than the plugin's
+    // display name, which this view model does not carry: the title is what the operator clicked, so it is what
+    // makes the banner entry recognisable.
+    internal void ReportToolbarActionFailure(string pluginId, string title, string error) =>
+        _pluginDiagnostics?.Record(pluginId, title, "toolbar-action", error);
 
     // Applies a menu preference the plugin manager just persisted, and tells the sidebar to rebuild (#72).
     public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu)
@@ -2620,6 +2628,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
         _projectQuickStart = projectQuickStart;
+
+        // Before the first load below, so every card it builds carries them (AC-772) — these are what let one
+        // ProjectCardView serve both the Projects workspace and the Manage-projects window.
+        Projects.CardActions = new ProjectCardActions(
+            StartProjectSessionCommand,
+            NewSessionForProjectCommand,
+            EditProjectCommand,
+            OpenProjectFolderCommand,
+            ShareProjectCommand);
 
         // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other

@@ -1,0 +1,115 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:materialIcons="using:Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.ProjectRowView"
+             x:DataType="vm:ProjectCardViewModel">
+
+    <!-- The same project as a wide row (AC-772's List layout): twice as many projects per screen, at the cost of the
+         picture being smaller. Deliberately the same content and the same three actions as `ProjectCardView` — the
+         layout choice is a shape, not a different feature set — and the same wording, since both read it off the same
+         view model. -->
+    <!-- Background/border come from the `projectCard` class rather than from local values, for the same reason the
+         sessionItem rows do (Theme.axaml): a local value here would beat the `.active` setter and the selected row
+         in the Manage-projects window would never light up. -->
+    <Border Margin="0,0,0,8" Padding="12"
+            CornerRadius="{StaticResource CockpitPanelRadius}"
+            Classes="projectCard" Classes.active="{Binding IsSelected}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+            <controls:ProjectLogoBadge Grid.Column="0" Size="34" Margin="0,0,12,0"
+                                       VerticalAlignment="Center"
+                                       LogoPath="{Binding Project.LogoPath}"
+                                       ProjectName="{Binding Project.Name}"
+                                       WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
+
+            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Project.Name}" FontSize="14" FontWeight="SemiBold"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <Border Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
+                            VerticalAlignment="Center" MaxWidth="140">
+                        <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
+                    </Border>
+                </StackPanel>
+                <!-- Description and "last opened" on one line: a row has the width for it, and stacking them would
+                     make every row two lines taller for no reading gain. Three TextBlocks rather than one with Runs
+                     — a Run cannot be hidden, and the separator has to disappear along with an absent description. -->
+                <!-- A Grid, not a horizontal StackPanel: the description is the only part that may be any length, so
+                     it takes the star column and trims there. In a StackPanel it asked for its full width and pushed
+                     "last opened" out from under the buttons instead. -->
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Project.Description}" FontSize="11"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Grid.Column="1" Text=" · " FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding Project.LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
+                               FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                </Grid>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                        Margin="12,0,0,0">
+                <Button Classes="Accent" Padding="12,6"
+                        IsVisible="{Binding CanStart}"
+                        Command="{Binding Actions.Start}"
+                        CommandParameter="{Binding Project}">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13" VerticalAlignment="Center"/>
+                        <TextBlock Text="Start" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Padding="12,6"
+                        IsVisible="{Binding !CanStart}"
+                        Content="Pick how it runs"
+                        ToolTip.Tip="Choose which assistant this project runs on — one click and it's done."
+                        Command="{Binding Actions.Edit}"
+                        CommandParameter="{Binding Project}"/>
+                <Button Classes="Subtle" Padding="6,4" FontSize="11"
+                        Content="{Binding ShareLabel}"
+                        ToolTip.Tip="{Binding ShareTooltip}"
+                        Command="{Binding Actions.ToggleSharing}"
+                        CommandParameter="{Binding Project}"/>
+                <Button Classes="Subtle" Padding="6,4"
+                        ToolTip.Tip="More for this project"
+                        AutomationProperties.Name="More for this project">
+                    <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="14" Height="14"/>
+                    <Button.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedRight">
+                            <StackPanel Spacing="2" MinWidth="220" Margin="4">
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Open folder"
+                                        ToolTip.ShowOnDisabled="True"
+                                        ToolTip.Tip="{Binding Project.SourceDirectory}"
+                                        IsEnabled="{Binding Project.SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                        Command="{Binding Actions.OpenFolder}"
+                                        CommandParameter="{Binding Project}"/>
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Edit this project…"
+                                        Command="{Binding Actions.Edit}"
+                                        CommandParameter="{Binding Project}"/>
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Start, but change something first…"
+                                        IsVisible="{Binding CanStart}"
+                                        Command="{Binding Actions.StartWithOptions}"
+                                        CommandParameter="{Binding Project}"/>
+                                <controls:ProjectInfoList Margin="8,6,8,0"
+                                                          Fields="{Binding Project.AdditionalInfo}"
+                                                          IsVisible="{Binding Project.HasAdditionalInfo}"/>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

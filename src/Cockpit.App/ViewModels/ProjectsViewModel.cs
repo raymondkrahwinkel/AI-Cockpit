@@ -33,7 +33,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // What every registered plugin shares elsewhere (AC-245). Null under the previewer, where `SharedProjectGroups` simply stays empty.
     private readonly ISharedProjectSourceRegistry? _sharedSources;
 
+    // Which layout the Projects page draws (AC-772). Null under the previewer, which keeps the default and persists nothing.
+    private readonly IProjectsDisplaySettingsStore? _displaySettings;
+
     private ProjectSettings _settings = ProjectSettings.Empty;
+
+    // What the cards this view model builds can do (AC-772). Set once by `CockpitViewModel` — which owns the
+    // commands — before the first load, so every card carries them. Left null under the previewer and in tests,
+    // where a card is data to inspect rather than a thing to start.
+    internal ProjectCardActions? CardActions { get; set; }
 
     // Cancels a still-running `LoadSharedProjectsAsync` when a newer one starts (the workspace reopened, say), so a slow connection cannot overwrite a fresher answer with a stale one.
     private CancellationTokenSource? _sharedProjectsLoadCts;
@@ -56,13 +64,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         ISessionDialogService? dialogs,
         IProjectLogoStore? logos = null,
         IProjectOwnershipRegistry? ownership = null,
-        ISharedProjectSourceRegistry? sharedSources = null)
+        ISharedProjectSourceRegistry? sharedSources = null,
+        IProjectsDisplaySettingsStore? displaySettings = null)
     {
         _store = store;
         _dialogs = dialogs;
         _logos = logos;
         _ownership = ownership;
         _sharedSources = sharedSources;
+        _displaySettings = displaySettings;
 
         // AC-762: a source that registers after the startup race already lost it (App.axaml.cs's plugin phase 2
         // runs after CockpitViewModel's constructor kicks off the first LoadAsync) gets its own retry instead of
@@ -129,6 +139,10 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // no heading at all — see that type's own remarks.
     public ObservableCollection<ProjectCategoryGroupViewModel> ProjectCategoryGroups { get; } = [];
 
+    // The same cards the groups above hold, in "last worked on" order — what the Continue layout draws (AC-772).
+    // Rebuilt alongside them by `_RepublishRecentCards`, so the two never disagree about which projects exist.
+    public ObservableCollection<ProjectCardViewModel> RecentCards { get; } = [];
+
     // The always-present, never-disappearing catch-all category group's heading (AC-618).
     private const string _UncategorizedLabel = "Uncategorized";
 
@@ -148,11 +162,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     public bool HasProjects => Projects.Count > 0;
 
-    // How many projects there are, for the overview's summary line.
-    public int ProjectCount => Projects.Count;
-
-    // How many have ever been opened — the rest are set up but never started, which is worth seeing at a glance.
-    public int OpenedProjectCount => Projects.Count(project => project.LastOpenedAt is not null);
+    // `ProjectCount` and `OpenedProjectCount` fed the overview's summary line, which AC-772 removed: it was a
+    // dashboard gesture in front of the projects you came for, answering no question that screen raises. Nothing
+    // reads them any more, so they went with it.
 
     // The project a session was last started on, or null when none ever was.
     public Project? MostRecentProject => RecentProjects.FirstOrDefault(project => project.LastOpenedAt is not null);
@@ -176,7 +188,16 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     internal static ProjectsViewModel DesignSample()
     {
         var viewModel = new ProjectsViewModel();
-        viewModel._settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
+        viewModel.StageDesignSample();
+
+        return viewModel;
+    }
+
+    // The same sample, applied to an existing view model — for the Projects-workspace renders (AC-772), where the
+    // view model is the one `CockpitViewModel` already owns and so cannot be swapped for a freshly built sample.
+    internal void StageDesignSample()
+    {
+        _settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
         {
             Description = "The cockpit itself — the desktop app these sessions run in.",
             SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
@@ -188,9 +209,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                 new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
             ],
         });
-        viewModel._Republish();
-
-        return viewModel;
+        _Republish();
     }
 
     // `DesignSample` plus shared-project groups (AC-245), staged directly rather than through
@@ -201,7 +220,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     internal static ProjectsViewModel DesignSampleWithSharedProjects()
     {
         var viewModel = DesignSample();
-        viewModel.SharedProjectGroups.Add(new SharedProjectGroupViewModel(
+        viewModel.StageDesignSharedProjects();
+
+        return viewModel;
+    }
+
+    // As `StageDesignSample`, for the shared-project groups — see that method for why both exist as instance methods.
+    internal void StageDesignSharedProjects()
+    {
+        SharedProjectGroups.Add(new SharedProjectGroupViewModel(
             "Depot — Work",
             [
                 new SharedProject("depot:onboarding", "Onboarding flow")
@@ -212,10 +239,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                 new SharedProject("depot:roadmap", "Product roadmap") { Role = "Viewer" },
             ],
             Error: null));
-        viewModel.SharedProjectGroups.Add(new SharedProjectGroupViewModel(
+        SharedProjectGroups.Add(new SharedProjectGroupViewModel(
             "Depot — Personal", [], "Sign in to this Depot connection to see its shared projects."));
 
-        return viewModel;
+        OnPropertyChanged(nameof(HasSharedProjects));
+        OnPropertyChanged(nameof(HasNothingToShow));
     }
 
     // Categories (AC-618) as the list's main grouping — "Werk" before "Privé", not alphabetical, from an explicit
@@ -274,7 +302,54 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
         _Republish();
 
+        if (_displaySettings is not null)
+        {
+            LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
+        }
+
         _BeginSharedProjectsLoad();
+    }
+
+    // Which layout the page draws (AC-772). Persisted per operator by `SetLayoutModeAsync`; the segmented control on
+    // the page itself is the only place it is set, deliberately — a preference you can see the effect of while you
+    // change it does not need a settings screen to hide in.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCardsLayout))]
+    [NotifyPropertyChangedFor(nameof(IsListLayout))]
+    [NotifyPropertyChangedFor(nameof(IsContinueLayout))]
+    private ProjectsLayoutMode _layoutMode = ProjectsLayoutMode.Cards;
+
+    public bool IsCardsLayout => LayoutMode == ProjectsLayoutMode.Cards;
+
+    public bool IsListLayout => LayoutMode == ProjectsLayoutMode.List;
+
+    public bool IsContinueLayout => LayoutMode == ProjectsLayoutMode.Continue;
+
+    // Whether the third segment is offered at all — see `ProjectsDisplaySettings.ContinueLayoutAvailable`.
+    public static bool ShowContinueLayoutOption => ProjectsDisplaySettings.ContinueLayoutAvailable;
+
+    // Switches the page's layout and remembers it. Takes the mode by name so the three segments can be one command
+    // with a parameter rather than three commands that differ in one word.
+    [RelayCommand]
+    private async Task SetLayoutModeAsync(string? mode)
+    {
+        if (!Enum.TryParse<ProjectsLayoutMode>(mode, ignoreCase: true, out var parsed))
+        {
+            return;
+        }
+
+        var normalized = new ProjectsDisplaySettings { LayoutMode = parsed }.Normalized();
+        if (normalized.LayoutMode == LayoutMode)
+        {
+            return;
+        }
+
+        LayoutMode = normalized.LayoutMode;
+
+        if (_displaySettings is not null)
+        {
+            await _displaySettings.SaveAsync(normalized).ConfigureAwait(true);
+        }
     }
 
     // Fills `SharedProjectGroups` from every registered `ISharedProjectSource` (AC-245).
@@ -615,8 +690,6 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         SelectedProject = Projects.FirstOrDefault(project => project.Id == selectedId);
         OnPropertyChanged(nameof(HasProjects));
         OnPropertyChanged(nameof(HasNothingToShow));
-        OnPropertyChanged(nameof(ProjectCount));
-        OnPropertyChanged(nameof(OpenedProjectCount));
         OnPropertyChanged(nameof(MostRecentProject));
         OnPropertyChanged(nameof(HasMoreThanSidebarShows));
 
@@ -634,6 +707,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         ProjectCategoryGroups.Clear();
 
         var normalized = _settings.Normalized();
+        _RepublishRecentCards(normalized);
         if (!normalized.Projects.Any(project => !string.IsNullOrWhiteSpace(project.Category)))
         {
             ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(CategoryName: null, [.. normalized.Projects.Select(_ToCard)]));
@@ -656,8 +730,24 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(_UncategorizedLabel, uncategorized));
     }
 
+    // The Continue layout's own order (AC-772): most recently worked on first, never-opened last. Flat rather than
+    // grouped by category — this layout answers "what was I doing", and a category heading does not help with that.
+    private void _RepublishRecentCards(ProjectSettings normalized)
+    {
+        RecentCards.Clear();
+        var ordered = normalized.Projects
+            .OrderByDescending(project => project.LastOpenedAt ?? DateTimeOffset.MinValue)
+            .ThenBy(project => project.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(_ToCard);
+
+        foreach (var card in ordered)
+        {
+            RecentCards.Add(card);
+        }
+    }
+
     private ProjectCardViewModel _ToCard(Project project) =>
-        new(project, _OriginBadge(project)) { IsSelected = project.Id == SelectedProject?.Id };
+        new(project, _OriginBadge(project), CardActions) { IsSelected = project.Id == SelectedProject?.Id };
 
     // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on `project` (AC-604, claimed by
     // `_ReconcileSharedSourceClaims`) — falls back to `SharedSourceName` (AC-762) so a genuinely shared project

@@ -66,11 +66,11 @@ public class ProjectsWorkspaceSharedProjectsTests
             window.UpdateLayout();
 
             var heading = view.GetVisualDescendants().OfType<TextBlock>()
-                .FirstOrDefault(text => text.Text == "Shared via Depot — Work");
+                .FirstOrDefault(text => text.Text == "From your team · Depot — Work");
             var cardName = view.GetVisualDescendants().OfType<TextBlock>()
                 .FirstOrDefault(text => text.Text == "Onboarding flow");
             var finishSettingUpButton = view.GetVisualDescendants().OfType<Button>()
-                .FirstOrDefault(button => Equals(button.Content, "Finish setting up…"));
+                .FirstOrDefault(button => Equals(button.Content, "Add to my projects…"));
 
             Assert.NotNull(heading);
             Assert.NotNull(cardName);

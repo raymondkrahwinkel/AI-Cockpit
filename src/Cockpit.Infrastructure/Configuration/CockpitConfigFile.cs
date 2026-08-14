@@ -57,6 +57,11 @@ internal sealed class CockpitConfigFile
 
     public LayoutSettingsEntry? Layout { get; set; }
 
+    // Which layout the Projects page draws (AC-772); owned by the projects-display-settings store. Its own section
+    // beside `Projects` (which is the project list itself): this is about the screen, not about what is on it. Null
+    // until the operator picks a layout, which is what leaves a cockpit that never touched the toggle on the default.
+    public ProjectsDisplaySettingsEntry? ProjectsDisplay { get; set; }
+
     // The operator's own usage thresholds (AC-233), on top of what each provider declared; null when none were ever set.
     public UsageThresholdSettingsEntry? UsageThresholds { get; set; }
 

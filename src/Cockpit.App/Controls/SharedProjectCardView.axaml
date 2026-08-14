@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sharedProjects="using:Cockpit.Plugins.Abstractions.Projects"
+             x:Class="Cockpit.App.Controls.SharedProjectCardView"
+             x:DataType="sharedProjects:SharedProject"
+             x:Name="Root">
+
+    <!-- A project a colleague shares that this machine has not added yet (AC-245/AC-246), in the one shape every
+         surface shows it in (AC-772): the Projects page in either layout, and the Manage-projects window. Same
+         wording in all three by construction rather than by three templates agreeing to.
+
+         "Ready to add" reads as the invitation it is. It used to say "Not set up yet" on a warning-coloured chip,
+         which reads as a fault — there is nothing wrong with a project you simply have not added. -->
+    <Border Width="278" Margin="8" Padding="16"
+            CornerRadius="{StaticResource CockpitPanelRadius}"
+            Background="{StaticResource CockpitPanelBgBrush}" Opacity="0.85"
+            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+        <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Border Grid.Column="1" Margin="8,0,0,0" Padding="7,2"
+                        CornerRadius="{StaticResource CockpitPillRadius}"
+                        Background="{StaticResource CockpitAccentRingTintBrush}"
+                        VerticalAlignment="Top">
+                    <TextBlock Text="Ready to add" FontSize="10"
+                               Foreground="{StaticResource CockpitAccentBrush}"/>
+                </Border>
+            </Grid>
+            <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
+                       IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <TextBlock Text="{Binding Role}" FontSize="11"
+                       IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+            <!-- Its own wording, not the "Pick how it runs" a local project without a profile shows: both used to
+                 say "Finish setting up…" for two unrelated situations, and this one is not a half-finished project
+                 but someone else's project arriving. The command comes from whichever screen hosts the control. -->
+            <Button Classes="Accent" HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" Padding="12,7"
+                    Content="Add to my projects…"
+                    Command="{Binding #Root.AddCommand}"
+                    CommandParameter="{Binding}"/>
+        </StackPanel>
+    </Border>
+</UserControl>

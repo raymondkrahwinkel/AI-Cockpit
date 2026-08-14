@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         x:Class="Cockpit.App.Views.SharedProjectBindingDialog"
         x:DataType="vm:SharedProjectBindingDialogViewModel"
-        Title="Finish setting up"
+        Title="Add to my projects"
         Width="520" Height="420" MinWidth="440" MinHeight="320"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">

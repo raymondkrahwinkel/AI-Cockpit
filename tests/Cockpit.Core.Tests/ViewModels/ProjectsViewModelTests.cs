@@ -24,6 +24,45 @@ public class ProjectsViewModelTests
         return (new ProjectsViewModel(store, dialogs), store, dialogs);
     }
 
+    // AC-772: the Projects page's layout toggle. The store's own rules are covered by
+    // ProjectsDisplaySettingsStoreTests; what is asserted here is that the page reads its choice back on load and
+    // writes it on change, which is the whole of "remembered per operator".
+    [Fact]
+    public async Task LayoutMode_IsReadBackOnLoad_AndPersistedWhenItChanges()
+    {
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
+        var display = Substitute.For<IProjectsDisplaySettingsStore>();
+        display.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new ProjectsDisplaySettings { LayoutMode = ProjectsLayoutMode.List });
+        var viewModel = new ProjectsViewModel(store, Substitute.For<ISessionDialogService>(), displaySettings: display);
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal(ProjectsLayoutMode.List, viewModel.LayoutMode);
+        Assert.True(viewModel.IsListLayout);
+        Assert.False(viewModel.IsCardsLayout);
+
+        await viewModel.SetLayoutModeCommand.ExecuteAsync("Cards");
+
+        Assert.Equal(ProjectsLayoutMode.Cards, viewModel.LayoutMode);
+        await display.Received(1).SaveAsync(
+            Arg.Is<ProjectsDisplaySettings>(settings => settings.LayoutMode == ProjectsLayoutMode.Cards),
+            Arg.Any<CancellationToken>());
+    }
+
+    // A name no layout carries is a parameter that can only come from a coding mistake — better to leave the page
+    // where it is than to reset it to the default under the operator.
+    [Fact]
+    public async Task SetLayoutMode_WithAnUnknownName_ChangesNothing()
+    {
+        var (viewModel, _, _) = Build();
+
+        await viewModel.SetLayoutModeCommand.ExecuteAsync("Mosaic");
+
+        Assert.Equal(ProjectsLayoutMode.Cards, viewModel.LayoutMode);
+    }
+
     [Fact]
     public async Task LoadAsync_PublishesTheSavedProjects()
     {
@@ -49,7 +88,8 @@ public class ProjectsViewModelTests
         // The manager keeps the operator's own order — re-sorting it under them on every start is its own chaos.
         Assert.Equal(new[] { "Archive", "Depot", "Cockpit" }, viewModel.Projects.Select(project => project.Name));
         Assert.Equal("Cockpit", viewModel.MostRecentProject?.Name);
-        Assert.Equal(2, viewModel.OpenedProjectCount);
+        // The Continue layout's own order (AC-772): the same "last worked on first", never-opened last.
+        Assert.Equal(new[] { "Cockpit", "Depot", "Archive" }, viewModel.RecentCards.Select(card => card.Project.Name));
     }
 
     [Fact]
