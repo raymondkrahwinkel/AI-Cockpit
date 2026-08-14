@@ -17,18 +17,57 @@ namespace Cockpit.Core.Tests.Plugins;
 /// </summary>
 public class McpServerCatalogProjectScopingTests
 {
+    // AC-766: the unscoped query used to pass an empty scheme list to every plugin provider, so a server scoped to
+    // one project's own Depot connection (say) never reached it — the assistant, a project-less session and the
+    // profile checklists could never be offered it at all. Fixed by taking the union of every project's own schemes
+    // into that query instead of one project's — "a project narrows what is selected, never what is offered"
+    // (ProjectMcpOverlay) now applies to a plugin's own bevraging too. The server is not ProjectLinked there: no
+    // single project points at it in an unscoped query.
     [Fact]
-    public async Task GetServersForProjectAsync_APluginServerForOneProject_AppearsOnlyThere()
+    public async Task GetServersForProjectAsync_APluginServerScopedToOneProjectsScheme_IsAlsoOfferedUnscopedButNotProjectLinked()
     {
-        var catalog = _CatalogWith(new _PerProjectPluginMcpProvider(), "project-a");
+        var projectA = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
+        var projectB = new Project("project-b", "Project");
+        var catalog = _CatalogWith(new _SchemeScopedPluginMcpProvider(), projectA, projectB);
 
         var forA = await catalog.GetServersForProjectAsync("project-a");
         var forB = await catalog.GetServersForProjectAsync("project-b");
         var unscoped = await catalog.GetServersAsync();
 
-        Assert.Contains(forA, server => server.Name == "project-a-server");
-        Assert.DoesNotContain(forB, server => server.Name == "project-a-server");
-        Assert.DoesNotContain(unscoped, server => server.Name == "project-a-server");
+        Assert.True(forA.Single(server => server.Name == "depot-server").ProjectLinked);
+        Assert.DoesNotContain(forB, server => server.Name == "depot-server");
+        Assert.False(unscoped.Single(server => server.Name == "depot-server").ProjectLinked);
+    }
+
+    // AC-766 criterion 2, with more than one project in the mix: every scheme any project names reaches the
+    // unscoped query, not just the first or only one.
+    [Fact]
+    public async Task GetServersForProjectAsync_Unscoped_OffersAServerForEveryProjectsScheme()
+    {
+        var projectA = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
+        var projectB = new Project("project-b", "Project") { MemoryRef = "youtrack:my-instance" };
+        var catalog = _CatalogWith(new _MultiSchemePluginMcpProvider(), projectA, projectB);
+
+        var unscoped = await catalog.GetServersAsync();
+
+        Assert.Contains(unscoped, server => server.Name == "depot-server");
+        Assert.Contains(unscoped, server => server.Name == "youtrack-server");
+        Assert.All(unscoped, server => Assert.False(server.ProjectLinked));
+    }
+
+    // AC-766 criterion 3: a scoped query keeps seeing only its own project's schemes — the union that now reaches
+    // the unscoped query must not leak into a call that names a project.
+    [Fact]
+    public async Task GetServersForProjectAsync_Scoped_PassesOnlyThatProjectsSchemes_NotTheUnion()
+    {
+        var projectA = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
+        var projectB = new Project("project-b", "Project") { MemoryRef = "youtrack:my-instance" };
+        var provider = new _SchemeCapturingPluginMcpProvider();
+        var catalog = _CatalogWith(provider, projectA, projectB);
+
+        _ = await catalog.GetServersForProjectAsync("project-a");
+
+        Assert.Equal(["depot"], provider.LastSchemes);
     }
 
     // Acceptance criterion 5: an existing IPluginMcpProvider (YouTrack e.a.) that never overrode the new
@@ -189,24 +228,26 @@ public class McpServerCatalogProjectScopingTests
     private static McpServerCatalog _CatalogWith(IPluginMcpProvider provider, string knownProjectId) =>
         _CatalogWith(provider, new Project(knownProjectId, "Project"));
 
-    private static McpServerCatalog _CatalogWith(IPluginMcpProvider provider, Project knownProject)
+    private static McpServerCatalog _CatalogWith(IPluginMcpProvider provider, params Project[] knownProjects)
     {
         var store = Substitute.For<IMcpServerStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
 
+        var settings = knownProjects.Aggregate(ProjectSettings.Empty, (current, project) => current.WithProject(project));
         var projectStore = Substitute.For<IProjectStore>();
-        projectStore.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(ProjectSettings.Empty.WithProject(knownProject));
+        projectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
 
         return new McpServerCatalog(store, projectStore, [provider], [], NullLogger<McpServerCatalog>.Instance);
     }
 
-    private sealed class _PerProjectPluginMcpProvider : IPluginMcpProvider
+    // A plugin whose server for a given scheme is named after that scheme — a stand-in for several Depot
+    // connections at once (AC-766 criterion 2).
+    private sealed class _MultiSchemePluginMcpProvider : IPluginMcpProvider
     {
         public IReadOnlyList<McpServerContribution> GetMcpServers() => [];
 
-        public IReadOnlyList<McpServerContribution> GetMcpServers(string? projectId) =>
-            projectId == "project-a" ? [new McpServerContribution("project-a-server", "https://a.example/mcp")] : [];
+        public IReadOnlyList<McpServerContribution> GetMcpServers(string? projectId, IReadOnlyList<string> projectMemorySchemes) =>
+            [.. projectMemorySchemes.Select(scheme => new McpServerContribution($"{scheme}-server", $"https://{scheme}.example/mcp"))];
     }
 
     private sealed class _ProjectAgnosticPluginMcpProvider : IPluginMcpProvider

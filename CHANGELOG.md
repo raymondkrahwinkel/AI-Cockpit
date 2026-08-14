@@ -150,6 +150,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the assistant, a project-less session and the profile checklists can now be offered a project-bound
+  server (a Depot connection, say) at all — previously it was only ever offered to sessions on the specific
+  project it was bound to, so the assistant (which has no project) could never see or mount it, no matter how
+  it was configured.
+
 - fixed: once memory usage grew past a safety ceiling meant to skip a background compact under extreme load, the
   compactor stopped ever compacting again and repeated the same warning in the log several times a second,
   indefinitely. It now retries a compact periodically instead of giving up for good, and logs a single clear
