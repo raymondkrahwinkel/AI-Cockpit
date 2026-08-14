@@ -29,8 +29,16 @@
                                            LogoPath="{Binding Project.LogoPath}"
                                            ProjectName="{Binding Project.Name}"
                                            WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
-                <TextBlock Grid.Column="1" Text="{Binding Project.Name}" FontSize="15" FontWeight="SemiBold"
-                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Project.Name}" FontSize="15" FontWeight="SemiBold"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <!-- Dropped when this card was extracted into its own control (AC-772) — ProjectRowView kept
+                         it, ProjectCardView didn't. Same class, same binding, mirrored here. -->
+                    <Border Grid.Column="1" Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
+                            Margin="8,0,0,0" VerticalAlignment="Center" MaxWidth="100">
+                        <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
+                    </Border>
+                </Grid>
                 <Button Grid.Column="2" Classes="Subtle" Padding="6,2" VerticalAlignment="Center"
                         ToolTip.Tip="More for this project"
                         AutomationProperties.Name="More for this project">
