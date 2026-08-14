@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>AC-772 — Nieuw/bewerk project: usability-voorstellen</title>
+<style>
+  /* Tokens overgenomen uit src/Cockpit.App/Styles/Theme.axaml — niet verzonnen.
+     Dit is een HTML-PROXY voor een Avalonia-scherm, geen tweede stack.
+     Vierde iteratie op AC-772. Bouwt voort op ac-772-toolbar-en-projecten-compleet-2026-08-14.html
+     (sectie 8 daar tekent het bestaande ProjectDialog.axaml letterlijk na). Deze mockup gaat over
+     de vraag die daarna kwam: is dat scherm zelf wel prettig voor iemand die geen developer is? */
+  :root{
+    --window:#0f1116; --panel:#1a1d24; --secondary:#0c0e12; --chrome:#12141a; --inset:#202430;
+    --hairline:#2a2f39; --hairline-hover:#38404d; --hairline-soft:#20242c;
+    --text:#e8eaef; --text-2:#949aa5; --text-faint:#656c78;
+    --accent:#2563eb; --accent-hover:#1d4ed8; --on-accent:#fff;
+    --iso-bg:#332b47; --iso-text:#a78bda;
+    --amber:#e0a33e; --green:#5aa576; --err:#d64545;
+    --ctl-r:9px; --panel-r:12px; --pill-r:20px;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--window);color:var(--text);
+       font:14px/1.55 Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1260px;margin:0 auto;padding:34px 24px 90px}
+  h1{font-size:22px;margin:0 0 6px;font-weight:600}
+  .sub{color:var(--text-2);margin:0 0 8px;max-width:86ch}
+  .sub b{color:var(--text)}
+  h2{font-size:16px;margin:46px 0 5px;font-weight:600}
+  h2 .n{color:var(--text-faint);font-weight:400;margin-right:9px}
+  h3{font-size:13px;margin:24px 0 6px;font-weight:600;color:var(--text)}
+  .note{color:var(--text-2);margin:0 0 14px;max-width:86ch;font-size:13px}
+  .note b{color:var(--text)}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:3px;
+       background:var(--inset);color:var(--text-2);margin-right:4px;vertical-align:1px}
+  .tag.win{background:rgba(90,165,118,.15);color:var(--green)}
+  .tag.cost{background:rgba(224,163,62,.14);color:var(--amber)}
+  code{font-family:var(--mono);font-size:12px;background:var(--inset);padding:1px 5px;border-radius:3px}
+  hr{border:0;border-top:1px solid var(--hairline-soft);margin:38px 0 0}
+  .banner{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.35);border-radius:var(--panel-r);
+          padding:12px 16px;margin:14px 0 0;font-size:13px;color:var(--text-2)}
+  .banner b{color:var(--text)}
+
+  .win{background:var(--window);border:1px solid var(--hairline);border-radius:8px;overflow:hidden}
+  .win-title{background:var(--chrome);padding:8px 14px;border-bottom:1px solid var(--hairline);
+             font-size:11.5px;color:var(--text-2);display:flex;gap:8px;align-items:center}
+  .win-title b{color:var(--text);font-size:12px;font-weight:600}
+  .win-sub{color:var(--text-faint);font-size:10.5px;margin-left:auto}
+
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:6px 0 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--hairline-soft);vertical-align:top}
+  th{color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td.was{color:var(--text-2)}
+  .verdict{background:var(--panel);border:1px solid var(--hairline);border-left:3px solid var(--accent);
+           border-radius:0 var(--panel-r) var(--panel-r) 0;padding:12px 16px;margin:14px 0 0;font-size:13px}
+  .verdict b{color:var(--text)}
+  ul.q{margin:8px 0 0;padding-left:20px;color:var(--text-2);font-size:13px}
+  ul.q li{margin:0 0 6px}
+  ul.q b{color:var(--text)}
+  .cap{font-size:11px;color:var(--text-faint);margin:7px 0 0;text-align:center}
+
+  /* --- dialoogvelden (hergebruikt uit de vorige mockup) --- */
+  .fdlg{padding:20px 26px 4px}
+  .fsec{margin:0 0 22px}
+  .fsec-h{font-size:13.5px;font-weight:600;color:var(--text);margin:0 0 4px}
+  .fsec-hr{height:1px;background:var(--hairline);margin:0 0 12px}
+  .frow{display:flex;gap:20px;margin-bottom:14px}
+  .fcol{flex:1;min-width:0}
+  .flabel{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text);margin-bottom:2px}
+  .fhint{font-size:10.5px;color:var(--text-2);margin:0 0 5px;max-width:60ch}
+  .finput{background:var(--secondary);border:1px solid var(--hairline);border-radius:var(--ctl-r);
+          padding:6px 9px;font-size:12.5px;color:var(--text);display:block;width:100%}
+  .finput.area{min-height:44px}
+  .fselect{background:var(--secondary);border:1px solid var(--hairline);border-radius:var(--ctl-r);
+           padding:6px 9px;font-size:12.5px;color:var(--text-2);display:flex;align-items:center;
+           justify-content:space-between;gap:6px}
+  .origin{font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:var(--pill-r)}
+  .origin.shared{background:var(--iso-bg);color:var(--iso-text)}
+  .origin.local{background:var(--inset);color:var(--text-2)}
+  .chipset{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .fchip{padding:3px 10px;border-radius:var(--pill-r);font-size:11.5px;color:var(--text-2);
+         background:var(--secondary);border:1px solid var(--hairline)}
+  .fchip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+  .checkline{font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .checkline .bx{width:12px;height:12px;border:1px solid var(--hairline-hover);border-radius:3px;display:inline-block}
+  .checkline .bx.on{background:var(--accent);border-color:var(--accent)}
+  .mcprow{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px}
+  .footer{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;
+          background:var(--chrome);border-top:1px solid var(--hairline)}
+  .logo{width:32px;height:32px;border-radius:8px;background:var(--secondary);flex:none;
+        display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;
+        color:var(--text-2);border:1px solid var(--hairline)}
+  .logo.g{background:#1e3d2f;color:#7fc79a;border-color:#2a5340}
+  .logo.sm{width:28px;height:28px;border-radius:7px;font-size:11px}
+  .btn{background:var(--panel);border:1px solid var(--hairline);color:var(--text);
+       border-radius:var(--ctl-r);padding:6px 13px;font-size:12.5px;cursor:default;
+       display:inline-flex;align-items:center;justify-content:center;gap:6px}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+  .btn.g{background:transparent;border-color:transparent;color:var(--text-2)}
+  .btn.sm{padding:4px 10px;font-size:11.5px}
+  .btn.tiny{padding:4px 9px;font-size:11px}
+
+  /* --- P1: split layout met live preview --- */
+  .split{display:flex;gap:0}
+  .split-form{flex:1 1 62%;min-width:0}
+  .split-preview{flex:0 0 34%;background:var(--secondary);border-left:1px solid var(--hairline);
+                 padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:10px}
+  .split-preview .pv-label{font-size:10.5px;color:var(--text-faint);text-transform:uppercase;
+                            letter-spacing:.05em;align-self:flex-start}
+  .card{width:100%;max-width:230px;background:var(--panel);border:1px solid var(--hairline);
+        border-radius:var(--panel-r);padding:14px}
+  .card-h{display:flex;align-items:center;gap:10px}
+  .card-n{font-size:14.5px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card-d{font-size:12px;color:var(--text-2);margin:9px 0 0}
+  .btn.full{width:100%;margin-top:11px}
+
+  /* --- native <details> als accordion — geen JS --- */
+  details.advanced{border:1px solid var(--hairline);border-radius:var(--panel-r);background:var(--secondary);
+                   padding:0;margin-top:4px}
+  details.advanced summary{list-style:none;cursor:pointer;padding:11px 14px;display:flex;
+                           align-items:center;gap:8px;font-size:12.5px;color:var(--text);user-select:none}
+  details.advanced summary::-webkit-details-marker{display:none}
+  details.advanced summary::before{content:"▸";color:var(--text-faint);font-size:10px;width:10px}
+  details.advanced[open] summary::before{content:"▾"}
+  details.advanced .adv-body{padding:4px 16px 16px}
+  .adv-count{margin-left:auto;font-size:10.5px;color:var(--text-faint);font-weight:400}
+
+  /* --- P2: quick-add modal --- */
+  .quick{max-width:400px;margin:0 auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AC-772 — Nieuw/bewerk project: usability-voorstellen</h1>
+<p class="sub">Vervolg op de vraag die Raymond stelde nadat het create/edit-scherm (sectie 8 van de vorige mockup)
+letterlijk was nagetekend: is dát scherm zelf wel prettig voor iemand die geen developer is? Twee voorstellen
+hieronder — <b>complementair, geen of/of</b>: P1 herschikt het bestaande scherm, P2 zet er een lichter
+instapscherm voor. Beide zijn los te nemen.</p>
+<p class="sub"><span class="tag">HTML-proxy van een Avalonia-scherm</span> <code>&lt;details&gt;</code> is een
+native HTML-element — het klapt hieronder écht open/dicht, geen JavaScript. In Avalonia wordt dat een
+<code>Expander</code>.</p>
+
+<div class="banner">
+  <b>Let op — scope.</b> De ticketbeschrijving van AC-772 sluit structurele wijzigingen aan dit scherm op dit
+  moment nog expliciet uit ("alleen taal" staat er). Dit hier is dus een voorstel dat verder gaat dan de huidige
+  v1-afbakening. Onderaan een aanbeveling voor hoe dat op te knippen.
+</div>
+
+<hr>
+
+<h2><span class="n">0</span>Wat er nu mis is, kort</h2>
+<table>
+  <tr><th style="width:26%">Probleem</th><th>Gevolg voor iemand die geen developer is</th></tr>
+  <tr><td>Alle zes secties staan altijd open, ook <code>MCP overlay</code>, <code>Isolate in git worktree</code> en de resource-rollen-combo.</td><td class="was">Een project zonder code (bv. "Facturen") toont evenveel technische knoppen als een softwareproject. Niets is verplicht, maar alles is zichtbaar.</td></tr>
+  <tr><td>Het scherm toont pas een resultaat als je het al gesloten hebt.</td><td class="was">Je vult "Facturen" in en moet je voorstellen hoe die kaart er straks uitziet.</td></tr>
+  <tr><td>900×760, één lange scroll, geen ingang voor "ik wil gewoon snel starten".</td><td class="was">Iemand die alleen een naam en een map wil instellen doorloopt hetzelfde scherm als iemand die een MCP-overlay configureert.</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="n">1</span>Voorstel P1 — Basics altijd zichtbaar, de rest achter één Advanced-vouw</h2>
+<p class="note">Zelfde zes secties, andere volgorde van zichtbaarheid: <b>Basics</b> (Name, Logo, Category,
+Description, Folder, Profile) blijft altijd open — dat is wat elk project nodig heeft. Alles wat er in de praktijk
+zelden aangeraakt wordt (Behaviour, Where it is tracked, Memory/instructions/reference voorbij de eerste
+Memory-rij, worktree-isolatie, MCP overlay) valt onder één <code>&lt;details&gt;</code>-vouw, dicht bij
+openen. Erbij: een live-preview van de kaart naast het formulier, zodat "Facturen" meteen zichtbaar wordt als de
+kaart die een collega straks ziet.</p>
+
+<div class="win" style="max-width:900px">
+  <div class="win-title"><b>Facturen</b><span class="win-sub">Edit project</span></div>
+  <div class="split">
+    <div class="split-form">
+      <div class="fdlg" style="padding-right:16px">
+        <div class="fsec">
+          <div class="fsec-h">Basics</div><div class="fsec-hr"></div>
+          <div class="frow">
+            <div class="fcol">
+              <div class="flabel">Name *</div>
+              <div class="fhint">What you call this project.</div>
+              <div class="finput">Facturen</div>
+            </div>
+            <div class="fcol" style="flex:0 0 200px">
+              <div class="flabel">Logo</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span class="logo g sm" style="display:flex;align-items:center;justify-content:center">FA</span>
+                <span class="btn tiny">Choose…</span>
+              </div>
+            </div>
+          </div>
+          <div class="fcol" style="margin-bottom:14px">
+            <div class="flabel">Category</div>
+            <div class="finput">Work</div>
+            <div class="chipset"><span class="fchip on">Work</span><span class="fchip">Privé</span></div>
+          </div>
+          <div class="fcol" style="margin-bottom:14px">
+            <div class="flabel">Description</div>
+            <div class="fhint">What a colleague reads on its card.</div>
+            <div class="finput area">Inkomende facturen lezen en klaarzetten voor de boekhouding.</div>
+          </div>
+          <div class="fcol" style="margin-bottom:14px">
+            <div class="flabel">Folder</div>
+            <div class="fhint">Where its sessions start. Leave empty for a project without files of its own.</div>
+            <div style="display:flex;gap:6px">
+              <div class="finput" style="flex:1">D:\Work\facturen</div>
+              <span class="btn tiny">Choose…</span>
+            </div>
+          </div>
+          <div class="fcol">
+            <div class="flabel">Profile</div>
+            <div class="fhint">Which profile starts by default.</div>
+            <div class="fselect">Backoffice assistant<span>▾</span></div>
+          </div>
+        </div>
+
+        <details class="advanced">
+          <summary>Advanced <span class="adv-count">tracking, memory, worktree, MCP — 4 items</span></summary>
+          <div class="adv-body">
+            <div class="fsec" style="margin-top:8px">
+              <div class="flabel">Behaviour</div>
+              <div class="fhint">Optional — how should the profile behave here?</div>
+              <div class="finput area">Controleer BTW-nummers voordat je een factuur goedkeurt.</div>
+            </div>
+            <div class="fsec">
+              <div class="flabel">Where it is tracked</div>
+              <div class="fselect">AC — AI-Cockpit<span>▾</span></div>
+            </div>
+            <div class="fsec">
+              <div class="flabel">Memory, instructions and reference <span class="origin shared">◆ Shared</span></div>
+              <div class="fselect" style="max-width:220px;margin-bottom:4px">Depot <span>▾</span></div>
+              <div class="finput">depot:cockpit</div>
+              <span class="btn tiny" style="margin-top:6px">+ Add row</span>
+            </div>
+            <div class="fsec">
+              <span class="checkline" style="font-size:12px"><span class="bx"></span>Isolate new sessions in a git worktree</span>
+            </div>
+            <div class="fsec" style="margin-bottom:0">
+              <div class="flabel">MCP overlay</div>
+              <div class="mcprow"><span class="checkline"><span class="bx on"></span>filesystem</span></div>
+              <div class="mcprow"><span class="checkline"><span class="bx on"></span>youtrack</span></div>
+              <div class="mcprow"><span class="checkline"><span class="bx"></span>docker</span></div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div class="split-preview">
+      <span class="pv-label">Preview</span>
+      <div class="card">
+        <div class="card-h"><span class="logo g sm" style="display:flex;align-items:center;justify-content:center">FA</span><span class="card-n">Facturen</span></div>
+        <p class="card-d">Inkomende facturen lezen en klaarzetten voor de boekhouding.</p>
+        <span class="btn p full">▶ Start</span>
+      </div>
+      <p class="note" style="text-align:center;font-size:11px;margin:6px 0 0">Zo ziet de kaart eruit op de
+      Projects-pagina. In de mockup statisch — in Avalonia bindt dit live mee met de velden links.</p>
+    </div>
+  </div>
+  <div class="footer">
+    <span style="font-size:11px;color:var(--text-2)">* required</span>
+    <div style="display:flex;gap:8px"><span class="btn g sm">Cancel</span><span class="btn p sm">Save</span></div>
+  </div>
+</div>
+<p class="cap">Klik "Advanced" — dit is een echte <code>&lt;details&gt;</code>, hij klapt open/dicht.</p>
+<p class="note" style="margin-top:14px"><span class="tag win">+</span> Zes secties worden twee: wat iedereen
+nodig heeft, en wat bijna niemand nodig heeft. De preview maakt het formulier minder abstract.<br>
+<span class="tag cost">−</span> Wie wél vaak in "Advanced" moet zijn (een developer die MCP-servers per project
+instelt) klikt voortaan één keer extra open. Onthoudt de vouwstand niet standaard tussen projecten — zou wel
+kunnen als dat in de praktijk irriteert.</p>
+
+<hr>
+
+<h2><span class="n">2</span>Voorstel P2 — Eerst een quick-add, de volledige editor pas als het nodig is</h2>
+<p class="note">Een lichter instapscherm vóór het grote formulier: drie velden, klaar. Wie meer wil instellen
+klikt daarna op <code>Edit…</code> — en komt in het scherm uit voorstel P1, niet in een derde variant.</p>
+<div class="win quick">
+  <div class="win-title"><b>New project</b></div>
+  <div class="fdlg" style="padding:18px 22px 6px">
+    <div class="fcol" style="margin-bottom:14px">
+      <div class="flabel">Name *</div>
+      <div class="finput" style="color:var(--text-2)">e.g. Facturen</div>
+    </div>
+    <div class="fcol" style="margin-bottom:14px">
+      <div class="flabel">Folder</div>
+      <div class="fhint">Leave empty for a project without files of its own.</div>
+      <div style="display:flex;gap:6px">
+        <div class="finput" style="flex:1;color:var(--text-2)">No folder chosen</div>
+        <span class="btn tiny">Choose…</span>
+      </div>
+    </div>
+    <div class="fcol">
+      <div class="flabel">Profile</div>
+      <div class="fselect" style="color:var(--text-2)">Leave the dialog's own choice<span>▾</span></div>
+    </div>
+  </div>
+  <div class="footer">
+    <span style="font-size:11px;color:var(--text-2)">Everything else can be added later — Edit…</span>
+    <div style="display:flex;gap:8px"><span class="btn g sm">Cancel</span><span class="btn p sm">Create</span></div>
+  </div>
+</div>
+<p class="cap">Drie velden. "Create" maakt het project direct aan — geen categorie, beschrijving of logo verplicht.</p>
+<p class="note" style="margin-top:14px"><span class="tag win">+</span> Voor 90% van "ik wil gewoon een project
+starten" is dit het hele scherm. Sluit aan bij hoe de Projects-pagina zelf al "één luide knop" prefereert boven
+alles-tegelijk.<br>
+<span class="tag cost">−</span> Twee schermen om te onderhouden in plaats van één — al blijft het tweede scherm
+gewoon P1's <code>ProjectDialog</code>, niet een derde implementatie. En "Edit…" moet vindbaar genoeg zijn, anders
+verdwijnt Category/Description/Logo stilzwijgend voor wie ze wél wilde invullen.</p>
+
+<hr>
+
+<h2><span class="n">3</span>Taal die deze twee voorstellen nog niet oplossen</h2>
+<p class="note">Los van indeling: een paar labels in "Advanced" zijn nog steeds jargon zodra iemand er wél in
+kijkt. Zelfde soort tabel als bij de Projects-pagina, nu voor dit scherm.</p>
+<table>
+  <tr><th style="width:26%">Nu</th><th style="width:34%">Wordt gelezen als</th><th>Voorstel</th></tr>
+  <tr><td class="was"><code>MCP overlay</code></td><td class="was">Wat is MCP?</td><td>"Tools this project's sessions can use" — met dezelfde checklist eronder.</td></tr>
+  <tr><td class="was"><code>Isolate new sessions in a git worktree</code></td><td class="was">Wat is een worktree?</td><td>De bestaande hint ("every session starts in its own worktree") is al goed; label zelf iets korter: "Give every session its own copy of the code".</td></tr>
+  <tr><td class="was">Resource-rol <code>Memory / Instructions / Reference</code></td><td class="was">Wat is het verschil?</td><td>Eén regel voorbeeld per keuze in de dropdown zelf (bv. "Instructions — a style guide or README to follow").</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="n">4</span>Aanbeveling</h2>
+<div class="verdict">
+  <b>Beide, en beide zijn klein genoeg om los te leveren.</b> P1 (Basics/Advanced + preview) is de goedkoopste
+  winst: geen nieuw scherm, alleen een <code>Expander</code> om vier secties heen en een preview-paneel dat het
+  bestaande kaart-uiterlijk hergebruikt. P2 (quick-add) is een nieuw, klein venster maar hooguit 60 regels AXAML —
+  het roept gewoon het bestaande <code>ProjectDialogViewModel</code> aan met minder velden zichtbaar, geen nieuwe
+  save-logica.
+  <br><br>
+  <b>Scope-voorstel:</b> dit hoort niet in AC-772's v1 (die sluit structurele wijzigingen aan dit scherm nu juist
+  uit). Twee opties: (a) een vervolgticket "Nieuw/bewerk project — usability voor niet-developers", met deze
+  mockup als basis, of (b) de scope-afbakening van AC-772 nog één keer oprekken, zoals dat nu al twee keer eerder
+  gebeurd is in dit ticket. Mijn voorkeur is (a) — AC-772 is al drie mockup-rondes verder dan de oorspronkelijke
+  titel ("toolbar + Projects-redesign") dekt, en dit is een goed afgebakend, zelfstandig stuk werk.
+</div>
+
+</div>
+</body>
+</html>
