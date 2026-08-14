@@ -26,19 +26,9 @@ internal sealed class McpOAuthCoordinator(
     // enough to survive the round trip it is about to be spent on and no more.
     private static readonly TimeSpan RequestExpiryMargin = TimeSpan.FromMinutes(2);
 
-    // How early a renewal is *started* on that same path, as opposed to how much life a token needs to be handed
-    // over (AC-771). The two were one number, and one number cannot be both: the moment it decided to renew was also
-    // the moment it began refusing calls, so a token endpoint having a bad minute cost every call in that minute
-    // even though the credential in hand was still perfectly good.
-    //
-    // Split, the pair reads as it should: at ten minutes the cockpit begins trying to renew, and it keeps serving
-    // calls from the token it holds while it tries — every call is another attempt — until the two-minute margin
-    // above is genuinely at risk. So a Depot restart, a slow token endpoint or a lost minute of network is absorbed
-    // rather than reported, and only an outage that outlasts the whole ten minutes reaches an agent at all.
-    //
-    // Ten and not more because this is a grace period, not a second lifetime: the wider it gets the longer a
-    // genuinely revoked sign-in stays hidden behind "it still works", and the sooner each token is replaced (a token
-    // is used for fifty minutes of its hour rather than fifty-eight, which is one extra renewal every few hours).
+    // AC-771: when a renewal *starts*, deliberately earlier than the margin above, which is only what one call needs
+    // to survive its round trip. The gap between the two is a grace period — calls keep being served from the token
+    // in hand while the renewal is retried — so a token endpoint that is briefly down costs nothing.
     private static readonly TimeSpan RequestRenewalLead = TimeSpan.FromMinutes(10);
 
     // The same question asked for a *session* (AC-524), where the answer is held for hours instead of
@@ -178,12 +168,9 @@ internal sealed class McpOAuthCoordinator(
     // ordinary case for as long as that grant lives; only when the renewal cannot happen is the operator asked for
     // anything. Asking while a usable refresh token is sitting there would be a defect, not caution.
     //
-    // `renewAt`: How much life left starts a renewal — the caller's, because a token spent on one request and a
-    // token held for a whole session are not the same question.
-    // `usableFrom`: How much life a token must have left to be handed to this caller at all. Never wider than
-    // `renewAt`: the gap between the two is the grace period in which a renewal is attempted while calls carry on.
-    // `serveTheHeldTokenInstead`: Whether a renewal that produced nothing may be answered with the token already
-    // held, when that one still clears `usableFrom`.
+    // `renewAt`: How much life left starts a renewal. `usableFrom`: how much a token needs to be handed over at all,
+    // never wider than `renewAt` — the gap between them is the grace period. `serveTheHeldTokenInstead`: whether a
+    // renewal that produced nothing may be answered with the token already held, when it still clears `usableFrom`.
     private async Task<McpOAuthAccess> _RenewIfNeededAsync(
         McpServerConfig server,
         TimeSpan renewAt,
@@ -278,15 +265,9 @@ internal sealed class McpOAuthCoordinator(
             return _Authorized(server, token.AccessToken) with { SignInStage = stage };
         }
 
-        // The renewal produced nothing, and what is held still covers what this caller is about to do with it. That
-        // is not a failure worth passing on: the renewal was started early precisely so it could be attempted while
-        // the credential was still good, and every call between here and the expiry attempts it again. A token
-        // endpoint that is down for a minute is absorbed, and an agent hears about it only if the whole grace period
-        // runs out — which is the difference between a Depot restart costing nothing and costing a write.
-        //
-        // Only where the credential is spent on one call. A session holds its answer for hours, so "good enough
-        // right now" is exactly the token that leaves it without a server later on (AC-524), and a token the server
-        // has just refused is one this end's clock is simply wrong about.
+        // AC-771: the renewal produced nothing, but what is held still covers this call — so it is used, and every
+        // call until the expiry tries the renewal again. Only where a credential is spent per call: a session holds
+        // its answer for hours, and a token the server has just refused is one this end's clock is wrong about.
         if (!renewed && serveTheHeldTokenInstead && token is not null && token.IsForResource(server.Url)
             && token.IsUsableAt(DateTimeOffset.UtcNow, usableFrom))
         {
@@ -352,11 +333,9 @@ internal sealed class McpOAuthCoordinator(
     // One silent renewal per server at a time (see `_renewals`). Callers that arrive while one runs
     // wait for its outcome rather than starting a second, and then re-read the store for themselves.
     //
-    // The margin belongs to whoever starts the renewal, and a joiner is never worse off for it: the winner renews
-    // because its own margin was not met, so a fresh token is what everyone waiting finds — and a joiner needing
-    // more life than that token has is a token genuinely too short-lived, which is what it is then told. Keying the
-    // table by margin instead would let two renewals run at once, which is the replayed refresh grant `_renewals`
-    // exists to prevent.
+    // The margin belongs to whoever starts the renewal, and a joiner is never worse off: the winner renews because
+    // its own was not met, so everyone waiting finds a fresh token. Keying the table by margin instead would let two
+    // renewals run at once — the replayed refresh grant `_renewals` exists to prevent.
     private Task<HandshakeOutcome> _SharedRenewalAsync(McpServerConfig server, TimeSpan margin, CancellationToken cancellationToken)
     {
         Task<HandshakeOutcome> renewal;

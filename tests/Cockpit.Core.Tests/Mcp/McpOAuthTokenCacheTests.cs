@@ -166,11 +166,9 @@ public class McpOAuthTokenCacheTests
 
         var container = await cache.GetTokensAsync();
 
-        // The whole of AC-771. `TokenContainer.IsExpired` is the SDK's only test for whether to spend the refresh
-        // grant, and it has no margin of its own — so a token with ninety seconds left is one the SDK would hand
-        // straight back while the coordinator, keeping two minutes, had already decided it needed renewing. The
-        // connect then changed nothing, the coordinator read the unchanged store as a failed renewal, and an
-        // ordinary call came back to the agent as an authentication error until the token was properly dead.
+        // The whole of AC-771: `TokenContainer.IsExpired` is the SDK's only test for spending the refresh grant, and
+        // it keeps no margin — so a token with ninety seconds left was handed straight back while the coordinator
+        // had already decided it needed renewing, and the unchanged store was then read as a failed renewal.
         Assert.NotNull(container);
         Assert.True(_SdkWouldRenew(container));
     }

@@ -149,15 +149,9 @@ public class McpOAuthOfflineAccessFlowTests
     [Fact]
     public async Task Acquire_NonInteractively_ForATokenInsideTheMarginButStillAlive_ActuallyRenewsIt()
     {
-        // AC-771, end to end against a real token endpoint rather than a faked seam — because the defect lived
-        // precisely on the seam a fake would have stood in for.
-        //
-        // The stored token has ninety seconds left: spent by the coordinator's two-minute request margin, and alive
-        // by the SDK's, which has no margin at all (`TokenContainer.IsExpired` is `UtcNow >= ObtainedAt + ExpiresIn`).
-        // It is also a token this server accepts, so nothing forces a refresh from the far end either. Without the
-        // margin reaching the SDK, the connect below succeeds on the token already held, the store comes back
-        // unchanged, and the coordinator reads that as a renewal that failed — which reached the agent as
-        // "could not renew its sign-in" on an ordinary call, for the last two minutes of every token's life.
+        // AC-771, against a real token endpoint because the defect lived on the seam a fake would have stood in for.
+        // Ninety seconds left is spent by the two-minute request margin and alive by the SDK's, which has none — and
+        // this server accepts the token, so nothing forces a refresh from the far end either.
         await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
         var store = new FakeMcpOAuthTokenStore();
         await store.SaveAsync("depot", "depot", new McpOAuthToken
@@ -185,10 +179,9 @@ public class McpOAuthOfflineAccessFlowTests
     [Fact]
     public async Task AcquireForSession_ForATokenInsideTheSessionMarginButStillAlive_ActuallyRenewsIt()
     {
-        // The same defect on the wider margin, and the more damaging of the two: a session keeps its credential for
-        // hours, so it asks for fifty-five minutes of life. A one-hour token therefore failed this from five minutes
-        // old onwards — fifty-five of every sixty minutes — and a session that met it started without the server.
-        // Invisible so far only because the loopback endpoint (AC-524) puts most servers on the request margin.
+        // The same defect on the wider margin, and the more damaging of the two: a one-hour token failed this from
+        // five minutes old onwards, and a session that met it started without the server. Invisible so far only
+        // because the loopback endpoint (AC-524) puts most servers on the request margin instead.
         await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
         var store = new FakeMcpOAuthTokenStore();
         await store.SaveAsync("depot", "depot", new McpOAuthToken
@@ -213,10 +206,9 @@ public class McpOAuthOfflineAccessFlowTests
     [Fact]
     public async Task Acquire_WhenTheTokenEndpointIsHavingABadMinute_KeepsServingOnTheTokenInHand()
     {
-        // The grace period, and the reason the renewal is started ten minutes out rather than two: a token endpoint
-        // that is down — Depot restarting, a slow minute, a lost packet — must not cost the call. Five minutes left
-        // is past the point where renewing begins and well clear of the two minutes a call needs, so the honest
-        // answer is to use what is held and try again on the next call.
+        // The grace period, and why renewing starts ten minutes out rather than two: a token endpoint that is down
+        // must not cost the call. Five minutes left is past the point where renewing begins and well clear of the
+        // two a call needs, so the honest answer is to use what is held and try again next time.
         await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
         server.FailNextRefreshes(5);
         var store = new FakeMcpOAuthTokenStore();
@@ -301,11 +293,9 @@ public class McpOAuthOfflineAccessFlowTests
     [Fact]
     public async Task RenewRejected_ForATokenTheServerRefuses_RenewsThroughTheRealSdk_NotJustTheClock()
     {
-        // The third route into the same method, and the only one whose renewal does not come from the margin at all:
-        // here the token has half an hour on our clock and the server refuses it anyway (a grant revoked at the far
-        // end, or a rotation race lost). The margin subtracted above leaves it alive, so what has to drive the
-        // refresh is the server's own 401 during the handshake — an assumption about the SDK's behaviour, and this
-        // ticket exists because assumptions about the SDK's behaviour went three tickets without being measured.
+        // The third route into the same method, and the only one whose renewal does not come from the margin: half
+        // an hour left on our clock, refused by the server anyway, so the refresh has to come from its own 401
+        // during the handshake. Measured rather than assumed — assuming it is what cost this ticket three rounds.
         await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
         var store = new FakeMcpOAuthTokenStore();
         await store.SaveAsync("depot", "depot", new McpOAuthToken

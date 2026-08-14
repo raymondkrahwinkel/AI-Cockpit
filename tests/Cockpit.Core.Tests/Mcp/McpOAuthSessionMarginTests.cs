@@ -111,10 +111,9 @@ public class McpOAuthSessionMarginTests
         // period in which a failing token endpoint is retried while calls carry on being served.
         Assert.Equal(TimeSpan.FromMinutes(10), authorizer.LastRenewalMargin);
 
-        // AC-771: the margin decides whether a renewal is wanted *and* whether the SDK performs one, and the SDK is
-        // the only one of the two that can act on it. A margin that stops here is a coordinator asking for renewals
-        // in a window where none can happen, and then reading the unchanged store as a failure — which is what an
-        // agent met as an authentication error on an ordinary call, twice in a row, roughly once per token lifetime.
+        // AC-771: the margin decides both whether a renewal is wanted and whether the SDK performs one, and only the
+        // SDK can act on it. One that stops here is a coordinator asking for renewals in a window where none can
+        // happen, and then reading the unchanged store as a failure.
     }
 
     [Fact]

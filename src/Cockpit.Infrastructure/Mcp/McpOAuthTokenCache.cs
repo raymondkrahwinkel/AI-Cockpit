@@ -98,15 +98,9 @@ internal sealed class McpOAuthTokenCache(
         // ExpiresIn is relative to ObtainedAt, so the pair has to be rebuilt from the absolute instant we stored:
         // handing back the original ExpiresIn with a fresh ObtainedAt would present an expired token as brand new.
         //
-        // Less the caller's margin, and that subtraction is the whole of AC-771. The SDK renews on one condition and
-        // one only: `TokenContainer.IsExpired`, which is `UtcNow >= ObtainedAt + ExpiresIn` — dead on the second, no
-        // margin of its own. The coordinator meanwhile decides a token needs renewing while it still has minutes to
-        // live. Between those two lines sat a window per token lifetime in which the coordinator asked for a renewal,
-        // the SDK looked at a token it considered perfectly good, refreshed nothing, and the coordinator read the
-        // unchanged store as a renewal that had failed — so an ordinary call came back to the agent as an
-        // authentication error, twice in a row, and worked again once the token was properly dead. Reporting the
-        // margin as already spent is what makes the two agree: the caller asks for a renewal exactly when the SDK
-        // will perform one.
+        // AC-771: less the caller's margin. The SDK renews on `TokenContainer.IsExpired` alone — dead on the second,
+        // no margin of its own — so a margin it was never told about was a renewal the coordinator asked for, that
+        // quietly did not happen, and then read as a renewal that had failed.
         var obtainedAt = DateTimeOffset.UtcNow;
         int? remaining = stored.ExpiresAt is { } expiresAt
             ? (int)Math.Max(0, Math.Round((expiresAt - renewalMargin - obtainedAt).TotalSeconds))
