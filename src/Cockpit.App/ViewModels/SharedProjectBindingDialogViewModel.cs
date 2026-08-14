@@ -77,9 +77,9 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         return viewModel;
     }
 
-    private SharedProjectBindingDialogViewModel(SharedProject sharedProject, string sourceName, SharedProjectBinding binding)
+    private SharedProjectBindingDialogViewModel(string sharedProjectId, string sourceName, SharedProjectBinding binding)
     {
-        _sharedProjectId = sharedProject.Id;
+        _sharedProjectId = sharedProjectId;
         SourceName = sourceName;
         ProjectName = binding.Name;
         Description = binding.Description;
@@ -115,25 +115,28 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         }
     }
 
-    // Builds the dialog for `sharedProject`, reading its full definition through
+    // Builds the dialog for `sharedProjectId`, reading its full definition through
     // `source` first (AC-246) — `ISharedProjectSource.ListAsync`'s own read only ever
     // kept a name, description and role, not enough to bind. Null when the read failed; the caller (the dialog
     // service) is what shows the error, the same split `ProjectDialogViewModel.CreateAsync` leaves to its own
     // caller for a failure of its own.
+    // The id rather than the whole `SharedProject` (AC-798): the id is all this ever read off it — every other
+    // field comes from the binding below, freshly — and the assistant's own bind route (`AssistantAgentGateway`)
+    // has an id from `list_shared_projects` and no row object to hand over.
     public static async Task<(SharedProjectBindingDialogViewModel? ViewModel, string? Error)> CreateAsync(
-        SharedProject sharedProject,
+        string sharedProjectId,
         string sourceName,
         ISharedProjectSource source,
         ISessionProfileStore profileStore,
         CancellationToken cancellationToken = default)
     {
-        var result = await source.PrepareBindingAsync(sharedProject.Id, cancellationToken).ConfigureAwait(false);
+        var result = await source.PrepareBindingAsync(sharedProjectId, cancellationToken).ConfigureAwait(false);
         if (!result.Succeeded || result.Binding is not { } binding)
         {
             return (null, result.Error is { Length: > 0 } error ? error : "Could not read this project's definition.");
         }
 
-        var viewModel = new SharedProjectBindingDialogViewModel(sharedProject, sourceName, binding);
+        var viewModel = new SharedProjectBindingDialogViewModel(sharedProjectId, sourceName, binding);
 
         foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(false))
         {

@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the voice assistant can now add a project your team shares to this machine, the same step the "Add to my
+  projects…" card does on the Projects page — you tell it which folder here holds the project and which profile its
+  sessions run under, and the name, behaviour, MCP choice and memory come with the project as they always did. It
+  asks first, on a card that shows the folder, and it will not clone: the folder has to be there already. A project
+  you have added once is not added a second time.
+
 - added: the Depot plugin now contributes a "Depot settings" quick-action button to the global toolbar strip,
   alongside Docker's and Kubernetes's — it opens the same settings view the project editor's "Servers…" button does,
   reachable now from every workspace instead of only from a project's memory-source picker.

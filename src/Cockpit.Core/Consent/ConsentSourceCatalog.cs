@@ -49,9 +49,18 @@ public static class ConsentSourceCatalog
     // `AssistantMemoryExport`.
     public const string AssistantMemoryImport = "Assistant memory import";
 
+    // The assistant adding a project a colleague shares (AC-798) to this machine — its own label rather than one
+    // shared with the assistant's other writes, for the same reason `AssistantMessage` and `AssistantPrompt` are
+    // two: an operator happy for their team's projects to be added unasked has not thereby agreed to anything else
+    // the assistant writes.
+    public const string AssistantProjectBinding = "Assistant project binding";
+
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
     public static IReadOnlyList<string> HostSources { get; } =
-        [TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt, AssistantMemoryExport, AssistantMemoryImport, Debug];
+    [
+        TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
+        AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, Debug,
+    ];
 
     // The bypass key for one source: the host-stamped `pluginId` under a `plugin:` prefix, or
     // the `label` — a constant above — for a host-internal caller that has no plugin id.

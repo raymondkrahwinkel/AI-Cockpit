@@ -415,6 +415,18 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Calls.Add($"HandoverWorktreeAsync({path} -> {paneId})");
             return Task.FromResult(WorktreeHandoverResult.HandedOver(path, "cockpit/handed-over", "AC-545 tests"));
         }
+
+        public Task<AssistantProjectBindResult> BindSharedProjectAsync(
+            string sharedProjectId,
+            string sourceDirectory,
+            string profileLabel,
+            IReadOnlyList<string>? resourceReferences = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"BindSharedProjectAsync({sharedProjectId} -> {sourceDirectory})");
+            return Task.FromResult(
+                AssistantProjectBindResult.Bound("local-1", "Marketing site", "Depot — Work", sourceDirectory));
+        }
     }
 
     /// <summary>

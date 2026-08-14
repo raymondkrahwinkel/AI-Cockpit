@@ -172,6 +172,52 @@ public interface IAssistantAgentGateway
     /// <paramref name="paneId"/> names no running agent session or the assistant itself.
     /// </summary>
     Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns a shared project <c>list_shared_projects</c> offered into an ordinary local project (AC-798), through
+    /// the same route the "Add to my projects…" dialog runs: the source's own one-time
+    /// <c>PrepareBindingAsync</c> read, the binding view model's own composition, and the projects view model's own
+    /// persisting — never a write straight to the project store, which would duplicate that validation and could
+    /// lose a read-modify-write race against the dialog standing open next to it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Three things do not come out of the shared definition, and none of them is defaulted here.</b> The folder
+    /// on this machine, the profile to run under, and one local reference per machine-specific resource row the
+    /// definition names — the three the dialog asks the operator for, word for word: "Name, behaviour, MCP choice
+    /// and memory are already set up — fill in what is yours." A missing one comes back as a refusal with the
+    /// question in it, because a value invented here is a machine-specific fact nobody chose.
+    /// <para>
+    /// <b>It does not clone.</b> The dialog's "Clone…" writes a checkout to a path somebody picked, which is a
+    /// different kind of act from registering a project in <c>cockpit.json</c> and is not part of this door: the
+    /// folder has to exist already.
+    /// </para>
+    /// </remarks>
+    /// <param name="sharedProjectId">A <c>list_shared_projects</c> id, whose <c>{scheme}:</c> prefix names the source it came from.</param>
+    /// <param name="sourceDirectory">The folder on this machine the project's sessions run in. Must exist.</param>
+    /// <param name="profileLabel">The profile its sessions default to, by label — the dialog's one required field.</param>
+    /// <param name="resourceReferences">One local reference per machine-specific resource row, in the order the definition lists them.</param>
+    Task<AssistantProjectBindResult> BindSharedProjectAsync(
+        string sharedProjectId,
+        string sourceDirectory,
+        string profileLabel,
+        IReadOnlyList<string>? resourceReferences = null,
+        CancellationToken cancellationToken = default);
+}
+
+// What came of binding a shared project (AC-798). Same shape and same reason as `AgentStopResult` — a refusal is a
+// sentence the assistant says, not an exception it fails on.
+//
+// `SourceName`: the connection it came from ("Depot — Work"), so the confirmation names where the project is from
+// rather than only what it is now called.
+// `SourceDirectory`: the folder it was pointed at — echoed back because it is the one field on the consent card, and
+// the one thing the operator can still check afterwards.
+public sealed record AssistantProjectBindResult(
+    bool Ok, string? ProjectId, string? Name, string? SourceName, string? SourceDirectory, string? Error)
+{
+    public static AssistantProjectBindResult Bound(string projectId, string name, string sourceName, string? sourceDirectory) =>
+        new(true, projectId, name, sourceName, sourceDirectory, null);
+
+    public static AssistantProjectBindResult Refused(string error) => new(false, null, null, null, null, error);
 }
 
 // What came of a handover. Same shape and same reason as `AgentStopResult` — a refusal is a sentence the

@@ -181,6 +181,13 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
 
         public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<AssistantProjectBindResult> BindSharedProjectAsync(
+            string sharedProjectId,
+            string sourceDirectory,
+            string profileLabel,
+            IReadOnlyList<string>? resourceReferences = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     public void Dispose() => McpRequestContext.Set(null);

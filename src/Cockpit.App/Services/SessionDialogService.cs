@@ -400,7 +400,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return await open;
         }
 
-        var (viewModel, error) = await SharedProjectBindingDialogViewModel.CreateAsync(sharedProject, sourceName, source, _profileStore);
+        var (viewModel, error) = await SharedProjectBindingDialogViewModel.CreateAsync(sharedProject.Id, sourceName, source, _profileStore);
         if (viewModel is null)
         {
             // The definition read failed (unreachable, not signed in, the project vanished between the list and

@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
@@ -44,7 +45,8 @@ internal sealed class AssistantAgentGateway(
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
     SessionWatcher watcher,
-    IWorktreeManager? worktreeManager = null) : IAssistantAgentGateway, ISingletonService
+    IWorktreeManager? worktreeManager = null,
+    ISharedProjectSourceRegistry? sharedProjectSources = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -765,6 +767,177 @@ internal sealed class AssistantAgentGateway(
             reason), cancellationToken).ConfigureAwait(true);
 
         return WorktreeHandoverResult.Refused(reason);
+    }
+
+    // AC-798: the "Add to my projects…" dialog's own route, minus the window. Every step is the dialog's —
+    // `PrepareBindingAsync`'s one-time read, `SharedProjectBindingDialogViewModel`'s composition, `ToProject`, and
+    // `ProjectsViewModel`'s own persisting — so what lands in `cockpit.json` is what the operator would have got by
+    // clicking, rather than a second assembly of the same fields that can drift from it.
+    //
+    // *What this refuses, it refuses with the question in it.* The folder, the profile and a machine-specific
+    // resource row's reference are the three things the shared definition deliberately does not carry, and a value
+    // invented here would be a fact about this machine that nobody chose. So each missing one comes back as a
+    // sentence the assistant can put to the operator — not a default, and not a blank field quietly dropped on save.
+    //
+    // *It does not clone* (criterion 7): the folder has to exist. A clone writes a checkout to a path the assistant
+    // picked, which is a different kind of act from registering a project, and it is not on this door.
+    public async Task<AssistantProjectBindResult> BindSharedProjectAsync(
+        string sharedProjectId,
+        string sourceDirectory,
+        string profileLabel,
+        IReadOnlyList<string>? resourceReferences = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (sharedProjectSources is null)
+        {
+            return AssistantProjectBindResult.Refused(
+                "No connection on this machine offers shared projects, so there is nothing to add from.");
+        }
+
+        // The registry and the visibility filter in one UI-thread hop. `SharedProjectSourceRegistry` keeps a plain
+        // dictionary that a plugin's own settings screen adds to on that thread, so enumerating `Sources` from this
+        // Kestrel request thread is a torn read waiting to happen — the same reason `AssistantReadGateway` reads it
+        // there rather than where the call arrives.
+        var (sources, boundIds, hiddenIds) = await _OnUiThreadAsync(() =>
+        {
+            var (bound, hidden) = cockpit.Projects.SharedProjectVisibilityFilterIds();
+            return Task.FromResult((sharedProjectSources.Sources, bound, hidden));
+        }).ConfigureAwait(false);
+
+        if (sources.Count == 0)
+        {
+            return AssistantProjectBindResult.Refused(
+                "No connection on this machine offers shared projects, so there is nothing to add from.");
+        }
+
+        var id = sharedProjectId?.Trim() ?? string.Empty;
+
+        // The same `{scheme}:{slug}` prefix rule `ProjectsViewModel.FinishSettingUpAsync` resolves a row's source
+        // with — the id says which connection it came from, so nothing has to be carried alongside it.
+        var source = sources.FirstOrDefault(
+            candidate => id.StartsWith(candidate.Key + ":", StringComparison.Ordinal));
+        if (source is null)
+        {
+            return AssistantProjectBindResult.Refused(
+                $"No connection here offers a project with id '{id}'. Call list_shared_projects and name one of the ids it reports.");
+        }
+
+        // Already bound is refused rather than bound again: the dialog is protected by the row disappearing off the
+        // list, and this door has no list to disappear from. Two local projects on one shared definition is not an
+        // untidiness — it is two projects whose write-back would fight over the same remote definition.
+        if (boundIds.Contains(id))
+        {
+            return AssistantProjectBindResult.Refused(
+                $"'{id}' is already added on this machine; call list_projects to find it. Adding it a second time would make two local projects out of one shared one.");
+        }
+
+        // Hidden here is the operator saying they do not want this one offered, and the Projects page honours that by
+        // having no card to click. A door that binds it anyway would be the one way past a choice they made — and
+        // `list_shared_projects` already leaves it out, so an id that reaches here was not read off any list.
+        if (hiddenIds.Contains(id))
+        {
+            return AssistantProjectBindResult.Refused(
+                $"'{id}' is hidden on this machine, so it is not on offer here. If the operator wants it after all, they unhide it on the Projects page themselves.");
+        }
+
+        var directory = sourceDirectory?.Trim();
+        if (string.IsNullOrEmpty(directory))
+        {
+            return AssistantProjectBindResult.Refused(
+                "Which folder on this machine holds this project? It is not part of what is shared, and this tool does not clone one — ask the operator for a full path that already exists.");
+        }
+
+        // A relative path resolves against whatever directory the cockpit process happens to have been started in,
+        // which is nobody's answer to "where does this project live" — and it would go on the consent card as a
+        // folder the operator cannot check.
+        if (!Path.IsPathFullyQualified(directory))
+        {
+            return AssistantProjectBindResult.Refused(
+                $"'{directory}' is a relative path, and you are standing in no directory — ask the operator for the full path.");
+        }
+
+        if (!Directory.Exists(directory))
+        {
+            return AssistantProjectBindResult.Refused(
+                $"There is no folder at '{directory}'. This tool does not clone, so the folder has to be there already — ask the operator where the project lives, or to clone it first.");
+        }
+
+        if (string.IsNullOrWhiteSpace(profileLabel))
+        {
+            return AssistantProjectBindResult.Refused(
+                "Which profile should this project's sessions run under? A shared project carries no profile, and it is the one field this step requires — call list_profiles and ask the operator which of those.");
+        }
+
+        // Read off the UI thread, like every other profile lookup here, and matched the same way `SpawnAsync` does:
+        // by label, case-insensitively, never "the first one that looks close".
+        var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var profile = known.FirstOrDefault(candidate =>
+            string.Equals(candidate.Label, profileLabel.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (profile is null)
+        {
+            var labels = known.Count == 0 ? "none are configured" : string.Join(", ", known.Select(candidate => $"'{candidate.Label}'"));
+            return AssistantProjectBindResult.Refused(
+                $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.");
+        }
+
+        var (viewModel, error) = await SharedProjectBindingDialogViewModel
+            .CreateAsync(id, source.SourceName, source, profiles, cancellationToken).ConfigureAwait(false);
+        if (viewModel is null)
+        {
+            // The definition read failed — unreachable, signed out, or the project gone between list_shared_projects
+            // and this call. The source's own contract says that arrives as `SharedProjectBindingResult.Failed`
+            // rather than as an exception, and it is passed on rather than summarised: the assistant is about to
+            // read it out, and "could not add it" tells the operator nothing they can act on.
+            return AssistantProjectBindResult.Refused(error ?? "Could not read this project's definition.");
+        }
+
+        // The "Choose…" route, not the "Clone…" one — so, exactly as `ApplyPickedDirectory` does for the operator's
+        // own pick, the shared definition's `GitUrl` is dropped: the folder was pointed at rather than cloned from
+        // it, and keeping the URL would claim a provenance nothing here established.
+        viewModel.ApplyPickedDirectory(directory);
+        viewModel.SelectedProfileLabel = profile.Label;
+
+        if (_FillResourceRows(viewModel, resourceReferences) is { } rowRefusal)
+        {
+            return AssistantProjectBindResult.Refused(rowRefusal);
+        }
+
+        var stored = await _OnUiThreadAsync(
+            () => cockpit.Projects.AddBoundProjectAsync(viewModel.ToProject())).ConfigureAwait(false);
+
+        return AssistantProjectBindResult.Bound(stored.Id, stored.Name, source.SourceName, stored.SourceDirectory);
+    }
+
+    // Fills the machine-specific resource rows (AC-246) the shared definition names but carries no value for: the
+    // role and the label travel, the reference never does. One reference each, in the order the definition lists
+    // them, or a refusal naming every row — positional rather than keyed because two rows may carry the same label
+    // and a key that collides would fill one row twice and leave the other blank.
+    //
+    // A blank row is not an error the dialog reports either; it is simply dropped on save. That is fine behind a
+    // window where the operator sees the empty box they left — here nobody would see it, and the project would come
+    // out quietly missing a resource. Hence: refused, with the rows spelled out. Returns null when there was
+    // nothing to ask about or everything was answered.
+    private static string? _FillResourceRows(SharedProjectBindingDialogViewModel viewModel, IReadOnlyList<string>? references)
+    {
+        var rows = viewModel.ResourceRows;
+        var given = references?.Where(reference => !string.IsNullOrWhiteSpace(reference)).ToList() ?? [];
+
+        if (given.Count != rows.Count)
+        {
+            return rows.Count == 0
+                ? "This project names no resources whose location is this machine's own, so there is nothing to pass in resources."
+                : $"This project names {rows.Count} resource(s) whose location is this machine's own, and the shared definition does not carry them. "
+                    + "Ask the operator for a local path for each, then call again with resources holding one entry per row, in this order: "
+                    + string.Join("; ", rows.Select((row, index) => $"{index + 1}. {row.DisplayLabel}"))
+                    + ".";
+        }
+
+        for (var index = 0; index < rows.Count; index++)
+        {
+            rows[index].Reference = given[index].Trim();
+        }
+
+        return null;
     }
 
     private Task _RecordAsync(AssistantSpawnAuditEntry entry, CancellationToken cancellationToken) =>
