@@ -248,9 +248,17 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
 //
 // `Target`: The desk and the rule that chose it. See `SpawnTarget`.
 // `ProfileLabel`:
-// The profile to run under, by its label. Required and never defaulted: which profile a session runs under decides
-// its provider, its model and therefore its cost, and an agent that did not have to say so would spawn Opus workers
-// by accident (AC-436 guardrail 6, which holds for whatever the assistant starts too).
+// The profile to run under, by its label. Required unless `ProjectId` names a project with its own
+// `Project.DefaultProfileLabel` (AC-773) — omitted then, that default is used instead, and the label actually used
+// comes back as `AgentSpawnResult.ResolvedProfileLabel` so the assistant can say which one it was, never silently.
+// Naming one here always wins over the project's default (AC-436 guardrail 6 still holds: an agent that did not have
+// to say so would spawn Opus workers by accident, so an explicit label is never overruled by a project).
+// `ProjectId` (AC-773):
+// The project this session works on, by its id from `list_projects` — the one thing `CockpitViewModel
+// .StartSessionOnWorkspaceAsync` needs to apply that project's working directory, profile default, worktree
+// isolation, behaviour prompt, memory/resources and MCP overlay in one pass, the same way it already does for a
+// folder that happens to map-match a project (AC-682). Left out, resolution falls back to that map-match exactly as
+// before. An id that names no project is refused rather than silently falling back to the folder guess.
 // `Prompt`: The first message to hand the session once it is up, or null to leave it waiting.
 // `WorkingDirectory`: The folder to run in, or null for the profile's own default.
 // `SessionName`: What to call the pane, or null to let the profile and the clock name it.
@@ -274,7 +282,8 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
 // is refused before a launch is composed: overruling isolation *away* would run it in the operator's real checkout.
 public sealed record AgentSpawnRequest(
     SpawnTarget Target,
-    string ProfileLabel,
+    string? ProfileLabel,
+    string? ProjectId = null,
     string? Prompt = null,
     string? WorkingDirectory = null,
     string? SessionName = null,
@@ -287,11 +296,17 @@ public sealed record AgentSpawnRequest(
 //
 // `PromptDelivered` (AC-760): null when no `Prompt` was given; true when it was submitted on the spot; false when
 // the pane exists but the CLI was not yet reading stdin, so it is held rather than lost or silently claimed sent.
+//
+// `ResolvedProfileLabel` (AC-773): the profile actually used — the request's own `ProfileLabel` echoed back, or,
+// when that was left out, whatever the resolved project's `DefaultProfileLabel` supplied. Reported so the assistant
+// says which one it was rather than assuming, the same reason a profile was made required in the first place.
 public sealed record AgentSpawnResult(
-    bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error, bool? PromptDelivered = null)
+    bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error,
+    bool? PromptDelivered = null, string? ResolvedProfileLabel = null)
 {
-    public static AgentSpawnResult Started(string paneId, string sessionName, string? workingDirectory, bool? promptDelivered = null) =>
-        new(true, paneId, sessionName, workingDirectory, null, promptDelivered);
+    public static AgentSpawnResult Started(
+        string paneId, string sessionName, string? workingDirectory, bool? promptDelivered = null, string? resolvedProfileLabel = null) =>
+        new(true, paneId, sessionName, workingDirectory, null, promptDelivered, resolvedProfileLabel);
 
     public static AgentSpawnResult Refused(string error) => new(false, null, null, null, error);
 }

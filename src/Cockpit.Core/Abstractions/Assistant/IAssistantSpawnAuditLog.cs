@@ -38,6 +38,9 @@ public interface IAssistantSpawnAuditLog
 // `PaneId`: The pane that resulted, or null for a refusal.
 // `SessionName`: What the pane is called, so the trail is readable without cross-referencing pane ids.
 // `Refusal`: Why it did not happen, or null when it did. A trail without its refusals hides the gate working.
+// `ProjectId` (AC-773): The project a start resolved to, by id — via `AgentSpawnRequest.ProjectId` or the folder's
+// own map-match, whichever supplied it — or null when neither did. Recorded so the trail can tell which route a
+// project came in by, not only that BehaviorPrompt/isolation/etc. were applied.
 public sealed record AssistantSpawnAuditEntry(
     DateTimeOffset At,
     AssistantSpawnAction Action,
@@ -49,7 +52,8 @@ public sealed record AssistantSpawnAuditEntry(
     string? WorkingDirectory,
     string? PaneId,
     string? SessionName,
-    string? Refusal);
+    string? Refusal,
+    string? ProjectId = null);
 
 // What a trail entry records having been asked for.
 public enum AssistantSpawnAction

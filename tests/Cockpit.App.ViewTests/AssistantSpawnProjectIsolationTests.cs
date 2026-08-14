@@ -207,6 +207,164 @@ public class AssistantSpawnProjectIsolationTests
         await worktrees.DidNotReceiveWithAnyArgs().CreateForSessionAsync(default!, default, default!);
     }
 
+    // --- AC-773: projectId as its own way to find the project, alongside the folder map-match above ------------
+
+    [Fact]
+    public async Task SpawnWithProjectId_NoProfileOrWorkingDirectory_UsesTheProjectsDefaultsAndReportsTheResolvedProfile()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Cockpit") with
+        {
+            SourceDirectory = Repository,
+            DefaultProfileLabel = "work",
+            IsolateInWorktreeByDefault = true,
+            BehaviorPrompt = "Work ticket by ticket.",
+        };
+        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+
+        var (gateway, cockpit, trail, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        var result = await gateway.SpawnAsync(
+            new AgentSpawnRequest(SpawnTarget.NamedByTheAssistant(workspaceId), ProfileLabel: null, ProjectId: project.Id));
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("work", result.ResolvedProfileLabel);
+        var launch = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single().LaunchResult)!;
+        Assert.True(launch.IsolateInWorktree);
+        Assert.Equal(Repository, launch.WorkingDirectory);
+        Assert.Contains("Work ticket by ticket.", launch.SystemPrompt);
+        Assert.Equal(project.Id, launch.ProjectId);
+        Assert.Equal(project.Id, trail.Entries.Single().ProjectId);
+    }
+
+    [Fact]
+    public async Task SpawnWithProjectId_OnAnExternalFolderExplicitlyGiven_StillIsolatesViaTheId_ButKeepsTheExplicitFolder()
+    {
+        // AC-682's restgat, closed by AC-773: a folder outside any project's own directory never map-matches
+        // (ProjectDirectoryMatch finds nothing there), but an explicit projectId still finds the project and applies
+        // its isolation default — while the explicit working directory itself is never overridden by the project's.
+        const string ExternalFolder = "/elsewhere";
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Cockpit") with
+        {
+            SourceDirectory = Repository,
+            DefaultProfileLabel = "work",
+            IsolateInWorktreeByDefault = true,
+        };
+        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+        worktrees.DetectRepositoryAsync(ExternalFolder, Arg.Any<CancellationToken>())
+            .Returns(new GitRepositoryInfo(ExternalFolder, "def456", "main"));
+
+        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        var result = await gateway.SpawnAsync(new AgentSpawnRequest(
+            SpawnTarget.NamedByTheAssistant(workspaceId), ProfileLabel: null, ProjectId: project.Id, WorkingDirectory: ExternalFolder));
+
+        Assert.True(result.Ok, result.Error);
+        var launch = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single().LaunchResult)!;
+        Assert.True(launch.IsolateInWorktree);
+        Assert.Equal(ExternalFolder, launch.WorkingDirectory);
+    }
+
+    [Fact]
+    public async Task SpawnWithProjectId_AndAnExplicitProfile_NeverFallsBackToTheProjectsDefault()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        // Names a profile that does not exist: if the explicit label did not win outright, resolution would fall
+        // back to it and this spawn would be refused with "no profile called 'slow'" instead of succeeding.
+        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = "slow" };
+        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+
+        var (gateway, _, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        var result = await gateway.SpawnAsync(new AgentSpawnRequest(
+            SpawnTarget.NamedByTheAssistant(workspaceId), ProfileLabel: "work", ProjectId: project.Id));
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("work", result.ResolvedProfileLabel);
+    }
+
+    [Fact]
+    public async Task SpawnWithAnUnknownProjectId_IsRefused_AndNeverFallsBackToTheFolder()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = "work" };
+        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+
+        var (gateway, cockpit, trail, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        // Repository would map-match the real project if resolution ever fell through to that — it must not.
+        var result = await gateway.SpawnAsync(new AgentSpawnRequest(
+            SpawnTarget.NamedByTheAssistant(workspaceId), ProfileLabel: null, ProjectId: "does-not-exist", WorkingDirectory: Repository));
+
+        Assert.False(result.Ok);
+        Assert.Contains("no project with id 'does-not-exist'", result.Error);
+        Assert.Empty(Dispatcher.UIThread.Invoke(() => cockpit.Sessions));
+        Assert.Single(trail.Entries);
+    }
+
+    [Fact]
+    public async Task SpawnWithNoProjectIdAndNoProfile_IsRefused_JustLikeMissingProfileAlwaysWas()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = "work" };
+        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+
+        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        var result = await gateway.SpawnAsync(new AgentSpawnRequest(SpawnTarget.NamedByTheAssistant(workspaceId), ProfileLabel: null));
+
+        Assert.False(result.Ok);
+        Assert.Contains("A profile is required", result.Error);
+        Assert.Empty(Dispatcher.UIThread.Invoke(() => cockpit.Sessions));
+    }
+
+    [Fact]
+    public async Task SpawnWithProjectId_WhoseProjectHasNoDefaultProfile_AndNoExplicitProfile_IsRefused()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = null };
+        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+
+        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        var result = await gateway.SpawnAsync(
+            new AgentSpawnRequest(SpawnTarget.NamedByTheAssistant(workspaceId), ProfileLabel: null, ProjectId: project.Id));
+
+        Assert.False(result.Ok);
+        Assert.Contains("has no DefaultProfileLabel set", result.Error);
+        Assert.Empty(Dispatcher.UIThread.Invoke(() => cockpit.Sessions));
+    }
+
+    [Fact]
+    public async Task SpawnWithProjectId_WhoseProjectHasNoSourceDirectory_IsNotRefused_AndAppliesBehaviorPromptWithoutAWorkingDirectoryFromTheProject()
+    {
+        // Raymond's edge case (grooming comment 2026-08-14): a project with no folder of its own is a valid,
+        // ordinary input — never a refusal — and never supplies a working directory, which falls back through the
+        // same chain it always would (explicit parameter, then the profile's own default).
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Admin") with
+        {
+            SourceDirectory = null,
+            DefaultProfileLabel = "work",
+            BehaviorPrompt = "Keep the changelog tidy.",
+        };
+        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+
+        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        var result = await gateway.SpawnAsync(
+            new AgentSpawnRequest(SpawnTarget.NamedByTheAssistant(workspaceId), ProfileLabel: null, ProjectId: project.Id));
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("work", result.ResolvedProfileLabel);
+        var launch = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single().LaunchResult)!;
+        Assert.Contains("Keep the changelog tidy.", launch.SystemPrompt);
+        Assert.Equal(project.Id, launch.ProjectId);
+        Assert.NotEqual(Repository, launch.WorkingDirectory);
+        await worktrees.DidNotReceiveWithAnyArgs().CreateForSessionAsync(default!, default, default!);
+    }
+
     private static IWorktreeManager _WorktreeManagerThatIsolatesCleanly()
     {
         var worktrees = Substitute.For<IWorktreeManager>();
