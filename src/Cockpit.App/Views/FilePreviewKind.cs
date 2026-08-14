@@ -5,6 +5,7 @@ internal enum FilePreviewKind
 {
     Image,
     Svg,
+    Pdf,
     Markdown,
     Json,
     Csv,

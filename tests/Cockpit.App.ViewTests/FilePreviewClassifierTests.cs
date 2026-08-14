@@ -61,7 +61,16 @@ public class FilePreviewClassifierTests
     public void BinaryWithNulByte_ClassifiesAsOther()
     {
         byte[] head = [0x25, 0x50, 0x44, 0x46, 0x00, 0x01];
-        Assert.Equal(FilePreviewKind.Other, FilePreviewClassifier.Classify("report.pdf", head));
+        Assert.Equal(FilePreviewKind.Other, FilePreviewClassifier.Classify("report.bin", head));
+    }
+
+    // AC-730: .pdf classifies by extension, same as the other kinds above — regardless of content, unlike the
+    // NUL-byte sniff generic binaries fall back on.
+    [Fact]
+    public void PdfExtension_ClassifiesAsPdf()
+    {
+        byte[] head = [0x25, 0x50, 0x44, 0x46, 0x00, 0x01];
+        Assert.Equal(FilePreviewKind.Pdf, FilePreviewClassifier.Classify("report.pdf", head));
     }
 
     [Fact]

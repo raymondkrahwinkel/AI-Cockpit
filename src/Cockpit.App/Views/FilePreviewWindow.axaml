@@ -26,6 +26,7 @@
       <Button Name="UpButton" Classes="Ghost" Content="Omhoog" Click="_OnUp" IsVisible="False"/>
       <Button Name="BackButton" Classes="Ghost" Content="Terug" Click="_OnBack" IsVisible="False"/>
       <Button Classes="Ghost" Content="Pad kopiëren" Click="_OnCopyPath"/>
+      <Button Name="OpenInBrowserButton" Classes="Ghost" Content="Open in browser" Click="_OnOpen" IsVisible="False"/>
       <Button Name="OpenButton" Classes="Accent" Content="Openen" Click="_OnOpen"/>
     </StackPanel>
 
