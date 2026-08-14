@@ -166,6 +166,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   server restarting or having a slow minute no longer reaches an agent at all — only an outage lasting the whole
   ten minutes does. A session start is deliberately stricter: it holds its credential for hours, so it still
   refuses one that will not last, rather than starting and losing the server later on.
+- fixed: a server that hands out short-lived access tokens is no longer renewed on every single call. Renewing
+  early only makes sense while the server's own tokens outlive the head start; where they do not, the cockpit
+  falls back to renewing just before a call needs it. The head start returns on its own if that server starts
+  issuing longer tokens.
 - fixed: the assistant, a project-less session and the profile checklists can now be offered a project-bound
   server (a Depot connection, say) at all — previously it was only ever offered to sessions on the specific
   project it was bound to, so the assistant (which has no project) could never see or mount it, no matter how

@@ -33,6 +33,12 @@ internal sealed class RenewingMcpOAuthAuthorizer(IMcpOAuthTokenStore store, Time
     /// <summary>The token value each renewal produces — different every time, so "everybody got the same one" is a claim a test can check.</summary>
     public string LastIssuedToken { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// How long the tokens it hands out live, from now on. Settable so a test can have a server start issuing
+    /// longer or shorter ones halfway, which is what the measured lead has to follow.
+    /// </summary>
+    public TimeSpan Lifetime { get; set; } = lifetime;
+
     /// <summary>The renewal margin the last caller asked for (AC-771) — the seam this fake stands in for is the one
     /// that has to carry it, so a test can check it arrived rather than infer it.</summary>
     public TimeSpan LastRenewalMargin { get; private set; }
@@ -57,7 +63,7 @@ internal sealed class RenewingMcpOAuthAuthorizer(IMcpOAuthTokenStore store, Time
             {
                 AccessToken = issued,
                 RefreshToken = $"rotated-refresh-token-{attempt}",
-                ExpiresAt = DateTimeOffset.UtcNow.Add(lifetime),
+                ExpiresAt = DateTimeOffset.UtcNow.Add(Lifetime),
                 ResourceUrl = server.Url,
             }).GetAwaiter().GetResult();
 
