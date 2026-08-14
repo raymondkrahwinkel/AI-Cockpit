@@ -174,8 +174,8 @@ en sluiten.</p>
 <p class="cap">Twee losse icoonknoppen (blauw kader in het screenshot) en de usage-pill (rood kader).</p>
 
 <hr>
-<h2><span class="n">A</span>De statusbadges — vier varianten</h2>
-<p class="note">Alle vier tekenen dezelfde <code>Ellipse</code> die de sidebar al gebruikt
+<h2><span class="n">A</span>De statusbadges — vijf varianten</h2>
+<p class="note">Alle vijf tekenen dezelfde <code>Ellipse</code> die de sidebar al gebruikt
 (<code>CockpitView.axaml:558</code>), gevuld via <code>SessionStatusBrushKey</code> + <code>StatusBrushConverter</code>.
 Ze verschillen alleen in <b>waar</b> ze staan, <b>hoeveel</b> ze zeggen, en <b>wat er gebeurt als het er veel worden</b>.
 Voorbeeldtoestand overal hetzelfde: 3 sessies — AC-774 bezig, depot-fix wacht op input, ci-run klaar.</p>
@@ -421,8 +421,104 @@ niet en zal gewoon klippen of de usage-pill wegduwen. Twee uitwegen:</p>
     precedent bestaat dus, maar het is een control erbij voor een rij van hooguit zes bolletjes.</td></tr>
 </table>
 
+<h3>A5 — A4, maar hij springt naar een tweede regel als het niet past <span class="tag win">op verzoek van Raymond</span></h3>
+<p class="note">De vraag na A4: in plaats van sessies wegstoppen achter <code>⋯</code> zodra het krap wordt — kan
+de pill niet gewoon naar een nieuwe regel springen? Dat kan, en het kost bijna niets: <b>Avalonia's
+<code>WrapPanel</code> doet precies dit</b>, en er staat er al een in dit bestand. Regel 272 van
+<code>AssistantChatWindow.axaml</code> zet de knoppen van de waarschuwingsbalk in een <code>WrapPanel</code>, met
+in het commentaar exact deze reden: <i>"T2's narrow-window layout, 340px MinWidth"</i>. Hetzelfde venster,
+hetzelfde probleem, dezelfde oplossing.</p>
+
+<div class="cols">
+<div class="col">
+<p class="note"><b>Past het? Eén regel.</b> Identiek aan A4.</p>
+<div class="win">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">🎙</div><div class="ib solid">🔊</div><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow split">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
+      </div>
+      <div class="pill">
+        <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
+        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm"><span class="dot done"></span>ci-run</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+</div>
+<div class="col">
+<p class="note"><b>Past het niet? Tweede regel</b> — en dan is er ineens plek voor álle namen, in plaats van voor
+één plus een teller. Geen <code>⋯</code> nodig, geen cap nodig.</p>
+<div class="win narrow">
+  <div class="hdr">
+    <div class="avatar">✦</div>
+    <div><div class="hname">Assistant</div><div class="hprof">default</div></div>
+    <div class="hbtns"><div class="ib">⋯</div><div class="ib">✕</div></div>
+  </div>
+  <div class="body">
+    <div class="pillrow">
+      <div class="pill">
+        <div class="seg">ctx 39%</div><div class="div"></div>
+        <div class="seg">5h 11%</div><div class="div"></div><div class="chev">⌄</div>
+      </div>
+    </div>
+    <div class="pillrow">
+      <div class="pill">
+        <div class="seg nm"><span class="dot waiting"></span>depot-fix</div><div class="div"></div>
+        <div class="seg nm"><span class="dot busy"></span>AC-774</div><div class="div"></div>
+        <div class="seg nm"><span class="dot done"></span>ci-run</div>
+      </div>
+    </div>
+    <div class="transcript">… transcript …</div>
+  </div>
+</div>
+<p class="cap">340px. De tweede regel bestaat alleen zolang hij nodig is.</p>
+</div>
+</div>
+
+<p class="note" style="margin-top:16px"><b>Wat je inlevert, en wat je terugkrijgt.</b> Eén ding: een
+<code>WrapPanel</code> pakt links. De sessie-pill komt dus tégen de usage-pill aan te staan in plaats van tegen de
+rechterrand — het "van rechts naar links" uit A4 sneuvelt op de brede regel. Daar staat veel tegenover:</p>
+<table>
+<tr><th style="width:30%">Aanpak</th><th>Wat het betekent</th></tr>
+<tr><td><b>A5a — <code>WrapPanel</code></b><br><span class="tag win">een uur</span></td>
+    <td>Eén control, nul rekenwerk, precedent op regel 272 van dit bestand. <code>ItemSpacing</code>/
+    <code>LineSpacing</code> zetten de tussenruimte. Pillen pakken links; de rechterrand-uitlijning van A4 verdwijnt.
+    <b>De cap uit A4 is niet meer nodig</b> — pas als een hele regel te weinig is, komt er een <code>⋯n</code> aan te
+    pas, en dat is bij zes sessies van 340px nog niet aan de orde.</td></tr>
+<tr><td><b>A5b — klein eigen panel</b><br><span class="tag cost">een dag</span></td>
+    <td>~40 regels <code>MeasureOverride</code>/<code>ArrangeOverride</code>: rechts uitlijnen op één regel, en naar
+    een tweede regel breken als het niet past. Houdt A4's rechterrand én krijgt het afbreken. Zelfde soort ding als
+    <code>RailLayoutMath</code> + <code>SessionTilePanel</code>, dus het precedent bestaat — maar het is wel een
+    control erbij.</td></tr>
+</table>
+
+<div class="banner">
+<b>De springende transcript is hier geen bezwaar.</b> Een rij die erbij komt duwt het gesprek omlaag — maar dat doet
+de waarschuwingsbalk (<code>Session.Warnings</code>, regel 248) in ditzelfde stuk header al, en die verschijnt en
+verdwijnt op eigen houtje. Het is bestaand, geaccepteerd gedrag van dit venster, geen nieuwe zonde. Wél iets om
+bewust te doen: de tweede regel hoort te verdwijnen zodra hij niet meer nodig is, niet blijven staan "omdat hij er
+ooit was".
+</div>
+
 <div class="verdict">
-<b>Mijn voorkeur, niet mijn beslissing: A4 met de vaste cap, en de klik op <code>⋯</code> opent het lijstje van
+<b>Mijn voorkeur, niet mijn beslissing: A5a.</b> Het lost meer op dan A4 en kost minder: geen cap, geen teller,
+geen gemiste sessies, en de enige nieuwe control is er een die drie regels verderop in hetzelfde bestand al staat.
+De prijs is de rechterrand-uitlijning, en die is een voorkeur, geen functie. Wil je die uitlijning écht houden, dan
+is A5b het eerlijke antwoord — maar dat is een dag voor een detail dat alleen op de brede regel zichtbaar is.
+Hieronder blijft de A4-afweging staan voor het geval je liever één regel garandeert dan alle namen toont.
+</div>
+
+<div class="verdict">
+<b>Als je liever één vaste regel houdt: A4 met de vaste cap, en de klik op <code>⋯</code> opent het lijstje van
 A3.</b> A4 doet wat A3 deed — namen in beeld — zonder de regel hoogte en zonder de tweede vormtaal: twee pillen
 naast elkaar lezen als één balk, en dat is precies wat de header nu al belooft. Was A4 er niet geweest, dan A1;
 A2 wordt de winnaar zodra tien sessies normaal zijn (dan is er geen naam meer die past), en A3 blijft de beste
@@ -559,15 +655,16 @@ krijgt; op twee items is dat vooruitbetalen. De knop zelf wordt <code>Classes="S
 <li>De assistant-sessie zelf staat er niet bij, en plain terminals ook niet — dezelfde filter als
   <code>list_sessions</code>, niet een eigen variant erop.</li>
 <li>Bij meer sessies dan er passen loopt de rij niet door en klipt hij niet: hij toont er ten hoogste <i>n</i> en de
-  rest als <code>+n</code> (A1), als telling (A2) of als <code>⋯n</code> aan de linkerkant (A4). Bij
-  <code>MinWidth=340</code> blijft de pill leesbaar en duwt hij de usage-pill niet weg.</li>
+  rest als <code>+n</code> (A1), als telling (A2), als <code>⋯n</code> aan de linkerkant (A4), of hij breekt naar een
+  tweede regel (A5). Bij <code>MinWidth=340</code> blijft de pill leesbaar en duwt hij de usage-pill niet weg.</li>
 <li>Zonder sessies is er geen lege rij en geen gat; de usage-pill ziet er dan uit als vandaag.</li>
 <li>De historie- en de download-knop zijn vervangen door één knop met een dropdown die beide acties bevat. Het
   spawn-log-paneel behoudt zijn lege staat, zijn <code>MaxHeight</code> en zijn lui laden — het wordt niet bij het
   openen van het venster gelezen.</li>
 <li>Het opslaan van het gesprek doet vanuit het menu exact wat de knop deed: platte tekst, alle rijen, ook de
   gevouwen.</li>
-<li>De header wordt niet breder en het venster niet hoger dan vandaag (A1/A2/A4); bij A3 komt er precies één rij bij.</li>
+<li>De header wordt niet breder en het venster niet hoger dan vandaag (A1/A2/A4); bij A3 komt er precies één rij bij,
+  en bij A5 alleen zolang de tweede regel nodig is — hij verdwijnt weer als het weer past.</li>
 <li>Een <code>Screenshotter</code>-scène toont de badge-rij met alle statussen, en één met de geopende dropdown.</li>
 </ol>
 
@@ -581,10 +678,11 @@ zijn bewaartermijn · de sessie-statussen zelf (Idle/Busy/… blijven zoals ze z
 geen migratie. <b>Sonnet 5 op medium effort</b> is ruim genoeg — het werk is "hergebruik wat er staat op de goede
 plek", niet ontwerpen. Eén voorwaarde: de bouw-agent moet eerst de bestaande <code>Ellipse</code>-binding in
 <code>CockpitView.axaml</code> en het <code>Flyout</code>-patroon in <code>PluginToolbarHost.cs</code> lezen, want
-de hele opdracht is die twee op de derde plek zetten. <b>A4 met de vaste cap valt hier ook onder</b> — het is
-dezelfde <code>Border</code> met dezelfde tokens in een <code>DockPanel</code>. Opus op medium wordt het pas bij
-twee keuzes: A4 mét een eigen metend panel in plaats van de cap, of springen-naar-een-sessie — dat laatste raakt
-venster-activatie en is geen kopieerwerk meer.</p>
+de hele opdracht is die twee op de derde plek zetten. <b>A4 met de vaste cap en A5a vallen hier ook onder</b> —
+dezelfde <code>Border</code> met dezelfde tokens, in een <code>DockPanel</code> respectievelijk een
+<code>WrapPanel</code> die drie regels verderop al staat. Opus op medium wordt het pas bij twee keuzes: A5b (het
+eigen metende panel), of springen-naar-een-sessie — dat laatste raakt venster-activatie en is geen kopieerwerk
+meer.</p>
 
 </div>
 </body>
