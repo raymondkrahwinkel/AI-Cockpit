@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -39,6 +40,7 @@ public partial class CockpitView : UserControl
 
     private INotifyCollectionChanged? _observedSideSections;
     private INotifyCollectionChanged? _observedSideButtons;
+    private INotifyCollectionChanged? _observedSessions;
     private DispatcherTimer? _idleSweepTimer;
     private DispatcherTimer? _resourceTimer;
     private DispatcherTimer? _claimCollisionTimer;
@@ -79,6 +81,14 @@ public partial class CockpitView : UserControl
         {
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
             cockpit.SpatialNavigationRequested += OnSpatialNavigationRequested;
+
+            // Closing a pane leaves its whole visual subtree (view, transcript rows, view model) rooted whenever a
+            // UIA client is active (a screen reader, 1Password's autofill, PowerToys, a desktop-automation tool):
+            // Avalonia's ControlAutomationPeer marks its children cache stale on the removal but never releases the
+            // old _children list, and a passive client never re-queries to rebuild it. Forcing the rebuild ourselves
+            // on close (see OnGridSessionsChanged) drops the removed container's peer and lets the pane collect.
+            _observedSessions = cockpit.Sessions;
+            _observedSessions.CollectionChanged += OnGridSessionsChanged;
 
             // The idle sweep lives here rather than in the view model so the view model stays free of timers
             // (and testable by calling the sweep with a time of the test's choosing).
@@ -139,6 +149,12 @@ public partial class CockpitView : UserControl
             _observedSideButtons = null;
         }
 
+        if (_observedSessions is not null)
+        {
+            _observedSessions.CollectionChanged -= OnGridSessionsChanged;
+            _observedSessions = null;
+        }
+
         if (DataContext is CockpitViewModel cockpit)
         {
             cockpit.PropertyChanged -= OnCockpitPropertyChanged;
@@ -181,6 +197,39 @@ public partial class CockpitView : UserControl
         if (panel?.NeighbourInDirection(active, direction) is SessionPanelViewModel neighbour)
         {
             cockpit.SelectSessionCommand.Execute(neighbour);
+        }
+    }
+
+    // A closed pane's automation peer is only dropped from its parent's cached children when something re-queries
+    // them, which a passive UIA client never does — so we do it ourselves. Only removals leave a stale entry; an
+    // add or a reorder cannot. Posted at Background priority so the ItemsControl has already pulled the container
+    // out of the visual tree by the time we rebuild — rebuilding earlier would just re-cache a container still on
+    // its way out.
+    private void OnGridSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action is NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Move)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(_RefreshPaneAutomationPeers, DispatcherPriority.Background);
+    }
+
+    // Force the pane grid's automation-peer children to rebuild from the live visual tree, dropping the peer of the
+    // just-removed container (and with it the closed pane's view, transcript and view model). The tile panel is the
+    // container's visual parent, so its peer holds the stale reference; the grid is poked too for the case a client
+    // walked only that far. FromElement returns null when no peer exists, so this is a no-op without active UIA.
+    private void _RefreshPaneAutomationPeers()
+    {
+        if (SessionGrid is null)
+        {
+            return;
+        }
+
+        ControlAutomationPeer.FromElement(SessionGrid)?.GetChildren();
+        if (SessionGrid.GetVisualDescendants().OfType<SessionTilePanel>().FirstOrDefault() is { } panel)
+        {
+            ControlAutomationPeer.FromElement(panel)?.GetChildren();
         }
     }
 
