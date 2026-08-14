@@ -461,6 +461,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
+    // AC-800: the rows the reading level shows, in transcript order — what the transcript views bind to. A hidden
+    // row used to stay an item at zero height, so the panel built ten TranscriptRowViews per visible row.
+    // `Transcript` stays the structure of record: `_FormGroups` walks it by index.
+    public ObservableCollection<TranscriptEntryViewModel> VisibleTranscript { get; } = [];
+
+    // Which rows are currently in `VisibleTranscript`, so a re-announcement that changes nothing costs nothing:
+    // `_FormGroups` re-stamps every member of a run on each append, and each stamp raises `IsRowVisible` whether or
+    // not the answer moved. Acting on the announcement rather than on the change would make an append O(run).
+    private readonly HashSet<TranscriptEntryViewModel> _shown = [];
+
+    // Set while a bulk change (a reading-level switch, a whole-transcript regroup) is in flight: every row is about
+    // to be re-announced, so one rebuild afterwards beats n insert/remove pairs, each of which scans.
+    private bool _suspendVisibleSync;
+
     // False until the first transcript row arrives, so the panel can show a calm empty-state hint instead of a void.
     public bool HasTranscript => Transcript.Count > 0;
 
@@ -671,12 +685,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         // The level lives on the session, but each transcript row renders itself from its own copy — push the new
         // level down, re-fold the Focus groups for it, and re-announce the header figures the level shows or hides.
-        foreach (var entry in Transcript)
+        _suspendVisibleSync = true;
+        try
         {
-            entry.ReadingLevel = value;
+            foreach (var entry in Transcript)
+            {
+                entry.ReadingLevel = value;
+            }
+
+            _RecomputeReadingGroups();
+        }
+        finally
+        {
+            _suspendVisibleSync = false;
         }
 
-        _RecomputeReadingGroups();
+        _RebuildVisibleTranscript();
         // Rebuild rather than just re-announce: the token/cost figure is a pill segment now, and Simple drops it
         // (SuppressCostMeter), so switching level changes which segments exist rather than one visibility flag.
         RebuildUsagePillItems();
@@ -693,7 +717,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             foreach (TranscriptEntryViewModel entry in e.NewItems)
             {
                 entry.ReadingLevel = ReadingLevel;
-                entry.PropertyChanged += _OnEntryPermissionChanged;
+                entry.PropertyChanged += _OnEntryPropertyChanged;
             }
 
             // An append only ever changes the run it lands in, so re-fold that run instead of the whole
@@ -701,15 +725,98 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             if (e.Action is NotifyCollectionChangedAction.Add && e.NewStartingIndex >= 0)
             {
                 _RegroupAround(e.NewStartingIndex, e.NewStartingIndex + e.NewItems.Count - 1);
+                foreach (TranscriptEntryViewModel entry in e.NewItems)
+                {
+                    _SyncVisibleRow(entry);
+                }
+
                 return;
             }
         }
 
-        _RecomputeReadingGroups();
+        // A removal, a replace or a Clear: the rows that moved are not the ones announced, so rebuild rather than
+        // reconcile. Every such change is either a reset or an operator action, never the streaming path.
+        _suspendVisibleSync = true;
+        try
+        {
+            _RecomputeReadingGroups();
+        }
+        finally
+        {
+            _suspendVisibleSync = false;
+        }
+
+        _RebuildVisibleTranscript();
     }
 
-    private void _OnEntryPermissionChanged(object? sender, PropertyChangedEventArgs e)
+    // Puts one row in or out of `VisibleTranscript` when — and only when — its visibility actually moved.
+    private void _SyncVisibleRow(TranscriptEntryViewModel entry)
     {
+        if (_suspendVisibleSync || entry.IsRowVisible == _shown.Contains(entry))
+        {
+            return;
+        }
+
+        if (entry.IsRowVisible)
+        {
+            _shown.Add(entry);
+            VisibleTranscript.Insert(_VisibleInsertionPoint(entry), entry);
+        }
+        else
+        {
+            _shown.Remove(entry);
+            VisibleTranscript.Remove(entry);
+        }
+    }
+
+    // Where a newly shown row belongs: straight after the nearest shown row above it in the transcript. Walking up
+    // from the row rather than counting down from zero is what keeps the streaming case cheap — an appended row has
+    // at most its own folded run above it before it meets one that is shown.
+    private int _VisibleInsertionPoint(TranscriptEntryViewModel entry)
+    {
+        for (var index = _IndexOfLast(entry) - 1; index >= 0; index--)
+        {
+            var above = Transcript[index];
+            if (!_shown.Contains(above))
+            {
+                continue;
+            }
+
+            // The append path lands here: the row above is the last one shown, so there is nothing to scan for.
+            // ponytail: the fallback is O(shown) per newly shown row — fine for expanding a run, revisit with an
+            // index map if a fold toggle on a very long transcript ever feels slow.
+            return VisibleTranscript.Count > 0 && ReferenceEquals(VisibleTranscript[^1], above)
+                ? VisibleTranscript.Count
+                : VisibleTranscript.IndexOf(above) + 1;
+        }
+
+        return 0;
+    }
+
+    // One pass over the transcript, for the changes that touch every row at once.
+    private void _RebuildVisibleTranscript()
+    {
+        _shown.Clear();
+        VisibleTranscript.Clear();
+        foreach (var entry in Transcript)
+        {
+            if (entry.IsRowVisible)
+            {
+                _shown.Add(entry);
+                VisibleTranscript.Add(entry);
+            }
+        }
+    }
+
+    private void _OnEntryPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Every path that can change what a row shows — a level switch, a fold toggle, a consent landing — ends in
+        // `_RaiseReadingLevelPresentation`, so this one announcement is the whole signal `VisibleTranscript` needs.
+        if (e.PropertyName is nameof(TranscriptEntryViewModel.IsRowVisible) && sender is TranscriptEntryViewModel row)
+        {
+            _SyncVisibleRow(row);
+        }
+
         // A tool row is added as auto and can turn into a consent row a beat later (the permission request lands after
         // the tool-use event), which pulls it out of any auto-fold run — so re-fold when either flag flips.
         if (e.PropertyName is nameof(TranscriptEntryViewModel.IsPendingPermission) or nameof(TranscriptEntryViewModel.PermissionDecision))

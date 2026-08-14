@@ -711,7 +711,7 @@
                      viewport, not the infinite height an enclosing ScrollViewer would hand it. x:Name still reads
                      TranscriptScroll — the code-behind and the follow tests ask for the transcript's scroll owner
                      by that name. -->
-                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.Transcript}" IsVisible="{Binding HasMessages}">
+                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.VisibleTranscript}" IsVisible="{Binding HasMessages}">
                     <ItemsControl.Template>
                         <ControlTemplate TargetType="ItemsControl">
                             <ScrollViewer x:Name="TranscriptScroll">

@@ -567,7 +567,10 @@
                  template it measures against the real viewport, which is how every virtualising list in Avalonia is
                  built. x:Name still reads TranscriptScroll — the code-behind and the follow tests ask for the
                  transcript's scroll owner by that name. -->
-            <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Transcript}" IsVisible="{Binding HasTranscript}">
+            <!-- VisibleTranscript, not Transcript: a row the reading level hides is not an item at all, so the
+                 virtualizing panel stops building a full TranscriptRowView for every folded step (see the
+                 collection's own comment for the measurement). -->
+            <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding VisibleTranscript}" IsVisible="{Binding HasTranscript}">
                 <ItemsControl.Template>
                     <ControlTemplate TargetType="ItemsControl">
                         <ScrollViewer x:Name="TranscriptScroll" HorizontalScrollBarVisibility="Disabled">

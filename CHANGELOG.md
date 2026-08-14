@@ -202,6 +202,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: scrolling a session at the Focus reading level was jerky and used far more memory than the same session at
+  Developer — the tool steps a fold collapses were still being built as rows, invisibly, so the transcript kept
+  around nine hidden rows in memory for every one you can see. They are no longer built at all: measured over 600
+  rows, that is 8 live rows instead of 71, 30 MB instead of 121 MB, and a scroll that no longer drifts under the
+  scrollbar. Nothing changes on screen; expanding a run still brings its steps back exactly where they were.
 - fixed: launching a new TTY session, and closing the main window, could freeze the whole app for a few seconds —
   both were doing blocking work (an MCP token renewal, a settings write) directly on the UI thread. Both now run
   off it, so neither can stall the interface anymore.
