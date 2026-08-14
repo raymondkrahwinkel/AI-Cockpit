@@ -66,11 +66,8 @@ public partial class AssistantChatWindow : Window
         return -1;
     }
 
-    // AC-777: this used to call `TranscriptScroll.ScrollToEnd()`, i.e. jump to `Extent - Viewport`. Since AC-774
-    // virtualised the transcript, `Extent` is only an estimate the panel corrects on its next arrange — measured,
-    // that correction is exactly the "scroll position jumps back into the history" regression AC-777 reported.
-    // SessionView hit the same thing first (AC-528) and fixed it by asking for the newest row's own measured
-    // bottom edge instead of trusting the estimate; same fix, ported here.
+    // AC-777: ScrollToEnd() jumped to Extent, which a virtualizing panel only estimates until the next arrange —
+    // see ticket for the full analysis.
     private void _FollowNewest()
     {
         if (_following || TranscriptItems.ItemCount == 0 || _NewestRowIsFullyVisible())
@@ -180,11 +177,8 @@ public partial class AssistantChatWindow : Window
             _ = vm.EnsureOpenedAsync();
         }
 
-        // AC-777: a reply growing in place (AppendText) never touches Transcript.CollectionChanged — only the
-        // panel's own extent changes, which is what ScrollChanged reports. Without this, the window only ever
-        // re-followed when a whole new row arrived, leaving a long streaming reply to grow silently past the
-        // viewport. This window is always-follow (see the ponytail note on _FollowNewest's fields), so unlike
-        // SessionView's stick-only-while-at-bottom there is no operator-scroll gate to check first.
+        // AC-777: AppendText never touches CollectionChanged, so a growing reply needs ScrollChanged too — see
+        // ticket for the full analysis.
         TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
 
         Dispatcher.UIThread.Post(() => InputBox.Focus());
