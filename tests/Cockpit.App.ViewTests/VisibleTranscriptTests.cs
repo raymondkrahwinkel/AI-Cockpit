@@ -4,13 +4,8 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// A row the reading level hides used to stay an item in the transcript's <c>VirtualizingStackPanel</c>, rendering
-/// at zero height. The panel then had to realise roughly ten items to fill one viewport's worth of visible rows, and
-/// each realisation builds a whole <c>TranscriptRowView</c>. Measured headless at 1000×700 over 600 rows with one in
-/// ten visible: 71 realised rows and 121 MiB live against Developer's 15 rows and 41 MiB, at 123–136 ms per wheel
-/// click against 36–58 ms. So the views bind to <see cref="SessionViewModel.VisibleTranscript"/> instead, and this
-/// fixes what that collection must contain — it is the transcript the operator actually sees, in transcript order,
-/// which is the whole claim the views now rest on.
+/// What <see cref="SessionViewModel.VisibleTranscript"/> must hold: the rows the operator sees, in transcript
+/// order. That is the claim both transcript views rest on since AC-800.
 /// </summary>
 public sealed class VisibleTranscriptTests
 {
@@ -29,7 +24,9 @@ public sealed class VisibleTranscriptTests
         return entry;
     }
 
-    /// <summary>Two or more consecutive auto tool calls are what forms a fold group, and the group is what hides rows.</summary>
+    /// <summary>
+    /// Two or more consecutive auto tool calls are what forms a fold group, and the group is what hides rows.
+    /// </summary>
     private static void _AddRun(SessionViewModel vm, int calls)
     {
         for (var i = 0; i < calls; i++)

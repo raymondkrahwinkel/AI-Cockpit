@@ -461,16 +461,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
-    // The rows the reading level actually shows, in transcript order — what the transcript views bind to.
-    //
-    // A hidden row used to stay an item and render at zero height, so the VirtualizingStackPanel had to realise
-    // roughly ten items to fill one viewport's worth of visible ones, each realisation building a whole
-    // TranscriptRowView. Measured headless at 1000×700 over 600 rows with one in ten visible: 71 realised rows and
-    // 121 MiB live against Developer's 15 and 41 MiB, at 123–136 ms per wheel click against 36–58 ms. Filtering is
-    // what the panel needed: 8 rows, 31 MiB, and a scroll extent that stops drifting.
-    //
-    // `Transcript` itself stays whole and is still the structure of record — `_FormGroups` walks it by index, and a
-    // row hidden now is shown again the moment its run is expanded or the level changes.
+    // AC-800: the rows the reading level shows, in transcript order — what the transcript views bind to. A hidden
+    // row used to stay an item at zero height, so the panel built ten TranscriptRowViews per visible row.
+    // `Transcript` stays the structure of record: `_FormGroups` walks it by index.
     public ObservableCollection<TranscriptEntryViewModel> VisibleTranscript { get; } = [];
 
     // Which rows are currently in `VisibleTranscript`, so a re-announcement that changes nothing costs nothing:

@@ -54,11 +54,9 @@ public class TranscriptVirtualisationTests
     });
 
     /// <summary>
-    /// Virtualisation counts items, not pixels, so a row the reading level hides used to cost a full
-    /// <c>TranscriptRowView</c> for nothing: at zero height the panel had to keep realising items until it found
-    /// enough visible ones to fill the viewport. Measured headless at this size over these rows, before the
-    /// transcript bound to <c>VisibleTranscript</c>: 71 realised rows against Developer's 15, 121 MiB live against
-    /// 41 MiB, and 123–136 ms per wheel click against 36–58 ms — which is what "scrolling is jerky at Focus" was.
+    /// Virtualisation counts items, not pixels, so a row hidden at zero height used to cost a full
+    /// <see cref="Cockpit.App.Controls.TranscriptRowView"/> for nothing. Measured before AC-800: 71 realised rows at Focus
+    /// against Developer's 15, which is what "scrolling is jerky at Focus" was.
     /// </summary>
     [Fact]
     public void AtFocus_TheFoldedStepsCostNothingToScrollPast() => HeadlessAvalonia.Run(() =>
