@@ -427,6 +427,22 @@ public sealed class AssistantActMountRuleTests : IDisposable
             return Task.FromResult(
                 AssistantProjectBindResult.Bound("local-1", "Marketing site", "Depot — Work", sourceDirectory));
         }
+
+        public Task<AssistantProjectCreateResult> CreateProjectAsync(
+            string name,
+            string? description = null,
+            string? sourceDirectory = null,
+            string? defaultProfileLabel = null,
+            string? behaviorPrompt = null,
+            bool isolateInWorktreeByDefault = false,
+            IReadOnlyList<string>? enabledMcpServerNames = null,
+            string? category = null,
+            IReadOnlyDictionary<string, string>? pluginFields = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"CreateProjectAsync({name})");
+            return Task.FromResult(AssistantProjectCreateResult.Created("local-1", name));
+        }
     }
 
     /// <summary>

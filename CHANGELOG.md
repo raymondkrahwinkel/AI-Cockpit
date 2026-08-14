@@ -38,6 +38,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   asks first, on a card that shows the folder, and it will not clone: the folder has to be there already. A project
   you have added once is not added a second time.
 
+- added: the voice assistant can now create a brand-new local project itself, the same step "New project" on the
+  Projects page does — a name, and optionally the folder its sessions run in, the profile, a behaviour prompt, which
+  MCP servers it sees and whether it isolates in a worktree by default. It asks first, on a card that shows those
+  choices, and it checks whether your team already shares a project under that name before adding a duplicate.
+
 - added: the Depot plugin now contributes a "Depot settings" quick-action button to the global toolbar strip,
   alongside Docker's and Kubernetes's — it opens the same settings view the project editor's "Servers…" button does,
   reachable now from every workspace instead of only from a project's memory-source picker.

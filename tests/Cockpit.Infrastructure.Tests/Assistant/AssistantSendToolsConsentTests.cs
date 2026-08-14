@@ -312,6 +312,18 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
             IReadOnlyList<string>? resourceReferences = null,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+        public Task<AssistantProjectCreateResult> CreateProjectAsync(
+            string name,
+            string? description = null,
+            string? sourceDirectory = null,
+            string? defaultProfileLabel = null,
+            string? behaviorPrompt = null,
+            bool isolateInWorktreeByDefault = false,
+            IReadOnlyList<string>? enabledMcpServerNames = null,
+            string? category = null,
+            IReadOnlyDictionary<string, string>? pluginFields = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
         {
             Calls.Add($"SendMessageAsync({paneId})");

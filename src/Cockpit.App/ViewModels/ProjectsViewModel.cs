@@ -608,10 +608,22 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (await _dialogs.ShowProjectDialogAsync(null) is { } created)
         {
-            var stored = await _WithStoredLogoAsync(created);
-            await _PersistAsync(_settings.WithProject(stored));
+            var stored = await AddNewProjectAsync(created);
             SelectedProject = Projects.FirstOrDefault(project => project.Id == stored.Id);
         }
+    }
+
+    // AC-799: the tail of "New project", shared by the dialog route above and the assistant's own
+    // `create_project` — same logo copy, same normalising save. The two do not race each other because there is
+    // no `await` between the `_settings.WithProject(stored)` read below and the `_settings = settings;` write in
+    // `_PersistAsync` — not because the dispatcher runs on a single thread (AC-799 review finding 7): a single
+    // thread alone does not stop two dispatcher jobs interleaving across an `await`, only the absence of one here
+    // does. An `await` inserted between those two lines would silently reopen the race this comment rules out.
+    internal async Task<Project> AddNewProjectAsync(Project created)
+    {
+        var stored = await _WithStoredLogoAsync(created);
+        await _PersistAsync(_settings.WithProject(stored));
+        return stored;
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

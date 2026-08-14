@@ -188,6 +188,18 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
             string profileLabel,
             IReadOnlyList<string>? resourceReferences = null,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<AssistantProjectCreateResult> CreateProjectAsync(
+            string name,
+            string? description = null,
+            string? sourceDirectory = null,
+            string? defaultProfileLabel = null,
+            string? behaviorPrompt = null,
+            bool isolateInWorktreeByDefault = false,
+            IReadOnlyList<string>? enabledMcpServerNames = null,
+            string? category = null,
+            IReadOnlyDictionary<string, string>? pluginFields = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     public void Dispose() => McpRequestContext.Set(null);

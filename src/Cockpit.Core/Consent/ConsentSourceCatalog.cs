@@ -55,11 +55,16 @@ public static class ConsentSourceCatalog
     // the assistant writes.
     public const string AssistantProjectBinding = "Assistant project binding";
 
+    // The assistant creating a brand-new local project (AC-799) — its own label, not `AssistantProjectBinding`:
+    // that one registers a colleague's own definition, this one writes fields the assistant composed itself
+    // (a behaviour prompt among them), and an operator may trust one without the other.
+    public const string AssistantProjectCreate = "Assistant project create";
+
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
     public static IReadOnlyList<string> HostSources { get; } =
     [
         TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
-        AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, Debug,
+        AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, Debug,
     ];
 
     // The bypass key for one source: the host-stamped `pluginId` under a `plugin:` prefix, or

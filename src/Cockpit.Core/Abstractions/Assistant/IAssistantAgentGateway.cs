@@ -202,6 +202,65 @@ public interface IAssistantAgentGateway
         string profileLabel,
         IReadOnlyList<string>? resourceReferences = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a brand-new local project (AC-799) — not bound to any shared definition, unlike
+    /// <see cref="BindSharedProjectAsync"/> — through the same route "New project" on the Projects page runs: the
+    /// project editor's own validation and field mapping, and the projects view model's own persisting.
+    /// </summary>
+    /// <remarks>
+    /// <b>Checked against what is already shared before anything local is written.</b> A name matching a project a
+    /// connection already shares (the same registry <c>list_shared_projects</c> reads) is refused rather than
+    /// quietly duplicated next to it — <see cref="BindSharedProjectAsync"/> is very likely the right door instead.
+    /// <para>
+    /// <b>Four of these parameters decide how every session on this project runs, not merely how it is labelled:</b>
+    /// <paramref name="sourceDirectory"/>, <paramref name="enabledMcpServerNames"/>,
+    /// <paramref name="isolateInWorktreeByDefault"/> and <paramref name="behaviorPrompt"/>. Naming them is what
+    /// separates this door from <see cref="CreateWorkspaceAsync"/>, which only ever opens an empty tab.
+    /// </para>
+    /// </remarks>
+    /// <param name="name">
+    /// The project's display name — the dialog's one required field. Free to collide with another project's name.
+    /// </param>
+    /// <param name="description">
+    /// Free-text note on what this project is. Null for none.
+    /// </param>
+    /// <param name="sourceDirectory">
+    /// The folder its sessions start in. Must exist when given; null/blank for an administrative project with no
+    /// folder of its own.
+    /// </param>
+    /// <param name="defaultProfileLabel">
+    /// The profile its sessions start under, by label. Null leaves every session to name its own.
+    /// </param>
+    /// <param name="behaviorPrompt">
+    /// Appended to every session's system prompt on top of its profile's own. Null appends nothing.
+    /// </param>
+    /// <param name="isolateInWorktreeByDefault">
+    /// Whether new sessions here isolate in their own git worktree by default.
+    /// </param>
+    /// <param name="enabledMcpServerNames">
+    /// Names of MCP servers this project's sessions start ticked. Null means no opinion — every offered server
+    /// starts ticked, following the registry.
+    /// </param>
+    /// <param name="category">
+    /// Which group this project sits under in the manager's list. Null/blank groups it under "Uncategorized".
+    /// </param>
+    /// <param name="pluginFields">
+    /// What this project is called elsewhere, keyed by the field a plugin registered — e.g.
+    /// <c>{"youtrack.project": "AC"}</c>, the same shape <c>list_projects</c> reports. A key no installed plugin
+    /// registered is refused.
+    /// </param>
+    Task<AssistantProjectCreateResult> CreateProjectAsync(
+        string name,
+        string? description = null,
+        string? sourceDirectory = null,
+        string? defaultProfileLabel = null,
+        string? behaviorPrompt = null,
+        bool isolateInWorktreeByDefault = false,
+        IReadOnlyList<string>? enabledMcpServerNames = null,
+        string? category = null,
+        IReadOnlyDictionary<string, string>? pluginFields = null,
+        CancellationToken cancellationToken = default);
 }
 
 // What came of binding a shared project (AC-798). Same shape and same reason as `AgentStopResult` — a refusal is a
@@ -218,6 +277,15 @@ public sealed record AssistantProjectBindResult(
         new(true, projectId, name, sourceName, sourceDirectory, null);
 
     public static AssistantProjectBindResult Refused(string error) => new(false, null, null, null, null, error);
+}
+
+// What came of creating a project (AC-799). Same shape and same reason as `AgentStopResult` — a refusal is a
+// sentence the assistant says, not an exception it fails on.
+public sealed record AssistantProjectCreateResult(bool Ok, string? ProjectId, string? Name, string? Error)
+{
+    public static AssistantProjectCreateResult Created(string projectId, string name) => new(true, projectId, name, null);
+
+    public static AssistantProjectCreateResult Refused(string error) => new(false, null, null, error);
 }
 
 // What came of a handover. Same shape and same reason as `AgentStopResult` — a refusal is a sentence the

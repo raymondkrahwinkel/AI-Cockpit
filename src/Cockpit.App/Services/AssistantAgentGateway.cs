@@ -1,9 +1,11 @@
+using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
@@ -46,7 +48,9 @@ internal sealed class AssistantAgentGateway(
     IPluginProviderRegistry pluginProviders,
     SessionWatcher watcher,
     IWorktreeManager? worktreeManager = null,
-    ISharedProjectSourceRegistry? sharedProjectSources = null) : IAssistantAgentGateway, ISingletonService
+    ISharedProjectSourceRegistry? sharedProjectSources = null,
+    IMcpServerCatalog? mcpServerCatalog = null,
+    IProjectFieldRegistry? projectFields = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -906,6 +910,189 @@ internal sealed class AssistantAgentGateway(
             () => cockpit.Projects.AddBoundProjectAsync(viewModel.ToProject())).ConfigureAwait(false);
 
         return AssistantProjectBindResult.Bound(stored.Id, stored.Name, source.SourceName, stored.SourceDirectory);
+    }
+
+    // AC-799: "New project" without the window, refused by the editor's own `CanSave`/`ToProject` rather than a
+    // second copy of that rule — checked against what Depot already shares before anything local is written, and
+    // `sourceDirectory`/`pluginFields` get a scrutiny the dialog's own free-text boxes do not give them.
+    public async Task<AssistantProjectCreateResult> CreateProjectAsync(
+        string name,
+        string? description = null,
+        string? sourceDirectory = null,
+        string? defaultProfileLabel = null,
+        string? behaviorPrompt = null,
+        bool isolateInWorktreeByDefault = false,
+        IReadOnlyList<string>? enabledMcpServerNames = null,
+        string? category = null,
+        IReadOnlyDictionary<string, string>? pluginFields = null,
+        CancellationToken cancellationToken = default)
+    {
+        // AC-799 review finding 8: production DI always registers a real `IMcpServerCatalog` (`ISingletonService`,
+        // scanned), so this is unreachable there. Kept as a refusal — the same shape `sharedProjectSources` being
+        // null takes below — rather than a no-op catalog that nothing past this line would ever actually read.
+        if (mcpServerCatalog is null)
+        {
+            return AssistantProjectCreateResult.Refused("MCP servers are not available here, so a project cannot be created.");
+        }
+
+        // AC-799 review finding 10: the cheap, purely local checks first, and the network round trip
+        // (`_FindSharedProjectByNameAsync`, one call per configured source) last — a typo'd folder or an unknown
+        // plugin-field key should not wait on a colleague's server before being reported.
+        if (_RefuseUnlessValidOptionalDirectory(sourceDirectory) is { } directoryError)
+        {
+            return AssistantProjectCreateResult.Refused(directoryError);
+        }
+
+        if (_RefuseUnknownPluginFieldKeys(pluginFields) is { } unknownFieldError)
+        {
+            return AssistantProjectCreateResult.Refused(unknownFieldError);
+        }
+
+        // AC-799 review finding 3: validated by label, case-insensitively, against what `list_profiles` actually
+        // reports — the same rule `SpawnAsync` and `BindSharedProjectAsync` already hold `profile` to. Left
+        // unchecked, this would have been a second, looser validation surface than either: the dialog's own
+        // `SelectedProfileLabel` carries no such guard itself — it exists so a human can only ever pick from a
+        // bound combo box, a guarantee this call does not get for free by setting the property directly.
+        if (!string.IsNullOrWhiteSpace(defaultProfileLabel))
+        {
+            var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (!known.Any(candidate => string.Equals(candidate.Label, defaultProfileLabel.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                var labels = known.Count == 0 ? "none are configured" : string.Join(", ", known.Select(candidate => $"'{candidate.Label}'"));
+                return AssistantProjectCreateResult.Refused(
+                    $"There is no profile called '{defaultProfileLabel}'. The profiles this cockpit knows are: {labels}.");
+            }
+        }
+
+        var project = await _OnUiThreadAsync(async () =>
+        {
+            var viewModel = await ProjectDialogViewModel.CreateAsync(
+                null, profiles, mcpServerCatalog, cancellationToken: cancellationToken)
+                .ConfigureAwait(true);
+
+            viewModel.Name = name;
+            viewModel.Description = description ?? string.Empty;
+            viewModel.SourceDirectory = sourceDirectory ?? string.Empty;
+            viewModel.BehaviorPrompt = behaviorPrompt ?? string.Empty;
+            viewModel.IsolateInWorktreeByDefault = isolateInWorktreeByDefault;
+            viewModel.Category = category ?? string.Empty;
+            viewModel.SelectedProfileLabel = string.IsNullOrWhiteSpace(defaultProfileLabel) ? null : defaultProfileLabel.Trim();
+
+            return viewModel.CanSave ? viewModel.ToProject() : null;
+        }).ConfigureAwait(false);
+
+        if (project is null)
+        {
+            return AssistantProjectCreateResult.Refused("A project needs a name.");
+        }
+
+        if (await _FindSharedProjectByNameAsync(project.Name, cancellationToken).ConfigureAwait(false) is { } collision)
+        {
+            return AssistantProjectCreateResult.Refused(
+                $"'{collision.Name}' is already shared via {collision.SourceName} (id '{collision.Id}'). Call "
+                + "bind_shared_project with that id if it is the same project, rather than creating a second, "
+                + "disconnected local project under the same name.");
+        }
+
+        var withDynamicFields = project with
+        {
+            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = enabledMcpServerNames },
+            PluginFields = pluginFields ?? ReadOnlyDictionary<string, string>.Empty,
+        };
+
+        var stored = await _OnUiThreadAsync(() => cockpit.Projects.AddNewProjectAsync(withDynamicFields)).ConfigureAwait(false);
+        return AssistantProjectCreateResult.Created(stored.Id, stored.Name);
+    }
+
+    // The same registry and per-source timeout `list_shared_projects` itself reads through
+    // (`ProjectsViewModel._ListWithTimeoutAsync`), not a second copy of either — a source that is slow, signed
+    // out or unreachable is skipped rather than failing the whole check. Null when nothing matches.
+    private async Task<(string SourceName, string Id, string Name)?> _FindSharedProjectByNameAsync(
+        string name, CancellationToken cancellationToken)
+    {
+        if (sharedProjectSources is null)
+        {
+            return null;
+        }
+
+        var (sources, boundIds, hiddenIds) = await _OnUiThreadAsync(() =>
+        {
+            var (bound, hidden) = cockpit.Projects.SharedProjectVisibilityFilterIds();
+            return Task.FromResult((sharedProjectSources.Sources, bound, hidden));
+        }).ConfigureAwait(false);
+
+        if (sources.Count == 0)
+        {
+            return null;
+        }
+
+        var results = await Task.WhenAll(sources.Select(source => ProjectsViewModel._ListWithTimeoutAsync(source, cancellationToken)))
+            .ConfigureAwait(false);
+
+        foreach (var (source, result) in sources.Zip(results))
+        {
+            if (!result.Succeeded)
+            {
+                continue;
+            }
+
+            var match = result.Projects.FirstOrDefault(shared =>
+                !boundIds.Contains(shared.Id) && !hiddenIds.Contains(shared.Id)
+                && string.Equals(shared.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
+            if (match is not null)
+            {
+                return (source.SourceName, match.Id, match.Name);
+            }
+        }
+
+        return null;
+    }
+
+    // Full path and already there — the same two refusals `BindSharedProjectAsync` gives an assistant-supplied
+    // folder, because a typo here is a session pointed at the wrong place. Null when `directory` is blank: an
+    // administrative project with no folder of its own is a perfectly good project.
+    private static string? _RefuseUnlessValidOptionalDirectory(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return null;
+        }
+
+        if (!Path.IsPathFullyQualified(directory))
+        {
+            return $"'{directory}' is a relative path, and you are standing in no directory — ask the operator for "
+                + "the full path, or leave sourceDirectory out for a project with no folder of its own.";
+        }
+
+        if (!Directory.Exists(directory))
+        {
+            return $"There is no folder at '{directory}'. Ask the operator where the project lives, or leave "
+                + "sourceDirectory out for a project with no folder of its own.";
+        }
+
+        return null;
+    }
+
+    // Keys come from the same dynamic registry the project editor's own plugin-fields section draws its rows
+    // from (`ProjectFieldRegistry`) — a hard-coded list on this tool would go stale the moment a plugin is
+    // installed or removed, which is exactly what that registry exists to avoid.
+    private string? _RefuseUnknownPluginFieldKeys(IReadOnlyDictionary<string, string>? fields)
+    {
+        if (fields is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var known = (projectFields?.Fields ?? []).Select(field => field.Key).ToHashSet(StringComparer.Ordinal);
+        var unknown = fields.Keys.Where(key => !known.Contains(key)).ToList();
+        if (unknown.Count == 0)
+        {
+            return null;
+        }
+
+        var knownList = known.Count == 0 ? "none are registered" : string.Join(", ", known.Select(key => $"'{key}'"));
+        return $"'{string.Join("', '", unknown)}' is not a plugin field this cockpit knows. The registered keys are: {knownList}.";
     }
 
     // Fills the machine-specific resource rows (AC-246) the shared definition names but carries no value for: the
