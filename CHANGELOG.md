@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Depot plugin now contributes a "Depot settings" quick-action button to the global toolbar strip,
+  alongside Docker's and Kubernetes's — it opens the same settings view the project editor's "Servers…" button does,
+  reachable now from every workspace instead of only from a project's memory-source picker.
+
 - added: the quick-action buttons plugins contribute now sit on the workspace tab strip, so they are reachable from
   every screen — the Projects page and a dashboard included, and from a Sessions workspace before it has a session in
   it. They used to appear only above an open session grid, which is what made a plugin's own settings unreachable

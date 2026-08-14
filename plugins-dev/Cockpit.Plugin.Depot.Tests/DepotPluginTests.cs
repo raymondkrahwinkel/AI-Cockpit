@@ -25,6 +25,26 @@ public class DepotPluginTests
     }
 
     [Fact]
+    public async Task Initialize_RegistersAGlobalToolbarActionThatOpensSettings()
+    {
+        // AC-784: the global-toolbar route (AC-772), same pattern as KubernetesPlugin (AC-91).
+        var host = _HostWithConnections();
+        var registered = new List<ToolbarAction>();
+        host.When(cockpit => cockpit.AddToolbarAction(Arg.Any<ToolbarAction>()))
+            .Do(call => registered.Add(call.Arg<ToolbarAction>()));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        var action = Assert.Single(registered);
+        Assert.Equal("Depot settings", action.Title);
+        Assert.Equal(Material.Icons.MaterialIconKind.Database, action.Icon);
+
+        await action.OnInvoke();
+        await host.Received(1).ShowSettingsAsync();
+    }
+
+    [Fact]
     public void Initialize_NoConnectionsConfigured_RegistersNoMemorySource()
     {
         // Acceptance criterion 5: the row behaves exactly as it did before this plugin existed when nothing is
