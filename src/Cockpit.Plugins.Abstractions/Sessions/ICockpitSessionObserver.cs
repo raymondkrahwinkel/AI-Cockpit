@@ -73,6 +73,20 @@ public interface ICockpitSessionObserver
     }
 
     /// <summary>
+    /// Raised when a session closes — its pane leaves the cockpit — carrying that pane's
+    /// <see cref="IPluginSessionContext.PaneId"/>. The cue to drop anything a plugin kept keyed to that session:
+    /// a per-session subscription on a plugin-lived object, a cache entry, a header-item's registration — so a
+    /// closed session leaves nothing behind to hold it (and its whole transcript) alive. Raised on the UI thread,
+    /// once per close. A no-op add/remove on a host that predates this member, so a subscribing plugin keeps
+    /// compiling and simply never hears from it.
+    /// </summary>
+    event EventHandler<string>? SessionClosed
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// The images the user message that started the pane's current turn carried (AC-116), or empty when it
     /// carried none / the turn is over / <paramref name="paneId"/> is unknown. Host-managed and turn-scoped:
     /// set when an image-bearing message is sent and cleared when that turn completes, so a consumer reacting

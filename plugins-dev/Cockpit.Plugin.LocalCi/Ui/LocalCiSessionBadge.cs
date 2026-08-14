@@ -14,21 +14,45 @@ internal sealed class LocalCiSessionBadge : UserControl
 {
     private readonly IPluginSessionContext _session;
     private readonly LocalRunTracker _tracker;
+    private readonly ICockpitSessionObserver _sessions;
     private readonly TextBlock _label = new();
 
-    public LocalCiSessionBadge(IPluginSessionContext session, LocalRunTracker tracker)
+    public LocalCiSessionBadge(IPluginSessionContext session, LocalRunTracker tracker, ICockpitSessionObserver sessions)
     {
         _session = session;
         _tracker = tracker;
+        _sessions = sessions;
 
         Content = _label;
         IsVisible = false;
 
         tracker.Changed += _OnChanged;
-        session.WorkingDirectoryChanged += (_, _) => _Show();
-        DetachedFromVisualTree += (_, _) => tracker.Changed -= _OnChanged;
+        session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
+        // The pane closing — not DetachedFromVisualTree — is the reliable teardown cue. A closed session's visuals
+        // are held by the composition tree and never detach, so the old detach-only unsubscribe leaked: the badge
+        // stayed on the plugin-lived tracker's Changed list, keeping the session (and its whole transcript) alive.
+        // Unsubscribe on either signal; both are idempotent.
+        sessions.SessionClosed += _OnSessionClosed;
+        DetachedFromVisualTree += (_, _) => _Unsubscribe();
 
         _Show();
+    }
+
+    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e) => _Show();
+
+    private void _OnSessionClosed(object? sender, string paneId)
+    {
+        if (string.Equals(paneId, _session.PaneId, StringComparison.Ordinal))
+        {
+            _Unsubscribe();
+        }
+    }
+
+    private void _Unsubscribe()
+    {
+        _tracker.Changed -= _OnChanged;
+        _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
+        _sessions.SessionClosed -= _OnSessionClosed;
     }
 
     private void _OnChanged() => Dispatcher.UIThread.Post(_Show);
