@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>AC-772 — Globale toolbar + Projects-pagina (layoutkeuze)</title>
+<style>
+  /* Tokens overgenomen uit src/Cockpit.App/Styles/Theme.axaml — niet verzonnen.
+     Dit is een HTML-PROXY voor een Avalonia-scherm, geen tweede stack.
+     Basis: ac-772-toolbar-en-projecten-2026-08-14.html (07:24) — die blijft staan als referentie.
+     Deze versie verwerkt Raymonds scope-update van 07:36: V1/V2/V3 worden geen
+     eenmalige winnaar-keuze, maar een instelling. Zie sectie 4. */
+  :root{
+    --window:#0f1116; --panel:#1a1d24; --secondary:#0c0e12; --chrome:#12141a; --inset:#202430;
+    --hairline:#2a2f39; --hairline-hover:#38404d; --hairline-soft:#20242c;
+    --text:#e8eaef; --text-2:#949aa5; --text-faint:#656c78;
+    --accent:#2563eb; --accent-hover:#1d4ed8; --on-accent:#fff;
+    --iso-bg:#332b47; --iso-text:#a78bda;
+    --amber:#e0a33e; --green:#5aa576; --err:#d64545;
+    --ctl-r:9px; --panel-r:12px; --pill-r:20px;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--window);color:var(--text);
+       font:14px/1.55 Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1220px;margin:0 auto;padding:34px 24px 90px}
+  h1{font-size:22px;margin:0 0 6px;font-weight:600}
+  .sub{color:var(--text-2);margin:0 0 8px;max-width:82ch}
+  .sub b{color:var(--text)}
+  h2{font-size:16px;margin:46px 0 5px;font-weight:600}
+  h2 .n{color:var(--text-faint);font-weight:400;margin-right:9px}
+  h3{font-size:13px;margin:24px 0 6px;font-weight:600;color:var(--text)}
+  .note{color:var(--text-2);margin:0 0 14px;max-width:82ch;font-size:13px}
+  .note b{color:var(--text)}
+  .cols{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+  .col{flex:1 1 380px;min-width:320px}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:3px;
+       background:var(--inset);color:var(--text-2);margin-right:4px;vertical-align:1px}
+  .tag.win{background:rgba(90,165,118,.15);color:var(--green)}
+  .tag.cost{background:rgba(224,163,62,.14);color:var(--amber)}
+  .tag.new{background:rgba(37,99,235,.16);color:#8ab4f8}
+  code{font-family:var(--mono);font-size:12px;background:var(--inset);padding:1px 5px;border-radius:3px}
+  hr{border:0;border-top:1px solid var(--hairline-soft);margin:38px 0 0}
+
+  .banner{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.35);border-radius:var(--panel-r);
+          padding:12px 16px;margin:14px 0 0;font-size:13px;color:var(--text-2)}
+  .banner b{color:var(--text)}
+
+  /* --- venster-proxy --- */
+  .win{background:var(--window);border:1px solid var(--hairline);border-radius:8px;overflow:hidden}
+  .win-title{background:var(--chrome);padding:8px 14px;border-bottom:1px solid var(--hairline);
+             font-size:11.5px;color:var(--text-2);display:flex;gap:8px;align-items:center}
+  .win-title b{color:var(--text);font-size:12px;font-weight:600}
+
+  /* --- tabbalk (CockpitView.axaml:675-768) --- */
+  .tabrow{display:flex;align-items:center;gap:4px;margin:12px 12px 0;
+          padding-bottom:6px;border-bottom:1px solid var(--hairline)}
+  .tab{padding:4px 10px;border-radius:6px;font-size:12.5px;color:var(--text-2);
+       display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .tab.on{background:var(--panel);color:var(--text);font-weight:600}
+  .tab .ic{opacity:.75;font-size:11px}
+  .grow{flex:1}
+  .plus{padding:3px 8px;border-radius:6px;color:var(--text-2);font-size:13px}
+
+  /* --- toolbar-onderdelen --- */
+  .tbtn{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:var(--ctl-r);
+        border:1px solid transparent;color:var(--text-2);font-size:12px;white-space:nowrap}
+  .tbtn:hover{border-color:var(--hairline)}
+  .tbtn.icon{padding:4px 7px}
+  .tbtn.dep{color:var(--iso-text);background:rgba(167,139,218,.12);border-color:rgba(167,139,218,.35)}
+  .tbtn.boxed{border-color:var(--hairline);background:var(--panel);color:var(--text)}
+  .sep{width:1px;height:16px;background:var(--hairline);margin:0 3px}
+
+  /* --- projectenscherm --- */
+  .stage{padding:22px 18px 26px}
+  .lead{font-size:19px;font-weight:600;text-align:center;margin:0}
+  .lead-sub{font-size:12.5px;color:var(--text-2);text-align:center;margin:6px 0 18px}
+  .cat{font-size:12.5px;font-weight:600;color:var(--text-2);margin:16px 0 8px}
+  .cat.mid{text-align:center}
+  .cards{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
+  .card{width:262px;background:var(--panel);border:1px solid var(--hairline);
+        border-radius:var(--panel-r);padding:14px}
+  .card-h{display:flex;align-items:center;gap:10px}
+  .logo{width:32px;height:32px;border-radius:8px;background:var(--secondary);flex:none;
+        display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;
+        color:var(--text-2);border:1px solid var(--hairline)}
+  .logo.b{background:#1e3a5f;color:#8ab4f8;border-color:#274b78}
+  .logo.g{background:#1e3d2f;color:#7fc79a;border-color:#2a5340}
+  .logo.v{background:var(--iso-bg);color:var(--iso-text);border-color:#463a5e}
+  .card-n{font-size:14.5px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card-d{font-size:12px;color:var(--text-2);margin:9px 0 0}
+  .card-m{font-size:11px;color:var(--text-faint);margin:8px 0 0}
+  .badge{font-size:10px;padding:1px 6px;border-radius:var(--pill-r);
+         background:var(--iso-bg);color:var(--iso-text);white-space:nowrap}
+  .badge.wait{background:rgba(224,163,62,.16);color:var(--amber)}
+  .btn{background:var(--panel);border:1px solid var(--hairline);color:var(--text);
+       border-radius:var(--ctl-r);padding:6px 13px;font-size:12.5px;cursor:default;
+       display:inline-flex;align-items:center;justify-content:center;gap:6px}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+  .btn.dep{background:rgba(167,139,218,.12);border-color:rgba(167,139,218,.4);color:var(--iso-text);font-weight:600}
+  .btn.g{background:transparent;border-color:transparent;color:var(--text-2)}
+  .btn.sm{padding:4px 10px;font-size:11.5px}
+  .btn.full{width:100%;margin-top:11px}
+  .subrow{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:8px}
+  .dots{color:var(--text-2);font-size:15px;padding:0 5px;line-height:1}
+
+  /* rij-variant */
+  .rows{display:flex;flex-direction:column;gap:1px;background:var(--hairline-soft);
+        border:1px solid var(--hairline);border-radius:var(--panel-r);overflow:hidden}
+  .row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--panel)}
+  .row-t{flex:1;min-width:0}
+  .row-n{font-size:13.5px;font-weight:600}
+  .row-d{font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* hero-variant */
+  .hero{display:flex;gap:14px;flex-wrap:wrap}
+  .hcard{flex:1 1 260px;background:var(--panel);border:1px solid var(--hairline-hover);
+         border-radius:var(--panel-r);padding:16px}
+  .mini{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:flex;align-items:center;gap:8px;padding:7px 12px 7px 8px;background:var(--panel);
+        border:1px solid var(--hairline);border-radius:var(--pill-r);font-size:12.5px}
+  .chip .logo{width:22px;height:22px;border-radius:6px;font-size:10px}
+
+  /* tabellen */
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:6px 0 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--hairline-soft);vertical-align:top}
+  th{color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td.was{color:var(--text-2)}
+  .verdict{background:var(--panel);border:1px solid var(--hairline);border-left:3px solid var(--accent);
+           border-radius:0 var(--panel-r) var(--panel-r) 0;padding:12px 16px;margin:14px 0 0;font-size:13px}
+  .verdict b{color:var(--text)}
+  ul.q{margin:8px 0 0;padding-left:20px;color:var(--text-2);font-size:13px}
+  ul.q li{margin:0 0 6px}
+  ul.q b{color:var(--text)}
+  ul.q li.done{color:var(--text-faint)}
+  ul.q li.done b{color:var(--text-faint);text-decoration:line-through}
+  .cap{font-size:11px;color:var(--text-faint);margin:7px 0 0;text-align:center}
+
+  /* --- NIEUW: segmented control voor de layoutkeuze (native <input type=radio>, geen JS) --- */
+  .seg-wrap{display:flex;flex-direction:column;align-items:center;gap:5px;margin:0 0 20px}
+  .seg{display:inline-flex;background:var(--inset);border:1px solid var(--hairline);
+       border-radius:var(--pill-r);padding:2px;gap:1px}
+  .seg input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+  .seg label{padding:5px 13px;border-radius:calc(var(--pill-r) - 2px);font-size:12px;
+             color:var(--text-2);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .seg input:checked + label{background:var(--panel);color:var(--text);font-weight:600;
+                              box-shadow:0 1px 0 var(--hairline)}
+  .seg label[data-locked]{color:var(--text-faint)}
+  .seg-note{font-size:10.5px;color:var(--text-faint)}
+  .pg-panel{display:none}
+  /* :has() is native CSS (Chrome/Edge/Safari, alle stabiel) — de switcher hieronder werkt
+     zonder één regel JavaScript. In Avalonia wordt dit gewoon een SelectedIndex-binding. */
+  #pg-stage:has(#sel-v1:checked) .pg-panel.v1{display:block}
+  #pg-stage:has(#sel-v2:checked) .pg-panel.v2{display:block}
+  #pg-stage:has(#sel-v3:checked) .pg-panel.v3{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AC-772 — Een globale actiebalk, en een Projects-pagina die niemand bang maakt</h1>
+<p class="sub">Twee dingen die Raymond miste op het projectenscherm: een plek waar wij én plugins knoppen
+kunnen neerzetten (concreet: <b>Depot-servers beheren zonder eerst een project aan te maken</b>), en een layout die
+leesbaar is voor iemand die geen developer is.</p>
+<p class="sub"><span class="tag">HTML-proxy van een Avalonia-scherm</span> Kleuren en maten komen uit
+<code>Styles/Theme.axaml</code>. Dit is geen tweede stack en geen render van de echte app — ontwerp alleen,
+geen bouwwerk. Schermteksten staan in het Engels omdat de app dat is; het commentaar eromheen in het Nederlands.</p>
+
+<div class="banner">
+  <b>Update 2026-08-14, 07:36 — scope-wijziging.</b> Raymond: V1 (rustige kaart), V2 (brede lijst) en V3
+  (verder waar je gebleven was) worden <b>niet</b> tot één winnaar teruggebracht — alle drie zijn waardevol en
+  komen <b>naast elkaar</b> als een keuze in het Projects-venster. Sectie 4 hieronder vervangt de "V1 nu, V3 later"
+  conclusie uit de vorige versie van deze mockup (<code>ac-772-toolbar-en-projecten-2026-08-14.html</code>, blijft
+  staan als referentie) door een concreet voorstel voor waar die keuze leeft, plus een werkende switcher in de
+  mockup zelf. Secties 0-3 zijn ongewijzigd overgenomen.
+</div>
+
+<hr>
+
+<h2><span class="n">0</span>Wat er al in de code staat</h2>
+<p class="note">Gemeten, niet aangenomen. Het belangrijkste voor dit ticket: <b>het registratiemechanisme voor
+toolbarknoppen bestaat al</b> — AC-91 heeft het gebouwd. Er is dus niets nieuws te verzinnen, alleen iets te
+verplaatsen en open te zetten.</p>
+
+<table>
+  <tr><th>Wat</th><th>Waar</th><th>Staat</th></tr>
+  <tr>
+    <td><code>ICockpitHost.AddToolbarAction(ToolbarAction)</code><br><span class="tag">Title · Icon · Func&lt;Task&gt; OnInvoke</span></td>
+    <td><code>Cockpit.Plugins.Abstractions/ToolbarAction.cs</code></td>
+    <td>Bestaat, publiek, gedocumenteerd.</td>
+  </tr>
+  <tr>
+    <td><code>PluginToolbarActions</code> + <code>VisibleToolbarActions</code></td>
+    <td><code>ViewModels/CockpitViewModel.cs:222,248</code></td>
+    <td>Respecteert al volgorde en verbergen uit de plugin-manager (#72).</td>
+  </tr>
+  <tr>
+    <td><code>PluginToolbarHost</code> — icoonknoppen, <code>⋯</code>-overflow boven 3 stuks</td>
+    <td><code>Controls/PluginToolbarHost.cs</code></td>
+    <td>Rendert prima. Hangt alleen op de verkeerde plek.</td>
+  </tr>
+  <tr>
+    <td class="was">De renderplek</td>
+    <td><code>Views/CockpitView.axaml:1324</code></td>
+    <td><b>Het gat.</b> Staat binnen de <code>ShowSessionGrid</code>-DockPanel: alleen zichtbaar op een
+        Sessions-workspace mét minstens één sessie. Op Projects, Dashboard en plugin-workspaces bestaat de
+        balk simpelweg niet.</td>
+  </tr>
+  <tr>
+    <td class="was"><code>ProjectMemorySourceFamily.ConfigureAsync</code></td>
+    <td><code>Abstractions/Projects/ProjectMemorySourceFamily.cs</code></td>
+    <td><b>Het tweede gat.</b> Dit ís al "open waar de operator servers instelt". Alleen de bron-picker in de
+        project-editor roept het aan, via zijn eigen <code>Servers…</code>-knop. Verder niemand — daarom zit
+        serverbeheer opgesloten achter project-aanmaken/bewerken.</td>
+  </tr>
+</table>
+
+<p class="note" style="margin-top:14px">De tabbalk zelf (<code>CockpitView.axaml:675-768</code>) is wél altijd
+zichtbaar, ongeacht workspace-type, en heeft rechts al een <code>+</code> die daar hoort te blijven. Dat is de rij
+waar een globale balk in past.</p>
+
+<hr>
+
+<h2><span class="n">1</span>Waar de balk komt te staan — drie varianten</h2>
+<p class="note">Alle drie tekenen dezelfde <code>VisibleToolbarActions</code>-collectie. Het verschil zit in
+geometrie en in hoeveel woorden een knop mag hebben.</p>
+
+<div class="cols">
+  <div class="col">
+    <h3>A — Icoonknoppen op de tabbalk <span class="tag win">kleinste diff</span></h3>
+    <p class="note">Het bestaande <code>PluginToolbarHost</code> verhuist van regel 1324 naar de
+    tabbalk-<code>DockPanel</code>. Voorkeur: A met labels zolang ze passen, val terug op de bestaande
+    <code>⋯</code>-overflow. Zie de vorige mockup-versie voor de drie uitgetekende varianten (A/B/C) — die zijn
+    door de scope-update niet aangeraakt.</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="n">2</span>De Depot-knop — en wat hij opent</h2>
+<p class="note">Route 1: de host promoveert elke <code>ProjectMemorySourceFamily</code> met een
+<code>ConfigureAsync != null</code> automatisch tot toolbarknop. Depot krijgt zijn knop zónder plugin-release.
+Ongewijzigd t.o.v. de vorige mockup-versie — zie die voor het uitgetekende serverpaneel.</p>
+
+<hr>
+
+<h2><span class="n">3</span>Taal — wat een niet-technische lezer ervan maakt</h2>
+<p class="note">Ongewijzigd t.o.v. de vorige mockup-versie. Deze tabel geldt voor <b>alle</b> layoutvarianten in
+sectie 4 — een taalfix is geen laag bovenop V1, hij hoort in de gedeelde kaart/rij/hero-bouwstenen die alle drie
+de varianten gebruiken.</p>
+<table>
+  <tr><th style="width:30%">Nu</th><th style="width:34%">Wordt gelezen als</th><th>Voorstel</th></tr>
+  <tr><td class="was"><code>Start with options…</code></td><td class="was">Welke opties? Zit "gewoon Start" iets in de weg?</td><td>Start, but change something first…</td></tr>
+  <tr><td class="was"><code>Finish setting up</code> <span class="tag">op een Accent-knop</span></td><td class="was">Er is iets stuk. Ik heb iets fout gedaan.</td><td>Pick how it runs <span class="tag">en niet-Accent</span></td></tr>
+  <tr><td class="was">"This project has no <b>profile</b> yet, so there is nothing to start it on."</td><td class="was">Wat is een profile? Waar maak ik er een?</td><td>"Choose which assistant this project runs on — one click and it's done."</td></tr>
+  <tr><td class="was"><code>Memory: depot:cockpit</code></td><td class="was">?</td><td>Alleen tonen in de editor, niet op de kaart. Of: "Notes are kept in Depot".</td></tr>
+  <tr><td class="was"><code>Shared via {source}</code></td><td class="was">Gedeeld met wie? Door mij of met mij?</td><td>"From your team · {source}"</td></tr>
+  <tr><td class="was"><code>Not set up yet</code></td><td class="was">Klinkt als een fout.</td><td>"Ready to add" — het is een uitnodiging, geen probleem.</td></tr>
+  <tr><td class="was">"Everything it needs is <b>already set up</b>."</td><td class="was">Tegenstrijdig met de kaart ernaast die zegt dat er iets niet is ingesteld.</td><td>"Pick a project to begin."</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="n">4</span>Layoutkeuze: V1, V2 én V3 naast elkaar — als instelling</h2>
+<p class="note">Raymond vindt alle drie de varianten waardevol op hun eigen manier: V1 is de rustigste bodem, V2
+schaalt het best bij veel projecten, V3 beantwoordt het "waar was ik gebleven"-geval. In plaats van er één te
+kiezen en de andere twee als vervolgticket te laten liggen, bouwen we ze alle drie en laten de operator kiezen.</p>
+
+<h3>Waar leeft die keuze — voorstel</h3>
+<div class="verdict">
+  <b>Eén control, niet twee.</b> Het segmented-control bovenaan de Projects-pagina hieronder <i>is</i> de
+  instelling — er komt geen los scherm dat hetzelfde nog eens laat kiezen. Techniek: een nieuwe
+  <code>ProjectsDisplaySettingsStore</code> (interface <code>IProjectsDisplaySettingsStore</code>), gebouwd naar
+  exact hetzelfde patroon als <code>Cockpit.Infrastructure/Layout/LayoutSettingsStore.cs</code> — een eigen
+  sectie in <code>cockpit.json</code>, read-modify-write via <code>CockpitConfigFileAccess</code>, default
+  <code>Cards</code> (V1). <code>ProjectsViewModel</code> laadt hem bij openen en schrijft 'm weg zodra de
+  operator een ander segment kiest — fire-and-forget, zoals andere weergave-instellingen dat al doen. Zo is de
+  keuze <b>per operator onthouden</b> (dat wilde Raymond) én <b>direct zichtbaar en aanpasbaar</b> zonder een
+  instellingenscherm te hoeven vinden (dat wilde Raymond ook) — het zijn geen twee opties met een afweging
+  ertussen, het is één control die aan beide voldoet.
+  <br><br>
+  <b>Waarom geen aparte regel in een Settings-scherm ernaast:</b> dat zou het venster-dubbel uit open vraag 5
+  (<code>ProjectsDialog</code> vs. de Projects-workspace) een derde keer laten gebeuren — twee plekken die
+  hetzelfde zeggen raken uit sync. Eén zichtbare control die meteen schakelt is goedkoper en net zo vindbaar.
+  <br><br>
+  <b>V3 blijft voorwaardelijk.</b> Het segment voor V3 wordt pas aangeboden zodra <code>LastOpenedAt</code>
+  betrouwbaar genoeg gevuld blijkt (open vraag 6, ongewijzigd een randvoorwaarde) — tot die check gedaan is, toont
+  de control alleen Cards/List en blijft Continue weg in plaats van een optie te zijn die op een lege/foute
+  datum uitkomt. In de demo hieronder staat hij wél aan, zodat je 'm nu al kan beoordelen.
+</div>
+
+<h3 style="margin-top:28px">Werkende demo — dezelfde paginacontext, drie standen</h3>
+<p class="note">Dit is één <code>&lt;input type="radio"&gt;</code>-groep gestyled als segmented control, met
+CSS <code>:has()</code> om het bijpassende paneel te tonen — puur native HTML/CSS, geen JavaScript. Klik op
+Cards / List / Continue hieronder: het schakelt binnen hetzelfde venster, dezelfde toolbar, dezelfde taal-tabel.
+In Avalonia wordt dit een gewone <code>TabControl</code>/<code>SelectedIndex</code>-binding op
+<code>ProjectsDisplaySettings.LayoutMode</code>.</p>
+
+<div class="win">
+  <div class="win-title"><b>Cockpit</b><span>— Projects</span></div>
+  <div class="tabrow">
+    <span class="tab">💬 Sessions</span><span class="tab">▦ Dashboard</span><span class="tab on">◇ Projects</span>
+    <span class="grow"></span>
+    <span class="tbtn dep">◆ Depot servers</span><span class="tbtn">🧩 Plugins</span>
+    <span class="sep"></span><span class="plus">+</span>
+  </div>
+  <div class="stage" id="pg-stage">
+    <p class="lead">What do you want to work on?</p>
+    <p class="lead-sub" style="margin-bottom:12px">Pick a project to begin.</p>
+
+    <div class="seg-wrap">
+      <div class="seg">
+        <input type="radio" name="pglayout" id="sel-v1" checked>
+        <label for="sel-v1">🗂 Cards</label>
+        <input type="radio" name="pglayout" id="sel-v2">
+        <label for="sel-v2">☰ List</label>
+        <input type="radio" name="pglayout" id="sel-v3">
+        <label for="sel-v3">↻ Continue</label>
+      </div>
+      <span class="seg-note">Remembered per operator — change anytime, no settings screen needed</span>
+    </div>
+
+    <!-- V1 — rustige kaart -->
+    <div class="pg-panel v1">
+      <div class="cat mid">Work</div>
+      <div class="cards">
+        <div class="card">
+          <div class="card-h"><span class="logo b">PP</span><span class="card-n">PayrollProcessor</span><span class="dots">⋯</span></div>
+          <p class="card-d">Loonverwerking voor het hele team.</p>
+          <p class="card-m">Last opened yesterday</p>
+          <span class="btn p full">▶ Start</span>
+          <div class="subrow"><span class="btn dep sm">◆ Stop sharing…</span></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><span class="logo g">FA</span><span class="card-n">Facturen</span><span class="dots">⋯</span></div>
+          <p class="card-d">Inkomende facturen lezen en klaarzetten.</p>
+          <p class="card-m">Last opened 3 weeks ago</p>
+          <span class="btn p full">▶ Start</span>
+          <div class="subrow"><span class="btn dep sm">◆ Share via Depot…</span></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><span class="logo">NW</span><span class="card-n">Nieuwe website</span><span class="dots">⋯</span></div>
+          <p class="card-d">Ontwerp en teksten voor de nieuwe site.</p>
+          <p class="card-m">Never opened</p>
+          <span class="btn full">Pick how it runs</span>
+          <div class="subrow"><span class="btn g sm" style="font-size:11px">One click and it's ready to start</span></div>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px;text-align:center"><b>Rustige kaart.</b> Van 7 klikbare dingen per
+      kaart naar 3 (Start, deelknop, <code>⋯</code>). Kleinste ingreep — dit is de default voor nieuwe operators.</p>
+    </div>
+
+    <!-- V2 — brede lijst -->
+    <div class="pg-panel v2">
+      <div class="cat">Work</div>
+      <div class="rows">
+        <div class="row">
+          <span class="logo b">PP</span>
+          <span class="row-t"><span class="row-n">PayrollProcessor <span class="badge">◆ Work</span></span>
+            <span class="row-d">Loonverwerking voor het hele team · last opened yesterday</span></span>
+          <span class="btn p sm">▶ Start</span><span class="dots">⋯</span>
+        </div>
+        <div class="row">
+          <span class="logo g">FA</span>
+          <span class="row-t"><span class="row-n">Facturen</span>
+            <span class="row-d">Inkomende facturen lezen en klaarzetten · last opened 3 weeks ago</span></span>
+          <span class="btn p sm">▶ Start</span><span class="dots">⋯</span>
+        </div>
+        <div class="row">
+          <span class="logo">NW</span>
+          <span class="row-t"><span class="row-n">Nieuwe website</span>
+            <span class="row-d">Ontwerp en teksten · pick how it runs and you're set</span></span>
+          <span class="btn sm">Pick how it runs</span><span class="dots">⋯</span>
+        </div>
+      </div>
+      <div class="cat">From your team · depot.krahwinkel-it.nl</div>
+      <div class="rows">
+        <div class="row">
+          <span class="logo v">MA</span>
+          <span class="row-t"><span class="row-n">Marketing <span class="badge wait">Ready to add</span></span>
+            <span class="row-d">Campagnes en teksten — gedeeld door Sanne</span></span>
+          <span class="btn sm">Add to my projects</span>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px;text-align:center"><b>Brede lijst.</b> Twee keer zoveel projecten
+      per scherm, gedeelde projecten in dezelfde visuele taal als eigen projecten. Beste keuze bij veel projecten.</p>
+    </div>
+
+    <!-- V3 — verder waar je gebleven was -->
+    <div class="pg-panel v3">
+      <div class="hero">
+        <div class="hcard">
+          <div class="card-h"><span class="logo b">PP</span>
+            <span class="card-n">PayrollProcessor</span><span class="dots">⋯</span></div>
+          <p class="card-d">Loonverwerking voor het hele team.</p>
+          <p class="card-m">You worked on this yesterday</p>
+          <span class="btn p full">▶ Continue</span>
+        </div>
+        <div class="hcard">
+          <div class="card-h"><span class="logo g">FA</span>
+            <span class="card-n">Facturen</span><span class="dots">⋯</span></div>
+          <p class="card-d">Inkomende facturen lezen en klaarzetten.</p>
+          <p class="card-m">You worked on this 3 weeks ago</p>
+          <span class="btn p full">▶ Continue</span>
+        </div>
+      </div>
+      <div class="cat" style="margin-top:20px">Everything else</div>
+      <div class="mini">
+        <span class="chip"><span class="logo">NW</span>Nieuwe website</span>
+        <span class="chip"><span class="logo">KO</span>Kontena</span>
+        <span class="chip"><span class="logo">SP</span>Startpage</span>
+        <span class="chip"><span class="logo v">MA</span>Marketing <span class="badge wait">Ready to add</span></span>
+        <span class="chip" style="border-style:dashed;color:var(--text-2)">+ New project</span>
+      </div>
+      <p class="note" style="margin-top:14px;text-align:center"><b>Verder waar je gebleven was.</b> Beantwoordt
+      "wat deed ik ook alweer" in één klik. Alleen aan te bieden nadat <code>LastOpenedAt</code> geverifieerd
+      betrouwbaar is (open vraag 6) — een verse installatie heeft er geen, dus dit segment valt dan terug op Cards.</p>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:22px">
+      <span class="btn p">+ New project</span><span class="btn g">Manage projects</span>
+    </div>
+  </div>
+</div>
+<p class="cap">Klik Cards / List / Continue hierboven — het paneel wisselt binnen hetzelfde venster.</p>
+
+<hr>
+
+<h2><span class="n">5</span>Open vragen voor Raymond</h2>
+<ul class="q">
+  <li><b>Balk-variant?</b> A (icoontjes op de tabbalk, met labels als ze passen — mijn voorkeur), B (eigen rij)
+  of C (één Actions-lade)? Zie vorige mockup-versie voor de uitwerking.</li>
+  <li><b>Mag de cockpit zelf ook knoppen in die balk zetten</b>, of blijft hij strikt van plugins?</li>
+  <li><b>Route 1 voor Depot</b> (host promoveert elke <code>ProjectMemorySourceFamily</code> met een
+  <code>ConfigureAsync</code> automatisch naar een knop) — te magisch, of precies goed?</li>
+  <li><b>Statistiekenrij</b> (projects / worked on / sessions open) — helemaal weg, of naar de voet van de
+  pagina?</li>
+  <li><b>Blijft <code>ProjectsDialog</code> bestaan?</b> Er zijn nu twee projectschermen die grotendeels
+  hetzelfde doen. Elk ontwerp hier moet twee keer gebouwd, of we halen er één weg.</li>
+  <li class="done"><b>V3 in scope of niet?</b> <span style="color:var(--text-2);text-decoration:none">Opgelost
+  door de scope-update: V3 is in scope als derde optie in de toggle, mét de randvoorwaarde dat
+  <code>LastOpenedAt</code> eerst op betrouwbaarheid gecheckt wordt voordat het segment aan gaat.</span></li>
+</ul>
+
+</div>
+</body>
+</html>
