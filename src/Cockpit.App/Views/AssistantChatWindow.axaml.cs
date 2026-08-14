@@ -282,6 +282,10 @@ public partial class AssistantChatWindow : Window
     // it is findable. Silent on cancel — closing a file picker is an answer, not a failure worth reporting.
     private async void _OnExportClick(object? sender, RoutedEventArgs e)
     {
+        // AC-776: this row now lives inside the merged history/export Flyout — a row click does not close it on
+        // its own (see PluginToolbarHost's own flyout.Hide(), same reason).
+        FlyoutBase.GetAttachedFlyout(HistoryButton)?.Hide();
+
         if (DataContext is not AssistantChatViewModel vm)
         {
             return;

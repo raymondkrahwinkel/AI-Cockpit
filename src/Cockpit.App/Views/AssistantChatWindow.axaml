@@ -10,6 +10,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="600"
         x:Class="Cockpit.App.Views.AssistantChatWindow"
+        x:Name="Root"
         x:DataType="vm:AssistantChatViewModel"
         Title="Assistant"
         Width="520" Height="640" MinWidth="340" MinHeight="360"
@@ -38,7 +39,7 @@
             <Border DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
                     BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
                     Padding="12,9" PointerPressed="_OnHeaderPressed">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
                     <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
                         <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -82,18 +83,15 @@
                                                     Width="14" Height="14"/>
                     </ToggleButton>
 
-                    <!-- AC-545 criterion 5: "what has this thing ever started" — the spawn trail, not the
-                         transcript. The transcript above shows this conversation's own start_agent/stop_agent tool
-                         rows; it goes blank on a fresh window and says nothing once scrolled past. The trail
-                         answers the question across restarts and across a conversation that has since been
-                         replaced, which is why it gets its own affordance instead of riding on the transcript's.
-                         Loaded lazily — only when this flyout actually opens, not on every window open — because
-                         reading it is a file read (AssistantChatViewModel.LoadSpawnLogCommand), and a window that
-                         is opened far more often than this history is actually consulted should not pay for it
-                         every time. -->
-                    <Button Grid.Column="4" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
-                            ToolTip.Tip="What the assistant has started or stopped">
-                        <materialIcons:MaterialIcon Kind="History" Width="14" Height="14"/>
+                    <!-- AC-776 Deel 2: history and export merged into one dropdown (decision B2) — the
+                         Flyout-with-rows pattern from Controls/PluginToolbarHost.cs:94-120. A Flyout can carry
+                         anything, so the spawn-log panel below moves in unchanged, lazy load included; a "Save
+                         conversation" row sits under it instead of being its own button. Not a MenuFlyout
+                         (rejected as B1): the spawn log is a whole panel, not a command, so it cannot be a
+                         MenuItem without inventing a submenu-hosts-a-panel trick this project has no precedent for. -->
+                    <Button x:Name="HistoryButton" Grid.Column="4" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                            ToolTip.Tip="History and export">
+                        <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="14" Height="14"/>
                         <Button.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight" Opened="_OnSpawnLogFlyoutOpened">
                                 <StackPanel Width="280" Spacing="0">
@@ -146,17 +144,23 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                     </ScrollViewer>
+
+                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+
+                                    <!-- Save the conversation as text. This window is the assistant's only surface,
+                                         so a conversation that went wrong here can only be shown to anyone else by
+                                         describing it from memory or photographing the screen. Plain text, every
+                                         row, folded ones included — same _OnExportClick as before the merge. -->
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="10,8" Margin="4" Click="_OnExportClick">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <materialIcons:MaterialIcon Kind="TrayArrowDown" Width="14" Height="14" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Save conversation as text file…" FontSize="11.5" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>
-                    </Button>
-
-                    <!-- Save the conversation as text. This window is the assistant's only surface, so a
-                         conversation that went wrong here can only be shown to anyone else by describing it from
-                         memory or photographing the screen. Plain text, every row, folded ones included. -->
-                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
-                            Click="_OnExportClick" ToolTip.Tip="Save this conversation as a text file">
-                        <materialIcons:MaterialIcon Kind="TrayArrowDown" Width="14" Height="14"/>
                     </Button>
 
                     <!-- No restart button here, deliberately. It was here first, on the reasoning that a restart is
@@ -164,7 +168,7 @@
                          that it belongs. It belongs beside the setting that needs it: the permission mode in
                          Options → Voice → Assistant Profile, where the sentence "this applies at the next start"
                          and the start that answers it are one thing instead of two windows apart. -->
-                    <Button Grid.Column="6" Classes="Subtle Compact" VerticalAlignment="Center"
+                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
                     </Button>
@@ -174,73 +178,171 @@
             <!-- AC-683: usage-pill row, the same segmented pill SessionHeaderBar renders for a session pane —
                  this window has no SessionHeaderBar of its own (it is a peephole, not a full session header,
                  with its own title/dot/kind chip already drawn above), so the pill pattern is reproduced here
-                 rather than the whole control reused, which would drag those in too. -->
-            <Border DockPanel.Dock="Top" Margin="10,6,10,0" ClipToBounds="True" HorizontalAlignment="Left"
-                    Background="{StaticResource CockpitSecondaryBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                    CornerRadius="{StaticResource CockpitPillRadius}"
-                    IsVisible="{Binding Session.HasUsagePillRegion, FallbackValue=False}">
-                <StackPanel Orientation="Horizontal">
-                    <ItemsControl ItemsSource="{Binding Session.UsagePillItems}" VerticalAlignment="Stretch">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:UsagePillItem">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
-                                            IsVisible="{Binding ShowLeadingDivider}"/>
-                                    <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
-                                               VerticalAlignment="Center"
-                                               Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                               ToolTip.Tip="{Binding Tooltip}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                 rather than the whole control reused, which would drag those in too.
+                 AC-776: wrapped in a WrapPanel together with the session-status pill below, so a window too
+                 narrow for both breaks the second pill onto its own line instead of clipping it or shoving the
+                 usage pill aside — same WrapPanel/340px-MinWidth precedent as the warning bar's own button row
+                 further down ("T2's narrow-window layout"). -->
+            <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
+                <Border ClipToBounds="True"
+                        Background="{StaticResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CockpitPillRadius}"
+                        IsVisible="{Binding Session.HasUsagePillRegion, FallbackValue=False}">
+                    <StackPanel Orientation="Horizontal">
+                        <ItemsControl ItemsSource="{Binding Session.UsagePillItems}" VerticalAlignment="Stretch">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:UsagePillItem">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                                                IsVisible="{Binding ShowLeadingDivider}"/>
+                                        <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                                   ToolTip.Tip="{Binding Tooltip}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
-                    <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
-                            IsVisible="{Binding Session.ShowChevronDivider, FallbackValue=False}"/>
-                    <Button VerticalAlignment="Stretch" Padding="6,2"
-                            MinWidth="0" MinHeight="0"
-                            Background="Transparent" BorderThickness="0"
-                            IsVisible="{Binding Session.HasUsagePill, FallbackValue=False}"
-                            ToolTip.Tip="{Binding Session.LimitsTooltip}">
-                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                        <Button.Flyout>
-                            <Flyout Placement="Bottom">
-                                <StackPanel Spacing="8" MinWidth="210" Margin="4">
-                                    <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                    <controls:LimitBar Label="ctx" Percent="{Binding Session.ContextUsedPercent}" Threshold="{Binding Session.ContextThreshold}" FontSize="10" Height="14"
-                                                       StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                    <ItemsControl ItemsSource="{Binding Session.RateLimits}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="sessions:SessionRateWindow">
-                                                <StackPanel Spacing="1" Margin="0,4,0,0">
-                                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
-                                                                       StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                                    <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                               FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                               IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <TextBlock Text="{Binding Session.UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
-                                               Margin="0,4,0,0"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"
-                                               IsVisible="{Binding Session.UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
-                </StackPanel>
-            </Border>
+                        <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                                IsVisible="{Binding Session.ShowChevronDivider, FallbackValue=False}"/>
+                        <Button VerticalAlignment="Stretch" Padding="6,2"
+                                MinWidth="0" MinHeight="0"
+                                Background="Transparent" BorderThickness="0"
+                                IsVisible="{Binding Session.HasUsagePill, FallbackValue=False}"
+                                ToolTip.Tip="{Binding Session.LimitsTooltip}">
+                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            <Button.Flyout>
+                                <Flyout Placement="Bottom">
+                                    <StackPanel Spacing="8" MinWidth="210" Margin="4">
+                                        <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <controls:LimitBar Label="ctx" Percent="{Binding Session.ContextUsedPercent}" Threshold="{Binding Session.ContextThreshold}" FontSize="10" Height="14"
+                                                           StretchTrack="True" HorizontalAlignment="Stretch"/>
+                                        <ItemsControl ItemsSource="{Binding Session.RateLimits}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="sessions:SessionRateWindow">
+                                                    <StackPanel Spacing="1" Margin="0,4,0,0">
+                                                        <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
+                                                                           StretchTrack="True" HorizontalAlignment="Stretch"/>
+                                                        <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
+                                                                   FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                   IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="{Binding Session.UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
+                                                   Margin="0,4,0,0"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding Session.UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <!-- AC-776 Deel 1: session-status pill, same shape as the usage pill above — same
+                     CockpitSecondaryBgBrush/CockpitHairlineBrush/CockpitPillRadius, 1px dividers between segments —
+                     one segment per live agent session (statusdot + name). Its own Border/IsVisible (pitfall 3): it
+                     must not disappear along with the usage pill just because the assistant has not reported usage yet. -->
+                <Border x:Name="SessionPill" ClipToBounds="True"
+                        Background="{StaticResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CockpitPillRadius}"
+                        IsVisible="{Binding HasLiveSessions}">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- The list's one fixed entry (criterion 4): always first, never itself clickable content —
+                             a real Button+Flyout, not a TextBlock in the same Border, so the flyout gets its own popup
+                             layer (pitfall 2). A5a's WrapPanel leaves nothing for it to actually drop (pitfall 5's "no
+                             MaxSessions cap" plus the wrap already giving every name a line), so it always reads "⋯" —
+                             a numbered "⋯n" would need the A5b measuring panel this ticket keeps out of scope. -->
+                        <Button x:Name="SessionListButton" Classes="Subtle Compact" Padding="8,2" MinWidth="0" MinHeight="0"
+                                Background="Transparent" BorderThickness="0"
+                                ToolTip.Tip="All sessions">
+                            <TextBlock Text="⋯" FontSize="12" FontWeight="Bold"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <StackPanel Spacing="2" MinWidth="220" MaxWidth="280" Margin="4">
+                                        <TextBlock Text="Sessions" FontSize="11.5" FontWeight="SemiBold"
+                                                   Margin="6,4" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <ItemsControl ItemsSource="{Binding LiveSessions}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:SessionPanelViewModel">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,4">
+                                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                                 Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                        <StackPanel Spacing="1">
+                                                            <TextBlock Text="{Binding Title}" FontSize="11.5" FontWeight="SemiBold"
+                                                                       MaxWidth="220" TextTrimming="CharacterEllipsis"/>
+                                                            <StackPanel Orientation="Horizontal" Spacing="3">
+                                                                <TextBlock Text="{Binding SessionStatusLabel}" FontSize="10.5"
+                                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                <TextBlock Text="·" FontSize="10.5" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                <TextBlock FontSize="10.5" Foreground="{StaticResource CockpitTextSecondaryBrush}">
+                                                                    <TextBlock.Text>
+                                                                        <MultiBinding Converter="{x:Static conv:SessionDeskNameConverter.Instance}">
+                                                                            <Binding Path="PaneId"/>
+                                                                            <Binding Path="#Root.((vm:AssistantChatViewModel)DataContext).DeskNameByPaneId"/>
+                                                                        </MultiBinding>
+                                                                    </TextBlock.Text>
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Statusline}" FontSize="10.5" TextWrapping="Wrap"
+                                                                       MaxWidth="220"
+                                                                       Foreground="{StaticResource CockpitAccentBrush}"
+                                                                       IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                        <ItemsControl x:Name="SessionSegments" ItemsSource="{Binding LiveSessions}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SessionPanelViewModel">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ToolTip.Tip>
+                                            <MultiBinding Converter="{x:Static conv:SessionTooltipConverter.Instance}">
+                                                <Binding Path="Title"/>
+                                                <Binding Path="SessionStatusLabel"/>
+                                                <Binding Path="PaneId"/>
+                                                <Binding Path="Statusline"/>
+                                                <Binding Path="#Root.((vm:AssistantChatViewModel)DataContext).DeskNameByPaneId"/>
+                                            </MultiBinding>
+                                        </ToolTip.Tip>
+                                        <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="5" Margin="8,0" VerticalAlignment="Center">
+                                            <Ellipse Width="8" Height="8"
+                                                     Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                            <TextBlock Text="{Binding Title}" FontSize="10" MaxWidth="110"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </WrapPanel>
 
             <!-- AC-230/AC-683: the same usage-warning bar the SDK session view shows, bound through Session so a
                  5h/wk crossing (or the memory cap) appears here too — this window had none, so a running-out
