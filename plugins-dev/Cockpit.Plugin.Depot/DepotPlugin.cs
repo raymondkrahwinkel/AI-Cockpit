@@ -1,3 +1,4 @@
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
@@ -49,6 +50,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         _settings = settings;
         _host = host;
         host.AddSettings(() => new DepotSettingsControl(host, settings));
+        // AC-784: same global-toolbar route the Kubernetes plugin uses (AC-91) — the project editor's own
+        // "Servers…" button above still opens settings the same way it always has.
+        host.AddToolbarAction(new ToolbarAction("Depot settings", MaterialIconKind.Database, () => host.ShowSettingsAsync()));
 
         // AC-499: declared unconditionally, even with zero connections — this is the doorless-dead-end bug itself:
         // zero connections meant no "Depot" option anywhere in the project editor's picker and no way to reach this
