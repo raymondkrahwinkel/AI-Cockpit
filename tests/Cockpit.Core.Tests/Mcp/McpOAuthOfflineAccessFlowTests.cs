@@ -290,6 +290,40 @@ public class McpOAuthOfflineAccessFlowTests
         Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
     }
 
+    [Theory]
+    [InlineData(5, McpAuthState.Authorized, null)]
+    [InlineData(1, McpAuthState.AuthorizationRequired, McpOAuthAttentionReason.SignInExpired)]
+    public async Task Acquire_WhenTheGrantItselfIsRevoked_SaysSoOnlyOnceTheGraceHasRunOut(
+        int minutesLeft,
+        McpAuthState expectedState,
+        McpOAuthAttentionReason? expectedReason)
+    {
+        // A dead grant, not a bad minute: an unknown refresh token makes this endpoint answer `invalid_grant`. The
+        // grace period covers the call while there is life left, so the operator hears about a revoked sign-in later
+        // than before — and must still hear about it, with the right sentence, the moment it stops covering.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            RefreshToken = "a-refresh-token-this-server-has-revoked",
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(minutesLeft),
+            ResourceUrl = server.Url,
+            ClientId = InProcessOAuthMcpServer.ClientId,
+            AuthorizationServer = server.BaseUrl,
+        });
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
+
+        Assert.Equal(expectedState, access.State);
+        if (expectedReason is { } reason)
+        {
+            Assert.Equal(reason, access.Reason);
+        }
+    }
+
     [Fact]
     public async Task RenewRejected_ForATokenTheServerRefuses_RenewsThroughTheRealSdk_NotJustTheClock()
     {
