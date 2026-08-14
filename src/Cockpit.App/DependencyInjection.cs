@@ -5,11 +5,9 @@ namespace Cockpit.App;
 
 public static class DependencyInjection
 {
-    /// <summary>
-    /// The factory delegates <see cref="CockpitViewModel"/> mints panes with, so it can open a session (and,
-    /// transitively, its own ISessionDriver/CLI process) per "New session" click without holding an injected
-    /// <see cref="IServiceProvider"/> itself (service-locator anti-pattern — Code.md §2).
-    /// </summary>
+    // The factory delegates CockpitViewModel mints panes with, so it can open a session (and, transitively, its own
+    // ISessionDriver/CLI process) per "New session" click without holding an injected IServiceProvider itself
+    // (service-locator anti-pattern — Code.md §2).
     public static IServiceCollection AddSessionPanes(this IServiceCollection services)
     {
         services.AddTransient<Func<SessionViewModel>>(provider => () => ResolveOwnedPane<SessionViewModel>(provider));
