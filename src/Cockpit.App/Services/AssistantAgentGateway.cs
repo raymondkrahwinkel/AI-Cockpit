@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Sessions;
 
@@ -91,15 +92,43 @@ internal sealed class AssistantAgentGateway(
                     cancellationToken).ConfigureAwait(true);
             }
 
+            // AC-773: the project named by id, if any — looked up the one place a project id becomes a `Project`
+            // (`CockpitViewModel.FindProjectByIdAsync`), never re-derived here. An id that names nothing is refused
+            // before anything else is checked, same as an unknown workspace id above: a caller that named a project
+            // gets told the id was wrong rather than silently falling back to a folder guess.
+            Project? project = null;
+            if (request.ProjectId is { Length: > 0 } requestedProjectId)
+            {
+                project = await cockpit.FindProjectByIdAsync(requestedProjectId).ConfigureAwait(true);
+                if (project is null)
+                {
+                    return await _RefuseSpawnAsync(request, workspace.Name,
+                        $"There is no project with id '{requestedProjectId}'. Call list_projects and name one of those.",
+                        cancellationToken).ConfigureAwait(true);
+                }
+            }
+
+            // The label to look up: the caller's own, or — only when they left it out — the resolved project's
+            // default (AC-773). An explicit label always wins; it is never merged with or overruled by the project.
+            var profileLabel = string.IsNullOrWhiteSpace(request.ProfileLabel) ? project?.DefaultProfileLabel : request.ProfileLabel;
+            if (string.IsNullOrWhiteSpace(profileLabel))
+            {
+                return await _RefuseSpawnAsync(request, workspace.Name,
+                    project is null
+                        ? "A profile is required; name one or give a projectId whose DefaultProfileLabel can be used."
+                        : $"Project '{project.Name}' has no DefaultProfileLabel set, so a profile must be named explicitly.",
+                    cancellationToken).ConfigureAwait(true);
+            }
+
             // By label and never by "the first one that looks close": the profile decides provider and model, so a
             // near-miss is a bill the operator did not agree to (AC-436 guardrail 6).
             var profile = known.FirstOrDefault(candidate =>
-                string.Equals(candidate.Label, request.ProfileLabel, StringComparison.OrdinalIgnoreCase));
+                string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
             if (profile is null)
             {
                 var labels = known.Count == 0 ? "none are configured" : string.Join(", ", known.Select(p => $"'{p.Label}'"));
                 return await _RefuseSpawnAsync(request, workspace.Name,
-                    $"There is no profile called '{request.ProfileLabel}'. The profiles this cockpit knows are: {labels}.",
+                    $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.",
                     cancellationToken).ConfigureAwait(true);
             }
 
@@ -145,7 +174,7 @@ internal sealed class AssistantAgentGateway(
 
             var started = await cockpit.StartSessionOnWorkspaceAsync(
                 workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
-                launchOptions, request.IsolateInWorktree).ConfigureAwait(true);
+                launchOptions, request.IsolateInWorktree, explicitProjectId: project?.Id).ConfigureAwait(true);
 
             if (started is not { } pane)
             {
@@ -166,9 +195,10 @@ internal sealed class AssistantAgentGateway(
                 request.WorkingDirectory,
                 pane.PaneId,
                 pane.Name,
-                Refusal: null), cancellationToken).ConfigureAwait(true);
+                Refusal: null,
+                ProjectId: project?.Id), cancellationToken).ConfigureAwait(true);
 
-            return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered);
+            return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label);
         }).ConfigureAwait(false);
     }
 
@@ -612,7 +642,8 @@ internal sealed class AssistantAgentGateway(
             request.WorkingDirectory,
             PaneId: null,
             SessionName: null,
-            reason), cancellationToken).ConfigureAwait(true);
+            reason,
+            ProjectId: request.ProjectId), cancellationToken).ConfigureAwait(true);
 
         return AgentSpawnResult.Refused(reason);
     }

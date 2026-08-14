@@ -137,6 +137,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   leaves only the newest version behind rather than stacking old ones up on disk, the manual Update button
   included.
 
+- added: the voice assistant can now start a session against a known project by its id, instead of relying only on
+  the folder it happens to run in — the project's own working directory, default profile, worktree isolation,
+  behaviour prompt, memory/resources and MCP selection are all applied the same way starting from the project's
+  folder already did. Which profile actually ran is reported back, so a start that used the project's default is
+  never a silent guess.
+
 ### Changed
 
 - changed: the Assistant Profile's instruction box adds to the assistant's own instructions rather than replacing

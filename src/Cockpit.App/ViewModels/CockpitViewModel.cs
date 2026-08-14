@@ -6606,7 +6606,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Tri-state (AC-719): null inherits the resolved project's own default, true may isolate on top of it.
         // `false` never reaches here in practice — the assistant gateway refuses it before a launch is composed —
         // but is honoured the same way false always is if it ever does.
-        bool? isolateInWorktree = null)
+        bool? isolateInWorktree = null,
+        // AC-773: the project this session works on, by id — from `start_agent`'s own `projectId` argument. This is
+        // the sole thing that changes about how a project is found: given, it is looked up directly and the folder
+        // map-match below never runs; left out, the folder decides exactly as it always has. Whichever one supplies
+        // `project`, everything after this point (working directory fallback, isolation, BehaviorPrompt, MCP
+        // overlay) already reads from `project` alone and is unchanged by which route found it.
+        string? explicitProjectId = null)
     {
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
@@ -6615,10 +6621,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // derives from it.
         var profileOnlyDefaults = SessionStartDefaults.Resolve(project: null, profile);
         var lookupDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? profileOnlyDefaults.WorkingDirectory : workingDirectory;
-        var projectId = await _ProjectIdForDirectoryAsync(lookupDirectory);
-        var project = projectId is { Length: > 0 }
-            ? Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId)
-            : null;
+        var projectId = explicitProjectId is { Length: > 0 } ? explicitProjectId : await _ProjectIdForDirectoryAsync(lookupDirectory);
+        var project = await FindProjectByIdAsync(projectId);
 
         // Composed through the same door the launcher's Start button and the sidebar's ▶ use (AC-719): a resolved
         // project's isolation, behaviour prompt, instruction/memory/reference rows and MCP selection all come along
@@ -7089,6 +7093,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.ProjectId = await _ProjectIdForDirectoryAsync(directory);
         }
+    }
+
+    // The one place a project id becomes a `Project` (AC-773) — by plain id lookup, whether that id was named
+    // explicitly (`start_agent`'s `projectId`) or came out of `_ProjectIdForDirectoryAsync`'s folder map-match.
+    // Internal so `AssistantAgentGateway` can resolve a project before its own profile/TTY/option checks run,
+    // without growing a second copy of "how a project is found" next to this one.
+    //
+    // Loads the project list first if it is still empty, the same race `_ProjectIdForDirectoryAsync` guards against:
+    // the list is filled by a fire-and-forget read at startup, so a caller that gets here first would otherwise see
+    // "no project" for an id that is perfectly real.
+    internal async Task<Project?> FindProjectByIdAsync(string? projectId)
+    {
+        if (string.IsNullOrWhiteSpace(projectId))
+        {
+            return null;
+        }
+
+        if (Projects.Projects.Count == 0)
+        {
+            await Projects.LoadAsync();
+        }
+
+        return Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId);
     }
 
     // The project a session belongs to when nobody said which (AC-320): no operator picked one and there is no
