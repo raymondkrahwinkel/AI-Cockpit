@@ -254,15 +254,25 @@ public partial class ProjectDialogViewModel : ViewModelBase
         viewModel.SelectedProfileLabel = viewModel.Profiles.FirstOrDefault(label =>
             string.Equals(label, project?.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase));
 
-        var servers = await mcpServerCatalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
+        // AC-766: scoped to this project rather than the project-agnostic GetServersAsync() — the checklist is
+        // where a project-linked server (Depot, say) finally gets a row of its own, ticked by default, instead of
+        // being invisible here no matter how the operator configured it.
+        // ponytail: read once, from the saved project — a Memory row the operator adds to ResourceRows in this
+        // same dialog session (a brand-new Depot connection, say) will not grow its own row here until the project
+        // is saved and reopened. Live tracking needs a schemes-based catalog overload keyed off the in-progress
+        // ResourceRows rather than the saved project; add if this proves confusing in practice.
+        var servers = await mcpServerCatalog.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
         var overlay = project?.McpOverlay ?? ProjectMcpOverlay.None;
         var offered = McpServerRegistryFilter.OfferedToOperator(servers);
 
         foreach (var server in offered)
         {
-            viewModel.McpServers.Add(new McpServerSelectionItemViewModel(server.Name)
+            viewModel.McpServers.Add(new McpServerSelectionItemViewModel(server.Name, server.ProjectLinked)
             {
-                IsEnabledForSession = overlay.IsSelectedByDefault(server.Name),
+                // The config overload, not the name-only one: a project-linked row starts ticked unless its own
+                // DisabledServerNames entry says otherwise, never by whether an operator who never had this row to
+                // begin with happened to name it in EnabledServerNames.
+                IsEnabledForSession = overlay.IsSelectedByDefault(server),
             });
         }
 
@@ -482,15 +492,15 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // It is also the way back: ticking every row on again drops the list, and the project follows the
             // registry once more. A carried name either way still counts as narrowing — there is a decision to
             // keep, and no row on screen through which it could be taken back.
-            EnabledServerNames = McpServers.Any(server => !server.IsEnabledForSession)
-                || _carriedEnabledServerNames.Count > 0
-                || _carriedDisabledServerNames.Count > 0
-                ?
-                [
-                    .. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name),
-                    .. _carriedEnabledServerNames,
-                ]
-                : null,
+            EnabledServerNames = _ComputeEnabledMcpServerNames(),
+            // AC-766: a project-linked row unticked here — never one this project had a row for before its own
+            // catalog query named the row's scheme — is the one decision EnabledServerNames cannot express; see
+            // ProjectMcpOverlay.IsSelectedByDefault(McpServerConfig).
+            DisabledServerNames =
+            [
+                .. McpServers.Where(server => server.IsProjectLinked && !server.IsEnabledForSession).Select(server => server.Name),
+                .. _carriedDisabledServerNames,
+            ],
             AdditionalServers = _additionalServers,
         };
 
@@ -813,12 +823,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    // The same "null means no opinion, otherwise every ticked name plus whatever this build has no row for"
-    // logic ToProject's own editedOverlay already computes for the local project — shared here rather than
-    // duplicated, since AC-247's remote edit needs the identical list.
+    // The same "null means no opinion, otherwise every ticked ordinary name plus whatever this build has no row
+    // for" logic both ToProject's own overlay and AC-247's remote edit need. A project-linked server (Depot, say)
+    // is left out of this list either way, on or off: locally it is governed by DisabledServerNames instead
+    // (AC-766, ToProject), and a shared project definition must never carry a machine-local connection's name at
+    // all (AC-247/AC-763) — "Depot: {name}" means something different on a colleague's machine, or nothing.
     private IReadOnlyList<string>? _ComputeEnabledMcpServerNames() =>
-        McpServers.Any(server => !server.IsEnabledForSession) || _carriedEnabledServerNames.Count > 0 || _carriedDisabledServerNames.Count > 0
-            ? [.. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name), .. _carriedEnabledServerNames]
+        McpServers.Any(server => !server.IsProjectLinked && !server.IsEnabledForSession) || _carriedEnabledServerNames.Count > 0 || _carriedDisabledServerNames.Count > 0
+            ? [.. McpServers.Where(server => !server.IsProjectLinked && server.IsEnabledForSession).Select(server => server.Name), .. _carriedEnabledServerNames]
             : null;
 
     // "Hun versie nemen" (AC-247): adopts the fresh remote state onto every claimed, editable field this dialog

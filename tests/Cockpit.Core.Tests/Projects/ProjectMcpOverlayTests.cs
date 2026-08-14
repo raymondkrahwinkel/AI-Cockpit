@@ -63,6 +63,42 @@ public class ProjectMcpOverlayTests
         Assert.False(overlay.IsSelectedByDefault(depot with { ProjectLinked = false }), "an ordinary server still answers to the list");
     }
 
+    /// <summary>
+    /// The other half of AC-766: "off" for a project-linked server can only ever be this explicit — its own name in
+    /// <see cref="ProjectMcpOverlay.DisabledServerNames"/> — since it never had a row in <c>EnabledServerNames</c>
+    /// to begin with.
+    /// </summary>
+    [Fact]
+    public void IsSelectedByDefault_AProjectLinkedServerNamedInDisabledServerNames_IsUnticked()
+    {
+        var overlay = new ProjectMcpOverlay { DisabledServerNames = ["Depot: krahwinkel-it.nl"] };
+        var depot = new McpServerConfig { Name = "Depot: krahwinkel-it.nl", Url = "https://depot.example/mcp", ProjectLinked = true };
+
+        Assert.False(overlay.IsSelectedByDefault(depot));
+        Assert.False(overlay.IsSelectedByDefault(depot with { Name = "DEPOT: KRAHWINKEL-IT.NL" }), "matched case-insensitively, like every other name here");
+    }
+
+    // Sibling of the case above: DisabledServerNames naming a different server must not touch this one.
+    [Fact]
+    public void IsSelectedByDefault_AProjectLinkedServerNotNamedInDisabledServerNames_StaysTicked()
+    {
+        var overlay = new ProjectMcpOverlay { DisabledServerNames = ["youtrack"] };
+        var depot = new McpServerConfig { Name = "Depot: krahwinkel-it.nl", Url = "https://depot.example/mcp", ProjectLinked = true };
+
+        Assert.True(overlay.IsSelectedByDefault(depot));
+    }
+
+    // AC-766 criterion 6 (regression): a project with a Depot connection that is never resaved carries
+    // ProjectMcpOverlay.None — no DisabledServerNames entry can exist for a server the operator has never even
+    // seen a row for — so it keeps mounting Depot rather than this fix silently switching it off.
+    [Fact]
+    public void IsSelectedByDefault_AProjectLinkedServer_WithNoChoicesMade_StaysTicked()
+    {
+        var depot = new McpServerConfig { Name = "Depot: krahwinkel-it.nl", Url = "https://depot.example/mcp", ProjectLinked = true };
+
+        Assert.True(ProjectMcpOverlay.None.IsSelectedByDefault(depot));
+    }
+
     /// <summary>An empty list is a project that ticked nothing — a real answer, not a project that never answered.</summary>
     [Fact]
     public void IsSelectedByDefault_AnEmptyEnabledList_TicksNothing()
