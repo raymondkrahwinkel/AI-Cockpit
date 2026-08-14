@@ -27,7 +27,12 @@
     <Border Background="{StaticResource CockpitSecondaryBgBrush}">
       <ScrollViewer Name="BodyScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
         <Border Name="Checkerboard" Padding="16">
-          <Image Name="PreviewImage" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          <Image Name="PreviewImage" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                 RenderTransformOrigin="0.5,0.5">
+            <Image.RenderTransform>
+              <ScaleTransform/>
+            </Image.RenderTransform>
+          </Image>
         </Border>
       </ScrollViewer>
     </Border>
