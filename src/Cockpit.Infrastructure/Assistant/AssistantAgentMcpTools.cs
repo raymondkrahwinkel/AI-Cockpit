@@ -490,6 +490,73 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "bind_shared_project")]
+    [Description("Adds a project a colleague shares — one that list_shared_projects reported — to this machine, so it becomes an ordinary project sessions can be started on. Exactly what the operator's own \"Add to my projects…\" card does on the Projects page, and it produces the same project. CALL list_shared_projects FIRST AND USE AN ID FROM IT: the id says which connection the project comes from, and a project that is already added is refused rather than added twice. THREE THINGS ARE NOT SHARED AND YOU MUST ASK FOR THEM, because they are facts about this machine that nobody else's definition can carry: the FOLDER the project lives in here, the PROFILE its sessions run under, and — only when the definition names any — a local path for each resource row it lists. NEVER INVENT ANY OF THE THREE: a guessed folder points the project at somebody else's work, and a guessed profile decides the model and the bill. If one is missing the call is refused and the reason says which, in words you can put straight to the operator. THE NAME, THE BEHAVIOUR, THE MCP CHOICE AND THE MEMORY COME WITH THE PROJECT — do not ask about those and do not offer to change them; they are the colleague's, and this step only fills in what is yours. IT DOES NOT CLONE: the folder has to exist already, so if they have not checked the project out yet, say so and let them clone it (or point at where it is) rather than looking for another way. BY DEFAULT IT NEEDS THEIR CLICK: an Allow/Deny row appears in the cockpit's chat window showing the project id, THE FOLDER and the profile, and nothing is written until it is answered — the call waits that out, so what comes back is a decision already made." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL — an id no connection offers, a project already added, a folder that is not there, a profile that does not exist, or a connection that has gone unreachable or lost the project since you listed it — so read the reason out and carry on. ADDING IT STARTS NOTHING: no session runs and no work begins, which is still a separate start_agent with its own approval.")]
+    public async Task<string> BindSharedProjectAsync(
+        [Description("The shared project's id, exactly as list_shared_projects reports it. Never a name and never a guess: the id carries the connection it came from, so a made-up one names no source at all.")] string sharedProjectId,
+        [Description("The full path of the folder on this machine that holds this project. Required, asked of the operator, and never invented — it must already exist, because this does not clone. A relative path means nothing here; you are standing in no directory.")] string sourceDirectory,
+        [Description("The profile this project's sessions default to, by its label exactly as the cockpit knows it. Required — a shared project brings no profile of its own — and it is what decides provider, model and therefore cost, so call list_profiles and let the operator choose rather than picking one that sounds close.")] string profile,
+        [Description("A local path for each resource row the shared definition names but cannot carry a value for, in the order the refusal listed them. LEAVE IT OUT ON THE FIRST CALL: most projects name none, and if this one does the call comes back refused with each row spelled out in order, which is what you take to the operator. One entry per row, no blanks.")] string[]? resources = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            // The card below is three labelled lines, and it is rendered verbatim — so a newline inside one of these
+            // three arguments writes a `folder:` line of the caller's own choosing under a folder nobody approved.
+            // Refused rather than escaped: a project id, a path and a profile label have no legitimate shape with a
+            // control character in it, so there is nothing here to salvage.
+            if (_RefuseIfNotOneLine(("project id", sharedProjectId), ("folder", sourceDirectory), ("profile", profile)) is { } malformed)
+            {
+                return malformed;
+            }
+
+            // Asked before the definition is read, so the operator is never made to wait on a connection for a card
+            // they were going to deny. The cost of that order is a project whose machine-specific resource rows are
+            // only discovered afterwards — the retry then raises a second card. Worth it: those rows are the rare
+            // case (see `SharedProjectBindingDialogViewModel.ResourceRows`), a card the operator denied is the
+            // common one, and the alternative is reaching a colleague's server on the strength of a call nobody has
+            // agreed to yet.
+            //
+            // LowRisk, and deliberately not Dangerous: what goes through is a registration in `cockpit.json` of a
+            // definition somebody on the operator's team already wrote, pointed at a folder shown on the card.
+            // Nothing runs, nothing is written outside it, and a second call cannot overwrite or duplicate it (the
+            // gateway refuses an id already added). Starting anything on it is `start_agent`, with its own gate.
+            var approval = await _ApprovedAsync(
+                "The assistant wants to add a shared project to this machine",
+                $"Add shared project {sharedProjectId}\nfolder: {sourceDirectory}\nprofile: {profile}",
+                ConsentSourceCatalog.AssistantProjectBinding,
+                "assistant.bind-shared-project",
+                ConsentRisk.LowRisk).ConfigureAwait(false);
+            if (!approval.Ok)
+            {
+                return _Serialize(new { ok = false, error = approval.Error });
+            }
+
+            var result = await gateway.BindSharedProjectAsync(sharedProjectId, sourceDirectory, profile, resources)
+                .ConfigureAwait(false);
+
+            return result.Ok
+                ? _Serialize(new
+                {
+                    ok = true,
+                    projectId = result.ProjectId,
+                    name = result.Name,
+                    sourceName = result.SourceName,
+                    sourceDirectory = result.SourceDirectory,
+                    approval = approval.Label,
+                })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "remember")]
     [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(
@@ -633,6 +700,28 @@ internal sealed class AssistantAgentMcpTools(
     private readonly record struct _Approval(string? Label, string? Error)
     {
         public bool Ok => Error is null;
+    }
+
+    // Refuses an argument that would land on a consent card as more than the one line it is meant to be. The card's
+    // `Action` is composed of literal arguments precisely so it says what will happen rather than what the assistant
+    // claims will happen — and that only holds while an argument cannot write a line of its own. `send_message`
+    // strips control characters for the same reason; here they are refused instead, because unlike a message body
+    // there is no version of these three fields worth delivering once one is in there.
+    private static string? _RefuseIfNotOneLine(params (string Name, string Value)[] fields)
+    {
+        foreach (var (name, value) in fields)
+        {
+            if (value is not null && value.Any(char.IsControl))
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"That {name} carries a line break or a control character, which nothing legitimate does. Send it as a single plain line.",
+                });
+            }
+        }
+
+        return null;
     }
 
     // The gate, in one place so every tool on this server is covered by the same sentence rather than by its own

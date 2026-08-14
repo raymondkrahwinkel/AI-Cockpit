@@ -492,15 +492,29 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (await _dialogs.ShowSharedProjectBindingDialogAsync(sharedProject, group.SourceName, source) is { } created)
         {
-            var stored = await _WithStoredLogoAsync(created);
-            await _PersistAsync(_settings.WithProject(stored));
-            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
+            var stored = await AddBoundProjectAsync(created);
 
-            // The row just bound must not keep showing under "Shared via …" until the next full reload — a fresh
-            // run finds it in boundIds now (its own Memory row names sharedProject.Id) and leaves it out on its own,
-            // but that reload has not happened yet and the operator is looking at this list right now.
-            await LoadSharedProjectsAsync();
+            // Selecting it belongs to this route and not to the shared tail: the operator just filled in a dialog
+            // for this project, so it is what they are looking at. On the assistant's own route nobody clicked, and
+            // moving the selection would take it out from under whatever they had picked in Manage projects.
+            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
         }
+    }
+
+    // Stores `created` — a project just built from a shared definition — and returns it as stored. The tail of the
+    // bind step, shared by the dialog route above and the assistant's own (AC-798), so a project bound without a
+    // window is written exactly the way one bound with it is: same logo copy, same normalising save.
+    internal async Task<Project> AddBoundProjectAsync(Project created)
+    {
+        var stored = await _WithStoredLogoAsync(created);
+        await _PersistAsync(_settings.WithProject(stored));
+
+        // The row just bound must not keep showing under "Shared via …" until the next full reload — a fresh
+        // run finds it in boundIds now (its own Memory row names the shared project's id) and leaves it out on its
+        // own, but that reload has not happened yet and the operator is looking at this list right now.
+        await LoadSharedProjectsAsync();
+
+        return stored;
     }
 
     // Claims every local project bound to `sharedProjects` as owned by `source`, and returns every project whose

@@ -15,7 +15,9 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class SharedProjectBindingDialogViewModelTests
 {
-    private static readonly SharedProject _SharedProject = new("depot:handbook", "Handbook");
+    // AC-798: the id alone is what `CreateAsync` takes — every other field it once read off a whole `SharedProject`
+    // came from the binding it reads itself.
+    private const string _SharedProject = "depot:handbook";
 
     // AC-651: a machine-scoped reference is one `Path.IsPathFullyQualified` accepts, and that answer is per-OS — a
     // POSIX path is fully qualified on this repo's Linux CI and not on a Windows dev box. Same seam as
@@ -129,7 +131,7 @@ public class SharedProjectBindingDialogViewModelTests
         };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:cockpit", "Cockpit"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:cockpit", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
 
         var project = viewModel.ToProject();
@@ -153,7 +155,7 @@ public class SharedProjectBindingDialogViewModelTests
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:ten", "Ten Absolute"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:ten", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
 
         Assert.Equal(10, viewModel.ResourceRows.Count);
@@ -180,7 +182,7 @@ public class SharedProjectBindingDialogViewModelTests
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:ten-placeholders", "Ten Placeholders"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:ten-placeholders", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
 
         Assert.Equal(10, viewModel.ResourceRows.Count);
@@ -201,7 +203,7 @@ public class SharedProjectBindingDialogViewModelTests
     {
         var source = _SourceReturning(SharedProjectBindingResult.Success(new SharedProjectBinding("Bare")));
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:bare", "Bare"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:bare", "Work", source, _ProfileStoreWith("Zyra"));
 
         Assert.Empty(viewModel!.ResourceRows);
         Assert.False(viewModel.HasResourceRows);
@@ -219,7 +221,7 @@ public class SharedProjectBindingDialogViewModelTests
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:portable", "Portable"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:portable", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
 
         Assert.Empty(viewModel.ResourceRows);
@@ -242,7 +244,7 @@ public class SharedProjectBindingDialogViewModelTests
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:sneaky", "Sneaky"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:sneaky", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
 
         Assert.Empty(viewModel.ResourceRows); // not asked about — it is Home-scope by shape
@@ -259,7 +261,7 @@ public class SharedProjectBindingDialogViewModelTests
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:weird", "Weird"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:weird", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
 
         var project = viewModel.ToProject();
@@ -277,7 +279,7 @@ public class SharedProjectBindingDialogViewModelTests
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:has-ask-row", "Has Ask Row"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:has-ask-row", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
         var row = Assert.Single(viewModel.ResourceRows);
         Assert.Equal(string.Empty, row.Reference); // never pre-filled with the other machine's path
@@ -298,7 +300,7 @@ public class SharedProjectBindingDialogViewModelTests
         var binding = new SharedProjectBinding("Overlay") { EnabledMcpServerNames = ["github", "youtrack"] };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:overlay", "Overlay"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:overlay", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
 
         var project = viewModel.ToProject();
@@ -312,7 +314,7 @@ public class SharedProjectBindingDialogViewModelTests
         var binding = new SharedProjectBinding("Handbook") { GitUrl = "git@github.com:example/handbook.git" };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
         var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            new SharedProject("depot:handbook2", "Handbook"), "Work", source, _ProfileStoreWith("Zyra"));
+            "depot:handbook2", "Work", source, _ProfileStoreWith("Zyra"));
         viewModel!.SelectedProfileLabel = "Zyra";
         Assert.True(viewModel.HasGitUrl);
 

@@ -305,6 +305,13 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
         public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<AssistantProjectBindResult> BindSharedProjectAsync(
+            string sharedProjectId,
+            string sourceDirectory,
+            string profileLabel,
+            IReadOnlyList<string>? resourceReferences = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
         {
             Calls.Add($"SendMessageAsync({paneId})");
