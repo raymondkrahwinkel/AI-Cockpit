@@ -171,6 +171,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   once the window is nearly full. Disabled while the session is already working, and it disappears again on its own
   once the summarise brings the window back under the warning line.
 
+- added: the voice assistant can now see the projects your team shares that this machine has not added yet — the
+  same list the Projects page shows under "From your team" — so it can point you at binding one instead of
+  creating a duplicate when you ask it to set a project up. One connection being unreachable or signed out never
+  hides what the others have to offer.
+
 ### Changed
 
 - changed: a project card is quieter. One button carries on with the project, sharing stays visible beside it, and

@@ -1,7 +1,10 @@
 using Avalonia.Threading;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.Services;
 
@@ -22,7 +25,8 @@ namespace Cockpit.App.Services;
 // with their own MCP tokens, and a status question that skipped them would be answered confidently and wrongly.
 // Plain terminal panes are left out: they carry a pane id but there is no agent on the other end to have a status.
 // The assistant's own session is left out too — it is the one asking.
-internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistantReadGateway, ISingletonService
+internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProjectSourceRegistry sharedProjectSources)
+    : IAssistantReadGateway, ISingletonService
 {
     public Task<IReadOnlyList<AssistantSessionRow>> ListSessionsAsync() =>
         Dispatcher.UIThread.CheckAccess()
@@ -33,6 +37,49 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
         Dispatcher.UIThread.CheckAccess()
             ? Task.FromResult(_ListProjects())
             : Dispatcher.UIThread.InvokeAsync(_ListProjects).GetTask();
+
+    // The registered sources and every already-bound project's shared id, so a source's rows can be filtered down
+    // to what AC-797 promises: not yet bound here. Read together on the UI thread — `cockpit.Projects.Projects` is
+    // only safe to enumerate there — then the per-source network calls run off it.
+    public async Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedProjectsAsync()
+    {
+        var (sources, boundIds) = Dispatcher.UIThread.CheckAccess()
+            ? _SharedProjectSourcesAndBoundIds()
+            : await Dispatcher.UIThread.InvokeAsync(_SharedProjectSourcesAndBoundIds).GetTask().ConfigureAwait(false);
+
+        if (sources.Count == 0)
+        {
+            return [];
+        }
+
+        var results = await Task.WhenAll(
+            sources.Select(source => ProjectsViewModel._ListWithTimeoutAsync(source, CancellationToken.None)))
+            .ConfigureAwait(false);
+
+        return
+        [
+            .. sources.Zip(results, (source, result) => new AssistantSharedProjectSourceRow(
+                source.SourceName,
+                result.Succeeded,
+                result.Error,
+                result.Succeeded
+                    ? [.. result.Projects
+                        .Where(project => !boundIds.Contains(project.Id))
+                        .Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, project.Role))]
+                    : [])),
+        ];
+    }
+
+    private (IReadOnlyList<ISharedProjectSource> Sources, HashSet<string> BoundIds) _SharedProjectSourcesAndBoundIds() =>
+        (
+            sharedProjectSources.Sources,
+            new HashSet<string>(
+                cockpit.Projects.Projects
+                    .SelectMany(project => project.Resources)
+                    .Where(resource => resource.Role == ProjectResourceRole.Memory)
+                    .Select(resource => resource.Reference),
+                StringComparer.Ordinal)
+        );
 
     // An SDK session's transcript is in memory and is read on the UI thread; a TTY session's is a file its CLI
     // wrote, and reading it is not something to do on the thread that draws (AC-609). So the pane is resolved on
