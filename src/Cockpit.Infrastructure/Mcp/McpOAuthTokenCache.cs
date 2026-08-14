@@ -19,7 +19,15 @@ namespace Cockpit.Infrastructure.Mcp;
 // `store`: Where the token lands.
 // `logger`: Where a renewal leaves its trace (AC-524) — this class used to write nothing at all, which
 // made an expiry an anecdote instead of an event anyone could go and look up.
-internal sealed class McpOAuthTokenCache(string serverId, string serverName, string? resourceUrl, IMcpOAuthTokenStore store, ILogger logger) : ITokenCache
+// `renewalMargin`: How much life the caller needs the token to have left, subtracted from what this reports (AC-771).
+// Zero for a connect that only wants to use whatever is stored.
+internal sealed class McpOAuthTokenCache(
+    string serverId,
+    string serverName,
+    string? resourceUrl,
+    IMcpOAuthTokenStore store,
+    ILogger logger,
+    TimeSpan renewalMargin = default) : ITokenCache
 {
     public async ValueTask StoreTokensAsync(TokenContainer token, CancellationToken cancellationToken = default)
     {
@@ -89,9 +97,19 @@ internal sealed class McpOAuthTokenCache(string serverId, string serverName, str
 
         // ExpiresIn is relative to ObtainedAt, so the pair has to be rebuilt from the absolute instant we stored:
         // handing back the original ExpiresIn with a fresh ObtainedAt would present an expired token as brand new.
+        //
+        // Less the caller's margin, and that subtraction is the whole of AC-771. The SDK renews on one condition and
+        // one only: `TokenContainer.IsExpired`, which is `UtcNow >= ObtainedAt + ExpiresIn` — dead on the second, no
+        // margin of its own. The coordinator meanwhile decides a token needs renewing while it still has minutes to
+        // live. Between those two lines sat a window per token lifetime in which the coordinator asked for a renewal,
+        // the SDK looked at a token it considered perfectly good, refreshed nothing, and the coordinator read the
+        // unchanged store as a renewal that had failed — so an ordinary call came back to the agent as an
+        // authentication error, twice in a row, and worked again once the token was properly dead. Reporting the
+        // margin as already spent is what makes the two agree: the caller asks for a renewal exactly when the SDK
+        // will perform one.
         var obtainedAt = DateTimeOffset.UtcNow;
         int? remaining = stored.ExpiresAt is { } expiresAt
-            ? (int)Math.Max(0, Math.Round((expiresAt - obtainedAt).TotalSeconds))
+            ? (int)Math.Max(0, Math.Round((expiresAt - renewalMargin - obtainedAt).TotalSeconds))
             : null;
 
         return new TokenContainer

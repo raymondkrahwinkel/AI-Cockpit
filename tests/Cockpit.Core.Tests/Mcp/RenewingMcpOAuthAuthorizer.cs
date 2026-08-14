@@ -33,8 +33,17 @@ internal sealed class RenewingMcpOAuthAuthorizer(IMcpOAuthTokenStore store, Time
     /// <summary>The token value each renewal produces — different every time, so "everybody got the same one" is a claim a test can check.</summary>
     public string LastIssuedToken { get; private set; } = string.Empty;
 
-    public ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true, McpSignInStageRecorder? stageRecorder = null)
+    /// <summary>The renewal margin the last caller asked for (AC-771) — the seam this fake stands in for is the one
+    /// that has to carry it, so a test can check it arrived rather than infer it.</summary>
+    public TimeSpan LastRenewalMargin { get; private set; }
+
+    public ClientOAuthOptions CreateOptions(
+        McpServerConfig server,
+        bool interactive = true,
+        McpSignInStageRecorder? stageRecorder = null,
+        TimeSpan renewalMargin = default)
     {
+        LastRenewalMargin = renewalMargin;
         var attempt = Interlocked.Increment(ref _attempts);
         Started.Set();
         Gate.Wait();

@@ -219,8 +219,8 @@ internal sealed class McpOAuthCoordinator(
         // already cleared the stored token so the flow would actually run, and joining somebody else's silent
         // renewal would make that button do nothing again.
         var (stage, explained, unreachable, grantRejected) = interactive
-            ? await _HandshakeAsync(server, interactive: true, cancellationToken).ConfigureAwait(false)
-            : await _SharedRenewalAsync(server, cancellationToken).ConfigureAwait(false);
+            ? await _HandshakeAsync(server, interactive: true, margin, cancellationToken).ConfigureAwait(false)
+            : await _SharedRenewalAsync(server, margin, cancellationToken).ConfigureAwait(false);
 
         // Read after the renewal, never from before it: a caller that queued behind someone else's renewal almost
         // always finds a fresh token here, and the whole point of waiting was to use it rather than to redeem the
@@ -293,14 +293,20 @@ internal sealed class McpOAuthCoordinator(
 
     // One silent renewal per server at a time (see `_renewals`). Callers that arrive while one runs
     // wait for its outcome rather than starting a second, and then re-read the store for themselves.
-    private Task<HandshakeOutcome> _SharedRenewalAsync(McpServerConfig server, CancellationToken cancellationToken)
+    //
+    // The margin belongs to whoever starts the renewal, and a joiner is never worse off for it: the winner renews
+    // because its own margin was not met, so a fresh token is what everyone waiting finds — and a joiner needing
+    // more life than that token has is a token genuinely too short-lived, which is what it is then told. Keying the
+    // table by margin instead would let two renewals run at once, which is the replayed refresh grant `_renewals`
+    // exists to prevent.
+    private Task<HandshakeOutcome> _SharedRenewalAsync(McpServerConfig server, TimeSpan margin, CancellationToken cancellationToken)
     {
         Task<HandshakeOutcome> renewal;
         lock (_renewalsLock)
         {
             if (!_renewals.TryGetValue(server.IdentityKey, out var running))
             {
-                running = _RenewAndClearAsync(server);
+                running = _RenewAndClearAsync(server, margin);
                 _renewals[server.IdentityKey] = running;
             }
 
@@ -325,11 +331,11 @@ internal sealed class McpOAuthCoordinator(
     // stale (cleanup done, completion not yet observed) and wait on that instead of starting its own. Measured, not
     // theoretical: both shapes flaked in CI (`McpOAuthSessionMarginTests`) before this fix — a TTY launch's
     // five-second abandon budget is exactly the load that used to make the slower shape ordinary rather than rare.
-    private Task<HandshakeOutcome> _RenewAndClearAsync(McpServerConfig server) => Task.Run(async () =>
+    private Task<HandshakeOutcome> _RenewAndClearAsync(McpServerConfig server, TimeSpan margin) => Task.Run(async () =>
     {
         try
         {
-            return await _RenewAsync(server).ConfigureAwait(false);
+            return await _RenewAsync(server, margin).ConfigureAwait(false);
         }
         finally
         {
@@ -343,13 +349,13 @@ internal sealed class McpOAuthCoordinator(
     // The shared renewal itself. It never faults, by construction: this task is handed to every waiting caller, and
     // a faulted one would be re-thrown into each of them — including onto paths that only ever read the store to
     // find out what happened. Whatever went wrong is folded into the outcome instead.
-    private async Task<HandshakeOutcome> _RenewAsync(McpServerConfig server)
+    private async Task<HandshakeOutcome> _RenewAsync(McpServerConfig server, TimeSpan margin)
     {
         try
         {
             // CancellationToken.None on purpose: this work is shared, so honouring the first caller's token would
             // let whoever happened to arrive first cancel a renewal the others are still waiting on.
-            return await _HandshakeAsync(server, interactive: false, CancellationToken.None).ConfigureAwait(false);
+            return await _HandshakeAsync(server, interactive: false, margin, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -481,7 +487,10 @@ internal sealed class McpOAuthCoordinator(
     // not rather than write a second next to it. <c>Unreachable</c> separates "the server said no" from "the server
     // said nothing" (AC-524): only the first is something signing in again can fix, and telling an operator to sign
     // in while the host is down is advice that cannot work.
-    private async Task<HandshakeOutcome> _HandshakeAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken)
+    // <c>margin</c> is how much life the caller needs left in the token, and it is handed to the SDK rather than kept
+    // here (AC-771): the SDK renews on `IsExpired` alone, so a margin this side never told it about was a renewal
+    // that quietly did not happen.
+    private async Task<HandshakeOutcome> _HandshakeAsync(McpServerConfig server, bool interactive, TimeSpan margin, CancellationToken cancellationToken)
     {
         if (server.Transport != McpTransport.Http || string.IsNullOrWhiteSpace(server.Url))
         {
@@ -504,7 +513,7 @@ internal sealed class McpOAuthCoordinator(
                     Name = server.Name,
                     Endpoint = new Uri(server.Url),
                     TransportMode = HttpTransportMode.AutoDetect,
-                    OAuth = authorizer.CreateOptions(server, interactive, stageRecorder),
+                    OAuth = authorizer.CreateOptions(server, interactive, stageRecorder, margin),
                 },
                 new HttpClient(grantWatcher),
                 loggerFactory: null,

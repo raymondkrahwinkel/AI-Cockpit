@@ -156,6 +156,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a signed-in MCP server no longer refuses calls for a couple of minutes near the end of every access
+  token's life. The cockpit renews a token while it still has a margin left, but the renewal itself only ran
+  once the token was dead to the second — so in the window between the two, an ordinary tool call came back as
+  "the cockpit could not renew its sign-in", twice in a row, and then worked again minutes later once the token
+  had properly expired. Sessions writing results to a server like Depot could lose that write to it.
 - fixed: the assistant, a project-less session and the profile checklists can now be offered a project-bound
   server (a Depot connection, say) at all — previously it was only ever offered to sessions on the specific
   project it was bound to, so the assistant (which has no project) could never see or mount it, no matter how

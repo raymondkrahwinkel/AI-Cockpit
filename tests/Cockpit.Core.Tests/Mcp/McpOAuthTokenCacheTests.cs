@@ -14,10 +14,12 @@ public class McpOAuthTokenCacheTests
 {
     private const string ResourceUrl = "https://depot.example/mcp";
 
-    private static (McpOAuthTokenCache Cache, FakeMcpOAuthTokenStore Store) _Create(string resourceUrl = ResourceUrl)
+    private static (McpOAuthTokenCache Cache, FakeMcpOAuthTokenStore Store) _Create(
+        string resourceUrl = ResourceUrl,
+        TimeSpan renewalMargin = default)
     {
         var store = new FakeMcpOAuthTokenStore();
-        return (new McpOAuthTokenCache("depot", "depot", resourceUrl, store, NullLogger.Instance), store);
+        return (new McpOAuthTokenCache("depot", "depot", resourceUrl, store, NullLogger.Instance, renewalMargin), store);
     }
 
     [Fact]
@@ -149,6 +151,55 @@ public class McpOAuthTokenCacheTests
         Assert.NotNull(container);
         Assert.Equal(0, container.ExpiresIn);
     }
+
+    [Fact]
+    public async Task GetTokens_ForATokenInsideTheCallersMargin_ReportsItSpent_SoTheRenewalActuallyHappens()
+    {
+        var (cache, store) = _Create(renewalMargin: TimeSpan.FromMinutes(2));
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = "access",
+            RefreshToken = "refresh",
+            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(90),
+            ResourceUrl = ResourceUrl,
+        });
+
+        var container = await cache.GetTokensAsync();
+
+        // The whole of AC-771. `TokenContainer.IsExpired` is the SDK's only test for whether to spend the refresh
+        // grant, and it has no margin of its own — so a token with ninety seconds left is one the SDK would hand
+        // straight back while the coordinator, keeping two minutes, had already decided it needed renewing. The
+        // connect then changed nothing, the coordinator read the unchanged store as a failed renewal, and an
+        // ordinary call came back to the agent as an authentication error until the token was properly dead.
+        Assert.NotNull(container);
+        Assert.True(_SdkWouldRenew(container));
+    }
+
+    [Fact]
+    public async Task GetTokens_ForATokenOutsideTheCallersMargin_LeavesItAlone()
+    {
+        var (cache, store) = _Create(renewalMargin: TimeSpan.FromMinutes(2));
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
+        {
+            AccessToken = "access",
+            RefreshToken = "refresh",
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30),
+            ResourceUrl = ResourceUrl,
+        });
+
+        var container = await cache.GetTokensAsync();
+
+        // The mirror of the fix, and the one it would be easy to break: a margin that reports everything as spent
+        // would rotate the refresh grant on every single connect, which is the outage `_renewals` exists to avoid.
+        Assert.NotNull(container);
+        Assert.False(_SdkWouldRenew(container));
+    }
+
+    // `TokenContainer.IsExpired` restated, because the SDK keeps it internal. It is the single condition on which a
+    // refresh grant is spent, and it carries no margin of its own — which is exactly why the margin has to be
+    // subtracted on the way out of the store rather than kept on this side of the line.
+    private static bool _SdkWouldRenew(TokenContainer token) =>
+        token.ExpiresIn is { } seconds && DateTimeOffset.UtcNow >= token.ObtainedAt.AddSeconds(seconds);
 
     [Fact]
     public async Task GetTokens_WithNothingStored_IsNull()

@@ -93,6 +93,27 @@ public class McpOAuthSessionMarginTests
     }
 
     [Fact]
+    public async Task EachUsesMargin_IsHandedToTheRenewal_NotKeptOnThisSideOfIt()
+    {
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
+        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromHours(1));
+        var coordinator = new McpOAuthCoordinator(store, authorizer, new CapturingLogger<McpOAuthCoordinator>());
+
+        await coordinator.AcquireForSessionAsync(_Server());
+        Assert.Equal(TimeSpan.FromMinutes(55), authorizer.LastRenewalMargin);
+
+        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
+        await coordinator.AcquireAsync(_Server(), interactive: false);
+        Assert.Equal(TimeSpan.FromMinutes(2), authorizer.LastRenewalMargin);
+
+        // AC-771: the margin decides whether a renewal is wanted *and* whether the SDK performs one, and the SDK is
+        // the only one of the two that can act on it. A margin that stops here is a coordinator asking for renewals
+        // in a window where none can happen, and then reading the unchanged store as a failure — which is what an
+        // agent met as an authentication error on an ordinary call, twice in a row, roughly once per token lifetime.
+    }
+
+    [Fact]
     public async Task AcquireForSession_WhenEveryTokenThisServerIssuesIsShorterThanTheMargin_SaysSoRatherThanHandingOneOver()
     {
         var store = new FakeMcpOAuthTokenStore();
