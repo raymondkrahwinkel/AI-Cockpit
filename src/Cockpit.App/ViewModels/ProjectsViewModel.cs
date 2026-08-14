@@ -553,7 +553,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // newer `LoadSharedProjectsAsync` (its `cancellationToken` cancelled) also lands
     // here as an (ignored — see that method's own stale-result check) failure rather than an unobserved exception
     // on this fire-and-forget call.
-    private static async Task<SharedProjectListResult> _ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
+    // Internal rather than private: AC-797's `AssistantReadGateway.ListSharedProjectsAsync` reuses this exact
+    // per-source timeout instead of a second copy of it.
+    internal static async Task<SharedProjectListResult> _ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try

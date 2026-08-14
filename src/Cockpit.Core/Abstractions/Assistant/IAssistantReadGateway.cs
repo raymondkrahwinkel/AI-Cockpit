@@ -70,6 +70,13 @@ public interface IAssistantReadGateway
     /// when it has no tool for the question is the most reliable way to find out which tool is missing.
     /// </remarks>
     Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync();
+
+    /// <summary>
+    /// Every shared project this machine has not bound to a local project yet, grouped by the source that offers
+    /// it (AC-797) — read fresh on every call, the same "no invalidation path" behaviour <c>ProjectsViewModel</c>'s
+    /// own load already has.
+    /// </summary>
+    Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedProjectsAsync();
 }
 
 // One project as the assistant is shown it.
@@ -97,6 +104,17 @@ public sealed record AssistantProjectRow(
     string? DefaultProfileLabel,
     IReadOnlyDictionary<string, string> Links,
     string? GitUrl);
+
+// One source's shared projects, or why it failed (AC-797) — a source is expected to report a whole-connection
+// failure through Error rather than throw, so one broken source never costs another's rows.
+public sealed record AssistantSharedProjectSourceRow(
+    string SourceName,
+    bool Succeeded,
+    string? Error,
+    IReadOnlyList<AssistantSharedProjectRow> Projects);
+
+// One shared project this machine has not bound to a local project yet (AC-797), as the assistant is shown it.
+public sealed record AssistantSharedProjectRow(string Id, string Name, string? Description, string? Role);
 
 // The tail of one session's transcript, plus what it takes to know that it *is* a tail.
 //

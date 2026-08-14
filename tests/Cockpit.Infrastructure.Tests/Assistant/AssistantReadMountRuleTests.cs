@@ -302,6 +302,42 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         Assert.Contains("list_sessions", (string)result["error"]!);
     }
 
+    // ── AC-797: list_shared_projects ────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ListSharedProjects_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheGateway()
+    {
+        McpRequestContext.Set(OrdinarySessionPane);
+
+        var result = _Json(await _Tools().ListSharedProjectsAsync());
+
+        Assert.False((bool)result["ok"]!);
+        await _gateway.DidNotReceive().ListSharedProjectsAsync();
+    }
+
+    [Fact]
+    public async Task ListSharedProjects_OneFailedSourceDoesNotCostTheOthersRows()
+    {
+        // Criterion 2/3: a broken source is reported with a reason, and the working source's rows still arrive.
+        _gateway.ListSharedProjectsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSharedProjectSourceRow>>(
+        [
+            new AssistantSharedProjectSourceRow("Depot — Work", true, null,
+                [new AssistantSharedProjectRow("depot:proj-1", "Marketing site", "The public site", "Owner")]),
+            new AssistantSharedProjectSourceRow("Depot — Personal", false, "Not signed in to Depot — Personal.", []),
+        ]));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ListSharedProjectsAsync());
+
+        Assert.True((bool)result["ok"]!);
+        var sources = result["sources"]!.AsArray();
+        Assert.True((bool)sources[0]!["succeeded"]!);
+        Assert.Equal("Marketing site", (string)sources[0]!["projects"]![0]!["name"]!);
+        Assert.False((bool)sources[1]!["succeeded"]!);
+        Assert.Contains("Not signed in", (string)sources[1]!["error"]!);
+        Assert.Empty(sources[1]!["projects"]!.AsArray());
+    }
+
     // ── AC-641: the delegated work list_sessions cannot see ───────────────────────────────────────────────────
 
     private static DelegatedTaskView _Task(

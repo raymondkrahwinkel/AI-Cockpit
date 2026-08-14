@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 
@@ -26,7 +27,7 @@ public class AssistantReadTtyTranscriptTests
             var cockpit = new CockpitViewModel();
             var session = new TtyViewModel();
             cockpit.Sessions.Add(session);
-            return (new AssistantReadGateway(cockpit), session);
+            return (new AssistantReadGateway(cockpit, new SharedProjectSourceRegistry()), session);
         });
 
         var transcript = await gateway.ReadTranscriptAsync(tty.PaneId, count: 30);
@@ -47,7 +48,7 @@ public class AssistantReadTtyTranscriptTests
             var cockpit = new CockpitViewModel();
             var session = TtyViewModel.DesignTerminal();
             cockpit.Sessions.Add(session);
-            return (new AssistantReadGateway(cockpit), session);
+            return (new AssistantReadGateway(cockpit, new SharedProjectSourceRegistry()), session);
         });
 
         Assert.Null(await gateway.ReadTranscriptAsync(terminal.PaneId, count: 30));

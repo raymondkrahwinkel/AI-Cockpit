@@ -150,6 +150,42 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDele
         }
     }
 
+    [McpServerTool(Name = "list_shared_projects")]
+    [Description("Lists shared projects this machine can see but has not bound to a local project yet, grouped by the source that offers them (e.g. \"Depot — Work\"). Call this before create_project: a project that looks new to this machine may already be shared here under a different name, and binding it is one step instead of creating a duplicate. Each source reports succeeded and, when it did not, an error explaining why (not signed in, unreachable) — one broken source never costs another source's rows, so check succeeded per source rather than assuming an empty projects list means nothing is shared there. A project already bound on this machine is left out, since binding it again is not what this tool is for.")]
+    public async Task<string> ListSharedProjectsAsync()
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var sources = await gateway.ListSharedProjectsAsync().ConfigureAwait(false);
+            return _Serialize(new
+            {
+                ok = true,
+                sources = sources.Select(source => new
+                {
+                    sourceName = source.SourceName,
+                    succeeded = source.Succeeded,
+                    error = source.Error,
+                    projects = source.Projects.Select(project => new
+                    {
+                        id = project.Id,
+                        name = project.Name,
+                        description = project.Description,
+                        role = project.Role,
+                    }),
+                }),
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "list_delegated_tasks")]
     [Description("Lists the delegated tasks this cockpit is running — the background work a session started with delegate_task — newest first, across every owner pane. THIS IS THE HALF list_sessions CANNOT SEE: a delegated task runs without a pane, so it has no row there and no statusline however busy it is; a session that fanned its work out further looks idle in one list and is doing five things in the other. Each entry has the task id, the profile it runs under, its label and task type, its status (Queued, Running, Completed, Failed or Stopped), when it was created/started/finished, how many turns it has taken, its result or its error, and ownerPaneId — the session that started it, which is how you attribute background work to the agent you spawned. A null ownerPaneId means the task was started off the verified path (the operator or the cockpit itself), not that nobody owns it. Reading only: starting, stopping or following up on a task is not available here. Turn count is progress, not success — a task with turns and no result is still working, and one that is Failed says why in error.")]
     public string ListDelegatedTasks(
