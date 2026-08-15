@@ -1,0 +1,137 @@
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.AI;
+using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
+
+namespace Cockpit.Plugin.OpenRouterProvider.Tests;
+
+// `OpenAiCompatPluginSessionDriver` against a fake `IChatClient` (AC-806, mirroring
+// the GitHub Models provider plugin's #63 `OpenAiCompatPluginSessionDriverTests`) — same
+// history/streaming/error-handling shape, minus the tool-loop (this driver has no tool source of its own,
+// so `PluginSessionCapabilities.SupportsTools` is always false).
+public class OpenAiCompatPluginSessionDriverTests
+{
+    [Fact]
+    public async Task SendUserMessage_StreamsAssistantDeltas_ThenCompletesTheTurn()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_Stream("Hello ", "world."));
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5");
+
+        await driver.StartAsync();
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        Assert.Equal("Hello world.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+        Assert.Single(events, evt => evt is PluginSessionInitialized);
+    }
+
+    [Fact]
+    public async Task StartAsync_SetsSessionId_AndAdvertisesChatOnlyCapabilities()
+    {
+        var driver = new OpenAiCompatPluginSessionDriver(Substitute.For<IChatClient>(), "anthropic/claude-sonnet-4.5");
+
+        await driver.StartAsync();
+
+        Assert.False(string.IsNullOrEmpty(driver.SessionId));
+        Assert.False(driver.Capabilities.SupportsTools);
+        Assert.False(driver.Capabilities.SupportsPermissions);
+    }
+
+    [Fact]
+    public async Task StartAsync_WithAModelOverride_UsesItForTheTurnInsteadOfTheDefault()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        ChatOptions? captured = null;
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions>(options => captured = options), Arg.Any<CancellationToken>())
+            .Returns(_Stream("ok"));
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5");
+
+        await driver.StartAsync(model: "openai/gpt-5.1");
+        await driver.SendUserMessageAsync("hi");
+        await _CollectUntilTurnCompletedAsync(driver);
+
+        Assert.NotNull(captured);
+        Assert.Equal("openai/gpt-5.1", captured!.ModelId);
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheChatClientThrows_EmitsSessionErrorAndAFailedTurn()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_Throwing());
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5");
+
+        await driver.StartAsync();
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        Assert.Single(events, evt => evt is PluginSessionError);
+        Assert.True(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+    }
+
+    [Fact]
+    public async Task InterruptAsync_CancelsTheInFlightTurn_AndReportsItAsInterrupted()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        // The fake stream observes the real per-turn CancellationToken the driver passes through, so
+        // cancelling it (via InterruptAsync) is what actually ends the turn — not a race on timing.
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => _StreamThatWaitsForCancellation((CancellationToken)callInfo[2]));
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5");
+
+        await driver.StartAsync();
+        await driver.SendUserMessageAsync("hi");
+        await driver.InterruptAsync();
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        Assert.Equal("interrupt", Assert.Single(events.OfType<PluginTurnCompleted>()).StopReason);
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> _Stream(params string[] chunks)
+    {
+        foreach (var chunk in chunks)
+        {
+            yield return new ChatResponseUpdate(ChatRole.Assistant, chunk);
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> _StreamThatWaitsForCancellation([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> _Throwing()
+    {
+        await Task.CompletedTask;
+        throw new HttpRequestException("server unreachable");
+#pragma warning disable CS0162 // Unreachable code — the yield makes this an iterator producing the throw.
+        yield break;
+#pragma warning restore CS0162
+    }
+
+    private static Task<List<PluginSessionEvent>> _CollectUntilTurnCompletedAsync(IPluginSessionDriver driver) =>
+        _CollectUntilAsync(driver, evt => evt is PluginTurnCompleted);
+
+    private static async Task<List<PluginSessionEvent>> _CollectUntilAsync(IPluginSessionDriver driver, Func<PluginSessionEvent, bool> until)
+    {
+        var events = new List<PluginSessionEvent>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var evt in driver.Events.WithCancellation(cts.Token))
+        {
+            events.Add(evt);
+            if (until(evt))
+            {
+                break;
+            }
+        }
+
+        return events;
+    }
+}
