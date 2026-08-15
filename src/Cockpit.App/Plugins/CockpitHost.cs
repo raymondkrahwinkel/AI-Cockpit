@@ -115,6 +115,9 @@ internal sealed class CockpitHost(
     public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         contributionSink.AddPluginSessionHeaderItem(createView);
 
+    public void AddSessionBanner(Func<IPluginSessionContext, Control> createView) =>
+        contributionSink.AddPluginSessionBannerItem(createView);
+
     public void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
         contributionSink.AddSupervisedActivityProvider(source);
 

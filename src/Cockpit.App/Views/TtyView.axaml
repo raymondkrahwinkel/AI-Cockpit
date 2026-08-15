@@ -189,6 +189,13 @@
             </DockPanel>
         </Border>
 
+        <!-- AC-802: PR/CI status and similar per-session banners — one shared host, wired the same way in
+             SessionView. TTY has no separate composer, so this sits at the bottom of the pane, below the
+             terminal, which is this session kind's own "under the transcript". Empty (no space taken) when no
+             plugin registers one. -->
+        <controls:PluginSessionBannerHost DockPanel.Dock="Bottom" Margin="0,6,0,0"
+                                          IsVisible="{Binding ShowPluginHeaderItems}"/>
+
         <!-- The terminal surface: Exclr8.Terminal, a pure Avalonia terminal-emulator renderer with no
              PTY plumbing of its own. The code-behind hosts the ConPTY/Porta.Pty process, feeds pty
              output in via Write(...), forwards the control's Input/Output byte events to the pty, and
