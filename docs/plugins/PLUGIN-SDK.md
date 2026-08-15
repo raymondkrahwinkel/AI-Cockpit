@@ -1255,6 +1255,10 @@ they exercise the main contribution points:
   against OpenRouter's endpoint (`openrouter.ai/api/v1`), model id in OpenRouter's `vendor/model` notation
   (e.g. `anthropic/claude-sonnet-4.5`). Chat-only, same as the other two; declares no usage signals since the
   endpoint reports none this driver can read. Experimental (0.x).
+- **[Grok](../../plugins-dev/Cockpit.Plugin.GrokProvider)** — the same OpenAI-compatible driver against
+  xAI's legacy chat-completions endpoint (`api.x.ai/v1`), deliberately not xAI's newer Responses API (see
+  the plugin's own header comment). No default model — xAI has deprecated several model names in the last
+  few months, so the profile always names one explicitly. Declares no usage signals. Experimental (0.x).
 - **[CLI Agent Provider](../../plugins-dev/Cockpit.Plugin.CliAgentProvider)** — registers Codex CLI as a
   provider driven as a **subprocess per turn** (`codex exec --json`, resumed via `codex exec resume
   <threadId>` for follow-up turns) instead of a persistent chat client — the reference implementation for a

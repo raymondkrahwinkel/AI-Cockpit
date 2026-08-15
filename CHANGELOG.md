@@ -37,6 +37,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   through the same consent card every session uses, and live usage/cost figures. Requires the opencode CLI
   installed (opencode.ai/docs), authenticated for most models.
 
+- added: Grok (xAI) as a selectable session provider plugin — configure an xAI API key and a model id (e.g.
+  `grok-4.6`) per profile in Manage profiles. Chat-only: no tool calls, file access or permission prompts, and no
+  context/usage pill (Grok's endpoint reports neither).
+
 - added: the first-run wizard's work-kind step now recommends plugins by the store index's new `audience` field
   instead of a placeholder — picking "Development" pre-ticks the plugins tagged for it plus every generic
   (untagged) plugin, and the AI-provider plugins no longer appear here since they are already chosen a step
