@@ -373,6 +373,8 @@ dotnet test
   workspace strip, the two workspace kinds, the dashboard grid and where widgets come from.
 - **[Binary size & on-demand runtimes](docs/binary-size-and-on-demand-runtimes.md)** — why the publish is 294 MB
   instead of 1.8 GB, what is fetched when, and the measurements behind both.
+- **[Diagram storage](docs/diagram-storage.md)** — where a diagram lives (the project's own memory), what it is
+  called, why it gets no version history of its own, and what happens when two sessions save the same one.
 - **[Plugin SDK guide](docs/plugins/PLUGIN-SDK.md)** — build a plugin: settings, sidebar, dialogs, session providers,
   dashboard widgets, shortcuts, MCP registration, packaging, install, and publishing your own plugin store.
 - **[Plugin API reference](docs/plugins/API-REFERENCE.md)** — every method a plugin can call (`ICockpitHost`,
