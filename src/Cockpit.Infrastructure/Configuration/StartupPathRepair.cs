@@ -198,12 +198,14 @@ public static class StartupPathRepair
             });
             if (process is null)
             {
+                logger.LogDebug("Process.Start returned no process for the login shell {Shell}; using the fallback list.", shell);
+
                 return null;
             }
 
             // Both pipes are drained async so a chatty init cannot fill one and wedge the shell against it.
             var standardOutput = process.StandardOutput.ReadToEndAsync();
-            _ = process.StandardError.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
 
             // One deadline covers both waits: the shell's exit AND the stdout read (a background child the init
             // left behind can hold the pipe open past the shell's own exit). Two full waits in a row would
@@ -213,8 +215,8 @@ public static class StartupPathRepair
             {
                 process.Kill(entireProcessTree: true);
                 logger.LogDebug(
-                    "The login shell {Shell} did not answer within {Timeout}; using the fallback list.",
-                    shell, timeout);
+                    "The login shell {Shell} did not answer within {Timeout} and was killed (exit {ExitCode}); stderr: {StandardError}; using the fallback list.",
+                    shell, timeout, _ExitCodeSnapshot(process), _StandardErrorSnapshot(standardError));
 
                 return null;
             }
@@ -222,20 +224,52 @@ public static class StartupPathRepair
             var remaining = timeout - deadline.Elapsed;
             if (remaining < TimeSpan.Zero || !standardOutput.Wait(remaining))
             {
+                logger.LogDebug(
+                    "The login shell {Shell} exited (exit {ExitCode}) but stdout did not finish within the remaining {Remaining}; stderr: {StandardError}; using the fallback list.",
+                    shell, _ExitCodeSnapshot(process), remaining, _StandardErrorSnapshot(standardError));
+
                 return null;
             }
 
             // The marker line is the answer even when the init exited non-zero — a broken plugin does not
             // invalidate the PATH the shell built before it.
-            return ExtractMarkedPath(standardOutput.Result);
+            var path = ExtractMarkedPath(standardOutput.Result);
+            if (path is null)
+            {
+                logger.LogDebug(
+                    "The login shell {Shell} exited (exit {ExitCode}) without a marker line; stderr: {StandardError}; using the fallback list.",
+                    shell, _ExitCodeSnapshot(process), _StandardErrorSnapshot(standardError));
+            }
+
+            return path;
         }
         catch (Exception exception)
         {
-            logger.LogDebug(exception, "Could not read the login shell PATH from {Shell}; using the fallback list.", shell);
+            logger.LogDebug(exception,
+                "Could not read the login shell PATH from {Shell} ({ExceptionType}: {ExceptionMessage}); using the fallback list.",
+                shell, exception.GetType().Name, exception.Message);
 
             return null;
         }
     }
+
+    // Both best-effort and strictly non-blocking: the timeout is the one hard promise ReadLoginShellPath makes,
+    // and a killed shell's child can be in an uninterruptible wait that no signal reaps — so neither the exit
+    // code nor stderr may cost a wait of their own, on top of the deadline that already elapsed to get here.
+    private static string _ExitCodeSnapshot(Process process)
+    {
+        try
+        {
+            return process.HasExited ? process.ExitCode.ToString() : "(still exiting)";
+        }
+        catch (InvalidOperationException)
+        {
+            return "(unknown)";
+        }
+    }
+
+    private static string _StandardErrorSnapshot(Task<string> standardError) =>
+        standardError.Status == TaskStatus.RanToCompletion ? standardError.Result.Trim() : "(stderr not captured)";
 
     // Trailing-slash tolerance: "/home/x/.local/bin/" and "/home/x/.local/bin" are the same PATH entry.
     private static string _Normalize(string entry) => entry.Length > 1 ? entry.TrimEnd('/') : entry;

@@ -1,6 +1,7 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using Cockpit.Infrastructure.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
 
@@ -21,6 +22,17 @@ public sealed class StartupPathRepairTests
     // analyzer (CA1416) cannot see through that — hence the explicit guard around the Unix-only chmod.
     private static string WriteFakeShell(string body)
     {
+        var path = _WriteExecutableScript(body);
+        if (!OperatingSystem.IsWindows())
+        {
+            _WaitUntilExecReady(path);
+        }
+
+        return path;
+    }
+
+    private static string _WriteExecutableScript(string body)
+    {
         var path = Path.Combine(Path.GetTempPath(), $"cockpit-fake-shell-{Guid.NewGuid():N}.sh");
         File.WriteAllText(path, $"#!/bin/sh\n{body}\n");
         if (!OperatingSystem.IsWindows())
@@ -29,6 +41,64 @@ public sealed class StartupPathRepairTests
         }
 
         return path;
+    }
+
+    // AC-610: a freshly written script can answer execve() with ETXTBSY for a moment after its own write handle
+    // closes (confirmed in ReadLoginShellPath_WhenTheScriptIsBusyForWriting_...). Probing with a real exec-and-kill
+    // clears that race instead of guessing at a fixed delay.
+    private static void _WaitUntilExecReady(string path)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                using var probe = Process.Start(new ProcessStartInfo
+                {
+                    FileName = path,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                });
+                try
+                {
+                    probe?.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Already exited on its own (a fast script can finish before Kill reaches it) — nothing to clean up.
+                }
+
+                probe?.WaitForExit();
+
+                return;
+            }
+            catch (Win32Exception exception) when (exception.NativeErrorCode == 26 && deadline.Elapsed < TimeSpan.FromSeconds(2))
+            {
+                Thread.Sleep(5);
+            }
+        }
+    }
+
+    private sealed class _CapturingLogger : ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => _NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
+
+        private sealed class _NullScope : IDisposable
+        {
+            public static readonly _NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
     }
 
     [Fact]
@@ -154,9 +224,14 @@ public sealed class StartupPathRepairTests
         var shell = WriteFakeShell("echo \"__COCKPIT_LOGIN_PATH__=/fake/login/bin:/usr/bin\"");
         try
         {
-            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromSeconds(5), NullLogger.Instance);
+            var log = new _CapturingLogger();
 
-            Assert.Equal("/fake/login/bin:/usr/bin", path);
+            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromSeconds(5), log);
+
+            // A future CI flake here should explain itself instead of just showing "expected X, got null" — the
+            // capturing logger's recorded reason (the branch, the exit code/stderr or the exception) rides along.
+            Assert.True(path == "/fake/login/bin:/usr/bin",
+                $"""expected "/fake/login/bin:/usr/bin" but got {(path is null ? "null" : $"\"{path}\"")}; recorded: {(log.Messages.Count == 0 ? "(nothing logged)" : string.Join(" | ", log.Messages))}""");
         }
         finally
         {
@@ -176,12 +251,14 @@ public sealed class StartupPathRepairTests
         var shell = WriteFakeShell("sleep 30");
         try
         {
+            var log = new _CapturingLogger();
             var elapsed = Stopwatch.StartNew();
-            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromMilliseconds(500), NullLogger.Instance);
+            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromMilliseconds(500), log);
             elapsed.Stop();
 
             Assert.Null(path);
             Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5));
+            Assert.Contains(log.Messages, message => message.Contains("did not answer within", StringComparison.Ordinal));
         }
         finally
         {
@@ -203,9 +280,10 @@ public sealed class StartupPathRepairTests
         var shell = WriteFakeShell("sleep 0.8\nsleep 30 &\nexit 0");
         try
         {
+            var log = new _CapturingLogger();
             var timeout = TimeSpan.FromSeconds(1);
             var elapsed = Stopwatch.StartNew();
-            var path = StartupPathRepair.ReadLoginShellPath(shell, timeout, NullLogger.Instance);
+            var path = StartupPathRepair.ReadLoginShellPath(shell, timeout, log);
             elapsed.Stop();
 
             Assert.Null(path);
@@ -213,6 +291,65 @@ public sealed class StartupPathRepairTests
             // Halfway between the one-deadline (~1s) and stacked (~1.8s) outcomes — with the 3s production
             // deadline the same stacking would mean 6s of blocked startup.
             Assert.True(elapsed.Elapsed < TimeSpan.FromMilliseconds(1400));
+            Assert.Contains(log.Messages, message => message.Contains("did not finish within the remaining", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(shell);
+        }
+    }
+
+    [Fact]
+    public void ReadLoginShellPath_WhenTheShellExitsWithoutAMarkerLine_RecordsTheExitCodeAndStderr()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // A shell that answers and exits cleanly but whose init errored before the PATH echo. The sleep isn't
+        // about the production timeout — the stderr read is strictly non-blocking, so this just gives it real
+        // wall-clock time to finish before the assertion checks it.
+        var shell = WriteFakeShell("echo boom 1>&2\nsleep 0.05\nexit 7");
+        try
+        {
+            var log = new _CapturingLogger();
+
+            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromSeconds(5), log);
+
+            Assert.Null(path);
+            Assert.Contains(log.Messages, message =>
+                message.Contains("exit 7", StringComparison.Ordinal) && message.Contains("boom", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(shell);
+        }
+    }
+
+    [Fact]
+    public void ReadLoginShellPath_WhenTheScriptIsBusyForWriting_RecordsTheExceptionTypeAndMessage()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // ETXTBSY is a Linux execve rule; Windows has no equivalent restriction.
+        }
+
+        // Linux refuses execve on a file still open for writing (AC-610's ETXTBSY hypothesis). WriteFakeShell
+        // already probes past that race, so this test induces it directly instead — holding the write handle
+        // open — to confirm the catch branch records what happened.
+        var shell = _WriteExecutableScript("echo \"__COCKPIT_LOGIN_PATH__=/fake/login/bin:/usr/bin\"");
+        try
+        {
+            using var busy = new FileStream(shell, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+            var log = new _CapturingLogger();
+
+            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromSeconds(5), log);
+
+            Assert.Null(path);
+            Assert.Contains(log.Messages, message =>
+                message.Contains(nameof(Win32Exception), StringComparison.Ordinal) &&
+                message.Contains("busy", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
