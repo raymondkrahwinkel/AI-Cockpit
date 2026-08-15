@@ -7,9 +7,10 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests.Onboarding;
 
 /// <summary>
-/// The work-kind step's own behaviour (AC-511): a work kind ticks boxes and nothing else, every tick stays the
-/// operator's, only the explicit confirmation installs anything, a half-failed batch reports both halves, and an
-/// index published before the work-kind field still drives a working step.
+/// The work-kind step's own behaviour (AC-511): a work kind ticks boxes and nothing else, a generic (untagged)
+/// plugin ticks for whichever kind is chosen, every tick stays the operator's, providers do not appear here at
+/// all, only the explicit confirmation installs anything, a half-failed batch reports both halves, and an index
+/// published before the audience field still drives a working step.
 /// </summary>
 /// <remarks>
 /// The catalogue always arrives through the real <see cref="PluginStoreIndex.TryParse"/>: a substitute handing back
@@ -19,22 +20,24 @@ namespace Cockpit.App.ViewTests.Onboarding;
 [Collection("avalonia")]
 public class WorkKindStepViewModelTests : IDisposable
 {
-    private const string IndexWithWorkKinds = """
+    private const string IndexWithAudience = """
     {
       "name": "Example Store",
       "plugins": [
-        { "id": "github-issues", "name": "GitHub Issues", "author": "Cockpit", "latestVersion": "1.1.0", "workKind": "developer",
+        { "id": "github-issues", "name": "GitHub Issues", "author": "Cockpit", "latestVersion": "1.1.0", "audience": ["developer"],
           "versions": [ { "version": "1.1.0", "path": "github-issues/gh-1.1.0.zip", "abstractionsVersion": 1, "sha256": "aaa111" } ] },
-        { "id": "pull-requests", "name": "GitHub Pull Requests", "author": "Cockpit", "latestVersion": "2.0.0", "workKind": "developer",
+        { "id": "pull-requests", "name": "GitHub Pull Requests", "author": "Cockpit", "latestVersion": "2.0.0", "audience": ["developer"],
           "versions": [ { "version": "2.0.0", "path": "pull-requests/pr-2.0.0.zip", "abstractionsVersion": 1, "sha256": "bbb222" } ] },
-        { "id": "invoices", "name": "Invoices", "author": "Cockpit", "latestVersion": "0.9.0", "workKind": "administration",
-          "versions": [ { "version": "0.9.0", "path": "invoices/inv-0.9.0.zip", "abstractionsVersion": 1 } ] }
+        { "id": "clock", "name": "Clock", "author": "Cockpit", "latestVersion": "0.9.0",
+          "versions": [ { "version": "0.9.0", "path": "clock/clock-0.9.0.zip", "abstractionsVersion": 1 } ] },
+        { "id": "claude-provider", "name": "Claude", "author": "Cockpit", "latestVersion": "1.0.0", "category": "AI providers",
+          "versions": [ { "version": "1.0.0", "path": "claude-provider/claude-1.0.0.zip", "abstractionsVersion": 1 } ] }
       ]
     }
     """;
 
-    /// <summary>An index as published before AC-511 added the field — no <c>workKind</c> anywhere (criterion 5).</summary>
-    private const string IndexBeforeWorkKindExisted = """
+    /// <summary>An index as published before AC-511 added the field — no <c>audience</c> anywhere (criterion 5).</summary>
+    private const string IndexBeforeAudienceExisted = """
     {
       "name": "Example Store",
       "plugins": [
@@ -78,14 +81,14 @@ public class WorkKindStepViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task ChoosingAWorkKind_TicksThePluginsItNames_AndNothingElse()
+    public async Task ChoosingAWorkKind_TicksThePluginsItNames_AndTheGenericOnes()
     {
         var viewModel = _ViewModel();
         await viewModel.LoadAsync();
 
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
 
-        Assert.Equal(new[] { "GitHub Issues", "GitHub Pull Requests" }, _Ticked(viewModel));
+        Assert.Equal(new[] { "GitHub Issues", "GitHub Pull Requests", "Clock" }, _Ticked(viewModel));
     }
 
     [Fact]
@@ -96,22 +99,29 @@ public class WorkKindStepViewModelTests : IDisposable
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
 
         viewModel.Plugins.Single(row => row.Name == "GitHub Pull Requests").IsSelected = false;
-        viewModel.Plugins.Single(row => row.Name == "Invoices").IsSelected = true;
+        viewModel.Plugins.Single(row => row.Name == "Clock").IsSelected = false;
         await viewModel.ConfirmCommand.ExecuteAsync(null);
 
-        Assert.Equal(new[] { "github-issues", "invoices" }, _sentToInstall.Select(request => request.Id));
+        Assert.Equal(new[] { "github-issues" }, _sentToInstall.Select(request => request.Id));
     }
 
+    /// <summary>
+    /// The mechanism ("a new selection replaces the old ticks") does not depend on a second real chip existing —
+    /// today's set has only "Developer" (criterion 6) — so this proves it with a work kind built on the spot.
+    /// A generic plugin still ticks under that kind too, since it is generic for every kind, not just the ones
+    /// the wizard happens to offer as chips.
+    /// </summary>
     [Fact]
-    public async Task ChoosingASecondWorkKind_ReplacesTheFirstsTicks_RatherThanAddingToThem()
+    public async Task ChoosingADifferentWorkKind_ReplacesTheFirstsTicks_RatherThanAddingToThem()
     {
         var viewModel = _ViewModel();
         await viewModel.LoadAsync();
+        var otherKind = new PluginWorkKindOption("qa", "QA", "Testing.");
 
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
-        viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Administration);
+        viewModel.SelectedWorkKind = otherKind;
 
-        Assert.Equal(new[] { "Invoices" }, _Ticked(viewModel));
+        Assert.Equal(new[] { "Clock" }, _Ticked(viewModel));
     }
 
     /// <summary>
@@ -142,6 +152,7 @@ public class WorkKindStepViewModelTests : IDisposable
         var viewModel = _ViewModel();
         await viewModel.LoadAsync();
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
+        viewModel.Plugins.Single(row => row.Name == "Clock").IsSelected = false;
 
         await viewModel.ConfirmCommand.ExecuteAsync(null);
 
@@ -156,9 +167,9 @@ public class WorkKindStepViewModelTests : IDisposable
     /// suggest, so it offers nothing, and the list is the operator's to tick.
     /// </summary>
     [Fact]
-    public async Task AnIndexWithoutTheWorkKindField_LeavesTheStepWorking_WithNothingSuggested()
+    public async Task AnIndexWithoutTheAudienceField_LeavesTheStepWorking_WithNothingSuggested()
     {
-        var viewModel = _ViewModel(IndexBeforeWorkKindExisted);
+        var viewModel = _ViewModel(IndexBeforeAudienceExisted);
 
         await viewModel.LoadAsync();
 
@@ -168,12 +179,26 @@ public class WorkKindStepViewModelTests : IDisposable
     }
 
     /// <summary>
+    /// Providers are chosen in the previous wizard step (AC-510[b], AC-511 criterion 6's answer) — showing one
+    /// here too would be a second, redundant chance to pick it.
+    /// </summary>
+    [Fact]
+    public async Task LoadAsync_ExcludesProviderPlugins()
+    {
+        var viewModel = _ViewModel();
+
+        await viewModel.LoadAsync();
+
+        Assert.DoesNotContain(viewModel.Plugins, row => row.Name == "Claude");
+    }
+
+    /// <summary>
     /// Criterion 2, read off the file rather than argued: after the batch, <c>cockpit.json</c> holds enabled
     /// plugins and no trace of the work kind that suggested them. A stored role is what decision 2 of 2026-07-21
     /// forbids — a work kind pre-ticks boxes, it is not something the app later reasons about.
     /// </summary>
     [Fact]
-    public async Task AfterTheBatch_TheConfigFileNamesNoWorkKind()
+    public async Task AfterTheBatch_TheConfigFileNamesNoWorkKindOrAudience()
     {
         _batchResult = new PluginProvisionBatchResult(
         [
@@ -181,7 +206,7 @@ public class WorkKindStepViewModelTests : IDisposable
             new PluginProvisionResult(PluginProvisionOutcome.Installed, "pull-requests", "GitHub Pull Requests", null, null, "pull-requests", "bbb222"),
         ]);
         var viewModel = new WorkKindStepViewModel(
-            _StoreConfig(), _StoreClient(IndexWithWorkKinds), _provisioning, new PluginRegistrationStore(_configFilePath));
+            _StoreConfig(), _StoreClient(IndexWithAudience), _provisioning, new PluginRegistrationStore(_configFilePath));
         await viewModel.LoadAsync();
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
 
@@ -189,6 +214,7 @@ public class WorkKindStepViewModelTests : IDisposable
 
         var written = await File.ReadAllTextAsync(_configFilePath);
         Assert.Contains("github-issues", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("audience", written, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("workKind", written, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("role", written, StringComparison.OrdinalIgnoreCase);
         foreach (var kind in PluginWorkKinds.All)
@@ -204,7 +230,7 @@ public class WorkKindStepViewModelTests : IDisposable
     private static PluginWorkKindOption _Kind(string key) =>
         PluginWorkKinds.All.Single(option => option.Key == key);
 
-    private WorkKindStepViewModel _ViewModel(string indexJson = IndexWithWorkKinds) =>
+    private WorkKindStepViewModel _ViewModel(string indexJson = IndexWithAudience) =>
         new(_StoreConfig(), _StoreClient(indexJson), _provisioning, _registrations);
 
     private static IPluginStoreConfigStore _StoreConfig()

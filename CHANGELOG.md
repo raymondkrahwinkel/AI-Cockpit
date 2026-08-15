@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the first-run wizard's work-kind step now recommends plugins by the store index's new `audience` field
+  instead of a placeholder — picking "Development" pre-ticks the plugins tagged for it plus every generic
+  (untagged) plugin, and the AI-provider plugins no longer appear here since they are already chosen a step
+  earlier.
+
 - added: the context-usage warning threshold can now be set separately for the voice assistant, in Options next to
   the per-provider thresholds — a session running under the same profile the assistant uses keeps warning at the
   old number, so lowering the assistant's own threshold no longer changes anything for ordinary sessions.

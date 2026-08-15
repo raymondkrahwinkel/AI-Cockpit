@@ -1145,6 +1145,7 @@ offer theirs.
 | `repository` | no | Link to the plugin's source repository, shown in the detail panel. |
 | `featured` | no | `true` pins/highlights the card (e.g. in a "Discover" section); default `false`. |
 | `published` | no | ISO date string (`"YYYY-MM-DD"`) of the latest version's publish date; informational, shown in the detail panel. |
+| `audience` | no | Work kinds (AC-511), e.g. `["developer"]`, that pre-tick this plugin in the first-run wizard's work-kind step. This is the store curator's own call, not the plugin author's — it is not read from `plugin.json`. Empty/absent means generic: the plugin pre-ticks for every work kind chosen, not just a listed one. |
 | `latestVersion` | yes | Drives update detection — compared against the installed plugin's `version` to decide whether the store dialog shows "Install" / "Update" / "Installed". |
 | `versions` | yes | Array, newest first, full version history — see below. |
 
