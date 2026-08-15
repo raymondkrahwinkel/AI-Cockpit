@@ -11,17 +11,31 @@ namespace Cockpit.App.Services;
 //
 // ponytail: the growth this compacts is largely an Avalonia 12.1.1 issue, not our own — the compositor keeps
 // detached transcript-row views rooted (a VirtualizingStackPanel dematerialising a row, or a pane closing, leaves
-// its view tree + ~66 composition visuals/row behind; measured at 967 orphaned views for 216 live rows, ~64k
-// composition visuals over one streaming ticket). Our side detaches cleanly (the views end up with a null parent).
-// Recheck on an Avalonia upgrade — the real fix belongs there, and this compactor can likely shrink or go once it
-// lands. Full repro/analysis was captured under cockpit-diag (VERIFY-fixed.md).
+// its view tree + composition visuals behind). Our side detaches cleanly (the views end up with a null parent).
+// That growth is live and rooted, so compaction cannot free it — it only hands emptied segments back to the OS,
+// measured at ~2% of RSS (100 MB off a 4.6 GB heap). Recheck on an Avalonia upgrade; the real fix belongs there.
+//
+// Hard-won (Raymond on Windows + Rick on Fedora, 2026-08-15): a blocking compacting gen2 collect of a MULTI-GB
+// live heap is a 5-12 s stop-the-world pause — every one of Rick's logged UI-freeze hangs timestamps to one of
+// these compacts. So this only compacts while the heap is still small enough for the pause to be a hitch
+// (CompactCeilingBytes); above that it leaves the heap alone and tells the operator a restart is what clears it.
+// Full repro/analysis under cockpit-diag (VERIFY-fixed.md).
 public sealed class AdaptiveGcCompactor(
     ILogger<AdaptiveGcCompactor>? logger = null,
     Func<long>? heapBytesProbe = null,
     Action? compact = null,
-    Func<DateTime>? utcNow = null) : ISingletonService, IDisposable
+    Func<DateTime>? utcNow = null,
+    Func<long>? allocatedBytesProbe = null) : ISingletonService, IDisposable
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMilliseconds(200);
+
+    // A compact still stops the world for its duration, so even a sub-200 ms one is a visible micro-stutter if it
+    // lands mid-keystroke, mid-scroll or mid-stream. So only compact in a lull: when allocation over the last check
+    // was low, the app is idle and the pause overlaps time nobody is watching. Active work (streaming a reply,
+    // scrolling the transcript) allocates far more than this per 200 ms tick, so a compact is deferred until it
+    // stops — which is what keeps the GC from ever being felt. The leak still can't be compacted away either way;
+    // this just decides *when* the harmless small-heap compacts happen.
+    private const long QuietAllocBytesPerCheck = 8L * 1024 * 1024;
 
     // Compact once the heap crosses this — low enough that catching it here keeps the pause under ~100 ms even
     // under a deliberately aggressive multi-thread leak simulation (AC-733).
@@ -32,15 +46,19 @@ public sealed class AdaptiveGcCompactor(
     // Raymond's instance: 133 compacts/minute of ~250 ms each, freeing under 1 MB, for 40 minutes.
     private const long GrowthBeforeNextCompactBytes = 100L * 1024 * 1024;
 
-    // ponytail: belt-and-suspenders, not the primary defense — the frequent check above should never let the
-    // heap get anywhere near this. If it ever does (a stalled monitor thread, extreme system load), skip the
-    // blocking compact rather than risk the multi-minute pause measured on an uncontrolled multi-GB heap.
-    private const long MaxSafeHeapBytesToCompact = 3L * 1024 * 1024 * 1024;
+    // Never compact above this. A blocking compacting gen2 collect relocates the whole live set, so its pause
+    // scales with heap size: ~100 ms at the 300 MB floor, but 5-12 s at ~4 GB (measured cross-platform — every one
+    // of Rick's UI-freeze hangs on Fedora timestamps to a compact at 3.7-4.1 GB, and Raymond's Windows log shows
+    // the same). Kept close to the floor so every compact we do run stays a sub-200 ms hitch rather than a freeze;
+    // above it the growth is the live, rooted Avalonia retention compaction can't free anyway (it returned ~2% of
+    // RSS), so we leave the heap alone. This is the pause-budget knob: raise it to reclaim more RSS in exchange for
+    // a longer per-compact pause, lower it if even this hitches on slower hardware.
+    private const long CompactCeilingBytes = 512L * 1024 * 1024;
 
-    // AC-770: above the ceiling, retry at most this often (still bounded pause risk) instead of never again —
-    // and log at most this often too, so an unresolved leak that camps above the ceiling can't flood the log.
-    private static readonly TimeSpan OverCeilingLogInterval = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan OverCeilingCompactCooldown = TimeSpan.FromSeconds(30);
+    // Well past any legitimate working set: tell the operator a restart is what clears it (the underlying leak is
+    // Avalonia's, not ours — see the class note). Throttled so a heap that camps up here can't flood the log.
+    private const long LeakWarnCeilingBytes = 3L * 1024 * 1024 * 1024;
+    private static readonly TimeSpan LeakWarnInterval = TimeSpan.FromMinutes(1);
 
     private readonly ILogger<AdaptiveGcCompactor> _logger = logger ?? NullLogger<AdaptiveGcCompactor>.Instance;
 
@@ -53,12 +71,18 @@ public sealed class AdaptiveGcCompactor(
     // Injectable so a test can drive the cooldown/rate-limit without sleeping for real.
     private readonly Func<DateTime> _utcNow = utcNow ?? (() => DateTime.UtcNow);
 
-    // Only ever read and written by the one monitor thread (or a test driving CheckOnce directly).
+    // Cumulative bytes ever allocated — monotonic, so its delta between checks is a clean allocation-rate signal
+    // (the heap size itself is not: a collection drops it mid-stream). Injectable so a test can drive "busy" vs
+    // "idle" without allocating for real. precise:false keeps it a cheap per-thread sum.
+    private readonly Func<long> _allocatedBytes = allocatedBytesProbe ?? DefaultAllocatedBytes;
+
+    // Only ever read and written by the one monitor thread (or a test driving CheckOnce directly). Baselined at
+    // construction so the first check measures a real delta rather than the whole process's allocations to date.
     private long _compactAtBytes = CompactThresholdBytes;
-    private DateTime? _overCeilingSince;
-    private DateTime? _lastOverCeilingWarnUtc;
-    private DateTime? _lastOverCeilingCompactAttemptUtc;
-    private bool _loggedOverCeilingError;
+    private long _lastAllocatedBytes = (allocatedBytesProbe ?? DefaultAllocatedBytes)();
+    private DateTime? _leakWarnSince;
+    private DateTime? _lastLeakWarnUtc;
+    private bool _loggedLeakError;
 
     private Thread? _thread;
     private volatile bool _stopping;
@@ -83,10 +107,29 @@ public sealed class AdaptiveGcCompactor(
         {
             var heapBytes = _heapBytes();
 
-            if (heapBytes <= MaxSafeHeapBytesToCompact)
+            // Sample the allocation rate every check so it stays accurate whichever branch returns below.
+            var allocated = _allocatedBytes();
+            var appIsBusy = allocated - _lastAllocatedBytes >= QuietAllocBytesPerCheck;
+            _lastAllocatedBytes = allocated;
+
+            // Reset the leak-warning latch once the heap falls back under the alarm ceiling.
+            if (heapBytes <= LeakWarnCeilingBytes)
             {
-                _overCeilingSince = null;
-                _loggedOverCeilingError = false;
+                _leakWarnSince = null;
+                _loggedLeakError = false;
+            }
+
+            // Above the compact ceiling, don't: the blocking compacting collect would stop the world for seconds
+            // (this is the freeze both Raymond and Rick were seeing) to reclaim almost nothing, since the growth up
+            // here is the live, rooted Avalonia retention compaction can't free. Warn the operator instead.
+            if (heapBytes >= CompactCeilingBytes)
+            {
+                if (heapBytes >= LeakWarnCeilingBytes)
+                {
+                    _WarnAboutProbableLeak(heapBytes);
+                }
+
+                return;
             }
 
             if (heapBytes < _compactAtBytes)
@@ -94,37 +137,12 @@ public sealed class AdaptiveGcCompactor(
                 return;
             }
 
-            if (heapBytes > MaxSafeHeapBytesToCompact)
+            // Defer to a lull. Compacting while the app is actively allocating (streaming a reply, scrolling the
+            // transcript) is exactly when the pause would be seen; the heap will still be here at the next quiet
+            // check, so nothing is lost by waiting for one.
+            if (appIsBusy)
             {
-                var now = _utcNow();
-                _overCeilingSince ??= now;
-
-                if (!_loggedOverCeilingError)
-                {
-                    if (now - _overCeilingSince.Value >= OverCeilingLogInterval)
-                    {
-                        _logger.LogError(
-                            "Managed heap has stayed above the safe compact ceiling ({Heap}) for over a minute — probable leak, a heap dump is recommended.",
-                            ByteSize.Human(heapBytes));
-                        _loggedOverCeilingError = true;
-                    }
-                    else if (_lastOverCeilingWarnUtc is null || now - _lastOverCeilingWarnUtc.Value >= OverCeilingLogInterval)
-                    {
-                        _logger.LogWarning(
-                            "Managed heap reached {Heap}, past the safe compact ceiling — skipping an automatic compact to avoid a long pause.",
-                            ByteSize.Human(heapBytes));
-                        _lastOverCeilingWarnUtc = now;
-                    }
-                }
-
-                // AC-770: don't latch forever — retry a bounded compact attempt once the cooldown elapses, since
-                // a heap stuck above the ceiling never recovers on its own if it never compacts again.
-                if (_lastOverCeilingCompactAttemptUtc is not null && now - _lastOverCeilingCompactAttemptUtc.Value < OverCeilingCompactCooldown)
-                {
-                    return;
-                }
-
-                _lastOverCeilingCompactAttemptUtc = now;
+                return;
             }
 
             var before = ProcessMemoryInfo.Current().ResidentBytes;
@@ -151,6 +169,38 @@ public sealed class AdaptiveGcCompactor(
         }
     }
 
+    // Throttled operator warning for a heap that has climbed well past any legitimate working set. Escalates to a
+    // single error once it has stayed up there for over a minute. No compact happens here — see CheckOnce: at this
+    // size the pause would be a multi-second freeze for a live leak compaction can't reclaim, so a restart, not a
+    // compact, is the remedy.
+    private void _WarnAboutProbableLeak(long heapBytes)
+    {
+        if (_loggedLeakError)
+        {
+            return;
+        }
+
+        var now = _utcNow();
+        _leakWarnSince ??= now;
+
+        if (now - _leakWarnSince.Value >= LeakWarnInterval)
+        {
+            _logger.LogError(
+                "Managed heap has stayed above {Ceiling} for over a minute ({Heap}) — a known Avalonia retention leak; a restart is what clears it.",
+                ByteSize.Human(LeakWarnCeilingBytes),
+                ByteSize.Human(heapBytes));
+            _loggedLeakError = true;
+        }
+        else if (_lastLeakWarnUtc is null || now - _lastLeakWarnUtc.Value >= LeakWarnInterval)
+        {
+            _logger.LogWarning(
+                "Managed heap reached {Heap}, past {Ceiling} — not compacting (the pause would outweigh the little it reclaims); a restart clears it.",
+                ByteSize.Human(heapBytes),
+                ByteSize.Human(LeakWarnCeilingBytes));
+            _lastLeakWarnUtc = now;
+        }
+    }
+
     private void _Run()
     {
         while (!_stopping)
@@ -159,6 +209,9 @@ public sealed class AdaptiveGcCompactor(
             Thread.Sleep(CheckInterval);
         }
     }
+
+    // Named so the field and its baseline can share one default without duplicating the GC call.
+    private static long DefaultAllocatedBytes() => GC.GetTotalAllocatedBytes(precise: false);
 
     public void Dispose() => _stopping = true;
 }
