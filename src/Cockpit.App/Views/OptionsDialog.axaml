@@ -1175,6 +1175,14 @@
                                 <TextBlock Text="Shared key" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                                 <TextBox Text="{Binding Security.NodeEndpointSharedSecret}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
 
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
+                                    <TextBlock Text="Visible outside this network" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="This node is always visible on its own local network. Past that, nothing — not a discovery reply, not a pairing request — until you list the ranges allowed to reach it here, comma-separated CIDR notation (e.g. 203.0.113.0/24). Empty by default, on purpose."/>
+                                </StackPanel>
+                                <TextBox Text="{Binding Security.AllowedDiscoveryRangesText, UpdateSourceTrigger=LostFocus}" PlaceholderText="e.g. 203.0.113.0/24"
+                                         FontFamily="Consolas,monospace" FontSize="11.5"/>
+
                                 <Border IsVisible="{Binding Security.IsPaired}" Margin="0,8,0,0" Padding="10"
                                         CornerRadius="9" Background="{StaticResource CockpitInsetBgBrush}">
                                     <StackPanel Spacing="6">
@@ -1202,6 +1210,25 @@
                                     ToolTip.Tip="Type the pairing address the other Cockpit shows on its own Security tab. Both screens then show the same six digits: check they match before continuing, because a different number means something other than that machine is answering. The pairing goes live only after both of you have confirmed, and this cockpit remembers that machine's certificate so nothing else can take its place later."/>
                             </StackPanel>
                             <StackPanel Spacing="6" Margin="24,4,0,0">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Discover nodes on this network" Command="{Binding Security.DiscoverNodesCommand}"
+                                            IsEnabled="{Binding !Security.IsDiscoveringNodes}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding Security.DiscoveryStatus}" TextWrapping="Wrap" FontSize="11.5"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                           IsVisible="{Binding Security.DiscoveryStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                <ItemsControl ItemsSource="{Binding Security.FoundNodes}" IsVisible="{Binding Security.FoundNodes.Count}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2">
+                                                <TextBlock Text="{Binding Address}" FontFamily="Consolas,monospace" FontSize="11.5" VerticalAlignment="Center"/>
+                                                <Button Content="Use" Command="{Binding $parent[ItemsControl].DataContext.Security.UseFoundNodeCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBox Text="{Binding Security.PairWithNodeAddress}" PlaceholderText="192.168.1.20:7331" Width="240"
                                              FontFamily="Consolas,monospace" FontSize="11.5"

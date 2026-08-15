@@ -2587,7 +2587,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         INodePairingBroker? nodePairingBroker = null,
         INodePairingClient? nodePairingClient = null,
         INodePairingEndpoint? nodePairingEndpoint = null,
-        IMcpServerStore? mcpServerStore = null)
+        IMcpServerStore? mcpServerStore = null,
+        // AC-793: the second entrance to the same handshake — finding a node on the network instead of typing
+        // its address. Absent in the design-time/unit-test graph the same way the pairing pair above is; the
+        // Security tab's Discover button then does nothing rather than the dialog failing to open.
+        INodeDiscoveryClient? nodeDiscoveryClient = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2610,7 +2614,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodePairingBroker,
             nodePairingClient,
             nodePairingEndpoint,
-            mcpServerStore);
+            mcpServerStore,
+            nodeDiscoveryClient);
         _ = Security.RefreshAsync();
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,

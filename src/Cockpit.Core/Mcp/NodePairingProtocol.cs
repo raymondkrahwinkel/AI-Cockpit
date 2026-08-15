@@ -84,6 +84,11 @@ public static class NodePairingError
     // Another pairing is pending. A second request must not be allowed to quietly replace the one the operator
     // is looking at — that would make cancelling somebody else's pairing a thing an unauthenticated caller can do.
     public const string PairingInProgress = "pairing_in_progress";
+
+    // AC-793: the caller's address is outside this node's own range and outside the whitelist. Distinct from
+    // every code above — those are all about a pairing that exists; this is about a caller this node does not
+    // consider local at all, refused before the broker sees the request.
+    public const string NotVisible = "not_visible";
 }
 
 // A refusal raised in-process, carrying the same problem the wire would have. The broker throws these so the HTTP

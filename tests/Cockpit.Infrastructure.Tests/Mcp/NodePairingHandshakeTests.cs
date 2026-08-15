@@ -24,6 +24,7 @@ public class NodePairingHandshakeTests : IAsyncLifetime
 
     private NodeEndpointSettingsStore _store = null!;
     private NodeSelfSignedCertificate _certificate = null!;
+    private NodeVisibilityPolicy _visibility = null!;
     private NodePairingBroker _broker = null!;
     private NodePairingHost _host = null!;
     private string _address = "";
@@ -37,8 +38,11 @@ public class NodePairingHandshakeTests : IAsyncLifetime
         await _store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "" });
 
         _certificate = new NodeSelfSignedCertificate(_certificatePath);
+        // The default policy's own-range set includes loopback (AC-793) — exactly how every test here reaches
+        // the host — so this needs no whitelist entry to keep passing.
+        _visibility = new NodeVisibilityPolicy(_store);
         _broker = new NodePairingBroker(_store, _certificate, _liveSecret, []);
-        _host = new NodePairingHost(_store, _broker, _certificate, NullLoggerFactory.Instance);
+        _host = new NodePairingHost(_store, _broker, _certificate, _visibility, NullLoggerFactory.Instance);
 
         await _host.StartAsync(CancellationToken.None);
         Assert.NotNull(_host.BoundPort);
@@ -175,7 +179,7 @@ public class NodePairingHandshakeTests : IAsyncLifetime
     {
         var offPath = Path.Combine(Path.GetTempPath(), $"node-handshake-off-{Guid.NewGuid():N}.json");
         var offStore = new NodeEndpointSettingsStore(offPath);
-        var host = new NodePairingHost(offStore, _broker, _certificate, NullLoggerFactory.Instance);
+        var host = new NodePairingHost(offStore, _broker, _certificate, _visibility, NullLoggerFactory.Instance);
         try
         {
             await host.StartAsync(CancellationToken.None);

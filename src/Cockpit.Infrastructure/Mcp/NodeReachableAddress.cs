@@ -16,20 +16,28 @@ internal static class NodeReachableAddress
         ["docker", "veth", "br-", "vmnet", "vboxnet", "virbr", "wsl", "tailscale", "zerotier"];
 
     public static string? Resolve() =>
+        RealUnicastAddresses()
+            // A real Ethernet/Wi-Fi adapter first; anything else (PPP, other) only if nothing better exists.
+            .OrderBy(candidate => candidate.Type is NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211 ? 0 : 1)
+            .Select(candidate => candidate.Address.Address.ToString())
+            .FirstOrDefault();
+
+    // Every IPv4 unicast address this machine has on what looks like a real, physical-ish LAN interface —
+    // loopback, tunnels, link-local self-assigned addresses and known virtual adapters (Docker, WSL, VPN
+    // bridges) filtered out. Shared with `NodeVisibilityPolicy` (AC-793): "what a second cockpit can reach me at"
+    // and "what counts as my own network" are the same question asked from two directions, and answering it with
+    // two separate filters would let them quietly disagree about which interfaces count.
+    internal static IEnumerable<(NetworkInterfaceType Type, UnicastIPAddressInformation Address)> RealUnicastAddresses() =>
         NetworkInterface.GetAllNetworkInterfaces()
             .Where(nic => nic.OperationalStatus == OperationalStatus.Up
                 && nic.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
                 && !_VirtualNameHints.Any(hint =>
                     nic.Name.Contains(hint, StringComparison.OrdinalIgnoreCase)
                     || nic.Description.Contains(hint, StringComparison.OrdinalIgnoreCase)))
-            .SelectMany(nic => nic.GetIPProperties().UnicastAddresses.Select(address => (nic.NetworkInterfaceType, address.Address)))
-            .Where(candidate => candidate.Address.AddressFamily == AddressFamily.InterNetwork
-                && !IPAddress.IsLoopback(candidate.Address)
-                && !_IsLinkLocal(candidate.Address))
-            // A real Ethernet/Wi-Fi adapter first; anything else (PPP, other) only if nothing better exists.
-            .OrderBy(candidate => candidate.NetworkInterfaceType is NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211 ? 0 : 1)
-            .Select(candidate => candidate.Address.ToString())
-            .FirstOrDefault();
+            .SelectMany(nic => nic.GetIPProperties().UnicastAddresses.Select(address => (nic.NetworkInterfaceType, Address: address)))
+            .Where(candidate => candidate.Address.Address.AddressFamily == AddressFamily.InterNetwork
+                && !IPAddress.IsLoopback(candidate.Address.Address)
+                && !_IsLinkLocal(candidate.Address.Address));
 
     private static bool _IsLinkLocal(IPAddress address)
     {

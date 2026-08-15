@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a "Discover nodes on this network" button in Options → Security finds other Cockpits with the node
+  switch on and lets you pair with one by picking it from the list instead of typing its address — same pairing
+  handshake either way. A node is only found on its own local network by default; seeing it from further away
+  needs an explicit CIDR whitelist entered on that node's Security tab, which also gates who may send it a
+  pairing request at all.
+
 - added: two Cockpits on the same network can now pair with each other instead of you copying an address and a key
   by hand. On the machine you want to reach, Options → Security shows a pairing address; type it on the other
   machine and both screens show the same six digits. Confirm on both sides and the pairing goes live — the

@@ -20,11 +20,18 @@ internal sealed class NodeEndpointSettingsEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public NodePairingEntry? Pairing { get; set; }
 
+    // AC-793: CIDR ranges allowed to see this node from outside its own local network. Null (not an empty array)
+    // for every config written before this existed, which reads back through `ToDomain` as the same empty list
+    // `NodeEndpointSettings.AllowedDiscoveryRanges` defaults to — nothing to migrate.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? AllowedDiscoveryRanges { get; set; }
+
     public static NodeEndpointSettingsEntry FromDomain(NodeEndpointSettings settings) => new()
     {
         Enabled = settings.Enabled,
         SharedSecret = settings.SharedSecret,
         Pairing = settings.Pairing is null ? null : NodePairingEntry.FromDomain(settings.Pairing),
+        AllowedDiscoveryRanges = settings.AllowedDiscoveryRanges.Count == 0 ? null : [.. settings.AllowedDiscoveryRanges],
     };
 
     public NodeEndpointSettings ToDomain() => new()
@@ -32,6 +39,7 @@ internal sealed class NodeEndpointSettingsEntry
         Enabled = Enabled,
         SharedSecret = SharedSecret ?? "",
         Pairing = Pairing?.ToDomain(),
+        AllowedDiscoveryRanges = AllowedDiscoveryRanges ?? [],
     };
 }
 
