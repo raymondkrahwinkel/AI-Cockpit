@@ -32,6 +32,12 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Cockpit.App/Cockpit.App.csproj" />
     <ProjectReference Include="../Cockpit.TestSupport/Cockpit.TestSupport.csproj" />
+    <!-- AC-809: a build dependency only (ReferenceOutputAssembly=false) — DiagramPluginLoadTests loads it
+         through the real PluginActivator/PluginLoadContext from its build output, the same end-to-end proof
+         Cockpit.Core.Tests uses for the other example plugins. Lives here rather than there because this is
+         the one plugin whose contribution is an Avalonia control, which needs a real platform to construct. -->
+    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Diagram/Cockpit.Plugin.Diagram.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>

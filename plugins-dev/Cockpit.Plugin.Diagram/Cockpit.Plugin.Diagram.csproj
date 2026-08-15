@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Diagram-builder plugin-schil (AC-809). Avalonia/Skia/Svg.Controls.Skia.Avalonia are host-provided and
+       compile-only (measured: shipping the Svg control's own SkiaSharp copy breaks rendering, see AC-809). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): ExcludeAssets on Avalonia above only suppresses assets Avalonia itself
+         contributes, not those of its own dependency Avalonia.Remote.Protocol — that one still landed in the
+         build output as a stray, unloaded DLL until excluded explicitly here too. -->
+    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): must fall through, not ship — see the project-level comment above. -->
+    <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.13">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Svg.Controls.Skia.Avalonia's own transitive deps — need the same runtime;native exclusion (see AC-809). -->
+    <PackageReference Include="Svg.Skia" Version="5.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="SkiaSharp" Version="3.119.4">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="HarfBuzzSharp" Version="8.3.1.3">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Mermaid-text -> SVG. Pure managed, no Avalonia or Skia dependency (AC-807) — ships in the zip. -->
+    <PackageReference Include="Mermaider" Version="0.12.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- AC-525's DoD: attribution travels with the plugin zip itself, not only via the repo's own NOTICE. -->
+    <None Include="NOTICE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
