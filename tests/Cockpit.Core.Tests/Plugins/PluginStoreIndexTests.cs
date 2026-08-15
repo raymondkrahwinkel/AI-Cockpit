@@ -120,12 +120,12 @@ public class PluginStoreIndexTests
         Assert.Null(entry.Repository);
         Assert.False(entry.Featured);
         Assert.Null(entry.Published);
-        Assert.Null(entry.WorkKind);
+        Assert.Null(entry.Audience);
         Assert.False(entry.Hidden);
     }
 
     [Fact]
-    public void TryParse_EntryWithWorkKind_ReadsIt()
+    public void TryParse_EntryWithAudience_ReadsIt()
     {
         const string json = """
         {
@@ -135,7 +135,7 @@ public class PluginStoreIndexTests
               "id": "github-issues",
               "name": "GitHub Issues",
               "latestVersion": "1.2.0",
-              "workKind": "developer",
+              "audience": ["developer"],
               "versions": [
                 { "version": "1.2.0", "path": "github-issues/gh-1.2.0.zip", "abstractionsVersion": 1 }
               ]
@@ -145,7 +145,7 @@ public class PluginStoreIndexTests
         """;
 
         Assert.True(PluginStoreIndex.TryParse(json, out var index, out _));
-        Assert.Equal(PluginWorkKinds.Developer, index!.Plugins[0].WorkKind);
+        Assert.Equal([PluginWorkKinds.Developer], index!.Plugins[0].Audience);
     }
 
     [Fact]

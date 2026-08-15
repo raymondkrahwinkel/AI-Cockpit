@@ -7,17 +7,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
-// The first-run wizard's work-kind step (AC-511): pick the kind of work, see the plugins that suggests already
-// ticked, change any tick, and confirm the lot once. A work kind is a set of answers that pre-ticks boxes and
-// nothing else — it is not written down, and after this step there is only a set of installed plugins.
-//
-// The batch is the whole point and also the risk: enabling a plugin costs a dialog each (`PluginManagerViewModel
-// .EnablePluginAsync`), which four plugins turn into four dialogs. The guard moves rather than goes — every row
-// carries what its own dialog would have said, and `PluginConsentTerms.PermissionsNotice` is the same
-// constant that dialog shows.
-//
-// Nothing here installs until `ConfirmCommand` runs. The wizard's own Skip and Next never reach it, so
-// leaving the step with rows ticked installs nothing: the pre-tick is a suggestion, not a decision already taken.
+// The first-run wizard's work-kind step (AC-511): pick a kind of work, see the plugins it pre-ticks, change any
+// tick by hand, confirm once. The batch replaces one consent dialog per plugin — every row still carries what its
+// own dialog would have said — and nothing installs until `ConfirmCommand` runs; Skip/Next never reach it.
 public sealed partial class WorkKindStepViewModel : ObservableObject
 {
     private readonly IPluginStoreConfigStore? _storeConfigStore;
@@ -127,6 +119,13 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
 
                 foreach (var entry in fetched.Index.Plugins)
                 {
+                    // Providers are chosen in the previous wizard step (AC-510[b]); showing them again here is
+                    // noise, not a second chance to pick.
+                    if (string.Equals(entry.Category, PluginStoreEntry.ProviderCategory, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
                     // A store may advertise a plugin whose only versions this build cannot run; the row would then
                     // promise something the batch refuses, so it is the version list that decides there is a row.
                     var version = entry.Versions.FirstOrDefault(candidate => candidate.Version == entry.LatestVersion)
@@ -140,7 +139,7 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
                 }
             }
 
-            HasRecommendations = Plugins.Any(plugin => !string.IsNullOrWhiteSpace(plugin.WorkKind));
+            HasRecommendations = Plugins.Any(plugin => plugin.Audience.Count > 0);
             LoadError = failures.Count > 0 ? string.Join(" ", failures) : null;
             _WatchSelection();
         }
@@ -218,8 +217,11 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
     {
         foreach (var plugin in Plugins)
         {
+            // Generic (no audience) ticks for whichever work kind is chosen; a tagged plugin ticks only for one
+            // of its own kinds.
             plugin.IsSelected = SelectedWorkKind is not null
-                && string.Equals(plugin.WorkKind, SelectedWorkKind.Key, StringComparison.OrdinalIgnoreCase);
+                && (plugin.Audience.Count == 0
+                    || plugin.Audience.Contains(SelectedWorkKind.Key, StringComparer.OrdinalIgnoreCase));
         }
     }
 

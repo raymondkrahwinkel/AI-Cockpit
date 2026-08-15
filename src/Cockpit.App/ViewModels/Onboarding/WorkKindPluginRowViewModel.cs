@@ -4,11 +4,8 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.App.ViewModels.Onboarding;
 
 // One plugin on the work-kind step (AC-511), carrying per row what the per-plugin consent dialog carries per
-// dialog: identity, where the code comes from, the checksum that gets verified, and what it may do.
-// Two fields read differently here than in `PluginConsentDialog` because nothing has been downloaded yet:
-// `From` is the store and zip path rather than an installed folder, and `Checksum` is the
-// checksum the store publishes rather than the installed assembly's hash. Both are what is actually verified at
-// this point in the walk.
+// dialog. `From`/`Checksum` read differently since nothing is downloaded yet: store+zip path rather than an
+// installed folder, and the store's published checksum rather than an installed assembly's hash.
 public sealed partial class WorkKindPluginRowViewModel : ObservableObject
 {
     public WorkKindPluginRowViewModel(PluginStoreEntry entry, PluginStoreConfig store, PluginStoreVersion version)
@@ -16,7 +13,7 @@ public sealed partial class WorkKindPluginRowViewModel : ObservableObject
         Name = entry.Name;
         Version = version.Version;
         Author = entry.Author;
-        WorkKind = entry.WorkKind;
+        Audience = entry.Audience ?? [];
         From = $"{store.Location} → {version.Path}";
         Checksum = version.Sha256 ?? "This store publishes no checksum for this version.";
         Request = new PluginProvisionRequest(entry.Id, entry.Name, store, version);
@@ -48,8 +45,9 @@ public sealed partial class WorkKindPluginRowViewModel : ObservableObject
     // What enabling this plugin grants. Same for every plugin until capability grants exist (AC-107).
     public string May => PluginConsentTerms.PermissionSummary;
 
-    // The work kind the store index advertises for this plugin, or null when the index predates the field.
-    public string? WorkKind { get; }
+    // The work kinds the store index recommends this plugin for; empty when the index predates the field or
+    // marks the plugin generic.
+    public IReadOnlyList<string> Audience { get; } = [];
 
     // Ticked by the chosen work kind, and by hand either way — nothing installs until the batch is confirmed.
     [ObservableProperty]
