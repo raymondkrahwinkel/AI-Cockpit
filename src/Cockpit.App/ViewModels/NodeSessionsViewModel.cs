@@ -57,6 +57,12 @@ public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, st
         {
             var snapshot = await client.ReadAsync(NodeName).ConfigureAwait(true);
 
+            // What the operator had picked, so rebuilding the dropdowns does not quietly change what the next
+            // Start will run. Both Start and Stop refresh when they are done, so without this a second start goes
+            // out under the first profile in the list and with no project — neither of which anybody chose.
+            var hadProfile = SelectedProfile?.Label;
+            var hadProject = SelectedProject?.Id;
+
             Sessions.Clear();
             Profiles.Clear();
             Projects.Clear();
@@ -88,9 +94,14 @@ public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, st
                 Projects.Add(new NodeProjectChoice(project.Id, project.Name));
             }
 
-            SelectedProfile ??= Profiles.FirstOrDefault();
-            SelectedProject = Projects.FirstOrDefault();
-            Status = Sessions.Count == 0 ? "Nothing is running on this node." : "";
+            // The previous choice where it still exists — a profile the node's operator has since unticked is gone
+            // from the list, and falling back to the first one is then the honest answer rather than keeping a
+            // selection that would be refused.
+            SelectedProfile = Profiles.FirstOrDefault(profile => string.Equals(profile.Label, hadProfile, StringComparison.Ordinal))
+                ?? Profiles.FirstOrDefault();
+            SelectedProject = Projects.FirstOrDefault(project => string.Equals(project.Id, hadProject, StringComparison.Ordinal))
+                ?? Projects.FirstOrDefault();
+            Status = Sessions.Count == 0 ? "Nothing is running on this node that you may see." : "";
         }
         finally
         {

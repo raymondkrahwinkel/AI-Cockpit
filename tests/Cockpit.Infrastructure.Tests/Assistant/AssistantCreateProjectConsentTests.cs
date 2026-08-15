@@ -277,7 +277,7 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
         public Task<AgentSpawnResult> SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<AgentStopResult> StopAsync(string paneId, CancellationToken cancellationToken = default) =>
+        public Task<AgentStopResult> StopAsync(string paneId, SpawnCaller caller = SpawnCaller.Assistant, string? callerPaneId = null, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default) =>

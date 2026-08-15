@@ -158,6 +158,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     public async Task Stop_ActsOnThePaneIdItWasGiven_NotOnAName()
     {
         McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        _pairing.Profiles.Add(AllowedProfile);
 
         // Criterion 3, at this end: two sessions on this machine carry the same name, and the only thing that tells
         // them apart is the pane id — which is why nothing here looks a session up by name.
@@ -168,6 +169,53 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         Assert.True(answer["ok"]!.GetValue<bool>());
         Assert.Equal("StopAsync(pane-b)", Assert.Single(_gateway.Calls, call => call.StartsWith("StopAsync", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task ListAndStop_CoverOnlyTheWorkRunningUnderAnAllowedProfile()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        _pairing.Profiles.Add(AllowedProfile);
+        _read.Sessions.Add(new AssistantSessionRow("pane-mine", "the sweep", AllowedProfile, "", null, null));
+        // The node operator's own work, under a profile they never ticked for this controller.
+        _read.Sessions.Add(new AssistantSessionRow("pane-theirs", "their own work", "Something Expensive", "", null, null));
+
+        var listed = _Json(await _Tools().ListNodeSessionsAsync())["sessions"]!.AsArray();
+        var stop = _Json(await _Tools().StopNodeAgentAsync("pane-theirs"));
+
+        // Seeing and stopping are the same set on purpose: a fresh pairing with nothing ticked could otherwise end
+        // every agent on the machine while being allowed to start none.
+        Assert.Equal("pane-mine", Assert.Single(listed)!["paneId"]!.GetValue<string>());
+        Assert.False(stop["ok"]!.GetValue<bool>());
+        Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("StopAsync", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Start_UnderALabelThatDiffersOnlyInCase_IsCheckedAgainstTheProfileThatWouldActuallyRun()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        // Only the lower-cased twin is ticked. The spawn path resolves case-insensitively, so checking the string
+        // as it arrived would pass a grant the resolved profile does not have.
+        _pairing.Profiles.Add("laptop sonnet");
+
+        var answer = _Json(await _Tools().StartNodeAgentAsync(AllowedProfile));
+
+        Assert.False(answer["ok"]!.GetValue<bool>());
+        Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("SpawnAsync", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Stop_IsRecordedAsTheController_NotAsThisMachinesOwnAssistant()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        _pairing.Profiles.Add(AllowedProfile);
+        _read.Sessions.Add(new AssistantSessionRow("pane-mine", "the sweep", AllowedProfile, "", null, null));
+
+        await _Tools().StopNodeAgentAsync("pane-mine");
+
+        // A stop that arrived from another machine and is written down as this cockpit's own assistant is a trail
+        // that reads plausibly and is wrong.
+        Assert.Equal((SpawnCaller.Controller, NodeCallerIdentity.PaneId), Assert.Single(_gateway.Stops));
     }
 
     [Fact]
@@ -285,9 +333,12 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
             return Task.FromResult(AgentSpawnResult.Started("pane-new", "the sweep", null, true, request.ProfileLabel));
         }
 
-        public Task<AgentStopResult> StopAsync(string paneId, CancellationToken cancellationToken = default)
+        public List<(SpawnCaller Caller, string? CallerPaneId)> Stops { get; } = [];
+
+        public Task<AgentStopResult> StopAsync(string paneId, SpawnCaller caller = SpawnCaller.Assistant, string? callerPaneId = null, CancellationToken cancellationToken = default)
         {
             Calls.Add($"StopAsync({paneId})");
+            Stops.Add((caller, callerPaneId));
             return Task.FromResult(AgentStopResult.Stopped(paneId, "the sweep"));
         }
 

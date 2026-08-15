@@ -56,7 +56,7 @@ internal sealed class NodeSessionMcpTools(
         "This tool belongs to the cockpit that is paired to this one as its controller. It is not available to a session on this machine.";
 
     [McpServerTool(Name = "list_node_sessions")]
-    [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean.")]
+    [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean.")]
     public async Task<string> ListNodeSessionsAsync()
     {
         try
@@ -66,12 +66,11 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,
                 node = Environment.MachineName,
-                sessions = sessions.Select(session => new
+                sessions = (await _VisibleSessionsAsync().ConfigureAwait(false)).Select(session => new
                 {
                     paneId = session.PaneId,
                     name = session.Name,
@@ -170,7 +169,12 @@ internal sealed class NodeSessionMcpTools(
             // pairing time: unticking a row on the node's Security tab has to stop covering the next call, which is
             // the promise `INodePairingBroker.SetScopeAsync` makes. An unpaired node answers false to both, so a
             // controller whose pairing has just been revoked is refused here as well as at the door.
-            if (!pairing.IsProfileAllowed(profile))
+            //
+            // The label is resolved to a real profile *first*, with the same case-insensitive comparison the spawn
+            // itself will use, and the grant is then checked against what that resolved to. Checking the string as
+            // it arrived would leave a gap wherever two profiles differ only in case: "Foo" is ticked, "foo" is not,
+            // and a request naming "Foo" passes a grant check the spawn then answers with either of them.
+            if (await _ResolveAllowedProfileAsync(profile).ConfigureAwait(false) is not { } allowedProfile)
             {
                 return _Serialize(new
                 {
@@ -197,7 +201,9 @@ internal sealed class NodeSessionMcpTools(
                 // The third door on `SpawnTarget`, and the desk it names was read here rather than received: see
                 // that type's remarks for why a caller's own workspace id must never reach `NamedByTheAssistant`.
                 SpawnTarget.RequestedByThePairedController(workspaceId),
-                profile,
+                // The label as this machine spells it, not as the request spelled it — the one the grant was
+                // actually checked against.
+                allowedProfile,
                 projectId,
                 prompt,
                 // Deliberately no working directory and no provider options over the wire. A path means nothing on
@@ -225,7 +231,7 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "stop_node_agent")]
-    [Description("Closes a session running on the node, named by its pane id from list_node_sessions. TAKE THE ID FROM THAT LIST AND FROM NOWHERE ELSE: a pane id off your own list_sessions names a session on this machine, and the two lists can hold the same names — read the id and the machine back to the operator before you use it. A refusal is normal (a session that has already ended, one that is not an agent), so read the reason out and carry on. This ends the session for good on that machine; nobody there is asked first, because the operator here was given that authority when the two cockpits were paired.")]
+    [Description("Closes a session running on the node, named by its pane id from list_node_sessions. TAKE THE ID FROM THAT LIST AND FROM NOWHERE ELSE: a pane id off your own list_sessions names a session on this machine, and the two lists can hold the same names — read the id and the machine back to the operator before you use it. You can only stop what that list showed you, which is the work running under a profile you were allowed; anything else on that machine is not yours to end and is refused. A refusal is normal (a session that has already ended, one that is not an agent), so read the reason out and carry on. This ends the session for good on that machine; nobody there is asked first, because the operator here was given that authority when the two cockpits were paired.")]
     public async Task<string> StopNodeAgentAsync(
         [Description("The pane id of the session on the node, exactly as list_node_sessions reports it.")] string paneId)
     {
@@ -236,7 +242,21 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            var result = await gateway.StopAsync(paneId).ConfigureAwait(false);
+            // Stopping is bounded by exactly what listing showed, and for the same reason: the grant is what this
+            // controller was given, and a session the node's operator started under a profile they never ticked is
+            // their work, not this caller's. Without this a fresh pairing with nothing ticked could still end every
+            // agent on the machine — able to break everything while allowed to start nothing.
+            var visible = await _VisibleSessionsAsync().ConfigureAwait(false);
+            if (!visible.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal)))
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"There is no session '{paneId}' on this node that you may stop. Call list_node_sessions for the ones you can see; anything else there is running outside what this node's operator allowed you.",
+                });
+            }
+
+            var result = await gateway.StopAsync(paneId, SpawnCaller.Controller, NodeCallerIdentity.PaneId).ConfigureAwait(false);
             return result.Ok
                 ? _Serialize(new { ok = true, node = Environment.MachineName, paneId = result.PaneId, name = result.SessionName })
                 : _Serialize(new { ok = false, error = result.Error });
@@ -245,6 +265,30 @@ internal sealed class NodeSessionMcpTools(
         {
             return _Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    // The sessions this controller may see, which is the same set it may stop: the ones running under a profile
+    // its grant covers. One method rather than a filter at each call site, because "what you can see" and "what you
+    // can end" drifting apart is precisely the hole this closes.
+    //
+    // A session whose profile is no longer ticked disappears from the list and stops being stoppable, live — the
+    // same posture every other grant check here takes. Sessions the node's operator started themselves are visible
+    // when they run under a shared profile, which is deliberate: the grant is over the profile, and two machines
+    // sharing one is what "offload to the laptop" means.
+    private async Task<IReadOnlyList<AssistantSessionRow>> _VisibleSessionsAsync()
+    {
+        var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
+        return [.. sessions.Where(session => pairing.IsProfileAllowed(session.Profile))];
+    }
+
+    // The profile this label names, if the grant covers it — or null, which is the only other answer callers need.
+    // Compared the way the spawn path compares (`AssistantAgentGateway`: OrdinalIgnoreCase), so the profile checked
+    // here is the profile that would run.
+    private async Task<string?> _ResolveAllowedProfileAsync(string label)
+    {
+        var known = await profiles.LoadAsync().ConfigureAwait(false);
+        var match = known.FirstOrDefault(candidate => string.Equals(candidate.Label, label.Trim(), StringComparison.OrdinalIgnoreCase));
+        return match is not null && pairing.IsProfileAllowed(match.Label) ? match.Label : null;
     }
 
     // The desk a controller's session lands on: the one this machine is showing. Derived here and never named by

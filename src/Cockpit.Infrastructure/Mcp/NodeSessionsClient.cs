@@ -191,7 +191,8 @@ internal sealed class NodeSessionsClient(
         // Every tool on `NodeSessionMcpTools` answers with a JSON object, including its refusals — a protocol-level
         // error would mean the far side is not the server this expects, and that is not something to paper over
         // with an empty list.
-        return JsonDocument.Parse(text).RootElement.Clone();
+        using var document = JsonDocument.Parse(text);
+        return document.RootElement.Clone();
     }
 
     // A node's own refusal, verbatim, or null when the call went through. Shown as-is: the node wrote it for the

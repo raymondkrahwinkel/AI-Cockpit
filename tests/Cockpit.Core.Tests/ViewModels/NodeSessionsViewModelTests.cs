@@ -77,6 +77,34 @@ public class NodeSessionsViewModelTests
     }
 
     [Fact]
+    public async Task Start_KeepsWhatWasPicked_SoASecondOneGoesOutTheSameWay()
+    {
+        var client = new FakeNodeSessions
+        {
+            Snapshot = new NodeSessionsSnapshot(
+                "laptop",
+                [],
+                [
+                    new NodeScopedProfileSummary("Laptop Haiku", SessionProvider.ClaudeCli, null),
+                    new NodeScopedProfileSummary("Laptop Sonnet", SessionProvider.ClaudeCli, null),
+                ],
+                [new NodeProjectRow("project-allowed", "Allowed")]),
+        };
+        var card = new NodeSessionsViewModel(client, "laptop");
+        await card.RefreshAsync();
+
+        card.SelectedProfile = card.Profiles[1];
+        card.SelectedProject = card.Projects[1];
+        await card.StartCommand.ExecuteAsync(null);
+        // Start refreshes when it is done, which rebuilds both dropdowns — the second start must not quietly run
+        // under the first profile in the list with no project.
+        await card.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal([("laptop", "Laptop Sonnet"), ("laptop", "Laptop Sonnet")], client.Started);
+        Assert.Equal("project-allowed", card.SelectedProject?.Id);
+    }
+
+    [Fact]
     public async Task Start_WithoutAProfile_AsksForOne_AndCallsNothing()
     {
         var client = new FakeNodeSessions { Snapshot = new NodeSessionsSnapshot("laptop", [], [], []) };

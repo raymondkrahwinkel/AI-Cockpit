@@ -336,7 +336,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
             return Task.FromResult(AgentSpawnResult.Started("pane-new", "AC-545 tests", @"C:\repo"));
         }
 
-        public Task<AgentStopResult> StopAsync(string paneId, CancellationToken cancellationToken = default)
+        public Task<AgentStopResult> StopAsync(string paneId, SpawnCaller caller = SpawnCaller.Assistant, string? callerPaneId = null, CancellationToken cancellationToken = default)
         {
             Calls.Add($"StopAsync({paneId})");
             return Task.FromResult(AgentStopResult.Stopped(paneId, "AC-545 tests"));

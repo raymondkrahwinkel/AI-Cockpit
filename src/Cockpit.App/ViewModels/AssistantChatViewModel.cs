@@ -597,7 +597,14 @@ public sealed record AssistantSpawnLogRowViewModel(
         _DescribeWhat(entry),
         // Criterion 5 names the caller first, and it is the whole reason SpawnCaller exists: once AC-436 lands, a
         // coordinator's spawn and the assistant's are the same shape of entry and only this word tells them apart.
-        entry.Caller == SpawnCaller.Assistant ? "assistant" : $"coordinator ({entry.CallerPaneId ?? "unknown pane"})",
+        // One arm per rule, not "assistant or else": AC-795's paired controller reads here too, and lumping it in
+        // with the coordinator would label work that came from another machine as an agent on this one.
+        entry.Caller switch
+        {
+            SpawnCaller.Assistant => "assistant",
+            SpawnCaller.Controller => "paired controller",
+            _ => $"coordinator ({entry.CallerPaneId ?? "unknown pane"})",
+        },
         entry.WorkspaceName ?? (entry.WorkspaceId.Length > 0 ? entry.WorkspaceId : "—"),
         entry.SessionName ?? entry.PaneId ?? string.Empty,
         entry.Action == AssistantSpawnAction.Start

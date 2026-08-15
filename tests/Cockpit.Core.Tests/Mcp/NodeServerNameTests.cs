@@ -29,11 +29,14 @@ public class NodeServerNameTests
     public void ANameThatIsNotANodesRow_SplitsToNothing(string name) => Assert.Null(NodeServerName.Split(name));
 
     [Fact]
-    public void ANodeNameThatContainsTheSeparator_SplitsAtTheFirstOne()
+    public void ANodeNameThatContainsTheSeparator_StillLeavesTheEndpointReadable()
     {
-        // The machine name is what the node reported (`Environment.MachineName`), so it is not this side's to
-        // validate. Splitting at the first separator keeps the endpoint — the half this side actually matches on —
-        // correct whatever the other half turns out to contain.
-        Assert.Equal("odd · name", NodeServerName.Split("odd · name · cockpit-node")?.NodeName);
+        // The machine name is whatever the node reported (`Environment.MachineName`), so it is not this side's to
+        // validate. Splitting from the right keeps the endpoint — the half this side actually matches on — correct
+        // whatever the other half turns out to contain.
+        var split = NodeServerName.Split("odd · name · cockpit-node");
+
+        Assert.Equal(NodeServerName.SessionsServerName, split?.ServerName);
+        Assert.Equal("odd · name", split?.NodeName);
     }
 }
