@@ -36,6 +36,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   over TLS with a shared key — off by default, enable it under Options → Security. Turning it on takes effect the
   next time Cockpit starts.
 
+- added: opencode as a session provider plugin, driven over the Agent Client Protocol via `opencode acp` — a
+  second real agent alongside Claude, not just a chat window: real tool calls, permission prompts routed
+  through the same consent card every session uses, and live usage/cost figures. Requires the opencode CLI
+  installed (opencode.ai/docs), authenticated for most models.
+
 - added: Grok (xAI) as a selectable session provider plugin — configure an xAI API key and a model id (e.g.
   `grok-4.6`) per profile in Manage profiles. Chat-only: no tool calls, file access or permission prompts, and no
   context/usage pill (Grok's endpoint reports neither).
