@@ -4,26 +4,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// Translates a `session/update` notification's `params` into zero-or-more `PluginSessionEvent`s (AC-783),
-// discriminated on `params.update.sessionUpdate` — a copy of
-// `Cockpit.Plugin.KimiProvider.KimiSessionUpdateMapper`'s design (an unknown or malformed update yields
-// nothing rather than throwing, so one bad line never kills the notification pump; the lazy tool-call
-// tracking exists for the same reason: agent-core streams deltas before a tool call's arguments are known).
-// Not stateless: exactly one `PluginToolUseRequested` must reach the host per toolCallId, at the earliest of
-// a `tool_call` that already carries `rawInput`, the first `tool_call_update` that does, or a terminal
-// `tool_call_update` for an id that never got one (with whatever is known by then). One instance is owned per
-// session by `OpencodeAcpSessionDriver`, which also drives the fourth trigger — a `session/request_permission`
-// for an id that never got one — through `EnsureToolUseRequested`, since that request arrives outside the
-// `session/update` stream this class otherwise reads.
-//
-// Measured live against opencode 1.18.18: the discriminator values this mapper handles
-// (agent_message_chunk, agent_thought_chunk, tool_call, tool_call_update, available_commands_update,
-// config_option_update) all appeared in real traffic in this session's own ACP probing, with shapes matching
-// Kimi's protocol byte-for-byte — both are ACP implementations of the same open spec. `usage_update` also
-// appeared live (`{"sessionUpdate":"usage_update","used":8507,"size":200000,"cost":{"amount":0,"currency":"USD"}}`)
-// but is deliberately NOT handled here — see OpencodeAcpSessionDriver's remarks for why it is read directly
-// by the driver instead of routed through this mapper. `plan` was not observed live but is dropped on
-// purpose for the same reason Kimi drops it: Cockpit has no plan panel to render it on.
+// AC-783: translates a `session/update` notification into events — a copy of KimiSessionUpdateMapper's
+// design (malformed input yields nothing, never throws). Not stateless: exactly one PluginToolUseRequested
+// must reach the host per toolCallId. `usage_update` is deliberately not handled here — see the driver.
 internal sealed class OpencodeSessionUpdateMapper
 {
     // How many toolCallIds either map remembers before the oldest is forgotten — exposed for tests.
@@ -82,10 +65,8 @@ internal sealed class OpencodeSessionUpdateMapper
         };
     }
 
-    // Trigger (c) for a `session/request_permission`: if `toolCallId` never produced its one
-    // `PluginToolUseRequested`, emits it now — using whatever this mapper already knows about the id, or
-    // `fallbackToolName` if it knows nothing at all — because a permission card with no matching prior
-    // tool-use request has no host-side tool to attach its buttons to. Returns `null` once the id already has one.
+    // Trigger (c): if a permission request's toolCallId never produced its one PluginToolUseRequested, emit
+    // it now with whatever is known — the card needs a tool to attach its buttons to.
     public PluginToolUseRequested? EnsureToolUseRequested(string toolCallId, string? sessionId, string fallbackToolName)
     {
         if (_emittedToolUseRequests.ContainsKey(toolCallId))
@@ -107,11 +88,8 @@ internal sealed class OpencodeSessionUpdateMapper
             ? new OpencodeSessionUpdateMapResult([new PluginAssistantThinkingDelta { SessionId = sessionId, BlockIndex = 0, Thinking = text }], null)
             : OpencodeSessionUpdateMapResult.Empty;
 
-    // Trigger (a): agent-core streams deltas before a tool call's arguments are known, so the adapter
-    // lazy-creates this first tool_call with status "pending" and only the tool name as title — no rawInput
-    // yet (measured live). When it does carry rawInput already, this is the earliest trigger and fires
-    // PluginToolUseRequested immediately; otherwise the name is remembered until a later trigger ((b) or (c))
-    // decides when the one event fires.
+    // Trigger (a): agent-core streams deltas before a tool call's arguments are known (measured live), so a
+    // tool_call with rawInput fires immediately; without it, the name is remembered for a later trigger.
     private OpencodeSessionUpdateMapResult _MapToolCall(JsonElement update, string? sessionId)
     {
         if (!_TryGetString(update, "toolCallId", out var toolCallId))

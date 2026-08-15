@@ -3,15 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
-// `OpencodeAcpSessionDriver` against a `FakeCliSubprocess` (AC-783) — proves the full session lifecycle
-// without a live `opencode acp`: session/new with an absolute cwd, the forced OPENCODE_CONFIG_CONTENT
-// permission policy (criterion 3 — the mechanism this session's own live probing found, since opencode does
-// not ask by default and ignores an inline session/new permission param), session/resume (never
-// session/load), the MCP stdio no-type shape, model/mode option handling validated against the live
-// configOptions snapshot rather than a hardcoded id list, the permission request/response cycle, live
-// usage_update -> Status mapping, and stop-reason mapping across the full five-value ACP spec enum. Mirrors
-// Cockpit.Plugin.KimiProvider.Tests.KimiAcpSessionDriverTests' harness pattern, scoped to what differs for
-// opencode plus the core lifecycle both share — not a line-for-line port of Kimi's ~85 tests.
+// AC-783: `OpencodeAcpSessionDriver` against a `FakeCliSubprocess` — session lifecycle, the forced
+// OPENCODE_CONFIG_CONTENT permission policy, MCP shapes, and stop-reason mapping. Mirrors
+// KimiAcpSessionDriverTests' harness pattern, scoped to what differs plus the shared core lifecycle.
 public class OpencodeAcpSessionDriverTests
 {
     private static OpencodeConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());

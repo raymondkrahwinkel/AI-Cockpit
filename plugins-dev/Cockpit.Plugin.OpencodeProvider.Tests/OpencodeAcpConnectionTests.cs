@@ -2,14 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
-// `OpencodeAcpConnection` against a `FakeCliSubprocess` (AC-783) — proves the JSON-RPC transport under the
-// opencode ACP driver: a request gets its correlated reply, a JSON-RPC error surfaces as an exception with
-// its message built from only code+message (never the raw error object, which could echo request data such
-// as a Bearer token back into a UI status line), notifications and agent-initiated requests are routed to
-// their own streams, and a request outstanding when the stream ends fails rather than hangs. Mirrors
-// Cockpit.Plugin.KimiProvider.Tests.KimiAcpConnectionTests — this transport is an unmodified copy of Kimi's
-// own, so only the core correctness properties are re-asserted here, not the full backpressure/stderr-deadlock
-// stress suite Kimi's own tests already cover for the identical channel-based implementation.
+// AC-783: `OpencodeAcpConnection` against a `FakeCliSubprocess` — proves the JSON-RPC transport. Mirrors
+// KimiAcpConnectionTests; this transport is an unmodified copy of Kimi's own, so only the core correctness
+// properties are re-asserted here, not the full backpressure/stderr-deadlock stress suite.
 public class OpencodeAcpConnectionTests
 {
     private static readonly Dictionary<string, string?> _NoEnv = new();

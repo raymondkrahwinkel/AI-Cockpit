@@ -1,11 +1,7 @@
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
-// `OpencodeProviderPlugin`'s `SessionProviderRegistration`: the host builds its `PluginSessionDriverAdapter`
-// from `SessionProviderRegistration.Capabilities`, never from the driver instance's own
-// `IPluginSessionDriver.Capabilities` — a capability the driver supports but this registration does not
-// declare is invisible to the host regardless of what the driver itself reports. Same regression test
-// `Cockpit.Plugin.KimiProvider.Tests.KimiProviderPluginTests` runs for Kimi, verified against this plugin's
-// own registration rather than assumed to be safe because Kimi's own equivalent passes.
+// The host builds its driver adapter from registration.Capabilities, never the driver instance's own —
+// same regression test KimiProviderPluginTests runs for Kimi, verified independently here.
 public class OpencodeProviderPluginTests
 {
     [Fact]

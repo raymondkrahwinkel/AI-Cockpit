@@ -9,13 +9,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// The "add/edit profile" config panel for the opencode ACP provider (AC-783): the CLI command/path, an
-// optional API key, and an optional default model — mirrors
-// `Cockpit.Plugin.KimiProvider.KimiProviderConfigView`'s shape and its login-button pattern.
-// P1-10c/IL#9-class caveat carried over from Kimi's own file: the login button's `_StartLogin` was never
-// exercised against a rendered window or a real interactive terminal in this environment — built to the same
-// shape and the same documented Win32 console-allocation behaviour Kimi's own view relies on, neither of
-// which is empirically verified here either.
+// AC-783: the "add/edit profile" config panel, mirroring KimiProviderConfigView's shape and login-button
+// pattern. Caveat carried over from Kimi's own file: `_StartLogin` was never exercised against a rendered
+// window or a real terminal in this environment.
 internal sealed class OpencodeProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _command;
@@ -43,13 +39,9 @@ internal sealed class OpencodeProviderConfigView : IPluginProviderConfigView
             PlaceholderText = "e.g. anthropic/claude-sonnet-4-5 (blank = opencode's own default)",
         };
 
-        // An API key above is the primary auth route — it is passed as OPENCODE_API_KEY (measured: the
-        // documented env var opencode.ai's own ACP integration examples pass through). This button is the
-        // second route, for a machine with no key configured: it starts opencode's own device-code-style
-        // login flow (measured live: initialize's authMethods advertises exactly one, "opencode-login",
-        // described as "Run `opencode auth login` in the terminal"). That flow needs an interactive terminal,
-        // which this app's own stdio is not, so the button opens one rather than trying to render the prompt
-        // itself — same reasoning as Kimi's own login button.
+        // An API key is the primary auth route (passed as OPENCODE_API_KEY). This button is the second route
+        // for a machine with none configured — opencode's own login flow needs a real terminal, which this
+        // dialog's own stdio is not, so it opens one instead of trying to render the prompt itself.
         var loginButton = new Button { Content = "Login with opencode account…" };
         loginButton.Click += (_, _) => _StartLogin();
 

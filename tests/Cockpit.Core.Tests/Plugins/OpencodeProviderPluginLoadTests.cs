@@ -9,14 +9,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// End-to-end loader proof for the opencode ACP provider plugin (AC-783): loads the real compiled plugin
-/// through the actual <see cref="PluginActivator"/>/<see cref="PluginLoadContext"/> and asserts type-identity
-/// holds, its metadata is right, and it registers its session provider ("opencode (ACP)") via
-/// <see cref="ICockpitHost.AddSessionProvider"/> with real-agent capabilities — the seam that would
-/// otherwise only be exercised by a hand-written fake. Structure mirrors <see cref="GitHubModelsProviderPluginLoadTests"/>
-/// (the Kimi provider plugin has no such test of its own for this to mirror by name), adapted to also assert
-/// the tools/permissions/live-model-switch capabilities an ACP provider declares that a chat-only
-/// OpenAiCompat provider does not.
+/// End-to-end loader proof for the opencode ACP provider plugin (AC-783): loads it through <see cref="PluginActivator"/>
+/// and asserts it registers its session provider with real-agent (tools/permissions) capabilities.
 /// </summary>
 public class OpencodeProviderPluginLoadTests
 {

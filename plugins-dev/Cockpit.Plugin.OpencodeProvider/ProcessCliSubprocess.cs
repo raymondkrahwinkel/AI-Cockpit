@@ -4,21 +4,12 @@ using System.Text;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// Real `ICliSubprocess` backed by `System.Diagnostics.Process` (AC-783) — a copy of
-// `Cockpit.Plugin.KimiProvider.ProcessCliSubprocess`'s spawn/UTF-8/dispose discipline, unchanged: the seam
-// is identical, only which CLI it spawns differs (that lives in `OpencodeAcpConnection.Start`, not here).
-// Exercised live against the real `opencode` binary in this session's own research (installed into an
-// isolated $HOME, never against this repo's real environment) — unlike Kimi's own copy of this class, whose
-// header notes it was never run against a real process.
+// AC-783: a copy of Kimi's own ProcessCliSubprocess, unchanged — only which CLI it spawns differs. Exercised
+// live against the real opencode binary in this session's research, unlike Kimi's own copy of this class.
 internal sealed class ProcessCliSubprocess : ICliSubprocess
 {
-    // A hard cap on a single stdout/stderr line — opencode acp's output is untrusted, and
-    // StreamReader.ReadLineAsync (what this used to call) has no length limit of its own: a child that never
-    // emits a newline would grow the accumulating buffer until the HOST process OOMs, not just this session.
-    // 16 MiB is a generous multiple of any legitimate NDJSON line (a session/update payload runs a few KB;
-    // the largest observed live was a tool_call_update carrying a full file diff, still under 100 KB).
-    // Counted in chars rather than exact UTF-8 bytes — a reasonable proxy, since opencode's wire traffic is
-    // near-ASCII JSON — not a byte-perfect budget.
+    // A hard cap on a single stdout/stderr line — untrusted output with no newline would otherwise grow the
+    // buffer unbounded. 16 MiB is generous; the largest observed live payload was under 100 KB.
     internal const int MaxLineLengthChars = 16 * 1024 * 1024;
 
     private Process? _process;
@@ -95,10 +86,8 @@ internal sealed class ProcessCliSubprocess : ICliSubprocess
     internal IAsyncEnumerable<string> ReadLinesAsyncForTests(StreamReader reader, CancellationToken cancellationToken = default) =>
         _ReadLinesAsync(reader, cancellationToken);
 
-    // Replaces StreamReader.ReadLineAsync (no length limit of its own) with a capped accumulator. A line that
-    // grows past MaxLineLengthChars is dropped, and the rest of that same line is skipped up to the next '\n'
-    // rather than buffered in full — so the stream re-synchronises on the next NDJSON line (NDJSON is
-    // line-based) instead of desyncing or growing without bound.
+    // A capped line accumulator: a line past MaxLineLengthChars is dropped and skipped to the next '\n', so
+    // the stream re-synchronises on the next NDJSON line instead of growing without bound.
     private async IAsyncEnumerable<string> _ReadLinesAsync(StreamReader reader, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var buffer = new char[8192];

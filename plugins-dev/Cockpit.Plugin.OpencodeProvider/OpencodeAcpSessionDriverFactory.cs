@@ -3,10 +3,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// `IPluginSessionDriverFactory` for the opencode ACP provider (AC-783): deserializes the profile's opaque
-// config JSON into an `OpencodeConfig`, resolves its `OpencodeConfig.Command` to a spawnable path via
-// `OpencodeExecutableLocator`, and builds an `OpencodeAcpSessionDriver` backed by the real
-// `ProcessCliSubprocess` — mirrors `Cockpit.Plugin.KimiProvider.KimiAcpSessionDriverFactory`.
+// AC-783: deserializes the config JSON, resolves the command to a spawnable path, and builds a driver
+// backed by the real ProcessCliSubprocess — mirrors KimiAcpSessionDriverFactory.
 internal sealed class OpencodeAcpSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)

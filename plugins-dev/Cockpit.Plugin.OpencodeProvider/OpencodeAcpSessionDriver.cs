@@ -4,50 +4,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// `IPluginSessionDriver` for opencode.ai over the Agent Client Protocol (AC-783) — built to the shape of
-// `Cockpit.Plugin.KimiProvider.KimiAcpSessionDriver` (the same host/pump/permission architecture: two
-// background pumps drain `OpencodeAcpConnection.Notifications`/`ServerRequests`, `SendUserMessageAsync` is
-// fire-and-forget because `session/prompt` only settles at turn end, permission requests route through
-// Cockpit's own consent card), but re-measured rather than copied wherever the ticket asked for it —
-// several real differences from Kimi came out of that measurement, documented below and at each site they
-// change:
-//
-// 1. Usage/cost reporting (criterion 2, "no quota/cost" limitation): FALSE for opencode. A dedicated
-//    `usage_update` session/update variant arrived unprompted after every real turn in this session's live
-//    probing — `{"sessionUpdate":"usage_update","used":8507,"size":200000,"cost":{"amount":0,"currency":"USD"}}`
-//    — so this driver reads it directly (see `_HandleNotification`) instead of Kimi's `/usage`-as-a-fake-turn
-//    scrape, which also means none of Kimi's `_promptGate`-for-usage-polling machinery is needed here at all:
-//    `_promptGate` below exists only to stop two real turns overlapping, not to serialise a poll against them.
-// 2. Permission-by-default (criterion 3): opencode does NOT ask permission for edit/bash tools by default —
-//    measured live, a plain `session/new` with no project config executed a file write with zero
-//    `session/request_permission`. Asking is controlled entirely by opencode's own `permission` config
-//    (`opencode.json`, project or global), which the ACP wire gives no session-scoped way to set — an inline
-//    `permission` field on `session/new` params was silently ignored in this session's testing. The one
-//    mechanism that did work, live-verified, is the `OPENCODE_CONFIG_CONTENT` environment variable (documented
-//    on opencode.ai/docs/config as the highest-priority config layer short of an org-managed lock) — see
-//    `StartAsync`, which sets it on every spawn so a permission request reaches this driver (and therefore
-//    Cockpit's consent card) regardless of what the target project's own config says.
-// 3. Model/mode configOptions (criterion 6/AC-272-equivalent): measured live as `[{id:"model",...},{id:"mode",...}]`
-//    only — no "thinking" id the way Kimi has. Rather than hardcode a fixed valid-id list the way Kimi does
-//    (defensible there because Kimi's own protocol note says exactly three configIds exist, full stop), this
-//    driver validates a `SetLiveOptionAsync` key against whatever `_liveOptions` the current session snapshot
-//    actually reports — correct for a CLI this session only observed one model's worth of configOptions from.
-// 4. StopReason (criterion 2, "failed turn indistinguishable" limitation): the base Agent Client Protocol spec
-//    (agentclientprotocol.com/protocol/prompt-turn) defines five stop reasons — end_turn, max_tokens,
-//    max_turn_requests, refusal, cancelled — not the three-value fold Kimi's own SDK performs before handing
-//    a reason to the client. Only end_turn and cancelled were exercised live against opencode 1.18.18 in this
-//    session; max_tokens/max_turn_requests/refusal are mapped per the published spec text below, not
-//    independently reproduced here. Whether opencode actually emits the full five or folds them the way Kimi's
-//    SDK does was not settled by this session's testing — see `_MapStopReason`.
-// 5. Environment passthrough: unlike Kimi (a single-vendor CLI, where an inherited ANTHROPIC_*/CLAUDE_CODE_*
-//    credential is unambiguously foreign), opencode is explicitly multi-provider — its own docs and ACP
-//    integration examples pass provider credentials like `OPENCODE_API_KEY` through the environment by
-//    design, and a shell that already has e.g. `ANTHROPIC_API_KEY` set for other tools may well be relying on
-//    opencode picking it up as one of its own supported providers. This driver does not scrub any inherited
-//    credential family the way Kimi's StartAsync does — there is no "foreign" vendor for a model-agnostic CLI.
-// 6. System prompt: no `session/new`/ACP-base-spec parameter for one was found in this session's research —
-//    same unclaimed-capability conclusion as Kimi, but this is a protocol-level gap (the base ACP spec itself
-//    defines no such parameter), not something specific to either agent's own implementation.
+// AC-783: opencode.ai over ACP, same host/pump/permission architecture as KimiAcpSessionDriver — but every
+// capability below was re-measured against a real opencode process rather than assumed from Kimi (usage/cost
+// reporting, forced permission-ask, config-option validation, stop reasons); see the ticket for the measurements.
 internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
 {
     private const string _ClientName = "Cockpit";
@@ -58,12 +17,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     // agent is on the other end of the pipe.
     internal const int MaxPendingApprovals = 500;
 
-    // opencode's own "mode" configId has exactly two values (measured live: "build", "plan" — see the class
-    // remarks). Cockpit's host-side permission-mode vocabulary has four; unlike Kimi (four Kimi-side modes for
-    // four host-side ones), two of Cockpit's collapse onto "build" here. acceptEdits fails closed to "build"
-    // (which itself only avoids prompting when this driver's own OPENCODE_CONFIG_CONTENT policy allows it —
-    // see _OpencodePermissionPolicyJson) rather than a hypothetical looser tier opencode does not have, the
-    // same fail-closed reasoning Kimi's own dictionary comment gives.
+    // opencode's own "mode" configId has exactly two values (measured live: "build", "plan"); Cockpit's four
+    // host-side modes collapse onto them, acceptEdits failing closed to "build" rather than a looser tier
+    // opencode does not have — same fail-closed reasoning Kimi's own dictionary comment gives.
     private static readonly IReadOnlyDictionary<string, string> _PermissionModeToOpencodeMode = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["default"] = "build",
@@ -100,10 +56,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     // refinement sequence) across the whole session's notification stream.
     private readonly OpencodeSessionUpdateMapper _toolCallMapper = new();
 
-    // Serialises "decide who owns this toolCallId's one PluginToolUseRequested" with "write it to the
-    // channel". Two independent pump tasks (notifications, server requests) can both touch the same toolCallId
-    // — see KimiAcpSessionDriver's own remarks for the exact race this closes. Only ever held around
-    // synchronous channel writes, never across an await, so it cannot deadlock the pumps against each other.
+    // Serialises "claim this toolCallId's one PluginToolUseRequested" with "write it to the channel" — two
+    // independent pump tasks can both touch the same id. Held only around sync writes, never across an
+    // await, so it cannot deadlock the pumps against each other.
     private readonly object _emitGate = new();
 
     private string? _model;
@@ -128,10 +83,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     // CancellationTokenSource/SemaphoreSlim below.
     private bool _disposed;
 
-    // The configOptions snapshot, rebuilt from session/new|resume, session/set_config_option and
-    // config_option_update — the authoritative source for LiveOptions and for SetLiveOptionAsync's own
-    // client-side validation (see the class remarks, point 3). Volatile — read from LiveOptions on whatever
-    // thread the host polls from, written from StartAsync/SetLiveOptionAsync/the notification pump.
+    // The configOptions snapshot, rebuilt from session/new|resume/set_config_option/config_option_update —
+    // authoritative for LiveOptions and SetLiveOptionAsync's own validation. Volatile: written from three
+    // different tasks (StartAsync, SetLiveOptionAsync, the notification pump).
     private volatile IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
 
     public OpencodeAcpSessionDriver(Func<ICliSubprocess> subprocessFactory, OpencodeConfig config, string executablePath)
@@ -169,10 +123,8 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     // sessionCapabilities), or `null` before `StartAsync(string?, CancellationToken)` completes.
     internal JsonElement? AgentCapabilities => _agentCapabilities;
 
-    // The initialize response's `authMethods` — measured live: opencode advertises exactly one,
-    // `{"id":"opencode-login","name":"Login with opencode","description":"Run `opencode auth login` in the terminal"}`
-    // — or `null` before `StartAsync(string?, CancellationToken)` completes. Not otherwise acted on by this
-    // driver (kept alongside AgentCapabilities for a future config-view/UI, same as Kimi's own field).
+    // The initialize response's `authMethods` (measured live: opencode advertises exactly one, "opencode-login")
+    // — kept alongside AgentCapabilities for a future config-view/UI, same as Kimi's own field.
     internal JsonElement? AuthMethods => _authMethods;
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
@@ -207,12 +159,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             }
         }
 
-        // AC-783 criterion 3: force a permission-ask (or, for an operator who explicitly chose full autonomy,
-        // allow) policy via the one mechanism that is live-verified to reach opencode's own permission engine
-        // regardless of the target project's own opencode.json — see the class remarks, point 2. This
-        // deliberately overrides any permission rule a project's own config carries while a Cockpit profile is
-        // driving the session: Cockpit's consent card is meant to be the permission surface for this session,
-        // the same principle every other ACP/TTY provider in this tree already follows.
+        // AC-783: force a permission-ask (or allow, for bypassPermissions) policy via the one mechanism
+        // live-verified to reach opencode's permission engine regardless of the project's own opencode.json —
+        // Cockpit's consent card is the permission surface for this session, not the CLI's own config.
         var permissionMode = _ResolveOption(options, WellKnownPluginSessionOptions.PermissionMode, fallback: null);
         environmentVariables["OPENCODE_CONFIG_CONTENT"] = _OpencodePermissionPolicyJson(permissionMode);
 
@@ -240,10 +189,8 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         {
             if (!string.IsNullOrWhiteSpace(resumeSessionId))
             {
-                // session/resume, never session/load — the same D1 reasoning Kimi's driver documents: load
-                // replays the whole history as session/update notifications before its response settles,
-                // doubling the transcript Cockpit already keeps itself. resume's response carries no sessionId
-                // of its own — the id is the one we already gave it.
+                // session/resume, never session/load — load replays the whole history as session/update
+                // notifications, doubling the transcript Cockpit already keeps itself (same as Kimi's driver).
                 sessionResult = await _connection.SendRequestAsync("session/resume", new { cwd = absoluteCwd, sessionId = resumeSessionId, mcpServers = mcpServersWire }, cancellationToken).ConfigureAwait(false);
                 _sessionId = resumeSessionId;
             }
@@ -257,12 +204,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         }
         catch (OpencodeAcpException exception)
         {
-            // Unlike Kimi's StartAsync, this does not match a specific JSON-RPC code for "not authenticated" —
-            // that code was never exercised live (this session's own testing used opencode's built-in free
-            // models, which need no auth at all), so matching one here would be exactly the kind of unmeasured
-            // assumption AC-783 asks not to make. The agent's own error text is preserved and a general,
-            // actionable pointer is appended instead — the readable-error path criterion 4 asks for, without
-            // pretending to know a failure mode this session never saw.
+            // AC-783: unlike Kimi, this does not match a specific "not authenticated" JSON-RPC code — that
+            // code was never exercised live (free models need no auth). The agent's own error text is kept,
+            // with a general actionable pointer appended instead of a guessed code.
             var actionableMessage = $"opencode could not start a session: {exception.Message} If this is an authentication problem, set an API key in this provider's configuration or run \"opencode auth login\" in a terminal, then try again.";
             _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = actionableMessage, Kind = PluginSessionErrorKind.Unknown });
             throw new OpencodeAcpException(actionableMessage, exception.Code ?? 0);
@@ -301,12 +245,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         }
     }
 
-    // The permission policy forced onto every spawn via OPENCODE_CONFIG_CONTENT (see StartAsync's remarks and
-    // the class remarks, point 2). "bypassPermissions" is the one host-side mode that means "run fully
-    // autonomously, no operator prompts" — honouring that intent means actually allowing everything, not
-    // asking anyway; every other mode (including no mode selected at all) defaults to asking for everything,
-    // which is what makes AC-783 criterion 3 true by default rather than only when a project happens to have
-    // its own opencode.json permission config.
+    // The permission policy forced onto every spawn via OPENCODE_CONFIG_CONTENT (see StartAsync). Only
+    // "bypassPermissions" allows everything — honouring that explicit choice; every other mode, including
+    // none selected, defaults to asking, so criterion 3 holds regardless of the project's own config.
     private static string _OpencodePermissionPolicyJson(string? permissionMode) =>
         permissionMode == "bypassPermissions"
             ? """{"permission":{"*":"allow"}}"""
@@ -370,15 +311,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = stopReason, Result = null, IsError = isError, StopReason = stopReason });
     }
 
-    // The base Agent Client Protocol spec (agentclientprotocol.com/protocol/prompt-turn) defines five stop
-    // reasons. Only "end_turn" and "cancelled" were exercised live against opencode 1.18.18 in this session;
-    // "max_tokens"/"max_turn_requests"/"refusal" are mapped per the published spec text, not independently
-    // reproduced here — unlike Kimi, whose own SDK is documented (in KimiAcpSessionDriver's own comment) to
-    // fold every non-refusal outcome onto "end_turn" before the client ever sees it. Whether opencode does the
-    // same folding, or genuinely reports the other three, was not settled by this session's testing; this
-    // mapping takes the spec at its word until a future session measures otherwise. IsError is only ever true
-    // for "refusal" — a limit being reached (max_tokens/max_turn_requests) is not the same claim as a turn
-    // having failed, so neither is flagged as an error.
+    // AC-783: the base ACP spec defines five stop reasons; only end_turn/cancelled were exercised live, the
+    // rest mapped per spec text (unlike Kimi's own SDK, which folds everything onto end_turn/refusal/cancelled).
+    // IsError is only true for "refusal" — a limit reached is not the same claim as a turn having failed.
     private static (string StopReason, bool IsError) _MapStopReason(JsonElement promptResult)
     {
         var stopReason = promptResult.ValueKind == JsonValueKind.Object
@@ -408,11 +343,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         // stopReason "cancelled", handled by _SendPromptAsync/_EmitTurnCompleted when it arrives.
         await _connection.SendNotificationAsync("session/cancel", new { sessionId }, cancellationToken).ConfigureAwait(false);
 
-        // Per spec, every permission request still outstanding when a cancel goes out must be answered with
-        // outcome "cancelled" — an unanswered one blocks the agent forever. Re-snapshot and keep draining
-        // rather than iterating a single snapshot once — opencode may still send a request_permission for this
-        // turn while this loop is running. The flag set above is what bounds this loop: a request arriving now
-        // is answered where it is received and never lands here, so the dictionary can only shrink.
+        // Per spec, every outstanding permission request must be answered "cancelled" or the agent blocks
+        // forever. Re-snapshot and keep draining — opencode may still send one while this loop runs; the
+        // flag set above bounds it, since a new request is answered where it arrives, never here.
         _cancelling = true;
         while (!_pendingApprovals.IsEmpty)
         {
@@ -446,11 +379,8 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         await _connection.RespondAsync(pending.RequestId, new { outcome = new { outcome = "selected", optionId } }, cancellationToken).ConfigureAwait(false);
     }
 
-    // Reads the optionId from the offered "options" list by kind, rather than guessing a canonical id blindly
-    // — mirrors Kimi's own reasoning (a different tunnelled namespace could use a different id for the same
-    // kind), even though this session only ever observed the one canonical set live
-    // (once/always/reject -> allow_once/allow_always/reject_once). Falls back to the canonical id only when
-    // the kind is genuinely absent.
+    // Reads the optionId from the offered "options" list by kind rather than guessing blindly — mirrors
+    // Kimi's own reasoning, even though this session only observed one canonical set live.
     private static string _ResolveOptionId(JsonElement options, string kind)
     {
         if (options.ValueKind == JsonValueKind.Array)
@@ -479,14 +409,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
 
     public async Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
     {
-        // Validate against the current session's own configOptions snapshot rather than a hardcoded id list
-        // (see the class remarks, point 3) — a bad key would earn a JSON-RPC error from opencode, but filtering
-        // client-side against what this session actually reported means a stale/renamed key never reaches the
-        // agent at all, without risking excluding a legitimate id this session simply never observed. Only
-        // rejects when the snapshot is non-empty AND positively excludes the key — an empty snapshot (nothing
-        // known yet) is not evidence either way, the same reasoning _ShouldAttemptModelSwitch already applies
-        // to the model id specifically; a strict "must appear in the snapshot" check would otherwise reject
-        // every key, including a legitimate one, whenever configOptions momentarily reports none.
+        // AC-783: validate against the live configOptions snapshot rather than a hardcoded id list (Kimi's own
+        // protocol has a fixed three; opencode's is not fixed). Only rejects when the snapshot is non-empty
+        // and positively excludes the key — an empty snapshot is not evidence either way (see _ShouldAttemptModelSwitch).
         if (_sessionId is not { Length: > 0 } sessionId
             || (_liveOptions.Count > 0 && _liveOptions.All(option => option.Key != key)))
         {
@@ -584,14 +509,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
 
         if (_TryGetUpdateDiscriminator(notification.Params, out var update, out var discriminator) && discriminator == "usage_update")
         {
-            // Read directly, not through OpencodeSessionUpdateMapper — this is the class remarks' point 1: a
-            // real, structured usage figure per turn, unlike Kimi (which has none on the wire at all and has
-            // to scrape a /usage command's free-text reply instead). `cost.amount`/`cost.currency` were also
-            // observed live (e.g. {"amount":0,"currency":"USD"}) but PluginSessionStatus has no field for an
-            // absolute currency amount — only a percent-based PluginRateLimitWindow — so cost is read here and
-            // then dropped: an honest, measured gap in the shared plugin contract, not a missing feature of
-            // this plugin. A future host-side change to PluginSessionStatus could surface it; this driver does
-            // not invent a percent to smuggle a dollar amount through RateLimits.
+            // AC-783: read directly, not through the mapper — a real structured usage figure per turn, unlike
+            // Kimi. `cost` is also observed live but PluginSessionStatus has no field for a currency amount,
+            // so it is read and dropped: an honest gap in the shared contract, not a missing feature here.
             if (_TryGetDouble(update, "used", out var used) && _TryGetDouble(update, "size", out var size) && size > 0)
             {
                 _status = new PluginSessionStatus(used / size * 100, RateLimits: []);
@@ -661,10 +581,8 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             return;
         }
 
-        // A permission request that arrives once this turn is being cancelled is answered "cancelled" right
-        // here and never tracked — the operator asked for the turn to stop, so a fresh card would be answering
-        // a question nobody wants, and InterruptAsync's own drain loop below only terminates because nothing
-        // new can enter the dictionary while it runs.
+        // A request arriving while this turn is being cancelled is answered "cancelled" right here and never
+        // tracked — a fresh card would be answering a question nobody wants.
         if (_cancelling)
         {
             await _connection.RespondAsync(request.Id, new { outcome = new { outcome = "cancelled" } }, cancellationToken).ConfigureAwait(false);
@@ -709,14 +627,9 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         }
     }
 
-    // Says out loud that this session's hidden briefing — a profile's identity, a project's instructions, an
-    // embedded Autopilot run's CEO prompt — is not reaching opencode. There is no route for it over ACP: the
-    // base protocol defines no systemPrompt/instructions parameter on session/new, and this session's own
-    // research found none of opencode's own extensions filling that gap either — the one text opencode does
-    // read as project instructions is AGENTS.md (opencode.ai/docs/acp lists "Project-specific rules from
-    // AGENTS.md" as supported), introduced the same way Kimi's own $KIMI_CODE_HOME/AGENTS.md is: a file the
-    // operator maintains, not a channel this driver can write a per-session prompt into. So the capability
-    // stays unclaimed and the gap is made visible instead, mirroring Kimi's own AC-273 precedent.
+    // AC-783: says out loud that this session's hidden briefing is not reaching opencode — the base ACP spec
+    // defines no systemPrompt parameter, and opencode's only instructions channel (AGENTS.md) is an
+    // operator-maintained file, not something this driver can write into per session (mirrors Kimi's AC-273).
     private void _ReportUnappliedSystemPrompt(IReadOnlyDictionary<string, string>? options)
     {
         if (_ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, fallback: null) is null)

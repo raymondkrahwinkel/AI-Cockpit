@@ -4,13 +4,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// AC-783 provider-plugin: registers "opencode (ACP)" as a session provider backed by
-// `OpencodeAcpSessionDriverFactory` — a persistent `opencode acp` subprocess speaking the Agent Client
-// Protocol, the same shape `Cockpit.Plugin.KimiProvider.KimiProviderPlugin` uses. This is the one of the
-// three 2026-08-15 provider tickets (AC-806 OpenRouter, AC-724 Grok, AC-783) that lands on the ACP route
-// rather than the OpenAI-compat one: `SupportsTools`/`SupportsPermissions` are both true here, so a profile
-// on this provider is a second real agent next to Claude — tools run, and Cockpit's own consent card gates
-// them — not a chat-only window the way the other two are.
+// AC-783: registers "opencode (ACP)" as a session provider, same shape as KimiProviderPlugin. Unlike the
+// OpenAiCompat providers (AC-806, AC-724), SupportsTools/SupportsPermissions are both true — a second real
+// agent next to Claude, gated through Cockpit's own consent card, not a chat-only window.
 public sealed class OpencodeProviderPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
@@ -31,11 +27,8 @@ public sealed class OpencodeProviderPlugin : ICockpitPlugin
             ProviderId: "opencode-provider.acp",
             DisplayName: "opencode (ACP)",
             CreateDriverFactory: _ => new OpencodeAcpSessionDriverFactory(host.ResolveManagedCliPath),
-            // The host builds the session adapter from registration.Capabilities, not from the driver
-            // instance's own Capabilities property — SupportsLiveModelSwitch must be declared here too, or
-            // the host's live-model-switch wiring never reaches SetLiveOptionAsync despite the driver already
-            // supporting it. Same trap KimiProviderPlugin's own comment warns about, verified against the
-            // same host code path here rather than taken on faith.
+            // The host builds the adapter from registration.Capabilities, not the driver's own property —
+            // SupportsLiveModelSwitch must be declared here too. Same trap KimiProviderPlugin warns about.
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true },
             CreateConfigView: existingConfigJson => new OpencodeProviderConfigView(existingConfigJson, host)));
     }

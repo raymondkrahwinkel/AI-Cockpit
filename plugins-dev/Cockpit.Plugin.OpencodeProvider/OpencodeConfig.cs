@@ -2,15 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// This plugin's own provider config — never seen by the host, only (de)serialized here and inside
-// `OpencodeProviderConfigView`/`OpencodeAcpSessionDriverFactory` via the opaque `ConfigJson` the host
-// round-trips (AC-783). Mirrors the shape of `Cockpit.Plugin.KimiProvider.KimiConfig`.
-//
-// `Command`: Path to the `opencode` executable, or a bare name resolved against PATH — see `OpencodeExecutableLocator`.
-// `WorkingDirectory`: Fallback working directory for the spawned process when a session does not supply its own; falls back further to the cockpit's own directory when also empty.
-// `DefaultModel`: Optional model id to prefer once a session exists, in opencode's `provider/model` notation (e.g. `anthropic/claude-sonnet-4-5`); `null` lets opencode's own `configOptions` snapshot decide.
-// `AuthEnvVar`: Name of the environment variable the API key is set under for this spawn (never passed as an argument — visible in the process list otherwise). Defaults to `OPENCODE_API_KEY` — documented on opencode.ai's ACP integration page as the variable ACP clients pass through (e.g. the Avante.nvim example: `env = { OPENCODE_API_KEY = ... }`). `null`/empty when relying on `opencode auth login`'s own cached auth, or a model that needs no key at all (opencode ships free models under `opencode/*` that this session's own testing used without any auth).
-// `ApiKey`: The secret itself — never logged/serialized in the clear, see `ToString`.
+// AC-783: this plugin's own provider config, never seen by the host — only (de)serialized here via the
+// opaque `ConfigJson` the host round-trips. Mirrors the shape of `Cockpit.Plugin.KimiProvider.KimiConfig`.
+// `AuthEnvVar` defaults to `OPENCODE_API_KEY`, the env var opencode's own ACP integration docs use.
 internal sealed record OpencodeConfig(
     string Command = "opencode",
     string WorkingDirectory = "",

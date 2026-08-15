@@ -6,19 +6,9 @@ using System.Threading.Channels;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
-// A newline-delimited JSON-RPC 2.0 client over one persistent `opencode acp` child process (AC-783) — the
-// transport under `OpencodeAcpSessionDriver`, copied from `Cockpit.Plugin.KimiProvider.KimiAcpConnection`
-// (no shared JSON-RPC layer exists in `Cockpit.Plugins.Abstractions`, so each ACP provider keeps its own).
-// Measured live against a real `opencode acp` process (installed into an isolated $HOME for this session's
-// research, never left on this machine): the wire shape is identical to Kimi's — strict JSON-RPC 2.0, one
-// NDJSON line per message, `initialize` → `session/new` → `session/prompt` → `session/update`* →
-// `session/prompt` reply, `session/request_permission` reverse-requests mid-turn.
-//
-// Message classification: a line with both `id` and `method` is an agent-initiated request (e.g.
-// `session/request_permission`) → `ServerRequests`; a line with only `id` is a reply to one of ours →
-// resolves the pending call; a line with only `method` is a notification (almost always `session/update`)
-// → `Notifications`. A single background read loop does this sorting so callers never race on the
-// stream; stdin writes are serialized behind one lock so two calls can never interleave a message.
+// AC-783: a newline-delimited JSON-RPC 2.0 client over one persistent `opencode acp` process, copied from
+// KimiAcpConnection (no shared JSON-RPC layer exists in Abstractions). Measured live to be wire-identical to
+// Kimi's — id+method = server request, id only = reply, method only = notification, one read loop sorts them.
 internal sealed class OpencodeAcpConnection : IAsyncDisposable
 {
     private const string _JsonRpcVersion = "2.0";
@@ -28,11 +18,8 @@ internal sealed class OpencodeAcpConnection : IAsyncDisposable
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    // Bounded rather than unbounded, with BoundedChannelFullMode.Wait — opencode acp stdout is untrusted, and
-    // an unbounded channel behind a slow/stalled consumer is an OOM vector on the host, not just this session.
-    // Wait (not DropWrite) is the deliberate choice: a dropped session/update is a vanished piece of transcript,
-    // silently. Backpressure — the read loop stops reading stdout until the consumer catches up, and the child
-    // eventually blocks on its own stdout pipe — is the correct, visible failure mode here.
+    // Bounded with BoundedChannelFullMode.Wait — an unbounded channel behind a slow consumer is an OOM
+    // vector; Wait applies backpressure instead of silently dropping a piece of transcript.
     private const int _ChannelCapacity = 1024;
     private static readonly BoundedChannelOptions _ChannelOptions = new(_ChannelCapacity) { FullMode = BoundedChannelFullMode.Wait };
 
@@ -66,11 +53,8 @@ internal sealed class OpencodeAcpConnection : IAsyncDisposable
         _subprocess.Start(executablePath, ["acp"], workingDirectory, environmentVariables);
         _readLoop = Task.Run(() => _ReadLoopAsync(_readCancellation.Token));
 
-        // Drain stderr to nothing, concurrently with stdout: opencode acp writes its own logs there (measured
-        // live — a plain "Shell cwd was reset to ..." line appears even without --print-logs), and a full,
-        // unread stderr pipe would block the child mid-handshake, exactly the same D14-class risk Kimi's own
-        // connection guards against. We do not surface these lines — the protocol lives on stdout — we just
-        // keep the pipe empty.
+        // Drain stderr concurrently with stdout: opencode writes its own logs there (measured live), and an
+        // unread stderr pipe would block the child mid-handshake — same D14-class risk Kimi guards against.
         _stderrDrain = Task.Run(() => _DrainStderrAsync(_readCancellation.Token));
     }
 
@@ -118,9 +102,7 @@ internal sealed class OpencodeAcpConnection : IAsyncDisposable
     public Task RespondAsync(JsonElement id, object? result, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { jsonrpc = _JsonRpcVersion, id, result }, cancellationToken);
 
-    // Answers an agent-initiated request with a JSON-RPC error — the protocol-conform way to say "this client
-    // cannot handle this request", used for request kinds the driver does not model. A structured error is a
-    // valid response for any request regardless of its expected result shape, unlike a made-up result the
+    // Answers an unmodelled request kind with a structured JSON-RPC error rather than a made-up result the
     // agent could fail to deserialize.
     public Task RespondErrorAsync(JsonElement id, int code, string message, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { jsonrpc = _JsonRpcVersion, id, error = new { code, message } }, cancellationToken);
@@ -230,10 +212,8 @@ internal sealed class OpencodeAcpConnection : IAsyncDisposable
         }
     }
 
-    // Builds the exception message from only error.code + error.message — never error.GetRawText(), which
-    // would echo any error.data opencode attaches straight into the UI's status line (SessionViewModel's
-    // Status = $"Failed to start: {ex.Message}"), leaking anything sensitive the error payload happened to
-    // carry — mirrors Cockpit.Plugin.KimiProvider.KimiAcpConnection's P1-8 precedent.
+    // Built from only error.code + error.message, never error.GetRawText() — error.data could echo request
+    // params straight into a UI status line. Mirrors KimiAcpConnection's own precedent.
     private static string _FormatJsonRpcError(JsonElement error, out int? code)
     {
         code = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var codeProperty) && codeProperty.ValueKind == JsonValueKind.Number

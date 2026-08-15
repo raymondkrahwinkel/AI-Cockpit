@@ -3,13 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
-// `OpencodeSessionUpdateMapper` (AC-783) against literal `session/update` notification `params`, all shapes
-// taken from this session's own live probing of a real `opencode acp` process — proves the translation
-// without a driver or a fake process: text/thinking deltas, the lazy tool_call/tool_call_update refinement
-// sequence producing exactly one `PluginToolUseRequested` at the earliest of its triggers, tool_call_update's
-// terminal-only result mapping, and that malformed/unknown input never throws. Mirrors
-// Cockpit.Plugin.KimiProvider.Tests.KimiSessionUpdateMapperTests, scoped down: the tracking-cap
-// eviction behaviour is unmodified shared logic already proven there, so it is not re-asserted here.
+// AC-783: `OpencodeSessionUpdateMapper` against literal `session/update` params, shapes taken from this
+// session's own live probing. Mirrors KimiSessionUpdateMapperTests, minus the tracking-cap eviction tests —
+// unmodified shared logic already proven there.
 public class OpencodeSessionUpdateMapperTests
 {
     [Fact]

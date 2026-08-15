@@ -4,11 +4,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
-// A minimal `ICockpitHost` test double for `OpencodeProviderPluginTests` — captures the
-// `SessionProviderRegistration` `ICockpitPlugin.Initialize` passes to `AddSessionProvider`. Hand-written
-// rather than an NSubstitute proxy: proxying the full interface forces Castle to reflect over every member
-// (including ones this test never touches), which drags in unrelated host-only assemblies a standalone
-// plugin test project has no reason to reference. Mirrors Cockpit.Plugin.KimiProvider.Tests.FakeCockpitHost.
+// A minimal `ICockpitHost` test double that captures the registration `Initialize` passes to
+// `AddSessionProvider`. Hand-written rather than NSubstitute — a full-interface proxy drags in host-only
+// assemblies this standalone test project has no reason to reference. Mirrors Kimi's own FakeCockpitHost.
 internal sealed class FakeCockpitHost : ICockpitHost
 {
     public SessionProviderRegistration? CapturedRegistration { get; private set; }
