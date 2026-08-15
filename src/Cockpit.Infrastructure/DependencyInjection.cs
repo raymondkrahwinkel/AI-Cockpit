@@ -83,6 +83,19 @@ public static class DependencyInjection
             typeof(Assistant.AssistantAgentMcpTools),
             Internal: true));
 
+        // cockpit-node (AC-795): the sessions on this machine, as the cockpit paired to it as its controller may
+        // see and drive them. The inverse of the two endpoints above and for the mirror-image reason: those are
+        // Internal, hosted but reachable only from a launch that names them, while this one must *not* be Internal
+        // — an Internal endpoint binds no network listener at all (AC-791), which is the one thing this endpoint
+        // exists to have. `IsEnabled` returning false is what keeps it off this machine instead: hosted, so the node
+        // listener stands in front of it, and advertised to no local session, so nothing here can call it. The gate
+        // that holds is neither of those but the per-tool check in `NodeSessionMcpTools`, which refuses any caller
+        // whose transport-verified pane is not the node's reserved one.
+        services.AddSingleton(new CockpitMcpEndpoint(
+            "cockpit-node",
+            typeof(Mcp.NodeSessionMcpTools),
+            IsEnabled: () => false));
+
         // The advisory cross-instance claim behind AC-71 — one implementation, so (unlike the hotkey service
         // below) there is nothing for a platform switch to choose between.
         services.AddSingleton<IHotkeyExclusivityGuard, MutexHotkeyExclusivityGuard>();

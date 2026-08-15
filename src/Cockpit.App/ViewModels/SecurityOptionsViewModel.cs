@@ -36,7 +36,10 @@ public sealed partial class SecurityOptionsViewModel(
     // AC-794: what the scope checklist below offers to tick. Absent in the design-time/unit-test graph, same as
     // every other store above — the checklist then simply stays empty rather than the tab failing to open.
     ISessionProfileStore? sessionProfileStore = null,
-    IProjectStore? projectStore = null) : ObservableObject
+    IProjectStore? projectStore = null,
+    // AC-795: the other direction — the sessions on the nodes *this* cockpit is the controller of. Absent in the
+    // design-time/unit-test graph like every store above, and then the node cards simply do not appear.
+    INodeSessionsClient? nodeSessions = null) : ObservableObject
 {
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
@@ -129,6 +132,14 @@ public sealed partial class SecurityOptionsViewModel(
     public ObservableCollection<NodeScopeRowViewModel> ScopedProfiles { get; } = [];
 
     public ObservableCollection<NodeScopeRowViewModel> ScopedProjects { get; } = [];
+
+    // ── AC-795, the nodes this cockpit controls ────────────────────────────────────────────────────────────────
+    //
+    // The mirror of the two checklists above: those say what a controller may do *here*, these are what this
+    // cockpit may do *there*. One card per paired node, and no local session in any of them — see
+    // `NodeSessionsViewModel` for why that separation is structural rather than a badge.
+
+    public ObservableCollection<NodeSessionsViewModel> PairedNodes { get; } = [];
 
     // True only while a row's IsAllowed is being seeded from the current grant, so ticking a box for real is the
     // only path that writes back to the broker — the same shape as _loadingNodeEndpoint above.
@@ -272,6 +283,29 @@ public sealed partial class SecurityOptionsViewModel(
         NodePairingAddress = nodePairingEndpoint?.Address ?? "";
         _ReadPairingState();
         await _LoadScopeRowsAsync().ConfigureAwait(true);
+        await _LoadPairedNodesAsync().ConfigureAwait(true);
+    }
+
+    // AC-795: one card per node this cockpit is paired with as controller. Each card reads its own node when it is
+    // built, so a node that is off costs this tab a timeout and not the other nodes' contents — and the cards
+    // appear at once rather than after the slowest one.
+    private async Task _LoadPairedNodesAsync()
+    {
+        PairedNodes.Clear();
+        if (nodeSessions is null)
+        {
+            return;
+        }
+
+        foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
+        {
+            var card = new NodeSessionsViewModel(nodeSessions, node);
+            PairedNodes.Add(card);
+
+            // Deliberately not awaited: `RefreshAsync` on a node that is asleep sits out its whole budget, and the
+            // Options window must not wait on that — the card fills in when its node answers, or shows why not.
+            _ = card.RefreshAsync();
+        }
     }
 
     // Mirrors the broker onto the tab. The broker is the source of truth for both halves — an incoming request and
@@ -685,13 +719,15 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         var existing = await mcpServers.LoadAsync().ConfigureAwait(true);
-        var prefix = $"{handshake.NodeName} · ";
+        var prefix = NodeServerName.PrefixFor(handshake.NodeName);
         var kept = existing.Where(server => !server.Name.StartsWith(prefix, StringComparison.Ordinal)).ToList();
 
         kept.AddRange(grant.Endpoints.Select(endpoint => new McpServerConfig
         {
             Id = McpServerIdentity.NewId(),
-            Name = prefix + endpoint.ServerName,
+            // AC-795 reads this name back to find one node's session server again, so the shape is stated once in
+            // `NodeServerName` rather than built here and parsed there.
+            Name = NodeServerName.For(handshake.NodeName, endpoint.ServerName),
             Transport = McpTransport.Http,
             // `LocalOnly` is not a preference here, it is the reach of the pin. Only the in-process tool loop
             // builds its own HTTP transport (`McpToolProvider`), so only it can be told which certificate to
