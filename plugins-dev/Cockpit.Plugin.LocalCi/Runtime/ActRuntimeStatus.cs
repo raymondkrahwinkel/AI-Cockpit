@@ -12,5 +12,6 @@ internal sealed record ActRuntimeStatus(bool IsInstalled, string? Version)
     public string Message => IsInstalled
         ? $"act {Version} is on PATH."
         : "act was not found on PATH. The cockpit does not ship it — install it with \"winget install nektos.act\" " +
-          "(Windows), \"brew install act\" (macOS), or from github.com/nektos/act/releases.";
+          "(Windows), \"brew install act\" (macOS), or from github.com/nektos/act/releases. Just installed it? " +
+          "Try again — no need to reopen this screen or restart the cockpit.";
 }
