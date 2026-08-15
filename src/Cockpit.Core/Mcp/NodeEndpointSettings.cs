@@ -16,5 +16,11 @@ public sealed record NodeEndpointSettings
     // same credential, not a replacement for the first.
     public NodePairing? Pairing { get; init; }
 
+    // CIDR ranges allowed to see this node from outside its own local network (AC-793), e.g. "203.0.113.0/24".
+    // Empty by default: the node's own subnet is always visible, and nothing past it until the operator opts in —
+    // `INodeVisibilityPolicy` is what actually reads this, both when answering a discovery query and when
+    // `NodePairingHost` decides whether to accept a `/pair/request` at all.
+    public IReadOnlyList<string> AllowedDiscoveryRanges { get; init; } = [];
+
     public static NodeEndpointSettings Default { get; } = new();
 }

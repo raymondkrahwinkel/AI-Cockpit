@@ -1,0 +1,247 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Mcp;
+
+namespace Cockpit.Infrastructure.Tests.Mcp;
+
+/// <summary>
+/// Discovery end to end (AC-793): a real UDP responder and a real UDP finder, both forced onto the loopback
+/// interface so the test is deterministic regardless of what network interfaces the machine running it has, and
+/// a real <see cref="NodePairingHost"/> so criterion 1a can prove a found address reaches the exact same
+/// handshake a typed one does — <see cref="NodePairingHandshakeTests"/> for the manual side of that comparison.
+/// </summary>
+/// <remarks>
+/// Two machines would be better and were not available; this runs the finder and the node in one process over
+/// loopback, the same limitation <see cref="NodePairingHandshakeTests"/> notes for the manual route.
+/// </remarks>
+public class NodeDiscoveryTests : IAsyncLifetime
+{
+    private readonly string _configPath = Path.Combine(Path.GetTempPath(), $"node-discovery-{Guid.NewGuid():N}.json");
+    private readonly string _certificatePath = Path.Combine(Path.GetTempPath(), $"node-discovery-{Guid.NewGuid():N}.pfx");
+    private readonly string _discoveryIdPath = Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt");
+
+    private NodeEndpointSettingsStore _store = null!;
+    private NodeSelfSignedCertificate _certificate = null!;
+    private NodePairingBroker _broker = null!;
+
+    public async Task InitializeAsync()
+    {
+        _store = new NodeEndpointSettingsStore(_configPath);
+        await _store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "" });
+        _certificate = new NodeSelfSignedCertificate(_certificatePath);
+        _broker = new NodePairingBroker(_store, _certificate, new NodeSharedSecret(), []);
+    }
+
+    private async Task<NodePairingHost> _StartPairingHostAsync(Func<IEnumerable<IPNetwork>> ownRanges)
+    {
+        var visibility = new NodeVisibilityPolicy(_store, ownRanges);
+        var host = new NodePairingHost(_store, _broker, _certificate, visibility, NullLoggerFactory.Instance);
+        await host.StartAsync(CancellationToken.None);
+        return host;
+    }
+
+    private async Task<NodeDiscoveryResponder> _StartResponderAsync(NodePairingHost pairingHost, Func<IEnumerable<IPNetwork>> ownRanges)
+    {
+        var visibility = new NodeVisibilityPolicy(_store, ownRanges);
+        var responder = new NodeDiscoveryResponder(
+            _store, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback);
+        await responder.StartAsync(CancellationToken.None);
+        return responder;
+    }
+
+    [Fact]
+    public async Task ANodeOnTheOwnRange_IsFoundAndPairableThroughTheSameHandshakeAsTheManualRoute()
+    {
+        var pairingHost = await _StartPairingHostAsync(() => [IPNetwork.Parse("127.0.0.0/8")]);
+        var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
+        try
+        {
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
+
+            var foundNode = Assert.Single(results);
+            Assert.Equal($"127.0.0.1:{pairingHost.BoundPort}", foundNode.Address);
+
+            // Criterion 1a: the address discovery found reaches the exact same `BeginAsync` the Security tab's
+            // typed-address field calls — no second pairing code path for a discovered address.
+            var client = new NodePairingClient();
+            var handshake = await client.BeginAsync(foundNode.Address, "the controller");
+            Assert.Equal(NodePairingCode.Digits, handshake.Code.Length);
+        }
+        finally
+        {
+            await responder.DisposeAsync();
+            await pairingHost.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ANodeOutsideTheOwnRange_WithAnEmptyWhitelist_AnswersNothing()
+    {
+        // "Own range" deliberately excludes loopback, so the finder — which necessarily calls in over loopback in
+        // a same-host test — reads as an outside caller. Criterion 2, the failure direction.
+        var pairingHost = await _StartPairingHostAsync(() => []);
+        var responder = await _StartResponderAsync(pairingHost, () => []);
+        try
+        {
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
+
+            Assert.Empty(results);
+        }
+        finally
+        {
+            await responder.DisposeAsync();
+            await pairingHost.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Discovery_AnswersAWhitelistedCaller_OutsideItsOwnRange()
+    {
+        // Criterion 3, first moment: the whitelist gates a discovery reply, independently of the pairing gate
+        // below.
+        await _store.SaveAsync((await _store.LoadAsync()) with { AllowedDiscoveryRanges = ["127.0.0.0/8"] });
+        var pairingHost = await _StartPairingHostAsync(() => []);
+        var responder = await _StartResponderAsync(pairingHost, () => []);
+        try
+        {
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
+
+            Assert.Single(results);
+        }
+        finally
+        {
+            await responder.DisposeAsync();
+            await pairingHost.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PairingRequest_FromOutsideTheOwnRange_WithAnEmptyWhitelist_IsRefusedBeforeTheBrokerSeesIt()
+    {
+        // Criterion 3, second moment: the same "outside own range, empty whitelist" posture, checked at pairing
+        // acceptance rather than at a discovery reply. A caller that skips discovery and guesses the address is
+        // refused here just the same — "hij ziet me toch niet" would otherwise only be true for one of the two
+        // entrances.
+        var pairingHost = await _StartPairingHostAsync(() => []);
+        try
+        {
+            var client = new NodePairingClient();
+            var refusal = await Assert.ThrowsAsync<NodePairingException>(
+                () => client.BeginAsync($"127.0.0.1:{pairingHost.BoundPort}", "a stranger"));
+
+            Assert.Equal(NodePairingError.NotVisible, refusal.Error);
+        }
+        finally
+        {
+            await pairingHost.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PairingRequest_FromOutsideTheOwnRange_ButWhitelisted_Succeeds()
+    {
+        await _store.SaveAsync((await _store.LoadAsync()) with { AllowedDiscoveryRanges = ["127.0.0.0/8"] });
+        var pairingHost = await _StartPairingHostAsync(() => []);
+        try
+        {
+            var client = new NodePairingClient();
+            var handshake = await client.BeginAsync($"127.0.0.1:{pairingHost.BoundPort}", "the controller");
+
+            Assert.Equal(NodePairingCode.Digits, handshake.Code.Length);
+        }
+        finally
+        {
+            await pairingHost.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Start_WhileTheNodeSwitchIsOff_AnswersNothing()
+    {
+        var offPath = Path.Combine(Path.GetTempPath(), $"node-discovery-off-{Guid.NewGuid():N}.json");
+        var offStore = new NodeEndpointSettingsStore(offPath);
+        var visibility = new NodeVisibilityPolicy(offStore, () => [IPNetwork.Parse("127.0.0.0/8")]);
+        var pairingHost = new NodePairingHost(offStore, _broker, _certificate, visibility, NullLoggerFactory.Instance);
+        var responder = new NodeDiscoveryResponder(
+            offStore, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback);
+
+        await pairingHost.StartAsync(CancellationToken.None);
+        await responder.StartAsync(CancellationToken.None);
+
+        try
+        {
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
+
+            Assert.Empty(results);
+        }
+        finally
+        {
+            await responder.DisposeAsync();
+            await pairingHost.DisposeAsync();
+            File.Delete(offPath);
+        }
+    }
+
+    [Fact]
+    public async Task TheAnnouncePayload_CarriesOnlyTheMarkerIdAndPort_NoMachineNameOrOtherField()
+    {
+        // Criterion 4, checked on the wire rather than only against the record's shape — a future field added to
+        // `NodeDiscoveryAnnounce` for an unrelated reason would still be caught here.
+        var pairingHost = await _StartPairingHostAsync(() => [IPNetwork.Parse("127.0.0.0/8")]);
+        var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
+        try
+        {
+            using var raw = new UdpClient(0);
+            raw.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, IPAddress.Loopback.GetAddressBytes());
+            var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), NodeDiscoveryProtocol.Port);
+            await raw.SendAsync(NodeDiscoveryProtocol.QueryMarker, group);
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var reply = await raw.ReceiveAsync(timeout.Token);
+
+            var json = Encoding.UTF8.GetString(reply.Buffer);
+            using var document = JsonDocument.Parse(json);
+            var propertyNames = document.RootElement.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal);
+
+            Assert.Equal(
+                new[] { "discoveryId", "marker", "pairingPort" }.OrderBy(name => name, StringComparer.Ordinal),
+                propertyNames);
+            Assert.DoesNotContain(Environment.MachineName, json, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await responder.DisposeAsync();
+            await pairingHost.DisposeAsync();
+        }
+    }
+
+    public Task DisposeAsync()
+    {
+        _certificate.Dispose();
+
+        foreach (var path in new[] { _configPath, _certificatePath, _discoveryIdPath })
+        {
+            var directory = Path.GetDirectoryName(path)!;
+            var fileName = Path.GetFileName(path);
+            if (!Directory.Exists(directory))
+            {
+                continue;
+            }
+
+            foreach (var file in Directory.EnumerateFiles(directory, fileName + "*"))
+            {
+                File.Delete(file);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+}

@@ -132,6 +132,77 @@ public class SecurityOptionsViewModelTests
         Assert.False(vm.IsComparingPairingCode);
     }
 
+    [Fact]
+    public async Task RefreshAsync_LoadsTheDiscoveryWhitelist_AsCommaSeparatedText()
+    {
+        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings
+        {
+            Enabled = true,
+            AllowedDiscoveryRanges = ["203.0.113.0/24", "198.51.100.0/24"],
+        });
+
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
+        await vm.RefreshAsync();
+
+        Assert.Equal("203.0.113.0/24, 198.51.100.0/24", vm.AllowedDiscoveryRangesText);
+    }
+
+    [Fact]
+    public async Task EditingTheDiscoveryWhitelistText_PersistsTheParsedRanges()
+    {
+        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = true });
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
+        await vm.RefreshAsync();
+
+        vm.AllowedDiscoveryRangesText = "203.0.113.0/24,  198.51.100.0/24 ,, ";
+        await Task.Yield();
+
+        var saved = await store.LoadAsync();
+        Assert.Equal(["203.0.113.0/24", "198.51.100.0/24"], saved.AllowedDiscoveryRanges);
+    }
+
+    [Fact]
+    public async Task DiscoverNodes_PopulatesFoundNodes_FromTheClient()
+    {
+        var client = new FakeDiscoveryClient([new NodeDiscoveryFound("192.168.1.9:7331", "abc123")]);
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeDiscoveryClient: client);
+
+        await vm.DiscoverNodesCommand.ExecuteAsync(null);
+
+        var found = Assert.Single(vm.FoundNodes);
+        Assert.Equal("192.168.1.9:7331", found.Address);
+        Assert.Equal("", vm.DiscoveryStatus);
+    }
+
+    [Fact]
+    public async Task DiscoverNodes_WhenNothingAnswers_ReportsItRatherThanLeavingTheListSilentlyEmpty()
+    {
+        var client = new FakeDiscoveryClient([]);
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeDiscoveryClient: client);
+
+        await vm.DiscoverNodesCommand.ExecuteAsync(null);
+
+        Assert.Empty(vm.FoundNodes);
+        Assert.NotEqual("", vm.DiscoveryStatus);
+    }
+
+    [Fact]
+    public void UseFoundNode_OnlyFillsTheAddressField_TheHandshakeIsUnaffected()
+    {
+        var vm = new SecurityOptionsViewModel(new FakeProtection());
+
+        vm.UseFoundNodeCommand.Execute(new NodeDiscoveryFound("192.168.1.9:7331", "abc123"));
+
+        Assert.Equal("192.168.1.9:7331", vm.PairWithNodeAddress);
+        Assert.False(vm.IsComparingPairingCode);
+    }
+
+    private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient
+    {
+        public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+            Task.FromResult(results);
+    }
+
     private sealed class FakePairingClient : INodePairingClient
     {
         public Task<NodePairingHandshake> BeginAsync(string address, string controllerName, CancellationToken cancellationToken = default) =>

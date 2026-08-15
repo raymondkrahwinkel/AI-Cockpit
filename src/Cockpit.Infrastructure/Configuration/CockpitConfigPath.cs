@@ -66,6 +66,12 @@ internal static class CockpitConfigPath
     // identity into an identity a second cockpit can recognise.
     public static string NodeCertificate => Path.Combine(Root, "node-certificate.pfx");
 
+    // This machine's stable discovery id (AC-793) — not a credential (nothing pins to it, nothing authorizes
+    // on it), just enough that a finder's "nodes found" list does not grow a new row every time the same node
+    // answers a second query. Owner-only anyway, like everything else next to `cockpit.json`, because there is no
+    // reason for it not to be.
+    public static string NodeDiscoveryId => Path.Combine(Root, "node-discovery-id.txt");
+
     // Creates `directory` if needed and restricts it to its owner. Idempotent.
     public static void EnsurePrivateDirectory(string directory)
     {

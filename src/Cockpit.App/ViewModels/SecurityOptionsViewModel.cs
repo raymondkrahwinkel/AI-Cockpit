@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,7 +29,8 @@ public sealed partial class SecurityOptionsViewModel(
     INodePairingBroker? nodePairing = null,
     INodePairingClient? nodePairingClient = null,
     INodePairingEndpoint? nodePairingEndpoint = null,
-    IMcpServerStore? mcpServers = null) : ObservableObject
+    IMcpServerStore? mcpServers = null,
+    INodeDiscoveryClient? nodeDiscoveryClient = null) : ObservableObject
 {
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
@@ -74,6 +77,12 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _nodeEndpointAddressText = "";
 
+    // AC-793: CIDR ranges allowed to see this node from outside its own local network — comma-separated, so no
+    // new list-editing control is needed for what is, in practice, an occasional one-or-two-entry setting. Empty
+    // by default: the node's own subnet is always visible, and nothing past it until the operator opts in.
+    [ObservableProperty]
+    private string _allowedDiscoveryRangesText = "";
+
     // ── AC-792, this cockpit as a node ─────────────────────────────────────────────────────────────────────────
     //
     // The pairing prompt lives on this tab rather than in an app-wide notification, and that is a real ceiling: a
@@ -109,6 +118,20 @@ public sealed partial class SecurityOptionsViewModel(
     // What the operator types: the pairing address read off the other machine's Security tab.
     [ObservableProperty]
     private string _pairWithNodeAddress = "";
+
+    // ── AC-793, finding a node instead of typing its address ──────────────────────────────────────────────────
+    //
+    // A second entrance to the same handshake above, not a separate one: picking a row here only fills
+    // `PairWithNodeAddress` (`UseFoundNodeCommand`) — the pairing code, the certificate pin, everything from
+    // `StartPairingCommand` onward is unaware whether the address it received was typed or found.
+
+    public ObservableCollection<NodeDiscoveryFound> FoundNodes { get; } = [];
+
+    [ObservableProperty]
+    private bool _isDiscoveringNodes;
+
+    [ObservableProperty]
+    private string _discoveryStatus = "";
 
     // Set between "start" and "the codes match": the handshake exists, nothing is granted, and both screens are
     // showing a number. Null at every other moment, which is what the two buttons key on.
@@ -197,6 +220,7 @@ public sealed partial class SecurityOptionsViewModel(
             var node = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
             _loadingNodeEndpoint = true;
             NodeEndpointEnabled = node.Enabled;
+            AllowedDiscoveryRangesText = string.Join(", ", node.AllowedDiscoveryRanges);
             _loadingNodeEndpoint = false;
             NodeEndpointSharedSecret = node.SharedSecret;
             NodeEndpointAddressText = _ResolveNodeEndpointAddressText(node.Enabled);
@@ -319,6 +343,23 @@ public sealed partial class SecurityOptionsViewModel(
         NodeEndpointAddressText = _ResolveNodeEndpointAddressText(value);
 
         await nodeEndpointSettings.SaveAsync(current with { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
+    }
+
+    // AC-793: persists as it changes, the same reactive-save shape as the toggle above — but the XAML binding
+    // pushes the text on lost focus, not per keystroke (`OptionsDialog.axaml`'s `UpdateSourceTrigger=LostFocus`),
+    // so typing a range does not turn into one full `cockpit.json` read-decrypt-encrypt-write cycle per
+    // character. A malformed entry is simply a range that never matches anything — `NodeVisibilityPolicy` skips
+    // what does not parse as a CIDR — so there is nothing here worth validating before it reaches disk.
+    async partial void OnAllowedDiscoveryRangesTextChanged(string value)
+    {
+        if (_loadingNodeEndpoint || nodeEndpointSettings is null)
+        {
+            return;
+        }
+
+        var ranges = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
+        await nodeEndpointSettings.SaveAsync(current with { AllowedDiscoveryRanges = ranges }).ConfigureAwait(true);
     }
 
     // ── AC-792 commands, node side ─────────────────────────────────────────────────────────────────────────────
@@ -470,6 +511,51 @@ public sealed partial class SecurityOptionsViewModel(
         OutgoingPairingCode = "";
         OutgoingPairingCaption = "";
     }
+
+    // ── AC-793 commands, finding a node ────────────────────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task DiscoverNodesAsync()
+    {
+        if (nodeDiscoveryClient is null)
+        {
+            return;
+        }
+
+        IsDiscoveringNodes = true;
+        DiscoveryStatus = "";
+        FoundNodes.Clear();
+        try
+        {
+            var found = await nodeDiscoveryClient.FindAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(true);
+            foreach (var node in found)
+            {
+                FoundNodes.Add(node);
+            }
+
+            // An empty result is not an error — the switch could be off on every other cockpit on this segment,
+            // or this one's own whitelist/range is what is keeping them out — so this reads as guidance rather
+            // than a failure.
+            DiscoveryStatus = found.Count == 0
+                ? "Nothing answered. Check the other cockpit's node switch is on, and that it is on this network's own range or your whitelist."
+                : "";
+        }
+        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
+        {
+            // The same posture `StartPairingAsync` takes for its own network call: a failure here is something
+            // to tell the operator, not an unhandled exception out of a button press.
+            DiscoveryStatus = $"Could not search for nodes on this network: {ex.Message}";
+        }
+        finally
+        {
+            IsDiscoveringNodes = false;
+        }
+    }
+
+    // Picking a row only fills the address field — starting the pairing itself is still `StartPairingCommand`,
+    // so a discovered address and a typed one go through the exact same handshake from here on.
+    [RelayCommand]
+    private void UseFoundNode(NodeDiscoveryFound node) => PairWithNodeAddress = node.Address;
 
     // Turns the grant into ordinary registry rows — the same `Transport = Http` + bearer + URL an operator would
     // have typed by hand after AC-790, with the certificate pin added, which is the part they could not have

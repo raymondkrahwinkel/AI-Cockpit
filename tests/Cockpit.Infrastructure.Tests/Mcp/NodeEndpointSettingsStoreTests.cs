@@ -31,6 +31,25 @@ public class NodeEndpointSettingsStoreTests : IDisposable
         Assert.Equal("test-secret-value", reloaded.SharedSecret);
     }
 
+    [Fact]
+    public async Task Load_WhenNothingSaved_DiscoveryWhitelistIsEmptyNotNull()
+    {
+        var settings = await new NodeEndpointSettingsStore(_path).LoadAsync();
+
+        Assert.Empty(settings.AllowedDiscoveryRanges);
+    }
+
+    [Fact]
+    public async Task Save_ThenLoad_RoundTripsTheDiscoveryWhitelist()
+    {
+        var store = new NodeEndpointSettingsStore(_path);
+
+        await store.SaveAsync(new NodeEndpointSettings { AllowedDiscoveryRanges = ["203.0.113.0/24", "198.51.100.0/24"] });
+
+        var reloaded = await new NodeEndpointSettingsStore(_path).LoadAsync();
+        Assert.Equal(["203.0.113.0/24", "198.51.100.0/24"], reloaded.AllowedDiscoveryRanges);
+    }
+
     public void Dispose()
     {
         foreach (var file in Directory.EnumerateFiles(Path.GetDirectoryName(_path)!, Path.GetFileName(_path) + "*"))

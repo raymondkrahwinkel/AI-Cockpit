@@ -38,6 +38,7 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
     private readonly INodeEndpointSettingsStore _settings;
     private readonly INodePairingBroker _broker;
     private readonly NodeSelfSignedCertificate _certificate;
+    private readonly INodeVisibilityPolicy _visibility;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<NodePairingHost> _logger;
 
@@ -47,11 +48,13 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         INodeEndpointSettingsStore settings,
         INodePairingBroker broker,
         NodeSelfSignedCertificate certificate,
+        INodeVisibilityPolicy visibility,
         ILoggerFactory loggerFactory)
     {
         _settings = settings;
         _broker = broker;
         _certificate = certificate;
+        _visibility = visibility;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<NodePairingHost>();
     }
@@ -121,9 +124,21 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
                 return _Problem(StatusCodes.Status400BadRequest, NodePairingError.InvalidToken, "Expected a JSON body with a controllerName.");
             }
 
+            // Criterion 3, the pairing half: the same visibility check discovery's reply passes through, so a
+            // caller outside this node's own range and outside the whitelist cannot reach pairing by skipping
+            // discovery and guessing the address — "hij ziet me toch niet" only holds if both entrances agree.
+            // Fails closed: no remote address at all (should not happen over real TCP) is treated as not visible
+            // rather than as "unknown, so allow".
+            var remoteAddress = context.Connection.RemoteIpAddress;
+            if (remoteAddress is null || !await _visibility.IsAllowedAsync(remoteAddress, context.RequestAborted).ConfigureAwait(false))
+            {
+                return _Problem(StatusCodes.Status403Forbidden, NodePairingError.NotVisible,
+                    "This cockpit does not accept pairing requests from that address.");
+            }
+
             // The connection's address, not the one in the body: the body is the caller's word for where it is,
             // and this string ends up in the refusal the operator reads when a second controller shows up.
-            var address = context.Connection.RemoteIpAddress?.ToString() ?? "an unknown address";
+            var address = remoteAddress.ToString();
 
             try
             {
