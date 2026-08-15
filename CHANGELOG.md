@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: two Cockpits on the same network can now pair with each other instead of you copying an address and a key
+  by hand. On the machine you want to reach, Options → Security shows a pairing address; type it on the other
+  machine and both screens show the same six digits. Confirm on both sides and the pairing goes live — the
+  controlling Cockpit adds that machine's MCP endpoints for you and remembers its certificate, so nothing else can
+  take its place at that address later. Either side can unpair, which immediately invalidates the key. A Cockpit
+  that is already paired refuses a second one and says who it is paired with.
+
 - added: a Cockpit instance can now optionally accept MCP connections from a second Cockpit on the same network,
   over TLS with a shared key — off by default, enable it under Options → Security. Turning it on takes effect the
   next time Cockpit starts.

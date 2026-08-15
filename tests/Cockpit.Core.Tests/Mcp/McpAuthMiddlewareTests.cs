@@ -113,7 +113,7 @@ public class McpAuthMiddlewareTests
     /// single endpoint that answers with whatever identity the middleware stamped — the one thing an MCP tool
     /// result cannot show.
     /// </summary>
-    private sealed class _AuthGatedListeners(WebApplication app, HttpClient client, string loopbackUrl, string nodeUrl) : IAsyncDisposable
+    private sealed class _AuthGatedListeners(WebApplication app, HttpClient client, NodeSelfSignedCertificate certificate, string loopbackUrl, string nodeUrl) : IAsyncDisposable
     {
         public string LoopbackUrl { get; } = loopbackUrl;
 
@@ -121,15 +121,23 @@ public class McpAuthMiddlewareTests
 
         public static async Task<_AuthGatedListeners> StartAsync(McpAuthKey authKey, SessionMcpKeyring keyring, string? nodeSharedSecret)
         {
+            // AC-792: the node's certificate now lives in a file, so the test gets one of its own rather than the
+            // real cockpit's — and a live secret holder rather than a captured string, which is what the
+            // middleware reads. Held for the listener's lifetime, not this method's: Kestrel keeps using it, so
+            // disposing it here would break every TLS handshake that follows.
+            var certificate = new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"auth-middleware-{Guid.NewGuid():N}.pfx"));
+            var liveSecret = new NodeSharedSecret();
+            liveSecret.Set(nodeSharedSecret);
+
             var builder = WebApplication.CreateSlimBuilder();
             builder.WebHost.ConfigureKestrel(options =>
             {
                 options.Listen(IPAddress.Loopback, 0);
-                options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.UseHttps(NodeSelfSignedCertificate.Create()));
+                options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.UseHttps(certificate.Value));
             });
 
             var app = builder.Build();
-            McpAuthMiddleware.Require(app, authKey, keyring, nodeSharedSecret);
+            McpAuthMiddleware.Require(app, authKey, keyring, liveSecret);
             app.MapGet("/whoami", () => McpRequestContext.CurrentPaneId ?? "<none>");
             await app.StartAsync();
 
@@ -144,6 +152,7 @@ public class McpAuthMiddlewareTests
             return new _AuthGatedListeners(
                 app,
                 new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) },
+                certificate,
                 addresses.Single(address => address.StartsWith("http://", StringComparison.Ordinal)) + "/whoami",
                 addresses.Single(address => address.StartsWith("https://", StringComparison.Ordinal)) + "/whoami");
         }
@@ -171,6 +180,7 @@ public class McpAuthMiddlewareTests
             client.Dispose();
             await app.StopAsync();
             await app.DisposeAsync();
+            certificate.Dispose();
         }
     }
 }

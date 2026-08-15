@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -7,16 +8,52 @@ namespace Cockpit.Infrastructure.Configuration;
 //
 // `SharedSecret` deliberately keeps that exact name: `SecretFields` (Cockpit.Core.Secrets) recognises any field
 // whose name contains "secret" as a credential and encrypts/scrubs it automatically — no separate registration.
+//
+// AC-792 adds `Pairing`: who that secret was granted to. Absent for a node that was never paired — including
+// every config written before this existed, which reads back as an unpaired node with its hand-copied secret
+// intact, so nothing has to migrate.
 internal sealed class NodeEndpointSettingsEntry
 {
     public bool Enabled { get; set; }
     public string? SharedSecret { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public NodePairingEntry? Pairing { get; set; }
+
     public static NodeEndpointSettingsEntry FromDomain(NodeEndpointSettings settings) => new()
     {
         Enabled = settings.Enabled,
         SharedSecret = settings.SharedSecret,
+        Pairing = settings.Pairing is null ? null : NodePairingEntry.FromDomain(settings.Pairing),
     };
 
-    public NodeEndpointSettings ToDomain() => new() { Enabled = Enabled, SharedSecret = SharedSecret ?? "" };
+    public NodeEndpointSettings ToDomain() => new()
+    {
+        Enabled = Enabled,
+        SharedSecret = SharedSecret ?? "",
+        Pairing = Pairing?.ToDomain(),
+    };
+}
+
+// On-disk shape of `NodePairing`. Nothing here is a credential — the secret it belongs to is the sibling field —
+// so this stays readable in the config the operator opens to see what their cockpit is attached to.
+internal sealed class NodePairingEntry
+{
+    public string ControllerName { get; set; } = string.Empty;
+    public string ControllerAddress { get; set; } = string.Empty;
+    public DateTimeOffset PairedAtUtc { get; set; }
+
+    public static NodePairingEntry FromDomain(NodePairing pairing) => new()
+    {
+        ControllerName = pairing.ControllerName,
+        ControllerAddress = pairing.ControllerAddress,
+        PairedAtUtc = pairing.PairedAtUtc,
+    };
+
+    public NodePairing ToDomain() => new()
+    {
+        ControllerName = ControllerName,
+        ControllerAddress = ControllerAddress,
+        PairedAtUtc = PairedAtUtc,
+    };
 }

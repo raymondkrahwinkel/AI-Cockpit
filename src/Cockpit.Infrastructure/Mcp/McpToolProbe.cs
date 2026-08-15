@@ -140,7 +140,9 @@ internal sealed class McpToolProbe(
             Arguments = [.. server.Args],
             EnvironmentVariables = StdioServerEnvironment.Build(),
         }),
-        McpTransport.Http => new HttpClientTransport(new HttpClientTransportOptions
+        // AC-792: the same certificate pin the session route applies, for the same server — a probe that trusted
+        // more than the session does would report a node as reachable that no session can reach.
+        McpTransport.Http => NodeCertificatePin.TransportFor(server, new HttpClientTransportOptions
         {
             Name = server.Name,
             Endpoint = new Uri(server.Url ?? string.Empty),

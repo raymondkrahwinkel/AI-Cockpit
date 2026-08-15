@@ -46,6 +46,12 @@ public class CockpitInternalMcpProviderTests
         }
     }
 
+    // AC-792 made the node's TLS identity a file that outlives the process. These tests must never touch the real
+    // one, so each gets a path of its own under the temp directory — and since the certificate is lazy, a test that
+    // leaves node binding off never creates the file at all.
+    private static NodeSelfSignedCertificate _ThrowawayNodeCertificate() =>
+        new(Path.Combine(Path.GetTempPath(), $"cockpit-test-node-{Guid.NewGuid():N}.pfx"));
+
     [Fact]
     public async Task EndpointHost_ReflectsTheLiveIsEnabledGate_AndMarksItselfCockpitHosted()
     {
@@ -55,6 +61,8 @@ public class CockpitInternalMcpProviderTests
             authKey: new McpAuthKey(),
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         // Nothing mounted yet: the fan-out sees no cockpit-hosted server.
@@ -84,6 +92,8 @@ public class CockpitInternalMcpProviderTests
             authKey: new McpAuthKey(),
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         // An ordinary endpoint is not internal; an internal-only one (AC-204, e.g. the Autopilot CEO/step tools)
@@ -107,6 +117,8 @@ public class CockpitInternalMcpProviderTests
             authKey: new McpAuthKey(),
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -128,6 +140,8 @@ public class CockpitInternalMcpProviderTests
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -155,6 +169,8 @@ public class CockpitInternalMcpProviderTests
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-public", new ProbeTools(), isEnabled: () => true);
@@ -181,6 +197,8 @@ public class CockpitInternalMcpProviderTests
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 new NodeEndpointSettings { Enabled = true, SharedSecret = sharedSecret }),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -225,6 +243,8 @@ public class CockpitInternalMcpProviderTests
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -250,6 +270,8 @@ public class CockpitInternalMcpProviderTests
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 new NodeEndpointSettings { Enabled = true, SharedSecret = sharedSecret }),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);

@@ -95,6 +95,11 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     [ObservableProperty]
     private bool _enabled;
 
+    // The node certificate a paired row is pinned to (AC-792). A plain field rather than an observable property
+    // because it is not editable and has no control: it is agreed during a pairing handshake and only carried
+    // across a save here, so that editing an unrelated server does not unpin a paired node.
+    private readonly string? _pinnedCertificateFingerprint;
+
     // Custom headers sent to an HTTP server alongside whatever `Auth` arranges (AC-354) — for a
     // server that expects `X-Api-Key` or another scheme `McpServerAuth.ApiKey` cannot express.
     // Shown whenever the transport is HTTP, independent of the auth choice: a header can sit next to None,
@@ -260,6 +265,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         _oAuthScopes = server.OAuthScopes ?? string.Empty;
         _enabled = server.Enabled;
         _selectedScope = McpServerScopeOption.For(server.Scope);
+        _pinnedCertificateFingerprint = server.PinnedCertificateFingerprint;
 
         foreach (var header in server.Headers)
         {
@@ -291,6 +297,11 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         Headers = IsHttp
             ? [.. Headers.Select(row => new McpHeader(row.Name.Trim(), row.Value.Trim())).Where(header => header.IsComplete)]
             : [],
+        // Carried through untouched (AC-792). There is no box for it — a certificate pin is agreed during a
+        // pairing, not typed — but this dialog saves every row it holds, so dropping it here would silently unpin
+        // a paired node the next time the operator edited any unrelated server, and its connection would then fail
+        // outright. Cleared when the row stops being an HTTP server, since a pin has nothing to bind to then.
+        PinnedCertificateFingerprint = IsHttp ? _pinnedCertificateFingerprint : null,
         Enabled = Enabled,
     };
 

@@ -2579,7 +2579,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Both absent in the design-time/unit-test graph, same as the terminal-access pair above. Trailing, like
         // every other late addition here, so an existing positional call site is unaffected by the new params.
         INodeEndpointSettingsStore? nodeEndpointSettingsStore = null,
-        IEnumerable<ICockpitInternalMcpProvider>? internalMcpProviders = null)
+        IEnumerable<ICockpitInternalMcpProvider>? internalMcpProviders = null,
+        // AC-792: the two halves of the pairing handshake — this cockpit answering one (`nodePairingBroker`, and
+        // `nodePairingEndpoint` for the address to show) and this cockpit starting one (`nodePairingClient`) —
+        // plus the registry a completed pairing writes the node's endpoints into. Absent in the
+        // design-time/unit-test graph, where the pairing controls stay inert rather than the dialog failing.
+        INodePairingBroker? nodePairingBroker = null,
+        INodePairingClient? nodePairingClient = null,
+        INodePairingEndpoint? nodePairingEndpoint = null,
+        IMcpServerStore? mcpServerStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2592,7 +2600,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
-        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets(), screenLockSettingsStore, terminalAccessSwitch, terminalAccessSettingsStore, nodeEndpointSettingsStore, internalMcpProviders);
+        Security = new SecurityOptionsViewModel(
+            secretProtection ?? new UnprotectedSecrets(),
+            screenLockSettingsStore,
+            terminalAccessSwitch,
+            terminalAccessSettingsStore,
+            nodeEndpointSettingsStore,
+            internalMcpProviders,
+            nodePairingBroker,
+            nodePairingClient,
+            nodePairingEndpoint,
+            mcpServerStore);
         _ = Security.RefreshAsync();
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,

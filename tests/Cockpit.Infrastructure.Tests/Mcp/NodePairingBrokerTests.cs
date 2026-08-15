@@ -1,0 +1,283 @@
+using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Mcp;
+
+namespace Cockpit.Infrastructure.Tests.Mcp;
+
+/// <summary>
+/// What the node will and will not agree to (AC-792). Every refusal in the pairing handshake is decided here, so
+/// this is where criteria 2 (expired told apart from spent), 3 (a second controller refused, with the incumbent
+/// named), 4 (an overheard code is not enough) and 5 (unpairing invalidates the key) are proved — without a socket,
+/// which is what makes them provable at all rather than timing-dependent.
+/// </summary>
+public class NodePairingBrokerTests : IDisposable
+{
+    private readonly string _configPath = Path.Combine(Path.GetTempPath(), $"node-pairing-{Guid.NewGuid():N}.json");
+    private readonly string _certificatePath = Path.Combine(Path.GetTempPath(), $"node-pairing-{Guid.NewGuid():N}.pfx");
+    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 8, 15, 12, 0, 0, TimeSpan.Zero));
+
+    // The value the node listener accepts right now — the holder `McpAuthMiddleware` reads per request.
+    private readonly NodeSharedSecret _liveSecret = new();
+
+    private NodeEndpointSettingsStore _Store() => new(_configPath);
+
+    private NodePairingBroker _Broker(NodeEndpointSettingsStore? store = null) =>
+        new(store ?? _Store(), new NodeSelfSignedCertificate(_certificatePath), _liveSecret, [], _time);
+
+    [Fact]
+    public async Task Claim_BeforeTheOperatorConfirms_IsPendingAndGrantsNothing()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.ClaimAsync(offer.PairingId, offer.ClaimToken));
+
+        Assert.Equal(NodePairingError.Pending, refusal.Error);
+        // The whole point: a request on its own leaves the node exactly as it was. No secret exists to steal yet.
+        Assert.Equal("", (await _Store().LoadAsync()).SharedSecret);
+    }
+
+    [Fact]
+    public async Task Claim_WithTheWrongToken_IsRefused_SoAnOverheardCodeIsNotEnough()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+
+        // Criterion 4, in the failure direction: this caller knows the pairing id — and by extension could have
+        // read the six digits off the screen — but was never on the connection the claim token came back over.
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.ClaimAsync(offer.PairingId, "0123456789ABCDEF"));
+
+        Assert.Equal(NodePairingError.InvalidToken, refusal.Error);
+
+        // And the real controller is unharmed by the attempt: its own claim still works.
+        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+        Assert.NotEqual("", grant.SharedSecret);
+    }
+
+    [Fact]
+    public async Task Claim_Twice_SaysAlreadyUsed_NotExpired()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.ClaimAsync(offer.PairingId, offer.ClaimToken));
+
+        // Criterion 2: "somebody already used this" is a different event from "you were too slow", and only the
+        // first is worth alarm — so they must not collapse into one code.
+        Assert.Equal(NodePairingError.AlreadyUsed, refusal.Error);
+        Assert.NotEqual(NodePairingError.Expired, refusal.Error);
+    }
+
+    [Fact]
+    public async Task Claim_AfterTheWindowClosesWithoutAConfirm_SaysExpired()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+
+        _time.Advance(NodePairingBroker.Lifetime + TimeSpan.FromSeconds(1));
+
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.ClaimAsync(offer.PairingId, offer.ClaimToken));
+        Assert.Equal(NodePairingError.Expired, refusal.Error);
+    }
+
+    [Fact]
+    public async Task Claim_AfterConfirming_IsNotDefeatedByTheWindowClosing()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+
+        // The two minutes are on the operator answering, not on the controller collecting. Expiring here would
+        // leave the node paired with a controller that can never hold the credential it was granted.
+        _time.Advance(NodePairingBroker.Lifetime + TimeSpan.FromSeconds(1));
+
+        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+        Assert.NotEqual("", grant.SharedSecret);
+    }
+
+    [Fact]
+    public async Task Request_WhileAlreadyPaired_IsRefusedAndNamesTheIncumbent()
+    {
+        var store = _Store();
+        var broker = _Broker(store);
+        var first = await broker.RequestAsync("Raymond's desktop", "192.168.1.5");
+        await broker.ConfirmAsync(first.PairingId);
+        await broker.ClaimAsync(first.PairingId, first.ClaimToken);
+
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.RequestAsync("a stranger", "192.168.1.9"));
+
+        // Criterion 3, and open point 3's answer: refuse, but say who has it — otherwise this is indistinguishable
+        // from a credential problem and the caller retries the wrong thing forever.
+        Assert.Equal(NodePairingError.AlreadyPaired, refusal.Error);
+        Assert.Contains("Raymond's desktop", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("192.168.1.5", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Request_WhileAnotherIsWaitingForTheOperator_IsRefused()
+    {
+        var broker = _Broker();
+        await broker.RequestAsync("desk", "192.168.1.5");
+
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.RequestAsync("a stranger", "192.168.1.9"));
+
+        // A second request must not silently replace the one on screen: that would let an unauthenticated caller
+        // cancel somebody else's pairing.
+        Assert.Equal(NodePairingError.PairingInProgress, refusal.Error);
+    }
+
+    [Fact]
+    public async Task Request_AfterTheOperatorRefuses_IsAcceptedAgain()
+    {
+        var broker = _Broker();
+        var first = await broker.RequestAsync("desk", "192.168.1.5");
+        broker.Refuse(first.PairingId);
+
+        // Refusing must not wedge the node for two minutes — the operator who pressed Refuse is often about to
+        // retry with the right machine.
+        var second = await broker.RequestAsync("desk", "192.168.1.5");
+        Assert.NotEqual(first.PairingId, second.PairingId);
+    }
+
+    [Fact]
+    public async Task Unpair_InvalidatesTheSharedSecretTheControllerWasGranted()
+    {
+        var store = _Store();
+        var broker = _Broker(store);
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        await broker.UnpairAsync();
+
+        // Criterion 5: this is the value `McpAuthMiddleware` accepts on the node listener, so clearing it is the
+        // revocation. Merely forgetting the pairing would leave the controller able to call in.
+        var settings = await store.LoadAsync();
+        Assert.Equal("", settings.SharedSecret);
+        Assert.NotEqual(grant.SharedSecret, settings.SharedSecret);
+        Assert.Null(settings.Pairing);
+        Assert.Null(broker.Pairing);
+    }
+
+    [Fact]
+    public async Task Confirm_MakesTheRunningListenerAcceptTheNewKeyWithoutARestart()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+
+        Assert.Null(_liveSecret.Value);
+
+        await broker.ConfirmAsync(offer.PairingId);
+        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        // `McpAuthMiddleware` reads this holder per request. Persisting the new secret without setting it here
+        // would leave the freshly paired controller turned away until the node next started — while the screen
+        // said the pairing had succeeded.
+        Assert.Equal(grant.SharedSecret, _liveSecret.Value);
+    }
+
+    [Fact]
+    public async Task Unpair_StopsTheRunningListenerAcceptingTheKeyWithoutARestart()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        await broker.UnpairAsync();
+
+        // The serious half of the same defect: revocation that waits for a restart is not revocation. Until this
+        // is null the unpaired controller still has full node access.
+        Assert.Null(_liveSecret.Value);
+    }
+
+    [Fact]
+    public async Task Confirm_TakesTheRequestOffTheOperatorsScreen_SoRefuseCannotUndoIt()
+    {
+        var store = _Store();
+        var broker = _Broker(store);
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+
+        // Nothing left for the operator to press — the screen keys on this, so a Refuse button that lingered here
+        // could mark a pairing refused whose secret is already minted and rotated into place.
+        Assert.Null(broker.Pending);
+
+        broker.Refuse(offer.PairingId);
+
+        // And if it is pressed anyway, it changes nothing: the pairing stands and the controller can still claim.
+        Assert.NotNull(broker.Pairing);
+        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+        Assert.Equal((await store.LoadAsync()).SharedSecret, grant.SharedSecret);
+    }
+
+    [Fact]
+    public async Task Confirm_Twice_IsRefused()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+
+        // A second confirm would mint a second secret over the first, orphaning a controller mid-claim.
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.ConfirmAsync(offer.PairingId));
+        Assert.Equal(NodePairingError.InvalidToken, refusal.Error);
+    }
+
+    [Fact]
+    public async Task Confirm_RecordsThePairingSoARestartStillKnowsWhoItIs()
+    {
+        var store = _Store();
+        var broker = _Broker(store);
+        var offer = await broker.RequestAsync("Raymond's desktop", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+
+        // A second broker over the same config is the restart: the pending pairing is gone (it lives in memory on
+        // purpose) but the coupling it created is not.
+        var afterRestart = _Broker(new NodeEndpointSettingsStore(_configPath));
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => afterRestart.RequestAsync("a stranger", "192.168.1.9"));
+
+        Assert.Equal(NodePairingError.AlreadyPaired, refusal.Error);
+        Assert.Null(afterRestart.Pending);
+    }
+
+    [Fact]
+    public async Task Confirm_MintsAFreshSecretRatherThanReusingTheHandCopiedOne()
+    {
+        var store = _Store();
+        await store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "the-hand-copied-one" });
+
+        var broker = _Broker(store);
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+
+        // Pairing is a new coupling, so it gets a new credential — otherwise unpairing later would leave whoever
+        // had read the old key off the Security tab still holding a working one.
+        var settings = await store.LoadAsync();
+        Assert.NotEqual("the-hand-copied-one", settings.SharedSecret);
+        Assert.True(settings.Enabled);
+    }
+
+    // xunit's own FakeTimeProvider lives in a package this project does not take; a settable clock is four lines.
+    private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset _now = now;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan by) => _now += by;
+    }
+
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+        foreach (var path in new[] { _configPath, _certificatePath })
+        {
+            foreach (var file in Directory.EnumerateFiles(Path.GetDirectoryName(path)!, Path.GetFileName(path) + "*"))
+            {
+                File.Delete(file);
+            }
+        }
+    }
+}

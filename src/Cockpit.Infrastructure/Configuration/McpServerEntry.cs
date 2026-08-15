@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -36,6 +37,12 @@ internal sealed class McpServerEntry
     // hand-edits. Nullable also because a hand-edited config can put null here and the deserializer will assign it.
     public List<McpHeaderEntry>? Headers { get; set; }
 
+    // The node certificate this row is pinned to (AC-792), absent for every server that is not a paired Cockpit
+    // node — which is nearly all of them, so it is left out rather than written as null. Not a credential: a
+    // fingerprint is public, and seeing which certificate a row trusts is the point of writing it down.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PinnedCertificateFingerprint { get; set; }
+
     public bool Enabled { get; set; } = true;
 
     public static McpServerEntry FromDomain(McpServerConfig server) => new()
@@ -56,6 +63,7 @@ internal sealed class McpServerEntry
         OAuthClientId = server.OAuthClientId,
         OAuthScopes = server.OAuthScopes,
         Headers = server.Headers.Count == 0 ? null : [.. server.Headers.Select(McpHeaderEntry.FromDomain)],
+        PinnedCertificateFingerprint = server.PinnedCertificateFingerprint,
         Enabled = server.Enabled,
     };
 
@@ -79,6 +87,7 @@ internal sealed class McpServerEntry
         // A hand-edited config can leave a row half-written; an incomplete header is dropped rather than sent as a
         // blank field name, which some servers answer with a protocol error rather than a useful message.
         Headers = [.. (Headers ?? []).Select(entry => entry.ToDomain()).Where(header => header.IsComplete)],
+        PinnedCertificateFingerprint = PinnedCertificateFingerprint,
         Enabled = Enabled,
     };
 }

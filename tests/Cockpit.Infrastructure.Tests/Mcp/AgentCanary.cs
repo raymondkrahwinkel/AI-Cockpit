@@ -81,6 +81,8 @@ internal sealed class AgentCanaryDesk : IAsyncDisposable
             new McpAuthKey(),
             keyring,
             nodeEndpointSettings,
+            new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"canary-node-{Guid.NewGuid():N}.pfx")),
+            new NodeSharedSecret(),
             NullLoggerFactory.Instance);
 
         await host.StartAsync(CancellationToken.None);

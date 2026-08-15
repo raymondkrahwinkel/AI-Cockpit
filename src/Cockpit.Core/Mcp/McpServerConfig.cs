@@ -58,6 +58,16 @@ public sealed record McpServerConfig
     // out. Ignored for a stdio server, which has no request to put them on.
     public IReadOnlyList<McpHeader> Headers { get; init; } = [];
 
+    // The TLS certificate fingerprint this HTTP server must present (AC-792) — set for a Cockpit node this
+    // instance paired with, empty for every other server.
+    //
+    // A node signs its own certificate, so the machine's trust store has no opinion about it; the pairing
+    // handshake is where a human decided this one is the right machine, and this field is that decision written
+    // down. Without it the connection would have to accept whatever answers at that address, which would make the
+    // shared secret readable by anything that can get in the middle. Not a credential — a fingerprint is public —
+    // so it stays in the clear in `cockpit.json` where the operator can see what their cockpit is pinned to.
+    public string? PinnedCertificateFingerprint { get; init; }
+
     // Whether this server is active — a disabled server is kept in the registry but not connected.
     public bool Enabled { get; init; } = true;
 
@@ -101,6 +111,7 @@ public sealed record McpServerConfig
         + $"{nameof(OAuthAuthority)} = {OAuthAuthority}, {nameof(OAuthClientId)} = {OAuthClientId}, "
         + $"{nameof(OAuthScopes)} = {OAuthScopes}, "
         + $"{nameof(Headers)} = [{string.Join(", ", Headers)}], "
+        + $"{nameof(PinnedCertificateFingerprint)} = {PinnedCertificateFingerprint}, "
         + $"{nameof(Enabled)} = {Enabled}, {nameof(CockpitHosted)} = {CockpitHosted}, "
         + $"{nameof(Internal)} = {Internal}, {nameof(AlwaysMounted)} = {AlwaysMounted} }}";
 }
