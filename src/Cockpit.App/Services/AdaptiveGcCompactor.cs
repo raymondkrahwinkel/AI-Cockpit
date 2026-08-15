@@ -8,6 +8,13 @@ namespace Cockpit.App.Services;
 // AC-733: catches a heap that grows large fast (seconds, not the hours the original ticket took) by checking
 // cheaply and often (~0.2 microseconds/check, measured) instead of waiting on a slow timer, so a compact catches
 // the heap small and cheap (tens of ms) instead of large and catastrophic (283 s measured at ~24M objects).
+//
+// ponytail: the growth this compacts is largely an Avalonia 12.1.1 issue, not our own — the compositor keeps
+// detached transcript-row views rooted (a VirtualizingStackPanel dematerialising a row, or a pane closing, leaves
+// its view tree + ~66 composition visuals/row behind; measured at 967 orphaned views for 216 live rows, ~64k
+// composition visuals over one streaming ticket). Our side detaches cleanly (the views end up with a null parent).
+// Recheck on an Avalonia upgrade — the real fix belongs there, and this compactor can likely shrink or go once it
+// lands. Full repro/analysis was captured under cockpit-diag (VERIFY-fixed.md).
 public sealed class AdaptiveGcCompactor(
     ILogger<AdaptiveGcCompactor>? logger = null,
     Func<long>? heapBytesProbe = null,
