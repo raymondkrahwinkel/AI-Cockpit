@@ -37,6 +37,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   through the same consent card every session uses, and live usage/cost figures. Requires the opencode CLI
   installed (opencode.ai/docs), authenticated for most models.
 
+- added: the first-run wizard's work-kind step now recommends plugins by the store index's new `audience` field
+  instead of a placeholder — picking "Development" pre-ticks the plugins tagged for it plus every generic
+  (untagged) plugin, and the AI-provider plugins no longer appear here since they are already chosen a step
+  earlier.
+
 - added: OpenRouter as a selectable session provider plugin — configure an OpenRouter API key and a
   vendor/model id (e.g. `anthropic/claude-sonnet-4.5`) per profile in Manage profiles. Chat-only: no tool
   calls, file access or permission prompts, and no context/usage pill (OpenRouter's endpoint reports neither).
