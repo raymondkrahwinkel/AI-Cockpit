@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -20,8 +21,27 @@ namespace Cockpit.Infrastructure.Mcp;
 //
 // A per-session token additionally names the session: the middleware stamps that verified pane id onto
 // `McpRequestContext` for the request's async flow, so the consent broker scopes on the session the request
-// actually came from rather than on the value the agent declared. The shared key and the node secret name no
-// session (the identity stays null), so those callers keep their previous consent behaviour.
+// actually came from rather than on the value the agent declared. The shared key names no session (the identity
+// stays null), so the in-process tool loop keeps its previous consent behaviour.
+//
+// AC-791: the node secret does name one — `NodeCallerIdentity.PaneId`, the single remote-caller role, which is
+// where that whole authorization model is written down. It is an identity rather than null so that a caller from
+// another machine cannot share the null bucket the local tool loop sits in, and so that every tool keying on the
+// verified pane fails closed for it instead of falling back to a pane id the caller declared.
+//
+// A refusal on the node listener says so in a form a caller can classify (AC-791, criterion 3): a 401 with an
+// RFC 6750 `WWW-Authenticate: Bearer error="invalid_token"` challenge and a small JSON body carrying the same
+// code. That is what makes "the cockpit turned me away" distinguishable at the other end from "nothing answered"
+// (a transport failure, no status at all) and from "that tool does not exist" (a 200 carrying a JSON-RPC error) —
+// the AC-247/DEP-172 lesson that a refusal without a code or a text cannot be classified. It stays deliberately
+// generic about *why*: a missing credential and a wrong one get the same answer, so the response never becomes an
+// oracle for probing which of the two it was.
+//
+// Only on that boundary, though — loopback keeps the bare 401 it always returned. A `WWW-Authenticate: Bearer`
+// challenge is what the MCP specification has a client read as "this server wants OAuth", so putting one on the
+// loopback answer would invite a local client whose session token has just been revoked into a discovery flow
+// against endpoints that have no OAuth at all (`McpOAuthProxyHost` shares this middleware). The controller is the
+// party that needed to tell a refusal apart; a local session is not, and it keeps its previous behaviour exactly.
 internal static class McpAuthMiddleware
 {
     public static void Require(WebApplication app, McpAuthKey authKey, SessionMcpKeyring keyring, string? nodeSharedSecret = null) =>
@@ -36,12 +56,12 @@ internal static class McpAuthMiddleware
                 // this machine, so a loopback-scoped credential must not work here even if it happens to match.
                 if (!string.IsNullOrEmpty(nodeSharedSecret) && _ConstantTimeEquals(token, nodeSharedSecret))
                 {
-                    McpRequestContext.Set(null);
+                    McpRequestContext.Set(NodeCallerIdentity.PaneId);
                     await next(context).ConfigureAwait(false);
                     return;
                 }
 
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await _RefuseWithReasonAsync(context).ConfigureAwait(false);
                 return;
             }
 
@@ -63,6 +83,20 @@ internal static class McpAuthMiddleware
 
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
         });
+
+    // The node listener's refusal, written out rather than left as a bare status code so a controller can tell it
+    // from silence — see the class comment for why this shape and why it stops at this boundary. The challenge
+    // header is the standard form; the body carries the same code because an MCP client surfaces a response body
+    // far more readily than a header.
+    private static Task _RefuseWithReasonAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        context.Response.Headers.WWWAuthenticate =
+            "Bearer error=\"invalid_token\", error_description=\"The cockpit did not accept this bearer token.\"";
+        context.Response.ContentType = "application/json";
+        return context.Response.WriteAsync(
+            """{"error":"invalid_token","error_description":"The cockpit did not accept this bearer token."}""");
+    }
 
     // Constant-time for the same reason McpAuthKey.IsAuthorized is — this credential crosses a real network, not
     // just a local socket, so a timing side-channel is a real leak here rather than a theoretical one.

@@ -215,6 +215,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a second Cockpit reaching this one over the network now counts as one remote caller rather than as
+  nothing in particular. It is never treated as one of your sessions: it cannot set a session's statusline, read an
+  agent's mail, answer a permission prompt or reuse one you granted a session on this machine, and the assistant's own servers
+  are no longer offered on the network at all. A connection that is turned away now says so with a reason, so the
+  other end can tell "refused" from "no answer" instead of guessing.
+
 - changed: the Codex provider plugin is called "Codex (ChatGPT)" in the store instead of "CLI Agent Provider
   (Codex)" — it is now findable under the name of the thing you are installing rather than under how it happens to
   be built. Nothing else moves: an installed copy keeps working and updates as usual, and sessions still start the

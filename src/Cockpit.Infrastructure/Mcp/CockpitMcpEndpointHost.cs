@@ -25,6 +25,8 @@ namespace Cockpit.Infrastructure.Mcp;
 // AC-790: when the network-node master switch is on, each endpoint also gets a second, HTTPS listener on a
 // network interface, guarded by a persistent shared secret instead of this run's ephemeral key — off by default,
 // and read once at mount time, so flipping the setting takes effect on the next launch, not live.
+// AC-791: each endpoint except an `Internal` one, which stays loopback-only however the switch is set — see
+// `MountAsync`, and `NodeCallerIdentity` for what a caller that does reach a node listener is allowed to be.
 internal sealed class CockpitMcpEndpointHost
     : IHostedService, ICockpitMcpEndpointHost, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
 {
@@ -129,6 +131,15 @@ internal sealed class CockpitMcpEndpointHost
 
             var nodeSettings = _nodeSettings ??= await _nodeEndpointSettings.LoadAsync(cancellationToken).ConfigureAwait(false);
 
+            // AC-791: an internal endpoint (AC-204 — the assistant's read and act tools) gets no network listener,
+            // whatever the master switch says. Internal already means "reaches only a launch that names it by
+            // name", and every one of those launches is a session on this machine; a caller from another machine
+            // cannot be one of them by construction, so there is nothing for it to reach here. Withholding the
+            // listener rather than refusing the request is deliberate: an endpoint that binds no socket off this
+            // machine cannot be opened later by a scoping mistake in whatever authorizes remote callers, and it
+            // gives a prober nothing to learn — the port is not there, so there is no answer to read.
+            var bindNodeListener = nodeSettings.Enabled && !isInternal;
+
             builder.WebHost.ConfigureKestrel(options =>
             {
                 // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second
@@ -136,7 +147,7 @@ internal sealed class CockpitMcpEndpointHost
                 // one shared dynamic port, which Kestrel refuses ("dynamic port binding is not supported when
                 // binding to localhost") since the OS could hand the two families different ports.
                 options.Listen(System.Net.IPAddress.Loopback, 0);
-                if (nodeSettings.Enabled)
+                if (bindNodeListener)
                 {
                     // A second, network-reachable listener next to the loopback one (AC-790), guarded by the persistent
                     // shared secret rather than this run's ephemeral McpAuthKey — see McpAuthMiddleware.Require below.
@@ -146,7 +157,7 @@ internal sealed class CockpitMcpEndpointHost
 
             var app = builder.Build();
             // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40).
-            McpAuthMiddleware.Require(app, _authKey, _keyring, nodeSettings.Enabled ? nodeSettings.SharedSecret : null);
+            McpAuthMiddleware.Require(app, _authKey, _keyring, bindNodeListener ? nodeSettings.SharedSecret : null);
             app.MapMcp("/mcp");
             _apps.Add(app);
 
@@ -164,7 +175,7 @@ internal sealed class CockpitMcpEndpointHost
             // The node listener's address, translated from Kestrel's wildcard bind into something reachable from
             // another machine — "https://0.0.0.0:PORT" means nothing to a second cockpit's operator.
             string? nodeUrl = null;
-            if (nodeSettings.Enabled)
+            if (bindNodeListener)
             {
                 var nodeListenAddress = addresses.Addresses.FirstOrDefault(address => address.StartsWith("https://", StringComparison.Ordinal));
                 if (nodeListenAddress is not null && _GetReachableAddress() is { } reachableHost)
