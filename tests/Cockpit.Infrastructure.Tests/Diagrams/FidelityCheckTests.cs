@@ -61,6 +61,26 @@ public class FidelityCheckTests
     }
 
     [Fact]
+    public void Check_StillSeesTheConnectionsBelowAClassDiagramNoteThatHasNoEndNote()
+    {
+        // A classDiagram note is a one-liner with no terminator. Treating it as a block would swallow the
+        // rest of the file and report a mutilated diagram as whole — the failure mode this check exists for.
+        const string source = """
+            classDiagram
+                note "drawn from the 2026 model"
+                Entity <|-- User
+                Entity *-- Address
+            """;
+        const string svg = """
+            <svg xmlns="http://www.w3.org/2000/svg"><g class="note"/></svg>
+            """;
+
+        var fidelity = FidelityCheck.Check(source, svg);
+
+        Assert.StartsWith("2 of 2 connections", Assert.Single(fidelity.Findings), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Check_ReportsANoteThatNeverReachedTheSvg()
     {
         const string source = """
@@ -238,6 +258,41 @@ public class FidelityCheckTests
             """
         },
         { "pie, which has no connections at all", "pie title Pets\n    \"Dogs\" : 386\n    \"Cats\" : 85" },
+        {
+            // An unverified type: its axis captions are written with an arrow and are not connections.
+            "quadrantChart", """
+            quadrantChart
+                title Reach and engagement
+                x-axis Low Reach --> High Reach
+                y-axis Low Engagement --> High Engagement
+                quadrant-1 We should expand
+                Campaign A: [0.3, 0.6]
+            """
+        },
+        {
+            // An unverified type: Mermaider draws these relations with no data-* marker on them.
+            "requirementDiagram", """
+            requirementDiagram
+                requirement test_req {
+                    id: 1
+                    text: the test text
+                    risk: high
+                    verifymethod: test
+                }
+                element test_entity {
+                    type: simulation
+                }
+                test_entity - satisfies -> test_req
+            """
+        },
+        {
+            "block-beta, another type whose connections carry no marker", """
+            block-beta
+                columns 3
+                a b c
+                d --> e
+            """
+        },
         {
             "gantt, whose dates are full of hyphens", """
             gantt

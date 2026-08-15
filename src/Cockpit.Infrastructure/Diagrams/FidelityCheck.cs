@@ -12,10 +12,18 @@ namespace Cockpit.Infrastructure.Diagrams;
 // reported when it agrees exactly with the count. A detector that cries wolf gets clicked away and is then
 // worse than none, so an ambiguous match degrades to the count rather than guessing at a line.
 //
-// Known blind spot: diagram types whose relations carry no data-* marker (C4) are counted as zero on both
-// sides and stay silent — no worse than today, and the source scan finds nothing there either.
+// Known blind spot: only the diagram types whose markers have actually been read off Mermaider's output are
+// checked. The rest stay silent — quadrantChart writes its axis captions with an arrow and would read as a
+// dropped connection, and requirementDiagram and block-beta draw relations with no data-* on them at all.
+// Guessing at an unverified type produces exactly the false alarm this check exists to stay clear of, so a
+// new type earns coverage by having its markers checked, not by being assumed to follow the convention.
 internal static partial class FidelityCheck
 {
+    // The diagram types whose connection and note markers were read off Mermaider 0.12.2's own output.
+    // Matched on the header keyword, which also covers the '-v2' spellings.
+    private static readonly string[] VerifiedTypes =
+        ["flowchart", "graph", "stateDiagram", "sequenceDiagram", "classDiagram", "erDiagram"];
+
     // '[*]' is the state-diagram start/end pseudo-node; Mermaider renders it under a generated id
     // (_start, _start2, _end), so it can only be matched positionally.
     private const string Wildcard = "*";
@@ -30,7 +38,14 @@ internal static partial class FidelityCheck
 
     public static DiagramFidelity Check(string source, string svg)
     {
-        var (edges, notes) = ScanSource(source);
+        var lines = source.ReplaceLineEndings("\n").Split('\n');
+        var body = FirstBodyLine(lines);
+        if (!IsVerifiedType(lines, body))
+        {
+            return new DiagramFidelity([]);
+        }
+
+        var (edges, notes) = ScanSource(lines, body);
         var (drawnEdges, drawnNotes) = ScanSvg(svg);
 
         var findings = new List<string>();
@@ -56,20 +71,16 @@ internal static partial class FidelityCheck
 
     private sealed record SourceEdge(int Line, string Text, string From, string To);
 
-    private static (List<SourceEdge> Edges, int Notes) ScanSource(string source)
+    // The first line past any YAML front matter. The '---' that opens it is also a flowchart link, so it
+    // only counts as front matter when nothing but blank lines precedes it.
+    private static int FirstBodyLine(string[] lines)
     {
-        var edges = new List<SourceEdge>();
-        var notes = 0;
-        var lines = source.ReplaceLineEndings("\n").Split('\n');
-
         var i = 0;
         while (i < lines.Length && lines[i].Trim().Length == 0)
         {
             i++;
         }
 
-        // A leading '---' opens YAML front matter. The same token is also a flowchart link, so it only
-        // counts as front matter when nothing but blank lines precedes it.
         if (i < lines.Length && lines[i].Trim() == "---")
         {
             i++;
@@ -81,7 +92,32 @@ internal static partial class FidelityCheck
             i++;
         }
 
-        for (; i < lines.Length; i++)
+        return i;
+    }
+
+    private static bool IsVerifiedType(string[] lines, int body)
+    {
+        for (var i = body; i < lines.Length; i++)
+        {
+            var text = lines[i].Trim();
+            if (text.Length == 0 || text.StartsWith("%%", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var keyword = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
+            return VerifiedTypes.Any(t => keyword.StartsWith(t, StringComparison.Ordinal));
+        }
+
+        return false;
+    }
+
+    private static (List<SourceEdge> Edges, int Notes) ScanSource(string[] lines, int body)
+    {
+        var edges = new List<SourceEdge>();
+        var notes = 0;
+
+        for (var i = body; i < lines.Length; i++)
         {
             var text = lines[i].Trim();
             if (text.Length == 0 || text.StartsWith("%%", StringComparison.Ordinal))
@@ -94,13 +130,13 @@ internal static partial class FidelityCheck
                 notes++;
 
                 // A note without ':' opens a free-text block that runs until 'end note'. Its body is prose
-                // and may well contain an arrow, so it must not be scanned for connections.
-                if (!text.Contains(':', StringComparison.Ordinal))
+                // and may well contain an arrow, so it must not be scanned for connections. Only skip when
+                // that terminator is actually there: a classDiagram's note has none, and swallowing the
+                // rest of the file would silently drop every connection below it — the very failure this
+                // check exists to catch.
+                if (!text.Contains(':', StringComparison.Ordinal) && EndOfNote(lines, i) is { } close)
                 {
-                    while (i < lines.Length && !lines[i].Trim().Equals("end note", StringComparison.OrdinalIgnoreCase))
-                    {
-                        i++;
-                    }
+                    i = close;
                 }
 
                 continue;
@@ -135,6 +171,27 @@ internal static partial class FidelityCheck
         }
 
         return (edges, notes);
+    }
+
+    // The line closing the note block opened on the given line, or null when it has no terminator.
+    private static int? EndOfNote(string[] lines, int opener)
+    {
+        for (var i = opener + 1; i < lines.Length; i++)
+        {
+            var text = lines[i].Trim();
+            if (text.Equals("end note", StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+
+            // Another note starts before this one closed, so this one never had a terminator.
+            if (IsNoteOpener(text))
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsNoteOpener(string text) =>
