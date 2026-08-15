@@ -142,7 +142,7 @@ public partial class SessionView : UserControl
         // memory growth; the same render-gated teardown lagging under streaming load is the transient half the
         // AdaptiveGcCompactor was papering over. Fire-and-forget: a failure to schedule a commit must never take
         // the close path down.
-        if (e.Root is Avalonia.Visual root
+        if (e.RootVisual is { } root
             && Avalonia.Rendering.Composition.ElementComposition.GetElementVisual(root)?.Compositor is { } compositor)
         {
             _ = compositor.RequestCommitAsync();
