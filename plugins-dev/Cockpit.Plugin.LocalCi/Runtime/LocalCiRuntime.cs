@@ -11,23 +11,42 @@ internal sealed class LocalCiRuntime(ICliRunner runner) : ILocalCiRuntime, IDisp
 
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    // Volatile because the fast path reads it outside the gate: without it the memory model permits a reader to keep
-    // seeing an answer Invalidate has already dropped.
-    private volatile LocalCiRuntimeStatus? _cached;
+    // Cached independently, not as one combined status: a durably-missing act would otherwise force Docker's
+    // already-known-good answer to be re-probed (a wasted subprocess spawn) on every call. Volatile because the
+    // fast path reads them outside the gate: without it the memory model permits a reader to keep seeing an
+    // answer Invalidate has already dropped.
+    private volatile DockerRuntimeStatus? _cachedDocker;
+    private volatile ActRuntimeStatus? _cachedAct;
 
     public async Task<LocalCiRuntimeStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        if (_cached is { } hit)
+        if (_cachedDocker is { } dockerHit && _cachedAct is { } actHit)
         {
-            return hit;
+            return new LocalCiRuntimeStatus(dockerHit, actHit);
         }
 
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            return _cached ??= new LocalCiRuntimeStatus(
-                await _DetectDockerAsync(cancellationToken),
-                await _DetectActAsync(cancellationToken));
+            var docker = _cachedDocker ?? await _DetectDockerAsync(cancellationToken);
+            var act = _cachedAct ?? await _DetectActAsync(cancellationToken);
+
+            // NotInstalled/EngineNotRunning is exactly the answer someone gets right after installing act or
+            // starting Docker while the cockpit was already running — remembering it would keep telling them
+            // stale news. The full probe cost only lands on this fail path (a working act/Docker answers in
+            // milliseconds), which is the state we don't want to hold onto anyway, so only a successful probe
+            // is worth remembering.
+            if (docker.State == DockerRuntimeState.Usable)
+            {
+                _cachedDocker = docker;
+            }
+
+            if (act.IsInstalled)
+            {
+                _cachedAct = act;
+            }
+
+            return new LocalCiRuntimeStatus(docker, act);
         }
         finally
         {
@@ -35,7 +54,11 @@ internal sealed class LocalCiRuntime(ICliRunner runner) : ILocalCiRuntime, IDisp
         }
     }
 
-    public void Invalidate() => _cached = null;
+    public void Invalidate()
+    {
+        _cachedDocker = null;
+        _cachedAct = null;
+    }
 
     public void Dispose() => _gate.Dispose();
 

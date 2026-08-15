@@ -121,7 +121,9 @@ public class LocalCiRuntimeTests
     [Fact]
     public async Task StatusIsProbedOnceAndAgainAfterInvalidate()
     {
-        var runner = new FakeCliRunner().Returns("docker", CliResult.Exited(0, "linux 29.5.3", string.Empty));
+        var runner = new FakeCliRunner()
+            .Returns("docker", CliResult.Exited(0, "linux 29.5.3", string.Empty))
+            .Returns("act", CliResult.Exited(0, "act version 0.2.89", string.Empty));
         using var runtime = new LocalCiRuntime(runner);
 
         await runtime.GetStatusAsync();
@@ -133,6 +135,55 @@ public class LocalCiRuntimeTests
 
         Assert.Equal(2, afterCache);
         Assert.Equal(4, runner.Calls.Count);
+    }
+
+    [Fact]
+    public async Task FailedProbe_IsReprobedOnNextCall_WithoutInvalidate()
+    {
+        var runner = new FakeCliRunner()
+            .Returns("docker", CliResult.Exited(0, "linux 29.5.3", string.Empty))
+            .Returns("act", CliResult.NotStarted);
+        using var runtime = new LocalCiRuntime(runner);
+
+        var first = await runtime.GetStatusAsync();
+        Assert.False(first.Act.IsInstalled);
+
+        runner.Returns("act", CliResult.Exited(0, "act version 0.2.89", string.Empty));
+        var second = await runtime.GetStatusAsync();
+
+        Assert.True(second.Act.IsInstalled);
+    }
+
+    [Fact]
+    public async Task SuccessfulProbe_StaysCached_EvenAfterTheFakeWouldReportFailure()
+    {
+        var runner = new FakeCliRunner()
+            .Returns("docker", CliResult.Exited(0, "linux 29.5.3", string.Empty))
+            .Returns("act", CliResult.Exited(0, "act version 0.2.89", string.Empty));
+        using var runtime = new LocalCiRuntime(runner);
+
+        var first = await runtime.GetStatusAsync();
+        Assert.True(first.CanRunJobs);
+
+        runner.Returns("act", CliResult.NotStarted);
+        var second = await runtime.GetStatusAsync();
+
+        Assert.True(second.CanRunJobs);
+    }
+
+    [Fact]
+    public async Task DurablyMissingAct_DoesNotForceDockerToBeReprobed()
+    {
+        var runner = new FakeCliRunner()
+            .Returns("docker", CliResult.Exited(0, "linux 29.5.3", string.Empty))
+            .Returns("act", CliResult.NotStarted);
+        using var runtime = new LocalCiRuntime(runner);
+
+        await runtime.GetStatusAsync();
+        await runtime.GetStatusAsync();
+
+        Assert.Equal(1, runner.Calls.Count(call => call.FileName == "docker"));
+        Assert.Equal(2, runner.Calls.Count(call => call.FileName == "act"));
     }
 
     private static async Task<LocalCiRuntimeStatus> _StatusOf(FakeCliRunner runner)

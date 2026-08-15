@@ -36,7 +36,8 @@ internal sealed record DockerRuntimeStatus(DockerRuntimeState State, string? Con
     public string Message => State switch
     {
         DockerRuntimeState.NotInstalled =>
-            "Docker was not found. Install Docker Desktop (or the Docker engine) to run workflow jobs on this machine.",
+            "Docker was not found. Install Docker Desktop (or the Docker engine) to run workflow jobs on this machine. " +
+            "Just installed it? Try again — no need to reopen this screen or restart the cockpit.",
         DockerRuntimeState.EngineNotRunning =>
             "Docker is installed, but the engine did not answer — Docker Desktop is most likely not running. Start it, then check again.",
         _ when RunsLinuxContainers =>

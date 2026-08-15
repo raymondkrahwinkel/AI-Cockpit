@@ -218,6 +218,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: local CI kept saying Docker or act was missing after you had just installed it, until you reopened the
+  local-CI settings screen or restarted the cockpit. It now checks again the next time it needs to know, without
+  needing either — a working answer is still remembered so nothing gets re-checked once it's found.
 - fixed: scrolling a session at the Focus reading level was jerky and used far more memory than the same session at
   Developer — the tool steps a fold collapses were still being built as rows, invisibly, so the transcript kept
   around nine hidden rows in memory for every one you can see. They are no longer built at all: measured over 600
