@@ -43,7 +43,10 @@
                  AC-737: MarkdownView, not SelectableTextBlock, so a pasted link is clickable too.
                  AC-745/AC-749: the copy action sits below the bubble, not inside it — a sibling
                  outside the tinted Border so it never overlaps the bubble's rounded corner. -->
-            <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2" HorizontalAlignment="Right">
+            <ContentControl Content="{Binding UserBranch}" IsVisible="{Binding IsUserRow}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <StackPanel Spacing="2" HorizontalAlignment="Right">
                 <Border Classes="transcriptRow userRow" Padding="8,5" MaxWidth="520"
                         CornerRadius="{StaticResource CockpitControlRadius}">
                     <StackPanel Spacing="2">
@@ -81,6 +84,9 @@
                     </Button>
                 </StackPanel>
             </StackPanel>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- Questions / turn-result rows: plain wrapped text, not a bubble or markdown;
                  indented to sit in the reply column. An error or failed-turn row (AC-720/AC-728) gets its
@@ -93,7 +99,10 @@
                  for an unclassified type (falls to informational). Raw provider text always shows in full.
                  AC-728: a failed TurnCompleted row (ShowsFailureCard) shares this same card, always informational
                  since it carries no SessionErrorKind. -->
-            <Border IsVisible="{Binding ShowsFailureCard}" ClipToBounds="True" Classes="errorCard rowIndent"
+            <ContentControl Content="{Binding FailureBranch}" IsVisible="{Binding ShowsFailureCard}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <Border ClipToBounds="True" Classes="errorCard rowIndent"
                     Classes.blocking="{Binding IsBlockingError}"
                     Classes.temporary="{Binding IsTemporaryError}"
                     Classes.informational="{Binding IsInformationalError}">
@@ -107,11 +116,17 @@
                     </StackPanel>
                 </DockPanel>
             </Border>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- Context-cleared divider (AC-564): a hairline across the full width with its
                  label in the middle, so the break reads as a break in the conversation rather
                  than as one more message in it. -->
-            <Grid IsVisible="{Binding IsDivider}" ColumnDefinitions="*,Auto,*" Margin="0,8">
+            <ContentControl Content="{Binding DividerBranch}" IsVisible="{Binding IsDivider}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <Grid ColumnDefinitions="*,Auto,*" Margin="0,8">
                 <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
                         Background="{StaticResource CockpitHairlineBrush}"/>
                 <TextBlock Grid.Column="1" Text="{Binding Text}" Classes="dividerLabel" Margin="10,0" FontSize="10.5"
@@ -120,12 +135,18 @@
                 <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
                         Background="{StaticResource CockpitHairlineBrush}"/>
             </Grid>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- Assistant reply (T9 / look&feel pass): the model's avatar badge sits left,
                  with its name over the prose (MarkdownView — the cockpit's own themed
                  renderer, selectable text, clickable links). The per-reply actions
                  (copy · read aloud) sit below and fade in on hover/focus (rowActions). -->
-            <Grid IsVisible="{Binding IsAssistantMarkdown}" ColumnDefinitions="Auto,*">
+            <ContentControl Content="{Binding AssistantBranch}" IsVisible="{Binding IsAssistantMarkdown}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <Grid ColumnDefinitions="Auto,*">
                 <Border Grid.Column="0" Classes="avatarBadge" Margin="0,1,10,0">
                     <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -147,13 +168,19 @@
                     </StackPanel>
                 </StackPanel>
             </Grid>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- Reasoning / extended-thinking (AC-213): the model's streamed thinking, shown
                  only at Developer — the row's IsRowVisible gates the whole Border off at
                  Focus/Simple (AC-138), so those levels stay calm. A dimmed, collapsible section
                  headed "Thinking" (default expanded) that grows in place as deltas append, like
                  assistant prose; the pulsing "Thinking…" indicator above the composer is separate. -->
-            <StackPanel IsVisible="{Binding IsThinking}" Spacing="4" Classes="rowIndent">
+            <ContentControl Content="{Binding ThinkingBranch}" IsVisible="{Binding IsThinking}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <StackPanel Spacing="4" Classes="rowIndent">
                 <Button Command="{Binding ToggleExpandedCommand}"
                         Classes="toolChip" HorizontalAlignment="Left">
                     <StackPanel Orientation="Horizontal" Spacing="4">
@@ -167,12 +194,18 @@
                                      Foreground="{StaticResource CockpitTextFaintBrush}"
                                      IsVisible="{Binding IsExpanded}"/>
             </StackPanel>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
                  to the full input plus the coupled result (L14, matched on tool_use_id).
                  A structured/code result renders in a monospace code box with a copy
                  button (T6); a plain result stays inline text. -->
-            <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4" Classes="rowIndent">
+            <ContentControl Content="{Binding ToolBranch}" IsVisible="{Binding IsToolUse}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <StackPanel Spacing="4" Classes="rowIndent">
 
                 <!-- Focus fold line (AC-138): a run of auto-executed tool calls collapses to one
                      "N steps run" line on the run's anchor row; clicking it expands the run's chips
@@ -196,7 +229,10 @@
                      but Allow/Deny is not an answer to it — so it renders as the agent's own
                      options instead of the consent buttons over raw JSON. Non-modal, and it
                      stays put with the chosen labels once sent. -->
-                <Border IsVisible="{Binding HasQuestionPrompts}" ClipToBounds="True"
+                <ContentControl Content="{Binding QuestionBranch}" IsVisible="{Binding HasQuestionPrompts}">
+                  <ContentControl.DataTemplates>
+                    <DataTemplate DataType="vm:TranscriptEntryViewModel">
+                <Border ClipToBounds="True"
                         CornerRadius="{StaticResource CockpitControlRadius}"
                         Background="{StaticResource CockpitPanelBgBrush}"
                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
@@ -282,14 +318,19 @@
                         </StackPanel>
                     </DockPanel>
                 </Border>
+                    </DataTemplate>
+                  </ContentControl.DataTemplates>
+                </ContentControl>
 
                 <!-- The full tool chip + expandable body: shown at Developer always, at Focus only
                      when the fold group is expanded (or the call stands alone), and never at Simple.
                      A member of a folded run (AC-554) nests one level in behind a hairline guide,
                      so the chips read as belonging to the "N steps run" line above them; the
                      button itself is not part of this Border and stays on the outer margin. -->
-                <Border Classes="toolGroupMember" Classes.grouped="{Binding IsInGroup}"
-                        IsVisible="{Binding ShowToolBlock}">
+                <ContentControl Content="{Binding ToolBlockBranch}" IsVisible="{Binding ShowToolBlock}">
+                  <ContentControl.DataTemplates>
+                    <DataTemplate DataType="vm:TranscriptEntryViewModel">
+                <Border Classes="toolGroupMember" Classes.grouped="{Binding IsInGroup}">
                 <StackPanel Spacing="4">
                 <!-- Header row: the tool chip, with the allow/deny outcome trailing on the same
                      line (T5) so a resolved call reads "Bash · dotnet build   Allowed" instead of
@@ -338,6 +379,9 @@
                 </StackPanel>
                 </StackPanel>
                 </Border>
+                    </DataTemplate>
+                  </ContentControl.DataTemplates>
+                </ContentControl>
 
                 <!-- AC-146: a Task/Agent tool call's own sub-agent activity — nested here rather
                      than flattened into the top-level transcript, and collapsed by default
@@ -419,6 +463,9 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- Standalone (orphan) tool results: collapsed by default; expand via chevron. -->
             <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4" Classes="rowIndent">

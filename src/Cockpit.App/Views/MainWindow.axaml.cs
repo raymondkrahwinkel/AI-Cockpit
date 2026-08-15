@@ -65,6 +65,11 @@ public partial class MainWindow : Window
     // Whether this window is the active one is something only the window knows, and the finished-session
     // notification needs it: a session you are looking at has already told you it is done. Window activation,
     // not keyboard focus — a click in the terminal moves focus around inside a window that stayed active.
+    // Cockpit serves no external UI-Automation tree (see NoChildrenWindowPeer) — it has its own in-app voice
+    // assistant, and exposing one to external UIA clients leaks the closed-pane transcripts (Avalonia #8240). The
+    // window still returns a real root peer; only its children are hidden.
+    protected override Avalonia.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new NoChildrenWindowPeer(this);
+
     private void _SetWindowActive(bool isActive)
     {
         if (DataContext is CockpitViewModel cockpit)

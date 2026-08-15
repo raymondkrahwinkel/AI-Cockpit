@@ -33,6 +33,11 @@ public partial class AssistantChatWindow : Window
 
     private ScrollViewer? _transcriptScroll;
 
+    // Cockpit serves no external UI-Automation tree (see NoChildrenWindowPeer) — the assistant has its own in-app
+    // voice channel, and exposing one to external UIA clients leaks the transcript (Avalonia #8240). The window
+    // still returns a real root peer; only its children are hidden.
+    protected override Avalonia.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new NoChildrenWindowPeer(this);
+
     // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-774, so the
     // virtualising panel measures against the viewport rather than the infinite height an enclosing ScrollViewer
     // hands it — mirrors SessionView.axaml.cs's own TranscriptScroll exactly (AC-686). A name inside a template

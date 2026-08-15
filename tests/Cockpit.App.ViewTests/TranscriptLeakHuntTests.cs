@@ -38,14 +38,22 @@ public sealed class TranscriptLeakHuntTests
             var view = new SessionView { DataContext = vm };
             var window = new Window { Content = view, Width = 820, Height = 640 };
             window.Show();
-            window.UpdateLayout();
-            await Task.Delay(120);
+            // A few layout passes, not one: each row's body is built lazily (a ContentControl whose implicit
+            // DataTemplate only materialises once its branch content resolves), so the first pass measures short
+            // rows and the panel needs the follow-up passes to realise a viewport's worth. In the live app the
+            // continuous render loop does this within a frame or two; here we pump it explicitly.
+            for (var warmup = 0; warmup < 4; warmup++)
+            {
+                window.UpdateLayout();
+                await Task.Delay(40);
+            }
 
             var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault(s => s.Name == "TranscriptScroll");
             Assert.NotNull(scroll);
 
             var realizedAtTop = LeakTracker.AliveCount(nameof(TranscriptRowView));
-            Assert.True(realizedAtTop > 2, $"no rows realised ({realizedAtTop}); the test is not exercising the transcript");
+            var mdAtTop = LeakTracker.AliveCount(nameof(MarkdownView));
+            Assert.True(realizedAtTop > 2, $"no rows realised (rows={realizedAtTop} md={mdAtTop}); the test is not exercising the transcript");
 
             // Scroll top -> bottom -> top a few times, so rows dematerialise and re-realise repeatedly (the churn the
             // production dump showed: more rows created than there are view-models).
