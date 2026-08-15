@@ -144,6 +144,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionResourceResolver? _sessionResourceResolver;
     private readonly IConsentBroker? _consentBroker;
     private readonly ResourceMonitor? _resourceMonitor;
+    // Stops a slow SampleResourcesAsync read from overlapping the next tick — a second walk of ResourceMonitor's
+    // per-process state would corrupt the CPU delta. UI-thread only, so a plain field is enough.
+    private bool _samplingResources;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IWorktreeSettingsStore? _worktreeSettingsStore;
@@ -3388,16 +3391,52 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        // A session with no process (an HTTP-backed provider) has nothing local to weigh; it is left out rather
-        // than shown as 0%, which would read as "idle" instead of "not measurable here".
+        // Synchronous path for the tests; the live timer uses SampleResourcesAsync to keep the WMI read off the UI thread.
+        _ApplyResourceUsage(_resourceMonitor.Sample(_SessionProcessIds()));
+    }
+
+    // The WMI Win32_Process read (WmiProcessTableReader) is 70-200ms and, on the DispatcherTimer, blocked the UI
+    // thread every 2s — a periodic stutter. Read on the thread pool; apply on the UI thread the await resumes onto.
+    internal async Task SampleResourcesAsync()
+    {
+        if (_resourceMonitor is null || _samplingResources)
+        {
+            return;
+        }
+
+        _samplingResources = true;
+        try
+        {
+            var processes = _SessionProcessIds();
+            var usage = await Task.Run(() => _resourceMonitor.Sample(processes));
+            _ApplyResourceUsage(usage);
+        }
+        catch (Exception exception)
+        {
+            // Belt-and-braces (the reader already swallows WMI errors): a failed sample must not stop the timer.
+            _logger?.LogWarning(exception, "A resource sample failed; the next tick will try again.");
+        }
+        finally
+        {
+            _samplingResources = false;
+        }
+    }
+
+    // A session with no process (an HTTP-backed provider) has nothing local to weigh; it is left out rather than
+    // shown as 0%, which would read as "idle" instead of "not measurable here".
+    private Dictionary<string, int> _SessionProcessIds()
+    {
         var processes = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var session in Sessions.Where(session => session.ProcessId is not null))
         {
             processes[session.Title] = session.ProcessId!.Value;
         }
 
-        var usage = _resourceMonitor.Sample(processes);
+        return processes;
+    }
 
+    private void _ApplyResourceUsage(ResourceUsage usage)
+    {
         _WarnAboutMemory(usage);
         _WarnAboutSessionCaps(usage);
         _WarnAboutSessionMemory(usage);

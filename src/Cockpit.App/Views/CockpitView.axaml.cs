@@ -99,9 +99,10 @@ public partial class CockpitView : UserControl
             // The resource meter (#78) samples on the same principle: the timer lives here, the arithmetic in the
             // view model, so a test can take a sample whenever it likes.
             _resourceTimer = new DispatcherTimer { Interval = ResourceSampleInterval };
-            _resourceTimer.Tick += (_, _) => cockpit.SampleResources();
+            // Fire-and-forget: the WMI read inside runs on the thread pool now, so the tick no longer blocks the UI.
+            _resourceTimer.Tick += (_, _) => _ = cockpit.SampleResourcesAsync();
             _resourceTimer.Start();
-            cockpit.SampleResources();
+            _ = cockpit.SampleResourcesAsync();
 
             // AC-439: same footing as the two timers above — the arithmetic (which panes collide) lives on the view
             // model, only the tick lives here. The refresh itself hops to the thread pool for its filesystem
