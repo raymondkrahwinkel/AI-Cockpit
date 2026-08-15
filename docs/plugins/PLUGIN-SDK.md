@@ -1271,6 +1271,15 @@ they exercise the main contribution points:
   `SupportsPermissions: true` here means real Allow/Deny cards. Also shows how a plugin hands its
   cockpit-hosted MCP servers to the child and how a context percentage can come from a provider that reports
   no usage on the wire. Experimental (0.x).
+- **[opencode Provider (ACP)](../../plugins-dev/Cockpit.Plugin.OpencodeProvider)** — a second Agent Client
+  Protocol driver (`opencode acp`), same architecture as Kimi's but independently measured against a real
+  process rather than assumed to behave the same — several things differ: opencode reports live usage/cost
+  per turn over a dedicated `usage_update` notification (Kimi has no such signal at all), it does not ask
+  tool-call permission by default (asking is forced on every spawn via the `OPENCODE_CONFIG_CONTENT`
+  environment variable, the one mechanism that reaches its permission engine regardless of the target
+  project's own config), and it is explicitly multi-provider so this driver does not scrub inherited
+  `ANTHROPIC_*`/`OPENAI_*`-style credentials the way the single-vendor Kimi driver does. See
+  `OpencodeAcpSessionDriver`'s own header comment for the full list of measured differences. Experimental (0.x).
 
 They all ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
 `host.Storage` or is minted fresh per session instead of living in the DI container), and the UI-contribution

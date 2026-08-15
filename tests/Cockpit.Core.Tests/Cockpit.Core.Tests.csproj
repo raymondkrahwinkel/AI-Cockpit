@@ -85,6 +85,12 @@
          loader integration test can load its real assembly and prove AddSessionProvider registers it too. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GrokProvider\Cockpit.Plugin.GrokProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Same pattern for the opencode ACP provider plugin (AC-783) — a persistent `opencode acp` subprocess
+         over the Agent Client Protocol, the same shape Cockpit.Plugin.KimiProvider uses, so the loader
+         integration test can load its real assembly and prove AddSessionProvider registers it with real-agent
+         (tools/permissions) capabilities. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.OpencodeProvider\Cockpit.Plugin.OpencodeProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>
