@@ -75,6 +75,11 @@
          AddTtyProvider registers Claude's TTY route through the actual PluginActivator. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\Cockpit.Plugin.ClaudeProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Same pattern for the OpenRouter provider plugin (AC-806) — OpenRouter via the same OpenAiCompat
+         session-provider stack the Gemini/OpenAI (#45) and GitHub Models (#63) provider plugins use, so the
+         loader integration test can load its real assembly and prove AddSessionProvider registers it too. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.OpenRouterProvider\Cockpit.Plugin.OpenRouterProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>
