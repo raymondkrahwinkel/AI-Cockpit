@@ -27,6 +27,11 @@ public class MermaidPipelineThemeTests
 
         Assert.DoesNotContain("var(", document.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("color-mix(", document.Markup, StringComparison.Ordinal);
-        Assert.Contains(theme.Accent, document.Markup, StringComparison.OrdinalIgnoreCase);
+
+        // AC-817: the root <svg>'s own style="" attribute carries every theme color literally regardless
+        // of whether the flattener resolved anything, so Assert.Contains(theme.Accent, ...) alone passed
+        // even when every fill/stroke fell back to #000000. Pin the colors to a real node/edge instead.
+        Assert.Contains($"fill=\"{theme.Surface}\"", document.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"stroke=\"{theme.Line}\"", document.Markup, StringComparison.OrdinalIgnoreCase);
     });
 }

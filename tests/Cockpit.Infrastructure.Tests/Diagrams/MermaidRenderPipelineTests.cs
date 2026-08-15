@@ -1,3 +1,4 @@
+using System.Globalization;
 using Cockpit.Infrastructure.Diagrams;
 
 namespace Cockpit.Infrastructure.Tests.Diagrams;
@@ -37,6 +38,21 @@ public class MermaidRenderPipelineTests
         Assert.DoesNotContain("var(", document.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("color-mix(", document.Markup, StringComparison.Ordinal);
         Assert.True(document.Width > 0 && document.Height > 0, $"{label}: expected a positive viewport size");
+
+        // AC-817: an unresolved var() used to silently guess #000000 instead of failing — with a clean
+        // source and a full theme, none of that fallback should reach the flattened SVG. (A user's own
+        // classDef fill:#000000 is unrelated and not exercised by these pilot sources.)
+        Assert.DoesNotContain("#000000", document.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Render_PlacesThemeColorsOnARealNodeAndEdge_NotJustSomewhereInTheDocument()
+    {
+        var document = MermaidRenderPipeline.Render(FlowchartWithSubgraphs, Theme).Svg;
+
+        Assert.Contains($"fill=\"{Theme.Surface}\"", document.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"stroke=\"{Theme.Line}\"", document.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"font-size=\"{Theme.FontSizePx.ToString(CultureInfo.InvariantCulture)}px\"", document.Markup, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

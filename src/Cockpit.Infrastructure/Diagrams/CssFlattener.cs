@@ -27,28 +27,86 @@ internal static partial class CssFlattener
         return ConvertRemToPx(flattened);
     }
 
+    // Mermaider 0.12.2 never emits a :root selector. The base roles (--bg, --fg, ...) live in the root
+    // <svg>'s own style="" attribute, and the derived ones (--_*, --fs-*) live in a `svg { }` rule inside the
+    // <style> block, referencing the base roles by var(). :root is parsed too in case a future Mermaider
+    // version (or a hand-authored source) starts using it, but it is dead against today's output.
     private static Dictionary<string, string> ParseRootCustomProperties(string svg)
     {
         var properties = new Dictionary<string, string>();
-        var rootStart = svg.IndexOf(":root", StringComparison.Ordinal);
-        if (rootStart < 0)
+        ParseAttributeDeclarations(svg, properties);
+        ParseRuleDeclarations(svg, ":root", properties);
+        ParseRuleDeclarations(svg, "svg", properties);
+        return properties;
+    }
+
+    private static void ParseAttributeDeclarations(string svg, Dictionary<string, string> properties)
+    {
+        var svgTagStart = svg.IndexOf("<svg", StringComparison.Ordinal);
+        if (svgTagStart < 0)
         {
-            return properties;
+            return;
         }
 
-        var braceStart = svg.IndexOf('{', rootStart);
-        if (braceStart < 0)
+        var svgTagEnd = svg.IndexOf('>', svgTagStart);
+        if (svgTagEnd < 0)
         {
-            return properties;
+            return;
         }
 
-        var braceEnd = FindMatching(svg, braceStart, '{', '}');
-        if (braceEnd < 0)
+        var styleStart = svg.IndexOf("style=\"", svgTagStart, StringComparison.Ordinal);
+        if (styleStart < 0 || styleStart > svgTagEnd)
         {
-            return properties;
+            return;
         }
 
-        foreach (var declaration in SplitTopLevel(svg[(braceStart + 1)..braceEnd], ';'))
+        styleStart += "style=\"".Length;
+        var styleEnd = svg.IndexOf('"', styleStart);
+        if (styleEnd < 0 || styleEnd > svgTagEnd)
+        {
+            return;
+        }
+
+        ParseDeclarations(svg[styleStart..styleEnd], properties);
+    }
+
+    // Finds `selector {` as a standalone rule (not, say, the "svg" inside the root <svg ...> tag's own name)
+    // by requiring the next non-whitespace character after the selector text to be the opening brace.
+    private static void ParseRuleDeclarations(string svg, string selector, Dictionary<string, string> properties)
+    {
+        var searchFrom = 0;
+        while (true)
+        {
+            var selectorStart = svg.IndexOf(selector, searchFrom, StringComparison.Ordinal);
+            if (selectorStart < 0)
+            {
+                return;
+            }
+
+            var braceStart = selectorStart + selector.Length;
+            while (braceStart < svg.Length && char.IsWhiteSpace(svg[braceStart]))
+            {
+                braceStart++;
+            }
+
+            if (braceStart < svg.Length && svg[braceStart] == '{')
+            {
+                var braceEnd = FindMatching(svg, braceStart, '{', '}');
+                if (braceEnd >= 0)
+                {
+                    ParseDeclarations(svg[(braceStart + 1)..braceEnd], properties);
+                }
+
+                return;
+            }
+
+            searchFrom = selectorStart + selector.Length;
+        }
+    }
+
+    private static void ParseDeclarations(string block, Dictionary<string, string> properties)
+    {
+        foreach (var declaration in SplitTopLevel(block, ';'))
         {
             var colon = declaration.IndexOf(':');
             if (colon < 0)
@@ -63,8 +121,6 @@ internal static partial class CssFlattener
                 properties[name] = value;
             }
         }
-
-        return properties;
     }
 
     // Repeatedly replaces the innermost var()/color-mix() call — one whose argument list contains no
@@ -195,7 +251,15 @@ internal static partial class CssFlattener
             return value;
         }
 
-        return parts.Count > 1 ? parts[1] : "#000000";
+        if (parts.Count > 1)
+        {
+            return parts[1];
+        }
+
+        // No declared value and no var() fallback: guessing a color here is exactly the silent-failure
+        // class AC-808 exists to catch, so this fails loudly instead of guessing #000000.
+        throw new InvalidOperationException(
+            $"CssFlattener: custom property '{name}' has no declared value and no var() fallback.");
     }
 
     // color-mix(in srgb, colorA [p1%], colorB [p2%]) — the colorspace keyword is ignored and channels are

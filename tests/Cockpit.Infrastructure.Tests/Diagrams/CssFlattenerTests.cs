@@ -70,4 +70,42 @@ public class CssFlattenerTests
 
         Assert.Equal(svg, result);
     }
+
+    [Fact]
+    public void Flatten_ResolvesCustomPropertiesFromTheRootAttributeAndTheSvgRule()
+    {
+        // AC-817: this is the shape Mermaider 0.12.2 actually emits — no :root anywhere. Base roles sit in
+        // the root <svg>'s own style="" attribute; derived roles sit in a `svg { }` rule inside <style> and
+        // refer back to the base roles by var().
+        const string svg = """
+            <svg style="--bg:#0f1116;--fg:#e8eaef;--line:#2a2f39;--surface:#202430">
+            <style>
+              svg {
+                --_text: var(--fg);
+                --_node-fill: var(--surface, color-mix(in srgb, var(--fg) 10%, var(--bg)));
+                --fs-m: 13px;
+              }
+            </style>
+            <rect fill="var(--_node-fill)" stroke="var(--line)"/>
+            <text font-size="var(--fs-m)" fill="var(--_text)">Start</text>
+            </svg>
+            """;
+
+        var result = CssFlattener.Flatten(svg);
+
+        Assert.Contains("fill=\"#202430\"", result, StringComparison.Ordinal);
+        Assert.Contains("stroke=\"#2a2f39\"", result, StringComparison.Ordinal);
+        Assert.Contains("font-size=\"13px\"", result, StringComparison.Ordinal);
+        Assert.Contains("fill=\"#e8eaef\"", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("#000000", result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Flatten_ThrowsInsteadOfGuessingBlack_WhenACustomPropertyIsUndeclaredWithNoFallback()
+    {
+        const string svg = """<svg><rect fill="var(--missing)"/></svg>""";
+
+        var exception = Assert.Throws<InvalidOperationException>(() => CssFlattener.Flatten(svg));
+        Assert.Contains("--missing", exception.Message, StringComparison.Ordinal);
+    }
 }
