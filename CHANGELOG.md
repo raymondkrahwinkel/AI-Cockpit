@@ -193,6 +193,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the Codex provider plugin is called "Codex (ChatGPT)" in the store instead of "CLI Agent Provider
+  (Codex)" — it is now findable under the name of the thing you are installing rather than under how it happens to
+  be built. Nothing else moves: an installed copy keeps working and updates as usual, and sessions still start the
+  same `codex` command line tool.
+
 - changed: a project card is quieter. One button carries on with the project, sharing stays visible beside it, and
   everything else — open folder, edit, start with something changed, the project's own links — moved under a single
   `⋯`. A project that still needs an assistant picked now says "Pick how it runs" in an ordinary button instead of

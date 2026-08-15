@@ -24,7 +24,7 @@ public class PluginStoreEntryProviderCategoryTests
             { "id": "git-status", "name": "Git status", "latestVersion": "1.0.0", "category": "Productivity", "versions": [] },
             { "id": "claude-provider", "name": "Claude Code", "latestVersion": "0.14.1", "category": "AI providers", "versions": [] },
             { "id": "youtrack", "name": "YouTrack", "latestVersion": "1.0.0", "category": "Issue trackers", "versions": [] },
-            { "id": "cli-agent-provider", "name": "CLI Agent Provider (Codex)", "latestVersion": "0.5.3", "category": "AI providers", "versions": [] },
+            { "id": "cli-agent-provider", "name": "Codex (ChatGPT)", "latestVersion": "0.5.3", "category": "AI providers", "versions": [] },
             { "id": "docker", "name": "Docker", "latestVersion": "1.0.0", "category": "Automation", "versions": [] }
           ]
         }
