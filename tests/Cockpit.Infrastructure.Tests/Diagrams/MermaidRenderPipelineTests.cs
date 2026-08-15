@@ -32,7 +32,7 @@ public class MermaidRenderPipelineTests
     [MemberData(nameof(PilotSources))]
     public void Render_ProducesSvgWithNoUnresolvedVarOrColorMix(string label, string source)
     {
-        var document = MermaidRenderPipeline.Render(source, Theme);
+        var document = MermaidRenderPipeline.Render(source, Theme).Svg;
 
         Assert.DoesNotContain("var(", document.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("color-mix(", document.Markup, StringComparison.Ordinal);
@@ -49,7 +49,7 @@ public class MermaidRenderPipelineTests
                 class B highlight
             """;
 
-        var document = MermaidRenderPipeline.Render(source, Theme);
+        var document = MermaidRenderPipeline.Render(source, Theme).Svg;
 
         Assert.Contains("#ffc107", document.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("#856404", document.Markup, StringComparison.OrdinalIgnoreCase);
