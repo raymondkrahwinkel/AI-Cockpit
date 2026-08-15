@@ -85,7 +85,9 @@ public class ProjectQuickStartTests
         Assert.Equal("/home/raymond/RiderProjects/AI-Cockpit", result.WorkingDirectory);
         Assert.True(result.IsolateInWorktree);
         Assert.Equal(project.Id, result.ProjectId);
-        Assert.Equal("You are Olaf.\n\nWork ticket by ticket.", result.SystemPrompt);
+        Assert.Equal(
+            "You are Olaf.\n\n" + SessionStartDefaults.ProjectAttributionHeading + "\n\nWork ticket by ticket.",
+            result.SystemPrompt);
     }
 
     [Fact]
