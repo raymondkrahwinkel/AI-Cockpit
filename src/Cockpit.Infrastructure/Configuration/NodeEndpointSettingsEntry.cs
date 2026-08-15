@@ -51,11 +51,23 @@ internal sealed class NodePairingEntry
     public string ControllerAddress { get; set; } = string.Empty;
     public DateTimeOffset PairedAtUtc { get; set; }
 
+    // AC-794: which profiles and projects this pairing may use. Null (not an empty array) for a pairing written
+    // before this existed, which reads back through `ToDomain` as the same empty list `NodePairing`'s own
+    // properties default to — nothing to migrate, and a pre-AC-794 pairing starts able to use nothing, the same
+    // posture a fresh one takes.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? AllowedProfileLabels { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? AllowedProjectIds { get; set; }
+
     public static NodePairingEntry FromDomain(NodePairing pairing) => new()
     {
         ControllerName = pairing.ControllerName,
         ControllerAddress = pairing.ControllerAddress,
         PairedAtUtc = pairing.PairedAtUtc,
+        AllowedProfileLabels = pairing.AllowedProfileLabels.Count == 0 ? null : [.. pairing.AllowedProfileLabels],
+        AllowedProjectIds = pairing.AllowedProjectIds.Count == 0 ? null : [.. pairing.AllowedProjectIds],
     };
 
     public NodePairing ToDomain() => new()
@@ -63,5 +75,7 @@ internal sealed class NodePairingEntry
         ControllerName = ControllerName,
         ControllerAddress = ControllerAddress,
         PairedAtUtc = PairedAtUtc,
+        AllowedProfileLabels = AllowedProfileLabels ?? [],
+        AllowedProjectIds = AllowedProjectIds ?? [],
     };
 }

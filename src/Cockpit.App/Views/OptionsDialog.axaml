@@ -1188,6 +1188,35 @@
                                     <StackPanel Spacing="6">
                                         <TextBlock Text="{Binding Security.PairedControllerText}" TextWrapping="Wrap" FontSize="11.5"/>
                                         <Button Content="Unpair" HorizontalAlignment="Left" Command="{Binding Security.UnpairNodeCommand}"/>
+
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
+                                            <TextBlock Text="What this controller may use here" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <materialIcons:MaterialIcon Classes="hint"
+                                                ToolTip.Tip="Nothing, until you tick a profile or project below — a fresh pairing starts able to reach none of them, and unticking one here takes effect immediately, without unpairing."/>
+                                        </StackPanel>
+                                        <TextBlock Text="Profiles" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                                        <ItemsControl ItemsSource="{Binding Security.ScopedProfiles}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="No profiles saved yet." FontSize="11" FontStyle="Italic"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                   IsVisible="{Binding !Security.ScopedProfiles.Count}"/>
+
+                                        <TextBlock Text="Projects" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                                        <ItemsControl ItemsSource="{Binding Security.ScopedProjects}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="No projects saved yet." FontSize="11" FontStyle="Italic"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                   IsVisible="{Binding !Security.ScopedProjects.Count}"/>
                                     </StackPanel>
                                 </Border>
 

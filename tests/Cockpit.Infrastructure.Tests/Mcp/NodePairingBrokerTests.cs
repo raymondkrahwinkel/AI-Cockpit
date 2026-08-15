@@ -259,6 +259,139 @@ public class NodePairingBrokerTests : IDisposable
         Assert.True(settings.Enabled);
     }
 
+    // ── AC-794, scope ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void IsProfileAllowed_WhileUnpaired_IsFalse_ThereIsNothingToCheckAgainst()
+    {
+        var broker = _Broker();
+
+        Assert.False(broker.IsProfileAllowed("default"));
+        Assert.False(broker.IsProjectAllowed("proj-1"));
+    }
+
+    [Fact]
+    public async Task IsProfileAllowed_OnAFreshPairing_IsFalseUntilTheOperatorGrantsSomething()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        // Criterion 2: a coupling grants nothing until the operator ticks something, even though it is now a real,
+        // authenticated pairing that could reach a node-facing tool.
+        Assert.False(broker.IsProfileAllowed("default"));
+        Assert.False(broker.IsProjectAllowed("proj-1"));
+    }
+
+    [Fact]
+    public async Task SetScope_GrantsExactlyWhatWasListed_NothingElse()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        await broker.SetScopeAsync(["default"], ["proj-1"]);
+
+        Assert.True(broker.IsProfileAllowed("default"));
+        Assert.True(broker.IsProjectAllowed("proj-1"));
+        // Criterion 5's sibling: a grant is a named list, not "everything past this point" — a second profile that
+        // was never ticked stays refused.
+        Assert.False(broker.IsProfileAllowed("work"));
+        Assert.False(broker.IsProjectAllowed("proj-2"));
+    }
+
+    [Fact]
+    public async Task SetScope_Persists_SoARestartRemembersTheGrant()
+    {
+        var store = _Store();
+        var broker = _Broker(store);
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+        await broker.SetScopeAsync(["default"], ["proj-1"]);
+
+        var afterRestart = _Broker(new NodeEndpointSettingsStore(_configPath));
+        await afterRestart.EnsureLoadedAsync();
+
+        Assert.True(afterRestart.IsProfileAllowed("default"));
+        Assert.True(afterRestart.IsProjectAllowed("proj-1"));
+    }
+
+    [Fact]
+    public async Task SetScope_WhileUnpaired_IsANoOp_ThereIsNoPairingToAttachAGrantTo()
+    {
+        var store = _Store();
+        var broker = _Broker(store);
+
+        await broker.SetScopeAsync(["default"], ["proj-1"]);
+
+        Assert.False(broker.IsProfileAllowed("default"));
+        Assert.Null((await store.LoadAsync()).Pairing);
+    }
+
+    [Fact]
+    public async Task SetScope_NarrowedWhileTheListenerIsLive_TakesEffectAtOnce_NotOnTheNextClaim()
+    {
+        // Criterion 6: revoking a scope grant is not the same act as unpairing, and must not need one — the
+        // coupling itself stays intact while the check that gates a call reads the narrower list immediately.
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+        await broker.SetScopeAsync(["default", "work"], ["proj-1"]);
+        Assert.True(broker.IsProfileAllowed("work"));
+
+        await broker.SetScopeAsync(["default"], ["proj-1"]);
+
+        Assert.False(broker.IsProfileAllowed("work"));
+        Assert.True(broker.IsProfileAllowed("default"));
+        Assert.NotNull(broker.Pairing);
+    }
+
+    [Fact]
+    public async Task SetScope_TwoCallsInFlightAtOnce_TheSecondOneStartsFromWhatTheFirstActuallyWrote()
+    {
+        // Pins the contract _scopeWriteGate exists for: two calls in flight at once (the checklist's
+        // fire-and-forget toggle can produce exactly this) must not interleave their read-modify-write-disk
+        // sequences — the second one only starts once the first has fully finished, so the result is always
+        // `second`'s target. A fast local disk makes the unguarded version of this pass too, most of the time (the
+        // two calls rarely genuinely overlap without an artificial stall on the store) — the write-gate's own
+        // comment carries the reasoning for why the sequencing still matters.
+        var store = _Store();
+        var broker = _Broker(store);
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        var first = broker.SetScopeAsync(["default"], []);
+        var second = broker.SetScopeAsync(["default", "work"], ["proj-1"]);
+        await Task.WhenAll(first, second);
+
+        Assert.True(broker.IsProfileAllowed("work"));
+        Assert.True(broker.IsProjectAllowed("proj-1"));
+        var onDisk = (await store.LoadAsync()).Pairing!;
+        Assert.Contains("work", onDisk.AllowedProfileLabels);
+        Assert.Contains("proj-1", onDisk.AllowedProjectIds);
+    }
+
+    [Fact]
+    public async Task Unpair_ClearsTheScopeGrant_SoARePairingStartsAtNothingAgain()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+        await broker.SetScopeAsync(["default"], ["proj-1"]);
+        Assert.True(broker.IsProfileAllowed("default"));
+
+        await broker.UnpairAsync();
+
+        Assert.False(broker.IsProfileAllowed("default"));
+        Assert.False(broker.IsProjectAllowed("proj-1"));
+    }
+
     // xunit's own FakeTimeProvider lives in a package this project does not take; a settable clock is four lines.
     private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
     {
