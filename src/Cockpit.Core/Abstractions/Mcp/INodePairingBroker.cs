@@ -51,4 +51,22 @@ public interface INodePairingBroker
     /// from the controller over <c>/pair/unpair</c> — both land here.
     /// </summary>
     Task UnpairAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True if the current pairing may use the profile named <paramref name="profileLabel"/> (AC-794). False when
+    /// there is no pairing at all, and false for a profile the operator never ticked — a fresh or just-revoked
+    /// pairing grants nothing, there is no implicit "everything until narrowed".
+    /// </summary>
+    bool IsProfileAllowed(string profileLabel);
+
+    /// <summary>Same as <see cref="IsProfileAllowed"/>, for a project by <see cref="Cockpit.Core.Projects.Project.Id"/>.</summary>
+    bool IsProjectAllowed(string projectId);
+
+    /// <summary>
+    /// Replaces which profiles and projects the current pairing may use. A no-op while unpaired — there is no
+    /// pairing to attach a grant to. Takes effect on the running listener at once, the same as
+    /// <see cref="ConfirmAsync"/> and <see cref="UnpairAsync"/>: a scope narrowed here must stop covering the next
+    /// call, not the next restart.
+    /// </summary>
+    Task SetScopeAsync(IReadOnlyList<string> allowedProfileLabels, IReadOnlyList<string> allowedProjectIds, CancellationToken cancellationToken = default);
 }

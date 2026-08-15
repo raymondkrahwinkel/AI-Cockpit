@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a paired Cockpit now starts able to use none of your profiles or projects — Options → Security shows a
+  checklist under the pairing status where you tick exactly which ones it may reach. Unticking one takes effect
+  immediately, without unpairing.
+
 - added: a "Discover nodes on this network" button in Options → Security finds other Cockpits with the node
   switch on and lets you pair with one by picking it from the list instead of typing its address — same pairing
   handshake either way. A node is only found on its own local network by default; seeing it from further away

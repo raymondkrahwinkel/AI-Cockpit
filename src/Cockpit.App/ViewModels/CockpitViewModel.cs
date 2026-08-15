@@ -36,6 +36,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Sessions;
@@ -2544,6 +2545,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
         ISessionProfileStore? sessionProfileStore = null,
+        // AC-794: what the Security tab's node-scope checklist offers to tick, alongside sessionProfileStore above.
+        // `Projects` (this same constructor's own ProjectsViewModel) is not reused for this — it is built after
+        // Security below, and its own store is private, so Security gets the raw store directly instead.
+        IProjectStore? projectStore = null,
         IAssistantSettingsStore? assistantSettingsStore = null,
         IAssistantProfileStore? assistantProfileStore = null,
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
@@ -2615,7 +2620,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodePairingClient,
             nodePairingEndpoint,
             mcpServerStore,
-            nodeDiscoveryClient);
+            nodeDiscoveryClient,
+            sessionProfileStore,
+            projectStore);
         _ = Security.RefreshAsync();
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,

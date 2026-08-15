@@ -5,6 +5,8 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Mcp;
@@ -30,7 +32,11 @@ public sealed partial class SecurityOptionsViewModel(
     INodePairingClient? nodePairingClient = null,
     INodePairingEndpoint? nodePairingEndpoint = null,
     IMcpServerStore? mcpServers = null,
-    INodeDiscoveryClient? nodeDiscoveryClient = null) : ObservableObject
+    INodeDiscoveryClient? nodeDiscoveryClient = null,
+    // AC-794: what the scope checklist below offers to tick. Absent in the design-time/unit-test graph, same as
+    // every other store above — the checklist then simply stays empty rather than the tab failing to open.
+    ISessionProfileStore? sessionProfileStore = null,
+    IProjectStore? projectStore = null) : ObservableObject
 {
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
@@ -112,6 +118,21 @@ public sealed partial class SecurityOptionsViewModel(
 
     [ObservableProperty]
     private string _pairedControllerText = "";
+
+    // ── AC-794, what the current pairing may use ───────────────────────────────────────────────────────────────
+    //
+    // Two checklists, one per kind — a project and a profile are named on separate rows in `NodePairing`, so there
+    // is no reason to force them into one combined list here. Both rebuild on every `RefreshAsync` (the dialog is
+    // rebuilt each time it opens, same reasoning as the pairing subscription above) rather than trying to diff the
+    // previous set against a changed profile/project list.
+
+    public ObservableCollection<NodeScopeRowViewModel> ScopedProfiles { get; } = [];
+
+    public ObservableCollection<NodeScopeRowViewModel> ScopedProjects { get; } = [];
+
+    // True only while a row's IsAllowed is being seeded from the current grant, so ticking a box for real is the
+    // only path that writes back to the broker — the same shape as _loadingNodeEndpoint above.
+    private bool _loadingScope;
 
     // ── AC-792, this cockpit as a controller ───────────────────────────────────────────────────────────────────
 
@@ -230,7 +251,14 @@ public sealed partial class SecurityOptionsViewModel(
         // handler added on each one would fire as many times as the operator has opened Options this run.
         if (nodePairing is not null && !_subscribedToPairing)
         {
-            nodePairing.Changed += (_, _) => Dispatcher.UIThread.Post(_ReadPairingState);
+            // AC-794: a pairing/unpairing changes who the scope checklist is even for, so it reloads here too —
+            // not just IsPaired/PairedControllerText. An unpair, in particular, has to clear the checklist rather
+            // than leave stale rows an operator could still tick against a coupling that no longer exists.
+            nodePairing.Changed += (_, _) => Dispatcher.UIThread.Post(() =>
+            {
+                _ReadPairingState();
+                _ = _LoadScopeRowsAsync();
+            });
             _subscribedToPairing = true;
         }
 
@@ -243,6 +271,7 @@ public sealed partial class SecurityOptionsViewModel(
 
         NodePairingAddress = nodePairingEndpoint?.Address ?? "";
         _ReadPairingState();
+        await _LoadScopeRowsAsync().ConfigureAwait(true);
     }
 
     // Mirrors the broker onto the tab. The broker is the source of truth for both halves — an incoming request and
@@ -262,6 +291,91 @@ public sealed partial class SecurityOptionsViewModel(
         PairedControllerText = pairing is null
             ? ""
             : $"Paired with \"{pairing.ControllerName}\" ({pairing.ControllerAddress}) since {pairing.PairedAtUtc.ToLocalTime():g}.";
+    }
+
+    // AC-794: rebuilds both checklists from the current pairing and the profile/project stores, and seeds each
+    // row's IsAllowed from NodePairing.AllowedProfileLabels/AllowedProjectIds — rather than diffing against the
+    // previous build, since the dialog rebuilding on every open already makes "rebuild from scratch" the existing
+    // idiom (_subscribedToPairing's comment above). Unpaired, or no stores in this graph: both lists end up empty,
+    // which for the design-time/unit-test graph is the same "inert, not broken" posture every other store-backed
+    // section here takes.
+    private async Task _LoadScopeRowsAsync()
+    {
+        _UnsubscribeScopeRows();
+        ScopedProfiles.Clear();
+        ScopedProjects.Clear();
+
+        if (!IsPaired || sessionProfileStore is null || projectStore is null)
+        {
+            return;
+        }
+
+        var allowedProfiles = nodePairing?.Pairing?.AllowedProfileLabels ?? [];
+        var allowedProjects = nodePairing?.Pairing?.AllowedProjectIds ?? [];
+
+        _loadingScope = true;
+        try
+        {
+            var profiles = await sessionProfileStore.LoadAsync().ConfigureAwait(true);
+            foreach (var profile in profiles)
+            {
+                var row = new NodeScopeRowViewModel(profile.Label, profile.Label)
+                {
+                    IsAllowed = allowedProfiles.Contains(profile.Label, StringComparer.Ordinal),
+                };
+                row.PropertyChanged += _OnScopeRowChanged;
+                ScopedProfiles.Add(row);
+            }
+
+            var projectSettings = await projectStore.LoadAsync().ConfigureAwait(true);
+            foreach (var project in projectSettings.Projects)
+            {
+                var row = new NodeScopeRowViewModel(project.Id, project.Name)
+                {
+                    IsAllowed = allowedProjects.Contains(project.Id, StringComparer.Ordinal),
+                };
+                row.PropertyChanged += _OnScopeRowChanged;
+                ScopedProjects.Add(row);
+            }
+        }
+        finally
+        {
+            _loadingScope = false;
+        }
+    }
+
+    private void _UnsubscribeScopeRows()
+    {
+        foreach (var row in ScopedProfiles.Concat(ScopedProjects))
+        {
+            row.PropertyChanged -= _OnScopeRowChanged;
+        }
+    }
+
+    // Fires for any row's IsAllowed flip — seeding included, which is exactly what _loadingScope exists to filter
+    // out, the same shape _loadingNodeEndpoint takes for the toggle above.
+    private void _OnScopeRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_loadingScope || e.PropertyName != nameof(NodeScopeRowViewModel.IsAllowed))
+        {
+            return;
+        }
+
+        _ = _PersistScopeAsync();
+    }
+
+    // Writes the whole checklist back, not just the row that changed — SetScopeAsync replaces the grant wholesale
+    // (see its own remarks), so a partial write here would silently drop whatever the other rows already held.
+    private Task _PersistScopeAsync()
+    {
+        if (nodePairing is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var allowedProfiles = ScopedProfiles.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
+        var allowedProjects = ScopedProjects.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
+        return nodePairing.SetScopeAsync(allowedProfiles, allowedProjects);
     }
 
     // Node binding off: normally nothing to show — unless this run already bound an off-loopback listener earlier

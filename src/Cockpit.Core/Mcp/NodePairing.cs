@@ -19,6 +19,15 @@ public sealed record NodePairing
     public required string ControllerAddress { get; init; }
 
     public required DateTimeOffset PairedAtUtc { get; init; }
+
+    // AC-794: which profiles and projects this pairing may use — empty by default, on both a fresh pairing and a
+    // re-pairing, so a coupling starts able to do nothing until the operator opts something in. Living on the
+    // pairing itself rather than beside it means unpairing already clears it for free (nothing left to attach it
+    // to), and there is nowhere for it to say "every project" or "every profile" by construction: an entry is
+    // either named here or it is not reachable, there is no wildcard to add later that would silently widen every
+    // existing pairing. `NodePairingBroker.IsProfileAllowed`/`IsProjectAllowed` are what actually read these.
+    public IReadOnlyList<string> AllowedProfileLabels { get; init; } = [];
+    public IReadOnlyList<string> AllowedProjectIds { get; init; } = [];
 }
 
 // A pairing this node has taken on and is still waiting for the operator to answer (AC-792) — what the node's own

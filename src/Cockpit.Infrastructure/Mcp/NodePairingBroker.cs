@@ -282,6 +282,57 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         _RaiseChanged();
     }
 
+    // AC-794: read straight off `_pairing`, not the store — it is already the live, always-current copy every
+    // mutation below updates in the same act it writes to disk (see `SetScopeAsync`, `UnpairAsync`), so there is
+    // nothing a second holder like `NodeSharedSecret` would buy here. No pairing means no scope, not "everything":
+    // an unpaired node has nothing to check this against, the same posture `NodeSharedSecret.Value` being null takes.
+    public bool IsProfileAllowed(string profileLabel)
+    {
+        lock (_gate)
+        {
+            return _pairing is { } pairing && pairing.AllowedProfileLabels.Contains(profileLabel, StringComparer.Ordinal);
+        }
+    }
+
+    public bool IsProjectAllowed(string projectId)
+    {
+        lock (_gate)
+        {
+            return _pairing is { } pairing && pairing.AllowedProjectIds.Contains(projectId, StringComparer.Ordinal);
+        }
+    }
+
+    public async Task SetScopeAsync(IReadOnlyList<string> allowedProfileLabels, IReadOnlyList<string> allowedProjectIds, CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+
+        NodePairing updated;
+        lock (_gate)
+        {
+            // Nothing to attach a grant to — the Security tab only shows this control while paired, so reaching
+            // here unpaired would be a caller bug rather than a real toggle; a silent no-op is simpler than an
+            // exception neither caller needs to handle.
+            if (_pairing is not { } pairing)
+            {
+                return;
+            }
+
+            updated = pairing with { AllowedProfileLabels = allowedProfileLabels, AllowedProjectIds = allowedProjectIds };
+        }
+
+        // Disk before memory, the same order `ConfirmAsync`/`UnpairAsync` write in: a crash between the two leaves
+        // `IsProfileAllowed` answering off what is actually on disk after a restart, never ahead of it.
+        var current = await _settings.LoadAsync(cancellationToken).ConfigureAwait(false);
+        await _settings.SaveAsync(current with { Pairing = updated }, cancellationToken).ConfigureAwait(false);
+
+        lock (_gate)
+        {
+            _pairing = updated;
+        }
+
+        _RaiseChanged();
+    }
+
     // Reads the persisted pairing into memory. Public because `Pairing` and `Pending` are synchronous properties a
     // view binds to and loading is not: without a call to this, a node that was paired before it restarted would
     // show as unpaired on its own Security tab and offer no way to unpair. Idempotent, so every entry point can
