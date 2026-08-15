@@ -113,6 +113,26 @@ public partial class CockpitView : UserControl
             _claimCollisionTimer.Tick += (_, _) => _ = cockpit.RefreshClaimCollisionsAsync();
             _claimCollisionTimer.Start();
             _ = cockpit.RefreshClaimCollisionsAsync();
+
+#if DEBUG
+            // Leak-sim trigger (dev-only, opt-in): only when COCKPIT_LEAKSIM is set do we poll for a trigger file so
+            // the harness can fire a synthetic open+fill+close cycle on demand (CockpitViewModel.RunLeakSimAsync) and
+            // read the before/after counts — no real agent. Off by default, so a normal debug run runs no timer.
+            if (Cockpit.App.Services.DiagnosticsBackgroundService.LeakDiagnosticsEnabled)
+            {
+                var leakSimTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                leakSimTimer.Tick += (_, _) =>
+                {
+                    var trigger = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cockpit-leaksim.trigger");
+                    if (System.IO.File.Exists(trigger))
+                    {
+                        try { System.IO.File.Delete(trigger); } catch (Exception) { }
+                        _ = cockpit.RunLeakSimAsync();
+                    }
+                };
+                leakSimTimer.Start();
+            }
+#endif
         }
     }
 

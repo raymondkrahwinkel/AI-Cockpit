@@ -6465,6 +6465,199 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSession = Sessions[nextIndex];
     }
 
+#if DEBUG
+    // Leak simulation (dev-only): open a synthetic session, fill its transcript, realise it, then close it through
+    // the real close path — so we can reproduce and measure the after-close row retention on demand (fired by a
+    // trigger file, see CockpitView) instead of driving a real agent. Writes before/realised/after counts to a
+    // result file so the harness can read them without touching the UI.
+    internal async Task RunLeakSimAsync(int rows = 300)
+    {
+        if (_sessionFactory is null)
+        {
+            return;
+        }
+
+        var tempDir = System.IO.Path.GetTempPath();
+        var resultPath = System.IO.Path.Combine(tempDir, "cockpit-leaksim.result");
+        var holdMarker = System.IO.Path.Combine(tempDir, "cockpit-leaksim.holding");
+
+        var before = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        // Register the fake provider and start a REAL session against it, through the same New-session path a real
+        // Claude session uses (StartConfiguredAsync) — so this exercises the real runtime, activity ticker and
+        // Focus "steps run" folding, not a design-ctor stand-in.
+        var registry = (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry)
+            Program.Services.GetService(typeof(Cockpit.Infrastructure.Sessions.IPluginProviderRegistry))!;
+        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered(registry);
+
+        var profile = new SessionProfile("Leak Sim", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
+        var vm = _sessionFactory();
+        Sessions.Add(vm);
+        await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, tempDir, null, null, ReadingLevel.Focus);
+
+        var driver = Cockpit.App.Diagnostics.LeakSimProvider.Current;
+        if (driver is null)
+        {
+            await CloseSessionAsync(vm);
+            return;
+        }
+
+        // Stream scripted agent feedback incrementally, like a real agent: thinking, assistant markdown, then a run
+        // of consecutive auto tool calls (which fold into a "N steps run" group at Focus), turn after turn.
+        driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginSessionInitialized { SessionId = "leaksim-1", Tools = ["Bash", "Read", "Edit"], Cwd = tempDir });
+
+        var turns = Math.Max(1, rows / 8);
+        var block = 0;
+        for (var turn = 0; turn < turns; turn++)
+        {
+            driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginAssistantThinkingDelta { SessionId = "leaksim-1", BlockIndex = block++, Thinking = $"Planning turn {turn}: what to change and why." });
+
+            foreach (var chunk in new[]
+            {
+                $"## Step {turn}\n\nLet me **check** `src/File{turn}.cs` ",
+                $"and a [link](https://example.com/{turn}).\n\n```csharp\nvar v{turn} = Compute({turn});\n```\n\n",
+                $"- first {turn}\n- second {turn}\n\n| a | b |\n|---|---|\n| {turn} | {turn * 2} |\n",
+            })
+            {
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginAssistantTextDelta { SessionId = "leaksim-1", BlockIndex = block, Text = chunk });
+                await Task.Delay(12);
+            }
+
+            block++;
+
+            for (var k = 0; k < 6; k++)
+            {
+                var id = $"t{turn}_{k}";
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolUseRequested { SessionId = "leaksim-1", ToolUseId = id, ToolName = "Bash", InputJson = $"{{\"command\":\"build {id}\"}}" });
+                await Task.Delay(8);
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolResult { SessionId = "leaksim-1", ToolUseId = id, Content = $"output for {id}\nRestored\nCompiled\nDone.", IsError = false });
+                await Task.Delay(8);
+            }
+
+            driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginTurnCompleted { SessionId = "leaksim-1", Subtype = "success", Result = null, IsError = false });
+            await Task.Delay(20);
+        }
+
+        driver.Complete();
+        await Task.Delay(600);   // let the last events drain + realise
+        var realised = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+        var footprint = _MeasureFootprint(vm);
+
+        // Scroll up/down to force VirtualizingStackPanel container recycling — the real per-row build/teardown
+        // churn, not a one-shot realise.
+        await _ScrollSimAsync(vm);
+        var afterScroll = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        // In-process peer walk (transient peers — a weaker stand-in for a real UIA client).
+        if (Avalonia.Application.Current?.ApplicationLifetime
+                is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime { MainWindow: { } mainWindow })
+        {
+            _BuildPeerTree(Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(mainWindow), 0);
+        }
+        var afterInProcPeers = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        // Hold with rows alive so an EXTERNAL Win32 UIA client (uia-walk.ps1, fired by the harness on this marker)
+        // builds and holds the real automation-peer tree — the ingredient the in-process walk cannot reproduce.
+        try { System.IO.File.WriteAllText(holdMarker, "hold"); } catch (Exception) { }
+        await Task.Delay(15000);
+        try { System.IO.File.Delete(holdMarker); } catch (Exception) { }
+        var afterExtUia = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        await CloseSessionAsync(vm);
+        await Task.Delay(800);
+        var after = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        try
+        {
+            System.IO.File.AppendAllText(resultPath,
+                $"[leaksim turns={turns}] BEFORE: {before} | REALISED: {realised} | FOOTPRINT: {footprint} | AFTER-SCROLL: {afterScroll} | AFTER-INPROC-PEERS: {afterInProcPeers} | AFTER-EXT-UIA: {afterExtUia} | AFTER-CLOSE: {after}\n");
+        }
+        catch (Exception)
+        {
+            // A diagnostic result file is a nicety, never worth failing the sim over.
+        }
+    }
+
+    // Hard footprint snapshot for the sim: managed heap plus the LIVE control count in this session's transcript
+    // visual tree (what virtualization actually keeps realised), so a per-render reduction (lazy rows) is visible.
+    private static string _MeasureFootprint(SessionViewModel vm)
+    {
+        var heapMb = GC.GetTotalMemory(forceFullCollection: true) / (1024 * 1024);
+        var view = Avalonia.Application.Current?.ApplicationLifetime
+                is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime { MainWindow: { } mainWindow }
+            ? Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(mainWindow)
+                .OfType<Cockpit.App.Views.SessionView>()
+                .FirstOrDefault(v => ReferenceEquals(v.DataContext, vm))
+            : null;
+
+        int visuals = 0, buttons = 0, textBlocks = 0;
+        if (view is not null)
+        {
+            foreach (var d in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view))
+            {
+                visuals++;
+                if (d is Button)
+                {
+                    buttons++;
+                }
+                else if (d is TextBlock)
+                {
+                    textBlocks++;
+                }
+            }
+        }
+
+        return $"heap={heapMb}MB visuals={visuals} buttons={buttons} textblocks={textBlocks}";
+    }
+
+    // Scrolls the sim session's transcript up and down to churn the virtualizing panel's container recycling.
+    private static async Task _ScrollSimAsync(SessionViewModel vm)
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+                is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime { MainWindow: { } mainWindow })
+        {
+            return;
+        }
+
+        var view = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(mainWindow)
+            .OfType<Cockpit.App.Views.SessionView>()
+            .FirstOrDefault(v => ReferenceEquals(v.DataContext, vm));
+        var scroller = view is null
+            ? null
+            : Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<ScrollViewer>().FirstOrDefault(s => s.Name == "TranscriptScroll");
+        if (scroller is null)
+        {
+            return;
+        }
+
+        for (var s = 0; s < 8; s++)
+        {
+            scroller.Offset = new Avalonia.Vector(0, s % 2 == 0 ? scroller.Extent.Height : 0);
+            await Task.Delay(150);
+        }
+    }
+
+    // Recursively realises the automation-peer subtree, the way a UIA client's tree walk does.
+    private static void _BuildPeerTree(Avalonia.Automation.Peers.AutomationPeer? peer, int depth)
+    {
+        if (peer is null || depth > 40)
+        {
+            return;
+        }
+
+        var children = peer.GetChildren();
+        if (children is null)
+        {
+            return;
+        }
+
+        foreach (var child in children)
+        {
+            _BuildPeerTree(child, depth + 1);
+        }
+    }
+#endif
+
     [RelayCommand]
     private async Task CloseSessionAsync(SessionPanelViewModel session)
     {
@@ -6479,6 +6672,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.RestoreDecided -= OnSessionRestoreDecided;
         session.NameChanged -= OnSessionNameChanged;
         _lastStatus.Remove(session);
+
+        // Deterministic teardown on a real close (a tab-switch never reaches here): empty the transcript while the
+        // pane is still attached, so its realised rows dematerialise and their heavy control trees leave the tree
+        // now. Otherwise the rows linger in the window's compositor scene (and, on Windows, its automation-peer
+        // tree) after the pane is gone — measured after one closed session: ~1.5k TranscriptRowView / >1 GB still
+        // held. SessionView.OnDetachedFromVisualTree then commits the emptied pane's teardown to the render thread.
+        if (session is SessionViewModel closing)
+        {
+            closing.VisibleTranscript.Clear();
+        }
 
         Sessions.RemoveAt(index);
 
