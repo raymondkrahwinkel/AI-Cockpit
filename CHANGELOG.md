@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the context-usage warning threshold can now be set separately for the voice assistant, in Options next to
+  the per-provider thresholds — a session running under the same profile the assistant uses keeps warning at the
+  old number, so lowering the assistant's own threshold no longer changes anything for ordinary sessions.
+
 - added: the voice assistant can now add a project your team shares to this machine, the same step the "Add to my
   projects…" card does on the Projects page — you tell it which folder here holds the project and which profile its
   sessions run under, and the name, behaviour, MCP choice and memory come with the project as they always did. It

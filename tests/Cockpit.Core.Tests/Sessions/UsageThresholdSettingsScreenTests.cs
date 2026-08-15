@@ -73,12 +73,12 @@ public class UsageThresholdSettingsScreenTests
         week.Threshold = 70;
         await screen.SaveAsync();
 
-        Assert.Equal(70, store.Settings.Resolve("claude", null, "weekly", declared: 90));
+        Assert.Equal(70, store.Settings.Resolve("claude", null, "weekly", declared: 90, isAssistant: false));
 
         week.Threshold = null;
         await screen.SaveAsync();
 
-        Assert.Equal(90, store.Settings.Resolve("claude", null, "weekly", declared: 90));
+        Assert.Equal(90, store.Settings.Resolve("claude", null, "weekly", declared: 90, isAssistant: false));
     }
 
     [Fact]
@@ -93,5 +93,42 @@ public class UsageThresholdSettingsScreenTests
         var context = screen.Providers[0].Signals.Single(row => row.SignalKey == "context");
         Assert.Equal(35, context.Threshold);
         Assert.Equal("Follows the provider (50%)", context.FollowsLabel);
+    }
+
+    [Fact]
+    public async Task AssistantRows_AreBuiltFromTheSameDeclarations_ButSavedSeparately()
+    {
+        // AC-805: the Assistant section mirrors the provider section row-for-row, but reads and writes
+        // `ByAssistant` rather than `ByProvider` — the two must not collide.
+        var store = new InMemoryStore();
+        var screen = new UsageThresholdsViewModel(store);
+        await screen.LoadAsync([("claude", "Claude", Declared)]);
+
+        Assert.True(screen.HasAssistantProviders);
+        var assistantProvider = Assert.Single(screen.AssistantProviders);
+        Assert.Equal("Claude", assistantProvider.DisplayName);
+
+        var assistantContext = assistantProvider.Signals.Single(row => row.SignalKey == "context");
+        assistantContext.Threshold = 25;
+        await screen.SaveAsync();
+
+        Assert.Equal(25, store.Settings.Resolve("claude", null, "context", declared: 50, isAssistant: true));
+        Assert.Equal(50, store.Settings.Resolve("claude", null, "context", declared: 50, isAssistant: false));
+    }
+
+    [Fact]
+    public async Task AProviderOverride_ChangesWhatTheEmptyAssistantFieldFollows()
+    {
+        // AC-805: leaving the Assistant field empty does not mean "follows the raw declaration" once a provider
+        // override exists — it means "follows the provider level", whatever that resolves to right now.
+        var store = new InMemoryStore();
+        store.Settings.Set(store.Settings.ByProvider, "claude", "context", 75);
+        var screen = new UsageThresholdsViewModel(store);
+
+        await screen.LoadAsync([("claude", "Claude", Declared)]);
+
+        var assistantContext = screen.AssistantProviders[0].Signals.Single(row => row.SignalKey == "context");
+        Assert.Null(assistantContext.Threshold);
+        Assert.Equal("Follows the provider (75%)", assistantContext.FollowsLabel);
     }
 }

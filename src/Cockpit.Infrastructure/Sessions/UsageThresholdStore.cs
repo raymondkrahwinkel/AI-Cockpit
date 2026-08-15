@@ -27,7 +27,7 @@ internal sealed class UsageThresholdStore : IUsageThresholdStore, ISingletonServ
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
 
         return configFile?.UsageThresholds is { } stored
-            ? new UsageThresholdSettings { ByProvider = stored.ByProvider, ByProfile = stored.ByProfile }
+            ? new UsageThresholdSettings { ByProvider = stored.ByProvider, ByProfile = stored.ByProfile, ByAssistant = stored.ByAssistant }
             : new UsageThresholdSettings();
     }
 
@@ -37,6 +37,7 @@ internal sealed class UsageThresholdStore : IUsageThresholdStore, ISingletonServ
             {
                 ByProvider = settings.ByProvider,
                 ByProfile = settings.ByProfile,
+                ByAssistant = settings.ByAssistant,
             },
             cancellationToken);
 }

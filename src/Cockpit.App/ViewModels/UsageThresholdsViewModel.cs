@@ -27,6 +27,13 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
     // Whether there is anything to show — false when no provider declares a usage signal.
     public bool HasProviders => Providers.Count > 0;
 
+    // The same groups again, but for what the Assistant warns at instead of an ordinary session (AC-805) — a
+    // separate set of rows because the override hangs off the Assistant's role, not off whichever profile it
+    // happens to be running on.
+    public ObservableCollection<UsageThresholdProviderViewModel> AssistantProviders { get; } = [];
+
+    public bool HasAssistantProviders => AssistantProviders.Count > 0;
+
     // Builds the rows from what the providers declared and what the operator has saved. Called when the settings
     // screen opens, so a newly installed provider appears without a restart.
     public async Task LoadAsync(IReadOnlyList<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)> providers, CancellationToken cancellationToken = default)
@@ -34,33 +41,56 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
 
         Providers.Clear();
+        AssistantProviders.Clear();
         foreach (var (providerId, displayName, signals) in providers.Where(entry => entry.Signals.Count > 0))
         {
-            var rows = signals.Select(signal => new UsageThresholdRowViewModel(
-                signal.Key,
-                signal.Label,
-                signal.Description,
-                signal.DefaultThresholdPercent,
-                _Stored(providerId, signal.Key)));
-
-            Providers.Add(new UsageThresholdProviderViewModel(providerId, displayName, [.. rows]));
+            // The Assistant's own "what this follows" is what an ordinary session on this provider would resolve
+            // to (its own override, else the declaration) — not always the raw declaration, now that a provider
+            // override on the same screen can already change it.
+            Providers.Add(_BuildGroup(providerId, displayName, signals, _settings.ByProvider, signal => signal.DefaultThresholdPercent));
+            AssistantProviders.Add(_BuildGroup(providerId, displayName, signals, _settings.ByAssistant,
+                signal => _settings.Resolve(providerId, profileLabel: null, signal.Key, signal.DefaultThresholdPercent, isAssistant: false)));
         }
 
         OnPropertyChanged(nameof(HasProviders));
+        OnPropertyChanged(nameof(HasAssistantProviders));
     }
 
-    // Persists every row: a number becomes an override, an empty field clears one so the provider's own default applies again.
+    private static UsageThresholdProviderViewModel _BuildGroup(
+        string providerId,
+        string displayName,
+        IReadOnlyList<PluginUsageSignal> signals,
+        Dictionary<string, Dictionary<string, double>> level,
+        Func<PluginUsageSignal, double> fallback)
+    {
+        var rows = signals.Select(signal => new UsageThresholdRowViewModel(
+            signal.Key,
+            signal.Label,
+            signal.Description,
+            fallback(signal),
+            _Stored(level, providerId, signal.Key)));
+
+        return new UsageThresholdProviderViewModel(providerId, displayName, [.. rows]);
+    }
+
+    // Persists every row: a number becomes an override, an empty field clears one so the level above applies again.
     public async Task SaveAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var provider in Providers)
+        _Save(Providers, _settings.ByProvider);
+        _Save(AssistantProviders, _settings.ByAssistant);
+
+        await _store.SaveAsync(_settings, cancellationToken).ConfigureAwait(true);
+    }
+
+    private void _Save(ObservableCollection<UsageThresholdProviderViewModel> groups, Dictionary<string, Dictionary<string, double>> level)
+    {
+        foreach (var provider in groups)
         {
             foreach (var row in provider.Signals)
             {
-                _settings.Set(_settings.ByProvider, provider.ProviderId, row.SignalKey, row.Threshold);
+                _settings.Set(level, provider.ProviderId, row.SignalKey, row.Threshold);
             }
         }
-
-        await _store.SaveAsync(_settings, cancellationToken).ConfigureAwait(true);
     }
 
     // The settings as they now stand, for handing to sessions started after the dialog closed.
@@ -71,9 +101,9 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         return _settings;
     }
 
-    // What the operator saved for this provider's signal, or null where they left it following.
-    private double? _Stored(string providerId, string signalKey) =>
-        _settings.ByProvider.TryGetValue(providerId, out var signals) && signals.TryGetValue(signalKey, out var stored)
+    // What the operator saved for this provider's signal at the given level, or null where they left it following.
+    private static double? _Stored(Dictionary<string, Dictionary<string, double>> level, string providerId, string signalKey) =>
+        level.TryGetValue(providerId, out var signals) && signals.TryGetValue(signalKey, out var stored)
             ? stored
             : null;
 }

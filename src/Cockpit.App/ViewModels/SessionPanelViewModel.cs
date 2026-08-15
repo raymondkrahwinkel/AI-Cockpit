@@ -598,11 +598,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [RelayCommand]
     private void DismissWarning(string key) => _SilenceOne(key);
 
-    // Where this signal warns for this session (AC-233): what the operator set for the profile, else for the
-    // provider, else what the provider itself declared. One resolver, so the pill, the bar and the warning cannot
-    // end up judging the same figure by different numbers.
+    // Where this signal warns for this session (AC-233): what the operator set for the Assistant if this pane is
+    // the Assistant, else for the profile, else for the provider, else what the provider itself declared. One
+    // resolver, so the pill, the bar and the warning cannot end up judging the same figure by different numbers.
     private double _ResolveThreshold(PluginUsageSignal signal) =>
-        UsageThresholds?.Resolve(UsageProviderId ?? string.Empty, ActiveProfileLabel, signal.Key, signal.DefaultThresholdPercent)
+        UsageThresholds?.Resolve(UsageProviderId ?? string.Empty, ActiveProfileLabel, signal.Key, signal.DefaultThresholdPercent, PaneId == AssistantIdentity.PaneId)
         ?? signal.DefaultThresholdPercent;
 
     // The operator's own thresholds, handed in by the cockpit; null means every signal follows its provider's declaration.

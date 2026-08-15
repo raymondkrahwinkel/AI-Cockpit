@@ -14,7 +14,7 @@ public class UsageThresholdSettingsTests
     {
         var settings = new UsageThresholdSettings();
 
-        Assert.Equal(90, settings.Resolve("claude", "personal", "weekly", declared: 90));
+        Assert.Equal(90, settings.Resolve("claude", "personal", "weekly", declared: 90, isAssistant: false));
     }
 
     [Fact]
@@ -23,7 +23,7 @@ public class UsageThresholdSettingsTests
         var settings = new UsageThresholdSettings();
         settings.Set(settings.ByProvider, "claude", "weekly", 75);
 
-        Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90));
+        Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90, isAssistant: false));
     }
 
     [Fact]
@@ -34,8 +34,8 @@ public class UsageThresholdSettingsTests
         settings.Set(settings.ByProvider, "claude", "weekly", 75);
         settings.Set(settings.ByProfile, "work", "weekly", 60);
 
-        Assert.Equal(60, settings.Resolve("claude", "work", "weekly", declared: 90));
-        Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90));
+        Assert.Equal(60, settings.Resolve("claude", "work", "weekly", declared: 90, isAssistant: false));
+        Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90, isAssistant: false));
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class UsageThresholdSettingsTests
 
         settings.Set(settings.ByProvider, "claude", "weekly", null);
 
-        Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90));
+        Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90, isAssistant: false));
         Assert.DoesNotContain("claude", settings.ByProvider);
     }
 
@@ -58,7 +58,7 @@ public class UsageThresholdSettingsTests
 
         settings.Set(settings.ByProvider, "claude", "context", 140);
 
-        Assert.Equal(100, settings.Resolve("claude", null, "context", declared: 50));
+        Assert.Equal(100, settings.Resolve("claude", null, "context", declared: 50, isAssistant: false));
     }
 
     [Fact]
@@ -67,7 +67,31 @@ public class UsageThresholdSettingsTests
         var settings = new UsageThresholdSettings();
         settings.Set(settings.ByProvider, "claude", "context", 40);
 
-        Assert.Equal(40, settings.Resolve("claude", null, "context", declared: 50));
-        Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90));
+        Assert.Equal(40, settings.Resolve("claude", null, "context", declared: 50, isAssistant: false));
+        Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90, isAssistant: false));
+    }
+
+    [Fact]
+    public void AnAssistantOverride_BeatsTheProfileAndTheProvider()
+    {
+        // AC-805: the override hangs off the Assistant's role rather than its profile — a profile the Assistant
+        // shares with ordinary sessions must not carry the lower number along for those sessions too.
+        var settings = new UsageThresholdSettings();
+        settings.Set(settings.ByProvider, "claude", "context", 90);
+        settings.Set(settings.ByProfile, "personal", "context", 75);
+        settings.Set(settings.ByAssistant, "claude", "context", 25);
+
+        Assert.Equal(25, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: true));
+        Assert.Equal(75, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: false));
+    }
+
+    [Fact]
+    public void WithNoAssistantOverride_TheAssistantFallsBackLikeAnOrdinarySession()
+    {
+        // Leaving the Assistant level alone is not the same as opting out of the profile/provider levels below it.
+        var settings = new UsageThresholdSettings();
+        settings.Set(settings.ByProfile, "personal", "context", 60);
+
+        Assert.Equal(60, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: true));
     }
 }

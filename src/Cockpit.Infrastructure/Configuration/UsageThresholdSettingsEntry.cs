@@ -6,4 +6,6 @@ internal sealed class UsageThresholdSettingsEntry
     public Dictionary<string, Dictionary<string, double>> ByProvider { get; set; } = [];
 
     public Dictionary<string, Dictionary<string, double>> ByProfile { get; set; } = [];
+
+    public Dictionary<string, Dictionary<string, double>> ByAssistant { get; set; } = [];
 }
