@@ -11,18 +11,10 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-809's ALC measurement, made runnable: loads the real, compiled Diagram plugin through the actual
-/// <see cref="PluginActivator"/> / <see cref="PluginLoadContext"/> — precisely how an installed store plugin
-/// loads — and checks the one thing a static read of the resolver's config could not settle on its own:
-/// whether anything Avalonia-family actually ended up loaded into the plugin's own context at runtime.
-/// <para>
-/// Deliberately does not sample rendered pixels: Avalonia's headless renderer does not reliably composite a
-/// third-party <c>ICustomDrawOperation</c> that leases its own Skia canvas (which is how
-/// <c>Avalonia.Svg.Skia.Svg</c> draws) — confirmed by reproducing a blank capture with the exact same control
-/// built directly against the host's own package reference, no plugin or PluginLoadContext involved at all.
-/// The real render was verified by installing the built zip into a running dev cockpit instead (see the
-/// AC-809 ticket for that evidence).
-/// </para>
+/// AC-809's ALC measurement: loads the real, compiled Diagram plugin through the actual
+/// <see cref="PluginActivator"/>/<see cref="PluginLoadContext"/> and checks that nothing Avalonia-family
+/// loaded into the plugin's own context. No pixel sampling — Avalonia's headless renderer doesn't reliably
+/// composite this control's custom draw op; the real render was verified in a running dev cockpit (AC-809).
 /// </summary>
 [Collection("avalonia")]
 public class DiagramPluginLoadTests

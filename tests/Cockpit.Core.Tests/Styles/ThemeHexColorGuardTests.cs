@@ -111,10 +111,7 @@ public partial class ThemeHexColorGuardTests
         // the data rather than as "this is the 5h line". A categorical palette is not a theme colour.
         "plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendChartControl.cs",
 
-        // The diagram-schil plugin's sample render (AC-809): a fixed palette handed to Mermaider, not the
-        // cockpit's own UI chrome — this file exists to prove a plugin's control renders across the
-        // PluginLoadContext boundary, not to match the host's live theme (AppMermaidTheme, which does read
-        // theme tokens, lives in Cockpit.App and is not a surface this plugin depends on).
+        // The diagram plugin's sample render (AC-809): a fixed palette for Mermaider, not the cockpit's UI chrome.
         "plugins-dev/Cockpit.Plugin.Diagram/DiagramWorkspaceBody.cs",
     };
 

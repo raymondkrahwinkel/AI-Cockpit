@@ -8,10 +8,7 @@ using MermaidRenderOptions = Mermaider.Models.RenderOptions;
 
 namespace Cockpit.Plugin.Diagram;
 
-// The whole body of a Diagram workspace, drawn by this plugin (AC-809) — the host draws only the tab and the
-// frame. Renders a fixed sample diagram, proving the render route survives the PluginLoadContext boundary:
-// SvgSource/Svg are types from Svg.Controls.Skia.Avalonia, drawn on Avalonia.Controls.Control — the host's own
-// type, or this would not sit in its visual tree at all.
+// The whole body of a Diagram workspace (AC-809) — proves the render route survives the PluginLoadContext boundary.
 internal sealed class DiagramWorkspaceBody : UserControl
 {
     private const string SampleDiagram = """
