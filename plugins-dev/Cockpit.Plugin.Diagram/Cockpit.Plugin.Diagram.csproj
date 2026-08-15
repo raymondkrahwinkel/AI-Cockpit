@@ -1,0 +1,86 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The plugin-schil for the diagram builder (AC-809, sub of AC-525): proves a store plugin can render a
+       Mermaid diagram inside a host panel across the PluginLoadContext boundary. Built OUTSIDE Cockpit.slnx
+       (plugins-dev/) like the other example plugins.
+
+       Avalonia, Avalonia.Skia AND Svg.Controls.Skia.Avalonia are all compile-only (Private=false /
+       ExcludeAssets=runtime) so the host's own copies load and shared types keep one identity. Measured
+       (AC-809): Svg.Controls.Skia.Avalonia's own nuspec names no Avalonia-family package, only
+       Avalonia.Skia — but it transitively drags its own SkiaSharp/HarfBuzzSharp copy in behind it, distinct
+       from the host's own. Shipped in the zip, the plugin's panel built through the real PluginLoadContext
+       rendered nothing at all (a blank composited frame — no exception anywhere a log would show) even
+       though the exact same control tree rendered correctly with no plugin boundary in the way. So this one
+       falls through too, now that Cockpit.App carries it (see that project's csproj).
+
+       Mermaider ships in the zip: pure managed, net10.0, no Avalonia or Skia dependency of its own — the one
+       package the ticket assumed safe to ship, confirmed. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): ExcludeAssets on Avalonia above only suppresses assets Avalonia itself
+         contributes, not those of its own dependency Avalonia.Remote.Protocol — that one still landed in the
+         build output as a stray, unloaded DLL until excluded explicitly here too. -->
+    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): must fall through, not ship — see the project-level comment above. -->
+    <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.13">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): excluding Svg.Controls.Skia.Avalonia's own runtime assets does not touch what ITS
+         dependency Svg.Skia (and Svg.Skia's own SkiaSharp/HarfBuzzSharp) contributes in turn — the same
+         Avalonia.Remote.Protocol leak pattern above, one layer deeper. And "runtime" alone does not reach
+         these three's *native* assets either: SkiaSharp/HarfBuzzSharp ship both a managed wrapper (the
+         "runtime" asset group) and a per-platform native binary under runtimes/**/native (its own "native"
+         group) — excluding only the former still put every platform's .so/.dll/.dylib in the zip, unused
+         (nothing in this plugin P/Invokes into them) but shipped all the same. Both groups excluded here. -->
+    <PackageReference Include="Svg.Skia" Version="5.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="SkiaSharp" Version="3.119.4">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="HarfBuzzSharp" Version="8.3.1.3">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Mermaid-text -> SVG. Pure managed, no Avalonia or Skia dependency (AC-807) — ships in the zip. -->
+    <PackageReference Include="Mermaider" Version="0.12.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- AC-525's DoD: attribution travels with the plugin zip itself, not only via the repo's own NOTICE. -->
+    <None Include="NOTICE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

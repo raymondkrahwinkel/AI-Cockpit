@@ -41,6 +41,13 @@
          via Private=false/ExcludeAssets=runtime — same host-provided pattern as the DataGrid above, so its type
          identity is shared and the plugin folder ships no copy. 3.0.2 targets Avalonia 12. -->
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
+    <!-- The host provides the SVG control (AC-809), same host-provided pattern as the DataGrid and Material
+         icons above: measured that shipping it from a plugin's own zip drags along a second SkiaSharp/
+         HarfBuzzSharp copy alongside it, distinct from the one the host's own Avalonia.Skia already loads —
+         the plugin's control then fails to render at all (a blank composited frame, no exception raised
+         anywhere a log would show). The host carries it instead so a plugin references it compile-only
+         (Private=false/ExcludeAssets=runtime) and falls through, the same as Avalonia itself. -->
+    <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.13" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>

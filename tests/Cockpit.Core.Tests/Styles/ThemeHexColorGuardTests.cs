@@ -110,6 +110,12 @@ public partial class ThemeHexColorGuardTests
         // theme's status colours: an amber line pointed at CockpitStatusWaitingBrush would read as a warning about
         // the data rather than as "this is the 5h line". A categorical palette is not a theme colour.
         "plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendChartControl.cs",
+
+        // The diagram-schil plugin's sample render (AC-809): a fixed palette handed to Mermaider, not the
+        // cockpit's own UI chrome — this file exists to prove a plugin's control renders across the
+        // PluginLoadContext boundary, not to match the host's live theme (AppMermaidTheme, which does read
+        // theme tokens, lives in Cockpit.App and is not a surface this plugin depends on).
+        "plugins-dev/Cockpit.Plugin.Diagram/DiagramWorkspaceBody.cs",
     };
 
     [Fact]
