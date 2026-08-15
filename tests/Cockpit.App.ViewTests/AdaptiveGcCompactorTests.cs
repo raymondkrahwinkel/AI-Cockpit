@@ -31,7 +31,8 @@ public class AdaptiveGcCompactorTests
     {
         var logger = new _CapturingLogger();
         var compacts = 0;
-        var compactor = new AdaptiveGcCompactor(logger, () => 400L * 1024 * 1024, () => compacts++);
+        // Quiet allocation (a constant → zero delta) so the lull-gate lets the compact through deterministically.
+        var compactor = new AdaptiveGcCompactor(logger, () => 400L * 1024 * 1024, () => compacts++, allocatedBytesProbe: () => 0L);
 
         compactor.CheckOnce();
         compactor.CheckOnce();
@@ -47,7 +48,7 @@ public class AdaptiveGcCompactorTests
         var logger = new _CapturingLogger();
         var compacts = 0;
         var heapBytes = 400L * 1024 * 1024;
-        var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++);
+        var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++, allocatedBytesProbe: () => 0L);
 
         compactor.CheckOnce();
         heapBytes = 501L * 1024 * 1024;
@@ -57,30 +58,69 @@ public class AdaptiveGcCompactorTests
     }
 
     /// <summary>
-    /// AC-770: the guard above <c>MaxSafeHeapBytesToCompact</c> used to skip every check forever once the heap
-    /// crossed it — since the heap never drops back under 3 GB on its own, that latched the compactor into a
-    /// permanent no-op loop. It must instead retry after a cooldown.
+    /// "We shouldn't notice the GC at all" (Raymond, 2026-08-15): even a small compact is a visible micro-stutter
+    /// if it lands mid-stream or mid-scroll. So a compact is deferred while the app is allocating heavily and only
+    /// runs once things go quiet — the pause then overlaps a lull nobody is watching.
     /// </summary>
     [Fact]
-    public void CheckOnce_RetriesACompactAfterTheCooldownInsteadOfLatchingForever()
+    public void CheckOnce_DefersACompactWhileTheAppIsAllocatingHeavilyThenRunsItInTheLull()
     {
         var logger = new _CapturingLogger();
         var compacts = 0;
-        var heapBytes = 4L * 1024 * 1024 * 1024; // over the 3 GB ceiling
+        var allocated = 0L;
+        var compactor = new AdaptiveGcCompactor(logger, () => 450L * 1024 * 1024, () => compacts++, allocatedBytesProbe: () => allocated);
+
+        allocated += 50L * 1024 * 1024; // a busy tick: streaming a big reply
+        compactor.CheckOnce();
+        Assert.Equal(0, compacts); // deferred — no pause during active work
+
+        // No new allocation: the stream stopped, the app is idle.
+        compactor.CheckOnce();
+        Assert.Equal(1, compacts); // now the compact runs, unseen
+    }
+
+    /// <summary>
+    /// The freeze fix (Raymond on Windows + Rick on Fedora, 2026-08-15): a blocking compacting collect of a
+    /// multi-GB live heap is a 5-12 s stop-the-world pause — every logged UI-freeze hang timestamps to one of these
+    /// compacts. The growth up there is the rooted Avalonia retention compaction can't free anyway. So above the
+    /// compact ceiling the compactor must never compact (no matter how long it stays there); it only warns.
+    /// </summary>
+    [Fact]
+    public void CheckOnce_NeverCompactsAMultiGigabyteHeapButWarnsInstead()
+    {
+        var logger = new _CapturingLogger();
+        var compacts = 0;
+        var heapBytes = 4L * 1024 * 1024 * 1024; // over the compact ceiling and the leak-warn ceiling
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++, () => now);
 
         compactor.CheckOnce();
-        Assert.Equal(1, compacts);
-
-        heapBytes += 200L * 1024 * 1024; // clear the growth gate so the next check is live again
-        now = now.AddSeconds(29);
+        now = now.AddSeconds(31);
         compactor.CheckOnce();
-        Assert.Equal(1, compacts); // still cooling down
-
-        now = now.AddSeconds(2); // 31s since the first attempt — cooldown elapsed
+        now = now.AddSeconds(31);
         compactor.CheckOnce();
-        Assert.Equal(2, compacts);
+
+        Assert.Equal(0, compacts); // never freezes a multi-GB heap
+        Assert.NotEmpty(logger.Messages); // but tells the operator a restart is the remedy
+    }
+
+    /// <summary>
+    /// The pause of a compacting collect scales with heap size, so a heap under the ceiling is still a cheap hitch
+    /// and gets compacted, while one over it (but not yet leak-warn territory) is left alone — no freeze, no noise.
+    /// </summary>
+    [Fact]
+    public void CheckOnce_CompactsUnderTheCeilingButLeavesAHeapOverItAlone()
+    {
+        var under = new _CapturingLogger();
+        var underCompacts = 0;
+        new AdaptiveGcCompactor(under, () => 450L * 1024 * 1024, () => underCompacts++, allocatedBytesProbe: () => 0L).CheckOnce();
+        Assert.Equal(1, underCompacts);
+
+        var over = new _CapturingLogger();
+        var overCompacts = 0;
+        new AdaptiveGcCompactor(over, () => 2L * 1024 * 1024 * 1024, () => overCompacts++).CheckOnce();
+        Assert.Equal(0, overCompacts);
+        Assert.Empty(over.Messages); // between the compact ceiling and the leak ceiling: quiet
     }
 
     private sealed class _CapturingLogger : ILogger<AdaptiveGcCompactor>
