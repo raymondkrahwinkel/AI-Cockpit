@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Grok (xAI) as a selectable session provider plugin — configure an xAI API key and a model id (e.g.
+  `grok-4.6`) per profile in Manage profiles. Chat-only: no tool calls, file access or permission prompts, and no
+  context/usage pill (Grok's endpoint reports neither).
+
 - added: the context-usage warning threshold can now be set separately for the voice assistant, in Options next to
   the per-provider thresholds — a session running under the same profile the assistant uses keeps warning at the
   old number, so lowering the assistant's own threshold no longer changes anything for ordinary sessions.
