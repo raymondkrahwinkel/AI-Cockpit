@@ -1671,7 +1671,29 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        PendingAttachments.Add(new ImageAttachmentViewModel(pngBytes, a => PendingAttachments.Remove(a)));
+        PendingAttachments.Add(new ImageAttachmentViewModel(pngBytes, _RemovePendingAttachment));
+    }
+
+    // The single per-chip removal path: drop the attachment from the list, then free its decoded
+    // bitmap. Disposal happens here (genuine removal) and in the send-path Clear — never on a mere
+    // reorder or from a getter, which would blank the still-visible thumbnail.
+    private void _RemovePendingAttachment(ImageAttachmentViewModel attachment)
+    {
+        PendingAttachments.Remove(attachment);
+        attachment.Dispose();
+    }
+
+    // Empties the pending list on send, freeing each decoded thumbnail as its chip leaves the UI rather
+    // than waiting on the GC finalizer. Called only from the send path, once the wire images have already
+    // been copied out of PngBytes — never while a chip is still shown.
+    private void _ClearPendingAttachments()
+    {
+        foreach (var attachment in PendingAttachments)
+        {
+            attachment.Dispose();
+        }
+
+        PendingAttachments.Clear();
     }
 
     // Appends a finished voice transcript to the input box rather than sending it straight away, so
@@ -1688,7 +1710,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // and would mean telling the operator twice.
     protected override Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
-        PendingAttachments.Add(new ImageAttachmentViewModel(screenshotPng, a => PendingAttachments.Remove(a)));
+        PendingAttachments.Add(new ImageAttachmentViewModel(screenshotPng, _RemovePendingAttachment));
         return Task.FromResult<string?>(null);
     }
 
@@ -1755,7 +1777,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             .ToList();
 
         InputText = string.Empty;
-        PendingAttachments.Clear();
+        // The wire images are already copied from PngBytes above, so the decoded thumbnails are done.
+        _ClearPendingAttachments();
 
         // The CLI rejects mid-turn input, so while a turn is in flight the message goes onto the local
         // send queue as a cancellable chip and is dispatched when the turn completes (T8), instead of
