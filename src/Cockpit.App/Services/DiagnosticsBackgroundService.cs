@@ -14,6 +14,12 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan SnapshotInterval = TimeSpan.FromSeconds(10);
+#if DEBUG
+    // Opt-in only: the leak-tracker's periodic report forces a full blocking gen2 GC, so a normal debug run must
+    // not pay that stutter. Set COCKPIT_LEAKSIM=1 to arm the leak diagnostics (and the on-demand leak-sim trigger).
+    internal static readonly bool LeakDiagnosticsEnabled =
+        Environment.GetEnvironmentVariable("COCKPIT_LEAKSIM") is { Length: > 0 };
+#endif
 
     private readonly ILogger<DiagnosticsBackgroundService> _logger;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -93,10 +99,12 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                     nextSnapshotAt = now + SnapshotInterval;
                 }
 #if DEBUG
-                if (now >= nextLeakAt)
+                if (LeakDiagnosticsEnabled && now >= nextLeakAt)
                 {
+                    // 60s, not the 10s snapshot cadence: ReportAfterGc forces a full blocking gen2 GC, which on a
+                    // multi-hundred-MB dev heap is a visible stutter — too costly to do every 10 seconds.
                     _logger.LogInformation(Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc());
-                    nextLeakAt = now + SnapshotInterval;
+                    nextLeakAt = now + TimeSpan.FromSeconds(60);
                 }
 #endif
             }
