@@ -11,7 +11,7 @@ namespace Cockpit.App.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly IWindowBoundsStore? _windowBoundsStore = Program.Services?.GetService<IWindowBoundsStore>();
+    private readonly IWindowBoundsStore? _windowBoundsStore;
 
     // The last normal (non-maximized) position/size, tracked so a maximized window still saves the bounds to
     // restore to when un-maximized — Avalonia reports the maximized size while maximized.
@@ -25,23 +25,27 @@ public partial class MainWindow : Window
     private Task? _saveBoundsThenCloseTask;
 
     public MainWindow()
+        : this(Program.Services?.GetService<IWindowBoundsStore>())
     {
+    }
+
+    // Test seam: lets a test control what the bounds-restore below reads, without DI or reflecting into a
+    // readonly field set by a field initializer that already ran.
+    internal MainWindow(IWindowBoundsStore? windowBoundsStore)
+    {
+        _windowBoundsStore = windowBoundsStore;
         InitializeComponent();
         CockpitWindowChrome.Apply(this, titleBar: CockpitTitleBar.Window, includeMinimize: true, includeMaximize: true, closeOnEscape: false);
 
         Activated += (_, _) => _SetWindowActive(true);
         Deactivated += (_, _) => _SetWindowActive(false);
-    }
-
-    protected override void OnOpened(EventArgs e)
-    {
-        base.OnOpened(e);
 
         _normalPosition = Position;
         _normalSize = new Size(Width, Height);
 
-        // Restore the last-used bounds (#: window bounds) so the app reopens where it was, instead of the
-        // OS-chosen random spot/size. Off-screen or degenerate saved bounds fall back to the XAML default.
+        // Restore the last-used bounds so the app reopens where it was, instead of the OS-chosen random
+        // spot/size. Off-screen or degenerate saved bounds fall back to the XAML default.
+        // AC-801: runs before the window is shown — setting Maximized after an X11 window is mapped races the WM.
         var saved = _windowBoundsStore?.LoadAsync().GetAwaiter().GetResult();
         if (saved is { HasUsableSize: true } && _IsOnAScreen(saved))
         {
