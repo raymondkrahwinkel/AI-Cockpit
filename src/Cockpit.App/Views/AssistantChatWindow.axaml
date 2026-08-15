@@ -734,6 +734,17 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <!-- Jump-to-newest chevron (mirrors SessionView, #21): shown only while scrolled up. -->
+                <Button x:Name="ScrollToBottomButton" IsVisible="False"
+                        Classes="Accent" Click="_OnScrollToBottomClick"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Width="32" Height="32" Padding="0" Margin="0,0,10,10"
+                        CornerRadius="16"
+                        ToolTip.Tip="Jump to the newest message">
+                    <materialIcons:MaterialIcon Kind="ChevronDown" Width="16" Height="16"/>
+                </Button>
             </Grid>
         </DockPanel>
 
