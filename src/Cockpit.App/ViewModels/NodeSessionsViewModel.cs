@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
@@ -15,11 +16,20 @@ namespace Cockpit.App.ViewModels;
 // node's name; no local session appears in it, and no pane id from it can be typed anywhere that would act on this
 // machine. It is also where the operator already is when they think about a node, since the pairing itself, its
 // address and its scope are all on this tab.
-// ponytail: no live updates — the card reads when the Options window opens and when Refresh is pressed. Upgrade
-// path is a poll or a push over the same connection, if watching a node's work turns out to be a thing anybody
-// does for longer than a glance.
-public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, string nodeName) : ObservableObject
+// AC-796: the card now also polls on its own (see `StartPolling`) rather than only reading on open and on Refresh
+// — a node that drops out or comes back shows up without the operator doing anything, which is what criterion 1
+// asks for.
+// ponytail: a fixed interval, not a backoff. A node that has been unreachable for an hour is polled exactly as
+// often as one that answered a second ago, which is a wasted call every time but never a wrong one. Upgrade path
+// is backing off after a run of failures, if a paired node being off for long stretches turns out to be common.
+public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, string nodeName) : ObservableObject, IDisposable
 {
+    // 20s: often enough that a dropout or a return shows up without feeling like a bug report, rarely enough that
+    // it stays a handshake and three small calls rather than something the node's operator would notice.
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(20);
+
+    private DispatcherTimer? _pollTimer;
+
     public string NodeName { get; } = nodeName;
 
     // The sessions on the node. Deliberately not merged with anything local — see the remarks above.
@@ -106,6 +116,46 @@ public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, st
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    // Starts the poll (AC-796). Its own method rather than constructor logic: a `DispatcherTimer` only ever ticks
+    // on the thread that constructed it, and building one outside a running Avalonia dispatcher — a plain unit
+    // test, exactly what `Cockpit.Core.Tests`' own banned-symbols rule exists to keep out of that project — is the
+    // class of bug that stays quiet until it hangs a run. Call this once, from the UI thread, after the card is
+    // built; a test that only wants `RefreshAsync()` never has to touch it.
+    public void StartPolling()
+    {
+        if (_pollTimer is not null)
+        {
+            return;
+        }
+
+        _pollTimer = new DispatcherTimer { Interval = PollInterval };
+        _pollTimer.Tick += _OnPollTick;
+        _pollTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        if (_pollTimer is null)
+        {
+            return;
+        }
+
+        _pollTimer.Stop();
+        _pollTimer.Tick -= _OnPollTick;
+        _pollTimer = null;
+    }
+
+    // A tick that lands while the previous one is still out (a node that is slow to answer) is skipped rather than
+    // queued — the same "one refresh at a time" the Start/Stop commands already lean on via `IsBusy`, and the
+    // single-threaded UI dispatcher is what makes this check race-free without a lock.
+    private void _OnPollTick(object? sender, EventArgs e)
+    {
+        if (!IsBusy)
+        {
+            _ = RefreshAsync();
         }
     }
 

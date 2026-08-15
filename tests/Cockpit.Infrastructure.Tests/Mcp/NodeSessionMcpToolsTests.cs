@@ -239,7 +239,9 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
     public void Dispose() => McpRequestContext.Set(null);
 
-    private sealed class StubPairing : INodePairingBroker
+    // Internal rather than private: `NodeSessionsClientRealNetworkTests` (AC-796) reuses these four fakes to host a
+    // real `NodeSessionMcpTools` behind a real TLS listener, instead of redeclaring the same stand-ins twice.
+    internal sealed class StubPairing : INodePairingBroker
     {
         public HashSet<string> Profiles { get; } = new(StringComparer.Ordinal);
 
@@ -283,7 +285,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
             throw new NotSupportedException();
     }
 
-    private sealed class StubProfileStore : ISessionProfileStore
+    internal sealed class StubProfileStore : ISessionProfileStore
     {
         public Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SessionProfile>>(
@@ -296,7 +298,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
             throw new NotSupportedException();
     }
 
-    private sealed class RecordingReadGateway : IAssistantReadGateway
+    internal sealed class RecordingReadGateway : IAssistantReadGateway
     {
         public List<string> Calls { get; } = [];
 
@@ -320,7 +322,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         public Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedProjectsAsync() => throw new NotSupportedException();
     }
 
-    private sealed class RecordingAgentGateway : IAssistantAgentGateway
+    internal sealed class RecordingAgentGateway : IAssistantAgentGateway
     {
         public List<string> Calls { get; } = [];
 

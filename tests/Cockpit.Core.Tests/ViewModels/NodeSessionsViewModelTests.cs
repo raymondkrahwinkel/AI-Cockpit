@@ -118,6 +118,41 @@ public class NodeSessionsViewModelTests
     }
 
     [Fact]
+    public async Task Refresh_AfterANodeComesBackWithTheSamePaneId_ShowsOneRow_NotADuplicate()
+    {
+        // AC-796, criterion 3: a node that drops out and comes back is recognised as the same session — or shown
+        // as a new one — never a silent duplicate. Nothing here is asked to remember the pane id across the two
+        // refreshes; a fresh, fully-rebuilt list is what makes "the same row" true rather than something tracked.
+        var client = new FakeNodeSessions
+        {
+            Snapshot = new NodeSessionsSnapshot("laptop", [], [], [], "Could not reach laptop: no route to host"),
+        };
+        var card = new NodeSessionsViewModel(client, "laptop");
+        await card.RefreshAsync();
+        Assert.Empty(card.Sessions);
+        Assert.Contains("Could not reach laptop", card.Status, StringComparison.Ordinal);
+
+        client.Snapshot = new NodeSessionsSnapshot("laptop", [SweepOnTheNode], [], []);
+        await card.RefreshAsync();
+
+        Assert.Equal("node-pane-b", Assert.Single(card.Sessions).PaneId);
+        Assert.Equal("", card.Status);
+    }
+
+    [Fact]
+    public void Dispose_WithoutStartPollingHavingBeenCalled_DoesNothingAndIsSafeToCallTwice()
+    {
+        // A card that is torn down before `StartPolling` ever ran — a rebuild of `PairedNodes` racing a card whose
+        // constructor has returned but which nothing has started polling yet — must not throw for want of a timer
+        // that was never built.
+        var card = new NodeSessionsViewModel(
+            new FakeNodeSessions { Snapshot = new NodeSessionsSnapshot("laptop", [], [], []) }, "laptop");
+
+        card.Dispose();
+        card.Dispose();
+    }
+
+    [Fact]
     public async Task Start_ThatTheNodeRefuses_ShowsTheNodesOwnWords()
     {
         // The node's refusal names the profile or project to go and tick on that machine. A tidier sentence written

@@ -286,25 +286,65 @@ public sealed partial class SecurityOptionsViewModel(
         await _LoadPairedNodesAsync().ConfigureAwait(true);
     }
 
+    // Serializes `_LoadPairedNodesAsync` (AC-796): `RefreshAsync` is called un-awaited from more than one place at
+    // startup — `CockpitViewModel`'s own constructor and, moments later, `App.axaml.cs` again once a plugin's
+    // declared secret keys are known — and neither waits for the other. Without this, two overlapping calls could
+    // each pass the empty-collection `Clear()` before either had added a card, then both populate `PairedNodes`
+    // from their own `ListNodesAsync()` result: the second call's cards land on top of the first's rather than
+    // replacing them, leaving the first call's cards — each with a live `DispatcherTimer` from `StartPolling` —
+    // outside anything that will ever `Dispose()` them again.
+    private readonly SemaphoreSlim _pairedNodesGate = new(1, 1);
+
     // AC-795: one card per node this cockpit is paired with as controller. Each card reads its own node when it is
     // built, so a node that is off costs this tab a timeout and not the other nodes' contents — and the cards
     // appear at once rather than after the slowest one.
+    //
+    // Built once, at startup, and again whenever `RefreshAsync` runs after that (an unprotected secret written, a
+    // plugin's declared keys arriving) — not on every Options open, which the Options window's own `Opened`
+    // handler never triggers. AC-796's poll (`card.StartPolling()`) therefore runs for as long as the cockpit
+    // itself does, not for as long as the window happens to be open; stopping it when the dialog closes would
+    // silence the very dropout it exists to catch the moment the operator was not looking. `CockpitViewModel.
+    // DisposeAsync` is what stops it, at the point the cockpit itself goes away.
     private async Task _LoadPairedNodesAsync()
     {
-        PairedNodes.Clear();
-        if (nodeSessions is null)
+        await _pairedNodesGate.WaitAsync().ConfigureAwait(true);
+        try
         {
-            return;
+            // The old cards' polls would otherwise keep ticking after `Clear()` drops them from this collection —
+            // nothing else references them, so nothing else would ever stop them.
+            StopPairedNodePolling();
+            PairedNodes.Clear();
+            if (nodeSessions is null)
+            {
+                return;
+            }
+
+            foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
+            {
+                var card = new NodeSessionsViewModel(nodeSessions, node);
+                PairedNodes.Add(card);
+                card.StartPolling();
+
+                // Deliberately not awaited: `RefreshAsync` on a node that is asleep sits out its whole budget, and
+                // the Options window must not wait on that — the card fills in when its node answers, or shows why
+                // not.
+                _ = card.RefreshAsync();
+            }
         }
-
-        foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
+        finally
         {
-            var card = new NodeSessionsViewModel(nodeSessions, node);
-            PairedNodes.Add(card);
+            _pairedNodesGate.Release();
+        }
+    }
 
-            // Deliberately not awaited: `RefreshAsync` on a node that is asleep sits out its whole budget, and the
-            // Options window must not wait on that — the card fills in when its node answers, or shows why not.
-            _ = card.RefreshAsync();
+    // Stops every paired-node card's poll (AC-796) without touching the collection itself — reached both before
+    // this tab rebuilds `PairedNodes` and from `CockpitViewModel.DisposeAsync`, so a card's `DispatcherTimer` never
+    // outlives the cockpit it reports on.
+    public void StopPairedNodePolling()
+    {
+        foreach (var card in PairedNodes)
+        {
+            card.Dispose();
         }
     }
 

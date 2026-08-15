@@ -246,6 +246,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   are no longer offered on the network at all. A connection that is turned away now says so with a reason, so the
   other end can tell "refused" from "no answer" instead of guessing.
 
+- changed: the node cards under Options → Security now update on their own every 20 seconds, so a paired machine
+  dropping out mid-task — or coming back — shows up without pressing Refresh. The message also says more than
+  "could not reach it": a node that refuses the connection outright reads as looking stopped, one that answers
+  with a certificate you never pinned is flagged as untrusted rather than treated as merely offline, and one that
+  simply never responds says so as a possible timeout instead of guessing which of the three it was.
+
 - changed: the Codex provider plugin is called "Codex (ChatGPT)" in the store instead of "CLI Agent Provider
   (Codex)" — it is now findable under the name of the thing you are installing rather than under how it happens to
   be built. Nothing else moves: an installed copy keeps working and updates as usual, and sessions still start the
