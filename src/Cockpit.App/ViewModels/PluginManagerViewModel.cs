@@ -720,6 +720,13 @@ public partial class PluginManagerViewModel : ViewModelBase
                         continue;
                     }
 
+                    // AC-815: a reference-only plugin (e.g. Example Workspace) stays installable via
+                    // install-from-zip but drops out of every browsable list.
+                    if (entry.Hidden)
+                    {
+                        continue;
+                    }
+
                     var installedRow = Plugins.FirstOrDefault(row => row.FolderId == PluginFolderName.Normalize(entry.Id));
                     // A staged update reports its new version even before the restart, so it drops out of the
                     // updates list once updated instead of lingering.

@@ -70,6 +70,18 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Adds a session-bound banner shown under the transcript, above the composer (AC-802) — for PR/CI status and
+    /// similar per-session info a header item has no room for. Default no-op so existing implementations keep
+    /// compiling untouched; the plugin's own view controls whether anything shows.
+    /// </summary>
+    /// <param name="createView">
+    /// Builds the control for one session; invoked once per session panel, on the UI thread.
+    /// </param>
+    void AddSessionBanner(Func<IPluginSessionContext, Control> createView)
+    {
+    }
+
+    /// <summary>
     /// Adds an action to the menu in <em>every session's header</em> — "Track a YouTrack issue…", "Open this repo on
     /// GitHub". Handed the session it was invoked from, so it acts on that pane rather than on whichever one happens
     /// to be selected.

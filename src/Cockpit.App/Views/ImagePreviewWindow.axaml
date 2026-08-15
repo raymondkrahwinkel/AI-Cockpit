@@ -25,15 +25,19 @@
     </Grid>
 
     <Border Background="{StaticResource CockpitSecondaryBgBrush}">
-      <!-- Scrolling off while Fit is the active mode, on for 1:1 — see _SetStretch. -->
-      <ScrollViewer Name="BodyScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled">
+      <!-- Scrolling off while Fit sits at zoom 1, on otherwise — see _ApplyZoom. Pointer events drive panning. -->
+      <ScrollViewer Name="BodyScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled"
+                    PointerPressed="_OnBodyPointerPressed" PointerMoved="_OnBodyPointerMoved"
+                    PointerReleased="_OnBodyPointerReleased" PointerCaptureLost="_OnBodyPointerCaptureLost">
         <Border Name="Checkerboard" Padding="16">
-          <Image Name="PreviewImage" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
-                 RenderTransformOrigin="0.5,0.5">
-            <Image.RenderTransform>
+          <!-- LayoutTransform (not RenderTransform) so zooming grows the layout size the ScrollViewer sees —
+               a render transform leaves the extent untouched and there is nothing left to pan to (AC-804). -->
+          <LayoutTransformControl Name="PreviewImageZoom" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <LayoutTransformControl.LayoutTransform>
               <ScaleTransform/>
-            </Image.RenderTransform>
-          </Image>
+            </LayoutTransformControl.LayoutTransform>
+            <Image Name="PreviewImage" Stretch="Uniform"/>
+          </LayoutTransformControl>
         </Border>
       </ScrollViewer>
     </Border>

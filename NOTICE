@@ -14,7 +14,7 @@ their upstream licences apply. See "Third-party model licences" in README.md.
 Provider plugin logos (fetched at runtime, never bundled)
 -----------------------------------------------------------
 
-AC-553: the store tile for the three AI-provider plugins (Claude, Codex/CLI Agent Provider, Kimi) shows each
+AC-553: the store tile for the three AI-provider plugins (Claude, Codex, Kimi) shows each
 vendor's own real mark rather than a lookalike drawn for this repo. Raymond's call, 2026-08-09 — option A over
 the neutral-letterform fallback (option B): direct recognisability in a store grid is worth more than avoiding
 a trademark, and the licence risk of showing someone else's mark is explicitly his to accept, not the
@@ -35,7 +35,7 @@ Codex (OpenAI)
             otherwise-identical browser fetch of the same URL succeeds) while passing an identical request
             through unmodified. GitHub's own CDN serves the same official mark without that block.
   Notice:   "OpenAI" and the OpenAI mark are trademarks of OpenAI. Used here only as a live reference to
-            OpenAI's own chosen asset, identifying the CLI Agent Provider (Codex) plugin; not an endorsement.
+            OpenAI's own chosen asset, identifying the Codex (ChatGPT) plugin; not an endorsement.
 
 Kimi (Moonshot AI)
   Source:   https://moonshotai.github.io/Branding-Guide/scenarios/04-k-only/k-only-color.svg — Moonshot AI's

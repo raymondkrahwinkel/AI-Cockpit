@@ -36,6 +36,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   `grok-4.6`) per profile in Manage profiles. Chat-only: no tool calls, file access or permission prompts, and no
   context/usage pill (Grok's endpoint reports neither).
 
+- added: OpenRouter as a selectable session provider plugin — configure an OpenRouter API key and a
+  vendor/model id (e.g. `anthropic/claude-sonnet-4.5`) per profile in Manage profiles. Chat-only: no tool
+  calls, file access or permission prompts, and no context/usage pill (OpenRouter's endpoint reports neither).
+
 - added: the context-usage warning threshold can now be set separately for the voice assistant, in Options next to
   the per-provider thresholds — a session running under the same profile the assistant uses keeps warning at the
   old number, so lowering the assistant's own threshold no longer changes anything for ordinary sessions.
@@ -197,6 +201,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the Codex provider plugin is called "Codex (ChatGPT)" in the store instead of "CLI Agent Provider
+  (Codex)" — it is now findable under the name of the thing you are installing rather than under how it happens to
+  be built. Nothing else moves: an installed copy keeps working and updates as usual, and sessions still start the
+  same `codex` command line tool.
+
 - changed: a project card is quieter. One button carries on with the project, sharing stays visible beside it, and
   everything else — open folder, edit, start with something changed, the project's own links — moved under a single
   `⋯`. A project that still needs an assistant picked now says "Pick how it runs" in an ordinary button instead of
@@ -229,6 +238,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: on Linux, reopening the cockpit maximized restored the maximized flag but not the actual window state —
   it looked like a normal window and the maximize button needed two clicks before it would fill the screen. The
   window now comes up genuinely maximized from the start.
+- fixed: an image preview could not be dragged around once zoomed in, whether by scrolling with Ctrl held or by
+  switching to 1:1 — zooming grew the picture but the window never noticed it had grown, so there was nothing to
+  pan to. Dragging now moves the picture under the cursor, stops at its edges, and the pointer shows a hand while
+  it's possible and a fist while you're actually dragging. Fit-to-window is unaffected: at its normal size it
+  still shows no scrollbars and can't be dragged.
 - fixed: local CI kept saying Docker or act was missing after you had just installed it, until you reopened the
   local-CI settings screen or restarted the cockpit. It now checks again the next time it needs to know, without
   needing either — a working answer is still remembered so nothing gets re-checked once it's found.
