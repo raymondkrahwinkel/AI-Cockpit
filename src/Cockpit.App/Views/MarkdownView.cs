@@ -80,7 +80,13 @@ public sealed class MarkdownView : ContentControl
     private IReadOnlyList<MarkdownBlock> _rendered = [];
     private Color? _renderedPalette;
 
-    public MarkdownView() => Content = _blocks;
+    public MarkdownView()
+    {
+        Content = _blocks;
+#if DEBUG
+        Cockpit.App.Diagnostics.LeakTracker.Register(this);
+#endif
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

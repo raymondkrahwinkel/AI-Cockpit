@@ -59,6 +59,9 @@ public partial class SessionView : UserControl
     public SessionView()
     {
         InitializeComponent();
+#if DEBUG
+        Cockpit.App.Diagnostics.LeakTracker.Register(this);
+#endif
 
         // Enter sends the message; Shift+Enter inserts a newline. Tunnel so we pre-empt the
         // TextBox's own Enter handling (which would otherwise insert a newline).
@@ -130,6 +133,20 @@ public partial class SessionView : UserControl
         _activityAgeTicker = null;
 
         base.OnDetachedFromVisualTree(e);
+
+        // Force the compositor to flush this pane's teardown now — even when its tab/desk is inactive, so its
+        // renderer is paused and would otherwise never commit. A pane closed without a following render pass leaves
+        // its detached subtree's server composition visuals in the window's scene, uncollectable, until a commit
+        // runs (measured headless: closing a real SessionView without a render orphans it; a forced
+        // RequestCommitAsync releases it — TranscriptLeakHuntTests). That is the permanent half of the transcript
+        // memory growth; the same render-gated teardown lagging under streaming load is the transient half the
+        // AdaptiveGcCompactor was papering over. Fire-and-forget: a failure to schedule a commit must never take
+        // the close path down.
+        if (e.Root is Avalonia.Visual root
+            && Avalonia.Rendering.Composition.ElementComposition.GetElementVisual(root)?.Compositor is { } compositor)
+        {
+            _ = compositor.RequestCommitAsync();
+        }
     }
 
     private void _OnActivityAgeTick(object? sender, EventArgs e)
