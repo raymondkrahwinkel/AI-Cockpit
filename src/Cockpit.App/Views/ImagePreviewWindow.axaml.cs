@@ -10,10 +10,9 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.Views;
 
-// The mini-gallery a clicked "[+N image]" chip opens (AC-778): the images a user message carried, shown one at
-// a time with previous/next navigation and a fit-to-window/1:1 toggle. Built from the in-memory
-// `ImageAttachment` bytes the row's own `TranscriptEntryViewModel.Images` still holds — there is no on-disk
-// transcript to read them back from, so this window only ever exists for a message from the running session.
+// The mini-gallery a clicked "[+N image]" chip opens (AC-778): the images a user message carried, shown one
+// at a time with previous/next navigation and a Fit/1:1/pan toggle. Built from the in-memory `ImageAttachment`
+// bytes the row's own `TranscriptEntryViewModel.Images` still holds — no on-disk transcript to read them from.
 public partial class ImagePreviewWindow : Window
 {
     // Ctrl+scroll zoom range, layered on top of whichever Fit/1:1 baseline is active (AC-778 follow-up).
@@ -21,10 +20,16 @@ public partial class ImagePreviewWindow : Window
     private const double MaxZoom = 6.0;
     private const double ZoomStepBase = 1.15;
 
+    private static readonly Cursor PannableCursor = new(StandardCursorType.Hand);
+    private static readonly Cursor PanningCursor = new(StandardCursorType.SizeAll);
+
     private IReadOnlyList<ImageAttachment> _images = [];
     private int _index;
     private Bitmap? _bitmap;
     private double _zoom = 1.0;
+    private bool _isPanning;
+    private Point _panPointerStart;
+    private Vector _panOffsetStart;
 
     public ImagePreviewWindow()
     {
@@ -60,9 +65,8 @@ public partial class ImagePreviewWindow : Window
         Build(images, startIndex).Show(owner);
 
     // The render harness's own step (the same split FilePreviewWindow.Build/ScreenshotPreviewWindow.Build make):
-    // the window built and showing its first image, without being put on screen. `_ShowImage` is the one place
-    // that guards a bad index (empty list, or one out of range) — an out-of-range `startIndex` here just leaves
-    // the window on its unpopulated defaults rather than this method second-guessing it too.
+    // the window built and showing its first image, without being on screen. `_ShowImage` guards a bad index
+    // (empty list, out of range) — an out-of-range `startIndex` just leaves the window on its unpopulated defaults.
     internal static ImagePreviewWindow Build(IReadOnlyList<ImageAttachment> images, int startIndex)
     {
         var window = new ImagePreviewWindow { _images = images };
@@ -83,8 +87,8 @@ public partial class ImagePreviewWindow : Window
 
     private void _OnFit(object? sender, RoutedEventArgs e) => _SetStretch(Stretch.Uniform);
 
-    // 1:1: the image keeps its own pixel size and the surrounding ScrollViewer picks up scrollbars once it no
-    // longer fits — no pan/deep-zoom (out of v1 scope), just the plain "actual size" the ticket asks for.
+    // 1:1: the image keeps its own pixel size; the ScrollViewer picks up scrollbars — and now panning — once
+    // it no longer fits.
     private void _OnActualSize(object? sender, RoutedEventArgs e) => _SetStretch(Stretch.None);
 
     // Fit only fits while the scroller constrains the image: a ScrollViewer that may scroll measures its child
@@ -93,9 +97,8 @@ public partial class ImagePreviewWindow : Window
     private void _SetStretch(Stretch stretch)
     {
         PreviewImage.Stretch = stretch;
-        var scrollbars = stretch == Stretch.None ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
-        BodyScroller.HorizontalScrollBarVisibility = scrollbars;
-        BodyScroller.VerticalScrollBarVisibility = scrollbars;
+        PreviewImage.Width = double.NaN;
+        PreviewImage.Height = double.NaN;
         _ApplyZoom(1.0);
     }
 
@@ -115,9 +118,78 @@ public partial class ImagePreviewWindow : Window
     private void _ApplyZoom(double zoom)
     {
         _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
-        var transform = (ScaleTransform)PreviewImage.RenderTransform!;
+
+        // AC-804: away from zoom 1, LayoutTransformControl's inverse-scaled constraint makes Stretch.Uniform
+        // re-fit and cancel the transform out — freezing the box first stops that in both zoom directions.
+        if (PreviewImage.Stretch == Stretch.Uniform)
+        {
+            if (_zoom != 1.0 && double.IsNaN(PreviewImage.Width))
+            {
+                PreviewImage.Width = PreviewImage.Bounds.Width;
+                PreviewImage.Height = PreviewImage.Bounds.Height;
+            }
+            else if (_zoom == 1.0)
+            {
+                PreviewImage.Width = double.NaN;
+                PreviewImage.Height = double.NaN;
+            }
+        }
+
+        var transform = (ScaleTransform)PreviewImageZoom.LayoutTransform!;
         transform.ScaleX = _zoom;
         transform.ScaleY = _zoom;
+
+        var scrollbars = _CanPan() ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+        BodyScroller.HorizontalScrollBarVisibility = scrollbars;
+        BodyScroller.VerticalScrollBarVisibility = scrollbars;
+        if (!_isPanning)
+        {
+            BodyScroller.Cursor = _CanPan() ? PannableCursor : Cursor.Default;
+        }
+    }
+
+    private bool _CanPan() => PreviewImage.Stretch == Stretch.None || _zoom > 1.0;
+
+    private void _OnBodyPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!_CanPan() || !e.GetCurrentPoint(BodyScroller).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _isPanning = true;
+        _panPointerStart = e.GetPosition(BodyScroller);
+        _panOffsetStart = BodyScroller.Offset;
+        e.Pointer.Capture(BodyScroller);
+        BodyScroller.Cursor = PanningCursor;
+    }
+
+    private void _OnBodyPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isPanning)
+        {
+            return;
+        }
+
+        // ScrollViewer.Offset coerces to the valid [0, Extent-Viewport] range on its own, so this can't drag the
+        // image past its own edges.
+        var moved = _panPointerStart - e.GetPosition(BodyScroller);
+        BodyScroller.Offset = _panOffsetStart + moved;
+    }
+
+    private void _OnBodyPointerReleased(object? sender, PointerReleasedEventArgs e) => _EndPan();
+
+    private void _OnBodyPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e) => _EndPan();
+
+    private void _EndPan()
+    {
+        if (!_isPanning)
+        {
+            return;
+        }
+
+        _isPanning = false;
+        BodyScroller.Cursor = _CanPan() ? PannableCursor : Cursor.Default;
     }
 
     private void _ShowImage(int index)
@@ -136,6 +208,9 @@ public partial class ImagePreviewWindow : Window
         }
 
         PreviewImage.Source = _bitmap;
+        PreviewImage.Width = double.NaN;
+        PreviewImage.Height = double.NaN;
+        BodyScroller.Offset = default;
         _ApplyZoom(1.0);
         CountText.Text = _images.Count == 1 ? "Image" : $"Image {index + 1} of {_images.Count}";
         NavigationRow.IsVisible = _images.Count > 1;
