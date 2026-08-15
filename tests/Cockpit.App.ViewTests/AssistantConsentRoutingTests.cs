@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
@@ -158,6 +159,31 @@ public class AssistantConsentRoutingTests
         Assert.Null(oldSession!.PendingConsent);
         Assert.Null(newSession!.PendingConsent);
         broker.Received(1).Respond(prompt.Id, ConsentOutcome.Denied, false);
+    }
+
+    /// <summary>
+    /// AC-791: the same fail-closed branch, named for the one caller it is now a standing rule for. A request that
+    /// came in over the network node listener is stamped with <see cref="NodeCallerIdentity.PaneId"/>, which is a
+    /// pane that can never exist — so a controller on another machine cannot be asked for consent, and its call is
+    /// refused instead of being put in front of the operator on whatever session happened to be selected.
+    /// </summary>
+    [Fact]
+    public void AConsentFromTheNetworkNodeCaller_IsDenied_NotShownOnALocalSession()
+    {
+        var broker = Substitute.For<IConsentBroker>();
+        var prompt = _Prompt(NodeCallerIdentity.PaneId);
+
+        var selected = Dispatcher.UIThread.Invoke(() =>
+        {
+            var cockpit = _Cockpit(broker);
+            var session = cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
+            broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, prompt);
+            Dispatcher.UIThread.RunJobs();
+            return session;
+        });
+
+        broker.Received().Respond(prompt.Id, ConsentOutcome.Denied, false);
+        Assert.Null(selected!.PendingConsent);
     }
 
     private static ConsentPrompt _Prompt(string paneId) => new(

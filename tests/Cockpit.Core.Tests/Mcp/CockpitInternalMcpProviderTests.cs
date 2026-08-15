@@ -141,6 +141,32 @@ public class CockpitInternalMcpProviderTests
         Assert.StartsWith("http://127.0.0.1:", Assert.Single(host.GetServers()).Url);
     }
 
+    // AC-791, criterion 2: an internal endpoint (AC-204) stays loopback-only even with the master switch on, so a
+    // caller on another machine has no socket to reach it on. A public endpoint is mounted in the same host and
+    // with the same settings, so the difference can only come from the internal flag — without that, this would
+    // also pass on a machine where no LAN address resolves at all, which would prove nothing.
+    [Fact]
+    public async Task EndpointHost_NodeBindingOn_BindsNoNodeListenerForAnInternalEndpoint()
+    {
+        await using var host = new CockpitMcpEndpointHost(
+            endpoints: [],
+            services: new ServiceCollection().BuildServiceProvider(),
+            authKey: new McpAuthKey(),
+            keyring: new SessionMcpKeyring(),
+            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
+                new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
+            loggerFactory: NullLoggerFactory.Instance);
+
+        await host.MountAsync("cockpit-public", new ProbeTools(), isEnabled: () => true);
+        await host.MountAsync("cockpit-private", new ProbeTools(), isEnabled: () => true, isInternal: true);
+
+        var nodeAddress = Assert.Single(host.GetNodeAddresses());
+        Assert.Equal("cockpit-public", nodeAddress.ServerName);
+
+        // Loopback is untouched for both: internal means "not off this machine", not "not hosted".
+        Assert.All(host.GetServers(), server => Assert.StartsWith("http://127.0.0.1:", server.Url));
+    }
+
     // AC-790: the node listener is guarded by the persistent shared secret, and — same as the other two credential
     // paths McpAuthMiddleware already had — a wrong or missing one gets the same generic 401 either way.
     [Fact]
