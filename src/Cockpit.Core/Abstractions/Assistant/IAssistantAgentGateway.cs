@@ -38,7 +38,19 @@ public interface IAssistantAgentGateway
     /// agent session, one that does not exist, and the assistant's own — the assistant does not get to end itself
     /// mid-sentence, and a pane id it happens to know is not a licence to.
     /// </summary>
-    Task<AgentStopResult> StopAsync(string paneId, CancellationToken cancellationToken = default);
+    /// <param name="paneId">The session to close.</param>
+    /// <param name="caller">
+    /// Who is closing it, for the audit trail. Defaults to the assistant, which was the only caller until AC-795
+    /// gave a paired controller its own tools — a stop that arrived from another machine and is written down as
+    /// this cockpit's own assistant is a trail that reads plausibly and is wrong.
+    /// </param>
+    /// <param name="callerPaneId">The caller's verified pane, where it has one. Null for the assistant, which does not.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    Task<AgentStopResult> StopAsync(
+        string paneId,
+        SpawnCaller caller = SpawnCaller.Assistant,
+        string? callerPaneId = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Renames the session on <paramref name="paneId"/> — the title in its header and its sidebar row — exactly as

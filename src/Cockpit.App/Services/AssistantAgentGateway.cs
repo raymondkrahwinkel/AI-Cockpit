@@ -208,11 +208,15 @@ internal sealed class AssistantAgentGateway(
         }).ConfigureAwait(false);
     }
 
-    public async Task<AgentStopResult> StopAsync(string paneId, CancellationToken cancellationToken = default)
+    public async Task<AgentStopResult> StopAsync(
+        string paneId,
+        SpawnCaller caller = SpawnCaller.Assistant,
+        string? callerPaneId = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            return await _StopAsync(paneId, cancellationToken).ConfigureAwait(false);
+            return await _StopAsync(paneId, caller, callerPaneId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -222,7 +226,7 @@ internal sealed class AssistantAgentGateway(
         }
     }
 
-    private Task<AgentStopResult> _StopAsync(string paneId, CancellationToken cancellationToken) =>
+    private Task<AgentStopResult> _StopAsync(string paneId, SpawnCaller caller, string? callerPaneId, CancellationToken cancellationToken) =>
         _OnUiThreadAsync(async () =>
         {
             // First, and by identity rather than by whether it happens to be findable: the assistant is not in
@@ -264,8 +268,9 @@ internal sealed class AssistantAgentGateway(
             await _RecordAsync(new AssistantSpawnAuditEntry(
                 DateTimeOffset.Now,
                 AssistantSpawnAction.Stop,
-                SpawnCaller.Assistant,
-                CallerPaneId: null,
+                // Who actually asked, not who used to be the only one who could (AC-795).
+                caller,
+                callerPaneId,
                 workspaceId ?? string.Empty,
                 _FindWorkspace(workspaceId)?.Name,
                 session.ActiveProfileLabel,

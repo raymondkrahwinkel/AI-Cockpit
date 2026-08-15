@@ -1,3 +1,5 @@
+using Cockpit.Core.Mcp;
+
 namespace Cockpit.Core.Abstractions.Assistant;
 
 // Which desk a spawn lands on, and — inseparably — *how that was decided* (AC-545).
@@ -60,6 +62,18 @@ public sealed record SpawnTarget
     // `callerPaneId`: The transport-verified pane of the agent asking, as `McpRequestContext.CurrentPaneId` reports it.
     public static SpawnTarget DerivedFromTheCallersPane(string workspaceId, string callerPaneId) =>
         new(workspaceId, SpawnCaller.Coordinator, callerPaneId);
+
+    // The paired controller's rule (AC-795): a cockpit on another machine asked this one to run something, and the
+    // desk it lands on is derived here — the node's own active workspace — never named by the caller. Shaped after
+    // the coordinator's door rather than the assistant's, and for a stronger version of the same reason: a
+    // controller cannot name a desk it has never seen, so a workspace parameter on that wire would be a value the
+    // caller guessed. What stands in for the assistant's consent gate is `[e]`'s grant (AC-794), which the node's
+    // operator gave ahead of time and can withdraw live — see `NodeSessionMcpTools` for why a per-spawn click on a
+    // machine nobody is standing at would not be a gate at all.
+    //
+    // `workspaceId`: The node's active desk, read host-side — never a value that arrived over the network.
+    public static SpawnTarget RequestedByThePairedController(string workspaceId) =>
+        new(workspaceId, SpawnCaller.Controller, NodeCallerIdentity.PaneId);
 }
 
 // Who a spawn was made by, in the audit trail's words. One value per scoping rule in `SpawnTarget`.
@@ -70,4 +84,8 @@ public enum SpawnCaller
 
     // An in-workspace coordinator agent (AC-436), whose target was derived from its pane.
     Coordinator,
+
+    // The cockpit on the other machine this one is paired to as a node (AC-795), whose target was derived from
+    // this machine's own active desk.
+    Controller,
 }

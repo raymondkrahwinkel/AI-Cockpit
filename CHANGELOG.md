@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the sessions running on a Cockpit you are paired with now show up under Options → Security, one card per
+  node, and you can start and stop them from there — within the profiles and projects that machine's operator has
+  ticked for you, and never outside them. They are kept in their own card, headed by the node's name, rather than
+  mixed into your own session list, so a Stop can only ever land on the machine you are looking at. The assistant
+  can do the same through its own separate tools, so it never confuses a session here with one over there.
+  **What you start on a node keeps running there**: closing your Cockpit, losing the network or unpairing does not
+  stop it — this is offloading work to another machine, not remote-controlling it.
+
 - added: a paired Cockpit now starts able to use none of your profiles or projects — Options → Security shows a
   checklist under the pairing status where you tick exactly which ones it may reach. Unticking one takes effect
   immediately, without unpairing.
