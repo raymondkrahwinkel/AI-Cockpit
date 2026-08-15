@@ -525,6 +525,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         _ => toolName,
     };
 
+    // The input keys probed for the collapsed-header hint, in priority order. Static so a call does not
+    // reallocate the same eight-string array on every collapsed tool-row render.
+    private static readonly string[] ToolSummaryKeys =
+        ["command", "file_path", "path", "pattern", "url", "query", "description", "prompt"];
+
     // The first meaningful input value (command/file/pattern/…), truncated — the collapsed-header hint.
     private static string _ToolSummary(string? inputJson)
     {
@@ -541,7 +546,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
                 return string.Empty;
             }
 
-            foreach (var key in new[] { "command", "file_path", "path", "pattern", "url", "query", "description", "prompt" })
+            foreach (var key in ToolSummaryKeys)
             {
                 if (doc.RootElement.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
                 {
