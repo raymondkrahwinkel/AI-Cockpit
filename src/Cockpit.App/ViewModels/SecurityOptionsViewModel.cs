@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
@@ -22,7 +23,11 @@ public sealed partial class SecurityOptionsViewModel(
     ITerminalAccessSwitch? terminalAccessSwitch = null,
     ITerminalAccessSettingsStore? terminalAccessSettings = null,
     INodeEndpointSettingsStore? nodeEndpointSettings = null,
-    IEnumerable<ICockpitInternalMcpProvider>? mcpEndpointHosts = null) : ObservableObject
+    IEnumerable<ICockpitInternalMcpProvider>? mcpEndpointHosts = null,
+    INodePairingBroker? nodePairing = null,
+    INodePairingClient? nodePairingClient = null,
+    INodePairingEndpoint? nodePairingEndpoint = null,
+    IMcpServerStore? mcpServers = null) : ObservableObject
 {
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
@@ -68,6 +73,68 @@ public sealed partial class SecurityOptionsViewModel(
     // or an explanatory placeholder while there is nothing to show yet (see _ResolveNodeEndpointAddressText).
     [ObservableProperty]
     private string _nodeEndpointAddressText = "";
+
+    // ── AC-792, this cockpit as a node ─────────────────────────────────────────────────────────────────────────
+    //
+    // The pairing prompt lives on this tab rather than in an app-wide notification, and that is a real ceiling: a
+    // request that arrives while the Options window is shut is never seen and expires after two minutes. It is
+    // chosen rather than settled for — the operator is standing at both machines during a pairing, and this tab is
+    // where they read the address they are about to type, so it is the screen they are already on.
+    // ponytail: no global prompt for an incoming pairing — upgrade path is routing it through the notification
+    // path if pairing ever starts happening while nobody is looking at this tab.
+
+    // The address a second cockpit types here to start a pairing with this one. One address, not one per endpoint:
+    // the grant carries the endpoint list.
+    [ObservableProperty]
+    private string _nodePairingAddress = "";
+
+    [ObservableProperty]
+    private bool _hasIncomingPairing;
+
+    // The six digits this cockpit derived. The operator compares them with the other screen; they are never sent.
+    [ObservableProperty]
+    private string _incomingPairingCode = "";
+
+    [ObservableProperty]
+    private string _incomingPairingCaption = "";
+
+    [ObservableProperty]
+    private bool _isPaired;
+
+    [ObservableProperty]
+    private string _pairedControllerText = "";
+
+    // ── AC-792, this cockpit as a controller ───────────────────────────────────────────────────────────────────
+
+    // What the operator types: the pairing address read off the other machine's Security tab.
+    [ObservableProperty]
+    private string _pairWithNodeAddress = "";
+
+    // Set between "start" and "the codes match": the handshake exists, nothing is granted, and both screens are
+    // showing a number. Null at every other moment, which is what the two buttons key on.
+    private NodePairingHandshake? _handshake;
+
+    // Cancels the claim poll. Without one, Cancel would only forget the handshake locally while the poll ran on to
+    // completion and wrote the node's servers into the registry anyway — a button that says it stopped something
+    // it did not.
+    private CancellationTokenSource? _pairingCancellation;
+
+    [ObservableProperty]
+    private bool _isComparingPairingCode;
+
+    [ObservableProperty]
+    private string _outgoingPairingCode = "";
+
+    [ObservableProperty]
+    private string _outgoingPairingCaption = "";
+
+    [ObservableProperty]
+    private bool _isPairingBusy;
+
+    [ObservableProperty]
+    private string _pairingStatus = "";
+
+    private bool _subscribedToPairing;
 
     [ObservableProperty]
     private bool _isMigrating;
@@ -134,6 +201,43 @@ public sealed partial class SecurityOptionsViewModel(
             NodeEndpointSharedSecret = node.SharedSecret;
             NodeEndpointAddressText = _ResolveNodeEndpointAddressText(node.Enabled);
         }
+
+        // AC-792: subscribe once, not per refresh — this tab is rebuilt every time the dialog opens, and a
+        // handler added on each one would fire as many times as the operator has opened Options this run.
+        if (nodePairing is not null && !_subscribedToPairing)
+        {
+            nodePairing.Changed += (_, _) => Dispatcher.UIThread.Post(_ReadPairingState);
+            _subscribedToPairing = true;
+        }
+
+        // Without this the broker only reads its pairing off disk when something acts on it, so a node that was
+        // paired before this launch would show as unpaired here — and offer no way to unpair.
+        if (nodePairing is not null)
+        {
+            await nodePairing.EnsureLoadedAsync().ConfigureAwait(true);
+        }
+
+        NodePairingAddress = nodePairingEndpoint?.Address ?? "";
+        _ReadPairingState();
+    }
+
+    // Mirrors the broker onto the tab. The broker is the source of truth for both halves — an incoming request and
+    // the pairing it became — so this reads rather than tracks: a pairing that expired while the dialog sat open
+    // reads as gone here for exactly the same reason the claim would refuse it.
+    private void _ReadPairingState()
+    {
+        var pending = nodePairing?.Pending;
+        HasIncomingPairing = pending is not null;
+        IncomingPairingCode = pending?.Code ?? "";
+        IncomingPairingCaption = pending is null
+            ? ""
+            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} wants to pair. Confirm only if the code below is the one that cockpit is showing.";
+
+        var pairing = nodePairing?.Pairing;
+        IsPaired = pairing is not null;
+        PairedControllerText = pairing is null
+            ? ""
+            : $"Paired with \"{pairing.ControllerName}\" ({pairing.ControllerAddress}) since {pairing.PairedAtUtc.ToLocalTime():g}.";
     }
 
     // Node binding off: normally nothing to show — unless this run already bound an off-loopback listener earlier
@@ -201,13 +305,205 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
-        var sharedSecret = NodeEndpointSharedSecret is { Length: > 0 }
-            ? NodeEndpointSharedSecret
+        // AC-792: read-modify-write rather than a fresh record, and the secret comes from what is on disk right
+        // now rather than from this view model's copy. Two reasons, one shape. This section gained a `Pairing`
+        // field this toggle knows nothing about, and constructing a new record would erase who the node is paired
+        // with. And the copy held here goes stale the moment a pairing rotates it or a remote unpair clears it —
+        // writing that copy back would resurrect a revoked credential on the next flip of this switch.
+        var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
+        var sharedSecret = current.SharedSecret is { Length: > 0 }
+            ? current.SharedSecret
             : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
         NodeEndpointSharedSecret = sharedSecret;
         NodeEndpointAddressText = _ResolveNodeEndpointAddressText(value);
-        await nodeEndpointSettings.SaveAsync(new NodeEndpointSettings { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
+
+        await nodeEndpointSettings.SaveAsync(current with { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
+    }
+
+    // ── AC-792 commands, node side ─────────────────────────────────────────────────────────────────────────────
+
+    // The operator says the two screens show the same number. This is the moment a shared secret comes into
+    // being — before it, a pairing request has changed nothing about this cockpit.
+    [RelayCommand]
+    private async Task ConfirmIncomingPairingAsync()
+    {
+        if (nodePairing?.Pending is not { } pending)
+        {
+            return;
+        }
+
+        try
+        {
+            await nodePairing.ConfirmAsync(pending.PairingId).ConfigureAwait(true);
+            PairingStatus = "Pairing confirmed.";
+        }
+        catch (NodePairingException ex)
+        {
+            PairingStatus = ex.Message;
+        }
+
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void RefuseIncomingPairing()
+    {
+        if (nodePairing?.Pending is { } pending)
+        {
+            nodePairing.Refuse(pending.PairingId);
+        }
+    }
+
+    // Ends the coupling from this side. The shared secret goes with it, which is what makes the controller stop
+    // being able to call in rather than merely stop being listed.
+    [RelayCommand]
+    private async Task UnpairNodeAsync()
+    {
+        if (nodePairing is null)
+        {
+            return;
+        }
+
+        await nodePairing.UnpairAsync().ConfigureAwait(true);
+        PairingStatus = "Unpaired. The key that controller was given no longer works.";
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    // ── AC-792 commands, controller side ───────────────────────────────────────────────────────────────────────
+
+    // Step one: ask the node for a pairing and derive the code from the certificate that address actually
+    // presented. Nothing is stored yet — the operator has a number to compare and a way out.
+    [RelayCommand]
+    private async Task StartPairingAsync()
+    {
+        if (nodePairingClient is null || string.IsNullOrWhiteSpace(PairWithNodeAddress))
+        {
+            return;
+        }
+
+        IsPairingBusy = true;
+        PairingStatus = "";
+        try
+        {
+            _handshake = await nodePairingClient.BeginAsync(PairWithNodeAddress, Environment.MachineName).ConfigureAwait(true);
+            OutgoingPairingCode = _handshake.Code;
+            OutgoingPairingCaption =
+                $"\"{_handshake.NodeName}\" should be showing this same code. Continue only if it matches — a different number means something else is answering at that address.";
+            IsComparingPairingCode = true;
+        }
+        catch (NodePairingException ex)
+        {
+            PairingStatus = ex.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or UriFormatException or ArgumentException or TaskCanceledException
+            or NotSupportedException or System.Text.Json.JsonException)
+        {
+            // The last two are what a mistyped address produces when it lands on some other HTTPS service that
+            // answers 200 with HTML: `ReadFromJsonAsync` throws rather than returning null, and an escaping
+            // exception out of an async RelayCommand is an unhandled one.
+            PairingStatus = $"Could not reach a Cockpit node at {PairWithNodeAddress}: {ex.Message}";
+        }
+        finally
+        {
+            IsPairingBusy = false;
+        }
+    }
+
+    // Step two: this operator has compared the codes. Now wait for the node's operator to do the same — which is
+    // the second of the two confirmations the pairing needs — and store what comes back.
+    [RelayCommand]
+    private async Task ConfirmPairingCodeAsync()
+    {
+        if (nodePairingClient is null || _handshake is not { } handshake)
+        {
+            return;
+        }
+
+        IsPairingBusy = true;
+        PairingStatus = $"Waiting for \"{handshake.NodeName}\" to confirm the same code…";
+
+        using var cancellation = new CancellationTokenSource();
+        _pairingCancellation = cancellation;
+        try
+        {
+            var grant = await nodePairingClient.CompleteAsync(handshake, cancellation.Token).ConfigureAwait(true);
+            var added = await _StoreNodeServersAsync(handshake, grant).ConfigureAwait(true);
+            PairingStatus = added == 0
+                ? $"Paired with \"{handshake.NodeName}\", but it offered no endpoints — turn its node switch on and restart it."
+                : $"Paired with \"{handshake.NodeName}\". Added {added} MCP server(s), pinned to that machine's certificate.";
+        }
+        catch (OperationCanceledException)
+        {
+            PairingStatus = "Pairing cancelled.";
+        }
+        catch (NodePairingException ex)
+        {
+            PairingStatus = ex.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or NotSupportedException or System.Text.Json.JsonException)
+        {
+            // A pin mismatch arrives here wrapped in an HttpRequestException; its inner exception is the reason
+            // worth showing, because "that is not the machine you paired with" is not a network problem.
+            PairingStatus = ex.InnerException is NodeCertificatePinMismatchException mismatch ? mismatch.Message : ex.Message;
+        }
+        finally
+        {
+            _pairingCancellation = null;
+            IsPairingBusy = false;
+            _ClearHandshake();
+        }
+    }
+
+    [RelayCommand]
+    private void CancelPairing()
+    {
+        // Cancel before clearing: a poll already in flight has to be told to stop, not merely forgotten.
+        _pairingCancellation?.Cancel();
+        _ClearHandshake();
+    }
+
+    private void _ClearHandshake()
+    {
+        _handshake = null;
+        IsComparingPairingCode = false;
+        OutgoingPairingCode = "";
+        OutgoingPairingCaption = "";
+    }
+
+    // Turns the grant into ordinary registry rows — the same `Transport = Http` + bearer + URL an operator would
+    // have typed by hand after AC-790, with the certificate pin added, which is the part they could not have
+    // typed. Rows for this node are replaced rather than appended to, so pairing twice does not double the list.
+    private async Task<int> _StoreNodeServersAsync(NodePairingHandshake handshake, NodePairingGrant grant)
+    {
+        if (mcpServers is null || grant.Endpoints.Count == 0)
+        {
+            return 0;
+        }
+
+        var existing = await mcpServers.LoadAsync().ConfigureAwait(true);
+        var prefix = $"{handshake.NodeName} · ";
+        var kept = existing.Where(server => !server.Name.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+
+        kept.AddRange(grant.Endpoints.Select(endpoint => new McpServerConfig
+        {
+            Id = McpServerIdentity.NewId(),
+            Name = prefix + endpoint.ServerName,
+            Transport = McpTransport.Http,
+            // `LocalOnly` is not a preference here, it is the reach of the pin. Only the in-process tool loop
+            // builds its own HTTP transport (`McpToolProvider`), so only it can be told which certificate to
+            // trust; a spawned CLI session gets an `--mcp-config` and brings its own client, which would meet a
+            // self-signed certificate it has no reason to accept and fail the TLS handshake outright. Fanning
+            // these rows out there would hand every session a server that cannot work.
+            Scope = McpServerScope.LocalOnly,
+            Url = endpoint.Url,
+            Auth = McpServerAuth.ApiKey,
+            ApiKey = grant.SharedSecret,
+            PinnedCertificateFingerprint = handshake.Fingerprint,
+        }));
+
+        await mcpServers.SaveAsync(kept).ConfigureAwait(true);
+        return grant.Endpoints.Count;
     }
 
     // Dismisses the awareness banner for the credentials now in the file (AC-41). Hides it at once, then persists

@@ -57,6 +57,15 @@ internal static class CockpitConfigPath
     // whole on every new transcript row — the conversation's current shape, not a trail with its own retention.
     public static string AssistantTranscript => Path.Combine(Root, "assistant-transcript.json");
 
+    // This machine's node TLS certificate (AC-792), private key and all — hence written through
+    // `CreatePrivateFile` like every other credential-bearing file here.
+    //
+    // It survives restarts on purpose, which AC-790's throwaway certificate did not: a controller pins this
+    // certificate's fingerprint at pairing time, so a node that minted a fresh one each launch would break its own
+    // pairing every time it started. Persisting it is what turns the TLS AC-790 opened from encryption without an
+    // identity into an identity a second cockpit can recognise.
+    public static string NodeCertificate => Path.Combine(Root, "node-certificate.pfx");
+
     // Creates `directory` if needed and restricts it to its owner. Idempotent.
     public static void EnsurePrivateDirectory(string directory)
     {

@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -35,15 +34,14 @@ internal sealed class CockpitMcpEndpointHost
     private readonly McpAuthKey _authKey;
     private readonly SessionMcpKeyring _keyring;
     private readonly INodeEndpointSettingsStore _nodeEndpointSettings;
+    private readonly NodeSelfSignedCertificate _nodeCertificate;
+    private readonly NodeSharedSecret _nodeSharedSecret;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
     private readonly List<MountedEndpoint> _mounted = [];
     private readonly Lock _mountedLock = new();
     private readonly SemaphoreSlim _mountGate = new(1, 1);
-
-    // Lazy: a cockpit that never turns node binding on for this run never pays for a certificate it does not need.
-    private X509Certificate2? _nodeCertificate;
 
     // Loaded once, not once per endpoint: the class-level comment already promises the switch only takes effect on
     // the next launch, so it cannot change mid-run — re-reading and re-decrypting the whole of cockpit.json on
@@ -56,12 +54,18 @@ internal sealed class CockpitMcpEndpointHost
     private string? _nodeReachableAddress;
     private bool _nodeReachableAddressResolved;
 
+    // Whether the live shared-secret holder has been seeded from disk — see `MountAsync` for why this is a flag
+    // and not just a comment. Guarded by `_mountGate`, like the mount it belongs to.
+    private bool _nodeSecretSeeded;
+
     public CockpitMcpEndpointHost(
         IEnumerable<CockpitMcpEndpoint> endpoints,
         IServiceProvider services,
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
         INodeEndpointSettingsStore nodeEndpointSettings,
+        NodeSelfSignedCertificate nodeCertificate,
+        NodeSharedSecret nodeSharedSecret,
         ILoggerFactory loggerFactory)
     {
         _endpoints = [.. endpoints];
@@ -69,6 +73,8 @@ internal sealed class CockpitMcpEndpointHost
         _authKey = authKey;
         _keyring = keyring;
         _nodeEndpointSettings = nodeEndpointSettings;
+        _nodeCertificate = nodeCertificate;
+        _nodeSharedSecret = nodeSharedSecret;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<CockpitMcpEndpointHost>();
     }
@@ -151,13 +157,23 @@ internal sealed class CockpitMcpEndpointHost
                 {
                     // A second, network-reachable listener next to the loopback one (AC-790), guarded by the persistent
                     // shared secret rather than this run's ephemeral McpAuthKey — see McpAuthMiddleware.Require below.
-                    options.Listen(System.Net.IPAddress.Any, 0, listenOptions => listenOptions.UseHttps(_GetOrCreateNodeCertificate()));
+                    options.Listen(System.Net.IPAddress.Any, 0, listenOptions => listenOptions.UseHttps(_nodeCertificate.Value));
                 }
             });
 
+            if (bindNodeListener && !_nodeSecretSeeded)
+            {
+                // Seed the live holder from what is on disk, once — and the flag is what makes "once" true rather
+                // than merely intended. `MountAsync` is public and a plugin may mount an endpoint long after
+                // startup (AC-792); doing this again then would write `_nodeSettings`, cached at the first mount,
+                // back over a secret a pairing has since rotated or an unpair has since cleared.
+                _nodeSharedSecret.Set(nodeSettings.SharedSecret);
+                _nodeSecretSeeded = true;
+            }
+
             var app = builder.Build();
             // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40).
-            McpAuthMiddleware.Require(app, _authKey, _keyring, bindNodeListener ? nodeSettings.SharedSecret : null);
+            McpAuthMiddleware.Require(app, _authKey, _keyring, bindNodeListener ? _nodeSharedSecret : null);
             app.MapMcp("/mcp");
             _apps.Add(app);
 
@@ -236,8 +252,6 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    private X509Certificate2 _GetOrCreateNodeCertificate() => _nodeCertificate ??= NodeSelfSignedCertificate.Create();
-
     private string? _GetReachableAddress()
     {
         if (!_nodeReachableAddressResolved)
@@ -280,7 +294,9 @@ internal sealed class CockpitMcpEndpointHost
     public async ValueTask DisposeAsync()
     {
         _mountGate.Dispose();
-        _nodeCertificate?.Dispose();
+
+        // The certificate is not disposed here: it is a shared singleton this machine's identity lives in, and
+        // the pairing host holds the same instance.
         foreach (var app in _apps)
         {
             await app.DisposeAsync().ConfigureAwait(false);

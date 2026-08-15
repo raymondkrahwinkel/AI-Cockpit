@@ -13,6 +13,46 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class McpServersViewModelTests
 {
     [Fact]
+    public void ToConfig_CarriesAPairedNodesCertificatePinThroughAnUnrelatedEdit()
+    {
+        var paired = new McpServerConfig
+        {
+            Name = "laptop · cockpit-agents",
+            Transport = McpTransport.Http,
+            Url = "https://192.168.1.20:7331/mcp",
+            Auth = McpServerAuth.ApiKey,
+            ApiKey = "granted-by-pairing",
+            PinnedCertificateFingerprint = "AABBCCDD",
+        };
+
+        var row = new EditableMcpServerViewModel(paired);
+        row.Name = "laptop · agents";
+
+        // AC-792: there is no control for the pin — it is agreed during a pairing — but this dialog saves every
+        // row it holds. Dropping it here would silently unpin a paired node the next time the operator renamed
+        // any server, and that node's TLS would then fail outright.
+        Assert.Equal("AABBCCDD", row.ToConfig().PinnedCertificateFingerprint);
+    }
+
+    [Fact]
+    public void ToConfig_DropsTheCertificatePinWhenTheRowStopsBeingAnHttpServer()
+    {
+        var row = new EditableMcpServerViewModel(new McpServerConfig
+        {
+            Name = "laptop · cockpit-agents",
+            Transport = McpTransport.Http,
+            Url = "https://192.168.1.20:7331/mcp",
+            PinnedCertificateFingerprint = "AABBCCDD",
+        });
+
+        row.Transport = McpTransport.Stdio;
+
+        // A stdio server has no TLS connection for a pin to bind to; keeping it would be a claim about a
+        // certificate nothing will ever present.
+        Assert.Null(row.ToConfig().PinnedCertificateFingerprint);
+    }
+
+    [Fact]
     public void AddServer_AppendsANewRowAndSelectsIt()
     {
         var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>(), []);

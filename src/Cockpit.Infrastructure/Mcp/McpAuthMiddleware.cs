@@ -44,7 +44,10 @@ namespace Cockpit.Infrastructure.Mcp;
 // party that needed to tell a refusal apart; a local session is not, and it keeps its previous behaviour exactly.
 internal static class McpAuthMiddleware
 {
-    public static void Require(WebApplication app, McpAuthKey authKey, SessionMcpKeyring keyring, string? nodeSharedSecret = null) =>
+    // `nodeSharedSecret` is a holder, not a value (AC-792): pairing mints a new secret and unpairing removes one
+    // while this process runs, and a copy captured at mount time would keep letting an unpaired controller in until
+    // the next launch. Revocation that waits for a restart is not revocation.
+    public static void Require(WebApplication app, McpAuthKey authKey, SessionMcpKeyring keyring, NodeSharedSecret? nodeSharedSecret = null) =>
         app.Use(async (context, next) =>
         {
             var header = context.Request.Headers.Authorization.ToString();
@@ -54,7 +57,8 @@ internal static class McpAuthMiddleware
             {
                 // The node's own persistent shared secret (AC-790), and nothing else: this socket is reachable off
                 // this machine, so a loopback-scoped credential must not work here even if it happens to match.
-                if (!string.IsNullOrEmpty(nodeSharedSecret) && _ConstantTimeEquals(token, nodeSharedSecret))
+                // Read now rather than closed over, so the answer follows the current pairing.
+                if (nodeSharedSecret?.Value is { } secret && _ConstantTimeEquals(token, secret))
                 {
                     McpRequestContext.Set(NodeCallerIdentity.PaneId);
                     await next(context).ConfigureAwait(false);

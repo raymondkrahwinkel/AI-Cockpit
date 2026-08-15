@@ -340,7 +340,8 @@ internal sealed class McpToolProvider(
             Arguments = [.. server.Args],
             EnvironmentVariables = StdioServerEnvironment.Build(),
         }),
-        McpTransport.Http => new HttpClientTransport(new HttpClientTransportOptions
+        // AC-792: pinned to one certificate when this server is a paired Cockpit node, untouched otherwise.
+        McpTransport.Http => NodeCertificatePin.TransportFor(server, new HttpClientTransportOptions
         {
             Name = server.Name,
             Endpoint = new Uri(server.Url ?? string.Empty),

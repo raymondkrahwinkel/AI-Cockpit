@@ -10,5 +10,11 @@ public sealed record NodeEndpointSettings
     public bool Enabled { get; init; }
     public string SharedSecret { get; init; } = "";
 
+    // Who this node is paired with (AC-792), or null while nobody is. Null with a non-empty `SharedSecret` is a
+    // real and supported state, not a broken one: that is a node whose operator turned the switch on and read the
+    // secret off the Security tab by hand, the way AC-790 shipped it. Pairing is a second way to arrive at the
+    // same credential, not a replacement for the first.
+    public NodePairing? Pairing { get; init; }
+
     public static NodeEndpointSettings Default { get; } = new();
 }
