@@ -218,6 +218,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: on Linux, reopening the cockpit maximized restored the maximized flag but not the actual window state —
+  it looked like a normal window and the maximize button needed two clicks before it would fill the screen. The
+  window now comes up genuinely maximized from the start.
 - fixed: local CI kept saying Docker or act was missing after you had just installed it, until you reopened the
   local-CI settings screen or restarted the cockpit. It now checks again the next time it needs to know, without
   needing either — a working answer is still remembered so nothing gets re-checked once it's found.
