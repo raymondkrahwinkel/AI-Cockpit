@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an agent can now ask to read or edit a diagram you have open, gated behind Options → Security (off by
+  default) and a separate Approve/Deny for reading and for editing — reading never quietly comes with editing.
+  Reading always hands over the diagram exactly as it stands, including anything already in it, and an editing
+  request shows how many lines change before you approve it, never a description the agent wrote itself. The panel
+  shows which agent is connected and which of the two it holds; a diagram it is merely connected to, with neither
+  granted yet, shows that too rather than looking untouched.
+
 - added: the sessions running on a Cockpit you are paired with now show up under Options → Security, one card per
   node, and you can start and stop them from there — within the profiles and projects that machine's operator has
   ticked for you, and never outside them. They are kept in their own card, headed by the node's name, rather than

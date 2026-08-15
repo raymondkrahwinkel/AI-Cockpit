@@ -7,8 +7,10 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Diagrams;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Terminal;
@@ -26,6 +28,8 @@ public sealed partial class SecurityOptionsViewModel(
     IScreenLockSettingsStore? screenLockSettings = null,
     ITerminalAccessSwitch? terminalAccessSwitch = null,
     ITerminalAccessSettingsStore? terminalAccessSettings = null,
+    IDiagramAccessSwitch? diagramAccessSwitch = null,
+    IDiagramAccessSettingsStore? diagramAccessSettings = null,
     INodeEndpointSettingsStore? nodeEndpointSettings = null,
     IEnumerable<ICockpitInternalMcpProvider>? mcpEndpointHosts = null,
     INodePairingBroker? nodePairing = null,
@@ -44,6 +48,9 @@ public sealed partial class SecurityOptionsViewModel(
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
     private bool _loadingTerminalAccess;
+
+    // Same guard as _loadingTerminalAccess, for the diagram-access toggle (AC-810).
+    private bool _loadingDiagramAccess;
 
     // True only while RefreshAsync seeds the node toggle from disk (AC-790) — same guard, same reason, as
     // _loadingTerminalAccess above.
@@ -67,6 +74,11 @@ public sealed partial class SecurityOptionsViewModel(
     // change without a restart.
     [ObservableProperty]
     private bool _terminalAccessEnabled;
+
+    // The diagram-access master switch (AC-810): off by default. While off, the `cockpit-diagram` MCP is not
+    // advertised to any session. Turning it on makes it reachable, still behind a per-capability Approve/Deny.
+    [ObservableProperty]
+    private bool _diagramAccessEnabled;
 
     // The network-node master switch (AC-790): off by default. While off, every mounted MCP endpoint stays
     // loopback-only. Turning it on takes effect on the next launch — unlike the terminal-access toggle above, this
@@ -243,6 +255,19 @@ public sealed partial class SecurityOptionsViewModel(
             if (terminalAccessSwitch is not null)
             {
                 terminalAccessSwitch.Enabled = terminal.Enabled;
+            }
+        }
+
+        // AC-810: same "absent in design-time/unit-test graph" shape as terminal access above.
+        if (diagramAccessSettings is not null)
+        {
+            var diagram = await diagramAccessSettings.LoadAsync().ConfigureAwait(true);
+            _loadingDiagramAccess = true;
+            DiagramAccessEnabled = diagram.Enabled;
+            _loadingDiagramAccess = false;
+            if (diagramAccessSwitch is not null)
+            {
+                diagramAccessSwitch.Enabled = diagram.Enabled;
             }
         }
 
@@ -466,6 +491,22 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = value }).ConfigureAwait(true);
+    }
+
+    // Mirrors OnTerminalAccessEnabledChanged above, for the diagram-access switch (AC-810).
+    async partial void OnDiagramAccessEnabledChanged(bool value)
+    {
+        if (_loadingDiagramAccess || diagramAccessSettings is null)
+        {
+            return;
+        }
+
+        if (diagramAccessSwitch is not null)
+        {
+            diagramAccessSwitch.Enabled = value;
+        }
+
+        await diagramAccessSettings.SaveAsync(new DiagramAccessSettings { Enabled = value }).ConfigureAwait(true);
     }
 
     // The node toggle changed (AC-790). Unlike terminal access above, this never flips anything live — the
