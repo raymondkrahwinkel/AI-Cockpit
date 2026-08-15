@@ -22,7 +22,7 @@ public sealed class DiagramPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Diagram", context => new DiagramWorkspaceBody(context))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Diagram", context => new DiagramWorkspaceBody(context, host))
         {
             IconKind = MaterialIconKind.Sitemap,
             Description = "A diagram rendered from Mermaid syntax.",

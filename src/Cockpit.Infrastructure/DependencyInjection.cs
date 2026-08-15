@@ -50,6 +50,13 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
+        // cockpit-diagram (AC-810): lets an agent read and edit a diagram surface the operator has open, gated by
+        // its own master switch and a per-capability Approve/Deny — the same shape as cockpit-terminal above.
+        services.AddSingleton(provider => new CockpitMcpEndpoint(
+            "cockpit-diagram",
+            typeof(Diagrams.DiagramMcpTools),
+            () => provider.GetRequiredService<Diagrams.DiagramAccessState>().Enabled));
+
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
         // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
         // cockpit-session and unlike cockpit-verify/cockpit-worktrees, because this one is now a delivery route

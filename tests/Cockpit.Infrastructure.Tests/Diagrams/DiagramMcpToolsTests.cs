@@ -1,0 +1,300 @@
+using System.Text.Json.Nodes;
+using Cockpit.Core.Abstractions.Diagrams;
+using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Diagrams;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Consent;
+using NSubstitute;
+
+namespace Cockpit.Infrastructure.Tests.Diagrams;
+
+/// <summary>
+/// The cockpit-diagram tools (AC-810): reading a surface is gated behind its own Approve/Deny, editing behind a
+/// separate one, coupling is one-agent-per-surface, coupling on its own grants nothing, and a read always returns
+/// the surface exactly as it stands (never just what changed since the coupling — AC-810's deviation from AC-34).
+/// </summary>
+public class DiagramMcpToolsTests
+{
+    private const string Session = "pane-agent";
+    private const string Source = "flowchart LR\nA-->B";
+
+    private static (DiagramMcpTools tools, DiagramAccessRegistry registry, IConsentBroker broker, List<ConsentRequest> asked) _Build(ConsentOutcome outcome)
+    {
+        var registry = new DiagramAccessRegistry();
+        var asked = new List<ConsentRequest>();
+        var broker = Substitute.For<IConsentBroker>();
+        broker.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
+            .Returns(new ConsentDecision(outcome));
+        return (new DiagramMcpTools(registry, broker), registry, broker, asked);
+    }
+
+    [Fact]
+    public async Task ReadDiagram_FirstTime_AsksConsent_ThenReturnsTheSourceAsItStandsNow()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(Source, json["source"]!.GetValue<string>());
+        Assert.Single(asked);
+        Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
+        Assert.Equal("diagram-1", asked[0].Source.PaneId);
+        Assert.Contains("Onboarding flow", asked[0].Action);
+    }
+
+    [Fact]
+    public void Coupling_OnItsOwn_GrantsNoCapabilities()
+    {
+        // AC-810 DoD: the registry supports a "coupled, nothing granted yet" state — the shape AC-816's quick-start
+        // needs — and it must not be confused with "never coupled" or with holding read/edit.
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        registry.Couple(Session, "diagram-1");
+
+        var coupling = registry.CouplingOf(Session, "diagram-1");
+        Assert.NotNull(coupling);
+        Assert.False(coupling!.HasAnyCapability);
+        Assert.True(registry.IsCoupledByAnother("someone-else", "diagram-1"));
+    }
+
+    [Fact]
+    public async Task ReadDiagram_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
+    {
+        // Hardening (AC-89 pattern), same as TerminalMcpTools: coupling is keyed on the transport-verified pane.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+        registry.Grant("victim-pane", "diagram-1", DiagramCapability.Read);
+
+        McpRequestContext.Set("attacker-pane");
+        try
+        {
+            var json = JsonNode.Parse(await tools.ReadDiagram("victim-pane", "Onboarding flow"));
+
+            Assert.False(json!["ok"]!.GetValue<bool>());
+            Assert.Contains("another agent", json["error"]!.GetValue<string>());
+            Assert.Null(json["source"]);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
+    public async Task ReadDiagram_WhenDenied_ReturnsError_AndDoesNotCouple()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("not approved", json["error"]!.GetValue<string>());
+        Assert.Null(registry.CouplingOf(Session, "diagram-1"));
+    }
+
+    [Fact]
+    public async Task ReadDiagram_UnknownSurface_ReturnsError_WithoutAsking()
+    {
+        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "ghost"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("No such diagram", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
+    }
+
+    [Fact]
+    public async Task ReadDiagram_WhenSurfaceCoupledToAnotherAgent_IsRefused_WithoutAsking()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+        registry.Grant("other-agent", "diagram-1", DiagramCapability.Read);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("another agent", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
+    }
+
+    [Fact]
+    public async Task ReadDiagram_WithNoConsentBroker_FailsClosed()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+        var tools = new DiagramMcpTools(registry, consent: null);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Null(registry.CouplingOf(Session, "diagram-1"));
+    }
+
+    [Fact]
+    public async Task EditDiagram_AsksOnlyOnce_CoveringReadToo_LikeTerminalsDrive()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.EditDiagram(Session, "Onboarding flow", "flowchart LR\nA-->B-->C"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
+        Assert.Equal("diagram.edit", asked[0].Scope);
+        var coupling = registry.CouplingOf(Session, "diagram-1");
+        Assert.True(coupling!.CanRead);
+        Assert.True(coupling.CanEdit);
+        Assert.Equal("flowchart LR\nA-->B-->C", registry.PeekText("diagram-1"));
+    }
+
+    [Fact]
+    public async Task EditDiagram_AfterOnlyReading_AsksASecondTimeToWiden_ThenWrites()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+        await tools.ReadDiagram(Session, "Onboarding flow"); // read only
+
+        var json = JsonNode.Parse(await tools.EditDiagram(Session, "Onboarding flow", "flowchart LR\nA-->B-->C"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(2, asked.Count);
+        Assert.Equal("diagram.edit", asked[1].Scope);
+        Assert.Contains("now wants to edit", asked[1].Title);
+    }
+
+    [Fact]
+    public async Task EditDiagram_WhenWideningIsDenied_LeavesTheReadAccessItAlreadyHad()
+    {
+        var registry = new DiagramAccessRegistry();
+        var broker = Substitute.For<IConsentBroker>();
+        var outcomes = new Queue<ConsentOutcome>([ConsentOutcome.Approved, ConsentOutcome.Denied]);
+        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ConsentDecision(outcomes.Dequeue()));
+        var tools = new DiagramMcpTools(registry, broker);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+        await tools.ReadDiagram(Session, "Onboarding flow");
+
+        var json = JsonNode.Parse(await tools.EditDiagram(Session, "Onboarding flow", "flowchart LR\nA-->B-->C"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("still be able to read", json["error"]!.GetValue<string>());
+        var coupling = registry.CouplingOf(Session, "diagram-1");
+        Assert.True(coupling!.CanRead);
+        Assert.False(coupling.CanEdit);
+        Assert.Equal(Source, registry.PeekText("diagram-1")); // untouched
+    }
+
+    [Fact]
+    public async Task EditDiagram_ConsentText_IsDerivedFromTheActualChange_NotFromAgentSuppliedProse()
+    {
+        // AC-489's requirement, restated for AC-810: the sentence is built from the real diff, so an agent cannot
+        // phrase its own edit as smaller or safer than it is by writing a misleading `source` around it.
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\nA-->B\nB-->C\nC-->D");
+
+        await tools.EditDiagram(Session, "Onboarding flow", "flowchart LR\nA-->B\nB-->E");
+
+        Assert.Contains("1 line added, 2 lines removed", asked[0].Action);
+    }
+
+    [Fact]
+    public async Task EditDiagram_OnANewSurfaceWithNoPriorText_ReportsItAsWrittenForTheFirstTime()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Blank canvas", "");
+
+        await tools.EditDiagram(Session, "Blank canvas", "flowchart LR\nA-->B");
+
+        Assert.Contains("written for the first time (2 lines)", asked[0].Action);
+    }
+
+    [Fact]
+    public async Task EditDiagram_WhenDenied_DoesNotWrite()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.EditDiagram(Session, "Onboarding flow", "flowchart LR\nA-->B-->C"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(Source, registry.PeekText("diagram-1"));
+        Assert.Null(registry.CouplingOf(Session, "diagram-1"));
+    }
+
+    [Fact]
+    public void ListDiagrams_ReturnsOpenSurfaces_WithCapabilityFlags()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+        registry.Grant(Session, "diagram-1", DiagramCapability.Read);
+        registry.SurfaceOpened("diagram-2", "Deploy pipeline", Source);
+
+        var json = JsonNode.Parse(tools.ListDiagrams(Session));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        var names = json["diagrams"]!.AsArray().Select(d => d!["name"]!.GetValue<string>()).ToList();
+        Assert.Equivalent(new object[] { "Onboarding flow", "Deploy pipeline" }, names);
+        var coupled = json["diagrams"]!.AsArray().First(d => d!["name"]!.GetValue<string>() == "Onboarding flow");
+        Assert.True(coupled!["canRead"]!.GetValue<bool>());
+        Assert.False(coupled["canEdit"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task WhenAnotherAgentTakesTheSurfaceWhileTheOperatorDecides_TheRefusalIsAnErrorNotAnException()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+        var broker = Substitute.For<IConsentBroker>();
+        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                registry.Grant("someone-else", "diagram-1", DiagramCapability.Read); // slipped in while we asked
+                return new ConsentDecision(ConsentOutcome.Approved);
+            });
+        var tools = new DiagramMcpTools(registry, broker);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("no longer available", json["error"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ReadDiagram_CarriesTheFidelityReport_SoAnIncompleteRenderIsNeverDescribedAsClean()
+    {
+        // AC-808's contract, carried through the MCP surface (AC-810's DoD point 3): a stateDiagram-v2 composite
+        // transition that Mermaider is known to drop must show up in the tool's own response, not just on the
+        // operator's screen.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        const string composite = """
+            stateDiagram-v2
+                state Watching {
+                    [*] --> Idle
+                }
+                Idle --> Watching : arm
+            """;
+        registry.SurfaceOpened("diagram-1", "State machine", composite);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "State machine"));
+
+        Assert.False(json!["fidelity"]!["complete"]!.GetValue<bool>());
+        Assert.NotEmpty(json["fidelity"]!["findings"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task ReadDiagram_OfACleanDiagram_ReportsFidelityAsComplete_WithNoFindings()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+
+        Assert.True(json!["fidelity"]!["complete"]!.GetValue<bool>());
+        Assert.Empty(json["fidelity"]!["findings"]!.AsArray());
+    }
+}
