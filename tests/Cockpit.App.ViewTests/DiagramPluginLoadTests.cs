@@ -151,12 +151,29 @@ public class DiagramPluginLoadTests
 
         public ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
 
-        public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request) => throw new NotSupportedException();
+        // AC-824: the body now embeds a session as its own surface, so this needs a placeable stand-in
+        // rather than a throw — same shape as Cockpit.Plugin.FanOut.Tests' FakeEmbeddedSession.
+        public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request) => new FakeEmbeddedSession();
 
         public event EventHandler? RefreshRequested
         {
             add { }
             remove { }
         }
+    }
+
+    private sealed class FakeEmbeddedSession : IEmbeddedSession
+    {
+        public Control View { get; } = new Border();
+
+        public string PaneId => "pane-fake";
+
+        public Task CloseAsync() => Task.CompletedTask;
+
+        public void SetInputEnabled(bool enabled)
+        {
+        }
+
+        public Task<string?> Completion { get; } = Task.FromResult<string?>(null);
     }
 }
