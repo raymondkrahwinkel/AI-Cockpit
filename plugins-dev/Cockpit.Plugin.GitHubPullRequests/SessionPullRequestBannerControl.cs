@@ -9,12 +9,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-// The PR/CI status banner under a session's transcript (AC-802): collapsed, one row — CI dot, PR number, repo,
-// branch, diffstat, CI summary, chevron; expanded, a checklist of every status check with its name, state and
-// duration. Mirrors Cockpit.Plugin.GitHubActions.CiStatusHeaderControl's per-session lifecycle (re-reads when the
-// working directory becomes known and on a timer) and, for the colours/icons, its _Appearance mapping exactly —
-// the mockup's own instruction, so the banner and the header's CI icon read as one CI language. Stays out of the
-// layout entirely — no reserved space — when there is no open PR, no repo, or no gh.
+// AC-802: the PR/CI banner under a session's transcript, collapsed and expanded. Mirrors
+// Cockpit.Plugin.GitHubActions.CiStatusHeaderControl's per-session lifecycle and _Appearance mapping exactly.
 internal sealed class SessionPullRequestBannerControl : UserControl
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);

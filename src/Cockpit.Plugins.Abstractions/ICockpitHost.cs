@@ -71,15 +71,12 @@ public interface ICockpitHost
 
     /// <summary>
     /// Adds a session-bound banner shown under the transcript, above the composer (AC-802) — for PR/CI status and
-    /// similar mid-weight per-session info a header item has no room for: a diffstat plus a checklist of individual
-    /// check results, not just an icon. Built once per session panel from that session's own context, the same
-    /// shape as <see cref="AddSessionHeaderItem"/>; rendered in both session kinds (SDK chat and TTY) through one
-    /// shared host control, so a plugin registers once and reaches both. The plugin's own view controls whether
-    /// anything shows — empty (no open PR, no repo, no gh) means no banner and no reserved space, not a blank box.
-    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
-    /// compiling untouched — only the app's own host renders it.
+    /// similar per-session info a header item has no room for. Default no-op so existing implementations keep
+    /// compiling untouched; the plugin's own view controls whether anything shows.
     /// </summary>
-    /// <param name="createView">Builds the control for one session; invoked once per session panel, on the UI thread.</param>
+    /// <param name="createView">
+    /// Builds the control for one session; invoked once per session panel, on the UI thread.
+    /// </param>
     void AddSessionBanner(Func<IPluginSessionContext, Control> createView)
     {
     }

@@ -1,9 +1,6 @@
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-// The session banner's non-UI logic (AC-802): the gh argument list, `gh pr view --json …` parsing (both
-// statusCheckRollup shapes — a CheckRun from GitHub Actions and a legacy StatusContext), state derivation and the
-// visibility rule (AC-6: no open PR / invalid output means null, never a thrown error) — all without shelling out,
-// mirroring how CiWorkflowRunClientTests proves the sibling GitHubActions plugin's own parsing.
+// AC-802: the session banner's non-UI logic, proven without shelling out — same approach as CiWorkflowRunClientTests.
 public class SessionPullRequestStatusClientTests
 {
     [Fact]

@@ -3,12 +3,8 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-// Reads the open pull request for the branch a session's own working directory is checked out on (AC-802), via
-// one `gh pr view --json number,headRefName,additions,deletions,url,statusCheckRollup` call run in that
-// directory — everything the session banner needs, collapsed and expanded, in a single round trip. Mirrors
-// Cockpit.Plugin.GitHubActions.CiWorkflowRunClient's fail-soft contract and timeout handling: no gh, no login, no
-// repo, a detached HEAD, or no open PR for the branch all yield `null` rather than an error, so a session with
-// nothing to show simply shows nothing.
+// AC-802: one `gh pr view` call for the session's checked-out branch; fails soft exactly like
+// Cockpit.Plugin.GitHubActions.CiWorkflowRunClient (no gh/repo/PR/timeout all yield `null`).
 internal sealed class SessionPullRequestStatusClient
 {
     // The gh arguments for the current checkout's open pull request. Internal so a test can assert them without

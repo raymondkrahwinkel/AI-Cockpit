@@ -6,12 +6,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Controls;
 
-// Renders the plugin-contributed banners (`ICockpitHost.AddSessionBanner`, AC-802) for the session panel it sits
-// in: one control per registered item, each built from a `PluginSessionContext` bound to *this* session. Both
-// session kinds (SDK chat and TTY) drop this into their layout, under the transcript, above the composer — the
-// same "one shared host, wired from both views" shape `PluginSessionHeaderHost` already uses for the header strip
-// and `ConsentBannerHost` uses for the consent overlay. Contributes nothing — and takes no space — when no plugin
-// registers a banner.
+// AC-802: renders `ICockpitHost.AddSessionBanner` contributions for the session panel it sits in — one shared
+// host wired from both SessionView and TtyView, the same shape `PluginSessionHeaderHost` uses for the header strip.
 internal sealed class PluginSessionBannerHost : StackPanel
 {
     private readonly List<PluginSessionContext> _contexts = [];

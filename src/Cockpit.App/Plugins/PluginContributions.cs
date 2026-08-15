@@ -59,10 +59,15 @@ public interface IPluginContributionSink
     void AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
         AddPluginSideButton(pluginId, title, onInvoke);
 
-    /// <summary>Registers a control shown in every session's header, built per session from that session's own context.</summary>
+    /// <summary>
+    /// Registers a control shown in every session's header, built per session from that session's own context.
+    /// </summary>
     void AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView);
 
-    /// <summary>Registers a control shown in every session's banner strip under the transcript (AC-802), built per session from that session's own context.</summary>
+    /// <summary>
+    /// Registers a control shown in every session's banner strip under the transcript (AC-802), built per session
+    /// from that session's own context.
+    /// </summary>
     void AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView);
 
     /// <summary>Registers an action in every session header's menu — one menu for all plugins, rather than a button each.</summary>

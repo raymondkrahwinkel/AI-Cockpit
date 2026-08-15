@@ -1,9 +1,6 @@
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-// The open pull request for a session's own checked-out branch (AC-802), as returned by one `gh pr view --json
-// number,headRefName,additions,deletions,url,statusCheckRollup` call — everything the session banner shows,
-// collapsed and expanded. `Repository` is parsed out of `Url` rather than a seventh field, since a PR's URL
-// already carries owner/name.
+// AC-802: one `gh pr view` call's worth of PR data; `Repository` is parsed out of `Url` rather than a seventh field.
 internal sealed record SessionPullRequestStatus(
     int Number,
     string Repository,

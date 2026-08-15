@@ -7,9 +7,8 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// The session-banner contribution point (AC-802): a plugin registers one factory, and the cockpit builds it
-/// once per session panel with that session's own context — the wider counterpart to
-/// <see cref="SessionHeaderItemTests"/>'s header item, for PR/CI status and the like.
+/// AC-802: the session-banner contribution point — the wider counterpart to
+/// <see cref="SessionHeaderItemTests"/>'s header item.
 /// </summary>
 public class SessionBannerItemTests
 {
@@ -49,7 +48,9 @@ public class SessionBannerItemTests
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
 
-    /// <summary>An older host: implements only what the contract required before session banners existed.</summary>
+    /// <summary>
+    /// An older host: implements only what the contract required before session banners existed.
+    /// </summary>
     public abstract class HostWithoutBanners : ICockpitHost
     {
         public IServiceProvider Services => Substitute.For<IServiceProvider>();

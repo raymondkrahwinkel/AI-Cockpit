@@ -10,11 +10,8 @@ using Cockpit.App.Views;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-802: the session-banner extension point — a plugin calling <c>ICockpitHost.AddSessionBanner</c> ends up
-/// rendered in <em>both</em> session kinds through the one shared <see cref="PluginSessionBannerHost"/>, not
-/// wired separately per view. Proven for SDK chat (<see cref="SessionView"/>) and TTY (<see cref="TtyView"/>)
-/// independently — AC-802 acceptance criterion 2 explicitly calls for showing both, not one and assuming the
-/// other.
+/// AC-802: <c>ICockpitHost.AddSessionBanner</c> must render in both session kinds through the shared
+/// <see cref="PluginSessionBannerHost"/>. Each kind is proven independently here, not assumed from the other.
 /// </summary>
 [Collection("avalonia")]
 public class PluginSessionBannerHostTests
@@ -66,10 +63,8 @@ public class PluginSessionBannerHostTests
     private static PluginSessionBannerHost _Host(Control view) =>
         view.GetVisualDescendants().OfType<PluginSessionBannerHost>().Single();
 
-    // Program.Services has a private setter (only Program.Main populates it); reflecting past that is the only
-    // seam a test has to make the ambient CockpitViewModel lookup PluginSessionBannerHost relies on — the same
-    // lookup PluginSessionHeaderHost already makes for the header strip — resolve to something real. Restored on
-    // Dispose so this process-wide static does not leak into another test.
+    // Reflects past Program.Services' private setter — the only seam to stub the ambient CockpitViewModel lookup;
+    // restored on Dispose so this process-wide static does not leak into another test.
     private static IDisposable _StubProgramServices(out Control marker)
     {
         var cockpit = new CockpitViewModel();
