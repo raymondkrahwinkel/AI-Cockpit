@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -17,8 +18,11 @@ namespace Cockpit.Infrastructure.Mcp;
 // and invalidated. Each call here is a screenful of text on a local network; paying a handshake for it buys a
 // component with no state to go stale. If this ever becomes a per-second poll rather than a button, that is the
 // moment to reconsider — not before.
-// ponytail: no connection reuse, no retry. Upgrade path is a pooled client keyed on node name if the Security tab
-// ever refreshes on a timer.
+// ponytail: still no connection reuse, no retry, even now that the Security tab polls on a timer (AC-796). A
+// handshake every 20s to a machine on the same network is a few hundred bytes and a few milliseconds — cheap
+// enough that pooling would trade away this file's whole simplicity for a saving nobody has measured wanting.
+// Upgrade path is a pooled client keyed on node name if a shorter interval or a slower network ever makes that
+// measurable.
 //
 // *Why the registry is the node list.* There is no separate record on this side of who this cockpit is paired
 // with; the rows a pairing writes are it, and `NodeServerName` is the one place that shape is written and read.
@@ -89,7 +93,7 @@ internal sealed class NodeSessionsClient(
             // Iron Law #8's line, and the same one `McpToolProbe` draws: a node name is configuration, the shared
             // secret behind the connection is not, and nothing from the payload is logged.
             logger.LogInformation(exception, "Could not read the sessions on node {Node}.", nodeName);
-            return new NodeSessionsSnapshot(nodeName, [], [], [], _Unreachable(nodeName, exception));
+            return new NodeSessionsSnapshot(nodeName, [], [], [], Classify(nodeName, exception));
         }
     }
 
@@ -145,7 +149,7 @@ internal sealed class NodeSessionsClient(
         catch (Exception exception)
         {
             logger.LogInformation(exception, "Could not reach node {Node} to call {Tool}.", nodeName, toolName);
-            return _Unreachable(nodeName, exception);
+            return Classify(nodeName, exception);
         }
     }
 
@@ -219,6 +223,50 @@ internal sealed class NodeSessionsClient(
             ? value.GetString() ?? ""
             : "";
 
-    private static string _Unreachable(string nodeName, Exception exception) =>
-        $"Could not reach {nodeName}: {exception.Message}";
+    // The sentence the operator sees for a failed call (AC-796, criterion 2): distinct wording for a refused
+    // connection, an untrusted certificate and a timeout, so "the connection is down" and "the node looks stopped"
+    // read differently where that distinction can actually be told apart — and the same honest "could not reach"
+    // as before for everything else, rather than a guess dressed up as one of the classified cases. Classified by
+    // unwrapping to the exception shape a real network failure actually produces — a refused connection is a
+    // `SocketException` inside the SDK's `HttpRequestException`, a pin mismatch rides the same wrapper
+    // (`NodeCertificatePin.Require`), and the call budget's own timeout can surface as a bare
+    // `OperationCanceledException` or one wrapped by the transport — rather than parsing `exception.Message`, which
+    // is not a contract and differs across platforms. Internal rather than private: it is the test seam a
+    // classification test drives directly, the same reason `NodePairingHost.BoundPort` is internal.
+    internal static string Classify(string nodeName, Exception exception)
+    {
+        if (_Find<NodeCertificatePinMismatchException>(exception) is not null)
+        {
+            return $"{nodeName} answered with a certificate this cockpit did not pin. That is not the machine you "
+                + "paired with, or it was reinstalled — pair again from Options → Security if that is expected.";
+        }
+
+        if (_Find<SocketException>(exception) is { SocketErrorCode: SocketError.ConnectionRefused })
+        {
+            return $"{nodeName} refused the connection — nothing is listening there. It looks stopped, not merely out of reach.";
+        }
+
+        if (_Find<OperationCanceledException>(exception) is not null)
+        {
+            return $"{nodeName} did not answer within {Budget.TotalSeconds:0}s. The connection may be down, or the "
+                + "node may simply be asleep or busy — there is no way to tell which from here.";
+        }
+
+        // Real, but not one of the shapes above — the honest "could not reach" rather than picking the
+        // closest-sounding category.
+        return $"Could not reach {nodeName}: {exception.Message}";
+    }
+
+    private static T? _Find<T>(Exception exception) where T : Exception
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
 }

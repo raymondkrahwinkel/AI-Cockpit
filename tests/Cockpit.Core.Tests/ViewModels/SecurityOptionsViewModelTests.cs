@@ -197,6 +197,78 @@ public class SecurityOptionsViewModelTests
         Assert.False(vm.IsComparingPairingCode);
     }
 
+    [Fact]
+    public async Task RefreshAsync_CalledAgainBeforeTheFirstCallFinishes_NeverRunsTheTwoRebuildsInterleaved()
+    {
+        // AC-796: `RefreshAsync` is fired un-awaited from more than one place at startup (`CockpitViewModel`'s own
+        // constructor, and again from `App.axaml.cs` once a plugin's declared secret keys are known). Without the
+        // gate this pins, a second call's `PairedNodes.Clear()` could run between the first call's `Add` calls,
+        // leaving cards outside the collection with a `DispatcherTimer` nothing will ever `Dispose()` again.
+        var client = new SequencedNodeSessions();
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeSessions: client);
+
+        // Both calls answer with no nodes — the property under test is *when* the second call is allowed to reach
+        // `ListNodesAsync`, not what it finds there. An empty result also means the loop that calls
+        // `card.StartPolling()` never runs, so this stays a plain gate test rather than one that also has to stand
+        // up a live Avalonia dispatcher for a real `DispatcherTimer`.
+        var first = vm.RefreshAsync();
+        var second = vm.RefreshAsync();
+
+        // The second call is genuinely blocked behind the first, not merely scheduled after it: it has not even
+        // reached `ListNodesAsync` yet, because the gate has not let it start its own rebuild. Waiting a beat here
+        // (rather than asserting the count at once) gives `second`'s call a chance to run as far as it is allowed
+        // to — which, gated correctly, is not as far as `ListNodesAsync`.
+        await _WaitUntilAsync(() => client.Requests.Count >= 1);
+        Assert.Single(client.Requests);
+
+        client.Requests[0].SetResult([]);
+        await first;
+
+        // Only now, after the first call released the gate, does the second call's own rebuild begin — releasing
+        // the semaphore schedules its continuation rather than resuming it inline, so this also has to be waited
+        // for rather than asserted immediately.
+        await _WaitUntilAsync(() => client.Requests.Count >= 2);
+        client.Requests[1].SetResult([]);
+        await second;
+    }
+
+    private static async Task _WaitUntilAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 1000 && !condition(); attempt++)
+        {
+            await Task.Yield();
+        }
+
+        Assert.True(condition(), "Condition did not become true.");
+    }
+
+    private sealed class SequencedNodeSessions : INodeSessionsClient
+    {
+        public List<TaskCompletionSource<IReadOnlyList<string>>> Requests { get; } = [];
+
+        public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default)
+        {
+            var request = new TaskCompletionSource<IReadOnlyList<string>>();
+            Requests.Add(request);
+            return request.Task;
+        }
+
+        public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeSessionsSnapshot(nodeName, [], [], []));
+
+        public Task<string?> StartAsync(
+            string nodeName,
+            string profileLabel,
+            string? projectId = null,
+            string? prompt = null,
+            string? sessionName = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+    }
+
     private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient
     {
         public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>

@@ -7671,6 +7671,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Stop the hourly update timer (AC-188) so it does not keep ticking against a disposed view model.
         _periodicUpdateTimer?.Stop();
 
+        // The paired-node cards' polls (AC-796) outlive the Options window on purpose, but not this view model —
+        // without this, each one's `DispatcherTimer` keeps itself (and the card, and `INodeSessionsClient`)
+        // reachable and ticking against the network long after everything else here has been torn down.
+        Security.StopPairedNodePolling();
+
         // The key holder is a process-wide singleton, so leaving this wired would keep the whole view model alive
         // past its window (AC-41). The worktree manager is one too, and its notice handler holds this view model
         // just as firmly (AC-349).
