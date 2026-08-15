@@ -43,10 +43,9 @@ public sealed class StartupPathRepairTests
         return path;
     }
 
-    // AC-610: confirmed by artificially holding a write handle open across an exec (see
-    // ReadLoginShellPath_WhenTheScriptIsBusyForWriting_...) — a freshly written script can answer execve() with
-    // ETXTBSY (errno 26, "Text file busy") for a moment after its own write handle is closed. Probing with a real
-    // exec-and-kill clears the same race instead of guessing at a fixed delay before returning the path.
+    // AC-610: a freshly written script can answer execve() with ETXTBSY for a moment after its own write handle
+    // closes (confirmed in ReadLoginShellPath_WhenTheScriptIsBusyForWriting_...). Probing with a real exec-and-kill
+    // clears that race instead of guessing at a fixed delay.
     private static void _WaitUntilExecReady(string path)
     {
         var deadline = Stopwatch.StartNew();
@@ -308,10 +307,9 @@ public sealed class StartupPathRepairTests
             return;
         }
 
-        // A shell that answers and exits cleanly, but whose init errored before ever reaching the PATH echo. The
-        // small sleep before exit is not about the production timeout — ReadLoginShellPath's stderr read is
-        // strictly non-blocking, so this just gives that background read real wall-clock time to finish before
-        // the assertion checks it, the same way a slower real shell init would.
+        // A shell that answers and exits cleanly but whose init errored before the PATH echo. The sleep isn't
+        // about the production timeout — the stderr read is strictly non-blocking, so this just gives it real
+        // wall-clock time to finish before the assertion checks it.
         var shell = WriteFakeShell("echo boom 1>&2\nsleep 0.05\nexit 7");
         try
         {
@@ -337,10 +335,9 @@ public sealed class StartupPathRepairTests
             return; // ETXTBSY is a Linux execve rule; Windows has no equivalent restriction.
         }
 
-        // The ETXTBSY hypothesis (AC-610): Linux refuses execve on a file that is still open for writing.
-        // WriteFakeShell already probes past that race (see _WaitUntilExecReady) before handing back a path, so
-        // this test induces the race directly instead — by holding the script's own write handle open — to
-        // confirm ReadLoginShellPath's catch branch records what actually happened.
+        // Linux refuses execve on a file still open for writing (AC-610's ETXTBSY hypothesis). WriteFakeShell
+        // already probes past that race, so this test induces it directly instead — holding the write handle
+        // open — to confirm the catch branch records what happened.
         var shell = _WriteExecutableScript("echo \"__COCKPIT_LOGIN_PATH__=/fake/login/bin:/usr/bin\"");
         try
         {
