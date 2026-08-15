@@ -10,10 +10,7 @@ namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
 /// End-to-end loader proof for the OpenRouter provider plugin (AC-806): loads the real compiled plugin
-/// through the actual <see cref="PluginActivator"/>/<see cref="PluginLoadContext"/> and asserts type-identity
-/// holds, its metadata is right, and it registers its session provider ("OpenRouter") via
-/// <see cref="ICockpitHost.AddSessionProvider"/> — the seam that would otherwise only be exercised by a
-/// hand-written fake. Mirrors <see cref="GitHubModelsProviderPluginLoadTests"/>.
+/// through <see cref="PluginActivator"/> and asserts it registers its session provider. Mirrors <see cref="GitHubModelsProviderPluginLoadTests"/>.
 /// </summary>
 public class OpenRouterProviderPluginLoadTests
 {
@@ -46,11 +43,8 @@ public class OpenRouterProviderPluginLoadTests
         Assert.Single(host.SessionProviders);
         Assert.Contains(host.SessionProviders, registration => registration.ProviderId == "openrouter-provider.openrouter" && registration.DisplayName == "OpenRouter");
 
-        // The registration's driver factory is usable through the narrow plugin contract without the host
-        // ever seeing this plugin's concrete types. CreateConfigView is not exercised here — it builds a real
-        // Avalonia Control (Cursor/ToolTip), which needs a running Avalonia application; this headless xunit
-        // process has none (no Avalonia.Headless harness in this test project), same reason the sibling
-        // plugin load tests never invoke their own AddSettings/AddSideMenuSection view factories either.
+        // CreateConfigView is not exercised here — it builds a real Avalonia Control, which needs a running
+        // Avalonia application this headless xunit process has none of.
         foreach (var registration in host.SessionProviders)
         {
             var driverFactory = registration.CreateDriverFactory(host.Services);

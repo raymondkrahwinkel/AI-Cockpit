@@ -4,14 +4,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpenRouterProvider;
 
-// Provider-plugin (AC-806): registers "OpenRouter" as a selectable session provider, backed by the same
-// `OpenAiCompatPluginSessionDriverFactory` the Gemini/OpenAI (#45) and GitHub Models (#63) provider plugins
-// use — it differs only in which OpenAI-compatible base URL a profile targets (openrouter.ai/api/v1) and in
-// model notation (OpenRouter routes by vendor/model, e.g. anthropic/claude-sonnet-4.5). Chat-only
-// capabilities (no tools/permissions/live model switch/plan mode/thinking) — see
-// `OpenAiCompatPluginSessionDriver.Capabilities`. Declares no usage signals: OpenRouter's
-// chat-completions response carries no rolling allowance/context figure this driver could read, so — same
-// as Gemini/GitHub Models — a session under this provider shows no ctx-pill and no threshold warning.
+// AC-806: registers "OpenRouter" as a selectable session provider on the same OpenAiCompat driver the
+// Gemini/GitHub Models plugins use — chat-only, and declares no usage signals since OpenRouter's
+// chat-completions response carries no rolling allowance/context figure to read.
 public sealed class OpenRouterProviderPlugin : ICockpitPlugin
 {
     // OpenRouter's OpenAI-compatible endpoint (openrouter.ai/docs/quickstart).

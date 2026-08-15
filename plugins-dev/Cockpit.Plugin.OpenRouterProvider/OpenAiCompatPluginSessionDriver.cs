@@ -6,11 +6,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpenRouterProvider;
 
-// `IPluginSessionDriver` for this plugin's OpenRouter provider, over an OpenAI-compatible
-// `IChatClient` (#45/#63/AC-806) — mirrors the shape of the host's own
-// `Cockpit.Infrastructure.Sessions.OpenAiCompatSessionDriver` (history/streaming/error handling), minus
-// its MCP tool-loop: a plugin has no tool source of its own, so this driver is chat/streaming only
-// (`Capabilities` reports no tool support).
+// AC-806: mirrors the host's own OpenAiCompatSessionDriver, minus the MCP tool-loop — a plugin has no
+// tool source of its own, so this driver is chat/streaming only.
 internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel) : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
@@ -24,10 +21,8 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     public string? SessionId => _sessionId;
 
-    // This driver accepts resumeSessionId (the StartAsync overload below) but ignores it — it keeps its own
-    // in-memory history rather than a server-side conversation (see the comment there), so the id in SessionId
-    // is not actually resumable. Unsupported says that honestly instead of the default Known(SessionId) implying
-    // a resume that would silently start a fresh chat with no history (AC-408).
+    // AC-408: this driver keeps its own in-memory history, not a server-side conversation, so a resume id it
+    // is handed is not actually resumable — Unsupported says that honestly instead of implying otherwise.
     public PluginConversationId Conversation => PluginConversationId.Unsupported;
 
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
@@ -44,10 +39,8 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         return Task.CompletedTask;
     }
 
-    // The host's full start surface. All this driver needs from it is the hidden per-session system prompt the host
-    // folds into the options map (AC-180 — an embedded run's brief): seeded once at the front of the history so every
-    // turn carries it, since this HTTP driver owns its own history. Everything else (working dir, resume, MCP) has no
-    // meaning for a plain chat provider, so it drops through to the base overload.
+    // AC-180: the only thing this overload needs from the host's full start surface is the hidden per-session
+    // system prompt, seeded once at the front of this driver's own history.
     public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
         if (options is not null

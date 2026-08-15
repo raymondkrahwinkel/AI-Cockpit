@@ -6,12 +6,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpenRouterProvider;
 
-// The "add/edit profile" config panel for this plugin's OpenRouter provider (AC-806): an API-key field (a
-// "?" tooltip pointing at where to create one), a model id (OpenRouter's vendor/model notation, e.g.
-// `anthropic/claude-sonnet-4.5`), and the base URL (pre-filled with OpenRouter's own endpoint, editable for
-// e.g. a self-hosted gateway). Built in code, mirroring the Gemini/OpenAI and GitHub Models provider
-// plugins' `OpenAiCompatProviderConfigView`. The model field is a plain `TextBox` — OpenRouter's
-// `vendor/model` strings need no dedicated parsing, they pass straight through as `ChatOptions.ModelId`.
+// AC-806: the "add/edit profile" config panel for this plugin's OpenRouter provider, mirroring the sibling
+// OpenAiCompat plugins' own config view. The model field is a plain TextBox — OpenRouter's `vendor/model`
+// strings need no dedicated parsing, they pass straight through as `ChatOptions.ModelId`.
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _apiKey;

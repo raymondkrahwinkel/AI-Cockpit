@@ -6,10 +6,8 @@ using Avalonia.Media;
 
 namespace Cockpit.Plugin.OpenRouterProvider;
 
-// Wraps a settings input in a row with a small "?" help affordance to its right, showing a hover tooltip
-// that explains what to fill in and how to obtain it — mirrors the same helper in the other example
-// plugins (e.g. `Cockpit.Plugin.GitHubModelsProvider.SettingsHelpRow`); plugins cannot share code with each
-// other, only with the host, so each keeps its own small copy.
+// Wraps a settings input in a row with a small "?" help tooltip — mirrors the sibling plugins' own copy;
+// plugins cannot share code with each other, only with the host, so each keeps its own.
 internal static class SettingsHelpRow
 {
     public static Control Build(Control input, string helpText)

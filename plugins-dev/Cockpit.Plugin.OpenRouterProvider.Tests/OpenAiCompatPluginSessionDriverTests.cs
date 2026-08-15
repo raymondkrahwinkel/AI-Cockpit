@@ -5,10 +5,8 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 
-// `OpenAiCompatPluginSessionDriver` against a fake `IChatClient` (AC-806, mirroring
-// the GitHub Models provider plugin's #63 `OpenAiCompatPluginSessionDriverTests`) — same
-// history/streaming/error-handling shape, minus the tool-loop (this driver has no tool source of its own,
-// so `PluginSessionCapabilities.SupportsTools` is always false).
+// AC-806: `OpenAiCompatPluginSessionDriver` against a fake `IChatClient`, mirroring the sibling
+// GitHub Models plugin's own driver tests — same shape, minus the tool-loop.
 public class OpenAiCompatPluginSessionDriverTests
 {
     [Fact]
