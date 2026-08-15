@@ -1624,7 +1624,7 @@ internal static class Screenshotter
             "claude-provider", "Claude Code", "Requires the claude CLI installed and logged in on the machine running Cockpit.",
             ViewModels.Onboarding.ProviderDetectionState.Found));
         viewModel.Providers.Add(_ProviderRow(
-            "cli-agent-provider", "CLI Agent Provider (Codex)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
+            "cli-agent-provider", "Codex (ChatGPT)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
             ViewModels.Onboarding.ProviderDetectionState.NotFound));
         viewModel.Providers.Add(_ProviderRow(
             "gemini-provider", "Gemini / OpenAI Provider", "Configure an API key and model per profile in Manage profiles.",
@@ -1660,9 +1660,9 @@ internal static class Screenshotter
         installed.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Installed, "claude-provider", "Claude Code", null, null, "claude-provider", "sha"));
 
         var staged = _ProviderRow(
-            "cli-agent-provider", "CLI Agent Provider (Codex)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
+            "cli-agent-provider", "Codex (ChatGPT)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
             ViewModels.Onboarding.ProviderDetectionState.NotFound, installedVersion: "0.5.2");
-        staged.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Staged, "cli-agent-provider", "CLI Agent Provider (Codex)", null, null, "cli-agent-provider", "sha"));
+        staged.ApplyOutcome(new PluginProvisionResult(PluginProvisionOutcome.Staged, "cli-agent-provider", "Codex (ChatGPT)", null, null, "cli-agent-provider", "sha"));
 
         var failed = _ProviderRow(
             "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
@@ -1744,7 +1744,7 @@ internal static class Screenshotter
             // AC-553 option A: these three point at the vendor's own CDN — not fetched by this offline scene
             // (no network in a headless CI render), so they render on the glyph/monogram fallback here.
             Row("claude-provider", "Claude Code", "AI providers", "https://claude.ai/favicon.svg", null!),
-            Row("cli-agent-provider", "CLI Agent Provider (Codex)", "AI providers", "https://avatars.githubusercontent.com/openai", null!),
+            Row("cli-agent-provider", "Codex (ChatGPT)", "AI providers", "https://avatars.githubusercontent.com/openai", null!),
             Row("kimi-provider", "Kimi", "AI providers", "https://moonshotai.github.io/Branding-Guide/scenarios/04-k-only/k-only-color.svg", "🌙"),
             // No LogoAsset at all — criterion 3, the neutral-tile fallback, in the same grid as the tiles it must not stand out from.
             Row("no-logo-yet", "Third-party sample", "Other", null!, "🧩"),
@@ -2300,7 +2300,7 @@ internal static class Screenshotter
             Row("system-monitor", "System Monitor", "CPU, memory and disk usage for a Dashboard workspace. You pick which stats show.", "Widgets", "1.0.0", "🖥", featured: false, installed: true),
             Row("git-status", "Git status", "A git indicator in every session — a coloured dot and the branch, so you always know the repo state.", "Productivity", "1.4.0", "🌱", featured: false, installed: true, hasSettings: true, repository: true),
             Row("transcript-search", "Claude Transcript Search", "Search everything you and the agent ever wrote in a Claude CLI session.", "Productivity", "1.2.0", "🔍", featured: false, installed: true, repository: true),
-            Row("codex-provider", "CLI Agent Provider (Codex)", "Adds Codex CLI as a selectable session provider, driven as a subprocess per session.", "AI providers", "0.2.0", "🧩", featured: false, installed: false, homepage: true, repository: true),
+            Row("codex-provider", "Codex (ChatGPT)", "Adds Codex CLI as a selectable session provider, driven as a subprocess per session.", "AI providers", "0.2.0", "🧩", featured: false, installed: false, homepage: true, repository: true),
             Row("gemini-openai", "Gemini / OpenAI Provider", "Adds Gemini and OpenAI models as selectable session providers, keyed per profile.", "AI providers", "0.4.0", "✨", featured: false, installed: true, hasSettings: true, homepage: true, repository: true),
         ];
     }

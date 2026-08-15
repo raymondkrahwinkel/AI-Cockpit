@@ -36,7 +36,7 @@ public class CliAgentProviderPluginLoadTests
         // A non-null cast to the host's ICockpitPlugin is itself the type-identity proof.
         Assert.NotNull(plugin);
         Assert.Equal("cli-agent-provider", plugin!.Metadata.Id);
-        Assert.Equal("CLI Agent Provider (Codex)", plugin.Metadata.DisplayName);
+        Assert.Equal("Codex (ChatGPT)", plugin.Metadata.DisplayName);
 
         plugin.ConfigureServices(new ServiceCollection());
 

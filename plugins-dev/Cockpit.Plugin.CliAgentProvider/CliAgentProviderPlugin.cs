@@ -13,7 +13,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
         Id: "cli-agent-provider",
-        DisplayName: "CLI Agent Provider (Codex)",
+        DisplayName: "Codex (ChatGPT)",
         Author: "Cockpit",
         Description: "Experimental: adds Codex CLI as a selectable session provider, driven as a subprocess per turn. Requires the codex CLI installed and authenticated on this machine (CODEX_API_KEY or `codex login`). No in-band tool-permission channel — the sandbox/approval mode is fixed per profile.");
 
