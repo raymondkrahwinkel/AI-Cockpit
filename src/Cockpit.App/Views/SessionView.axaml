@@ -532,6 +532,11 @@
             </DockPanel>
         </Border>
 
+        <!-- AC-802: PR/CI status and similar per-session banners, under the transcript and above the composer —
+             one shared host, wired the same way in TtyView; it owns its own IsVisible, so it takes no space when
+             it has nothing to show. -->
+        <controls:PluginSessionBannerHost DockPanel.Dock="Bottom" Margin="0,0,0,6"/>
+
         <Grid>
         <!-- Empty-state card fills the transcript area until the first row arrives, so a fresh session
              reads as an introduced, connected model rather than a black void (L6): the model's own

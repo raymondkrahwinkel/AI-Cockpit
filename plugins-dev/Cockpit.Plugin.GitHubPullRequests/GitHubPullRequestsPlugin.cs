@@ -43,6 +43,11 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 
         _merged = new MergedPullRequestWatcher(host);
 
+        // AC-802: the PR/CI status banner under a session's transcript — a per-checkout `gh pr view` (unrelated to
+        // the refresh source below, which is the cross-repo "your open PRs" list this plugin's badge/dialog/widget
+        // already share).
+        host.AddSessionBanner(session => new SessionPullRequestBannerControl(session));
+
         var settings = new GitHubPullRequestsSettings(host.Storage);
 
         // One refresh source per plugin instance (AC-515): it polls in the background regardless of which of the

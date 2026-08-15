@@ -1,0 +1,11 @@
+{
+  "id": "openrouter-provider",
+  "name": "OpenRouter",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.OpenRouterProvider.dll",
+  "entryType": "Cockpit.Plugin.OpenRouterProvider.OpenRouterProviderPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "0.10.0",
+  "description": "Adds OpenRouter as a selectable session provider, over its OpenAI-compatible chat-completions endpoint (openrouter.ai/api/v1) via Microsoft.Extensions.AI. Chat-only: no tool calls, file access or permission prompts. Configure an OpenRouter API key and vendor/model id (e.g. anthropic/claude-sonnet-4.5) per profile in Manage profiles. Experimental.",
+  "author": "Cockpit"
+}

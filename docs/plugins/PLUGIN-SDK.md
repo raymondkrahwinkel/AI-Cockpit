@@ -1251,6 +1251,10 @@ they exercise the main contribution points:
 - **[GitHub Models](../../plugins-dev/Cockpit.Plugin.GitHubModelsProvider)** — the same OpenAI-compatible
   driver against GitHub's own Models endpoint (`models.github.ai/inference`), configured with a GitHub PAT
   (`models:read` scope) instead of a raw API key. Experimental (0.x).
+- **[OpenRouter](../../plugins-dev/Cockpit.Plugin.OpenRouterProvider)** — the same OpenAI-compatible driver
+  against OpenRouter's endpoint (`openrouter.ai/api/v1`), model id in OpenRouter's `vendor/model` notation
+  (e.g. `anthropic/claude-sonnet-4.5`). Chat-only, same as the other two; declares no usage signals since the
+  endpoint reports none this driver can read. Experimental (0.x).
 - **[CLI Agent Provider](../../plugins-dev/Cockpit.Plugin.CliAgentProvider)** — registers Codex CLI as a
   provider driven as a **subprocess per turn** (`codex exec --json`, resumed via `codex exec resume
   <threadId>` for follow-up turns) instead of a persistent chat client — the reference implementation for a

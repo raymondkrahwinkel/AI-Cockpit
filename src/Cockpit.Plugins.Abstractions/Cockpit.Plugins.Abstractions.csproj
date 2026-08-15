@@ -377,7 +377,11 @@
          operator turned that off for it. Existing plugins keep compiling untouched, and since the panel is the
          host's own copy (plugins reference it compile-only), an already-built plugin shows the checkbox with no
          rebuild. Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.53.0</Version>
+    <!-- 1.54.0 (AC-802): added ICockpitHost.AddSessionBanner (default no-op) — a session-bound banner under the
+         transcript, above the composer, for PR/CI status and similar mid-weight per-session info a header item has
+         no room for. Existing plugins keep compiling untouched. Additions only — a minor; major and
+         abstractionsVersion stay 1. -->
+    <Version>1.54.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
