@@ -40,6 +40,14 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
 
+    // AC-794: serializes SetScopeAsync's disk round-trip. `_gate` cannot do this — it is a sync lock and the
+    // round-trip awaits — so without a second gate here, two toggles in quick succession (the checklist calls this
+    // once per row flipped, fire-and-forget) could run their read-modify-write-disk sequences interleaved, and
+    // whichever call's write lands last on disk would win regardless of which call the operator made last: an
+    // earlier, already-superseded grant silently overwriting a newer one. A `SemaphoreSlim` makes the two calls
+    // run one at a time instead, so the second one always starts from what the first one actually wrote.
+    private readonly SemaphoreSlim _scopeWriteGate = new(1, 1);
+
     private PendingPairing? _pending;
     private NodePairing? _pairing;
     private bool _loaded;
@@ -306,28 +314,36 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
-        NodePairing updated;
-        lock (_gate)
+        await _scopeWriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            // Nothing to attach a grant to — the Security tab only shows this control while paired, so reaching
-            // here unpaired would be a caller bug rather than a real toggle; a silent no-op is simpler than an
-            // exception neither caller needs to handle.
-            if (_pairing is not { } pairing)
+            NodePairing updated;
+            lock (_gate)
             {
-                return;
+                // Nothing to attach a grant to — the Security tab only shows this control while paired, so
+                // reaching here unpaired would be a caller bug rather than a real toggle; a silent no-op is
+                // simpler than an exception neither caller needs to handle.
+                if (_pairing is not { } pairing)
+                {
+                    return;
+                }
+
+                updated = pairing with { AllowedProfileLabels = allowedProfileLabels, AllowedProjectIds = allowedProjectIds };
             }
 
-            updated = pairing with { AllowedProfileLabels = allowedProfileLabels, AllowedProjectIds = allowedProjectIds };
+            // Disk before memory, the same order `ConfirmAsync`/`UnpairAsync` write in: a crash between the two
+            // leaves `IsProfileAllowed` answering off what is actually on disk after a restart, never ahead of it.
+            var current = await _settings.LoadAsync(cancellationToken).ConfigureAwait(false);
+            await _settings.SaveAsync(current with { Pairing = updated }, cancellationToken).ConfigureAwait(false);
+
+            lock (_gate)
+            {
+                _pairing = updated;
+            }
         }
-
-        // Disk before memory, the same order `ConfirmAsync`/`UnpairAsync` write in: a crash between the two leaves
-        // `IsProfileAllowed` answering off what is actually on disk after a restart, never ahead of it.
-        var current = await _settings.LoadAsync(cancellationToken).ConfigureAwait(false);
-        await _settings.SaveAsync(current with { Pairing = updated }, cancellationToken).ConfigureAwait(false);
-
-        lock (_gate)
+        finally
         {
-            _pairing = updated;
+            _scopeWriteGate.Release();
         }
 
         _RaiseChanged();

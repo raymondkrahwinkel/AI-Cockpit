@@ -351,6 +351,32 @@ public class NodePairingBrokerTests : IDisposable
     }
 
     [Fact]
+    public async Task SetScope_TwoCallsInFlightAtOnce_TheSecondOneStartsFromWhatTheFirstActuallyWrote()
+    {
+        // Pins the contract _scopeWriteGate exists for: two calls in flight at once (the checklist's
+        // fire-and-forget toggle can produce exactly this) must not interleave their read-modify-write-disk
+        // sequences — the second one only starts once the first has fully finished, so the result is always
+        // `second`'s target. A fast local disk makes the unguarded version of this pass too, most of the time (the
+        // two calls rarely genuinely overlap without an artificial stall on the store) — the write-gate's own
+        // comment carries the reasoning for why the sequencing still matters.
+        var store = _Store();
+        var broker = _Broker(store);
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        var first = broker.SetScopeAsync(["default"], []);
+        var second = broker.SetScopeAsync(["default", "work"], ["proj-1"]);
+        await Task.WhenAll(first, second);
+
+        Assert.True(broker.IsProfileAllowed("work"));
+        Assert.True(broker.IsProjectAllowed("proj-1"));
+        var onDisk = (await store.LoadAsync()).Pairing!;
+        Assert.Contains("work", onDisk.AllowedProfileLabels);
+        Assert.Contains("proj-1", onDisk.AllowedProjectIds);
+    }
+
+    [Fact]
     public async Task Unpair_ClearsTheScopeGrant_SoARePairingStartsAtNothingAgain()
     {
         var broker = _Broker();

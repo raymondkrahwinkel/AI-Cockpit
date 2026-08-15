@@ -316,8 +316,12 @@ public sealed partial class SecurityOptionsViewModel(
         _loadingScope = true;
         try
         {
-            var profiles = await sessionProfileStore.LoadAsync().ConfigureAwait(true);
-            foreach (var profile in profiles)
+            // Neither load depends on the other — run them side by side rather than paying their latency twice.
+            var profilesTask = sessionProfileStore.LoadAsync();
+            var projectSettingsTask = projectStore.LoadAsync();
+            await Task.WhenAll(profilesTask, projectSettingsTask).ConfigureAwait(true);
+
+            foreach (var profile in profilesTask.Result)
             {
                 var row = new NodeScopeRowViewModel(profile.Label, profile.Label)
                 {
@@ -327,8 +331,7 @@ public sealed partial class SecurityOptionsViewModel(
                 ScopedProfiles.Add(row);
             }
 
-            var projectSettings = await projectStore.LoadAsync().ConfigureAwait(true);
-            foreach (var project in projectSettings.Projects)
+            foreach (var project in projectSettingsTask.Result.Projects)
             {
                 var row = new NodeScopeRowViewModel(project.Id, project.Name)
                 {
