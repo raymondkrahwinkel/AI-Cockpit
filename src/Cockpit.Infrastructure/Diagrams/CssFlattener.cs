@@ -3,14 +3,11 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Diagrams;
 
-/// <summary>
-/// Mermaider themes its SVG output through CSS custom properties and <c>color-mix()</c> in the emitted
-/// <c>&lt;style&gt;</c> block — none of which Svg.Skia's CSS support understands, so an unresolved use falls
-/// back to the SVG spec default (no stroke, black fill). This walks the string with paren-depth tracking
-/// rather than a regex — a regex cannot match balanced/nested calls like
-/// <c>color-mix(in srgb, var(--accent, var(--fg)) 8%, var(--bg))</c> — and flattens every
-/// <c>var()</c>/<c>color-mix()</c> to a literal value, then converts any leftover <c>rem</c> to <c>px</c>.
-/// </summary>
+// Mermaider themes its SVG output through CSS custom properties and color-mix() in the emitted <style>
+// block — none of which Svg.Skia's CSS support understands, so an unresolved use falls back to the SVG spec
+// default (no stroke, black fill). This walks the string with paren-depth tracking rather than a regex — a
+// regex cannot match balanced/nested calls like color-mix(in srgb, var(--accent, var(--fg)) 8%, var(--bg))
+// — and flattens every var()/color-mix() to a literal value, then converts any leftover rem to px.
 internal static partial class CssFlattener
 {
     private const double RootFontSizePx = 16;

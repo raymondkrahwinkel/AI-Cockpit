@@ -5,10 +5,8 @@ using Cockpit.Infrastructure.Diagrams;
 
 namespace Cockpit.App.Diagrams;
 
-/// <summary>
-/// Feeds <see cref="MermaidRenderPipeline"/> from the running app's own Theme.axaml tokens (AC-807), so a
-/// diagram follows the host theme instead of Mermaider's own default palette.
-/// </summary>
+// Feeds MermaidRenderPipeline from the running app's own Theme.axaml tokens (AC-807), so a diagram follows
+// the host theme instead of Mermaider's own default palette.
 public static class AppMermaidTheme
 {
     public static MermaidTheme FromCurrentTheme() => new(

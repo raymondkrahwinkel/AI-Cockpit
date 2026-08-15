@@ -5,13 +5,10 @@ using Mermaider.Models;
 
 namespace Cockpit.Infrastructure.Diagrams;
 
-/// <summary>
-/// The one public seam between Mermaid text and a normalized SVG (AC-807, sub of the AC-525 diagram
-/// builder epic). Everything Mermaider-specific — its renderer, its <c>RenderOptions</c>, its raw CSS
-/// custom-property output — stays behind this class; nothing outside it references a Mermaider type, and
-/// its own output carries no unresolved <c>var()</c>/<c>color-mix()</c> for a downstream SVG consumer
-/// (Svg.Skia or otherwise) to trip over.
-/// </summary>
+// The one public seam between Mermaid text and a normalized SVG (AC-807, sub of the AC-525 diagram builder
+// epic). Everything Mermaider-specific — its renderer, its RenderOptions, its raw CSS custom-property output
+// — stays behind this class; nothing outside it references a Mermaider type, and its own output carries no
+// unresolved var()/color-mix() for a downstream SVG consumer (Svg.Skia or otherwise) to trip over.
 public static class MermaidRenderPipeline
 {
     // Mermaider lays out text against Inter's own metrics; render with anything else and labels drift
