@@ -369,6 +369,40 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
+
+                            <!-- AC-805: the Assistant can run on the same profile as an ordinary session, so a
+                                 profile-level override cannot single it out — this level hangs off the Assistant's
+                                 role instead, next to the same rows built from the same provider declarations. -->
+                            <StackPanel Spacing="8" IsVisible="{Binding UsageThresholdSettings.HasAssistantProviders}">
+                                <TextBlock Text="Warn me when the Assistant is running out" FontWeight="SemiBold" FontSize="12"/>
+                                <ItemsControl ItemsSource="{Binding UsageThresholdSettings.AssistantProviders}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:UsageThresholdProviderViewModel">
+                                            <StackPanel Spacing="6" Margin="0,0,0,10">
+                                                <TextBlock Text="{Binding DisplayName}" FontSize="11"
+                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <ItemsControl ItemsSource="{Binding Signals}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:UsageThresholdRowViewModel">
+                                                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                                                        VerticalAlignment="Center" Margin="0,0,0,4">
+                                                                <TextBlock Text="{Binding Label}" Width="150" FontSize="11"
+                                                                           VerticalAlignment="Center"/>
+                                                                <NumericUpDown Value="{Binding Threshold}" Minimum="0" Maximum="100"
+                                                                               Increment="5" FormatString="0" Width="130"
+                                                                               HorizontalContentAlignment="Center"/>
+                                                                <TextBlock Text="{Binding FollowsLabel}" FontSize="11"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

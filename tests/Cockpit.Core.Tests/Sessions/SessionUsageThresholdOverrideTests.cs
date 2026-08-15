@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -69,5 +70,24 @@ public class SessionUsageThresholdOverrideTests
 
         Assert.True(session.HasUsageWarning);
         Assert.Equal(90, session.RateLimits[0].ThresholdPercent);
+    }
+
+    [Fact]
+    public void AnAssistantOverride_AppliesToTheAssistantPaneOnly()
+    {
+        // AC-805: the same profile ("work" here) serves both the Assistant and an ordinary session — the
+        // Assistant's own threshold must not leak onto the ordinary session that happens to share it.
+        var settings = new UsageThresholdSettings();
+        settings.Set(settings.ByAssistant, "claude", "weekly", 25);
+
+        var assistant = new TtyViewModel { UsageThresholds = settings, UsageProviderId = "claude", ActiveProfileLabel = "work" };
+        assistant.AdoptPaneId(AssistantIdentity.PaneId);
+        var ordinary = new TtyViewModel { UsageThresholds = settings, UsageProviderId = "claude", ActiveProfileLabel = "work" };
+
+        assistant.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 30, null)]);
+        ordinary.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 30, null)]);
+
+        Assert.True(assistant.HasUsageWarning, "30% is past the Assistant's own 25%");
+        Assert.False(ordinary.HasUsageWarning, "the ordinary session on the same profile still follows the provider's 90");
     }
 }

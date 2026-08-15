@@ -23,7 +23,10 @@ public sealed partial class UsageThresholdRowViewModel : ObservableObject
     // What the operator reads — the signal's description where it has one, else its short label.
     public string Label { get; }
 
-    // What the provider itself declared, shown as the placeholder so "following" is visible rather than implied.
+    // What applies if this field is left empty — the provider's own declaration for a provider row, or (AC-805)
+    // whatever an ordinary session on that provider would already resolve to for an Assistant row, since a
+    // provider override made on the same screen changes that too. Shown as the placeholder so "following" is
+    // visible rather than implied.
     public double Declared { get; }
 
     // The hint under the field, naming the value that applies when this is left empty.

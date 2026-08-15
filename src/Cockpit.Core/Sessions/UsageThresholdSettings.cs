@@ -1,8 +1,8 @@
 namespace Cockpit.Core.Sessions;
 
-// The thresholds an operator has set for themselves (AC-233), on top of what each provider declared. Two levels,
-// and the narrower one wins — the same precedence `SessionStartDefaults` uses, for the same reason: one rule,
-// applied in one place, rather than a copy per screen that can drift.
+// The thresholds an operator has set for themselves (AC-233), on top of what each provider declared. Three
+// levels, and the narrowest wins — the same precedence `SessionStartDefaults` uses, for the same reason: one
+// rule, applied in one place, rather than a copy per screen that can drift.
 //
 // Absence means "follow the level above", never a zero. A field left alone keeps following the provider even
 // after the provider changes its mind, which is what an operator who never touched it would expect.
@@ -14,10 +14,23 @@ public sealed class UsageThresholdSettings
     // Per profile label, the signal keys that profile's sessions warn at differently again — for a profile used differently from the rest.
     public Dictionary<string, Dictionary<string, double>> ByProfile { get; init; } = [];
 
-    // Where `signalKey` warns for a session under this provider and profile: the profile's answer
-    // if it gave one, else the provider's, else `declared` — what the provider itself said.
-    public double Resolve(string providerId, string? profileLabel, string signalKey, double declared)
+    // Per provider id, the signal keys the Assistant warns at differently again (AC-805). Keyed by role rather
+    // than by profile label: the Assistant can run on the same profile as an ordinary session, and a profile
+    // override cannot tell the two apart without also changing the ordinary session's own warning.
+    public Dictionary<string, Dictionary<string, double>> ByAssistant { get; init; } = [];
+
+    // Where `signalKey` warns for a session under this provider and profile: the Assistant's own answer if this
+    // session is the Assistant and it gave one, else the profile's, else the provider's, else `declared` — what
+    // the provider itself said.
+    public double Resolve(string providerId, string? profileLabel, string signalKey, double declared, bool isAssistant)
     {
+        if (isAssistant
+            && ByAssistant.TryGetValue(providerId, out var assistant)
+            && assistant.TryGetValue(signalKey, out var fromAssistant))
+        {
+            return fromAssistant;
+        }
+
         if (profileLabel is { Length: > 0 }
             && ByProfile.TryGetValue(profileLabel, out var profile)
             && profile.TryGetValue(signalKey, out var fromProfile))
