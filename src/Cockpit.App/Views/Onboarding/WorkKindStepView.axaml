@@ -38,10 +38,6 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-
-                <!-- AC-511 criterion 6: the set is Raymond's to decide, so it may not ship looking settled. -->
-                <TextBlock Text="{x:Static plugins:PluginWorkKinds.PlaceholderNotice}" FontSize="11" TextWrapping="Wrap"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
 
             <TextBlock Text="No store said which work its plugins are for, so nothing is suggested — tick what you want."

@@ -108,6 +108,10 @@ public class CockpitHostAddSideMenuButtonWithBadgeTests
         {
         }
 
+        public void AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView)
+        {
+        }
+
         public void AddPluginSessionHeaderAction(PluginSessionAction action)
         {
         }

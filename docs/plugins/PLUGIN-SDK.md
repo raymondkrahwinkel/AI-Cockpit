@@ -1145,6 +1145,7 @@ offer theirs.
 | `repository` | no | Link to the plugin's source repository, shown in the detail panel. |
 | `featured` | no | `true` pins/highlights the card (e.g. in a "Discover" section); default `false`. |
 | `published` | no | ISO date string (`"YYYY-MM-DD"`) of the latest version's publish date; informational, shown in the detail panel. |
+| `audience` | no | Work kinds (AC-511), e.g. `["developer"]`, that pre-tick this plugin in the first-run wizard's work-kind step. This is the store curator's own call, not the plugin author's — it is not read from `plugin.json`. Empty/absent means generic: the plugin pre-ticks for every work kind chosen, not just a listed one. |
 | `latestVersion` | yes | Drives update detection — compared against the installed plugin's `version` to decide whether the store dialog shows "Install" / "Update" / "Installed". |
 | `versions` | yes | Array, newest first, full version history — see below. |
 
@@ -1250,6 +1251,14 @@ they exercise the main contribution points:
 - **[GitHub Models](../../plugins-dev/Cockpit.Plugin.GitHubModelsProvider)** — the same OpenAI-compatible
   driver against GitHub's own Models endpoint (`models.github.ai/inference`), configured with a GitHub PAT
   (`models:read` scope) instead of a raw API key. Experimental (0.x).
+- **[OpenRouter](../../plugins-dev/Cockpit.Plugin.OpenRouterProvider)** — the same OpenAI-compatible driver
+  against OpenRouter's endpoint (`openrouter.ai/api/v1`), model id in OpenRouter's `vendor/model` notation
+  (e.g. `anthropic/claude-sonnet-4.5`). Chat-only, same as the other two; declares no usage signals since the
+  endpoint reports none this driver can read. Experimental (0.x).
+- **[Grok](../../plugins-dev/Cockpit.Plugin.GrokProvider)** — the same OpenAI-compatible driver against
+  xAI's legacy chat-completions endpoint (`api.x.ai/v1`), deliberately not xAI's newer Responses API (see
+  the plugin's own header comment). No default model — xAI has deprecated several model names in the last
+  few months, so the profile always names one explicitly. Declares no usage signals. Experimental (0.x).
 - **[CLI Agent Provider](../../plugins-dev/Cockpit.Plugin.CliAgentProvider)** — registers Codex CLI as a
   provider driven as a **subprocess per turn** (`codex exec --json`, resumed via `codex exec resume
   <threadId>` for follow-up turns) instead of a persistent chat client — the reference implementation for a
