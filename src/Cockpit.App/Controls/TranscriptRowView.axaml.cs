@@ -34,6 +34,9 @@ public partial class TranscriptRowView : UserControl
     public TranscriptRowView()
     {
         InitializeComponent();
+#if DEBUG
+        Cockpit.App.Diagnostics.LeakTracker.Register(this);
+#endif
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

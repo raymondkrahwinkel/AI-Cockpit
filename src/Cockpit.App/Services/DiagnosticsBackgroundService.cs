@@ -53,6 +53,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         var nextSnapshotAt = TimeSpan.Zero;
         var warned = false;
         var hangStartedAt = TimeSpan.Zero;
+#if DEBUG
+        var nextLeakAt = TimeSpan.Zero;
+#endif
 
         while (!_stopping)
         {
@@ -89,6 +92,13 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                     _WriteSnapshot(cpu);
                     nextSnapshotAt = now + SnapshotInterval;
                 }
+#if DEBUG
+                if (now >= nextLeakAt)
+                {
+                    _logger.LogInformation(Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc());
+                    nextLeakAt = now + SnapshotInterval;
+                }
+#endif
             }
             catch (Exception exception)
             {
