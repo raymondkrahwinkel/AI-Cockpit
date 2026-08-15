@@ -9,6 +9,9 @@ namespace Cockpit.Infrastructure.Diagrams;
 // epic). Everything Mermaider-specific — its renderer, its RenderOptions, its raw CSS custom-property output
 // — stays behind this class; nothing outside it references a Mermaider type, and its own output carries no
 // unresolved var()/color-mix() for a downstream SVG consumer (Svg.Skia or otherwise) to trip over.
+//
+// The seam also answers for what the engine dropped without saying so (AC-808): a render hands back the
+// picture and the fidelity report together, never the picture alone.
 public static class MermaidRenderPipeline
 {
     // Mermaider lays out text against Inter's own metrics; render with anything else and labels drift
@@ -16,7 +19,7 @@ public static class MermaidRenderPipeline
     // so it is always present — no fallback chain needed.
     private const string PinnedFont = "Inter";
 
-    public static SvgDocument Render(string source, MermaidTheme theme)
+    public static MermaidRenderResult Render(string source, MermaidTheme theme)
     {
         var svg = MermaidRenderer.RenderSvg(source, new RenderOptions
         {
@@ -33,7 +36,9 @@ public static class MermaidRenderPipeline
 
         var flattened = CssFlattener.Flatten(svg);
         var (width, height) = ReadViewport(flattened);
-        return new SvgDocument(flattened, width, height);
+        return new MermaidRenderResult(
+            new SvgDocument(flattened, width, height),
+            FidelityCheck.Check(source, flattened));
     }
 
     private static (double Width, double Height) ReadViewport(string svg)

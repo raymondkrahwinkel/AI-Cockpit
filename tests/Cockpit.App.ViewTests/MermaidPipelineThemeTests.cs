@@ -23,7 +23,7 @@ public class MermaidPipelineThemeTests
                 end
             """;
 
-        var document = MermaidRenderPipeline.Render(source, theme);
+        var document = MermaidRenderPipeline.Render(source, theme).Svg;
 
         Assert.DoesNotContain("var(", document.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("color-mix(", document.Markup, StringComparison.Ordinal);
