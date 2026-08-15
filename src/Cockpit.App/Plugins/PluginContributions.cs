@@ -22,6 +22,11 @@ public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
 // A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
 
+// A control a plugin contributes to every session's banner strip under the transcript, built once per session from
+// that session's own context (AC-802) — the wider counterpart to PluginSessionHeaderItem, for PR/CI status and the
+// like.
+public sealed record PluginSessionBannerItem(Func<IPluginSessionContext, Control> CreateView);
+
 // One thing a plugin put in the left menu: either a launcher `Button` or an inline `Section`,
 // never both. They share a list so the operator's order (#72) applies across them — a section moved to the top belongs
 // at the top, not below every plugin that happens to contribute a button instead.
@@ -54,8 +59,16 @@ public interface IPluginContributionSink
     void AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
         AddPluginSideButton(pluginId, title, onInvoke);
 
-    /// <summary>Registers a control shown in every session's header, built per session from that session's own context.</summary>
+    /// <summary>
+    /// Registers a control shown in every session's header, built per session from that session's own context.
+    /// </summary>
     void AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView);
+
+    /// <summary>
+    /// Registers a control shown in every session's banner strip under the transcript (AC-802), built per session
+    /// from that session's own context.
+    /// </summary>
+    void AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView);
 
     /// <summary>Registers an action in every session header's menu — one menu for all plugins, rather than a button each.</summary>
     void AddPluginSessionHeaderAction(PluginSessionAction action);

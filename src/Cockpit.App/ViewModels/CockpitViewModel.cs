@@ -215,6 +215,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Controls contributed by plugins to every session's header bar, each built per session from that session's own context. Empty = nothing rendered.
     public ObservableCollection<PluginSessionHeaderItem> PluginSessionHeaderItems { get; } = [];
 
+    // Controls contributed by plugins to every session's banner strip under the transcript (AC-802), each built per session from that session's own context. Empty = nothing rendered.
+    public ObservableCollection<PluginSessionBannerItem> PluginSessionBanners { get; } = [];
+
     // What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's header, rather than a button each.
     public ObservableCollection<PluginSessionAction> PluginSessionHeaderActions { get; } = [];
 
@@ -547,6 +550,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
+
+    void IPluginContributionSink.AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionBanners.Add(new PluginSessionBannerItem(createView)));
 
     void IPluginContributionSink.AddPluginSessionHeaderAction(PluginSessionAction action) =>
         _OnUiThread(() => PluginSessionHeaderActions.Add(action));
