@@ -21,10 +21,12 @@ namespace Cockpit.App.Views;
 // send, opening the peephole once attached, and keeping the transcript scrolled to the newest row.
 public partial class AssistantChatWindow : Window
 {
-    // ponytail: always-follow rather than SessionView's stick-only-while-at-bottom (TranscriptScrollAnchor):
-    // this window is a narrow peephole meant to be read as it comes in, not scrolled back through at length.
-    // Upgrade to the same anchor-tracking SessionView uses if this window grows a "scrolled up to read
-    // history" use case.
+    // Stick-to-bottom, mirroring SessionView (AC-528): follow the tail only while the operator is at it.
+    // _wheelTurned/_pointerHeld separate an operator scroll from the layout's own (a streaming row growing).
+    private bool _stickToBottom = true;
+    private bool _wheelTurned;
+    private bool _pointerHeld;
+
     private NotifyCollectionChangedEventHandler? _transcriptHandler;
     private PropertyChangedEventHandler? _sessionHandler;
     private SessionViewModel? _attachedSession;
@@ -142,6 +144,10 @@ public partial class AssistantChatWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
+        TranscriptScroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
+        TranscriptScroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
+        TranscriptScroll.RemoveHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased);
+        TranscriptScroll.RemoveHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased);
 
         if (DataContext is AssistantChatViewModel vm)
         {
@@ -170,19 +176,59 @@ public partial class AssistantChatWindow : Window
         // ticket for the full analysis.
         TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
 
+        // Tunnel + handledEventsToo so a child's own scroller cannot hide the gesture; all removed in OnClosed.
+        TranscriptScroll.AddHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
+        TranscriptScroll.AddHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        TranscriptScroll.AddHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        TranscriptScroll.AddHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+
         Dispatcher.UIThread.Post(() => InputBox.Focus());
-        Dispatcher.UIThread.Post(_FollowNewest);
+        Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
     }
 
     private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        // Our own correction, and the layout pass it drives: not a reason to re-enter (SessionView's same guard).
+        // Our own correction, and the layout passes it drives: not something to draw conclusions from.
         if (_following)
         {
             return;
         }
 
+        var byOperator = _wheelTurned || _pointerHeld;
+        _wheelTurned = false;
+
+        // Only an operator scroll re-derives whether we stick; content growing on its own just gets followed.
+        if (byOperator)
+        {
+            _stickToBottom = _NewestRowIsFullyVisible()
+                || TranscriptScrollAnchor.IsAtBottom(
+                    TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
+        }
+        else if (_stickToBottom)
+        {
+            _FollowNewest();
+        }
+
+        ScrollToBottomButton.IsVisible = !_stickToBottom;
+    }
+
+    // A wheel turn at the bottom raises no ScrollChanged to consume the flag, so expire it after this turn's
+    // layout (Background sits below Layout/Render) rather than in the handler — SessionView's fix.
+    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e)
+    {
+        _wheelTurned = true;
+        Dispatcher.UIThread.Post(() => _wheelTurned = false, DispatcherPriority.Background);
+    }
+
+    private void _OnTranscriptPointerPressed(object? sender, PointerPressedEventArgs e) => _pointerHeld = true;
+
+    private void _OnTranscriptPointerReleased(object? sender, RoutedEventArgs e) => _pointerHeld = false;
+
+    private void _OnScrollToBottomClick(object? sender, RoutedEventArgs e)
+    {
+        _stickToBottom = true;
         _FollowNewest();
+        ScrollToBottomButton.IsVisible = false;
     }
 
     // The host can flip Session from null to a real one after EnsureOpenedAsync's lazy start completes
@@ -211,7 +257,7 @@ public partial class AssistantChatWindow : Window
             return;
         }
 
-        _transcriptHandler ??= (_, _) => Dispatcher.UIThread.Post(_FollowNewest);
+        _transcriptHandler ??= (_, _) => Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
         session.Transcript.CollectionChanged += _transcriptHandler;
 
         _sessionHandler ??= _OnSessionPropertyChanged;
@@ -231,6 +277,8 @@ public partial class AssistantChatWindow : Window
         if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission)
             && sender is SessionViewModel { HasPendingPermission: true })
         {
+            // A consent to act on outranks reading history: resume the follow so the Allow/Deny row shows (AC-545).
+            _stickToBottom = true;
             Dispatcher.UIThread.Post(_FollowNewest);
         }
     }
