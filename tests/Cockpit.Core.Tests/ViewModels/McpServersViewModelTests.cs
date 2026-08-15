@@ -145,5 +145,7 @@ public class McpServersViewModelTests
     private sealed class FakeInternalMcpProvider(params McpServerConfig[] servers) : ICockpitInternalMcpProvider
     {
         public IReadOnlyList<McpServerConfig> GetServers() => servers;
+
+        public IReadOnlyList<NodeEndpointAddress> GetNodeAddresses() => [];
     }
 }

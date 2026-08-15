@@ -1161,6 +1161,20 @@
                                       IsChecked="{Binding Security.TerminalAccessEnabled}"/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
+                                <TextBlock Text="Accept connections from a second Cockpit" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Off by default: every MCP endpoint this cockpit hosts stays reachable only from this machine. Turning it on adds a second, TLS-protected listener on your network for each one, guarded by a shared key (generated for you below) instead of this run's own key — a second Cockpit types the address and key into its 'Add MCP server' dialog to reach this one as a node. Takes effect the next time you start Cockpit, not immediately."/>
+                            </StackPanel>
+                            <CheckBox Content="Accept MCP connections from another Cockpit on this network"
+                                      IsChecked="{Binding Security.NodeEndpointEnabled}"/>
+                            <StackPanel Spacing="4" Margin="24,4,0,0" IsVisible="{Binding Security.NodeEndpointEnabled}">
+                                <TextBlock Text="Address" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
+                                <TextBlock Text="Shared key" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                                <TextBox Text="{Binding Security.NodeEndpointSharedSecret}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
                                 <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."/>
