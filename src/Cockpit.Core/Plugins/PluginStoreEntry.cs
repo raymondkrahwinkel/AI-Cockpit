@@ -3,11 +3,12 @@ namespace Cockpit.Core.Plugins;
 // One plugin advertised by a store: its identity, display fields, the latest version and the full
 // version history, plus the optional presentation fields the store dialog (#62) uses for browsing —
 // `Category`/`Icon`/`Homepage`/`Repository`/
-// `Featured`/`Published` — and `WorkKind` (AC-511), the curator's own
-// second axis. All seven are additive and default to "not set" (null/false), so an `index.json`
-// published before they existed still parses without them: the store dialog falls back to an "Other"
-// category, a monogram icon, no links, no Featured/Recently-added rail membership, and no work-kind
-// recommendation. `Icon` is a single emoji/glyph, not an image path — see the #62 design doc
+// `Featured`/`Published` — `WorkKind` (AC-511), the curator's own
+// second axis — and `Hidden` (AC-815), which drops an entry out of the browsable store entirely. All
+// are additive and default to "not set" (null/false), so an `index.json` published before they existed
+// still parses without them: the store dialog falls back to an "Other" category, a monogram icon, no
+// links, no Featured/Recently-added rail membership, no work-kind recommendation, and every plugin
+// browsable. `Icon` is a single emoji/glyph, not an image path — see the #62 design doc
 // for why (no new download/cache layer needed for a text glyph the app already renders elsewhere, e.g.
 // the titlebar caption glyphs).
 //
@@ -30,7 +31,10 @@ public sealed record PluginStoreEntry(
     // AC-511: a free string, not the domain's own enum — an unrecognised value would otherwise fail the whole
     // index (see PluginWorkKinds' own remarks), and the placeholder set is not settled yet either way.
     string? WorkKind = null,
-    string? LogoAsset = null)
+    string? LogoAsset = null,
+    // AC-815: hides the entry from Discover/All/categories/search/Featured/Recently-added — install-from-zip
+    // does not consult the index, so it is unaffected.
+    bool Hidden = false)
 {
     // The `Category` value that marks a plugin as an AI provider (AC-510[b] criterion 5). Measured
     // against the default store's live `index.json` (raymondkrahwinkel/AI-Cockpit-Plugins, 2026-08-02):
