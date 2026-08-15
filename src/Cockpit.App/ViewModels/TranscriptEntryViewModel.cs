@@ -77,6 +77,21 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
     public bool IsTopTimestampRow => !IsUserRow && !IsToolUse && !IsThinking;
 
+    // --- Deferred-subtree gates (memory) --------------------------------------------------------------------
+    // Each returns `this` for the matching row kind, else null. A ContentControl bound to one of these builds
+    // its scoped implicit DataTemplate only when the value is non-null, so a row instantiates only the one
+    // branch its kind needs instead of every IsVisible="false" sibling (Avalonia builds those in full). Kind is
+    // immutable, so these six never change after construction; QuestionBranch/ToolBlockBranch track mutable
+    // flags and are re-raised alongside them (OnQuestionPromptsChanged / _RaiseReadingLevelPresentation).
+    public object? ToolBranch => IsToolUse ? this : null;
+    public object? UserBranch => IsUserRow ? this : null;
+    public object? AssistantBranch => IsAssistantMarkdown ? this : null;
+    public object? ThinkingBranch => IsThinking ? this : null;
+    public object? DividerBranch => IsDivider ? this : null;
+    public object? FailureBranch => ShowsFailureCard ? this : null;
+    public object? QuestionBranch => HasQuestionPrompts ? this : null;
+    public object? ToolBlockBranch => ShowToolBlock ? this : null;
+
     // Chevron icon for a row's expand/collapse toggle, shared by the tool-use header and the standalone tool-result row.
     public MaterialIconKind ToggleIconKind => IsExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
 
@@ -276,6 +291,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(HasQuestionPrompts));
+        OnPropertyChanged(nameof(QuestionBranch));
         _RaiseReadingLevelPresentation();
     }
 
@@ -490,6 +506,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsAutoTool));
         OnPropertyChanged(nameof(IsRowVisible));
         OnPropertyChanged(nameof(ShowToolBlock));
+        OnPropertyChanged(nameof(ToolBlockBranch));
         OnPropertyChanged(nameof(ShowGroupSummary));
         OnPropertyChanged(nameof(ShowHumanToolLine));
         OnPropertyChanged(nameof(HumanToolText));
