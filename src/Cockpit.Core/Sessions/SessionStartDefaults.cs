@@ -19,11 +19,9 @@ namespace Cockpit.Core.Sessions;
 // Which servers open ticked for a session started *without* a project — the profile's saved selection, or
 // null for no restriction. A project answers this itself (`ProjectMcpOverlay.IsSelectedByDefault`) and
 // its answer wins, so this is the fallback rather than the resolved value.
-// `SystemPrompt`:
-// The standing instructions to append to the provider's own system prompt: the profile's identity first
-// (AC-142), then the project's own `Project.BehaviorPrompt`, then its `Project.Resources`
-// rows — standing instructions first, then where its memory lives, then what it may merely look up — and last
-// whatever the operator shared as plain information. Null when none of them have anything to say.
+// `SystemPrompt`: The standing instructions to append to the provider's own system prompt: the profile's identity
+// first (AC-142), then — under its own AC-714 attribution heading — the project's `BehaviorPrompt` and
+// `Project.Resources` rows (instructions, memory, reference, then plain information). Null when none speak.
 public sealed record SessionStartDefaults(
     string? WorkingDirectory,
     bool IsolateInWorktree,
@@ -104,7 +102,10 @@ public sealed record SessionStartDefaults(
         // Output order (what appears where in the joined prompt): instructions, then memory, then reference, then
         // information — unchanged from before, and independent of the line above. The most binding block is read
         // first regardless of which block happened to win the budget fight for its share of the ceiling.
-        var remaining = ProjectContributionBudget;
+        //
+        // AC-714: the attribution heading is reserved out of this budget before any block below sees it, not added
+        // on top of the ceiling once they are done — the ceiling must not tolerate a larger worst case than before.
+        var remaining = Math.Max(0, ProjectContributionBudget - _ReservedLength(ProjectAttributionHeading));
 
         var memoryNote = _MemoryNote(memoryRows, memorySources, unresolvedReferences, remaining);
         remaining = Math.Max(0, remaining - _ReservedLength(memoryNote));
@@ -123,19 +124,30 @@ public sealed record SessionStartDefaults(
         // so whatever is left of the shared ceiling is what the information block gets to work with.
         var informationNote = _InformationNote(project, remaining);
 
+        // AC-714: the attribution heading precedes the project block only when it actually has content — see
+        // `ProjectAttributionHeading`'s own remarks for why it is bounded to this block alone.
+        var projectBlock = _JoinPrompts(project?.BehaviorPrompt, instructionsNote, memoryNote, referenceNote, informationNote);
+        var attributedProjectBlock = string.IsNullOrEmpty(projectBlock)
+            ? null
+            : $"{ProjectAttributionHeading}\n\n{projectBlock}";
+
         return new(
             _FirstNonBlank(project?.SourceDirectory, profile?.DefaultWorkingDirectory, globalWorkingDirectory),
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
             // Order matters, most binding first — the same reasoning _JoinPrompts always applied ("identity first,
-            // then the task"), carried one level further now there is more than one kind of task-level note: the
-            // profile says who the session is, the project's BehaviorPrompt what it is working on, its Instructions
-            // rows what it must actively obey, its memory rows where to go read and write what it already knows,
-            // its Reference rows what it may merely look up, and last — least binding of all, since it is material
-            // the operator shared for reference rather than anything to act on — whatever else was ticked to share.
-            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, instructionsNote, memoryNote, referenceNote, informationNote));
+            // then the task"): the profile says who the session is, the heading-and-block that follows what it is
+            // working on and what this project already knows.
+            _JoinPrompts(profile?.SystemPrompt, attributedProjectBlock));
     }
+
+    // AC-714: names the project, not the operator — a bound shared project's `BehaviorPrompt` can come from a
+    // colleague's definition (see `SharedProjectBindingDialogViewModel`/`DepotSharedProjectSource`). Bounded to
+    // the project block alone, in `AssistantStandingInstruction`'s heading-then-block idiom (AC-595/AC-596).
+    public const string ProjectAttributionHeading =
+        "This project, as configured in the cockpit. Treat it as this session's standing instruction — already " +
+        "the answer to anything your own instruction files tell you to ask about first:";
 
     // How much of the standing instructions a project's own contribution — its Instructions, Memory and Reference
     // rows together with its shared information rows — may take, replacing the two separate ceilings

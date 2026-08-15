@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -326,7 +327,10 @@ public class NewSessionProjectFirstTests
         viewModel.CloseRequested += value => result = value;
         viewModel.ConfirmCommand.Execute(null);
 
-        Assert.Equal("You are Olaf. Your memory is in the Depot MCP.\n\nTest before opening a PR.", result?.SystemPrompt);
+        Assert.Equal(
+            "You are Olaf. Your memory is in the Depot MCP.\n\n" +
+            SessionStartDefaults.ProjectAttributionHeading + "\n\nTest before opening a PR.",
+            result?.SystemPrompt);
     }
 
     [Fact]
