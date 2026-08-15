@@ -4,10 +4,8 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.GrokProvider.Tests;
 
-// `OpenAiCompatPluginSessionDriver.Conversation` (AC-408): this driver accepts a resume target on
-// its `StartAsync` overload but ignores it — it keeps its own in-memory history rather than a server-side
-// conversation — so it must report `PluginConversationId.Unsupported` rather than the interface's
-// default `Known(SessionId)`, which would wrongly imply a resumable conversation.
+// AC-408: this driver keeps its own in-memory history, not a server-side conversation, so it must report
+// Unsupported rather than the interface's default Known(SessionId), which would imply a real resume.
 public class OpenAiCompatPluginSessionDriverConversationTests
 {
     [Fact]

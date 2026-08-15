@@ -1,11 +1,8 @@
 
 namespace Cockpit.Plugin.GrokProvider.Tests;
 
-// `OpenAiCompatConfig`'s `ToString()` override (AC-724, mirroring the OpenRouter provider plugin's
-// AC-806 review finding): a plain `record`'s auto-generated `ToString()` would print
-// `OpenAiCompatConfig.ApiKey` (an xAI API key here) in the clear — a leak surface anywhere this
-// config lands in a log line or exception message (e.g. the
-// `OpenAiCompatPluginSessionDriverFactory` deserialize-failure path).
+// AC-724: `OpenAiCompatConfig.ToString()` must redact ApiKey — a plain record's auto-generated override
+// would print it in the clear anywhere this config lands in a log line or exception message.
 public class OpenAiCompatConfigTests
 {
     [Fact]

@@ -6,13 +6,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GrokProvider;
 
-// The "add/edit profile" config panel for this plugin's Grok provider (AC-724): an API-key field (a "?"
-// tooltip pointing at where to create one), a model id, and the base URL (pre-filled with xAI's own
-// endpoint, editable for e.g. a regional endpoint like eu-west-1.api.x.ai). Built in code, mirroring the
-// Gemini/OpenAI, GitHub Models and OpenRouter provider plugins' `OpenAiCompatProviderConfigView`. No
-// default model is pre-filled (AC-724 criterion 4) — xAI has deprecated four model names in the last three
-// months, so baking one in here would go stale the same way; the placeholder names the current model
-// without setting it.
+// AC-724: the "add/edit profile" config panel for this plugin's Grok provider, mirroring the sibling
+// OpenAiCompat plugins' own config view. No default model is pre-filled — xAI retires names too fast.
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _apiKey;

@@ -6,14 +6,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GrokProvider;
 
-// `IPluginSessionDriverFactory` for this plugin's Grok provider (#45/#63/AC-724): deserializes
-// the profile's opaque config JSON into an `OpenAiCompatConfig` and builds an
-// `IChatClient` against its base URL via the OpenAI SDK with a custom
-// `OpenAIClientOptions.Endpoint` — the same construction
-// `Cockpit.Infrastructure.Sessions.OpenAiCompatChatClientFactory` uses for Ollama/LM Studio, and the
-// Gemini/OpenAI, GitHub Models and OpenRouter provider plugins use for their own providers. xAI's
-// OpenAI-SDK-compatible surface is the legacy chat-completions path (see `GrokProviderPlugin`'s header
-// comment for why that is a deliberate choice here, not the newer Responses API).
+// AC-724: builds an `IChatClient` against xAI's base URL via the OpenAI SDK — the same construction the
+// sibling OpenAiCompat provider plugins use, on xAI's legacy chat-completions surface.
 internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)
