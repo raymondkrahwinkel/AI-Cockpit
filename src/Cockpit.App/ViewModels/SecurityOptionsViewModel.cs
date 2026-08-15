@@ -1,7 +1,10 @@
+using System.Security.Cryptography;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Terminal;
 
@@ -17,11 +20,17 @@ public sealed partial class SecurityOptionsViewModel(
     ISecretProtectionService protection,
     IScreenLockSettingsStore? screenLockSettings = null,
     ITerminalAccessSwitch? terminalAccessSwitch = null,
-    ITerminalAccessSettingsStore? terminalAccessSettings = null) : ObservableObject
+    ITerminalAccessSettingsStore? terminalAccessSettings = null,
+    INodeEndpointSettingsStore? nodeEndpointSettings = null,
+    IEnumerable<ICockpitInternalMcpProvider>? mcpEndpointHosts = null) : ObservableObject
 {
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
     private bool _loadingTerminalAccess;
+
+    // True only while RefreshAsync seeds the node toggle from disk (AC-790) — same guard, same reason, as
+    // _loadingTerminalAccess above.
+    private bool _loadingNodeEndpoint;
 
     [ObservableProperty]
     private bool _isEncrypted;
@@ -41,6 +50,24 @@ public sealed partial class SecurityOptionsViewModel(
     // change without a restart.
     [ObservableProperty]
     private bool _terminalAccessEnabled;
+
+    // The network-node master switch (AC-790): off by default. While off, every mounted MCP endpoint stays
+    // loopback-only. Turning it on takes effect on the next launch — unlike the terminal-access toggle above, this
+    // one reconfigures Kestrel listeners at startup (CockpitMcpEndpointHost.MountAsync), so there is nothing to
+    // flip live.
+    [ObservableProperty]
+    private bool _nodeEndpointEnabled;
+
+    // The persistent shared secret a second Cockpit types into its own "add MCP server" dialog (AC-354) to reach
+    // this instance as a node. Generated once, the first time the switch turns on; reused on every later toggle so
+    // a second Cockpit that already has it keeps working after this one restarts.
+    [ObservableProperty]
+    private string _nodeEndpointSharedSecret = "";
+
+    // What the operator reads off to type into a second Cockpit — one line per mounted endpoint's live node URL,
+    // or an explanatory placeholder while there is nothing to show yet (see _ResolveNodeEndpointAddressText).
+    [ObservableProperty]
+    private string _nodeEndpointAddressText = "";
 
     [ObservableProperty]
     private bool _isMigrating;
@@ -85,19 +112,53 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         // Absent in the design-time/unit-test graph — the toggle then stays off and inert.
-        if (terminalAccessSettings is null)
+        if (terminalAccessSettings is not null)
         {
-            return;
+            var terminal = await terminalAccessSettings.LoadAsync().ConfigureAwait(true);
+            _loadingTerminalAccess = true;
+            TerminalAccessEnabled = terminal.Enabled;
+            _loadingTerminalAccess = false;
+            if (terminalAccessSwitch is not null)
+            {
+                terminalAccessSwitch.Enabled = terminal.Enabled;
+            }
         }
 
-        var terminal = await terminalAccessSettings.LoadAsync().ConfigureAwait(true);
-        _loadingTerminalAccess = true;
-        TerminalAccessEnabled = terminal.Enabled;
-        _loadingTerminalAccess = false;
-        if (terminalAccessSwitch is not null)
+        // AC-790: same "absent in design-time/unit-test graph" shape as terminal access above.
+        if (nodeEndpointSettings is not null)
         {
-            terminalAccessSwitch.Enabled = terminal.Enabled;
+            var node = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
+            _loadingNodeEndpoint = true;
+            NodeEndpointEnabled = node.Enabled;
+            _loadingNodeEndpoint = false;
+            NodeEndpointSharedSecret = node.SharedSecret;
+            NodeEndpointAddressText = _ResolveNodeEndpointAddressText(node.Enabled);
         }
+    }
+
+    // Node binding off: normally nothing to show — unless this run already bound an off-loopback listener earlier
+    // (the switch was on at this run's own startup, then turned off just now): Kestrel is only reconfigured on the
+    // next launch, so that listener — and the secret it still accepts — stays live regardless of the toggle. Saying
+    // so beats a blank line that reads as "access revoked" when it was not.
+    // On: the host has not (yet) reported an off-loopback address for any mounted endpoint — either this run has
+    // not restarted since the switch turned on (MountAsync reads the setting once, at mount time), or
+    // NodeReachableAddress found no LAN-facing IPv4 on this machine — the two are indistinguishable from here, so
+    // one explanation covers both rather than guessing which applies.
+    private string _ResolveNodeEndpointAddressText(bool enabled)
+    {
+        var addresses = mcpEndpointHosts?.SelectMany(host => host.GetNodeAddresses()).ToList() ?? [];
+
+        if (!enabled)
+        {
+            return addresses.Count > 0
+                ? "Still reachable until you restart Cockpit — this session already opened the listener below:"
+                    + Environment.NewLine + string.Join(Environment.NewLine, addresses.Select(address => $"{address.ServerName}: {address.Url}"))
+                : "";
+        }
+
+        return addresses.Count > 0
+            ? string.Join(Environment.NewLine, addresses.Select(address => $"{address.ServerName}: {address.Url}"))
+            : "No address yet — restart Cockpit for this to take effect, or check that this machine has a network connection.";
     }
 
     // Persists the AC-5 toggle the moment it changes. The load above sets it too, which is why that path suppresses this — a seed from disk must not be a write back to disk.
@@ -126,6 +187,27 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = value }).ConfigureAwait(true);
+    }
+
+    // The node toggle changed (AC-790). Unlike terminal access above, this never flips anything live — the
+    // Kestrel listeners it governs are only reconfigured at the next launch (CockpitMcpEndpointHost.MountAsync) —
+    // so this only persists. Turning it on for the first time (no secret saved yet) mints one; turning it off
+    // leaves whatever secret is there untouched, so a second Cockpit that already typed it in still works the
+    // next time binding is turned back on.
+    async partial void OnNodeEndpointEnabledChanged(bool value)
+    {
+        if (_loadingNodeEndpoint || nodeEndpointSettings is null)
+        {
+            return;
+        }
+
+        var sharedSecret = NodeEndpointSharedSecret is { Length: > 0 }
+            ? NodeEndpointSharedSecret
+            : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+
+        NodeEndpointSharedSecret = sharedSecret;
+        NodeEndpointAddressText = _ResolveNodeEndpointAddressText(value);
+        await nodeEndpointSettings.SaveAsync(new NodeEndpointSettings { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
     }
 
     // Dismisses the awareness banner for the credentials now in the file (AC-41). Hides it at once, then persists

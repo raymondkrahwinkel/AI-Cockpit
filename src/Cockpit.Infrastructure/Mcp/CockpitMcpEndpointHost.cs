@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -21,6 +22,9 @@ namespace Cockpit.Infrastructure.Mcp;
 // registry (AC-40). The host answers them live as an `ICockpitInternalMcpProvider` — the session
 // fan-out merges them in, while the MCP-servers manager (which reads only the store) never lists them. One HTTP
 // listener per endpoint, loopback on an OS-assigned port, guarded by this run's auth key.
+// AC-790: when the network-node master switch is on, each endpoint also gets a second, HTTPS listener on a
+// network interface, guarded by a persistent shared secret instead of this run's ephemeral key — off by default,
+// and read once at mount time, so flipping the setting takes effect on the next launch, not live.
 internal sealed class CockpitMcpEndpointHost
     : IHostedService, ICockpitMcpEndpointHost, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
 {
@@ -28,6 +32,7 @@ internal sealed class CockpitMcpEndpointHost
     private readonly IServiceProvider _services;
     private readonly McpAuthKey _authKey;
     private readonly SessionMcpKeyring _keyring;
+    private readonly INodeEndpointSettingsStore _nodeEndpointSettings;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
@@ -35,17 +40,33 @@ internal sealed class CockpitMcpEndpointHost
     private readonly Lock _mountedLock = new();
     private readonly SemaphoreSlim _mountGate = new(1, 1);
 
+    // Lazy: a cockpit that never turns node binding on for this run never pays for a certificate it does not need.
+    private X509Certificate2? _nodeCertificate;
+
+    // Loaded once, not once per endpoint: the class-level comment already promises the switch only takes effect on
+    // the next launch, so it cannot change mid-run — re-reading and re-decrypting the whole of cockpit.json on
+    // every one of the ~7 startup mounts would be pure waste for a value this run will never see change.
+    private NodeEndpointSettings? _nodeSettings;
+
+    // Same reasoning as _nodeSettings: the machine's LAN-facing address does not change between one mount and the
+    // next within a single run, so a full network-interface enumeration per endpoint is redundant. A separate
+    // "resolved" flag because the resolved value itself is legitimately null (no usable interface found).
+    private string? _nodeReachableAddress;
+    private bool _nodeReachableAddressResolved;
+
     public CockpitMcpEndpointHost(
         IEnumerable<CockpitMcpEndpoint> endpoints,
         IServiceProvider services,
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
+        INodeEndpointSettingsStore nodeEndpointSettings,
         ILoggerFactory loggerFactory)
     {
         _endpoints = [.. endpoints];
         _services = services;
         _authKey = authKey;
         _keyring = keyring;
+        _nodeEndpointSettings = nodeEndpointSettings;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<CockpitMcpEndpointHost>();
     }
@@ -106,13 +127,26 @@ internal sealed class CockpitMcpEndpointHost
                     _services.GetService<IAgentTurnInboxDelivery>(),
                     _logger)));
 
-            builder.WebHost.UseKestrel();
-            // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second cockpit.
-            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            var nodeSettings = _nodeSettings ??= await _nodeEndpointSettings.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second
+                // cockpit. IPv4 loopback specifically, not ListenLocalhost — that binds both 127.0.0.1 and [::1] on
+                // one shared dynamic port, which Kestrel refuses ("dynamic port binding is not supported when
+                // binding to localhost") since the OS could hand the two families different ports.
+                options.Listen(System.Net.IPAddress.Loopback, 0);
+                if (nodeSettings.Enabled)
+                {
+                    // A second, network-reachable listener next to the loopback one (AC-790), guarded by the persistent
+                    // shared secret rather than this run's ephemeral McpAuthKey — see McpAuthMiddleware.Require below.
+                    options.Listen(System.Net.IPAddress.Any, 0, listenOptions => listenOptions.UseHttps(_GetOrCreateNodeCertificate()));
+                }
+            });
 
             var app = builder.Build();
             // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40).
-            McpAuthMiddleware.Require(app, _authKey, _keyring);
+            McpAuthMiddleware.Require(app, _authKey, _keyring, nodeSettings.Enabled ? nodeSettings.SharedSecret : null);
             app.MapMcp("/mcp");
             _apps.Add(app);
 
@@ -120,13 +154,29 @@ internal sealed class CockpitMcpEndpointHost
 
             var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
                 ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
-            var boundUrl = addresses.Addresses.FirstOrDefault()
-                ?? throw new InvalidOperationException($"The {serverName} MCP endpoint bound no address.");
 
-            var url = $"{boundUrl.TrimEnd('/')}/mcp";
+            // The loopback listener's own address, kept as the endpoint's `Url` — unchanged external behaviour for
+            // every caller that only ever knew this one listener.
+            var loopbackUrl = addresses.Addresses.FirstOrDefault(address => address.Contains("127.0.0.1", StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"The {serverName} MCP endpoint bound no loopback address.");
+            var url = $"{loopbackUrl.TrimEnd('/')}/mcp";
+
+            // The node listener's address, translated from Kestrel's wildcard bind into something reachable from
+            // another machine — "https://0.0.0.0:PORT" means nothing to a second cockpit's operator.
+            string? nodeUrl = null;
+            if (nodeSettings.Enabled)
+            {
+                var nodeListenAddress = addresses.Addresses.FirstOrDefault(address => address.StartsWith("https://", StringComparison.Ordinal));
+                if (nodeListenAddress is not null && _GetReachableAddress() is { } reachableHost)
+                {
+                    var nodePort = new Uri(nodeListenAddress).Port;
+                    nodeUrl = $"https://{reachableHost}:{nodePort}/mcp";
+                }
+            }
+
             lock (_mountedLock)
             {
-                _mounted.Add(new MountedEndpoint(serverName, url, isEnabled ?? (static () => true), isInternal, alwaysMounted));
+                _mounted.Add(new MountedEndpoint(serverName, url, isEnabled ?? (static () => true), isInternal, alwaysMounted, nodeUrl));
             }
 
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
@@ -161,6 +211,33 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
+    // This instance's live network-node addresses (AC-790) — see ICockpitInternalMcpProvider.GetNodeAddresses.
+    public IReadOnlyList<NodeEndpointAddress> GetNodeAddresses()
+    {
+        lock (_mountedLock)
+        {
+            return
+            [
+                .. _mounted
+                    .Where(endpoint => endpoint.NodeUrl is not null)
+                    .Select(endpoint => new NodeEndpointAddress(endpoint.Name, endpoint.NodeUrl!)),
+            ];
+        }
+    }
+
+    private X509Certificate2 _GetOrCreateNodeCertificate() => _nodeCertificate ??= NodeSelfSignedCertificate.Create();
+
+    private string? _GetReachableAddress()
+    {
+        if (!_nodeReachableAddressResolved)
+        {
+            _nodeReachableAddress = NodeReachableAddress.Resolve();
+            _nodeReachableAddressResolved = true;
+        }
+
+        return _nodeReachableAddress;
+    }
+
     private bool _IsMounted(string serverName)
     {
         lock (_mountedLock)
@@ -192,11 +269,12 @@ internal sealed class CockpitMcpEndpointHost
     public async ValueTask DisposeAsync()
     {
         _mountGate.Dispose();
+        _nodeCertificate?.Dispose();
         foreach (var app in _apps)
         {
             await app.DisposeAsync().ConfigureAwait(false);
         }
     }
 
-    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false);
+    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null);
 }

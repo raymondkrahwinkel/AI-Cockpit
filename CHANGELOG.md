@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Cockpit instance can now optionally accept MCP connections from a second Cockpit on the same network,
+  over TLS with a shared key — off by default, enable it under Options → Security. Turning it on takes effect the
+  next time Cockpit starts.
+
 - added: opencode as a session provider plugin, driven over the Agent Client Protocol via `opencode acp` — a
   second real agent alongside Claude, not just a chat window: real tool calls, permission prompts routed
   through the same consent card every session uses, and live usage/cost figures. Requires the opencode CLI

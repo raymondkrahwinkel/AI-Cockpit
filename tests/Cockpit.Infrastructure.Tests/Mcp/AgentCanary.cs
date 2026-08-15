@@ -72,11 +72,15 @@ internal sealed class AgentCanaryDesk : IAsyncDisposable
         services.AddSingleton<IAgentNotifyAuditLog>(new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance));
 
         var keyring = new SessionMcpKeyring();
+        // Node binding (AC-790) is not what this canary is testing — a throwaway, never-saved-to store keeps it off,
+        // the same default a real store gives an untouched cockpit.json.
+        var nodeEndpointSettings = new NodeEndpointSettingsStore(Path.Combine(Path.GetTempPath(), $"canary-node-{Guid.NewGuid():N}.json"));
         var host = new CockpitMcpEndpointHost(
             [new CockpitMcpEndpoint("cockpit-agents", typeof(AgentsMcpTools))],
             services.BuildServiceProvider(),
             new McpAuthKey(),
             keyring,
+            nodeEndpointSettings,
             NullLoggerFactory.Instance);
 
         await host.StartAsync(CancellationToken.None);

@@ -93,6 +93,8 @@ internal sealed class OrchestratorMcpServer
 
         _app = builder.Build();
         // Guard the endpoint before its tools: a request without this run's key never reaches delegation (AC-40).
+        // The orchestrator stays loopback-only — AC-790's off-loopback listener is a `CockpitMcpEndpointHost`
+        // concern only — so there is no node secret to pass here.
         McpAuthMiddleware.Require(_app, _authKey, _keyring);
         _app.MapMcp("/mcp");
 
@@ -127,6 +129,10 @@ internal sealed class OrchestratorMcpServer
                 },
             ]
             : [];
+
+    // The orchestrator never runs off loopback (AC-790 only extends `CockpitMcpEndpointHost`'s mounted
+    // endpoints), so it has no network-node address to report.
+    public IReadOnlyList<NodeEndpointAddress> GetNodeAddresses() => [];
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
