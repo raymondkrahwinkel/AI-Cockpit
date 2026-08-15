@@ -42,6 +42,9 @@
          binding: that one still tracks Avalonia 11 while this app is on 12, whereas this needs only SkiaSharp —
          the same 3.119 Avalonia already brings — so the logo path carries no UI-framework version coupling. -->
     <PackageReference Include="Svg.Skia" Version="5.1.1" />
+    <!-- Mermaid-text -> SVG for the diagram builder (AC-807). Pure managed .NET, no browser/Node/Chromium
+         subprocess — a NuGet reference is the whole install. -->
+    <PackageReference Include="Mermaider" Version="0.12.2" />
     <!-- Rasterises page 1 of a PDF preview to a bitmap (AC-730). PDFium (native, the renderer Chrome ships) +
          SkiaSharp — the marginal native weight is PDFium alone, since Svg.Skia above already pulls in Skia's own
          natives. MIT-licensed; picked over pure-managed Melville.Pdf.SkiaSharp for the renderer maturity a
