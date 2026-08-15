@@ -52,7 +52,7 @@ public interface INodeSessionsClient
     Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>One node, as the controller last read it. <see cref="Error"/> non-null means nothing else here is current.</summary>
+// One node, as the controller last read it. A non-null `Error` means nothing else here is current.
 public sealed record NodeSessionsSnapshot(
     string NodeName,
     IReadOnlyList<NodeSessionRow> Sessions,
@@ -60,8 +60,8 @@ public sealed record NodeSessionsSnapshot(
     IReadOnlyList<NodeProjectRow> Projects,
     string? Error = null);
 
-/// <summary>One session running on a node. The pane id is that machine's, never this one's.</summary>
+// One session running on a node. The pane id is that machine's, never this one's.
 public sealed record NodeSessionRow(string PaneId, string Name, string Profile, string Statusline);
 
-/// <summary>One project a node's operator has allowed this controller to start work on.</summary>
+// One project a node's operator has allowed this controller to start work on.
 public sealed record NodeProjectRow(string Id, string Name);
