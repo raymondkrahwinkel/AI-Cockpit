@@ -2,9 +2,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Svg.Skia;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Material.Icons;
 using Material.Icons.Avalonia;
@@ -27,6 +29,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Own --> Panel
         """;
 
+    private readonly ICockpitHost _host;
     private readonly IDiagramAccessRegistry? _registry;
     private readonly string _surfaceId;
     private readonly Avalonia.Svg.Skia.Svg _svg;
@@ -34,9 +37,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
     private readonly TextBlock _editChip;
+    private string _currentSvg = "";
 
     public DiagramWorkspaceBody(IWorkspaceContext context, ICockpitHost host)
     {
+        _host = host;
         _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
         _surfaceId = context.WorkspaceId;
 
@@ -46,11 +51,13 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!) { Stretch = Stretch.Uniform, Width = 400, Height = 200, Margin = new Thickness(16) };
 
         (_couplingBar, _couplingLabel, _readChip, _editChip) = _BuildCouplingBar();
+        var toolbar = _BuildToolbar();
 
         Content = new DockPanel
         {
-            Children = { _couplingBar, _svg },
+            Children = { toolbar, _couplingBar, _svg },
         };
+        DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
 
         _RenderInto(SampleDiagram);
@@ -111,7 +118,150 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Bg = "#1b1f27", Fg = "#e7e9ee", Line = "#3a4050", Accent = "#5b8def",
             Muted = "#9aa2b1", Surface = "#232838", Border = "#3a4050", Font = "Inter", FontSize = "13px",
         });
+        _currentSvg = markup;
         _svg.SvgSource = SvgSource.LoadFromSvg(markup);
+    }
+
+    // AC-813: PNG and SVG only — no PDF (host-dependency decision, see AC-813), no JPG (lossy artifacts on
+    // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
+    // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
+    private Border _BuildToolbar()
+    {
+        var export = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new MaterialIcon { Kind = MaterialIconKind.TrayArrowDown, Width = 14, Height = 14 },
+                    new TextBlock { Text = "Export" },
+                },
+            },
+            Classes = { "Compact" },
+        };
+        export.Click += (_, _) => new MenuFlyout
+        {
+            Items =
+            {
+                _ExportMenuItem("Export as SVG…", () => _ = _ExportSvgAsync()),
+                _ExportMenuItem("Export as PNG…", () => _ShowPngOptions(export)),
+            },
+        }.ShowAt(export);
+
+        return new Border
+        {
+            Padding = new Thickness(8, 4),
+            Child = new DockPanel { Children = { export } },
+        };
+    }
+
+    private static MenuItem _ExportMenuItem(string header, Action onClick)
+    {
+        var item = new MenuItem { Header = header };
+        item.Click += (_, _) => onClick();
+        return item;
+    }
+
+    // Scale and transparency are asked up front (DoD): "1x/2x/4x" over the diagram's native SVG size, and
+    // transparent by default since RenderOptions.Transparent already defaults on for this pipeline.
+    private void _ShowPngOptions(Control anchor)
+    {
+        var scale = new ComboBox { ItemsSource = new[] { "1x", "2x", "4x" }, SelectedIndex = 0, MinWidth = 70 };
+        var transparent = new CheckBox { Content = "Transparent background", IsChecked = true };
+        var confirm = new Button { Content = "Export…", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+
+        var flyout = new Flyout
+        {
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Margin = new Thickness(12),
+                Children = { new TextBlock { Text = "Scale" }, scale, transparent, confirm },
+            },
+        };
+
+        confirm.Click += (_, _) =>
+        {
+            flyout.Hide();
+            var factor = scale.SelectedIndex switch { 1 => 2f, 2 => 4f, _ => 1f };
+            _ = _ExportPngAsync(factor, transparent.IsChecked == true);
+        };
+
+        flyout.ShowAt(anchor);
+    }
+
+    private static readonly FilePickerFileType _SvgFileType = new("SVG image") { Patterns = ["*.svg"] };
+    private static readonly FilePickerFileType _PngFileType = new("PNG image") { Patterns = ["*.png"] };
+
+    private async Task _ExportSvgAsync()
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export diagram as SVG",
+            SuggestedFileName = "diagram.svg",
+            DefaultExtension = "svg",
+            FileTypeChoices = [_SvgFileType],
+        });
+
+        if (file is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await file.OpenWriteAsync();
+            await using var writer = new StreamWriter(stream);
+            await writer.WriteAsync(_currentSvg);
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Could not export the diagram: {exception.Message}", PluginToastSeverity.Error);
+        }
+    }
+
+    private async Task _ExportPngAsync(float scale, bool transparent)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export diagram as PNG",
+            SuggestedFileName = "diagram.png",
+            DefaultExtension = "png",
+            FileTypeChoices = [_PngFileType],
+        });
+
+        if (file is null)
+        {
+            return;
+        }
+
+        if (DiagramExport.RasterizePng(_currentSvg, scale, transparent) is not { } png)
+        {
+            _host.ShowToast("Could not render the diagram to PNG.", PluginToastSeverity.Error);
+            return;
+        }
+
+        try
+        {
+            await using var stream = await file.OpenWriteAsync();
+            await stream.WriteAsync(png);
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Could not export the diagram: {exception.Message}", PluginToastSeverity.Error);
+        }
     }
 
     // The "agent connected" bar (AC-810), same shape as the terminal pane's (TtyView.axaml, AC-34): visible for as
