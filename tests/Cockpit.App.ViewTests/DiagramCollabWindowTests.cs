@@ -1,4 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
@@ -90,6 +94,116 @@ public class DiagramCollabWindowTests
         window.Close();
         plugin.Dispose();
     });
+
+    [Fact]
+    public void ClickingANodeOnTheSurface_HoldsItAndLetsTheOperatorRemoveIt_WithoutOpeningTheSource() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-841: hand-editing happens on the render itself. One node, fit to the window, so the middle of the
+        // viewport is that node — no coordinate arithmetic to keep in step with the layout.
+        var (plugin, host) = _StartPlugin();
+        host.InvokeQuickStart();
+        var content = host.Windows[0].Content;
+        var window = _Show(content);
+        var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
+
+        host.Registry.UpdateText(surfaceId, "flowchart TD\n    A[\"Alleen\"]");
+        Dispatcher.UIThread.RunJobs();
+
+        var node = _ViewportCentre(content, window);
+        window.MouseDown(node, MouseButton.Left);
+        window.MouseUp(node, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+
+        // The click landed on the node the source calls A: it is now the operator's, and the agent's edit naming it
+        // is refused while it is (AC-852's hold).
+        Assert.True(host.Registry.IsHeldByOperator(surfaceId, "A"));
+        Assert.Contains("jij bewerkt", _CouplingText(content), StringComparison.Ordinal);
+
+        var delete = content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Verwijderen"));
+        Assert.True(delete.IsEnabled);
+        delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        // One change, straight into the registry — and the source box it went past is still read-only (AC-811).
+        Assert.DoesNotContain("A[", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
+        Assert.All(content.GetVisualDescendants().OfType<TextBox>(), box => Assert.True(box.IsReadOnly));
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public void RenamingANodeOnTheSurface_WritesTheNewLabelIntoTheSource() => HeadlessAvalonia.Run(() =>
+    {
+        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+
+        _ClickCentre(content, window);
+        _Button(content, "Hernoemen").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        // The rename box sits on the node itself — the one editable text box on this window; the source box below is
+        // still read-only (AC-811).
+        var box = content.GetVisualDescendants().OfType<TextBox>().Single(candidate => !candidate.IsReadOnly);
+        box.Text = "Hernoemd";
+        box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains("A[\"Hernoemd\"]", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public void ConnectingOnTheSurface_TakesTwoClicksInAnExplicitMode() => HeadlessAvalonia.Run(() =>
+    {
+        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+
+        // Nothing happens on a click until the mode is on: that is what keeps panning and editing apart.
+        _ClickCentre(content, window);
+        Assert.DoesNotContain("-->", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
+
+        _Button(content, "Verbinden").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ClickCentre(content, window);
+        _ClickCentre(content, window);
+
+        Assert.Contains("A --> A", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    private (ICockpitPlugin Plugin, RecordingHost Host, Control Content, Window Window, string SurfaceId) _OpenOnOneNode()
+    {
+        var (plugin, host) = _StartPlugin();
+        host.InvokeQuickStart();
+        var content = host.Windows[0].Content;
+        var window = _Show(content);
+        var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
+
+        host.Registry.UpdateText(surfaceId, "flowchart TD\n    A[\"Alleen\"]");
+        Dispatcher.UIThread.RunJobs();
+        return (plugin, host, content, window, surfaceId);
+    }
+
+    private static Button _Button(Control content, string caption) =>
+        content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, caption));
+
+    private static void _ClickCentre(Control content, Window window)
+    {
+        var point = _ViewportCentre(content, window);
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static Point _ViewportCentre(Control content, Window window)
+    {
+        var viewport = content.GetVisualDescendants().OfType<Border>().Last(border => border.ClipToBounds);
+        var centre = new Point(viewport.Bounds.Width / 2, viewport.Bounds.Height / 2);
+        return viewport.TranslatePoint(centre, window)
+               ?? throw new InvalidOperationException("the diagram viewport must be laid out to be clicked");
+    }
 
     // The body only reaches its own visual tree — and only fires DetachedFromVisualTree on close — inside a real
     // window, which is what this ticket puts it in.
