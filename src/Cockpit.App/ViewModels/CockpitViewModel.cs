@@ -37,8 +37,6 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
-using Cockpit.Core.Abstractions.Diagrams;
-using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Sessions;
@@ -2546,10 +2544,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSwitch? terminalAccessSwitch = null,
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
-        IDiagramAccessSwitch? diagramAccessSwitch = null,
-        IDiagramAccessSettingsStore? diagramAccessSettingsStore = null,
-        IWhiteboardAccessSwitch? whiteboardAccessSwitch = null,
-        IWhiteboardAccessSettingsStore? whiteboardAccessSettingsStore = null,
         ISessionProfileStore? sessionProfileStore = null,
         // AC-794: what the Security tab's node-scope checklist offers to tick, alongside sessionProfileStore above.
         // `Projects` (this same constructor's own ProjectsViewModel) is not reused for this — it is built after
@@ -2623,10 +2617,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             screenLockSettingsStore,
             terminalAccessSwitch,
             terminalAccessSettingsStore,
-            diagramAccessSwitch,
-            diagramAccessSettingsStore,
-            whiteboardAccessSwitch,
-            whiteboardAccessSettingsStore,
             nodeEndpointSettingsStore,
             internalMcpProviders,
             nodePairingBroker,

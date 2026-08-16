@@ -15,8 +15,6 @@ using Cockpit.App.Views;
 using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
-using Cockpit.Core.Abstractions.Diagrams;
-using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Terminal;
@@ -503,14 +501,6 @@ public partial class App : Application
         // session that launches before the operator ever opens Options still reflects the saved choice (default off).
         Program.Services.GetRequiredService<ITerminalAccessSwitch>().Enabled =
             Program.Services.GetRequiredService<ITerminalAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
-
-        // AC-810: same seeding, for the diagram-access master switch.
-        Program.Services.GetRequiredService<IDiagramAccessSwitch>().Enabled =
-            Program.Services.GetRequiredService<IDiagramAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
-
-        // AC-823: same seeding, for the whiteboard-access master switch.
-        Program.Services.GetRequiredService<IWhiteboardAccessSwitch>().Enabled =
-            Program.Services.GetRequiredService<IWhiteboardAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
 
         var actions = new PluginActions(
             cockpit,
