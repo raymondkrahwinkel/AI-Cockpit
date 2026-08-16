@@ -42,9 +42,9 @@ public class DiagramPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        var registration = Assert.Single(host.WorkspaceTypes);
-        Assert.Equal("diagram.panel", registration.Id);
-        var toolbarAction = Assert.Single(host.ToolbarActions);
+        Assert.Equal(["diagram.panel", "diagram.list"], host.WorkspaceTypes.Select(r => r.Id));
+        var registration = host.WorkspaceTypes[0];
+        var toolbarAction = host.ToolbarActions[0];
 
         // The measurement: nothing named "Avalonia*" ever loaded into the plugin's own AssemblyLoadContext —
         // everything the panel needed from the Avalonia family (including Svg.Controls.Skia.Avalonia's own
@@ -59,6 +59,10 @@ public class DiagramPluginLoadTests
         // Avalonia.Base in the plugin's context would fail this with an InvalidCastException, not a false
         // assertion — the plugin's panel simply would not fit the host's visual tree.
         Assert.IsAssignableFrom<Control>(body);
+
+        // AC-826: the list body builds too, against a host with no linked project (default GetProjectMemoryRowsAsync).
+        var listBody = host.WorkspaceTypes[1].CreateBody(new FakeWorkspaceContext());
+        Assert.IsAssignableFrom<Control>(listBody);
 
         // AC-816: the quick-start button now opens a dialog first; RecordingHost.ShowDialogAsync builds it and
         // clicks straight through with the prefilled name, the same "Enter is enough" default an operator gets.

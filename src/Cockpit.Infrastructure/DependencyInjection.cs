@@ -57,6 +57,14 @@ public static class DependencyInjection
             typeof(Diagrams.DiagramMcpTools),
             () => provider.GetRequiredService<Diagrams.DiagramAccessState>().Enabled));
 
+        // cockpit-whiteboard (AC-823): lets an agent read a screenshot of a whiteboard surface the operator has
+        // open, gated by its own master switch and a Read-only Approve/Deny — same shape as cockpit-diagram above,
+        // minus edit (AC-820: the agent never writes to the canvas).
+        services.AddSingleton(provider => new CockpitMcpEndpoint(
+            "cockpit-whiteboard",
+            typeof(Whiteboard.WhiteboardMcpTools),
+            () => provider.GetRequiredService<Whiteboard.WhiteboardAccessState>().Enabled));
+
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
         // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
         // cockpit-session and unlike cockpit-verify/cockpit-worktrees, because this one is now a delivery route

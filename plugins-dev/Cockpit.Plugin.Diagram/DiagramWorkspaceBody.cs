@@ -86,19 +86,27 @@ internal sealed class DiagramWorkspaceBody : UserControl
         Grid.SetColumn(diagramCard, 1);
         Content = layout;
 
-        _RenderInto(SampleDiagram);
+        // AC-826: a diagram opened from the list hands its title/text through here; nothing pending (the
+        // toolbar's own "Diagram Builder" launch) falls back to the sample, same as before.
+        var pending = DiagramOpenHandoff.Pending;
+        DiagramOpenHandoff.Pending = null;
+        var initialTitle = pending?.Title ?? "Diagram";
+        var initialText = pending?.MermaidText ?? SampleDiagram;
+
+        _RenderInto(initialText);
 
         if (_registry is not null)
         {
             // AC-816: a quick-start's name seeds the surface's display name, and coupling a chosen session here
-            // is a plain Couple — zero capabilities, same as every other coupling (see DiagramQuickStart).
+            // is a plain Couple — zero capabilities, same as every other coupling (see DiagramQuickStart). Falls
+            // back to AC-826's list hand-off (initialTitle/initialText) when there is no quick-start.
             if (quickStart is { } request)
             {
-                request.ApplyTo(_registry, _surfaceId, SampleDiagram);
+                request.ApplyTo(_registry, _surfaceId, initialText);
             }
             else
             {
-                _registry.SurfaceOpened(_surfaceId, "Diagram", SampleDiagram);
+                _registry.SurfaceOpened(_surfaceId, initialTitle, initialText);
             }
 
             _registry.CouplingChanged += _OnCouplingChanged;

@@ -10,6 +10,7 @@ namespace Cockpit.Plugin.Diagram;
 public sealed class DiagramPlugin : ICockpitPlugin
 {
     private const string WorkspaceTypeId = "diagram.panel";
+    private const string ListWorkspaceTypeId = "diagram.list";
 
     // A confirmed quick-start (AC-816), consumed by the next fresh body; _lastSurfaceId is that body's surface,
     // so a second quick-start on the still-open panel couples directly instead of being silently dropped.
@@ -40,7 +41,18 @@ public sealed class DiagramPlugin : ICockpitPlugin
             Description = "A diagram rendered from Mermaid syntax.",
         });
 
+        // AC-826: the project's diagrams, read via AC-812's file convention across AC-827's Memory rows.
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(ListWorkspaceTypeId, "Diagrams", context => new DiagramListWorkspaceBody(context, host))
+        {
+            IconKind = MaterialIconKind.FormatListBulleted,
+            Description = "Every diagram saved in this project's memory.",
+        });
+
+        // AC-816: replaces the plain "Diagram Builder" open with a one-screen quick-start (name + optional session).
         host.AddToolbarAction(new ToolbarAction("Nieuw diagram", MaterialIconKind.Sitemap, () => _QuickStartAsync(host)));
+
+        host.AddToolbarAction(new ToolbarAction("Diagrams", MaterialIconKind.FormatListBulleted,
+            () => host.OpenWorkspaceAsync(ListWorkspaceTypeId)));
     }
 
     private async Task _QuickStartAsync(ICockpitHost host)
