@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Diagram.Whiteboard;
 // here, not by the agent, and it names edit_diagram on purpose: the per-object tools would bypass the poort.
 internal static class WhiteboardToDiagram
 {
-    /// <summary>Why converting is off right now, or null when it can be offered.</summary>
+    // Why converting is off right now, or null when it can be offered.
     public static string? Blocker(bool hasDiagramSurfaces, bool sessionLive, WhiteboardCoupling? coupling)
     {
         if (!hasDiagramSurfaces)
@@ -26,7 +26,7 @@ internal static class WhiteboardToDiagram
             : "De agent mag dit bord niet lezen — laat hem eerst meekijken, anders heeft hij niets om om te zetten.";
     }
 
-    /// <summary>The statusregel under the board: what was asked, and what actually landed in the poort.</summary>
+    // De statusregel onder het bord: wat er gevraagd is, en wat er echt in de poort is geland.
     public static string Status(bool asked, int proposals) => proposals switch
     {
         0 when !asked => "",
