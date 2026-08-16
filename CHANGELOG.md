@@ -32,9 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
-- added: the diagram panel now opens straight into a live conversation with an agent — the conversation is the
-  panel — with the rendered diagram growing alongside it as the agent works. The Mermaid source behind it is
-  always one click away, collapsed under the render behind a "toon bron" toggle rather than hidden entirely.
+- added: a diagram now opens in its own window beside the cockpit — drag it, resize it, park it on a second screen —
+  hooked up to the session you are already talking to instead of starting a fresh one of its own. One window per
+  diagram: opening the same one again brings that window forward, and two diagrams from one session are two windows
+  side by side. The Mermaid source behind the render is always one click away, collapsed under it behind a "toon
+  bron" toggle rather than hidden entirely.
+
+- added: a diagram window says which session it is working with, and keeps standing when that session ends — it
+  tells you the session is gone and offers the open sessions to pick a new one from, rather than closing on you or
+  quietly staying attached to something that is no longer there. The same way back out after you disconnect.
 
 - added: an agent can now ask to read or edit a diagram you have open, gated behind Options → Security (off by
   default) and a separate Approve/Deny for reading and for editing — reading never quietly comes with editing.
@@ -302,6 +308,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: closing a session left the "agent connected" bar standing on any diagram or whiteboard it was working
+  with, for an agent that no longer existed. Worse, that stale connection held the surface: no other session could
+  be connected to it, and there was no agent left to disconnect. Closing a session now releases what it held on a
+  diagram or a whiteboard, the way it already did for a terminal pane.
 - fixed: on Linux, reopening the cockpit maximized restored the maximized flag but not the actual window state —
   it looked like a normal window and the maximize button needed two clicks before it would fill the screen. The
   window now comes up genuinely maximized from the start.

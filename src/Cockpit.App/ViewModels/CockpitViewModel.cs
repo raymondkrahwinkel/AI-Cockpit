@@ -20,7 +20,9 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Hotkeys;
 using Cockpit.Core.Screenshots;
@@ -95,6 +97,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly ITerminalAccessRegistry? _terminals;
+    private readonly IDiagramAccessRegistry? _diagrams;
+    private readonly IWhiteboardAccessRegistry? _whiteboards;
     private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
     private readonly IAgentMessageInbox? _agentMessages;
     private readonly IAgentResourceClaims? _agentClaims;
@@ -2544,6 +2548,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSwitch? terminalAccessSwitch = null,
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
+        IDiagramAccessRegistry? diagrams = null,
+        IWhiteboardAccessRegistry? whiteboards = null,
         ISessionProfileStore? sessionProfileStore = null,
         // AC-794: what the Security tab's node-scope checklist offers to tick, alongside sessionProfileStore above.
         // `Projects` (this same constructor's own ProjectsViewModel) is not reused for this — it is built after
@@ -2674,6 +2680,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             worktreeManager.SourceRefreshed += _ToastWorktreeSource;
         }
         _terminals = terminals;
+        _diagrams = diagrams;
+        _whiteboards = whiteboards;
         _liveSessions = liveSessions;
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
@@ -6877,7 +6885,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-34: this session may have been driving a terminal pane; releasing its couplings on close makes that pane's
         // "agent connected" bar disappear (SessionEnded raises CouplingChanged). It is the driver-side teardown the
         // pane's own PaneClosed cannot do — the mirror of the worktree release below, and it runs for every session.
+        //
+        // AC-834: the diagram (AC-810) and whiteboard (AC-823) registries are the same shape and were never released
+        // here at all, so their "agent connected" bar outlived the agent — a coupling nobody could disconnect held
+        // the surface against every other session (IsCoupledByAnother) for the life of the app.
         _terminals?.SessionEnded(session.PaneId);
+        _diagrams?.SessionEnded(session.PaneId);
+        _whiteboards?.SessionEnded(session.PaneId);
 
         // AC-391: a closed pane must stop being remembered as a workspace-presence roster entry, or the roster only
         // ever grows for the life of the app and a reused pane id (unlikely, but not impossible) would inherit a
@@ -7750,12 +7764,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // The session is already unhooked and its waiters released; what still matters is the teardown below.
         }
 
-        // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings, forget the agent-presence
-        // enrollment, the pane's unread inbox and its resource claims, and release the session's worktree. Not
-        // gated on session.WorktreeBranch — same reasoning as the grid close path above: that field misses a
-        // worktree an agent created mid-session via worktree_create, and ReleaseAsync is a no-op when the registry
-        // holds nothing for this pane anyway.
+        // Mirror CloseSessionAsync's driver-side teardown: release any terminal, diagram and whiteboard couplings,
+        // forget the agent-presence enrollment, the pane's unread inbox and its resource claims, and release the
+        // session's worktree. Not gated on session.WorktreeBranch — same reasoning as the grid close path above:
+        // that field misses a worktree an agent created mid-session via worktree_create, and ReleaseAsync is a
+        // no-op when the registry holds nothing for this pane anyway.
         _terminals?.SessionEnded(session.PaneId);
+        _diagrams?.SessionEnded(session.PaneId);
+        _whiteboards?.SessionEnded(session.PaneId);
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);

@@ -1,6 +1,5 @@
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
-using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -11,11 +10,6 @@ public sealed class DiagramPlugin : ICockpitPlugin
 {
     private const string WorkspaceTypeId = "diagram.panel";
     private const string ListWorkspaceTypeId = "diagram.list";
-
-    // A confirmed quick-start (AC-816), consumed by the next fresh body; _lastSurfaceId is that body's surface,
-    // so a second quick-start on the still-open panel couples directly instead of being silently dropped.
-    private DiagramQuickStart? _pendingQuickStart;
-    private string? _lastSurfaceId;
 
     public PluginMetadata Metadata { get; } = new(
         Id: "diagram",
@@ -29,12 +23,18 @@ public sealed class DiagramPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        // Still a tab, still with no session on it (AC-834 took the unconditional EmbedSession out; whether the tab
+        // survives at all is AC-850's call). AC-826's list hands its pick through DiagramOpenHandoff.
         host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Diagram", context =>
         {
-            _lastSurfaceId = context.WorkspaceId;
-            var quickStart = _pendingQuickStart;
-            _pendingQuickStart = null;
-            return new DiagramWorkspaceBody(context, host, quickStart);
+            var pending = DiagramOpenHandoff.Pending;
+            DiagramOpenHandoff.Pending = null;
+            var document = new DiagramDocument(
+                context.WorkspaceId,
+                pending?.Title ?? "Diagram",
+                pending?.MermaidText ?? DiagramDocument.Sample);
+
+            return new DiagramWorkspaceBody(host, document, sessionPaneId: null);
         })
         {
             IconKind = MaterialIconKind.Sitemap,
@@ -55,33 +55,16 @@ public sealed class DiagramPlugin : ICockpitPlugin
             () => host.OpenWorkspaceAsync(ListWorkspaceTypeId)));
     }
 
+    // AC-834: the quick-start's two answers — a name and a session that is already running — are exactly what a
+    // diagram window needs, so it opens one instead of a tab. Which entry points exist at all is AC-850's.
     private async Task _QuickStartAsync(ICockpitHost host)
     {
-        var quickStart = await DiagramQuickStartDialog.ShowAsync(host, "Nieuw diagram");
-        if (quickStart is null)
+        if (await DiagramQuickStartDialog.ShowAsync(host, "Nieuw diagram") is not { } quickStart)
         {
             return;
         }
 
-        var registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
-        var reusingOpenSurface = _lastSurfaceId is { } surfaceId && registry?.Resolve(surfaceId) is not null;
-
-        if (reusingOpenSurface)
-        {
-            // OpenWorkspaceAsync below only brings the still-open panel from an earlier quick-start to front —
-            // its body will not be rebuilt, so couple this pick onto it directly rather than lose it to a body
-            // that never runs. A stale _pendingQuickStart must not survive to a later, unrelated creation either.
-            if (quickStart.SessionPaneId is { } sessionId)
-            {
-                registry!.Couple(sessionId, _lastSurfaceId!);
-            }
-        }
-        else
-        {
-            _pendingQuickStart = quickStart;
-        }
-
-        await host.OpenWorkspaceAsync(WorkspaceTypeId);
+        await DiagramWindow.OpenAsync(host, DiagramDocument.New(quickStart.Name), quickStart.SessionPaneId);
     }
 
     public void Dispose()
