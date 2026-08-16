@@ -71,6 +71,22 @@ internal static partial class FidelityCheck
 
     private sealed record SourceEdge(int Line, string Text, string From, string To);
 
+    // One line's connection, for the per-object edit tools (AC-852): the same connector scan, plus how many
+    // connectors the line holds — a chain ('A --> B --> C') is one line they must not edit in place.
+    internal readonly record struct ConnectionLine(string From, string To, int Connectors);
+
+    internal static ConnectionLine? ReadConnection(string line)
+    {
+        var text = line.Trim();
+        if (ReadEdge(text, 0) is not { } edge)
+        {
+            return null;
+        }
+
+        var scrubbed = EdgeLabel().Replace(QuotedText().Replace(text, "\"\""), " ");
+        return new ConnectionLine(edge.From, edge.To, Connectors(scrubbed).Count);
+    }
+
     // The first line past any YAML front matter. The '---' that opens it is also a flowchart link, so it
     // only counts as front matter when nothing but blank lines precedes it.
     private static int FirstBodyLine(string[] lines)

@@ -188,7 +188,7 @@ public class DiagramMcpToolsTests
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Equal(2, asked.Count);
         Assert.Equal("diagram.edit", asked[1].Scope);
-        Assert.Contains("now wants to propose edits", asked[1].Title);
+        Assert.Contains("now wants to edit it", asked[1].Title);
     }
 
     [Fact]
@@ -270,6 +270,93 @@ public class DiagramMcpToolsTests
         Assert.Equal(Source, registry.PeekText("diagram-1"));
         Assert.Null(registry.CouplingOf(Session, "diagram-1"));
         Assert.Null(registry.PendingProposal("diagram-1"));
+    }
+
+    [Fact]
+    public async Task PerObjectEdit_AppliesStraightAway_UnderTheSameEditConsentAsEditDiagram()
+    {
+        // AC-852: with the diff gate gone for continuous editing (Q1), a per-object call writes through — but the
+        // Edit capability is still asked for once, exactly as edit_diagram asks for it.
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]");
+        var summaries = new List<string>();
+        registry.ObjectEdited += (_, summary) => summaries.Add(summary);
+
+        var json = JsonNode.Parse(await tools.AddNode(Session, "Onboarding flow", "B", "Stop"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
+        Assert.Equal("diagram.edit", asked[0].Scope);
+        Assert.Equal("flowchart LR\n    A[\"Start\"]\n    B[\"Stop\"]", registry.PeekText("diagram-1"));
+        Assert.Null(registry.PendingProposal("diagram-1"));
+
+        // AC-848's line per handling: what changed, not "the whole source was replaced".
+        Assert.Equal(["added node B \"Stop\""], summaries);
+        Assert.Equal("added node B \"Stop\"", json["changed"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task PerObjectEdit_KeepsWhatTheOperatorChangedInTheMeantime_InsteadOfOverwritingTheWholeDiagram()
+    {
+        // The lost-update AC-852 exists to end: the agent never re-sends a whole source, so a hand edit that
+        // landed between two agent calls is still there afterwards.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]");
+        await tools.AddNode(Session, "Onboarding flow", "B", "Stop");
+
+        registry.UpdateText("diagram-1", registry.PeekText("diagram-1") + "\n    C[\"Operator's own\"]");
+        await tools.RenameNode(Session, "Onboarding flow", "A", "Begin");
+
+        var text = registry.PeekText("diagram-1");
+        Assert.Contains("C[\"Operator's own\"]", text);
+        Assert.Contains("A[\"Begin\"]", text);
+    }
+
+    [Fact]
+    public async Task PerObjectEdit_OnAnObjectTheOperatorIsHolding_IsRefusedWithAReason_WhileOtherObjectsStillEdit()
+    {
+        // The ticket's own test: the agent renames A while the operator has B under their hand (D-5's "jij
+        // bewerkt" marking) — the rename lands, the call naming B is refused and changes nothing.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]\n    B[\"Stop\"]");
+        registry.HoldObject("diagram-1", "B");
+
+        var renamedA = JsonNode.Parse(await tools.RenameNode(Session, "Onboarding flow", "A", "Begin"));
+        var refusedB = JsonNode.Parse(await tools.RenameNode(Session, "Onboarding flow", "B", "Halt"));
+
+        Assert.True(renamedA!["ok"]!.GetValue<bool>());
+        Assert.False(refusedB!["ok"]!.GetValue<bool>());
+        Assert.Contains("operator is editing", refusedB["error"]!.GetValue<string>());
+        Assert.Equal("flowchart LR\n    A[\"Begin\"]\n    B[\"Stop\"]", registry.PeekText("diagram-1"));
+
+        // And the agent can simply try again once the operator lets go.
+        registry.ReleaseObject("diagram-1", "B");
+        Assert.True(JsonNode.Parse(await tools.RenameNode(Session, "Onboarding flow", "B", "Halt"))!["ok"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task PerObjectEdit_WhenDenied_ChangesNothing()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.ConnectNodes(Session, "Onboarding flow", "A", "C"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(Source, registry.PeekText("diagram-1"));
+    }
+
+    [Fact]
+    public async Task PerObjectEdit_ThatCouldNotBeApplied_SaysWhy_AndLeavesTheSourceAlone()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.RemoveNode(Session, "Onboarding flow", "Ghost"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("no node", json["error"]!.GetValue<string>());
+        Assert.Equal(Source, registry.PeekText("diagram-1"));
     }
 
     [Fact]

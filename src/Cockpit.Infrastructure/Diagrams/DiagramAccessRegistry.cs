@@ -19,6 +19,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public event Action<string, DiagramProposal?>? ProposalChanged;
 
+    public event Action<string, string>? ObjectEdited;
+
     public void SurfaceOpened(string surfaceId, string name, string initialText)
     {
         lock (_lock)
@@ -238,6 +240,66 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         return true;
     }
 
+    // The read-modify-write happens inside the lock, so an edit naming one object cannot be computed against a
+    // stale copy and land on top of another agent's or the operator's change to a different one.
+    // ponytail: that means `edit` runs under the registry's single lock (it renders to check its own output) —
+    // per-surface locks if a busy surface ever makes that felt.
+    public bool EditCoupled(string sessionId, string surfaceId, Func<string, (string? Text, string Summary)> edit)
+    {
+        string text, summary;
+        lock (_lock)
+        {
+            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
+                || !_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return false;
+            }
+
+            var (edited, describedAs) = edit(surface.Text);
+            if (edited is null)
+            {
+                return false;
+            }
+
+            surface.Text = text = edited;
+            summary = describedAs;
+        }
+
+        TextChanged?.Invoke(surfaceId, text);
+        ObjectEdited?.Invoke(surfaceId, summary);
+        return true;
+    }
+
+    public void HoldObject(string surfaceId, string objectId)
+    {
+        lock (_lock)
+        {
+            if (_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                surface.HeldByOperator.Add(objectId);
+            }
+        }
+    }
+
+    public void ReleaseObject(string surfaceId, string objectId)
+    {
+        lock (_lock)
+        {
+            if (_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                surface.HeldByOperator.Remove(objectId);
+            }
+        }
+    }
+
+    public bool IsHeldByOperator(string surfaceId, string objectId)
+    {
+        lock (_lock)
+        {
+            return _surfaces.TryGetValue(surfaceId, out var surface) && surface.HeldByOperator.Contains(objectId);
+        }
+    }
+
     public void SessionEnded(string sessionId)
     {
         List<string> dropped, droppedProposals;
@@ -330,5 +392,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         public string Name { get; set; } = name;
 
         public string Text { get; set; } = text;
+
+        // The objects the operator has under their hand right now (AC-841's "jij bewerkt" marking).
+        public HashSet<string> HeldByOperator { get; } = new(StringComparer.Ordinal);
     }
 }
