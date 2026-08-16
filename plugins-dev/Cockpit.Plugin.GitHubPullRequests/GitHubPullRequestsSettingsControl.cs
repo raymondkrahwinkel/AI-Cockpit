@@ -22,6 +22,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     private readonly TextBox _watchedRepos;
     private readonly CheckBox _watchInvolved;
     private readonly CheckBox _notifyOnReviewRequests;
+    private readonly CheckBox _mcpEnabled;
 
     public GitHubPullRequestsSettingsControl(GitHubPullRequestsSettings settings)
     {
@@ -111,6 +112,12 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             MinHeight = 140,
         };
 
+        _mcpEnabled = new CheckBox
+        {
+            Content = "Let sessions ask for pull request status (get_pr_status MCP tool)",
+            IsChecked = settings.McpEnabled,
+        };
+
         Content = new ScrollViewer
         {
             Content = new StackPanel
@@ -139,6 +146,8 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                         "{repo} — the repository name.\n" +
                         "{body} — the full pull request description; \"(no description)\" when empty.\n" +
                         "{author} — who opened it; \"(unknown)\" when GitHub does not give one."),
+                    _Label("Agent tools"),
+                    SettingsHelpRow.Build(_mcpEnabled, "Exposes get_pr_status over MCP so an agent session or the assistant can ask for a pull request's checks, mergeable state, review decision and title — cached briefly so several sessions watching the same PR share one lookup."),
                 },
             },
         };
@@ -157,6 +166,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         _settings.WatchedRepos = _watchedRepos.Text?.Trim() ?? string.Empty;
         _settings.WatchEverythingIAmInvolvedWith = _watchInvolved.IsChecked == true;
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
+        _settings.McpEnabled = _mcpEnabled.IsChecked == true;
         return true;
     }
 
