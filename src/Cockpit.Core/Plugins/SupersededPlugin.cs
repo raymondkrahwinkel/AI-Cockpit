@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Plugins;
 
-// A plugin this build has replaced with others, and the pure decision of whether to say so. It exists because
-// splitting one plugin into two — or folding one into another — leaves the old one installed: the installer
-// deliberately never removes what an operator has (`BundledPluginInstaller`: "a plugin they disabled stays
-// disabled and is left untouched on disk"), which is right — but it means the old plugin keeps contributing
-// the same widget or workspace types as its successors, and only one of each can win.
+// A plugin this build has replaced with others, and the pure decision of whether to say so. Splitting a plugin
+// in two — or folding one into another — leaves the old one installed (the installer never removes what an
+// operator has), so it keeps claiming the same widget or workspace types as its successors, and one loses.
 //
 // `Id`: The folder id of the plugin that has been replaced.
 // `DisplayName`: What to call it when telling the operator.
