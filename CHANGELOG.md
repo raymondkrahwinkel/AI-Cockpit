@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: every hand-edit or agent edit on a diagram can now be undone from the activity strip — point at a line and
+  "Terugdraaien" takes back exactly that one change, never "undo the last thing", so undoing an agent's edit from
+  five minutes ago cannot discard what you did on a different node since. A reverted line stays in the strip, marked
+  as reverted, not erased from the history — and the agent sees the change gone the next time it reads the diagram.
+  On the whiteboard, the same button takes back one object an agent placed; taking back something it erased is not
+  supported yet.
+
 - added: an agent can now draw along on a whiteboard you have open — until now it could only look. It puts down one
   object at a time (a shape, a sticky note or a label), never replacing the board, and everything it places carries
   a "neergezet · agent" badge so you can always see which marks are yours and which are its. It cannot move, change

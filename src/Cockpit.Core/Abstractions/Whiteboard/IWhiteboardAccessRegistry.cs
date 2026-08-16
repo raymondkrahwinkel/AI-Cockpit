@@ -34,6 +34,17 @@ public sealed record WhiteboardSurfaceView(string SurfaceId, string Name, Whiteb
 // `Coupling` is null when it just decoupled.
 public sealed record WhiteboardCouplingChange(string SurfaceId, WhiteboardCoupling? Coupling);
 
+// AC-853: one journaled agent action on a surface's objects. Only `Place` can be undone today — the board has no
+// operator hand-edit path and no fine-grained edit tools yet (AC-852's diagram counterpart), so an `Erase` is
+// journaled for the strip to show but its own object cannot be losslessly restored; see Revert.
+public enum WhiteboardHistoryKind
+{
+    Place,
+    Erase,
+}
+
+public sealed record WhiteboardHistoryEntry(string Id, string Origin, WhiteboardHistoryKind Kind, string ObjectId, string Summary, DateTime When, bool Reverted);
+
 /// <summary>
 /// The source of truth for whiteboard-surface access (AC-823) — the whiteboard counterpart to
 /// <c>IDiagramAccessRegistry</c> (AC-810); read that one first. Deviations: what a surface holds is a rendered PNG
@@ -113,4 +124,19 @@ public interface IWhiteboardAccessRegistry
 
     /// <summary>Announces <paramref name="request"/> and remembers its caller, so the surface is coupled to it the moment the window registers it. False when nothing is listening at all — there is no whiteboard surface in this cockpit to open one on.</summary>
     bool RequestOpen(WhiteboardOpenRequest request);
+
+    // ---- Undo (AC-853) ----
+
+    /// <summary>This surface's journaled agent actions, oldest first — what the activity strip (AC-848) shows per line, with a targeted revert offered on the ones that support it.</summary>
+    IReadOnlyList<WhiteboardHistoryEntry> History(string surfaceId);
+
+    /// <summary>Raised whenever a surface's history changes: a new action journaled, or one marked reverted.</summary>
+    event Action<string>? HistoryChanged;
+
+    /// <summary>
+    /// Undoes the one journaled <see cref="WhiteboardHistoryKind.Place"/> named by <paramref name="entryId"/> — takes
+    /// that object back regardless of who is coupled now, unlike <see cref="ErasePlaced"/>. Null when it landed, else
+    /// the refusal reason: unknown entry, already reverted, gone already, or an <see cref="WhiteboardHistoryKind.Erase"/> (AC-853).
+    /// </summary>
+    string? Revert(string surfaceId, string entryId);
 }
