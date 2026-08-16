@@ -61,10 +61,9 @@ internal static class DiagramCatalog
         return path;
     }
 
-    // The whole file per save, never a partial patch — the home's own history (git, Depot versions) is what keeps
-    // the diff readable (AC-812). `expected` is the file as this window last saw it: given one that no longer
-    // matches, the save does not land at all (AC-812's "detect, never silently overwrite"; resolving such a
-    // mismatch through a diff is AC-825's gate, not this).
+    // The whole file per save, never a partial patch — the home's own history (git, Depot versions) keeps the diff
+    // readable (AC-812). `expected` is the file as this window last saw it; no longer matching means the save does
+    // not land at all (AC-812's "detect, never silently overwrite" — resolving it through a diff is AC-825's).
     public static void Write(string filePath, string title, string mermaidText, string? expected = null)
     {
         if (expected is not null && File.Exists(filePath) && File.ReadAllText(filePath) != expected)
