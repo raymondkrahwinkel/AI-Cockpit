@@ -12,6 +12,7 @@ namespace Cockpit.Infrastructure.Diagrams;
 // The `cockpit-diagram` MCP tools (AC-810), gated per-capability like `cockpit-terminal` (AC-34) — read that class
 // first. Deviations: `read_diagram` always returns the surface as it stands (a state, not a stream), and
 // `edit_diagram`'s consent text is derived from the real change (DiagramChangeSummary), never agent prose (cf. AC-489).
+// The per-object tools (AC-852) share Edit's one ask but write straight through: only `edit_diagram` still diffs.
 internal sealed class DiagramMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
@@ -115,6 +116,124 @@ internal sealed class DiagramMcpTools
         });
     }
 
+    [McpServerTool(Name = "add_node")]
+    [Description("Adds one node to a diagram surface and applies it straight away — the rest of the diagram is left exactly as it is, including anything the operator changed since you last read it. `id` is how connections refer to the node (letters, digits, underscores); `label` is what is drawn in it. Needs the same one-off Approve as edit_diagram, and is refused with a reason if a node with that id is already there, or if the operator is editing that object right now — try it again once they let go.")]
+    public Task<string> AddNode(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
+        [Description("The new node's id: one word of letters, digits or underscores.")] string id,
+        [Description("The text drawn inside the node.")] string label) =>
+        _ApplyObjectEditAsync(session, diagram, $"add node \"{_SingleLine(label)}\"", [id],
+            source => DiagramObjectEdit.AddNode(source, id, label));
+
+    [McpServerTool(Name = "rename_node")]
+    [Description("Changes one node's label and applies it straight away, leaving every other line of the diagram alone. The node's id stays as it is — that is what its connections are written in terms of, so renaming the label never rewrites them. Refused with a reason if there is no such node, or if the operator is editing that node right now.")]
+    public Task<string> RenameNode(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
+        [Description("The id of the node to rename, as it appears in the source.")] string id,
+        [Description("The new text to draw inside the node.")] string label) =>
+        _ApplyObjectEditAsync(session, diagram, $"rename node {_SingleLine(id)} to \"{_SingleLine(label)}\"", [id],
+            source => DiagramObjectEdit.RenameNode(source, id, label));
+
+    [McpServerTool(Name = "remove_node")]
+    [Description("Removes one node and the connections that ran to or from it — nothing else. A connection whose node is gone would draw that node again on the next render, which is why they go together; the reply says how many went with it. Refused with a reason if there is no such node, or if the operator is editing it right now.")]
+    public Task<string> RemoveNode(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
+        [Description("The id of the node to remove.")] string id) =>
+        _ApplyObjectEditAsync(session, diagram, $"remove node {_SingleLine(id)} and its connections", [id],
+            source => DiagramObjectEdit.RemoveNode(source, id));
+
+    [McpServerTool(Name = "connect_nodes")]
+    [Description("Draws one connection from one node to another and applies it straight away, leaving the rest of the diagram alone. An id that is not in the diagram yet becomes a node of its own, the way Mermaid reads it — use add_node first if you want it to carry a label. Refused with a reason if that connection is already there, or if the operator is editing either end (or the connection itself) right now.")]
+    public Task<string> ConnectNodes(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
+        [Description("The id of the node the connection starts at.")] string from,
+        [Description("The id of the node the connection ends at.")] string to,
+        [Description("Optional text drawn on the connection.")] string? label = null) =>
+        _ApplyObjectEditAsync(session, diagram, $"connect {_SingleLine(from)} -> {_SingleLine(to)}", [from, to, $"{from}->{to}"],
+            source => DiagramObjectEdit.Connect(source, from, to, label));
+
+    [McpServerTool(Name = "disconnect_nodes")]
+    [Description("Removes one connection between two nodes and applies it straight away. Both nodes stay; only the line between them goes. Refused with a reason if there is no such connection, or if the operator is editing either end (or the connection itself) right now.")]
+    public Task<string> DisconnectNodes(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
+        [Description("The id of the node the connection starts at.")] string from,
+        [Description("The id of the node the connection ends at.")] string to) =>
+        _ApplyObjectEditAsync(session, diagram, $"disconnect {_SingleLine(from)} -> {_SingleLine(to)}", [from, to, $"{from}->{to}"],
+            source => DiagramObjectEdit.Disconnect(source, from, to));
+
+    // The one path every per-object tool takes (AC-852). Same Edit consent as edit_diagram, then the edit itself
+    // runs inside the registry's lock: the hold check, the line surgery and the "is this still valid Mermaid"
+    // render all see one text, and nothing is written unless all three pass.
+    private async Task<string> _ApplyObjectEditAsync(
+        string session,
+        string diagram,
+        string ask,
+        string[] objects,
+        Func<string, DiagramEdit> edit)
+    {
+        if (_registry.Resolve(diagram) is not { } surface)
+        {
+            return _Serialize(new { ok = false, error = "No such diagram surface — call list_diagrams for the open surfaces and their ids." });
+        }
+
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        if (await _EnsureCapabilityAsync(caller, surface, DiagramCapability.Edit, ask).ConfigureAwait(false) is { } error)
+        {
+            return _Serialize(new { ok = false, error });
+        }
+
+        string? refusal = null;
+        var summary = "";
+        var fidelity = new DiagramFidelity([]);
+        var applied = _registry.EditCoupled(caller, surface.SurfaceId, current =>
+        {
+            if (objects.FirstOrDefault(name => _registry.IsHeldByOperator(surface.SurfaceId, name)) is { } held)
+            {
+                refusal = $"The operator is editing \"{held}\" right now, so nothing was changed. Try the same call again once they are done with it.";
+                return (null, "");
+            }
+
+            var result = edit(current);
+            if (result.Refusal is { } reason)
+            {
+                refusal = reason;
+                return (null, "");
+            }
+
+            if (!_TryRender(result.Text!, out fidelity))
+            {
+                refusal = "That change would not have left valid Mermaid behind, so nothing was changed.";
+                return (null, "");
+            }
+
+            summary = result.Summary;
+            return (result.Text, result.Summary);
+        });
+
+        if (!applied)
+        {
+            return _Serialize(new
+            {
+                ok = false,
+                error = refusal ?? "That diagram surface could not be edited — it may have closed or been disconnected.",
+            });
+        }
+
+        return _Serialize(new
+        {
+            ok = true,
+            id = surface.SurfaceId,
+            name = surface.Name,
+            changed = summary,
+            fidelity = new { complete = fidelity.IsComplete, findings = fidelity.Findings },
+        });
+    }
+
     // Ensures this session holds at least `needed` on `surface`, asking the operator once for exactly that much.
     // Returns an error string to surface, or null when the session now holds it. `changeSummary` is only meaningful
     // (and only supplied) for an Edit ask — Read has nothing of the caller's to describe.
@@ -181,9 +300,9 @@ internal sealed class DiagramMcpTools
                 ConsentRisk.Dangerous)
             : new ConsentRequest(
                 widening
-                    ? "An agent that is reading a diagram now wants to propose edits to it"
-                    : "An agent wants to read a diagram and propose edits to it",
-                $"Let this agent propose edits to diagram \"{_SingleLine(surface.Name)}\" ({changeSummary}). Nothing changes until you accept its proposal, block by block, in the diagram panel — you can watch, edit alongside, and Disconnect at any time.",
+                    ? "An agent that is reading a diagram now wants to edit it"
+                    : "An agent wants to read a diagram and edit it",
+                $"Let this agent edit diagram \"{_SingleLine(surface.Name)}\" ({changeSummary}). A change to a single node or connection is applied straight away; replacing the whole source is offered to you as a proposal, block by block, in the diagram panel. You can watch, edit alongside, and Disconnect at any time.",
                 new ConsentSource(surface.SurfaceId, null, ConsentSourceCatalog.DiagramMcp),
                 "diagram.edit",
                 ConsentRisk.Dangerous);
@@ -198,15 +317,24 @@ internal sealed class DiagramMcpTools
 
     // The render engine is fed agent-supplied text it may not be able to parse at all — that must not crash the
     // MCP call, only be reported as an unverifiable fidelity rather than a false "complete".
-    private static DiagramFidelity _ComputeFidelity(string source)
+    private static DiagramFidelity _ComputeFidelity(string source) =>
+        _TryRender(source, out var fidelity)
+            ? fidelity
+            : new DiagramFidelity(["Could not check this diagram against the render engine — the source may not be valid Mermaid syntax."]);
+
+    // False when the engine could not render this source at all — a per-object edit that produced that is not
+    // written (AC-852: every call leaves valid Mermaid behind).
+    private static bool _TryRender(string source, out DiagramFidelity fidelity)
     {
         try
         {
-            return MermaidRenderPipeline.Render(source, NeutralTheme).Fidelity;
+            fidelity = MermaidRenderPipeline.Render(source, NeutralTheme).Fidelity;
+            return true;
         }
         catch (Exception)
         {
-            return new DiagramFidelity(["Could not check this diagram against the render engine — the source may not be valid Mermaid syntax."]);
+            fidelity = new DiagramFidelity([]);
+            return false;
         }
     }
 

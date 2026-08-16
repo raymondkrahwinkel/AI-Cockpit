@@ -95,6 +95,28 @@ public interface IDiagramAccessRegistry
     /// <summary>Writes new text into the surface and raises <see cref="TextChanged"/>. Returns false when this session does not hold <see cref="DiagramCapability.Edit"/> on it.</summary>
     bool WriteCoupled(string sessionId, string surfaceId, string text);
 
+    /// <summary>
+    /// Applies a per-object edit (AC-852) under the registry's own lock: <paramref name="edit"/> gets the text as it
+    /// stands then and returns the new text plus a readable summary, or a null text to change nothing — so two edits
+    /// naming different objects both land, neither overwriting the whole of the other. Raises <see cref="TextChanged"/>
+    /// and <see cref="ObjectEdited"/>; false without <see cref="DiagramCapability.Edit"/> or when nothing changed.
+    /// </summary>
+    bool EditCoupled(string sessionId, string surfaceId, Func<string, (string? Text, string Summary)> edit);
+
+    /// <summary>Raised for each applied per-object edit with a one-line summary of what changed — what the activity strip (AC-848) shows per handling, rather than "the whole source was replaced".</summary>
+    event Action<string, string>? ObjectEdited;
+
+    // ---- The operator's "jij bewerkt" hold (AC-841/D-5) ----
+
+    /// <summary>Marks an object on the surface as the operator's while they are editing it: a node by its id, a connection as "from-&gt;to". Idempotent.</summary>
+    void HoldObject(string surfaceId, string objectId);
+
+    /// <summary>Releases the operator's hold on an object.</summary>
+    void ReleaseObject(string surfaceId, string objectId);
+
+    /// <summary>Whether the operator is holding that object right now — an agent edit naming it is refused with a reason rather than applied or silently dropped.</summary>
+    bool IsHeldByOperator(string surfaceId, string objectId);
+
     /// <summary>Breaks every coupling this agent session held (its session ended or crashed).</summary>
     void SessionEnded(string sessionId);
 
