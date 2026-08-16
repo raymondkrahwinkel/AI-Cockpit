@@ -17,6 +17,7 @@ using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -283,6 +284,27 @@ internal sealed class CockpitHost(
 
         var projects = await services.GetRequiredService<IProjectStore>().LoadAsync(cancellationToken);
         return projects.Find(projectId)?.LinkedAs(key);
+    }
+
+    public async Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId, CancellationToken cancellationToken)
+    {
+        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
+        if (string.IsNullOrEmpty(pane))
+        {
+            return [];
+        }
+
+        var projectId = await services.GetRequiredService<ISessionProjectResolver>().ProjectIdOfAsync(pane, cancellationToken);
+        if (string.IsNullOrEmpty(projectId))
+        {
+            return [];
+        }
+
+        var projects = await services.GetRequiredService<IProjectStore>().LoadAsync(cancellationToken);
+        var resources = projects.Find(projectId)?.Resources ?? [];
+        return [.. resources
+            .Where(resource => resource.Role == ProjectResourceRole.Memory)
+            .Select(resource => new ProjectMemoryRow(resource.Reference, resource.Label, resource.ReachesSessions))];
     }
 
     public void AddTrackerProvider(ITrackerProvider provider)
