@@ -32,9 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
-- added: the diagram panel now opens straight into a live conversation with an agent — the conversation is the
-  panel — with the rendered diagram growing alongside it as the agent works. The Mermaid source behind it is
-  always one click away, collapsed under the render behind a "toon bron" toggle rather than hidden entirely.
+- added: a diagram now opens in its own window beside the cockpit — drag it, resize it, park it on a second screen —
+  hooked up to the session you are already talking to instead of starting a fresh one of its own. One window per
+  diagram: opening the same one again brings that window forward, and two diagrams from one session are two windows
+  side by side. The Mermaid source behind the render is always one click away, collapsed under it behind a "toon
+  bron" toggle rather than hidden entirely.
+
+- added: a diagram window says which session it is working with, and keeps standing when that session ends — it
+  tells you the session is gone and offers the open sessions to pick a new one from, rather than closing on you or
+  quietly staying attached to something that is no longer there. The same way back out after you disconnect.
 
 - added: an agent can now ask to read or edit a diagram you have open, gated behind Options → Security (off by
   default) and a separate Approve/Deny for reading and for editing — reading never quietly comes with editing.

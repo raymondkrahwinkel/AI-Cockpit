@@ -8,7 +8,7 @@ using Avalonia.Svg.Skia;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
-using Cockpit.Plugins.Abstractions.Workspaces;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Mermaider;
@@ -16,20 +16,11 @@ using MermaidRenderOptions = Mermaider.Models.RenderOptions;
 
 namespace Cockpit.Plugin.Diagram;
 
-// The whole body of a Diagram workspace (AC-809 proved the panel survives the plugin boundary; AC-810 wired the
-// cockpit-diagram MCP coupling; AC-824 makes the panel itself the surface — an embedded live conversation, AC-810's
-// coupling bar unchanged, and a diagram card beside it that keeps pace with the conversation).
+// The whole body of a diagram window (AC-809 proved the panel survives the plugin boundary; AC-810 wired the
+// cockpit-diagram MCP coupling; AC-834 makes it a window beside the cockpit, bound to a session that is already
+// running). It starts nothing and ends nothing: the conversation stays in the session, the binding is a peephole.
 internal sealed class DiagramWorkspaceBody : UserControl
 {
-    private const string SampleDiagram = """
-        flowchart LR
-            Zip[Plugin zip] -->|PluginLoadContext| Fallthrough{Falls through?}
-            Fallthrough -->|Avalonia, Skia| Host[Host's own copy]
-            Fallthrough -->|Mermaider| Own[Plugin's own copy]
-            Host --> Panel[This panel]
-            Own --> Panel
-        """;
-
     private readonly ICockpitHost _host;
     private readonly IDiagramAccessRegistry? _registry;
     private readonly string _surfaceId;
@@ -38,41 +29,37 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
     private readonly TextBlock _editChip;
+    private readonly Button _coupleButton;
+    private readonly Button _disconnectButton;
     private readonly Border _proposalPanel;
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
     private string _currentSvg = "";
     private DiagramProposal? _pendingProposal;
     private readonly HashSet<int> _acceptedBlocks = [];
+    private IPluginSessionBinding _binding;
+    private string? _boundSessionName;
+    private string? _endedSessionName;
 
-    public DiagramWorkspaceBody(IWorkspaceContext context, ICockpitHost host, DiagramQuickStart? quickStart = null)
+    public DiagramWorkspaceBody(ICockpitHost host, DiagramDocument document, string? sessionPaneId)
     {
         _host = host;
         _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
-        _surfaceId = context.WorkspaceId;
+        _surfaceId = document.Id;
 
         // A fixed size, not Stretch=Fill: Avalonia.Svg.Skia.Svg's first measure pass returns a small placeholder
         // before its picture is ready, and nothing here forces a second layout pass once it is — a host-side
         // concern for whichever ticket designs the real panel ([e]), not this one.
         _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!) { Stretch = Stretch.Uniform, Width = 340, Height = 200, Margin = new Thickness(16) };
 
-        (_couplingBar, _couplingLabel, _readChip, _editChip) = _BuildCouplingBar();
+        (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         var toolbar = _BuildToolbar();
 
-        // AC-824: the conversation is the surface — a live embedded session, same mechanism FanOut/Autopilot use
-        // (IWorkspaceContext.EmbedSession). The host owns its lifetime and ends it when this workspace closes.
-        var conversation = context.EmbedSession(new EmbeddedSessionRequest()).View;
-
-        var diagramCard = new Border
+        Content = new DockPanel
         {
-            BorderThickness = new Thickness(1, 0, 0, 0),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
-            Child = new DockPanel
-            {
-                Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, new ScrollViewer { Content = _svg } },
-            },
+            Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, new ScrollViewer { Content = _svg } },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
@@ -80,43 +67,34 @@ internal sealed class DiagramWorkspaceBody : UserControl
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
 
-        var layout = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,380") };
-        layout.Children.Add(conversation);
-        layout.Children.Add(diagramCard);
-        Grid.SetColumn(diagramCard, 1);
-        Content = layout;
+        _RenderInto(document.MermaidText);
 
-        // AC-826: a diagram opened from the list hands its title/text through here; nothing pending (the
-        // toolbar's own "Diagram Builder" launch) falls back to the sample, same as before.
-        var pending = DiagramOpenHandoff.Pending;
-        DiagramOpenHandoff.Pending = null;
-        var initialTitle = pending?.Title ?? "Diagram";
-        var initialText = pending?.MermaidText ?? SampleDiagram;
-
-        _RenderInto(initialText);
+        // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
+        // session is gone — lands on DetachedSessionBinding, which is the "no agent on this diagram" state.
+        _binding = _Bind(sessionPaneId);
 
         if (_registry is not null)
         {
-            // AC-816: a quick-start's name seeds the surface's display name, and coupling a chosen session here
-            // is a plain Couple — zero capabilities, same as every other coupling (see DiagramQuickStart). Falls
-            // back to AC-826's list hand-off (initialTitle/initialText) when there is no quick-start.
-            if (quickStart is { } request)
-            {
-                request.ApplyTo(_registry, _surfaceId, initialText);
-            }
-            else
-            {
-                _registry.SurfaceOpened(_surfaceId, initialTitle, initialText);
-            }
-
+            _registry.SurfaceOpened(_surfaceId, document.Title, document.MermaidText);
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.TextChanged += _OnTextChanged;
             _registry.ProposalChanged += _OnProposalChanged;
-            _RefreshCouplingBar();
+
+            // A plain Couple — zero capabilities. read_diagram/edit_diagram still ask their own consent (AC-810).
+            if (_binding.IsLive)
+            {
+                _registry.Couple(_binding.PaneId, _surfaceId);
+            }
         }
+
+        // No registry (an older host) means coupling cannot be shown or offered at all, so the bar goes rather
+        // than standing there with a Koppelen… button that could do nothing.
+        _couplingBar.IsVisible = _registry is not null;
+        _RefreshCouplingBar();
 
         DetachedFromVisualTree += (_, _) =>
         {
+            _binding.Dispose();
             if (_registry is null)
             {
                 return;
@@ -127,6 +105,48 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry.ProposalChanged -= _OnProposalChanged;
             _registry.SurfaceClosed(_surfaceId);
         };
+    }
+
+    // The name is read here and kept, not read on demand: by the time the session ends it is gone from the
+    // cockpit, and "session … has ended" with no name in it is the one moment the operator needs one.
+    private IPluginSessionBinding _Bind(string? paneId)
+    {
+        var binding = _host.BindToSession(paneId ?? "");
+        _boundSessionName = binding.SessionName ?? (binding.IsLive ? binding.PaneId : null);
+        binding.Ended += _OnSessionEnded;
+        return binding;
+    }
+
+    // The session behind this window ended. Nothing here closes the window — the diagram stays open and says so.
+    // The registry's own SessionEnded is never called by the host today (only the terminal one is), so this is
+    // also what actually drops the coupling.
+    private void _OnSessionEnded(object? sender, EventArgs e) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        _endedSessionName = _boundSessionName;
+        _registry?.Disconnect(_surfaceId);
+        _RefreshCouplingBar();
+    });
+
+    // Couples this diagram to another running session — the way out of "window open, no agent", after the bound
+    // session ended or the operator disconnected. Exclusivity is the registry's (IsCoupledByAnother): a surface a
+    // different agent already holds refuses, and the operator is told rather than shown an exception.
+    private void _Recouple(string paneId)
+    {
+        try
+        {
+            _registry?.Couple(paneId, _surfaceId);
+        }
+        catch (InvalidOperationException exception)
+        {
+            _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+            return;
+        }
+
+        _binding.Ended -= _OnSessionEnded;
+        _binding.Dispose();
+        _binding = _Bind(paneId);
+        _endedSessionName = null;
+        _RefreshCouplingBar();
     }
 
     // ListSurfaces/CouplingOf are session-scoped (AC-89: an agent only sees its own coupling) — this panel is not
@@ -345,16 +365,21 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
     }
 
-    // The "agent connected" bar (AC-810), same shape as the terminal pane's (TtyView.axaml, AC-34): visible for as
-    // long as this surface is coupled to any agent, even with zero capabilities granted yet — that is a real,
-    // visible state (AC-816's quick-start couples before either capability is ever asked for), not a hidden one.
-    private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip) _BuildCouplingBar()
+    // The "agent connected" bar (AC-810), same shape as the terminal pane's (TtyView.axaml, AC-34), now always on
+    // screen (AC-834): "no agent on this diagram" is a state the window is genuinely in — after the session ended,
+    // or after Disconnect — and a bar that hides itself leaves the operator no way back to a coupled one.
+    private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip, Button Couple, Button Disconnect) _BuildCouplingBar()
     {
         var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Foreground = _Brush("CockpitAccentBrush") };
         var readChip = _Chip();
         var editChip = _Chip();
         var disconnect = new Button { Content = "Disconnect", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
         disconnect.Click += (_, _) => _registry?.Disconnect(_surfaceId);
+
+        var couple = new Button { Content = "Koppelen…", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+        couple.Click += (_, _) => _ShowSessionPicker(couple);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { couple, disconnect } };
 
         var bar = new Border
         {
@@ -363,12 +388,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Background = _Brush("CockpitSecondaryBgBrush"),
             BorderBrush = _Brush("CockpitAccentBrush"),
             BorderThickness = new Thickness(1),
-            IsVisible = false,
             Child = new DockPanel
             {
                 Children =
                 {
-                    disconnect,
+                    actions,
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
@@ -385,22 +409,54 @@ internal sealed class DiagramWorkspaceBody : UserControl
                 },
             },
         };
-        DockPanel.SetDock(disconnect, Dock.Right);
+        DockPanel.SetDock(actions, Dock.Right);
 
-        return (bar, label, readChip, editChip);
+        return (bar, label, readChip, editChip, couple, disconnect);
+    }
+
+    // The open sessions by name (AC-833), so recoupling names a session instead of guessing one. No running
+    // session is a state worth reading, not an empty menu.
+    private void _ShowSessionPicker(Control anchor)
+    {
+        var open = _host.Sessions.OpenSessions;
+        var flyout = new MenuFlyout();
+        if (open.Count == 0)
+        {
+            flyout.Items.Add(new MenuItem { Header = "Geen open sessies", IsEnabled = false });
+        }
+
+        foreach (var session in open)
+        {
+            var item = new MenuItem { Header = session.Name };
+            item.Click += (_, _) => _Recouple(session.PaneId);
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(anchor);
     }
 
     private void _RefreshCouplingBar()
     {
-        _couplingBar.IsVisible = _current is not null;
+        var coupled = _current is not null;
+        _disconnectButton.IsVisible = coupled;
+        _coupleButton.IsVisible = !coupled;
+        _readChip.IsVisible = coupled;
+        _editChip.IsVisible = coupled;
+
         if (_current is not { } coupling)
         {
+            _couplingLabel.Text = _endedSessionName is { } ended
+                ? $"Sessie {ended} is afgelopen — dit venster blijft open."
+                : "Geen agent gekoppeld.";
+            _couplingLabel.Foreground = _Brush("CockpitTextSecondaryBrush");
             return;
         }
 
+        var name = _binding.SessionName ?? _boundSessionName ?? coupling.SessionId;
         _couplingLabel.Text = coupling.HasAnyCapability
-            ? $"Agent connected — session {coupling.SessionId}"
-            : $"Agent connected — session {coupling.SessionId} (no capabilities granted yet)";
+            ? $"Agent connected — session {name}"
+            : $"Agent connected — session {name} (no capabilities granted yet)";
+        _couplingLabel.Foreground = _Brush("CockpitAccentBrush");
         _SetChip(_readChip, "read_diagram", coupling.CanRead);
         _SetChip(_editChip, "edit_diagram", coupling.CanEdit);
     }

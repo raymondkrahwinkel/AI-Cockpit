@@ -8,7 +8,13 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.22.0: a session can now show a PR/CI status banner under the transcript, above the composer (AC-802) —
+    <!-- 0.23.0: a plugin's own window can now be bound to a session that is already running (AC-832) and name the
+         open sessions to pick one (AC-833): ICockpitHost.BindToSession returning IPluginSessionBinding, and
+         ICockpitSessionObserver.OpenSessions. Both default-implemented, so an already-compiled plugin loads and
+         behaves exactly as before; the bump is for the other direction. A plugin that calls either sets
+         minHostVersion 0.23.0 — an older host's copy of the SDK has no such member, so the call cannot resolve at
+         all. Minor because it is additive; still 0.x.
+         0.22.0: a session can now show a PR/CI status banner under the transcript, above the composer (AC-802) —
          new host-provided functionality a plugin contributes to: ICockpitHost.AddSessionBanner, rendered once per
          session panel in both session kinds (SDK chat and TTY) through one shared control. Default-implemented, so
          an already-compiled plugin loads and behaves exactly as before; the bump is for the other direction. A
@@ -165,7 +171,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.22.0</VersionPrefix>
+    <VersionPrefix>0.23.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

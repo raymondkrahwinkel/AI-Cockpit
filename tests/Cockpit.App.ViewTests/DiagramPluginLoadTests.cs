@@ -64,10 +64,12 @@ public class DiagramPluginLoadTests
         var listBody = host.WorkspaceTypes[1].CreateBody(new FakeWorkspaceContext());
         Assert.IsAssignableFrom<Control>(listBody);
 
-        // AC-816: the quick-start button now opens a dialog first; RecordingHost.ShowDialogAsync builds it and
-        // clicks straight through with the prefilled name, the same "Enter is enough" default an operator gets.
+        // AC-816: the quick-start button opens a dialog first; RecordingHost.ShowDialogAsync builds it and clicks
+        // straight through with the prefilled name, the same "Enter is enough" default an operator gets. AC-834:
+        // what it opens after that is a window of its own, not a workspace tab.
         toolbarAction.OnInvoke().GetAwaiter().GetResult();
-        Assert.Equal(["diagram.panel"], host.OpenedWorkspaceTypeIds);
+        Assert.Empty(host.OpenedWorkspaceTypeIds);
+        Assert.Single(host.DialogKeys, key => key.StartsWith("diagram.document.", StringComparison.Ordinal));
 
         plugin.Dispose();
     });
@@ -129,13 +131,24 @@ public class DiagramPluginLoadTests
             return Task.CompletedTask;
         }
 
+        public List<string> DialogKeys { get; } = [];
+
+        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
+            ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
+
         // Builds the quick-start dialog's content and clicks its "Openen" button straight away, standing in for
-        // an operator who typed nothing and hit Enter — the prefilled name is already a working default.
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560)
+        // an operator who typed nothing and hit Enter — the prefilled name is already a working default. The
+        // diagram window that follows is only recorded; its own body is what DiagramCollabWindowTests exercises.
+        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
         {
+            DialogKeys.Add(singleInstanceKey);
             var content = createContent();
-            var confirm = content.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Openen"));
-            confirm.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            if (singleInstanceKey == "diagram.quickstart")
+            {
+                content.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Openen"))
+                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            }
+
             return Task.CompletedTask;
         }
     }
