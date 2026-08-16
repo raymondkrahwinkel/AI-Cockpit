@@ -85,15 +85,18 @@ public class WhiteboardCollabWindowTests
     });
 
     [Fact]
-    public void InvokingWithNoActiveSession_ShowsAToastInsteadOfAWindow() => HeadlessAvalonia.Run(() =>
+    public void InvokingWithNoActiveSession_StillOpensTheBoard_WithNoAgentOnIt() => HeadlessAvalonia.Run(() =>
     {
+        // W-2/AC-843 replaced AC-842's "no session, no window, a toast" with the diagram's quick-start shape: the
+        // board opens on its name alone, and "no agent on this board" is a state the window itself draws.
         var (plugin, host) = _StartPlugin();
         host.Sessions = new FakeSessions(activePaneId: null);
 
         host.InvokeWhiteboardAction();
 
-        Assert.Empty(host.Windows);
-        Assert.Single(host.Toasts);
+        var opened = Assert.Single(host.Windows);
+        _Show(opened.Content);
+        Assert.Contains("Geen agent gekoppeld", _CouplingText(opened.Content), StringComparison.Ordinal);
     });
 
     [Fact]
@@ -204,8 +207,9 @@ public class WhiteboardCollabWindowTests
         public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction) =>
             Toasts.Add(message);
 
-        // The toolbar's "Whiteboard" action — standing in for an operator clicking it with a session active.
-        public void InvokeWhiteboardAction() => _toolbarActions.Single(action => action.Title == "Whiteboard").OnInvoke().GetAwaiter().GetResult();
+        // The toolbar's "Nieuw whiteboard" action (renamed in W-2/AC-843, which put a quick-start in front of it) —
+        // standing in for an operator clicking it.
+        public void InvokeWhiteboardAction() => _toolbarActions.Single(action => action.Title == "Nieuw whiteboard").OnInvoke().GetAwaiter().GetResult();
 
         public void EndSession(string paneId)
         {
@@ -247,7 +251,19 @@ public class WhiteboardCollabWindowTests
 
         public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
         {
-            Windows.Add(new OpenedWindow(title, singleInstanceKey, createContent()));
+            var content = createContent();
+            if (singleInstanceKey == "whiteboard.quickstart")
+            {
+                // W-2/AC-843's snelstart, answered the way DiagramCollabWindowTests answers the diagram's: keep the
+                // prefilled name, couple to the active session when there is one to couple to.
+                var couple = content.GetVisualDescendants().OfType<CheckBox>().Single();
+                couple.IsChecked = couple.IsEnabled;
+                content.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Openen"))
+                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                return Task.CompletedTask;
+            }
+
+            Windows.Add(new OpenedWindow(title, singleInstanceKey, content));
             return Task.CompletedTask;
         }
 

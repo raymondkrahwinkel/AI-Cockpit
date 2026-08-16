@@ -173,6 +173,34 @@ public class DiagramCollabWindowTests
         plugin.Dispose();
     });
 
+    [Fact]
+    public void WhenAnAgentAsksForADiagram_TheWindowOpensWithItsSource_CoupledToTheCaller() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-835's core→plugin path: the MCP tools live in core and cannot open a plugin window, so the approved
+        // request travels over the registry. The caller here is the cockpit-assistant — no running session of its
+        // own, so the coupling has to come from the registry rather than from the window's session binding.
+        var (plugin, host) = _StartPlugin();
+
+        Assert.True(host.Registry.RequestOpen(
+            new DiagramOpenRequest("surface-1", "Wat ik bedacht", "flowchart LR\n    A-->B", "cockpit-assistant")));
+        Dispatcher.UIThread.RunJobs();
+
+        var opened = Assert.Single(host.Windows);
+        Assert.Equal("diagram.document.surface-1", opened.Key);
+        Assert.Equal("Wat ik bedacht", opened.Title);
+
+        var surface = Assert.Single(host.Registry.ListSurfaces("cockpit-assistant"));
+        Assert.NotNull(surface.Coupling);
+        Assert.False(surface.Coupling!.HasAnyCapability); // opening grants nothing: read/edit still ask (AC-810)
+        Assert.Equal("flowchart LR\n    A-->B", host.Registry.PeekText("surface-1"));
+
+        var window = _Show(opened.Content);
+        Assert.Contains("Agent connected", _CouplingText(opened.Content), StringComparison.Ordinal);
+
+        window.Close();
+        plugin.Dispose();
+    });
+
     private (ICockpitPlugin Plugin, RecordingHost Host, Control Content, Window Window, string SurfaceId) _OpenOnOneNode()
     {
         var (plugin, host) = _StartPlugin();

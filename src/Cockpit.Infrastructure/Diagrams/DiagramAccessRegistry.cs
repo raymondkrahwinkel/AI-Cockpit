@@ -12,6 +12,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     private readonly Dictionary<string, Surface> _surfaces = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DiagramCoupling> _couplings = new(StringComparer.Ordinal); // surfaceId -> coupling
     private readonly Dictionary<string, DiagramProposal> _proposals = new(StringComparer.Ordinal); // surfaceId -> pending proposal
+    private readonly Dictionary<string, string> _awaitingCoupling = new(StringComparer.Ordinal); // surfaceId -> session that asked for it (AC-835)
 
     public event Action<string, string>? TextChanged;
 
@@ -21,8 +22,11 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public event Action<string, string>? ObjectEdited;
 
+    public event Action<DiagramOpenRequest>? OpenRequested;
+
     public void SurfaceOpened(string surfaceId, string name, string initialText)
     {
+        DiagramCoupling? asked = null;
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var existing))
@@ -32,7 +36,35 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             }
 
             _surfaces[surfaceId] = new Surface(name, initialText);
+
+            // AC-835: this window is here because an agent asked for it, so it arrives coupled to that agent —
+            // zero capabilities, like every other coupling: read and edit stay their own separate asks.
+            if (_awaitingCoupling.Remove(surfaceId, out var session) && !_couplings.ContainsKey(surfaceId))
+            {
+                _couplings[surfaceId] = asked = new DiagramCoupling(session, CanRead: false, CanEdit: false);
+            }
         }
+
+        if (asked is not null)
+        {
+            CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, asked));
+        }
+    }
+
+    public bool RequestOpen(DiagramOpenRequest request)
+    {
+        if (OpenRequested is not { } listeners)
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            _awaitingCoupling[request.SurfaceId] = request.SessionId;
+        }
+
+        listeners(request);
+        return true;
     }
 
     public void SurfaceClosed(string surfaceId)

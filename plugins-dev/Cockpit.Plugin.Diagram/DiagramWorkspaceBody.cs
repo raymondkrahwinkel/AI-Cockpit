@@ -145,10 +145,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         if (_registry is not null)
         {
-            _registry.SurfaceOpened(_surfaceId, document.Title, document.MermaidText);
+            // Subscribed before the surface is registered: a window an agent asked for (AC-835) arrives already
+            // coupled, and that change is announced from inside SurfaceOpened.
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.TextChanged += _OnTextChanged;
             _registry.ProposalChanged += _OnProposalChanged;
+            _registry.SurfaceOpened(_surfaceId, document.Title, document.MermaidText);
 
             // A plain Couple — zero capabilities. read_diagram/edit_diagram still ask their own consent (AC-810).
             if (_binding.IsLive)

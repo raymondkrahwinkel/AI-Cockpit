@@ -338,4 +338,92 @@ public class WhiteboardMcpToolsTests
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Equal("", json["imageBase64"]!.GetValue<string>());
     }
+
+    // ---- open_whiteboard (AC-835): the agent asks for a board of its own ----
+
+    [Fact]
+    public async Task OpenWhiteboard_WhenApproved_RequestsTheWindow_AndCouplesTheCallerOnArrival()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        var requests = new List<WhiteboardOpenRequest>();
+        registry.OpenRequested += requests.Add;
+
+        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
+        Assert.Equal("whiteboard.open", asked[0].Scope);
+        Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
+        Assert.Contains("Sprint planning", asked[0].Action);
+
+        var request = Assert.Single(requests);
+        Assert.Equal(Session, request.SessionId);
+        registry.SurfaceOpened(request.SurfaceId, request.Name, Png);
+        var coupling = registry.CouplingOf(Session, request.SurfaceId);
+        Assert.NotNull(coupling);
+        Assert.False(coupling!.CanRead);
+        Assert.False(coupling.CanWrite);
+    }
+
+    [Fact]
+    public async Task OpenWhiteboard_WhenDenied_OpensNothing_AndSaysSo()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        var requests = new List<WhiteboardOpenRequest>();
+        registry.OpenRequested += requests.Add;
+
+        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("not approved", json["error"]!.GetValue<string>());
+        Assert.Empty(requests);
+        Assert.Empty(registry.ListSurfaces(Session));
+    }
+
+    [Fact]
+    public async Task OpenWhiteboard_CouplesTheVerifiedPane_NotTheAgentSuppliedSessionId()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var requests = new List<WhiteboardOpenRequest>();
+        registry.OpenRequested += requests.Add;
+
+        McpRequestContext.Set("cockpit-assistant");
+        try
+        {
+            await tools.OpenWhiteboard("some-other-pane", "Sprint planning");
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+
+        var request = Assert.Single(requests);
+        Assert.Equal("cockpit-assistant", request.SessionId);
+        registry.SurfaceOpened(request.SurfaceId, request.Name, Png);
+        Assert.NotNull(registry.CouplingOf("cockpit-assistant", request.SurfaceId));
+        Assert.Null(registry.CouplingOf("some-other-pane", request.SurfaceId));
+    }
+
+    [Fact]
+    public async Task OpenWhiteboard_WithNothingListening_SaysSo_RatherThanClaimingAWindowOpened()
+    {
+        var (tools, _, _, _) = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("diagram plugin", json["error"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task OpenWhiteboard_WithNoConsentBroker_FailsClosed()
+    {
+        var registry = new WhiteboardAccessRegistry();
+        registry.OpenRequested += _ => Assert.Fail("Nothing may be opened without an operator to ask.");
+        var tools = new WhiteboardMcpTools(registry, consent: null);
+
+        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+    }
 }

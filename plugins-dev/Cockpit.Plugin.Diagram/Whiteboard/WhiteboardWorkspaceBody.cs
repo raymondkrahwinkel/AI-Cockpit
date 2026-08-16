@@ -87,10 +87,12 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         if (_registry is not null)
         {
-            _registry.SurfaceOpened(_surfaceId, _documentTitle, _Snapshot());
+            // Subscribed before the surface is registered: a board an agent asked for (AC-835) arrives already
+            // coupled, and that change is announced from inside SurfaceOpened.
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.ObjectPlaced += _OnObjectPlaced;
             _registry.ObjectErased += _OnObjectErased;
+            _registry.SurfaceOpened(_surfaceId, _documentTitle, _Snapshot());
 
             // A plain Couple — zero capabilities. The invite button (and read_whiteboard) still ask their own Grant.
             if (_binding.IsLive)
