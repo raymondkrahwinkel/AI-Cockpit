@@ -105,7 +105,7 @@ internal sealed class DiagramListDialogBody : UserControl
 
             // Keyed on the file path (DiagramWindow.KeyFor), so opening the same diagram again brings the
             // existing window forward instead of a second one.
-            _ = DiagramWindow.OpenAsync(_host, new DiagramDocument(entry.FilePath, entry.Title, entry.MermaidText), paneId);
+            _ = DiagramWindow.OpenAsync(_host, new DiagramDocument(entry.FilePath, entry.Title, entry.MermaidText, entry.FilePath), paneId);
         };
 
         var renameButton = new Button { Content = "Rename", Classes = { "Compact" } };

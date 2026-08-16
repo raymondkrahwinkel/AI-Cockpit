@@ -1,3 +1,4 @@
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
@@ -35,6 +36,43 @@ internal static class DiagramCatalog
         }
 
         return entries;
+    }
+
+    // AC-839: the homes a diagram can actually be written to — folder rows only, same ceiling as List's read side.
+    // Zero of them is the "refuse, point at the project editor" case; one saves without asking; more than one asks.
+    public static IReadOnlyList<ProjectMemoryRow> WritableHomes(IReadOnlyList<ProjectMemoryRow> rows) =>
+        [.. rows.Where(row => !ProjectMemoryRef.TryParse(row.Reference, out _, out _))];
+
+    // First save: <memory>/Diagrams/<slug>.md, the slug taken from the title once. A slug already used in this
+    // home gets -2, -3, … (AC-812) — a title is free to collide, a path is not.
+    public static string Create(string homeReference, string title, string mermaidText)
+    {
+        var directory = Path.Combine(homeReference, "Diagrams");
+        Directory.CreateDirectory(directory);
+
+        var slug = PluginFolderName.Normalize(title) is { Length: > 0 } normalized ? normalized : "diagram";
+        var path = Path.Combine(directory, $"{slug}.md");
+        for (var suffix = 2; File.Exists(path); suffix++)
+        {
+            path = Path.Combine(directory, $"{slug}-{suffix}.md");
+        }
+
+        Write(path, title, mermaidText);
+        return path;
+    }
+
+    // The whole file per save, never a partial patch — the home's own history (git, Depot versions) is what keeps
+    // the diff readable (AC-812). `expected` is the file as this window last saw it: given one that no longer
+    // matches, the save does not land at all (AC-812's "detect, never silently overwrite"; resolving such a
+    // mismatch through a diff is AC-825's gate, not this).
+    public static void Write(string filePath, string title, string mermaidText, string? expected = null)
+    {
+        if (expected is not null && File.Exists(filePath) && File.ReadAllText(filePath) != expected)
+        {
+            throw new IOException("het bestand is buiten dit venster gewijzigd");
+        }
+
+        File.WriteAllText(filePath, $"# {title}\n\n```mermaid\n{mermaidText.TrimEnd()}\n```\n");
     }
 
     // Renaming only ever touches the H1 line — the file's path is its stable slug (AC-812) and never follows the
