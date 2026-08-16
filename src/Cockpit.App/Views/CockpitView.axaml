@@ -1315,21 +1315,24 @@
                             <Setter Property="controls:SessionTilePanel.IsOnActiveDesk" Value="{ReflectionBinding IsOnActiveDesk}"/>
                         </Style>
                         <!-- AC-670: a tile is a miniature of the terminal, so everything you operate the session
-                             with goes and everything that says what it is doing stays. -->
-                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChrome">
+                             with goes and everything that says what it is doing stays.
+                             These key off the pane element's OWN inherited SessionTilePanel.IsMiniature (a self
+                             selector), NOT a descendant selector rooted on the long-lived SessionGrid. A descendant
+                             selector (`SessionGrid > CP[IsMiniature] :is(Control).paneChrome`) registers an
+                             IClassesChangedListener that pins every recycled transcript row of a streaming pane
+                             (measured ~600 leaked rows / 360MB; the row leaves the tree but the listener holds it
+                             until teardown). IsMiniature is an inherited attached property, so the self form reaches
+                             the same elements with the same effect and no long-lived listener. -->
+                        <Style Selector=":is(Control).paneChrome[(controls|SessionTilePanel.IsMiniature)=True]">
                             <Setter Property="IsVisible" Value="False"/>
                         </Style>
-                        <!-- AC-670 #7: hit-testing off on the host lets the press fall through to `PaneRoot`, which
-                             needs a Transparent background of its own — null is not hit-testable in Avalonia. -->
-                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] controls|MiniatureHost">
+                        <!-- AC-670 #7: hit-testing off on the host lets the press fall through to `PaneRoot`. -->
+                        <Style Selector="controls|MiniatureHost[(controls|SessionTilePanel.IsMiniature)=True]">
                             <Setter Property="IsHitTestVisible" Value="False"/>
-                        </Style>
-                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] Border#PaneRoot">
-                            <Setter Property="Background" Value="Transparent"/>
                         </Style>
                         <!-- AC-670: chrome that may not be collapsed, only blanked — anything that gives up space
                              inside the scaled subtree hands it to the terminal and resizes the pty. -->
-                        <Style Selector="ItemsControl#SessionGrid > ContentPresenter[(controls|SessionTilePanel.IsMiniature)=True] :is(Control).paneChromeBlank">
+                        <Style Selector=":is(Control).paneChromeBlank[(controls|SessionTilePanel.IsMiniature)=True]">
                             <Setter Property="Opacity" Value="0"/>
                         </Style>
                     </ItemsControl.Styles>
@@ -1350,13 +1353,16 @@
                                  the rail and wash out, exactly what "niet mee weggeschaald tot onzichtbaar"
                                  forbids. Drawn at its own full thickness regardless of what scale the content
                                  inside draws at. -->
-                            <Border x:Name="PaneRoot" Margin="4" Classes="panel"
-                                    Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
-                                    Classes.active="{Binding IsSelected}"
-                                    CornerRadius="{StaticResource CockpitPanelRadius}">
-                                <!-- AC-670: a Grid so the identity strip is overlaid, not docked — 16px docked above
-                                     the host is 16/scale (~53px) less pane, which resizes a TTY pane's pty. -->
-                                <Grid>
+                            <!-- PaneRoot is a Grid, NOT a Border: a Border that parents the transcript's
+                                 VirtualizingStackPanel pins every recycled row through the border's
+                                 CompositionBorderVisual — rows leave the visual tree but the border's composition
+                                 visual holds their draw-lists until the pane tears down (measured ~660 leaked rows /
+                                 360MB per streaming pane; a Grid/Panel/Decorator parent releases them normally). The
+                                 accent edge is drawn by a sibling Border overlay at the end of this Grid instead.
+                                 A Grid also overlays the identity strip rather than docking it (AC-670): 16px docked
+                                 above the host is 16/scale (~53px) less pane, which resizes a TTY pane's pty.
+                                 Transparent so a miniature press falls through to it (AC-670 #7). -->
+                            <Grid x:Name="PaneRoot" Margin="4" Background="Transparent">
                                 <!-- Permanently here at scale 1, not wrapped around a pane on its way into the
                                      rail (AC-442): switching is then one number and never the rebuild the grid
                                      comment above describes. Draws the pane small without laying it out small.
@@ -1407,8 +1413,15 @@
                                                    Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
                                     </DockPanel>
                                 </Border>
+                                <!-- Accent/hairline frame: a SIBLING overlay, never the PARENT of the transcript
+                                     subtree (see the PaneRoot note above — a wrapping Border leaks recycled rows via
+                                     its CompositionBorderVisual). Drawn on top at its own full thickness, hit-
+                                     transparent so it never eats the promoting click. -->
+                                <Border Classes="panel" IsHitTestVisible="False"
+                                        Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
+                                        Classes.active="{Binding IsSelected}"
+                                        CornerRadius="{StaticResource CockpitPanelRadius}"/>
                                 </Grid>
-                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

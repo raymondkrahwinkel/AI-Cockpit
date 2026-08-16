@@ -6598,6 +6598,148 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // Leak simulation for the ASSISTANT CHAT window (dev-only). The grid sim above proves SessionView in the main
+    // SessionGrid; this one opens a real AssistantChatWindow on a synthetic session and streams into it, so its own
+    // transcript ItemsControl/VirtualizingStackPanel (a separate view with its own frame) gets the same before/
+    // realised/scroll/close measurement. Fired by writing "chat" (or "chat:<rows>") to the trigger file.
+    internal async Task RunAssistantChatLeakSimAsync(int rows = 300)
+    {
+        if (_sessionFactory is null)
+        {
+            return;
+        }
+
+        var tempDir = System.IO.Path.GetTempPath();
+        var resultPath = System.IO.Path.Combine(tempDir, "cockpit-leaksim.result");
+
+        var before = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        var registry = (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry)
+            Program.Services.GetService(typeof(Cockpit.Infrastructure.Sessions.IPluginProviderRegistry))!;
+        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered(registry);
+
+        var profile = new SessionProfile("Chat Leak Sim", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
+        var vm = _sessionFactory();
+        // Not added to Sessions on purpose: the grid must not render this session too, or its (now bounded) rows
+        // would be counted alongside the chat window's and blur what this sim measures.
+        await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, tempDir, null, null, ReadingLevel.Focus);
+
+        var driver = Cockpit.App.Diagnostics.LeakSimProvider.Current;
+        if (driver is null)
+        {
+            await CloseSessionAsync(vm);
+            return;
+        }
+
+        var host = new _ChatLeakSimHost { Session = vm };
+        var chatVm = new AssistantChatViewModel(host, new _ChatLeakSimSettingsStore(), new _ChatLeakSimVoiceQueue());
+        var win = new Cockpit.App.Views.AssistantChatWindow
+        {
+            DataContext = chatVm,
+            Topmost = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.Manual,
+        };
+        win.Show();
+        await Task.Delay(200);
+
+        driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginSessionInitialized { SessionId = "leaksim-1", Tools = ["Bash", "Read", "Edit"], Cwd = tempDir });
+
+        var turns = Math.Max(1, rows / 8);
+        var block = 0;
+        for (var turn = 0; turn < turns; turn++)
+        {
+            driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginAssistantThinkingDelta { SessionId = "leaksim-1", BlockIndex = block++, Thinking = $"Planning turn {turn}." });
+            foreach (var chunk in new[]
+            {
+                $"## Step {turn}\n\nLet me **check** `src/File{turn}.cs` ",
+                $"and a [link](https://example.com/{turn}).\n\n```csharp\nvar v{turn} = Compute({turn});\n```\n\n",
+                $"- first {turn}\n- second {turn}\n\n| a | b |\n|---|---|\n| {turn} | {turn * 2} |\n",
+            })
+            {
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginAssistantTextDelta { SessionId = "leaksim-1", BlockIndex = block, Text = chunk });
+                await Task.Delay(12);
+            }
+            block++;
+            for (var k = 0; k < 6; k++)
+            {
+                var id = $"t{turn}_{k}";
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolUseRequested { SessionId = "leaksim-1", ToolUseId = id, ToolName = "Bash", InputJson = $"{{\"command\":\"build {id}\"}}" });
+                await Task.Delay(8);
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolResult { SessionId = "leaksim-1", ToolUseId = id, Content = $"output for {id}\nRestored\nCompiled\nDone.", IsError = false });
+                await Task.Delay(8);
+            }
+            driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginTurnCompleted { SessionId = "leaksim-1", Subtype = "success", Result = null, IsError = false });
+            await Task.Delay(20);
+        }
+
+        driver.Complete();
+        await Task.Delay(600);
+        var realised = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+        var heapMb = GC.GetTotalMemory(forceFullCollection: true) / (1024 * 1024);
+
+        // Scroll the CHAT WINDOW's own transcript scroller up/down to force its VirtualizingStackPanel to recycle.
+        var scroll = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(win)
+            .OfType<Avalonia.Controls.ScrollViewer>().FirstOrDefault(s => s.Name == "TranscriptScroll");
+        for (var round = 0; round < 4 && scroll is not null; round++)
+        {
+            scroll.Offset = new Avalonia.Vector(0, 0); win.UpdateLayout(); await Task.Delay(40);
+            scroll.Offset = new Avalonia.Vector(0, scroll.Extent.Height); win.UpdateLayout(); await Task.Delay(40);
+        }
+        var afterScroll = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        win.Close();
+        await CloseSessionAsync(vm);
+        await Task.Delay(800);
+        var after = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
+
+        try
+        {
+            System.IO.File.AppendAllText(resultPath,
+                $"[chat-leaksim turns={turns}] BEFORE: {before} | REALISED: {realised} heap={heapMb}MB | AFTER-SCROLL: {afterScroll} | AFTER-CLOSE: {after}\n");
+        }
+        catch (Exception)
+        {
+            // A diagnostic result file is a nicety, never worth failing the sim over.
+        }
+    }
+
+    private sealed class _ChatLeakSimHost : IAssistantSessionHost
+    {
+        public SessionViewModel? Session { get; init; }
+        public Cockpit.Core.Assistant.AssistantActivity Activity => Cockpit.Core.Assistant.AssistantActivity.Ready;
+        public string? UnavailableReason => null;
+        public string? DefaultWorkingDirectory => System.IO.Path.GetTempPath();
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+        public Task<SessionViewModel?> EnsureStartedAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
+        public Task<SessionViewModel?> RestartAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
+        public Task SendAsync(string text, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void SetSpeakReplies(bool speak) { }
+        public Task ApplySettingsAsync(System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void ReportHoldListening(bool listening) { }
+        public void ReportTranscribing(bool transcribing) { }
+        public void ReportPreparing(string? status, double? fraction) { }
+    }
+
+    private sealed class _ChatLeakSimSettingsStore : Cockpit.Core.Abstractions.Assistant.IAssistantSettingsStore
+    {
+        public Task<Cockpit.Core.Assistant.AssistantSettings> LoadAsync(System.Threading.CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantSettings { IsEnabled = true });
+        public Task SaveAsync(Cockpit.Core.Assistant.AssistantSettings settings, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class _ChatLeakSimVoiceQueue : Cockpit.Core.Abstractions.Voice.IVoicePlaybackQueue
+    {
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
+        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
+        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
+        public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
+        public event EventHandler? SpeakingStarted { add { } remove { } }
+        public void StopAll() { }
+        public int Generation => 0;
+        public Cockpit.Core.Voice.VoicePlaybackSource ActiveSource => Cockpit.Core.Voice.VoicePlaybackSource.Session;
+    }
+
     // Hard footprint snapshot for the sim: managed heap plus the LIVE control count in this session's transcript
     // visual tree (what virtualization actually keeps realised), so a per-render reduction (lazy rows) is visible.
     private static string _MeasureFootprint(SessionViewModel vm)

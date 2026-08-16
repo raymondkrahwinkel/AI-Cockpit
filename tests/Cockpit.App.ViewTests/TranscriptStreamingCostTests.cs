@@ -115,8 +115,15 @@ public sealed class TranscriptStreamingCostTests
     /// <summary>
     /// Guards the selector itself rather than a realised tree: reparenting a live style to exercise it throws, and
     /// a failed binding leaves IsVisible at its default true, so a matched presenter looks identical to an
-    /// unmatched one from the outside. What actually went wrong is that the selector had no parent constraint, so
+    /// unmatched one from the outside. What actually went wrong is that a selector had no parent constraint, so
     /// that is what is pinned here — read off the shipped view, not restated.
+    ///
+    /// A descendant selector rooted on the long-lived grid does more than mis-match: its StyleClassActivator
+    /// installs an IClassesChangedListener on the recycled rows it reaches and never tears it off, pinning every
+    /// row a streaming pane ever built (measured ~600 rows / 360MB). So each grid style must reach panes WITHOUT a
+    /// descendant hop into the pane subtree — two safe shapes: the pane-visibility style keeps its `>` child
+    /// constraint to the grid's own containers; the rail miniature styles (AC-670) key off the pane element's OWN
+    /// inherited SessionTilePanel.IsMiniature (a self selector), which is not a descendant reach at all.
     /// </summary>
     [Fact]
     public void TheSessionGridsPaneVisibilityStyle_IsScopedToPanesAndCannotReachTranscriptRows()
@@ -128,9 +135,6 @@ public sealed class TranscriptStreamingCostTests
                 .OfType<ItemsControl>()
                 .First(c => c.Name == "SessionGrid");
 
-            // Every style on the grid, not just the visibility one: the rail's miniature styles (AC-670) are
-            // descendant selectors reaching into a pane, so they need the same parent constraint or they reach
-            // the transcript too.
             Assert.NotEmpty(sessionGrid.Styles);
             foreach (var style in sessionGrid.Styles)
             {
@@ -138,12 +142,21 @@ public sealed class TranscriptStreamingCostTests
                 Assert.NotNull(selector);
 
                 var text = selector!.ToString()!;
-                Assert.Contains("ContentPresenter", text, StringComparison.Ordinal);
 
-                // The child combinator is the whole point: without it the selector also matches every
-                // #PART_ContentPresenter deeper in each session view, whose DataContext is a transcript entry.
-                Assert.Contains(">", text, StringComparison.Ordinal);
-                Assert.Contains("SessionGrid", text, StringComparison.Ordinal);
+                // Safe shape 1: scoped by the child combinator to the grid's own generated containers, so it cannot
+                // match a #PART_ContentPresenter deeper in a session view whose DataContext is a transcript entry.
+                var childScopedToGrid = text.Contains("SessionGrid", StringComparison.Ordinal)
+                    && text.Contains(">", StringComparison.Ordinal)
+                    && text.Contains("ContentPresenter", StringComparison.Ordinal);
+
+                // Safe shape 2: a self selector keyed on the element's own inherited SessionTilePanel.IsMiniature —
+                // no descendant hop, so no listener is installed on (and no row is pinned by) the recycled subtree.
+                var selfKeyedOnIsMiniature = text.Contains("IsMiniature", StringComparison.Ordinal)
+                    && !text.Contains(">", StringComparison.Ordinal);
+
+                Assert.True(
+                    childScopedToGrid || selfKeyedOnIsMiniature,
+                    $"A SessionGrid style can reach (and pin) transcript rows: {text}");
             }
         });
     }
