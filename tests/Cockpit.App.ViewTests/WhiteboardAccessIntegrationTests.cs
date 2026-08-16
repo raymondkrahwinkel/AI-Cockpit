@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
@@ -93,9 +94,9 @@ public class WhiteboardAccessIntegrationTests
         var host = new RecordingHost(registry);
         plugin.Initialize(host);
 
-        // AC-850: the whiteboard is no longer a workspace type — the "Whiteboard" toolbar action opens it
-        // directly as a window bound to the active session.
-        var whiteboardAction = Assert.Single(host.ToolbarActions, action => action.Title == "Whiteboard");
+        // AC-850: the whiteboard is no longer a workspace type — the "Nieuw whiteboard" toolbar action opens it
+        // directly as a window bound to the active session, through W-2/AC-843's snelstart.
+        var whiteboardAction = Assert.Single(host.ToolbarActions, action => action.Title == "Nieuw whiteboard");
         await whiteboardAction.OnInvoke();
         var dialogKey = Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
         Assert.IsAssignableFrom<Control>(host.LastDialogContent);
@@ -183,6 +184,15 @@ public class WhiteboardAccessIntegrationTests
         {
             DialogKeys.Add(singleInstanceKey);
             LastDialogContent = createContent();
+
+            // W-2/AC-843 put a snelstart in front of the board: keep the prefilled name and hit Openen, the way an
+            // operator would, so the board behind it actually opens.
+            if (singleInstanceKey == "whiteboard.quickstart")
+            {
+                LastDialogContent.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Openen"))
+                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            }
+
             return Task.CompletedTask;
         }
     }
