@@ -1,8 +1,8 @@
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugin.Diagram.Whiteboard;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram;
 
@@ -13,6 +13,9 @@ public sealed class DiagramPlugin : ICockpitPlugin
 {
     // Reused as the diagrams dialog's ShowDialogAsync singleInstanceKey — one list at a time (AC-850).
     private const string ListDialogKey = "diagram.list";
+
+    // W-2/AC-843: the whiteboards dialog's own singleInstanceKey, same precedent, one folder over.
+    private const string WhiteboardListDialogKey = "whiteboard.list";
 
     // The id stays "diagram" so an existing install gets this as an update, not as a second plugin (AC-836).
     public PluginMetadata Metadata { get; } = new(
@@ -36,8 +39,13 @@ public sealed class DiagramPlugin : ICockpitPlugin
             () => host.ShowDialogAsync("Diagrams", () => new DiagramListDialogBody(host), ListDialogKey, width: 520, height: 600)));
 
         // AC-842: a window beside the cockpit, not a tab — bound to whatever session is already active, no
-        // separate session-picker step (the window model fixes the coupling at open time).
-        host.AddToolbarAction(new ToolbarAction("Whiteboard", MaterialIconKind.Pencil, () => _OpenWhiteboardAsync(host)));
+        // separate session-picker step (the window model fixes the coupling at open time). W-2/AC-843: named at
+        // the door, same snelstart shape as the diagram's.
+        host.AddToolbarAction(new ToolbarAction("Nieuw whiteboard", MaterialIconKind.Pencil, () => _WhiteboardQuickStartAsync(host)));
+
+        // W-2/AC-843's list, DiagramListDialogBody's counterpart — how a saved board is reopened.
+        host.AddToolbarAction(new ToolbarAction("Whiteboards", MaterialIconKind.FormatListBulleted,
+            () => host.ShowDialogAsync("Whiteboards", () => new WhiteboardListDialogBody(host), WhiteboardListDialogKey, width: 520, height: 600)));
     }
 
     // AC-834: the quick-start's two answers — a name and a session that is already running — are exactly what a
@@ -52,16 +60,16 @@ public sealed class DiagramPlugin : ICockpitPlugin
         await DiagramWindow.OpenAsync(host, DiagramDocument.New(quickStart.Name), quickStart.SessionPaneId);
     }
 
-    // AC-850: nothing here starts a session — no active one means a toast, not a window bound to nothing.
-    private static Task _OpenWhiteboardAsync(ICockpitHost host)
+    // W-2/AC-843: DiagramPlugin._QuickStartAsync's counterpart — an unsaved board starts empty, named for what
+    // the operator asked for, and only ever gets a file once it is first saved (AC-812's rule, one folder over).
+    private async Task _WhiteboardQuickStartAsync(ICockpitHost host)
     {
-        if (host.Sessions.ActivePaneId is not { } paneId)
+        if (await WhiteboardQuickStartDialog.ShowAsync(host, "Nieuw whiteboard") is not { } quickStart)
         {
-            host.ShowToast("Geen actieve sessie om het whiteboard aan te koppelen.", PluginToastSeverity.Information);
-            return Task.CompletedTask;
+            return;
         }
 
-        return WhiteboardWindow.OpenAsync(host, paneId);
+        await WhiteboardWindow.OpenAsync(host, new WhiteboardDocument(title: quickStart.Name), quickStart.SessionPaneId);
     }
 
     public void Dispose()

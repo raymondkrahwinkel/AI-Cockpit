@@ -1,3 +1,4 @@
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
@@ -6,20 +7,17 @@ namespace Cockpit.Plugin.Diagram.Whiteboard;
 // `ShowDialogAsync` already opens a non-modal, draggable, resizable window (AC-367).
 internal static class WhiteboardWindow
 {
-    // Keyed on the board, not the session (AC-834 Q4's precedent): the same board opened twice comes forward
-    // rather than opening twice — trivially true today since every open creates a fresh board.
-    public static string KeyFor(string surfaceId) => $"whiteboard.document.{surfaceId}";
+    // Keyed on the document, not the session (AC-834 Q4's precedent, W-2/AC-843): a saved board's id is its file
+    // path, so reopening it from the list brings the existing window forward rather than opening a second one.
+    public static string KeyFor(string documentId) => $"whiteboard.document.{documentId}";
 
     // `sessionPaneId` is the session already running that this board couples to on open (AC-842: no separate
     // session-picker dialog, the window model fixes the coupling at open time). Null opens with no agent on it.
-    public static Task OpenAsync(ICockpitHost host, string? sessionPaneId)
-    {
-        var surfaceId = Guid.NewGuid().ToString("n");
-        return host.ShowDialogAsync(
-            "Whiteboard",
-            () => new WhiteboardWorkspaceBody(host, surfaceId, sessionPaneId),
-            KeyFor(surfaceId),
+    public static Task OpenAsync(ICockpitHost host, WhiteboardDocument document, string? sessionPaneId) =>
+        host.ShowDialogAsync(
+            document.Title,
+            () => new WhiteboardWorkspaceBody(host, document, sessionPaneId),
+            KeyFor(document.Id),
             width: 900,
             height: 640);
-    }
 }
