@@ -11,10 +11,8 @@ public sealed class DiagramPlugin : ICockpitPlugin
 {
     private const string WorkspaceTypeId = "diagram.panel";
 
-    // Carries a confirmed quick-start (AC-816) from the toolbar action into the next fresh body this plugin's
-    // own AddWorkspaceType factory builds. _lastSurfaceId tracks that body's surface so a second quick-start,
-    // while the one proof-of-concept panel is still open, couples directly instead of being silently dropped —
-    // OpenWorkspaceAsync only calls the factory again once the existing workspace of this type is gone.
+    // A confirmed quick-start (AC-816), consumed by the next fresh body; _lastSurfaceId is that body's surface,
+    // so a second quick-start on the still-open panel couples directly instead of being silently dropped.
     private DiagramQuickStart? _pendingQuickStart;
     private string? _lastSurfaceId;
 
