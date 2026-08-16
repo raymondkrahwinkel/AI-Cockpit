@@ -17,9 +17,8 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// <see cref="CockpitHost.BindToSession"/> (AC-832): the seam that ties a plugin surface to a session that is
-/// already running. Checked on the two halves the ownership rule is made of — text sent through the binding lands
-/// in that existing session, and neither closing the binding nor closing the session takes the other down with it.
+/// <see cref="CockpitHost.BindToSession"/> (AC-832): the seam that ties a plugin surface to a session already
+/// running. Checked on the ownership rule — sending reaches that session, and closing either side leaves the other.
 /// </summary>
 [Collection("avalonia")]
 public class PluginSessionBindingTests

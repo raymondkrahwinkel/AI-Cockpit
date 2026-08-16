@@ -1,10 +1,9 @@
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
-/// The binding handed back for a pane id no session is running behind (AC-832), and the default
-/// <see cref="ICockpitHost.BindToSession"/> returns on a host that predates that seam — an unknown session, an
-/// ended one, and an older host all arrive at the same well-behaved object rather than at a null a surface has to
-/// branch on.
+/// The binding for a pane id no session is running behind (AC-832), and what
+/// <see cref="ICockpitHost.BindToSession"/> returns on a host that predates that seam. An unknown id, an ended
+/// session and an older host all land here — one not-live object instead of a null to branch on.
 /// </summary>
 public sealed class DetachedSessionBinding(string paneId) : IPluginSessionBinding
 {

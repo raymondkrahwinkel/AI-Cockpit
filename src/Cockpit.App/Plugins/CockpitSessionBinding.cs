@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
-// The live `IPluginSessionBinding` behind `ICockpitHost.BindToSession` (AC-832): a plugin surface tied to one
-// running pane. It owns nothing of that session — identity and liveness are read from the cockpit each time rather
-// than cached, the end is heard on the shared observer's `SessionClosed`, and the write-back is the host's own
-// `SendToSessionAsync`. So two bindings on one session, or a binding beside the pane the grid already draws, add
-// nothing that could rival its pty.
+// The live `IPluginSessionBinding` behind `ICockpitHost.BindToSession` (AC-832). It owns nothing of the session:
+// identity and liveness are read from the cockpit each time rather than cached, so no second view of that pane —
+// and nothing that could rival its pty — exists here to go stale.
 internal sealed class CockpitSessionBinding : IPluginSessionBinding
 {
     private readonly CockpitViewModel _cockpit;

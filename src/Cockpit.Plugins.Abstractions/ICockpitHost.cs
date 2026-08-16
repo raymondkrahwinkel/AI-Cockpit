@@ -504,21 +504,17 @@ public interface ICockpitHost
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
     /// <summary>
-    /// Binds a plugin surface — a diagram window, a whiteboard (AC-832) — to the session already running behind
-    /// <paramref name="paneId"/>, so the surface belongs to the conversation the operator is having instead of
-    /// standing next to it. The binding reads that session's identity and hears it end, and writes back through
-    /// <see cref="SendToSessionAsync"/>; it starts nothing and ends nothing, which is what keeps it away from
-    /// <c>IWorkspaceContext.EmbedSession</c>. That one mints a fresh session panel, and pointing a second one at a
-    /// pane the grid already draws would build a rival view over the same pty.
-    /// <para>
-    /// Never null and never throws: a pane id no session is running behind — unknown, or ended since — comes back as
-    /// a <see cref="DetachedSessionBinding"/>, which is the same not-<see cref="IPluginSessionBinding.IsLive"/> state
-    /// a binding reaches when its session ends. Bind as many surfaces to one session as you like; a binding holds no
-    /// view of it.
-    /// </para>
-    /// Default returns that detached binding so existing <see cref="ICockpitHost"/> implementations (test fakes,
-    /// older plugin builds) keep compiling untouched — only the app's own host reaches a live session.
+    /// Binds a plugin surface — a diagram or whiteboard window (AC-832) — to the session already running behind
+    /// <paramref name="paneId"/>. The binding starts nothing and ends nothing.
     /// </summary>
+    /// <remarks>
+    /// Never null: a pane id no session is running behind comes back as a <see cref="DetachedSessionBinding"/>, the
+    /// same not-<see cref="IPluginSessionBinding.IsLive"/> state a binding reaches when its session ends.
+    /// Deliberately not <c>IWorkspaceContext.EmbedSession</c>, which mints a fresh session panel: pointing one at a
+    /// pane the grid already draws builds a rival view over the same pty. A binding holds no view, so any number of
+    /// surfaces may bind to one session. Default returns the detached binding, so existing
+    /// <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </remarks>
     IPluginSessionBinding BindToSession(string paneId) => new DetachedSessionBinding(paneId);
 
     /// <summary>
