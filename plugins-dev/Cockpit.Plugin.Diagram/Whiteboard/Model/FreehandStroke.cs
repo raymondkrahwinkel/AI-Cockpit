@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Whiteboard.Model;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 // The pointer path as drawn, never reshaped after the fact — unlike a PlacedObject it has no handles.
 public sealed class FreehandStroke : WhiteboardObject

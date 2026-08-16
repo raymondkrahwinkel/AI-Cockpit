@@ -4,12 +4,12 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Cockpit.Core.Abstractions.Whiteboard;
-using Cockpit.Plugin.Whiteboard.Model;
-using Cockpit.Plugin.Whiteboard.Rendering;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
-namespace Cockpit.Plugin.Whiteboard;
+namespace Cockpit.Plugin.Diagram.Whiteboard;
 
 // AC-829: the panel as IWhiteboardAccessRegistry's producer — DiagramWorkspaceBody's pattern (AC-824/AC-810),
 // narrowed to AC-823's one capability: sign up on open, show the coupling bar, keep the registry's snapshot in

@@ -1,10 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
-using Cockpit.Plugin.Whiteboard.Canvas;
-using Cockpit.Plugin.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-namespace Cockpit.Plugin.Whiteboard;
+namespace Cockpit.Plugin.Diagram.Whiteboard;
 
 // Toolbar + canvas (AC-821): Select and Pencil toggle each other off, and the shape button's flyout is the only
 // way to place a template — the eight the ticket asks for, in the order it lists them.

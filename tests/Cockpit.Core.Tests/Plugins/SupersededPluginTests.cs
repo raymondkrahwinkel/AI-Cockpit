@@ -54,8 +54,32 @@ public class SupersededPluginTests
     /// start and a sentence they may not need, so an entry has to earn its place.
     /// </summary>
     [Fact]
-    public void Known_HoldsTheOneSplitThisBuildMade()
+    public void Known_HoldsTheSplitAndTheMergeThisBuildMade()
     {
-        Assert.Equivalent(new SupersededPlugin("widgets", "Reference widgets", ["clock", "system-monitor"]), Assert.Single(SupersededPlugin.Known));
+        Assert.Equivalent(
+            new[]
+            {
+                new SupersededPlugin("widgets", "Reference widgets", ["clock", "system-monitor"]),
+                new SupersededPlugin("whiteboard", "Whiteboard", ["diagram"]),
+            },
+            SupersededPlugin.Known,
+            strict: true);
+    }
+
+    /// <summary>
+    /// AC-836 merged the whiteboard into the diagram plugin, which is the same shape read the other way round:
+    /// one successor, and it is the plugin that swallowed the old one.
+    /// </summary>
+    [Fact]
+    public void ShouldOffer_ForTheWhiteboardMerge_SaysSoOnlyWithBothLoaded()
+    {
+        var whiteboard = Assert.Single(SupersededPlugin.Known, plugin => plugin.Id == "whiteboard");
+
+        Assert.True(whiteboard.ShouldOffer(["whiteboard", "diagram"]));
+
+        // An operator who never had the diagram plugin keeps a working whiteboard — nothing is taken from
+        // under them until they install the successor themselves.
+        Assert.False(whiteboard.ShouldOffer(["whiteboard"]));
+        Assert.False(whiteboard.ShouldOffer(["diagram"]));
     }
 }

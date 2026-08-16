@@ -5,9 +5,9 @@ using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
-using Cockpit.Plugin.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-namespace Cockpit.Plugin.Whiteboard.Canvas;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 
 public enum WhiteboardTool
 {

@@ -3,6 +3,7 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -68,6 +69,24 @@ public class SupersededPluginNoticeTests
         await notice.CheckAsync();
 
         toasts.DidNotReceiveWithAnyArgs().Show(default!, default);
+    }
+
+    /// <summary>
+    /// AC-836's merge, and the wording that has to survive it: the notice used to say the plugin "has been split
+    /// up", which is a lie for a whiteboard that was folded into the diagram plugin rather than broken apart.
+    /// </summary>
+    [Fact]
+    public async Task AMergedPlugin_IsOfferedForRemoval_WithoutCallingItASplit()
+    {
+        var toasts = _NewNotice(out var notice, ("whiteboard", PluginLoadDecision.Load), ("diagram", PluginLoadDecision.Load));
+
+        await notice.CheckAsync();
+
+        toasts.Received(1).Show(
+            Arg.Is<string>(message => message.Contains("'Whiteboard'") && !message.Contains("split", StringComparison.OrdinalIgnoreCase)),
+            ToastSeverity.Information,
+            "Remove",
+            Arg.Any<Action>());
     }
 
     /// <remarks>

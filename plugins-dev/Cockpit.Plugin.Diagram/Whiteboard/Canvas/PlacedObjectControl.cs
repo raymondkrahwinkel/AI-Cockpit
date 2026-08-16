@@ -2,10 +2,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Cockpit.Plugin.Whiteboard.Model;
-using Cockpit.Plugin.Whiteboard.Rendering;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
-namespace Cockpit.Plugin.Whiteboard.Canvas;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 
 // One template shape or pasted screenshot, drawn in its own local 0,0..Width,Height rect — the canvas positions
 // it on the surface with Canvas.SetLeft/SetTop, the same way WorkflowNodeControl is positioned.

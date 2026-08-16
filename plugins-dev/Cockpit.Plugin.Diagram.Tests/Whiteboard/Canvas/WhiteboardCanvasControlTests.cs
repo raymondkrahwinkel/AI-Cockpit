@@ -2,10 +2,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
-using Cockpit.Plugin.Whiteboard.Canvas;
-using Cockpit.Plugin.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-namespace Cockpit.Plugin.Whiteboard.Tests.Canvas;
+namespace Cockpit.Plugin.Diagram.Tests.Whiteboard.Canvas;
 
 // The three pointer flows the ticket calls out as the non-trivial part: freehand capture, shape drag-to-place,
 // and deleting whatever is selected. Not a full interaction suite — the model and rendering tests carry that.

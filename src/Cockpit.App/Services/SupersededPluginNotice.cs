@@ -43,8 +43,10 @@ internal sealed class SupersededPluginNotice(
                     "Plugin '{Plugin}' has been superseded by {Successors}; offering to remove it",
                     superseded.Id, string.Join(", ", superseded.SuccessorIds));
 
+                // Split or merged — AC-836 made the second kind real, and the operator only needs to know the
+                // work moved to a plugin they already have.
                 toasts.Show(
-                    $"'{superseded.DisplayName}' has been split up and its replacements are installed. It no longer does anything — remove it?",
+                    $"'{superseded.DisplayName}' has been replaced by a plugin you already have installed. It no longer does anything — remove it?",
                     ToastSeverity.Information,
                     "Remove",
                     () => _ = _RemoveAsync(superseded, cancellationToken));

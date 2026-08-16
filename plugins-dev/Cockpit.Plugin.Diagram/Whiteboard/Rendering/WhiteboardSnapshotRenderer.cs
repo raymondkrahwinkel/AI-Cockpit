@@ -1,8 +1,8 @@
 using Avalonia;
 using Avalonia.Media.Imaging;
-using Cockpit.Plugin.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-namespace Cockpit.Plugin.Whiteboard.Rendering;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
 // AC-822's panel and AC-823's MCP tool both need "what does the board look like right now" without knowing a
 // single thing about the canvas control — this is the interface they share.

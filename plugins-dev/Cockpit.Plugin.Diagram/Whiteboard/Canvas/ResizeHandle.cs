@@ -2,9 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
-using Cockpit.Plugin.Whiteboard.Rendering;
+using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
-namespace Cockpit.Plugin.Whiteboard.Canvas;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 
 internal enum HandleCorner
 {
