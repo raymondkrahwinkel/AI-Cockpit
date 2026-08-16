@@ -24,7 +24,7 @@ internal sealed class FreehandLayer : Control
     {
         foreach (var stroke in _document.Objects.OfType<FreehandStroke>())
         {
-            WhiteboardObjectPainter.PaintFreehand(context, stroke.Points, stroke.Thickness);
+            WhiteboardObjectPainter.PaintFreehand(context, stroke.Points, stroke.Thickness, stroke.IsMarker);
 
             if (stroke.Id == SelectedId)
             {

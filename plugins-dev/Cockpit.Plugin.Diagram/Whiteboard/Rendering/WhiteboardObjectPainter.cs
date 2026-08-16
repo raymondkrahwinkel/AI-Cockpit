@@ -12,19 +12,31 @@ internal static class WhiteboardObjectPainter
 {
     public static readonly Color FreehandColor = Color.Parse("#F2C230");
     public static readonly Color PlacedColor = Color.Parse("#2563EB");
+    public static readonly Color MarkerColor = Color.Parse("#FF7A1A");
+    public static readonly Color StickyNoteColor = Color.Parse("#FDE68A");
 
     private static readonly IBrush FreehandBrush = new SolidColorBrush(FreehandColor);
     private static readonly IBrush PlacedBrush = new SolidColorBrush(PlacedColor);
     private static readonly IPen PlacedPen = new Pen(PlacedBrush, 2);
 
-    public static void PaintFreehand(DrawingContext context, IReadOnlyList<WhiteboardPoint> points, double thickness)
+    // Semi-transparent by construction — this is what "halfdoorzichtig" and "onderscheidbaar van potlood" mean in
+    // practice: the same stroke geometry as the pencil, just a translucent brush and (at the call site) thicker.
+    private static readonly IBrush MarkerBrush = new SolidColorBrush(MarkerColor, 0.35);
+
+    private static readonly IBrush StickyNoteBrush = new SolidColorBrush(StickyNoteColor);
+    private static readonly IPen StickyNotePen = new Pen(new SolidColorBrush(Color.Parse("#F5C518")), 1);
+    private static readonly IBrush StickyNoteTextBrush = new SolidColorBrush(Color.Parse("#3F3618"));
+    private static readonly IBrush BadgeBackground = new SolidColorBrush(Color.Parse("#1F2937"), 0.85);
+
+    public static void PaintFreehand(DrawingContext context, IReadOnlyList<WhiteboardPoint> points, double thickness, bool isMarker = false)
     {
         if (points.Count < 2)
         {
             return;
         }
 
-        var pen = new Pen(FreehandBrush, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        var brush = isMarker ? MarkerBrush : FreehandBrush;
+        var pen = new Pen(brush, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         var geometry = new StreamGeometry();
         using (var ctx = geometry.Open())
         {
@@ -40,8 +52,10 @@ internal static class WhiteboardObjectPainter
         context.DrawGeometry(null, pen, geometry);
     }
 
-    public static void PaintPlaced(DrawingContext context, PlacedShapeKind kind, Rect rect, string? text, Bitmap? image)
+    public static void PaintPlaced(DrawingContext context, PlacedShapeKind kind, Rect rect, string? text, Bitmap? image, string? badge = null)
     {
+        var textBrush = PlacedBrush;
+
         switch (kind)
         {
             case PlacedShapeKind.Rectangle:
@@ -65,6 +79,10 @@ internal static class WhiteboardObjectPainter
             case PlacedShapeKind.Callout:
                 _PaintCallout(context, rect);
                 break;
+            case PlacedShapeKind.StickyNote:
+                context.DrawRectangle(StickyNoteBrush, StickyNotePen, rect);
+                textBrush = StickyNoteTextBrush;
+                break;
             case PlacedShapeKind.Text:
                 break;
             case PlacedShapeKind.Image:
@@ -78,11 +96,16 @@ internal static class WhiteboardObjectPainter
 
         if (kind != PlacedShapeKind.Image && !string.IsNullOrEmpty(text))
         {
-            _PaintText(context, rect, text);
+            _PaintText(context, rect, text, textBrush);
+        }
+
+        if (!string.IsNullOrEmpty(badge))
+        {
+            _PaintBadge(context, rect, badge);
         }
     }
 
-    private static void _PaintText(DrawingContext context, Rect rect, string text)
+    private static void _PaintText(DrawingContext context, Rect rect, string text, IBrush brush)
     {
         var formatted = new FormattedText(
             text,
@@ -90,13 +113,29 @@ internal static class WhiteboardObjectPainter
             FlowDirection.LeftToRight,
             Typeface.Default,
             14,
-            PlacedBrush)
+            brush)
         {
             MaxTextWidth = Math.Max(1, rect.Width - 8),
             MaxTextHeight = Math.Max(1, rect.Height - 8),
         };
 
         context.DrawText(formatted, rect.TopLeft + new Point(4, 4));
+    }
+
+    // A small pill pinned to the bottom-left corner — used today for "geplakt · screenshot" on a clipboard paste.
+    private static void _PaintBadge(DrawingContext context, Rect rect, string badge)
+    {
+        var formatted = new FormattedText(
+            badge,
+            System.Globalization.CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            Typeface.Default,
+            10,
+            Brushes.White);
+
+        var pillRect = new Rect(rect.Left + 4, rect.Bottom - formatted.Height - 8, formatted.Width + 12, formatted.Height + 6);
+        context.DrawRectangle(BadgeBackground, null, pillRect, 4, 4);
+        context.DrawText(formatted, pillRect.TopLeft + new Point(6, 3));
     }
 
     private static void _PaintArrow(DrawingContext context, Rect rect)

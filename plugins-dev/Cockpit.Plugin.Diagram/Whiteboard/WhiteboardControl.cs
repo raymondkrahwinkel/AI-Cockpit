@@ -1,13 +1,18 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
 
-// Toolbar + canvas (AC-821): Select and Pencil toggle each other off, and the shape button's flyout is the only
-// way to place a template — the eight the ticket asks for, in the order it lists them.
+// Toolbar + canvas (AC-844): mockup #W1's row — select, pencil, marker, shape templates, sticky note, image,
+// screenshot paste — each with a MaterialIcon rather than the bare-text buttons AC-821 shipped with.
 public sealed class WhiteboardControl : UserControl
 {
     private static readonly (PlacedShapeKind Kind, string Label)[] ShapeMenuEntries =
@@ -24,25 +29,31 @@ public sealed class WhiteboardControl : UserControl
 
     private readonly ToggleButton _selectButton;
     private readonly ToggleButton _pencilButton;
+    private readonly ToggleButton _markerButton;
 
     public WhiteboardControl(WhiteboardDocument document)
     {
         Canvas = new WhiteboardCanvasControl(document);
         Canvas.ToolChanged += (_, _) => _SyncToolButtons();
 
-        _selectButton = new ToggleButton { Content = "Select", IsChecked = true };
-        _selectButton.Click += (_, _) => Canvas.UseSelectTool();
+        _selectButton = _ToggleIconButton(MaterialIconKind.CursorDefaultOutline, "Selecteren", Canvas.UseSelectTool);
+        _selectButton.IsChecked = true;
 
-        _pencilButton = new ToggleButton { Content = "Pencil" };
-        _pencilButton.Click += (_, _) => Canvas.UsePencilTool();
+        _pencilButton = _ToggleIconButton(MaterialIconKind.Pencil, "Potlood", Canvas.UsePencilTool);
+        _markerButton = _ToggleIconButton(MaterialIconKind.Highlighter, "Marker", Canvas.UseMarkerTool);
 
-        var shapeButton = new Button { Content = "Shape", Flyout = _BuildShapeFlyout() };
+        var shapeButton = _IconButton(MaterialIconKind.ShapeOutline, "Vormsjablonen", () => { });
+        shapeButton.Flyout = _BuildShapeFlyout();
+
+        var stickyButton = _IconButton(MaterialIconKind.StickyNoteOutline, "Sticky note", () => Canvas.UseShapeTool(PlacedShapeKind.StickyNote));
+        var imageButton = _IconButton(MaterialIconKind.ImagePlusOutline, "Afbeelding invoegen", () => _ = Canvas.InsertImageAsync());
+        var pasteButton = _IconButton(MaterialIconKind.ContentPaste, "Screenshot plakken", () => _ = Canvas.PasteScreenshotAsync());
 
         var toolbar = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
-            Children = { _selectButton, _pencilButton, shapeButton },
+            Children = { _selectButton, _pencilButton, _markerButton, shapeButton, stickyButton, imageButton, pasteButton },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
 
@@ -51,22 +62,81 @@ public sealed class WhiteboardControl : UserControl
 
     public WhiteboardCanvasControl Canvas { get; }
 
-    private MenuFlyout _BuildShapeFlyout()
+    private Flyout _BuildShapeFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = new Flyout();
+        var grid = new WrapPanel { MaxWidth = 200 };
         foreach (var (kind, label) in ShapeMenuEntries)
         {
-            var item = new MenuItem { Header = label };
-            item.Click += (_, _) => Canvas.UseShapeTool(kind);
-            flyout.Items.Add(item);
+            grid.Children.Add(_ShapeEntryButton(flyout, kind, label));
         }
 
+        flyout.Content = new StackPanel
+        {
+            Spacing = 4,
+            Margin = new Thickness(4),
+            Children =
+            {
+                new TextBlock { Text = "Neerzetten, niet tekenen", FontStyle = FontStyle.Italic, FontSize = 11, Opacity = 0.7 },
+                grid,
+            },
+        };
+
         return flyout;
+    }
+
+    private Button _ShapeEntryButton(Flyout flyout, PlacedShapeKind kind, string label)
+    {
+        var button = new Button
+        {
+            Content = new StackPanel
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new ShapePreview { Kind = kind, Width = 44, Height = 30 },
+                    new TextBlock { Text = label, FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center },
+                },
+            },
+        };
+        button.Click += (_, _) =>
+        {
+            Canvas.UseShapeTool(kind);
+            flyout.Hide();
+        };
+
+        return button;
+    }
+
+    private static Button _IconButton(MaterialIconKind kind, string tip, Action onClick)
+    {
+        var button = new Button { Content = new MaterialIcon { Kind = kind, Width = 16, Height = 16 }, Width = 32 };
+        ToolTip.SetTip(button, tip);
+        button.Click += (_, _) => onClick();
+        return button;
+    }
+
+    private static ToggleButton _ToggleIconButton(MaterialIconKind kind, string tip, Action onClick)
+    {
+        var button = new ToggleButton { Content = new MaterialIcon { Kind = kind, Width = 16, Height = 16 }, Width = 32 };
+        ToolTip.SetTip(button, tip);
+        button.Click += (_, _) => onClick();
+        return button;
     }
 
     private void _SyncToolButtons()
     {
         _selectButton.IsChecked = Canvas.Tool == WhiteboardTool.Select;
         _pencilButton.IsChecked = Canvas.Tool == WhiteboardTool.Pencil;
+        _markerButton.IsChecked = Canvas.Tool == WhiteboardTool.Marker;
+    }
+
+    // A miniature of the shape itself rather than a generic icon — the grid (#W2) is meant to be recognised, not read.
+    private sealed class ShapePreview : Control
+    {
+        public required PlacedShapeKind Kind { get; init; }
+
+        public override void Render(DrawingContext context) =>
+            WhiteboardObjectPainter.PaintPlaced(context, Kind, new Rect(Bounds.Size), null, null);
     }
 }

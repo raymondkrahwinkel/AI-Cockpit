@@ -44,6 +44,79 @@ public class WhiteboardSnapshotRendererTests
         Assert.Equal(Colors.White, _PixelAt(image, 5, 5));
     }
 
+    [Fact]
+    public void MarkerStroke_RendersTranslucent_AndDistinctFromPencil()
+    {
+        var pencilDocument = new WhiteboardDocument();
+        pencilDocument.Add(new FreehandStroke { Points = [new WhiteboardPoint(10, 50), new WhiteboardPoint(90, 50)] });
+
+        var markerDocument = new WhiteboardDocument();
+        markerDocument.Add(new FreehandStroke
+        {
+            Points = [new WhiteboardPoint(10, 50), new WhiteboardPoint(90, 50)],
+            Thickness = 14,
+            IsMarker = true,
+        });
+
+        var pencilPixel = _PixelAt(_Render(pencilDocument), 50, 50);
+        var markerPixel = _PixelAt(_Render(markerDocument), 50, 50);
+
+        Assert.NotEqual(pencilPixel, markerPixel);
+        Assert.False(_CloseTo(markerPixel, WhiteboardObjectPainter.MarkerColor, tolerance: 10), $"expected a translucent blend, got opaque marker colour {markerPixel}");
+    }
+
+    [Fact]
+    public void StickyNote_RendersInStickyYellow()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.StickyNote, X = 10, Y = 10, Width = 60, Height = 60, Text = "Idee" });
+
+        var pixel = _PixelAt(_Render(document), 40, 40);
+
+        Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected sticky-note yellow, got {pixel}");
+    }
+
+    [Fact]
+    public void PastedScreenshot_RendersTheBadge_ButAnInsertedImageDoesNot()
+    {
+        var pastedDocument = new WhiteboardDocument();
+        pastedDocument.Add(new PlacedObject
+        {
+            ShapeKind = PlacedShapeKind.Image,
+            X = 0,
+            Y = 0,
+            Width = 100,
+            Height = 60,
+            ImageData = _TinyPngBytes(),
+            IsPastedScreenshot = true,
+        });
+
+        var insertedDocument = new WhiteboardDocument();
+        insertedDocument.Add(new PlacedObject
+        {
+            ShapeKind = PlacedShapeKind.Image,
+            X = 0,
+            Y = 0,
+            Width = 100,
+            Height = 60,
+            ImageData = _TinyPngBytes(),
+            IsPastedScreenshot = false,
+        });
+
+        var badgePixel = _PixelAt(_Render(pastedDocument), 10, 55);
+        var plainPixel = _PixelAt(_Render(insertedDocument), 10, 55);
+
+        Assert.NotEqual(plainPixel, badgePixel);
+    }
+
+    private static byte[] _TinyPngBytes()
+    {
+        using var bitmap = new RenderTargetBitmap(new PixelSize(4, 4));
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+        return stream.ToArray();
+    }
+
     private static bool _CloseTo(Color actual, Color expected, byte tolerance = 20) =>
         Math.Abs(actual.R - expected.R) <= tolerance
         && Math.Abs(actual.G - expected.G) <= tolerance
