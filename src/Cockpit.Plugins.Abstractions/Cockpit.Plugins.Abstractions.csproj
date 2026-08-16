@@ -384,7 +384,13 @@
     <!-- 1.55.0 (AC-827): added ICockpitHost.GetProjectMemoryRowsAsync (default empty) plus ProjectMemoryRow — the
          read half of a project's own Memory-role resource rows, paneId-resolved like GetProjectFieldValueAsync.
          Existing plugins keep compiling untouched. Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.55.0</Version>
+    <!-- 1.56.0 (AC-833): added ICockpitSessionObserver.OpenSessions (default empty) plus OpenCockpitSession — every
+         open session's pane id and operator-visible name, so a contribution can name the session it means rather
+         than only ever "the active one". Includes the cockpit-assistant under its fixed pane id, which sits
+         outside `CockpitViewModel.Sessions` by design but is still a session this surface must be able to name.
+         Default-implemented (empty list), so an existing observer or test fake keeps compiling and simply reports
+         no open sessions. Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.56.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
