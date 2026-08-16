@@ -1,5 +1,8 @@
+using Avalonia.Threading;
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Core.Abstractions.Diagrams;
+using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Plugin.Diagram.Whiteboard;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
@@ -46,7 +49,35 @@ public sealed class DiagramPlugin : ICockpitPlugin
         // W-2/AC-843's list, DiagramListDialogBody's counterpart — how a saved board is reopened.
         host.AddToolbarAction(new ToolbarAction("Whiteboards", MaterialIconKind.FormatListBulleted,
             () => host.ShowDialogAsync("Whiteboards", () => new WhiteboardListDialogBody(host), WhiteboardListDialogKey, width: 520, height: 600)));
+
+        _ListenForAgentOpenRequests(host);
     }
+
+    // AC-835: the MCP tools live in core and cannot open a plugin window, so the access registry — already the only
+    // seam between the two — carries the request over. The operator has approved it by the time it arrives here.
+    private void _ListenForAgentOpenRequests(ICockpitHost host)
+    {
+        if (host.Services.GetService(typeof(IDiagramAccessRegistry)) is IDiagramAccessRegistry diagrams)
+        {
+            _diagrams = diagrams;
+            _onDiagramOpen = request => Dispatcher.UIThread.Post(() =>
+                _ = DiagramWindow.OpenAsync(host, new DiagramDocument(request.SurfaceId, request.Name, request.Text), request.SessionId));
+            diagrams.OpenRequested += _onDiagramOpen;
+        }
+
+        if (host.Services.GetService(typeof(IWhiteboardAccessRegistry)) is IWhiteboardAccessRegistry whiteboards)
+        {
+            _whiteboards = whiteboards;
+            _onWhiteboardOpen = request => Dispatcher.UIThread.Post(() =>
+                _ = WhiteboardWindow.OpenAsync(host, new WhiteboardDocument(request.SurfaceId, request.Name), request.SessionId));
+            whiteboards.OpenRequested += _onWhiteboardOpen;
+        }
+    }
+
+    private IDiagramAccessRegistry? _diagrams;
+    private IWhiteboardAccessRegistry? _whiteboards;
+    private Action<DiagramOpenRequest>? _onDiagramOpen;
+    private Action<WhiteboardOpenRequest>? _onWhiteboardOpen;
 
     // AC-834: the quick-start's two answers — a name and a session that is already running — are exactly what a
     // diagram window needs, so it opens one instead of a tab.
@@ -74,5 +105,14 @@ public sealed class DiagramPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        if (_onDiagramOpen is not null && _diagrams is not null)
+        {
+            _diagrams.OpenRequested -= _onDiagramOpen;
+        }
+
+        if (_onWhiteboardOpen is not null && _whiteboards is not null)
+        {
+            _whiteboards.OpenRequested -= _onWhiteboardOpen;
+        }
     }
 }

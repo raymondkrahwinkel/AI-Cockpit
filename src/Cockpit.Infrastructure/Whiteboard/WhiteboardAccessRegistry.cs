@@ -12,6 +12,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     private readonly object _lock = new();
     private readonly Dictionary<string, Surface> _surfaces = new(StringComparer.Ordinal);
     private readonly Dictionary<string, WhiteboardCoupling> _couplings = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _awaitingCoupling = new(StringComparer.Ordinal); // surfaceId -> session that asked for it (AC-835)
 
     public event Action<string, byte[]>? SnapshotChanged;
 
@@ -21,8 +22,11 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
 
     public event Action<string, string>? ObjectErased;
 
+    public event Action<WhiteboardOpenRequest>? OpenRequested;
+
     public void SurfaceOpened(string surfaceId, string name, byte[] initialSnapshotPng)
     {
+        WhiteboardCoupling? asked = null;
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var existing))
@@ -32,7 +36,35 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
             }
 
             _surfaces[surfaceId] = new Surface(name, initialSnapshotPng);
+
+            // AC-835: this board is here because an agent asked for it, so it arrives coupled to that agent — with
+            // nothing granted: reading it and drawing on it stay their own separate asks.
+            if (_awaitingCoupling.Remove(surfaceId, out var session) && !_couplings.ContainsKey(surfaceId))
+            {
+                _couplings[surfaceId] = asked = new WhiteboardCoupling(session, CanRead: false);
+            }
         }
+
+        if (asked is not null)
+        {
+            CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, asked));
+        }
+    }
+
+    public bool RequestOpen(WhiteboardOpenRequest request)
+    {
+        if (OpenRequested is not { } listeners)
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            _awaitingCoupling[request.SurfaceId] = request.SessionId;
+        }
+
+        listeners(request);
+        return true;
     }
 
     public void SurfaceClosed(string surfaceId)

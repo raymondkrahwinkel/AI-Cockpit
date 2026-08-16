@@ -49,6 +49,40 @@ internal sealed class WhiteboardMcpTools
         return _Serialize(new { ok = true, whiteboards });
     }
 
+    [McpServerTool(Name = "open_whiteboard")]
+    [Description("Asks the operator to put a fresh whiteboard on their screen, so the two of you can work something out on it together — this is how you get a board when none is open, rather than waiting for the operator to make one. The operator gets an Approve/Deny prompt naming the board; on Approve a whiteboard window opens beside the cockpit, empty, coupled to you. On Deny nothing opens at all. The coupling on its own grants nothing: seeing the board (read_whiteboard) and putting anything on it (place_on_whiteboard) still ask their own approval.")]
+    public async Task<string> OpenWhiteboard(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The name the operator sees on the window — say what the board is for.")] string name)
+    {
+        var title = string.IsNullOrWhiteSpace(name) ? "Whiteboard" : name.Trim();
+        var surfaceId = Guid.NewGuid().ToString("n");
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        if (_consent is null)
+        {
+            return _Serialize(new { ok = false, error = "Opening a whiteboard needs the operator's approval, which is not available here." });
+        }
+
+        var decision = await _consent.RequestConsentAsync(new ConsentRequest(
+            "An agent wants to open a whiteboard to work on with you",
+            $"Open an empty whiteboard window \"{_SingleLine(title)}\" beside the cockpit and couple this agent to it. It cannot see the board or draw on it without asking you separately.",
+            new ConsentSource(surfaceId, null, ConsentSourceCatalog.WhiteboardMcp),
+            "whiteboard.open",
+            ConsentRisk.Dangerous)).ConfigureAwait(false);
+
+        if (!decision.IsApproved)
+        {
+            return _Serialize(new { ok = false, error = "Opening that whiteboard was not approved by the operator — nothing was opened." });
+        }
+
+        if (!_registry.RequestOpen(new WhiteboardOpenRequest(surfaceId, title, caller)))
+        {
+            return _Serialize(new { ok = false, error = "Nothing in this cockpit draws whiteboard windows right now — the diagram plugin may not be running." });
+        }
+
+        return _Serialize(new { ok = true, id = surfaceId, name = title, opened = true });
+    }
+
     [McpServerTool(Name = "read_whiteboard")]
     [Description("Returns a screenshot of a whiteboard surface — you name it by the id or name from list_whiteboards. This shares an IMAGE of the board exactly as it looks right now — literally what is on the operator's screen — not its shapes or strokes as data. The first time you read a surface the operator gets an Approve/Deny prompt naming which whiteboard and that a screenshot is being shared. Reading does not let you put anything on the board — place_on_whiteboard asks for that separately.")]
     public async Task<string> ReadWhiteboard(

@@ -45,6 +45,58 @@ internal sealed class DiagramMcpTools
         return _Serialize(new { ok = true, diagrams });
     }
 
+    [McpServerTool(Name = "open_diagram")]
+    [Description("Asks the operator to put a diagram YOU wrote on their screen, so the two of you can go through it together — this is how you show a diagram nobody has open yet, rather than waiting for the operator to make one for you. The operator gets an Approve/Deny prompt naming the diagram and how big it is; on Approve a diagram window opens beside the cockpit with your Mermaid source in it, coupled to you. On Deny nothing opens at all. The coupling on its own grants nothing: reading the surface back, or editing it afterwards, still ask their own approval (read_diagram / edit_diagram). Refused without asking if the source is not something the render engine can draw.")]
+    public async Task<string> OpenDiagram(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The name the operator sees on the window — say what the diagram is about.")] string name,
+        [Description("The Mermaid source to open it with.")] string source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return _Serialize(new { ok = false, error = "Give the Mermaid source of the diagram you want to go through — an empty diagram is nothing to discuss." });
+        }
+
+        if (!_TryRender(source, out var fidelity))
+        {
+            return _Serialize(new { ok = false, error = "The render engine cannot draw that source, so nothing was opened — check the Mermaid syntax first." });
+        }
+
+        var title = string.IsNullOrWhiteSpace(name) ? "Diagram" : name.Trim();
+        var surfaceId = Guid.NewGuid().ToString("n");
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        if (_consent is null)
+        {
+            return _Serialize(new { ok = false, error = "Opening a diagram needs the operator's approval, which is not available here." });
+        }
+
+        var decision = await _consent.RequestConsentAsync(new ConsentRequest(
+            "An agent wants to open a diagram to go through with you",
+            $"Open a diagram window \"{_SingleLine(title)}\" beside the cockpit, holding {source.Split('\n').Length} lines of Mermaid this agent wrote, and couple that agent to it. It cannot read the surface back or change it afterwards without asking you separately.",
+            new ConsentSource(surfaceId, null, ConsentSourceCatalog.DiagramMcp),
+            "diagram.open",
+            ConsentRisk.Dangerous)).ConfigureAwait(false);
+
+        if (!decision.IsApproved)
+        {
+            return _Serialize(new { ok = false, error = "Opening that diagram was not approved by the operator — nothing was opened." });
+        }
+
+        if (!_registry.RequestOpen(new DiagramOpenRequest(surfaceId, title, source, caller)))
+        {
+            return _Serialize(new { ok = false, error = "Nothing in this cockpit draws diagram windows right now — the diagram plugin may not be running." });
+        }
+
+        return _Serialize(new
+        {
+            ok = true,
+            id = surfaceId,
+            name = title,
+            opened = true,
+            fidelity = new { complete = fidelity.IsComplete, findings = fidelity.Findings },
+        });
+    }
+
     [McpServerTool(Name = "read_diagram")]
     [Description("Returns a diagram surface's Mermaid source — you name it by the id or name from list_diagrams. The first time you read a surface the operator gets an Approve/Deny prompt naming which diagram and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_diagram asks for that separately. Also reports whether the render engine would drop anything from this source (see `fidelity`) — describe the diagram as incomplete if it does.")]
     public async Task<string> ReadDiagram(
