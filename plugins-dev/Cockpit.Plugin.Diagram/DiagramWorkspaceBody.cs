@@ -35,6 +35,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly ICockpitHost _host;
     private readonly IDiagramAccessRegistry? _registry;
     private readonly string _surfaceId;
+    private readonly string _documentTitle;
     private readonly Avalonia.Svg.Skia.Svg _svg;
     private readonly Border _viewport;
     private readonly TextBlock _zoomLabel;
@@ -57,6 +58,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private Vector _panOffsetStart;
     private DiagramProposal? _pendingProposal;
     private readonly HashSet<int> _acceptedBlocks = [];
+    private int _handAddedNodeSeq;
     private IPluginSessionBinding _binding;
     private string? _boundSessionName;
     private string? _endedSessionName;
@@ -66,6 +68,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _host = host;
         _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
         _surfaceId = document.Id;
+        _documentTitle = document.Title;
 
         // AC-837: no fixed size and no ScrollViewer. Avalonia.Svg.Skia.Svg's own measure gives a placeholder size
         // before its picture is ready, so `_RenderInto` reads the real size off the Skia picture instead, and
@@ -215,6 +218,23 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _acceptedBlocks.Clear();
             _RefreshProposalPanel();
         });
+    }
+
+    // AC-840: the AC-809 sample as an explicit insert — replaces whatever is on the surface now, same as an
+    // agent's edit_diagram would, so it goes through UpdateText and reaches any coupled agent as well.
+    private void _InsertSample()
+    {
+        _RenderInto(DiagramDocument.Sample);
+        _registry?.UpdateText(_surfaceId, DiagramDocument.Sample);
+    }
+
+    // AC-840's minimal hand-edit: enough to build up from empty by hand. Full editing is AC-841/D-5's.
+    private void _AddNode()
+    {
+        _handAddedNodeSeq++;
+        var updated = $"{_sourceBox.Text}\n    N{_handAddedNodeSeq}[Node {_handAddedNodeSeq}]";
+        _RenderInto(updated);
+        _registry?.UpdateText(_surfaceId, updated);
     }
 
     private void _RenderInto(string source)
@@ -408,8 +428,23 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Children = { zoomOut, zoomLabel, zoomIn, fit },
         };
 
-        var bar = new DockPanel { Children = { export, zoomControls } };
+        // AC-840: leeg is een beginpunt, niet een doodlopende weg — the minimal hand-edit is one button that adds
+        // a node. The AC-809 sample is reachable the same way, as an explicit insert rather than a silent default.
+        var insertSample = new Button { Content = "Voorbeeld invoegen", Classes = { "Compact" } };
+        insertSample.Click += (_, _) => _InsertSample();
+        var addNode = new Button { Content = "+ Node", Classes = { "Compact" } };
+        addNode.Click += (_, _) => _AddNode();
+        var handEditControls = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { insertSample, addNode },
+        };
+
+        var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
         DockPanel.SetDock(export, Dock.Right);
+        DockPanel.SetDock(handEditControls, Dock.Left);
 
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel);
     }
@@ -526,6 +561,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // or after Disconnect — and a bar that hides itself leaves the operator no way back to a coupled one.
     private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip, Button Couple, Button Disconnect) _BuildCouplingBar()
     {
+        // AC-840: the snelstart name (AC-816), shown here too — not just in the venstertitel — so it stays
+        // visible once the window is one of several open diagrams.
+        var titleLabel = new TextBlock { Text = _documentTitle, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Foreground = _Brush("CockpitAccentBrush") };
         var readChip = _Chip();
         var editChip = _Chip();
@@ -556,6 +594,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
                         VerticalAlignment = VerticalAlignment.Center,
                         Children =
                         {
+                            titleLabel,
                             new MaterialIcon { Kind = MaterialIconKind.RobotOutline, Width = 15, Height = 15, Foreground = _Brush("CockpitAccentBrush") },
                             label,
                             readChip,

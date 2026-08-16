@@ -5,6 +5,10 @@ namespace Cockpit.Plugin.Diagram;
 // a diagram that has no file yet. It doubles as the surface id the AC-810 registry knows this diagram by.
 internal sealed record DiagramDocument(string Id, string Title, string MermaidText)
 {
+    // A valid, node-less flowchart (AC-840): renders as a blank canvas, and is what "voorbeeld invoegen" and
+    // "node toevoegen" both build on top of.
+    public const string Empty = "flowchart LR";
+
     public const string Sample = """
         flowchart LR
             Zip[Plugin zip] -->|PluginLoadContext| Fallthrough{Falls through?}
@@ -14,5 +18,7 @@ internal sealed record DiagramDocument(string Id, string Title, string MermaidTe
             Own --> Panel
         """;
 
-    public static DiagramDocument New(string title) => new(Guid.NewGuid().ToString("n"), title, Sample);
+    // AC-840: a quick-started diagram opens empty, named for what the operator asked for — never the AC-809
+    // sample, which is now only reachable via the panel's explicit "Voorbeeld invoegen" action.
+    public static DiagramDocument New(string title) => new(Guid.NewGuid().ToString("n"), title, Empty);
 }
