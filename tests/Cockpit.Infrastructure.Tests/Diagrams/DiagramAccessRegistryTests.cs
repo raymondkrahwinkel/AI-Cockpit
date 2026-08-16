@@ -374,7 +374,7 @@ public class DiagramAccessRegistryTests
         registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
         registry.Propose("session-a", "surface-1", "flowchart LR\n    A-->C", "1 line changed", []);
 
-        registry.EditCoupled("session-a", "surface-1", current => (DiagramObjectEdit.AddNode(current, "N1", "Los").Text, "add node"));
+        registry.EditCoupled("session-a", "surface-1", DiagramHandEditKind.AddNode, "N1", current => (DiagramObjectEdit.AddNode(current, "N1", "Los").Text, "add node"));
         registry.ResolveProposal("surface-1", new HashSet<int>());
 
         Assert.Contains("Los", registry.PeekText("surface-1"));
