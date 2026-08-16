@@ -414,6 +414,67 @@ internal sealed class GitHubPrGhClient
         return result;
     }
 
+    // AC-818: one pull request's live status by owner/repo/number, for the MCP status tool. Not cached here —
+    // the MCP tool's own short-TTL cache coalesces concurrent callers, so this always asks gh fresh.
+    public async Task<GitHubPullRequestStatus?> GetPullRequestStatusAsync(string owner, string repo, int number, CancellationToken cancellationToken)
+    {
+        string json;
+        try
+        {
+            json = await _RunGhAsync(
+                ["pr", "view", number.ToString(), "--repo", $"{owner}/{repo}", "--json", "number,title,url,mergeable,reviewDecision,statusCheckRollup"],
+                cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+
+        return ParsePullRequestStatus(json);
+    }
+
+    // Internal so a test can feed it a fixture without shelling out — same seam SessionPullRequestStatusClient.Parse gives its own JSON.
+    internal static GitHubPullRequestStatus? ParsePullRequestStatus(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var number = root.TryGetProperty("number", out var n) ? n.GetInt32() : 0;
+            var title = root.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() ?? string.Empty : string.Empty;
+            var url = root.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() ?? string.Empty : string.Empty;
+            var mergeable = root.TryGetProperty("mergeable", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
+            var reviewDecision = root.TryGetProperty("reviewDecision", out var r) && r.ValueKind == JsonValueKind.String && r.GetString() is { Length: > 0 } decision
+                ? decision
+                : null;
+
+            var checks = new List<PullRequestCheck>();
+            if (root.TryGetProperty("statusCheckRollup", out var rollup) && rollup.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var element in rollup.EnumerateArray())
+                {
+                    checks.Add(PullRequestCheckRollupParser.Parse(element));
+                }
+            }
+
+            return new GitHubPullRequestStatus(number, title, url, mergeable, reviewDecision, checks);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static async Task<string> _RunGhAsync(string[] arguments, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo("gh")
