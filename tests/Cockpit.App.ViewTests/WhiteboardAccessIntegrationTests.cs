@@ -72,8 +72,6 @@ public class WhiteboardAccessIntegrationTests
         plugin.Dispose();
     });
 
-    // Loads the real plugin and opens a whiteboard window through it, returning the registry the board signed up
-    // with and the surface id it registered under.
     private static async Task<(ICockpitPlugin Plugin, WhiteboardAccessRegistry Registry, string SurfaceId)> _OpenBoardAsync()
     {
         var folder = _LocatePluginOutput();

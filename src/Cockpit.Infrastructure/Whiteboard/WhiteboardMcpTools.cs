@@ -10,9 +10,8 @@ using Cockpit.Plugins.Abstractions.Consent;
 namespace Cockpit.Infrastructure.Whiteboard;
 
 // The `cockpit-whiteboard` MCP tools (AC-823), gated per-capability like `cockpit-diagram` (AC-810) — read that
-// class first. Deviations: the read payload is a base64 PNG snapshot, never the board's shapes as data (so the
-// consent text names a screenshot), and the write path (AC-854, reversing AC-820's "an agent never writes to the
-// canvas") only ever adds objects — there is no replace-the-board tool, and the operator's own work is untouchable.
+// class first. Deviations: the read payload is a base64 PNG snapshot, so the consent text names a screenshot; and
+// the write path (AC-854, reversing AC-820) only adds — no replace-the-board tool, no reach into operator work.
 internal sealed class WhiteboardMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
@@ -203,10 +202,9 @@ internal sealed class WhiteboardMcpTools
         return null;
     }
 
-    // AC-823's deviation from DiagramMcpTools' read prompt: Read names a screenshot being shared, not a diagram
-    // source — the payload is literally what is on the operator's screen. Write's prompt (AC-854) says what the
-    // agent is about to put down and what it still cannot touch; the description of the object is built here from
-    // the shape and label the call actually carries, never from prose the agent wrote.
+    // Read names a screenshot being shared, not a diagram source (AC-823's deviation) — the payload is literally
+    // what is on the operator's screen. Write's prompt (AC-854) says what is about to be put down, built from the
+    // shape and label the call actually carries rather than from prose the agent wrote.
     private static ConsentRequest _PromptFor(WhiteboardSurface surface, WhiteboardCapability needed, bool widening, string? ask) =>
         needed == WhiteboardCapability.Read
             ? new ConsentRequest(

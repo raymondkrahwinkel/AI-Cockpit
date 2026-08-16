@@ -13,10 +13,9 @@ public enum WhiteboardCapability
     Write,
 }
 
-// What one session holds on a surface. Coupling is separate from granting, so "coupled, nothing granted yet" stays
-// a real, distinct state (AC-810's precedent). Granting Write always sets CanRead too: putting something on a board
-// you cannot see is not a narrower grant. LastReadAt is AC-842's "gelezen 15:11": when this session's
-// read_whiteboard last actually returned a snapshot.
+// What one session holds on a surface: "coupled, nothing granted yet" is a real state (AC-810's precedent), and
+// granting Write always sets CanRead too — putting something on a board you cannot see is not a narrower grant.
+// LastReadAt is AC-842's "gelezen 15:11": when this session's read_whiteboard last returned a snapshot.
 public sealed record WhiteboardCoupling(string SessionId, bool CanRead, bool CanWrite = false, DateTimeOffset? LastReadAt = null);
 
 // One object an agent asks to put on a board (AC-854): a template shape, a sticky note or a bare label, in the
