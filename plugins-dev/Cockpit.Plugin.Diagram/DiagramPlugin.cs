@@ -54,7 +54,7 @@ public sealed class DiagramPlugin : ICockpitPlugin
         });
 
         // AC-822's surface, unchanged by the merge (AC-836): its own workspace type, its own registry.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration(WhiteboardWorkspaceTypeId, "Whiteboard", context => new WhiteboardWorkspaceBody(context, host))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(WhiteboardWorkspaceTypeId, "Whiteboard", context => new WhiteboardWorkspaceBody(host, context.WorkspaceId, sessionPaneId: null))
         {
             IconKind = MaterialIconKind.Pencil,
             Description = "A freehand whiteboard: pencil, shape templates, pasted screenshots.",
@@ -66,8 +66,10 @@ public sealed class DiagramPlugin : ICockpitPlugin
         host.AddToolbarAction(new ToolbarAction("Diagrams", MaterialIconKind.FormatListBulleted,
             () => host.OpenWorkspaceAsync(ListWorkspaceTypeId)));
 
+        // AC-842: a window beside the cockpit, not a tab — bound to whatever session is already active, no
+        // separate session-picker step (the window model fixes the coupling at open time).
         host.AddToolbarAction(new ToolbarAction("Whiteboard", MaterialIconKind.Pencil,
-            () => host.OpenWorkspaceAsync(WhiteboardWorkspaceTypeId)));
+            () => WhiteboardWindow.OpenAsync(host, host.Sessions.ActivePaneId)));
     }
 
     // AC-834: the quick-start's two answers — a name and a session that is already running — are exactly what a

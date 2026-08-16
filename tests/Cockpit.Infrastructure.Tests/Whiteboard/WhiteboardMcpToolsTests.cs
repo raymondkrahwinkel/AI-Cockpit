@@ -45,6 +45,18 @@ public class WhiteboardMcpToolsTests
     }
 
     [Fact]
+    public async Task ReadWhiteboard_StampsLastReadAt_SoTheBoardCanShowWhenItWasRead()
+    {
+        // AC-842's "gelezen 15:11": read_whiteboard must leave a trace the board's own coupling bar can render.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("board-1", "Sprint planning", Png);
+
+        await tools.ReadWhiteboard(Session, "Sprint planning");
+
+        Assert.NotNull(registry.CouplingOf(Session, "board-1")!.LastReadAt);
+    }
+
+    [Fact]
     public async Task ConsentText_NamesAScreenshot_NotADiagramSource()
     {
         // AC-823's deviation from AC-810: the payload is an image, so the prompt must say so explicitly.

@@ -6,7 +6,8 @@ public sealed record WhiteboardSurface(string SurfaceId, string Name);
 // What one session holds on a surface. Unlike DiagramCoupling there is no capability enum — AC-823 offers exactly
 // one capability (Read; there is no edit_whiteboard, the agent never writes to the canvas) — but coupling is still
 // separate from granting it, so "coupled, nothing granted yet" stays a real, distinct state (AC-810's precedent).
-public sealed record WhiteboardCoupling(string SessionId, bool CanRead);
+// LastReadAt is AC-842's "gelezen 15:11": when this session's read_whiteboard last actually returned a snapshot.
+public sealed record WhiteboardCoupling(string SessionId, bool CanRead, DateTimeOffset? LastReadAt = null);
 
 // A surface as `list_whiteboards` reports it to one agent session — the surface plus what that session already
 // holds on it, or null when there is no coupling at all yet.
@@ -69,6 +70,9 @@ public interface IWhiteboardAccessRegistry
 
     /// <summary>The surface's current snapshot, or null when this session does not hold Read on it.</summary>
     byte[]? ReadCoupled(string sessionId, string surfaceId);
+
+    /// <summary>Records that this session's read_whiteboard just returned a snapshot, so the board can show when it was last read (AC-842). No-op when this session does not hold Read.</summary>
+    void MarkRead(string sessionId, string surfaceId);
 
     /// <summary>Breaks every coupling this agent session held (its session ended or crashed).</summary>
     void SessionEnded(string sessionId);

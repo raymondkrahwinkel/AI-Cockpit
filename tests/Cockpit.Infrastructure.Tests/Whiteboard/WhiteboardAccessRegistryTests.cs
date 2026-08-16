@@ -126,6 +126,25 @@ public class WhiteboardAccessRegistryTests
     }
 
     [Fact]
+    public void MarkRead_OnlyStampsACouplingThatHoldsRead_AndAnnounces()
+    {
+        var registry = new WhiteboardAccessRegistry();
+        var changes = new List<WhiteboardCouplingChange>();
+        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
+        registry.Couple("session-a", "surface-1");
+
+        registry.MarkRead("session-a", "surface-1");
+        Assert.Null(registry.CouplingOf("session-a", "surface-1")!.LastReadAt);
+
+        registry.Grant("session-a", "surface-1");
+        registry.CouplingChanged += changes.Add;
+        registry.MarkRead("session-a", "surface-1");
+
+        Assert.NotNull(registry.CouplingOf("session-a", "surface-1")!.LastReadAt);
+        Assert.Single(changes);
+    }
+
+    [Fact]
     public void UpdateSnapshot_KeepsWhatAnAgentReadsInStep_AndRaisesSnapshotChanged()
     {
         var registry = new WhiteboardAccessRegistry();
