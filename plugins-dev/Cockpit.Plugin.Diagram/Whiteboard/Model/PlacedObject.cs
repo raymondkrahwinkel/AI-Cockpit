@@ -1,6 +1,7 @@
 namespace Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-// The toolbar's flyout offers the first eight; Image is never chosen there — it is what a clipboard paste creates.
+// The toolbar's flyout offers the first eight; StickyNote has its own toolbar icon instead; Image is never chosen
+// there — it is what a clipboard paste or an inserted file creates.
 public enum PlacedShapeKind
 {
     Rectangle,
@@ -11,6 +12,7 @@ public enum PlacedShapeKind
     Column,
     Callout,
     Text,
+    StickyNote,
     Image,
 }
 
@@ -28,6 +30,9 @@ public sealed class PlacedObject : WhiteboardObject
 
     public string? Text { get; set; }
 
-    // PNG bytes for a pasted screenshot (ShapeKind.Image); null for every template shape.
+    // PNG bytes for a pasted screenshot or an inserted file (ShapeKind.Image); null for every template shape.
     public byte[]? ImageData { get; init; }
+
+    // Only true for a clipboard paste — drives the "geplakt · screenshot" badge, never set for a file insert.
+    public bool IsPastedScreenshot { get; init; }
 }

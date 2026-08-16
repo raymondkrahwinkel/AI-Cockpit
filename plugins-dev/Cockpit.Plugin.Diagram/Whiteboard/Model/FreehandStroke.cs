@@ -8,4 +8,7 @@ public sealed class FreehandStroke : WhiteboardObject
     public List<WhiteboardPoint> Points { get; init; } = [];
 
     public double Thickness { get; init; } = 2.5;
+
+    // Marker over pencil: thicker and painted translucent (WhiteboardObjectPainter), never the other way round.
+    public bool IsMarker { get; init; }
 }

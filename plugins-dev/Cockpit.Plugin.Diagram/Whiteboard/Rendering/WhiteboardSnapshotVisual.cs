@@ -26,7 +26,7 @@ internal sealed class WhiteboardSnapshotVisual : Control
             switch (item)
             {
                 case FreehandStroke stroke:
-                    WhiteboardObjectPainter.PaintFreehand(context, stroke.Points, stroke.Thickness);
+                    WhiteboardObjectPainter.PaintFreehand(context, stroke.Points, stroke.Thickness, stroke.IsMarker);
                     break;
                 case PlacedObject placed:
                     // ponytail: decodes the pasted image on every snapshot, no bitmap cache — add one if AC-822's
@@ -41,7 +41,8 @@ internal sealed class WhiteboardSnapshotVisual : Control
                             placed.ShapeKind,
                             new Rect(placed.X, placed.Y, placed.Width, placed.Height),
                             placed.Text,
-                            image);
+                            image,
+                            placed.IsPastedScreenshot ? "geplakt · screenshot" : null);
                     }
 
                     break;

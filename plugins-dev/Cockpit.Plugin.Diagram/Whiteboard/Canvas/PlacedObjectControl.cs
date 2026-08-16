@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Rendering;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
@@ -9,7 +10,7 @@ namespace Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 
 // One template shape or pasted screenshot, drawn in its own local 0,0..Width,Height rect — the canvas positions
 // it on the surface with Canvas.SetLeft/SetTop, the same way WorkflowNodeControl is positioned.
-internal sealed class PlacedObjectControl : Control
+internal sealed class PlacedObjectControl : Control, ICustomHitTest
 {
     private Bitmap? _image;
 
@@ -23,6 +24,10 @@ internal sealed class PlacedObjectControl : Control
 
     public PlacedObject Model { get; }
 
+    // Avalonia's default hit test for a plain Control checks actual rendered pixels — a hollow shape (no fill,
+    // just an outline) would then miss clicks anywhere in its own middle. The whole bounds count as the object.
+    public bool HitTest(Point point) => new Rect(Bounds.Size).Contains(point);
+
     public void Refresh()
     {
         Width = Model.Width;
@@ -33,7 +38,13 @@ internal sealed class PlacedObjectControl : Control
 
     public override void Render(DrawingContext context)
     {
-        WhiteboardObjectPainter.PaintPlaced(context, Model.ShapeKind, new Rect(Bounds.Size), Model.Text, _image);
+        WhiteboardObjectPainter.PaintPlaced(
+            context,
+            Model.ShapeKind,
+            new Rect(Bounds.Size),
+            Model.Text,
+            _image,
+            Model.IsPastedScreenshot ? "geplakt · screenshot" : null);
     }
 
     private void _ReloadImage()

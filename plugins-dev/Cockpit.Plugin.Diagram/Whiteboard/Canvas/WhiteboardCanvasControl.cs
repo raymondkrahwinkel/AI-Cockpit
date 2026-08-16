@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
@@ -13,6 +14,7 @@ public enum WhiteboardTool
 {
     Select,
     Pencil,
+    Marker,
     PlaceShape,
 }
 
@@ -23,23 +25,33 @@ public sealed class WhiteboardCanvasControl : Border
 {
     private const double MinPlacedSize = 20;
     private const double HitTolerance = 6;
+    private const double ClickTolerance = 3;
+    private const double PencilThickness = 2.5;
+    private const double MarkerThickness = 14;
 
     private readonly Avalonia.Controls.Canvas _surface = new() { Background = Brushes.Transparent };
     private readonly FreehandLayer _freehandLayer;
+    private readonly EmptyStateOverlay _emptyState = new() { IsHitTestVisible = false };
     private readonly Dictionary<Guid, PlacedObjectControl> _placedControls = [];
     private readonly List<ResizeHandle> _handles = [];
 
     private List<WhiteboardPoint>? _activeStroke;
+    private bool _activeStrokeIsMarker;
 
     private Point? _shapeStartPoint;
     private PlacedObjectControl? _shapeInProgress;
 
     private PlacedObjectControl? _draggingPlaced;
     private Point _dragOffset;
+    private Point? _pointerDownPoint;
+    private bool _clickCandidateForEdit;
 
     private (HandleCorner Corner, PlacedObjectControl Control)? _resizing;
     private Rect _resizeStartBounds;
     private Point _resizeStartPointer;
+
+    private TextBox? _activeEditor;
+    private PlacedObjectControl? _editingControl;
 
     private Guid? _selectedId;
     private PlacedShapeKind _pendingShapeKind = PlacedShapeKind.Rectangle;
@@ -51,6 +63,10 @@ public sealed class WhiteboardCanvasControl : Border
         ClipToBounds = true;
         Focusable = true;
 
+        _surface.Children.Add(_emptyState);
+        Avalonia.Controls.Canvas.SetLeft(_emptyState, 0);
+        Avalonia.Controls.Canvas.SetTop(_emptyState, 0);
+
         _freehandLayer = new FreehandLayer(document);
         _surface.Children.Add(_freehandLayer);
         Avalonia.Controls.Canvas.SetLeft(_freehandLayer, 0);
@@ -60,6 +76,8 @@ public sealed class WhiteboardCanvasControl : Border
         {
             _freehandLayer.Width = e.NewSize.Width;
             _freehandLayer.Height = e.NewSize.Height;
+            _emptyState.Width = e.NewSize.Width;
+            _emptyState.Height = e.NewSize.Height;
         };
 
         Child = _surface;
@@ -68,6 +86,9 @@ public sealed class WhiteboardCanvasControl : Border
         {
             _CreatePlacedControl(placed);
         }
+
+        document.Objects.CollectionChanged += (_, _) => _UpdateEmptyState();
+        _UpdateEmptyState();
     }
 
     public WhiteboardDocument Document { get; }
@@ -88,10 +109,51 @@ public sealed class WhiteboardCanvasControl : Border
 
     public void UsePencilTool() => _SetTool(WhiteboardTool.Pencil);
 
+    public void UseMarkerTool() => _SetTool(WhiteboardTool.Marker);
+
     public void UseShapeTool(PlacedShapeKind kind)
     {
         _pendingShapeKind = kind;
         _SetTool(WhiteboardTool.PlaceShape);
+    }
+
+    public Task PasteScreenshotAsync() => _PasteAsync();
+
+    public async Task InsertImageAsync()
+    {
+        var storageProvider = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (storageProvider is null)
+        {
+            return;
+        }
+
+        var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Afbeelding invoegen",
+            AllowMultiple = false,
+            FileTypeFilter = [FilePickerFileTypes.ImageAll],
+        });
+
+        var file = files.FirstOrDefault();
+        if (file is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await file.OpenReadAsync();
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var data = buffer.ToArray();
+
+            using var bitmap = new Bitmap(new MemoryStream(data));
+            _AddImageObject(data, bitmap.PixelSize.Width, bitmap.PixelSize.Height, isPastedScreenshot: false);
+        }
+        catch (Exception)
+        {
+            // Unreadable or unsupported file: drop the insert, don't crash the UI thread.
+        }
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -101,9 +163,10 @@ public sealed class WhiteboardCanvasControl : Border
 
         var point = e.GetPosition(_surface);
 
-        if (Tool == WhiteboardTool.Pencil)
+        if (Tool is WhiteboardTool.Pencil or WhiteboardTool.Marker)
         {
             _activeStroke = [new WhiteboardPoint(point.X, point.Y)];
+            _activeStrokeIsMarker = Tool == WhiteboardTool.Marker;
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -111,7 +174,12 @@ public sealed class WhiteboardCanvasControl : Border
 
         if (Tool == WhiteboardTool.PlaceShape)
         {
+            // Created right here, not on the first PointerMoved — a click with no movement at all must still place
+            // something, per "neerzetten, niet tekenen" (#W2), rather than silently doing nothing.
             _shapeStartPoint = point;
+            var placed = new PlacedObject { ShapeKind = _pendingShapeKind, X = point.X, Y = point.Y, Width = 1, Height = 1 };
+            Document.Add(placed);
+            _shapeInProgress = _CreatePlacedControl(placed);
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -119,6 +187,11 @@ public sealed class WhiteboardCanvasControl : Border
 
         if (_ControlOf(e.Source as Visual) is { } control)
         {
+            // A second press on an already-selected, non-image object opens the text editor — but only once the
+            // release proves it was a click and not the start of a drag (see OnPointerReleased).
+            _clickCandidateForEdit = control.Model.ShapeKind != PlacedShapeKind.Image && _selectedId == control.Model.Id;
+            _pointerDownPoint = point;
+
             _Select(control.Model.Id);
             _draggingPlaced = control;
             _dragOffset = point - new Point(control.Model.X, control.Model.Y);
@@ -149,16 +222,9 @@ public sealed class WhiteboardCanvasControl : Border
             return;
         }
 
-        if (_shapeStartPoint is { } start)
+        if (_shapeStartPoint is { } start && _shapeInProgress is not null)
         {
             var rect = new Rect(start, point);
-            if (_shapeInProgress is null)
-            {
-                var placed = new PlacedObject { ShapeKind = _pendingShapeKind, X = rect.X, Y = rect.Y, Width = 1, Height = 1 };
-                Document.Add(placed);
-                _shapeInProgress = _CreatePlacedControl(placed);
-            }
-
             _shapeInProgress.Model.X = rect.X;
             _shapeInProgress.Model.Y = rect.Y;
             _shapeInProgress.Model.Width = Math.Max(1, rect.Width);
@@ -193,7 +259,13 @@ public sealed class WhiteboardCanvasControl : Border
             _activeStroke = null;
             if (stroke.Count >= 2)
             {
-                Document.Add(new FreehandStroke { Points = stroke });
+                var isMarker = _activeStrokeIsMarker;
+                Document.Add(new FreehandStroke
+                {
+                    Points = stroke,
+                    IsMarker = isMarker,
+                    Thickness = isMarker ? MarkerThickness : PencilThickness,
+                });
                 _freehandLayer.InvalidateVisual();
                 Changed?.Invoke(this, EventArgs.Empty);
             }
@@ -204,13 +276,14 @@ public sealed class WhiteboardCanvasControl : Border
         if (_shapeInProgress is { } shape)
         {
             // A click with no drag places the default size centred on the click, rather than a sliver nobody could
-            // grab a handle on.
+            // grab a handle on — a sticky note gets a note-sized square, everything else the usual 120x80.
             if (shape.Model.Width < 4 && shape.Model.Height < 4)
             {
-                shape.Model.X -= 60;
-                shape.Model.Y -= 40;
-                shape.Model.Width = 120;
-                shape.Model.Height = 80;
+                var (width, height) = shape.Model.ShapeKind == PlacedShapeKind.StickyNote ? (140.0, 140.0) : (120.0, 80.0);
+                shape.Model.X -= width / 2;
+                shape.Model.Y -= height / 2;
+                shape.Model.Width = width;
+                shape.Model.Height = height;
                 _PositionPlaced(shape);
                 shape.Refresh();
             }
@@ -223,9 +296,18 @@ public sealed class WhiteboardCanvasControl : Border
             return;
         }
 
-        if (_draggingPlaced is not null)
+        if (_draggingPlaced is { } dragging)
         {
+            var moved = _pointerDownPoint is { } start && _Distance(e.GetPosition(_surface), start) > ClickTolerance;
             _draggingPlaced = null;
+            _pointerDownPoint = null;
+
+            if (_clickCandidateForEdit && !moved)
+            {
+                _BeginTextEdit(dragging);
+            }
+
+            _clickCandidateForEdit = false;
             Changed?.Invoke(this, EventArgs.Empty);
         }
 
@@ -274,26 +356,119 @@ public sealed class WhiteboardCanvasControl : Border
             {
                 using var stream = new MemoryStream();
                 bitmap.Save(stream, PngBitmapEncoderOptions.Default);
-
-                var placed = new PlacedObject
-                {
-                    ShapeKind = PlacedShapeKind.Image,
-                    X = 40,
-                    Y = 40,
-                    Width = Math.Min(bitmap.PixelSize.Width, 480),
-                    Height = Math.Min(bitmap.PixelSize.Height, 360),
-                    ImageData = stream.ToArray(),
-                };
-
-                Document.Add(placed);
-                _CreatePlacedControl(placed);
-                _Select(placed.Id);
-                Changed?.Invoke(this, EventArgs.Empty);
+                _AddImageObject(stream.ToArray(), bitmap.PixelSize.Width, bitmap.PixelSize.Height, isPastedScreenshot: true);
             }
         }
         catch (Exception)
         {
             // Clipboard unavailable (locked by another app, unsupported content): drop the paste, don't crash the UI thread.
+        }
+    }
+
+    private void _AddImageObject(byte[] data, int pixelWidth, int pixelHeight, bool isPastedScreenshot)
+    {
+        var placed = new PlacedObject
+        {
+            ShapeKind = PlacedShapeKind.Image,
+            X = 40,
+            Y = 40,
+            Width = Math.Min(pixelWidth, 480),
+            Height = Math.Min(pixelHeight, 360),
+            ImageData = data,
+            IsPastedScreenshot = isPastedScreenshot,
+        };
+
+        Document.Add(placed);
+        _CreatePlacedControl(placed);
+        _Select(placed.Id);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void _BeginTextEdit(PlacedObjectControl control)
+    {
+        _EndTextEdit(commit: true);
+
+        var editor = new TextBox
+        {
+            Text = control.Model.Text ?? string.Empty,
+            AcceptsReturn = true,
+            Background = Brushes.White,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4),
+        };
+        editor.LostFocus += (_, _) => _EndTextEdit(commit: true);
+
+        _surface.Children.Add(editor);
+        Avalonia.Controls.Canvas.SetLeft(editor, control.Model.X);
+        Avalonia.Controls.Canvas.SetTop(editor, control.Model.Y);
+        editor.Width = control.Model.Width;
+        editor.Height = control.Model.Height;
+
+        _activeEditor = editor;
+        _editingControl = control;
+        editor.Focus();
+        editor.SelectAll();
+    }
+
+    private void _EndTextEdit(bool commit)
+    {
+        if (_activeEditor is not { } editor || _editingControl is not { } control)
+        {
+            return;
+        }
+
+        _activeEditor = null;
+        _editingControl = null;
+        _surface.Children.Remove(editor);
+
+        if (commit)
+        {
+            control.Model.Text = string.IsNullOrEmpty(editor.Text) ? null : editor.Text;
+            control.Refresh();
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void _UpdateEmptyState()
+    {
+        _emptyState.IsVisible = Document.Objects.Count == 0;
+    }
+
+    // Paints straight into the live canvas, never the exported snapshot — the ticket points at this control's own
+    // blank white background, not at what PNG the registry sees.
+    internal sealed class EmptyStateOverlay : Control
+    {
+        private const double DotSpacing = 24;
+        private const string Message = "Leeg bord. Teken, plak een screenshot, of zet een vorm neer.";
+
+        private static readonly IBrush DotBrush = new SolidColorBrush(Color.Parse("#D6DEE8"));
+        private static readonly IBrush TextBrush = new SolidColorBrush(Color.Parse("#94A3B8"));
+
+        public override void Render(DrawingContext context)
+        {
+            var bounds = new Rect(Bounds.Size);
+
+            for (var x = DotSpacing / 2; x < bounds.Width; x += DotSpacing)
+            {
+                for (var y = DotSpacing / 2; y < bounds.Height; y += DotSpacing)
+                {
+                    context.DrawEllipse(DotBrush, null, new Point(x, y), 1.5, 1.5);
+                }
+            }
+
+            var formatted = new FormattedText(
+                Message,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                Typeface.Default,
+                14,
+                TextBrush)
+            {
+                TextAlignment = TextAlignment.Center,
+                MaxTextWidth = Math.Max(1, bounds.Width - 80),
+            };
+
+            context.DrawText(formatted, new Point((bounds.Width - formatted.Width) / 2, (bounds.Height - formatted.Height) / 2));
         }
     }
 
