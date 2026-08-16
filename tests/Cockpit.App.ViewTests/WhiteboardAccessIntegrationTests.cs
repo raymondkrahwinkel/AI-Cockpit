@@ -44,20 +44,23 @@ public class WhiteboardAccessIntegrationTests
         var host = new RecordingHost(registry);
         plugin.Initialize(host);
 
-        // AC-836: the whiteboard is one of the merged plugin's surfaces now, so it is picked by id rather than
-        // being the only registration.
-        var registration = Assert.Single(host.WorkspaceTypes, type => type.Id == "whiteboard.panel");
-        var body = registration.CreateBody(new FakeWorkspaceContext());
-        Assert.IsAssignableFrom<Control>(body);
+        // AC-850: the whiteboard is no longer a workspace type — the "Whiteboard" toolbar action opens it
+        // directly as a window bound to the active session.
+        var whiteboardAction = Assert.Single(host.ToolbarActions, action => action.Title == "Whiteboard");
+        await whiteboardAction.OnInvoke();
+        var dialogKey = Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
+        Assert.IsAssignableFrom<Control>(host.LastDialogContent);
+
+        var surfaceId = dialogKey["whiteboard.document.".Length..];
 
         // The panel signed up with a real rendered snapshot, not a hand-fed byte array — PeekSnapshot is the
         // operator-trusted read the consent prompt and ReadWhiteboard both build from.
-        var peeked = registry.PeekSnapshot("test-workspace");
+        var peeked = registry.PeekSnapshot(surfaceId);
         Assert.NotNull(peeked);
         Assert.NotEmpty(peeked!);
 
         var tools = new WhiteboardMcpTools(registry, new AlwaysApprove());
-        var json = JsonNode.Parse(await tools.ReadWhiteboard("agent-pane", "test-workspace"));
+        var json = JsonNode.Parse(await tools.ReadWhiteboard("agent-pane", surfaceId));
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Equal(Convert.ToBase64String(peeked!), json["imageBase64"]!.GetValue<string>());
@@ -102,7 +105,11 @@ public class WhiteboardAccessIntegrationTests
 
     private sealed class RecordingHost(IWhiteboardAccessRegistry registry) : ICockpitHost
     {
-        public List<WorkspaceTypeRegistration> WorkspaceTypes { get; } = [];
+        public List<ToolbarAction> ToolbarActions { get; } = [];
+
+        public List<string> DialogKeys { get; } = [];
+
+        public Control? LastDialogContent { get; private set; }
 
         public IServiceProvider Services { get; } = new ServiceCollection()
             .AddSingleton(registry)
@@ -111,6 +118,8 @@ public class WhiteboardAccessIntegrationTests
         public ICockpitActions Actions { get; } = new NoActions();
 
         public IPluginStorage Storage { get; } = new MemoryStorage();
+
+        public ICockpitSessionObserver Sessions { get; } = new FakeSessions();
 
         public void AddSettings(Func<Control> createView)
         {
@@ -124,15 +133,42 @@ public class WhiteboardAccessIntegrationTests
         {
         }
 
-        public void AddWorkspaceType(WorkspaceTypeRegistration registration) => WorkspaceTypes.Add(registration);
-
-        public void AddToolbarAction(ToolbarAction action)
+        public void AddWorkspaceType(WorkspaceTypeRegistration registration)
         {
         }
 
+        public void AddToolbarAction(ToolbarAction action) => ToolbarActions.Add(action);
+
         public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
+        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
+            ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
+
+        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
+        {
+            DialogKeys.Add(singleInstanceKey);
+            LastDialogContent = createContent();
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeSessions : ICockpitSessionObserver
+    {
+        public string? ActiveSessionWorkingDirectory => null;
+
+        public string? ActivePaneId => "pane-a";
+
+        public event EventHandler? ActiveSessionChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<SessionOutputText>? OutputProduced
+        {
+            add { }
+            remove { }
+        }
     }
 
     private sealed class NoActions : ICockpitActions
@@ -151,24 +187,5 @@ public class WhiteboardAccessIntegrationTests
         public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? (T?)value : default;
 
         public void Set<T>(string key, T value) => _values[key] = value;
-    }
-
-    private sealed class FakeWorkspaceContext : IWorkspaceContext
-    {
-        public string WorkspaceId => "test-workspace";
-
-        public IPluginStorage Storage { get; } = new MemoryStorage();
-
-        public ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
-
-        // The whiteboard workspace body never embeds a session (unlike Diagram's, AC-824), so this is never
-        // actually called by CreateBody — implemented only to satisfy the interface.
-        public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request) => throw new NotSupportedException();
-
-        public event EventHandler? RefreshRequested
-        {
-            add { }
-            remove { }
-        }
     }
 }

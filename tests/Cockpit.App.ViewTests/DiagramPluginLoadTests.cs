@@ -42,11 +42,10 @@ public class DiagramPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        // AC-836: one plugin, both surfaces — the whiteboard keeps its own workspace type id, so a saved
-        // workspace that held "whiteboard.panel" still finds it after the merge.
-        Assert.Equal(["diagram.panel", "diagram.list", "whiteboard.panel"], host.WorkspaceTypes.Select(r => r.Id));
-        var registration = host.WorkspaceTypes[0];
-        var toolbarAction = host.ToolbarActions[0];
+        // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — nothing registers a workspace
+        // type any more, only the three toolbar actions.
+        Assert.Empty(host.WorkspaceTypes);
+        Assert.Equal(["Nieuw diagram", "Diagrams", "Whiteboard"], host.ToolbarActions.Select(a => a.Title));
 
         // The measurement: nothing named "Avalonia*" ever loaded into the plugin's own AssemblyLoadContext —
         // everything the panel needed from the Avalonia family (including Svg.Controls.Skia.Avalonia's own
@@ -55,33 +54,32 @@ public class DiagramPluginLoadTests
         Assert.NotNull(pluginAlc);
         Assert.DoesNotContain(pluginAlc!.Assemblies, a => a.GetName().Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true);
 
-        var body = registration.CreateBody(new FakeWorkspaceContext());
+        // AC-816/AC-834: the quick-start button opens a dialog first; RecordingHost.ShowDialogAsync builds it and
+        // clicks straight through with the prefilled name, the same "Enter is enough" default an operator gets.
+        // What it opens after that is a window of its own, not a workspace tab.
+        host.ToolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+        Assert.Empty(host.OpenedWorkspaceTypeIds);
+        var diagramDialog = Assert.Single(host.Dialogs, d => d.Key.StartsWith("diagram.document.", StringComparison.Ordinal));
 
         // A non-null cast to the host's own Control is itself the identity proof the ticket asks for: a second
         // Avalonia.Base in the plugin's context would fail this with an InvalidCastException, not a false
         // assertion — the plugin's panel simply would not fit the host's visual tree.
-        Assert.IsAssignableFrom<Control>(body);
+        Assert.IsAssignableFrom<Control>(diagramDialog.Content);
 
-        // AC-826: the list body builds too, against a host with no linked project (default GetProjectMemoryRowsAsync).
-        var listBody = host.WorkspaceTypes[1].CreateBody(new FakeWorkspaceContext());
-        Assert.IsAssignableFrom<Control>(listBody);
-
-        // AC-816: the quick-start button opens a dialog first; RecordingHost.ShowDialogAsync builds it and clicks
-        // straight through with the prefilled name, the same "Enter is enough" default an operator gets. AC-834:
-        // what it opens after that is a window of its own, not a workspace tab.
-        toolbarAction.OnInvoke().GetAwaiter().GetResult();
+        // AC-826/AC-850: "Diagrams" now opens a dialog, not a workspace; its body builds against a host with no
+        // linked project (default GetProjectMemoryRowsAsync).
+        host.ToolbarActions[1].OnInvoke().GetAwaiter().GetResult();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
-        Assert.Single(host.DialogKeys, key => key.StartsWith("diagram.document.", StringComparison.Ordinal));
+        var listDialog = Assert.Single(host.Dialogs, d => d.Key == "diagram.list");
+        Assert.IsAssignableFrom<Control>(listDialog.Content);
 
-        // AC-836: the whiteboard surface builds from the same ALC — with no IWhiteboardAccessRegistry in this
-        // host's services, which is the "no host to fall through to" case the panel has to survive.
-        var whiteboardBody = host.WorkspaceTypes[2].CreateBody(new FakeWorkspaceContext());
-        Assert.IsAssignableFrom<Control>(whiteboardBody);
-
-        // AC-842: the toolbar action now opens a window bound to the active session, not a workspace tab.
+        // AC-836/AC-842: the whiteboard surface builds from the same ALC — with no IWhiteboardAccessRegistry in
+        // this host's services, which is the "no host to fall through to" case the panel has to survive. The
+        // toolbar action opens a window bound to the active session, not a workspace tab.
         host.ToolbarActions[2].OnInvoke().GetAwaiter().GetResult();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
-        Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
+        var whiteboardDialog = Assert.Single(host.Dialogs, d => d.Key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
+        Assert.IsAssignableFrom<Control>(whiteboardDialog.Content);
 
         plugin.Dispose();
     });
@@ -115,11 +113,15 @@ public class DiagramPluginLoadTests
 
         public List<string> OpenedWorkspaceTypeIds { get; } = [];
 
+        public List<(string Key, Control Content)> Dialogs { get; } = [];
+
         public IServiceProvider Services { get; } = new ServiceCollection().BuildServiceProvider();
 
         public ICockpitActions Actions { get; } = new NoActions();
 
         public IPluginStorage Storage { get; } = new MemoryStorage();
+
+        public ICockpitSessionObserver Sessions { get; } = new FakeSessions();
 
         public void AddSettings(Func<Control> createView)
         {
@@ -143,18 +145,16 @@ public class DiagramPluginLoadTests
             return Task.CompletedTask;
         }
 
-        public List<string> DialogKeys { get; } = [];
-
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
             ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
 
         // Builds the quick-start dialog's content and clicks its "Openen" button straight away, standing in for
-        // an operator who typed nothing and hit Enter — the prefilled name is already a working default. The
-        // diagram window that follows is only recorded; its own body is what DiagramCollabWindowTests exercises.
+        // an operator who typed nothing and hit Enter — the prefilled name is already a working default. Every
+        // other dialog (the diagram/whiteboard windows, the diagrams list) is only recorded, unclicked.
         public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
         {
-            DialogKeys.Add(singleInstanceKey);
             var content = createContent();
+            Dialogs.Add((singleInstanceKey, content));
             if (singleInstanceKey == "diagram.quickstart")
             {
                 content.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Openen"))
@@ -162,6 +162,25 @@ public class DiagramPluginLoadTests
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeSessions : ICockpitSessionObserver
+    {
+        public string? ActiveSessionWorkingDirectory => null;
+
+        public string? ActivePaneId => "pane-a";
+
+        public event EventHandler? ActiveSessionChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<SessionOutputText>? OutputProduced
+        {
+            add { }
+            remove { }
         }
     }
 
@@ -181,39 +200,5 @@ public class DiagramPluginLoadTests
         public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? (T?)value : default;
 
         public void Set<T>(string key, T value) => _values[key] = value;
-    }
-
-    private sealed class FakeWorkspaceContext : IWorkspaceContext
-    {
-        public string WorkspaceId => "test-workspace";
-
-        public IPluginStorage Storage { get; } = new MemoryStorage();
-
-        public ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
-
-        // AC-824: the body now embeds a session as its own surface, so this needs a placeable stand-in
-        // rather than a throw — same shape as Cockpit.Plugin.FanOut.Tests' FakeEmbeddedSession.
-        public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request) => new FakeEmbeddedSession();
-
-        public event EventHandler? RefreshRequested
-        {
-            add { }
-            remove { }
-        }
-    }
-
-    private sealed class FakeEmbeddedSession : IEmbeddedSession
-    {
-        public Control View { get; } = new Border();
-
-        public string PaneId => "pane-fake";
-
-        public Task CloseAsync() => Task.CompletedTask;
-
-        public void SetInputEnabled(bool enabled)
-        {
-        }
-
-        public Task<string?> Completion { get; } = Task.FromResult<string?>(null);
     }
 }
