@@ -134,11 +134,9 @@ public interface IWhiteboardAccessRegistry
     event Action<string>? HistoryChanged;
 
     /// <summary>
-    /// Undoes exactly the one journaled <see cref="WhiteboardHistoryKind.Place"/> named by <paramref name="entryId"/>
-    /// — takes that one object back off the board, whoever is coupled now, unlike <see cref="ErasePlaced"/> which
-    /// only reaches an object its own caller placed. Returns null when it landed, or the reason it was refused:
-    /// unknown surface or entry, already reverted, the object already gone, or an <see cref="WhiteboardHistoryKind.Erase"/>
-    /// entry — taking a removed object back is not supported yet (AC-853).
+    /// Undoes the one journaled <see cref="WhiteboardHistoryKind.Place"/> named by <paramref name="entryId"/> — takes
+    /// that object back regardless of who is coupled now, unlike <see cref="ErasePlaced"/>. Null when it landed, else
+    /// the refusal reason: unknown entry, already reverted, gone already, or an <see cref="WhiteboardHistoryKind.Erase"/> (AC-853).
     /// </summary>
     string? Revert(string surfaceId, string entryId);
 }

@@ -361,10 +361,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         return null;
     }
 
-    // AC-853: called under the same lock the edit itself just landed under, so the entry's before/after snapshot is
-    // exactly what that one edit changed — never a window where a concurrent edit could slip between the two.
-    // Keeps only what changed (the removed lines, if any): re-deriving "what would undo this" from a full-text diff
-    // at revert time would have to guess which of possibly many differences was this edit's; capturing it now does not.
+    // AC-853: called under the same lock the edit just landed under, so before/after is exactly what that edit
+    // changed — capturing it now beats re-deriving "what would undo this" from a full-text diff at revert time.
     // ponytail: unbounded for a surface's lifetime — trimmed like the strip's own row cap if that is ever felt.
     private void _Journal(string surfaceId, string origin, DiagramHandEditKind kind, string objectKey, string summary, string before, string after)
     {
@@ -382,11 +380,9 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         }
     }
 
-    // Undoes exactly one journaled edit by re-deriving its inverse from what it changed and applying that inverse to
-    // the surface as it stands *now* — never by rewinding the whole text — so it cannot discard a different object's
-    // edit made since (AC-853's whole point: two writers, one targeted undo). AddNode/Connect invert by removing the
-    // same object by id — robust even if it was renamed since; RemoveNode/Disconnect/RenameNode invert by restoring
-    // exactly the lines this edit removed, captured at journal time.
+    // Undoes one journaled edit by applying its inverse to the surface as it stands *now*, never by rewinding the
+    // whole text, so it cannot discard a different object's edit made since. AddNode/Connect invert by object id
+    // (robust to a later rename); RemoveNode/Disconnect/RenameNode restore the lines this edit removed.
     public string? Revert(string surfaceId, string entryId)
     {
         string text;

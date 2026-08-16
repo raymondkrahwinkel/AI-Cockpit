@@ -58,10 +58,8 @@ public sealed record DiagramHandEdit(DiagramHandEditKind Kind, string Id, string
 // asks consent, the plugin opens the window. `SessionId` is the caller the surface couples to on arrival.
 public sealed record DiagramOpenRequest(string SurfaceId, string Name, string Text, string SessionId);
 
-// AC-853: one journaled per-object edit — operator hand-edit or agent tool call, either can be undone — with enough
-// kept to compute that one edit's own inverse against the surface as it stands *now*, not as it stood then.
-// `ObjectKey` is the node id, or "from->to" for a connection, the same convention the activity strip's jump-to
-// already uses. `Origin` is "operator" or the agent session id that made it.
+// AC-853: one journaled per-object edit, operator or agent, with enough to compute its own inverse against the
+// surface as it stands *now*. `ObjectKey` is the node id, or "from->to" for a connection (the strip's jump-to convention).
 public sealed record DiagramHistoryEntry(string Id, string Origin, DiagramHandEditKind Kind, string ObjectKey, string Summary, DateTime When, bool Reverted);
 
 /// <summary>
@@ -151,10 +149,8 @@ public interface IDiagramAccessRegistry
 
     /// <summary>
     /// Undoes exactly the one journaled edit named by <paramref name="entryId"/> — never "the last change" — by
-    /// computing that edit's own inverse and applying it to the surface as it stands right now. Because the inverse
-    /// is scoped to the same object the original edit named, an older entry can be reverted without touching a
-    /// different object's edit made since. Returns null when it landed, or the reason it was refused: unknown
-    /// surface or entry, already reverted, or the inverse would no longer leave valid Mermaid behind.
+    /// applying its own inverse, object-scoped, to the surface as it stands right now, so an older entry can be
+    /// reverted without touching a different object's edit made since. Null when it landed, else the refusal reason.
     /// </summary>
     string? Revert(string surfaceId, string entryId);
 
