@@ -6295,6 +6295,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // The assistant's own session feeds this handler purely for the status plumbing (AC-543) — it is
+        // not a session the operator watches for attention/finished/idle toasts, and AttentionNotifier
+        // renders those as real OS notifications (AC-735: "Assistant Profile" / "Done" was showing up in
+        // the OS window switcher).
+        if (ReferenceEquals(session, _assistantSession))
+        {
+            return;
+        }
+
         // The last background shell ending is the moment a session that was withheld below actually becomes
         // finished (AC-276). Its status does not change then — it is already Done — so without this the
         // notification would not merely be delayed but lost for good, on every session that ran one.
