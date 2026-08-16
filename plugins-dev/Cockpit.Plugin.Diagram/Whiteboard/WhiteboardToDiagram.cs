@@ -2,10 +2,9 @@ using Cockpit.Core.Abstractions.Whiteboard;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
 
-// W-4/AC-845: "Naar diagram omzetten" — the one place the diff-poort (AC-825) still stands. Everywhere else the
-// agent now writes straight through (AC-852/AC-854); a whole board turned into a whole diagram is a proposal, not
-// an edit, so it lands in the poort and the operator takes it block by block. The turn the cockpit sends is written
-// here, not by the agent, and it names edit_diagram on purpose: the per-object tools would bypass the poort.
+// W-4/AC-845: the one place the diff-poort (AC-825) still stands — a whole board turned into a whole diagram is a
+// proposal, not an edit. The turn the cockpit sends is written here rather than by the agent, and names
+// edit_diagram on purpose: the per-object tools (AC-852) write straight through, past the poort.
 internal static class WhiteboardToDiagram
 {
     // Why converting is off right now, or null when it can be offered.
