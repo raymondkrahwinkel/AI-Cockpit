@@ -144,16 +144,22 @@ public class DiagramMcpToolsTests
         var json = JsonNode.Parse(await tools.EditDiagram(Session, "Onboarding flow", "flowchart LR\nA-->B-->C"));
 
         Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.True(json["proposed"]!.GetValue<bool>());
         Assert.Single(asked);
         Assert.Equal("diagram.edit", asked[0].Scope);
         var coupling = registry.CouplingOf(Session, "diagram-1");
         Assert.True(coupling!.CanRead);
         Assert.True(coupling.CanEdit);
-        Assert.Equal("flowchart LR\nA-->B-->C", registry.PeekText("diagram-1"));
+
+        // AC-825: approving edit_diagram lets the agent propose — it does not write anything by itself.
+        Assert.Equal(Source, registry.PeekText("diagram-1"));
+        var proposal = registry.PendingProposal("diagram-1");
+        Assert.NotNull(proposal);
+        Assert.Equal("flowchart LR\nA-->B-->C", proposal!.ProposedText);
     }
 
     [Fact]
-    public async Task EditDiagram_AfterOnlyReading_AsksASecondTimeToWiden_ThenWrites()
+    public async Task EditDiagram_AfterOnlyReading_AsksASecondTimeToWiden_ThenProposes()
     {
         var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
@@ -164,7 +170,7 @@ public class DiagramMcpToolsTests
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Equal(2, asked.Count);
         Assert.Equal("diagram.edit", asked[1].Scope);
-        Assert.Contains("now wants to edit", asked[1].Title);
+        Assert.Contains("now wants to propose edits", asked[1].Title);
     }
 
     [Fact]
@@ -214,6 +220,27 @@ public class DiagramMcpToolsTests
     }
 
     [Fact]
+    public async Task EditDiagram_CarriesTheFidelityReport_OnTheProposalItself_BeforeAcceptance()
+    {
+        // AC-825's DoD: the AC-808 report must be visible on the proposal, not only on the result afterwards.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        const string composite = """
+            stateDiagram-v2
+                state Watching {
+                    [*] --> Idle
+                }
+                Idle --> Watching : arm
+            """;
+        registry.SurfaceOpened("diagram-1", "State machine", Source);
+
+        var json = JsonNode.Parse(await tools.EditDiagram(Session, "State machine", composite));
+
+        Assert.False(json!["fidelity"]!["complete"]!.GetValue<bool>());
+        var proposal = registry.PendingProposal("diagram-1");
+        Assert.NotEmpty(proposal!.FidelityFindings);
+    }
+
+    [Fact]
     public async Task EditDiagram_WhenDenied_DoesNotWrite()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
@@ -224,6 +251,7 @@ public class DiagramMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Equal(Source, registry.PeekText("diagram-1"));
         Assert.Null(registry.CouplingOf(Session, "diagram-1"));
+        Assert.Null(registry.PendingProposal("diagram-1"));
     }
 
     [Fact]

@@ -11,10 +11,13 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     private readonly object _lock = new();
     private readonly Dictionary<string, Surface> _surfaces = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DiagramCoupling> _couplings = new(StringComparer.Ordinal); // surfaceId -> coupling
+    private readonly Dictionary<string, DiagramProposal> _proposals = new(StringComparer.Ordinal); // surfaceId -> pending proposal
 
     public event Action<string, string>? TextChanged;
 
     public event Action<DiagramCouplingChange>? CouplingChanged;
+
+    public event Action<string, DiagramProposal?>? ProposalChanged;
 
     public void SurfaceOpened(string surfaceId, string name, string initialText)
     {
@@ -32,16 +35,22 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public void SurfaceClosed(string surfaceId)
     {
-        bool wasCoupled;
+        bool wasCoupled, hadProposal;
         lock (_lock)
         {
             _surfaces.Remove(surfaceId);
             wasCoupled = _couplings.Remove(surfaceId);
+            hadProposal = _proposals.Remove(surfaceId);
         }
 
         if (wasCoupled)
         {
             CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, Coupling: null));
+        }
+
+        if (hadProposal)
+        {
+            ProposalChanged?.Invoke(surfaceId, null);
         }
     }
 
@@ -62,12 +71,24 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public void Disconnect(string surfaceId)
     {
+        bool hadProposal;
         lock (_lock)
         {
+            hadProposal = _proposals.Remove(surfaceId);
             if (!_couplings.Remove(surfaceId))
             {
+                if (hadProposal)
+                {
+                    ProposalChanged?.Invoke(surfaceId, null);
+                }
+
                 return;
             }
+        }
+
+        if (hadProposal)
+        {
+            ProposalChanged?.Invoke(surfaceId, null);
         }
 
         CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, Coupling: null));
@@ -219,7 +240,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public void SessionEnded(string sessionId)
     {
-        List<string> dropped;
+        List<string> dropped, droppedProposals;
         lock (_lock)
         {
             dropped = _couplings.Where(entry => entry.Value.SessionId == sessionId).Select(entry => entry.Key).ToList();
@@ -227,12 +248,81 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             {
                 _couplings.Remove(surfaceId);
             }
+
+            droppedProposals = dropped.Where(surfaceId => _proposals.Remove(surfaceId)).ToList();
+        }
+
+        foreach (var surfaceId in droppedProposals)
+        {
+            ProposalChanged?.Invoke(surfaceId, null);
         }
 
         foreach (var surfaceId in dropped)
         {
             CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, Coupling: null));
         }
+    }
+
+    public bool Propose(string sessionId, string surfaceId, string proposedText, string changeSummary, IReadOnlyList<string> fidelityFindings)
+    {
+        DiagramProposal proposal;
+        lock (_lock)
+        {
+            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
+                || !_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return false;
+            }
+
+            var blocks = DiagramDiff.Compute(surface.Text, proposedText);
+            proposal = new DiagramProposal(surfaceId, sessionId, proposedText, changeSummary, fidelityFindings, blocks);
+            _proposals[surfaceId] = proposal;
+        }
+
+        ProposalChanged?.Invoke(surfaceId, proposal);
+        return true;
+    }
+
+    public DiagramProposal? PendingProposal(string surfaceId)
+    {
+        lock (_lock)
+        {
+            return _proposals.TryGetValue(surfaceId, out var proposal) ? proposal : null;
+        }
+    }
+
+    public bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks)
+    {
+        string merged;
+        lock (_lock)
+        {
+            if (!_proposals.TryGetValue(surfaceId, out var proposal) || !_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return false;
+            }
+
+            merged = DiagramDiff.Apply(proposal.Blocks, acceptedBlocks);
+            surface.Text = merged;
+            _proposals.Remove(surfaceId);
+        }
+
+        TextChanged?.Invoke(surfaceId, merged);
+        ProposalChanged?.Invoke(surfaceId, null);
+        return true;
+    }
+
+    public bool DiscardProposal(string surfaceId)
+    {
+        lock (_lock)
+        {
+            if (!_proposals.Remove(surfaceId))
+            {
+                return false;
+            }
+        }
+
+        ProposalChanged?.Invoke(surfaceId, null);
+        return true;
     }
 
     private sealed class Surface(string name, string text)

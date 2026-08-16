@@ -80,7 +80,7 @@ internal sealed class DiagramMcpTools
     }
 
     [McpServerTool(Name = "edit_diagram")]
-    [Description("Replaces a diagram surface's Mermaid source with `source` — you name the surface by the id or name from list_diagrams. Needs its own Approve, asked the first time you edit a surface (covering read too, in one prompt) or as a widening prompt if you were only reading it before. The operator's prompt shows how many lines change, computed from the actual edit — not from anything you write here, so there is nothing to word carefully. The operator watches live and can edit alongside or Disconnect at any time. Also reports whether the render engine would drop anything from the new source (see `fidelity`).")]
+    [Description("Proposes replacing a diagram surface's Mermaid source with `source` — you name the surface by the id or name from list_diagrams. Needs its own Approve, asked the first time you edit a surface (covering read too, in one prompt) or as a widening prompt if you were only reading it before — that approval lets you propose edits, it does not apply this one. The proposal appears in the diagram panel as a diff, block by block, for the operator to accept or reject; nothing reaches the stored source until they do (AC-825). The operator's prompt shows how many lines change, computed from the actual edit — not from anything you write here, so there is nothing to word carefully. Also reports whether the render engine would drop anything from the proposed source (see `fidelity`) — the operator sees this on the proposal itself, before deciding.")]
     public async Task<string> EditDiagram(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
@@ -98,17 +98,18 @@ internal sealed class DiagramMcpTools
             return _Serialize(new { ok = false, error });
         }
 
-        if (!_registry.WriteCoupled(caller, surface.SurfaceId, source))
+        var fidelity = _ComputeFidelity(source);
+        if (!_registry.Propose(caller, surface.SurfaceId, source, changeSummary, fidelity.Findings))
         {
-            return _Serialize(new { ok = false, error = "That diagram surface could not be written to — it may have closed or been disconnected." });
+            return _Serialize(new { ok = false, error = "That diagram surface could not accept a proposal — it may have closed or been disconnected." });
         }
 
-        var fidelity = _ComputeFidelity(source);
         return _Serialize(new
         {
             ok = true,
             id = surface.SurfaceId,
             name = surface.Name,
+            proposed = true,
             changeSummary,
             fidelity = new { complete = fidelity.IsComplete, findings = fidelity.Findings },
         });
@@ -180,9 +181,9 @@ internal sealed class DiagramMcpTools
                 ConsentRisk.Dangerous)
             : new ConsentRequest(
                 widening
-                    ? "An agent that is reading a diagram now wants to edit it"
-                    : "An agent wants to read and edit a diagram",
-                $"Let this agent replace diagram \"{_SingleLine(surface.Name)}\" ({changeSummary}). You can watch, edit alongside, and Disconnect at any time.",
+                    ? "An agent that is reading a diagram now wants to propose edits to it"
+                    : "An agent wants to read a diagram and propose edits to it",
+                $"Let this agent propose edits to diagram \"{_SingleLine(surface.Name)}\" ({changeSummary}). Nothing changes until you accept its proposal, block by block, in the diagram panel — you can watch, edit alongside, and Disconnect at any time.",
                 new ConsentSource(surface.SurfaceId, null, ConsentSourceCatalog.DiagramMcp),
                 "diagram.edit",
                 ConsentRisk.Dangerous);

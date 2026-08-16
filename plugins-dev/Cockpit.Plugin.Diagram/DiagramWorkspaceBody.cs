@@ -38,9 +38,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
     private readonly TextBlock _editChip;
+    private readonly Border _proposalPanel;
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
     private string _currentSvg = "";
+    private DiagramProposal? _pendingProposal;
+    private readonly HashSet<int> _acceptedBlocks = [];
 
     public DiagramWorkspaceBody(IWorkspaceContext context, ICockpitHost host)
     {
@@ -54,6 +57,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!) { Stretch = Stretch.Uniform, Width = 340, Height = 200, Margin = new Thickness(16) };
 
         (_couplingBar, _couplingLabel, _readChip, _editChip) = _BuildCouplingBar();
+        _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         var toolbar = _BuildToolbar();
 
@@ -67,11 +71,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Child = new DockPanel
             {
-                Children = { toolbar, _couplingBar, _sourceToggle, _sourceBox, new ScrollViewer { Content = _svg } },
+                Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, new ScrollViewer { Content = _svg } },
             },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
+        DockPanel.SetDock(_proposalPanel, Dock.Top);
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
 
@@ -88,6 +93,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry.SurfaceOpened(_surfaceId, "Diagram", SampleDiagram);
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.TextChanged += _OnTextChanged;
+            _registry.ProposalChanged += _OnProposalChanged;
             _RefreshCouplingBar();
         }
 
@@ -100,6 +106,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
             _registry.CouplingChanged -= _OnCouplingChanged;
             _registry.TextChanged -= _OnTextChanged;
+            _registry.ProposalChanged -= _OnProposalChanged;
             _registry.SurfaceClosed(_surfaceId);
         };
     }
@@ -127,6 +134,23 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         Avalonia.Threading.Dispatcher.UIThread.Post(() => _RenderInto(text));
+    }
+
+    // AC-825: an edit_diagram delivery lands here as a proposal, not as a fait accompli — the surface's rendered
+    // source only changes once ResolveProposal writes it (which raises TextChanged separately, above).
+    private void _OnProposalChanged(string surfaceId, DiagramProposal? proposal)
+    {
+        if (surfaceId != _surfaceId)
+        {
+            return;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _pendingProposal = proposal;
+            _acceptedBlocks.Clear();
+            _RefreshProposalPanel();
+        });
     }
 
     private void _RenderInto(string source)
@@ -374,6 +398,119 @@ internal sealed class DiagramWorkspaceBody : UserControl
     {
         chip.Text = granted ? $"{name} allowed" : $"{name} not granted";
         chip.Foreground = granted ? _Brush("CockpitAccentBrush") : _Brush("CockpitTextSecondaryBrush");
+    }
+
+    // The diff-poort (AC-825): a proposal sits here, block by block, until the operator resolves it — Toepassen
+    // writes only the accepted blocks' new lines, everything else keeps what was already on the surface.
+    private static Border _BuildProposalPanel() => new()
+    {
+        Margin = new Thickness(0, 0, 0, 6),
+        Padding = new Thickness(8),
+        Background = _Brush("CockpitSecondaryBgBrush"),
+        BorderBrush = _Brush("CockpitAccentBrush"),
+        BorderThickness = new Thickness(1),
+        IsVisible = false,
+    };
+
+    private void _RefreshProposalPanel()
+    {
+        _proposalPanel.IsVisible = _pendingProposal is not null;
+        if (_pendingProposal is not { } proposal)
+        {
+            _proposalPanel.Child = null;
+            return;
+        }
+
+        var body = new StackPanel { Spacing = 6 };
+        body.Children.Add(new TextBlock
+        {
+            Text = $"Voorstel van agent — {proposal.ChangeSummary}",
+            FontWeight = FontWeight.Bold,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _Brush("CockpitAccentBrush"),
+        });
+
+        // AC-808's trouwrapport, on the proposal itself — before acceptance, not only on the result afterwards.
+        if (proposal.FidelityFindings.Count > 0)
+        {
+            var fidelity = new StackPanel { Spacing = 2, Margin = new Thickness(0, 0, 0, 4) };
+            fidelity.Children.Add(new TextBlock { Text = "De renderer liet dit vallen:", FontSize = 11, FontWeight = FontWeight.SemiBold });
+            foreach (var finding in proposal.FidelityFindings)
+            {
+                fidelity.Children.Add(new TextBlock { Text = $"⚠ {finding}", FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Goldenrod });
+            }
+
+            body.Children.Add(fidelity);
+        }
+
+        for (var index = 0; index < proposal.Blocks.Count; index++)
+        {
+            var block = proposal.Blocks[index];
+            if (!block.IsChange)
+            {
+                if (block.ContextLines.Count > 1)
+                {
+                    body.Children.Add(new TextBlock
+                    {
+                        Text = $"⋯ {block.ContextLines.Count} ongewijzigde regels ⋯",
+                        FontSize = 10,
+                        Foreground = _Brush("CockpitTextSecondaryBrush"),
+                    });
+                }
+
+                continue;
+            }
+
+            body.Children.Add(_BuildChangeBlock(index, block));
+        }
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
+        var apply = new Button { Content = "Toepassen", Classes = { "Compact" } };
+        apply.Click += (_, _) => _registry?.ResolveProposal(_surfaceId, _acceptedBlocks);
+        var discard = new Button { Content = "Alles afwijzen", Classes = { "Compact" } };
+        discard.Click += (_, _) => _registry?.DiscardProposal(_surfaceId);
+        actions.Children.Add(apply);
+        actions.Children.Add(discard);
+        body.Children.Add(actions);
+
+        _proposalPanel.Child = new ScrollViewer { MaxHeight = 260, Content = body };
+    }
+
+    private Border _BuildChangeBlock(int index, DiagramDiffBlock block)
+    {
+        var lines = new StackPanel { Spacing = 1 };
+        foreach (var line in block.OldLines)
+        {
+            lines.Children.Add(new TextBlock { Text = $"− {line.Text}", FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = Brushes.IndianRed });
+        }
+
+        foreach (var line in block.NewLines)
+        {
+            lines.Children.Add(new TextBlock { Text = $"+ {line.Text}", FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = Brushes.MediumSeaGreen });
+        }
+
+        var accepted = _acceptedBlocks.Contains(index);
+        var status = new TextBlock { Text = accepted ? "Aangenomen" : "Afgewezen (standaard)", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextSecondaryBrush") };
+        var acceptButton = new Button { Content = "Aannemen", Classes = { "Compact" } };
+        acceptButton.Click += (_, _) => { _acceptedBlocks.Add(index); _RefreshProposalPanel(); };
+        var rejectButton = new Button { Content = "Afwijzen", Classes = { "Compact" } };
+        rejectButton.Click += (_, _) => { _acceptedBlocks.Remove(index); _RefreshProposalPanel(); };
+
+        return new Border
+        {
+            BorderThickness = new Thickness(1),
+            BorderBrush = _Brush(accepted ? "CockpitAccentBrush" : "CockpitHairlineBrush"),
+            Padding = new Thickness(6),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    lines,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { acceptButton, rejectButton, status } },
+                },
+            },
+        };
     }
 
     private static IBrush? _Brush(string resourceKey) =>

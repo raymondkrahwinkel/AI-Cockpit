@@ -161,6 +161,115 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
+    public void Propose_RequiresEdit_ReturnsFalse_AndTouchesNothing_WhenTheSessionOnlyHoldsRead()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
+        registry.Grant("session-a", "surface-1", DiagramCapability.Read);
+
+        var accepted = registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
+
+        Assert.False(accepted);
+        Assert.Null(registry.PendingProposal("surface-1"));
+        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1"));
+    }
+
+    [Fact]
+    public void Propose_WithEdit_RecordsAPendingProposal_WithoutTouchingTheStoredSource()
+    {
+        var registry = new DiagramAccessRegistry();
+        var proposals = new List<(string SurfaceId, DiagramProposal? Proposal)>();
+        registry.ProposalChanged += (surfaceId, proposal) => proposals.Add((surfaceId, proposal));
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
+        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
+
+        var accepted = registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", ["dropped: composite state"]);
+
+        Assert.True(accepted);
+        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1")); // untouched until accepted
+        var proposal = registry.PendingProposal("surface-1");
+        Assert.NotNull(proposal);
+        Assert.Equal("flowchart LR\nA-->C", proposal!.ProposedText);
+        Assert.Equal(["dropped: composite state"], proposal.FidelityFindings);
+        Assert.NotEmpty(proposal.Blocks);
+        Assert.Equal(("surface-1", proposal), Assert.Single(proposals));
+    }
+
+    [Fact]
+    public void ResolveProposal_AcceptingTheOnlyChangeBlock_WritesTheProposedTextAndClearsTheProposal()
+    {
+        var registry = new DiagramAccessRegistry();
+        var changes = new List<(string SurfaceId, string Text)>();
+        registry.TextChanged += (surfaceId, text) => changes.Add((surfaceId, text));
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
+        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
+        registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
+        var changeBlockIndex = registry.PendingProposal("surface-1")!.Blocks
+            .Select((block, index) => (block, index)).Single(x => x.block.IsChange).index;
+
+        var resolved = registry.ResolveProposal("surface-1", new HashSet<int> { changeBlockIndex });
+
+        Assert.True(resolved);
+        Assert.Equal("flowchart LR\nA-->C", registry.PeekText("surface-1"));
+        Assert.Equal(("surface-1", "flowchart LR\nA-->C"), Assert.Single(changes));
+        Assert.Null(registry.PendingProposal("surface-1"));
+    }
+
+    [Fact]
+    public void ResolveProposal_RejectingTheChangeBlock_NeverWritesItToTheStoredSource()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
+        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
+        registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
+
+        // No block index accepted — the fail-closed default keeps every change block's old side.
+        var resolved = registry.ResolveProposal("surface-1", new HashSet<int>());
+
+        Assert.True(resolved);
+        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1"));
+        Assert.Null(registry.PendingProposal("surface-1"));
+    }
+
+    [Fact]
+    public void DiscardProposal_ClearsThePendingProposal_WithoutWritingAnything()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
+        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
+        registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
+
+        var discarded = registry.DiscardProposal("surface-1");
+
+        Assert.True(discarded);
+        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1"));
+        Assert.Null(registry.PendingProposal("surface-1"));
+        Assert.False(registry.DiscardProposal("surface-1")); // nothing left to discard
+    }
+
+    [Fact]
+    public void SurfaceClosed_AndSessionEnded_AlsoClearAnyPendingProposal()
+    {
+        var registryForClose = new DiagramAccessRegistry();
+        registryForClose.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
+        registryForClose.Grant("session-a", "surface-1", DiagramCapability.Edit);
+        registryForClose.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
+
+        registryForClose.SurfaceClosed("surface-1");
+
+        Assert.Null(registryForClose.PendingProposal("surface-1"));
+
+        var registryForSessionEnd = new DiagramAccessRegistry();
+        registryForSessionEnd.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
+        registryForSessionEnd.Grant("session-a", "surface-1", DiagramCapability.Edit);
+        registryForSessionEnd.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
+
+        registryForSessionEnd.SessionEnded("session-a");
+
+        Assert.Null(registryForSessionEnd.PendingProposal("surface-1"));
+    }
+
+    [Fact]
     public void UpdateText_FromTheOperator_KeepsWhatAnAgentReadsInStep_AndRaisesTextChanged()
     {
         var registry = new DiagramAccessRegistry();
