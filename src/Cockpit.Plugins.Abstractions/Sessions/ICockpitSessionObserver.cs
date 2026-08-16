@@ -25,6 +25,15 @@ public interface ICockpitSessionObserver
     string? ActivePaneId => null;
 
     /// <summary>
+    /// Every open session — pane id and the operator-visible name shown on its header — so a contribution can
+    /// name a specific session rather than only ever "the active one" (AC-833). Includes the cockpit-assistant
+    /// under its own fixed pane id (<c>AssistantIdentity.PaneId</c>, "cockpit-assistant"): it is a session like
+    /// any other from this surface, with no separate mechanism for naming it. Empty on a host that predates this
+    /// member.
+    /// </summary>
+    IReadOnlyList<OpenCockpitSession> OpenSessions => [];
+
+    /// <summary>
     /// The selected session's current usage — how full its context window is, the windows it reports, and its
     /// profile label (AC-54) — or <see langword="null"/> when nothing is selected, or on a host that predates this
     /// member. The plugin-facing mirror of the header's usage pill: a widget reads it (and re-reads it on
@@ -95,6 +104,14 @@ public interface ICockpitSessionObserver
     /// </summary>
     IReadOnlyList<SessionImageAttachment> GetCurrentTurnImages(string paneId) => [];
 }
+
+/// <summary>
+/// One entry in <see cref="ICockpitSessionObserver.OpenSessions"/> — a session's pane id and the operator-visible
+/// name shown on its header, how a contribution outside any session names the one it means to act on.
+/// </summary>
+/// <param name="PaneId">The session's <see cref="IPluginSessionContext.PaneId"/>.</param>
+/// <param name="Name">The name the operator sees on that session's header.</param>
+public sealed record OpenCockpitSession(string PaneId, string Name);
 
 /// <summary>
 /// One chunk of text a session produced, delivered on <see cref="ICockpitSessionObserver.OutputProduced"/>.

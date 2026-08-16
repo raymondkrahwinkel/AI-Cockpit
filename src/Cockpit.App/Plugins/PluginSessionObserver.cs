@@ -39,6 +39,15 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
 
     public string? ActivePaneId => _cockpit.SelectedSession?.PaneId;
 
+    // The assistant is appended rather than hooked into `_cockpit.Sessions` itself (AC-833): it deliberately sits
+    // outside that collection (see `CockpitViewModel.CreateAssistantSession`) so nothing else that iterates
+    // Sessions picks it up by accident, but it is still a session an "open sessions" list must be able to name.
+    public IReadOnlyList<OpenCockpitSession> OpenSessions =>
+        [.. _cockpit.Sessions.Select(session => new OpenCockpitSession(session.PaneId, session.Title)),
+            .. _cockpit.AssistantPane is { } assistant
+                ? [new OpenCockpitSession(assistant.PaneId, assistant.Title)]
+                : Array.Empty<OpenCockpitSession>()];
+
     public SessionUsageSnapshot? ActiveSessionUsage => _Snapshot(_cockpit.SelectedSession);
 
     public event EventHandler? ActiveSessionChanged;
