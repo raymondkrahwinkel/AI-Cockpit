@@ -43,6 +43,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   shows which agent is connected and which of the two it holds; a diagram it is merely connected to, with neither
   granted yet, shows that too rather than looking untouched.
 
+- added: a "Nieuw diagram" quick action next to Depot servers and Docker on the workspace tab strip — one screen
+  asks for a name (prefilled, Enter is enough) and, optionally, lets you couple the session you already have open.
+  Coupling here is not access: the session still has to ask for read or edit separately, the same as connecting
+  any other way.
+
 - added: the sessions running on a Cockpit you are paired with now show up under Options → Security, one card per
   node, and you can start and stop them from there — within the profiles and projects that machine's operator has
   ticked for you, and never outside them. They are kept in their own card, headed by the node's name, rather than
