@@ -9,6 +9,7 @@ namespace Cockpit.Plugin.Diagram;
 public sealed class DiagramPlugin : ICockpitPlugin
 {
     private const string WorkspaceTypeId = "diagram.panel";
+    private const string ListWorkspaceTypeId = "diagram.list";
 
     public PluginMetadata Metadata { get; } = new(
         Id: "diagram",
@@ -28,8 +29,18 @@ public sealed class DiagramPlugin : ICockpitPlugin
             Description = "A diagram rendered from Mermaid syntax.",
         });
 
+        // AC-826: the project's diagrams, read via AC-812's file convention across AC-827's Memory rows.
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(ListWorkspaceTypeId, "Diagrams", context => new DiagramListWorkspaceBody(context, host))
+        {
+            IconKind = MaterialIconKind.FormatListBulleted,
+            Description = "Every diagram saved in this project's memory.",
+        });
+
         host.AddToolbarAction(new ToolbarAction("Diagram Builder", MaterialIconKind.Sitemap,
             () => host.OpenWorkspaceAsync(WorkspaceTypeId)));
+
+        host.AddToolbarAction(new ToolbarAction("Diagrams", MaterialIconKind.FormatListBulleted,
+            () => host.OpenWorkspaceAsync(ListWorkspaceTypeId)));
     }
 
     public void Dispose()
