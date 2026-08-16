@@ -67,10 +67,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
         _surfaceId = document.Id;
 
-        // AC-837: no fixed size and no ScrollViewer. Avalonia.Svg.Skia.Svg's own MeasureOverride returns a small
-        // placeholder before its picture is ready, so layout can no longer be trusted for sizing — `_RenderInto`
-        // reads the real size straight off the loaded Skia picture instead (same as DiagramExport/SvgRasterizer),
-        // and `_viewport` positions/scales it itself via RenderTransform for zoom and pan.
+        // AC-837: no fixed size and no ScrollViewer. Avalonia.Svg.Skia.Svg's own measure gives a placeholder size
+        // before its picture is ready, so `_RenderInto` reads the real size off the Skia picture instead, and
+        // `_viewport` positions/scales the control itself via RenderTransform for zoom and pan.
         _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!)
         {
             Stretch = Stretch.Uniform,
