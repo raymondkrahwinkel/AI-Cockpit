@@ -826,6 +826,15 @@ public interface ICockpitHost
         Task.FromResult<string?>(null);
 
     /// <summary>
+    /// The project's own Memory rows (AC-483/AC-827) — 0, 1 or several, read-only. The missing read half of
+    /// <see cref="AddProjectMemorySource"/>/<see cref="ProjectMemorySources"/>, which register where a scheme
+    /// resolves rather than what a project stored. Resolved like <see cref="GetProjectFieldValueAsync"/>: null/blank
+    /// <paramref name="paneId"/> means the selected session; no linked project answers empty. Default empty.
+    /// </summary>
+    Task<IReadOnlyList<Projects.ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Projects.ProjectMemoryRow>>([]);
+
+    /// <summary>
     /// Registers a tracker a plugin can post back to (AC-154) — the writing half of an issue tracker (YouTrack, GitHub
     /// Issues), so a consumer (Autopilot) can leave evidence and move an issue's stage tracker-neutrally. First
     /// registration for a <see cref="Tracking.ITrackerProvider.TrackerId"/> wins; a later one for the same id is

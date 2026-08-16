@@ -107,6 +107,8 @@ public interface ICockpitHost
     IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }               // default []
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // default null
+    Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null,
+                                            CancellationToken cancellationToken = default); // default []
     void AddProjectMemorySource(ProjectMemorySourceRegistration registration);    // default no-op
     IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; } // default []
     void AddSessionResourceProvider(ISessionResourceProvider provider);          // default no-op
@@ -871,6 +873,21 @@ on which pane happens to be selected. Default `null`.
 ```csharp
 // The issues dialog opens on the project this session is tracked in, falling back to the instance-wide default.
 var linked = await host.GetProjectFieldValueAsync("youtrack.project");
+```
+
+### `Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default)`
+
+The project's own `ProjectResourceRole.Memory` rows (AC-483/AC-827) — 0, 1 or several, read-only. The missing read
+half of `AddProjectMemorySource`/`ProjectMemorySources` below: those register where a *scheme* resolves to, this
+reads which rows a project actually stored. `paneId` resolves exactly like `GetProjectFieldValueAsync`'s: null means
+the selected session, and a pane with no linked project answers `[]`, never an error. Default `[]`.
+
+Each row's `ReachesSessions` is reported, not filtered here — that flag is `SessionStartDefaults`' own rule for what
+a *starting session* is told; a plugin reading rows directly is a different consumer and decides for itself whether
+the same rule applies to what it is about to do with them.
+
+```csharp
+var rows = await host.GetProjectMemoryRowsAsync();
 ```
 
 ### `Task SetSessionStatusline(string paneId, string statusline)` / `Task SetSessionName(string paneId, string name)` / `Task SuggestSessionName(string paneId, string name)`

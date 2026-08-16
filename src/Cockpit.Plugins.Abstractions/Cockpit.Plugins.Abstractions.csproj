@@ -381,7 +381,10 @@
          transcript, above the composer, for PR/CI status and similar mid-weight per-session info a header item has
          no room for. Existing plugins keep compiling untouched. Additions only — a minor; major and
          abstractionsVersion stay 1. -->
-    <Version>1.54.0</Version>
+    <!-- 1.55.0 (AC-827): added ICockpitHost.GetProjectMemoryRowsAsync (default empty) plus ProjectMemoryRow — the
+         read half of a project's own Memory-role resource rows, paneId-resolved like GetProjectFieldValueAsync.
+         Existing plugins keep compiling untouched. Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.55.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
