@@ -70,6 +70,24 @@ public class CockpitViewModelAttentionTests
         await _attentionNotifier.DidNotReceiveWithAnyArgs().NotifyAttentionAsync(default!, default);
     }
 
+    [Fact]
+    public async Task AssistantSession_DoesNotFireAttentionOrFinishedToasts()
+    {
+        // AC-735: the assistant's own session feeds the status plumbing but must never surface as an
+        // OS-level "Assistant Profile" / "Done" toast the way a real session does.
+        var vm = NewVm();
+        var assistant = vm.CreateAssistantSession("assistant-pane");
+        Assert.NotNull(assistant);
+
+        assistant!.SessionStatus = SessionStatus.Busy;
+        assistant.SessionStatus = SessionStatus.NeedsAttention;
+        assistant.SessionStatus = SessionStatus.Busy;
+        assistant.SessionStatus = SessionStatus.Done;
+
+        await _attentionNotifier.DidNotReceiveWithAnyArgs().NotifyAttentionAsync(default!, default);
+        await _attentionNotifier.DidNotReceiveWithAnyArgs().NotifySessionFinishedAsync(default!, default, default, default);
+    }
+
     private CockpitViewModel NewVm()
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();

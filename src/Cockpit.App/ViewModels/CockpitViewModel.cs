@@ -6297,6 +6297,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // The assistant's session feeds this handler only for status plumbing (AC-543), never for the
+        // OS-level attention/finished toasts a real session gets (AC-735).
+        if (ReferenceEquals(session, _assistantSession))
+        {
+            return;
+        }
+
         // The last background shell ending is the moment a session that was withheld below actually becomes
         // finished (AC-276). Its status does not change then — it is already Done — so without this the
         // notification would not merely be delayed but lost for good, on every session that ran one.
