@@ -37,7 +37,7 @@ public sealed class DiagramPlugin : ICockpitPlugin
             var document = new DiagramDocument(
                 context.WorkspaceId,
                 pending?.Title ?? "Diagram",
-                pending?.MermaidText ?? DiagramDocument.Sample);
+                pending?.MermaidText ?? DiagramDocument.Empty);
 
             return new DiagramWorkspaceBody(host, document, sessionPaneId: null);
         })

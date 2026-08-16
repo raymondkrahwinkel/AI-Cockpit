@@ -21,4 +21,16 @@ public class DiagramWindowTests
         // Two quick-starts with the same name are two diagrams, so they must not collapse into one window.
         Assert.NotEqual(DiagramDocument.New("Nieuw diagram").Id, DiagramDocument.New("Nieuw diagram").Id);
     }
+
+    [Fact]
+    public void New_OpensEmpty_NotWithTheAC809Sample()
+    {
+        // AC-840: a snelstart diagram opens with the snelstart name and no content — the AC-809 sample is now
+        // only reached through the panel's explicit "Voorbeeld invoegen" action.
+        var document = DiagramDocument.New("Mijn diagram");
+
+        Assert.Equal("Mijn diagram", document.Title);
+        Assert.Equal(DiagramDocument.Empty, document.MermaidText);
+        Assert.NotEqual(DiagramDocument.Sample, document.MermaidText);
+    }
 }
