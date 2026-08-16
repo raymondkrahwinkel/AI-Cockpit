@@ -118,6 +118,10 @@ public class ActivityStripTests
         public bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks) => false;
 
         public bool DiscardProposal(string surfaceId) => false;
+
+        public event Action<DiagramOpenRequest>? OpenRequested { add { } remove { } }
+
+        public bool RequestOpen(DiagramOpenRequest request) => false;
     }
 
     private sealed class FakeWhiteboardRegistry : IWhiteboardAccessRegistry
@@ -195,6 +199,10 @@ public class ActivityStripTests
         public void SessionEnded(string sessionId)
         {
         }
+
+        public event Action<WhiteboardOpenRequest>? OpenRequested { add { } remove { } }
+
+        public bool RequestOpen(WhiteboardOpenRequest request) => false;
     }
 
     private sealed class FakeHost : ICockpitHost
