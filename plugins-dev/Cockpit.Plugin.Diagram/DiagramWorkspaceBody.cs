@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -21,10 +23,21 @@ namespace Cockpit.Plugin.Diagram;
 // running). It starts nothing and ends nothing: the conversation stays in the session, the binding is a peephole.
 internal sealed class DiagramWorkspaceBody : UserControl
 {
+    // AC-837 zoom/pan range and wheel feel, same shape as ImagePreviewWindow's image zoom.
+    private const double MinZoom = 0.1;
+    private const double MaxZoom = 8.0;
+    private const double WheelZoomStepBase = 1.15;
+    private const double ButtonZoomStep = 1.25;
+
+    private static readonly Cursor _PanCursor = new(StandardCursorType.Hand);
+    private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
+
     private readonly ICockpitHost _host;
     private readonly IDiagramAccessRegistry? _registry;
     private readonly string _surfaceId;
     private readonly Avalonia.Svg.Skia.Svg _svg;
+    private readonly Border _viewport;
+    private readonly TextBlock _zoomLabel;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
@@ -35,6 +48,13 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
     private string _currentSvg = "";
+    private double _zoom = 1.0;
+    private Vector _panOffset;
+    private Size _diagramSize;
+    private bool _isFitMode = true;
+    private bool _isPanning;
+    private Point _panPointerStart;
+    private Vector _panOffsetStart;
     private DiagramProposal? _pendingProposal;
     private readonly HashSet<int> _acceptedBlocks = [];
     private IPluginSessionBinding _binding;
@@ -47,19 +67,26 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
         _surfaceId = document.Id;
 
-        // A fixed size, not Stretch=Fill: Avalonia.Svg.Skia.Svg's first measure pass returns a small placeholder
-        // before its picture is ready, and nothing here forces a second layout pass once it is — a host-side
-        // concern for whichever ticket designs the real panel ([e]), not this one.
-        _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!) { Stretch = Stretch.Uniform, Width = 340, Height = 200, Margin = new Thickness(16) };
+        // AC-837: no fixed size and no ScrollViewer. Avalonia.Svg.Skia.Svg's own measure gives a placeholder size
+        // before its picture is ready, so `_RenderInto` reads the real size off the Skia picture instead, and
+        // `_viewport` positions/scales the control itself via RenderTransform for zoom and pan.
+        _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!)
+        {
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative),
+        };
+        _viewport = _BuildViewport();
 
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        var toolbar = _BuildToolbar();
+        (var toolbar, _zoomLabel) = _BuildToolbar();
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, new ScrollViewer { Content = _svg } },
+            Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
@@ -203,6 +230,121 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _currentSvg = markup;
         _svg.SvgSource = SvgSource.LoadFromSvg(markup);
         _sourceBox.Text = source;
+
+        // The real fix for the old 340x200 workaround: the picture's own bounds, read straight off Skia, not off
+        // Avalonia's (buggy) first measure pass — true size from the first render, no second interaction needed.
+        var bounds = _svg.SvgSource?.Picture?.CullRect;
+        _diagramSize = bounds is { Width: > 0, Height: > 0 } rect ? new Size(rect.Width, rect.Height) : new Size(340, 200);
+        _svg.Width = _diagramSize.Width;
+        _svg.Height = _diagramSize.Height;
+
+        if (_isFitMode)
+        {
+            _ApplyFit();
+        }
+        else
+        {
+            _ApplyTransform();
+        }
+    }
+
+    // The zoom/pan surface (AC-837): a plain Border, not a ScrollViewer — panning is our own RenderTransform
+    // math, not scroll offset, so a huge diagram never grows the layout past the window around it.
+    private Border _BuildViewport()
+    {
+        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _svg };
+        viewport.SizeChanged += (_, _) =>
+        {
+            if (_isFitMode)
+            {
+                _ApplyFit();
+            }
+        };
+        viewport.AddHandler(InputElement.PointerWheelChangedEvent, _OnViewportWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
+        viewport.PointerPressed += _OnViewportPointerPressed;
+        viewport.PointerMoved += _OnViewportPointerMoved;
+        viewport.PointerReleased += (_, _) => _EndPan();
+        viewport.PointerCaptureLost += (_, _) => _EndPan();
+        return viewport;
+    }
+
+    private void _OnViewportWheel(object? sender, PointerWheelEventArgs e)
+    {
+        e.Handled = true;
+        _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y));
+    }
+
+    // AC-837's input convention: plain left-drag pans — there is no edit interaction on a diagram yet, so nothing
+    // competes for the gesture. D-5/AC-841's hand-editing must gate its own drag behind an explicit mode (or a
+    // different button/modifier) rather than overload this one, so pan and edit are never guessed apart.
+    private void _OnViewportPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(_viewport).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _isPanning = true;
+        _panPointerStart = e.GetPosition(_viewport);
+        _panOffsetStart = _panOffset;
+        e.Pointer.Capture(_viewport);
+        _viewport.Cursor = _PanningCursor;
+        e.Handled = true;
+    }
+
+    private void _OnViewportPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isPanning)
+        {
+            return;
+        }
+
+        _panOffset = _panOffsetStart + (e.GetPosition(_viewport) - _panPointerStart);
+        _isFitMode = false;
+        _ApplyTransform();
+    }
+
+    private void _EndPan()
+    {
+        if (!_isPanning)
+        {
+            return;
+        }
+
+        _isPanning = false;
+        _viewport.Cursor = _PanCursor;
+    }
+
+    private void _ZoomByButton(double factor) =>
+        _ZoomAround(new Point(_viewport.Bounds.Width / 2, _viewport.Bounds.Height / 2), _zoom * factor);
+
+    private void _ZoomAround(Point anchor, double requestedZoom)
+    {
+        (_zoom, _panOffset) = DiagramZoomMath.ZoomAround(anchor, _panOffset, _zoom, requestedZoom, MinZoom, MaxZoom);
+        _isFitMode = false;
+        _ApplyTransform();
+    }
+
+    // "Passend maken": recomputed from the viewport's own SizeChanged (first layout, then every resize), not from
+    // a user gesture — that is what makes the first render land at true size and keeps it filling the window.
+    private void _ApplyFit()
+    {
+        _isFitMode = true;
+        var fitZoom = DiagramZoomMath.FitZoom(_viewport.Bounds.Size, _diagramSize, MinZoom, MaxZoom);
+        if (fitZoom <= 0)
+        {
+            return;
+        }
+
+        _zoom = fitZoom;
+        _panOffset = DiagramZoomMath.CenteredPanOffset(_viewport.Bounds.Size, _diagramSize, _zoom);
+        _ApplyTransform();
+    }
+
+    private void _ApplyTransform()
+    {
+        _svg.RenderTransform = new MatrixTransform(new Matrix(_zoom, 0, 0, _zoom, _panOffset.X, _panOffset.Y));
+        _zoomLabel.Text = $"{_zoom * 100:0}%";
     }
 
     // AC-824: the Mermaid source is one click away — collapsed under the render, never only in memory.
@@ -225,7 +367,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // AC-813: PNG and SVG only — no PDF (host-dependency decision, see AC-813), no JPG (lossy artifacts on
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
-    private Border _BuildToolbar()
+    private (Border Toolbar, TextBlock ZoomLabel) _BuildToolbar()
     {
         var export = new Button
         {
@@ -250,11 +392,26 @@ internal sealed class DiagramWorkspaceBody : UserControl
             },
         }.ShowAt(export);
 
-        return new Border
+        // AC-837: zoom in/out + Fit, with the current level always on screen — the DoD's "zichtbaar zoomniveau".
+        var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
+        zoomOut.Click += (_, _) => _ZoomByButton(1 / ButtonZoomStep);
+        var zoomLabel = new TextBlock { VerticalAlignment = VerticalAlignment.Center, MinWidth = 40, TextAlignment = TextAlignment.Center, FontSize = 12 };
+        var zoomIn = new Button { Content = "+", Classes = { "Compact" }, MinWidth = 28 };
+        zoomIn.Click += (_, _) => _ZoomByButton(ButtonZoomStep);
+        var fit = new Button { Content = "Fit", Classes = { "Compact" } };
+        fit.Click += (_, _) => _ApplyFit();
+        var zoomControls = new StackPanel
         {
-            Padding = new Thickness(8, 4),
-            Child = new DockPanel { Children = { export } },
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { zoomOut, zoomLabel, zoomIn, fit },
         };
+
+        var bar = new DockPanel { Children = { export, zoomControls } };
+        DockPanel.SetDock(export, Dock.Right);
+
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel);
     }
 
     private static MenuItem _ExportMenuItem(string header, Action onClick)
