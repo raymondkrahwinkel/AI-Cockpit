@@ -26,8 +26,13 @@
          gives it the same edges/corners — and the same decorations — every other cockpit window resizes by
          (AC-678/AC-755), from the constructor. MinWidth/MinHeight stay the floor. -->
 
-    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
-        <Grid>
+    <!-- Root is a Grid, NOT a Border: a Border wrapping this window's transcript VirtualizingStackPanel pins every
+         recycled TranscriptRowView via the border's CompositionBorderVisual — the same leak as the session grid's
+         PaneRoot (rows leave the visual tree but the border's composition visual holds their draw-lists until the
+         window closes; ~600 rows/360MB on a long assistant conversation). The rounded hairline frame is a SIBLING
+         overlay at the end of this Grid; the window's outer corners are rounded by the OS (Win11 DWM under
+         ExtendClientAreaToDecorationsHint), so dropping the old frame's ClipToBounds changes no visible corner. -->
+    <Grid>
         <DockPanel>
 
             <!-- Header: profile name, the read-aloud switch (criterion 9 — the same switch Options carries, via
@@ -755,6 +760,9 @@
              operator did not approve this action" for an action they were never shown. Same control the session
              panes use, so it looks and behaves identically, over this window instead of over a pane. -->
         <controls:ConsentBannerHost DataContext="{Binding Session}"/>
+        <!-- Rounded hairline frame: a SIBLING overlay (no child), never the PARENT of the transcript subtree (see the
+             root-Grid note above). Hit-transparent so it never eats a click; drawn on top at the window edge. -->
+        <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
+                IsHitTestVisible="False"/>
         </Grid>
-    </Border>
 </Window>

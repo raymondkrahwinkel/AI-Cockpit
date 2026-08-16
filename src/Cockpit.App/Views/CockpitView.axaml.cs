@@ -126,8 +126,26 @@ public partial class CockpitView : UserControl
                     var trigger = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cockpit-leaksim.trigger");
                     if (System.IO.File.Exists(trigger))
                     {
+                        var content = string.Empty;
+                        try { content = System.IO.File.ReadAllText(trigger).Trim(); } catch (Exception) { }
                         try { System.IO.File.Delete(trigger); } catch (Exception) { }
-                        _ = cockpit.RunLeakSimAsync();
+                        // "chat" / "chat:<rows>" runs the assistant-chat-window sim; a bare int runs the grid sim with
+                        // that many rows; anything else is the default grid sim.
+                        if (content.StartsWith("chat", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var n = 300;
+                            var colon = content.IndexOf(':');
+                            if (colon >= 0 && int.TryParse(content[(colon + 1)..], out var cr) && cr > 0) n = cr;
+                            _ = cockpit.RunAssistantChatLeakSimAsync(n);
+                        }
+                        else if (int.TryParse(content, out var rows) && rows > 0)
+                        {
+                            _ = cockpit.RunLeakSimAsync(rows);
+                        }
+                        else
+                        {
+                            _ = cockpit.RunLeakSimAsync();
+                        }
                     }
                 };
                 leakSimTimer.Start();
