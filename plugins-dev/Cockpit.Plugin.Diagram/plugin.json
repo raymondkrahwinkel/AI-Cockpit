@@ -1,11 +1,11 @@
 {
   "id": "diagram",
   "name": "Diagram & Whiteboard",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "entryAssembly": "Cockpit.Plugin.Diagram.dll",
   "entryType": "Cockpit.Plugin.Diagram.DiagramPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "0.23.0",
-  "description": "Opens a Mermaid diagram in its own window, bound to a session you already have running, and a freehand whiteboard window you can invite that session's agent to look along on.",
+  "description": "Opens a Mermaid diagram in its own window, bound to a session you already have running, and a whiteboard window you can invite that session's agent to look along on — and, if you approve it, to draw along on.",
   "author": "Cockpit"
 }

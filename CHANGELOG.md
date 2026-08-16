@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an agent can now draw along on a whiteboard you have open — until now it could only look. It puts down one
+  object at a time (a shape, a sticky note or a label), never replacing the board, and everything it places carries
+  a "neergezet · agent" badge so you can always see which marks are yours and which are its. It cannot move, change
+  or remove anything you drew or placed yourself; you can rub out anything it put there. Drawing is a separate
+  Approve/Deny from reading: an agent that is already reading a board has to ask again before it may touch it, and
+  the prompt says what it is about to put down.
+
 - added: a diagram now opens in its own window beside the cockpit — drag it, resize it, park it on a second screen —
   hooked up to the session you are already talking to instead of starting a fresh one of its own. One window per
   diagram: opening the same one again brings that window forward, and two diagrams from one session are two windows

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Whiteboard;
@@ -9,8 +10,10 @@ namespace Cockpit.Infrastructure.Tests.Whiteboard;
 
 /// <summary>
 /// The cockpit-whiteboard tools (AC-823): reading a surface is gated behind its own Approve/Deny, coupling is
-/// one-agent-per-surface, coupling on its own grants nothing, the consent text names a screenshot (not a diagram
-/// source, AC-810's text), and there is no edit capability at all. Mirrors DiagramMcpToolsTests (AC-810).
+/// one-agent-per-surface, coupling on its own grants nothing, and the read consent text names a screenshot (not a
+/// diagram source, AC-810's text). Since AC-854 there is a second capability: placing an object is asked separately
+/// — a session that already reads a board is asked again, in its own words — and it only ever adds. Mirrors
+/// DiagramMcpToolsTests (AC-810).
 /// </summary>
 public class WhiteboardMcpToolsTests
 {
@@ -54,6 +57,128 @@ public class WhiteboardMcpToolsTests
         await tools.ReadWhiteboard(Session, "Sprint planning");
 
         Assert.NotNull(registry.CouplingOf(Session, "board-1")!.LastReadAt);
+    }
+
+    [Fact]
+    public async Task PlaceOnWhiteboard_WithReadOnly_AsksAWideningApproval_AndIsRefusedUntilItIsGiven()
+    {
+        // AC-854's core rule: read was approved under AC-820's promise that an agent never writes to the canvas, so
+        // placing something is a new question — a read grant is never quietly widened into a write one.
+        var registry = new WhiteboardAccessRegistry();
+        var asked = new List<ConsentRequest>();
+        var approve = false;
+        var broker = Substitute.For<IConsentBroker>();
+        broker.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
+            .Returns(_ => new ConsentDecision(approve ? ConsentOutcome.Approved : ConsentOutcome.Denied));
+        var tools = new WhiteboardMcpTools(registry, broker);
+        registry.SurfaceOpened("board-1", "Sprint planning", Png);
+        registry.Grant(Session, "board-1", WhiteboardCapability.Read);
+
+        var denied = JsonNode.Parse(await tools.PlaceOnWhiteboard(Session, "board-1", "stickynote", "Idee"));
+
+        Assert.False(denied!["ok"]!.GetValue<bool>());
+        Assert.Contains("not approved", denied["error"]!.GetValue<string>());
+        Assert.False(registry.CouplingOf(Session, "board-1")!.CanWrite);
+        Assert.Equal("whiteboard.write", asked[0].Scope);
+        Assert.Contains("now wants to draw on it", asked[0].Title);
+        Assert.Contains("Idee", asked[0].Action);
+
+        approve = true;
+        var placed = JsonNode.Parse(await tools.PlaceOnWhiteboard(Session, "board-1", "stickynote", "Idee"));
+
+        Assert.True(placed!["ok"]!.GetValue<bool>());
+        Assert.NotNull(placed["objectId"]);
+        Assert.True(registry.CouplingOf(Session, "board-1")!.CanWrite);
+    }
+
+    [Fact]
+    public async Task PlaceOnWhiteboard_ReachesTheBoardAsOneObject_AndAsksOnlyOnce()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        var placed = new List<WhiteboardPlacement>();
+        registry.ObjectPlaced += (_, _, placement) => placed.Add(placement);
+        registry.SurfaceOpened("board-1", "Sprint planning", Png);
+
+        await tools.PlaceOnWhiteboard(Session, "board-1", "rectangle", "Stap 1", x: 30, y: 40);
+        await tools.PlaceOnWhiteboard(Session, "board-1", "Sticky-Note", "Stap 2");
+
+        Assert.Single(asked);
+        Assert.Equal(2, placed.Count);
+        Assert.Equal(new WhiteboardPlacement("rectangle", "Stap 1", 30, 40, 120, 80), placed[0]);
+        Assert.Equal("stickynote", placed[1].Shape);
+        Assert.True(registry.CouplingOf(Session, "board-1")!.CanRead); // write implies read
+    }
+
+    [Fact]
+    public async Task EraseWhiteboardObject_RefusesAnythingTheAgentDidNotPlaceItself()
+    {
+        // The operator's own strokes and shapes are unknown to the registry — an agent naming one gets a refusal
+        // that says so, and nothing on the board moves (AC-854).
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("board-1", "Sprint planning", Png);
+        var erased = new List<string>();
+        registry.ObjectErased += (_, objectId) => erased.Add(objectId);
+
+        var placed = JsonNode.Parse(await tools.PlaceOnWhiteboard(Session, "board-1", "rectangle", "Stap 1"));
+        var mine = placed!["objectId"]!.GetValue<string>();
+
+        var refused = JsonNode.Parse(await tools.EraseWhiteboardObject(Session, "board-1", "an-object-the-operator-drew"));
+        Assert.False(refused!["ok"]!.GetValue<bool>());
+        Assert.Contains("never the operator's work", refused["error"]!.GetValue<string>());
+        Assert.Empty(erased);
+
+        var ok = JsonNode.Parse(await tools.EraseWhiteboardObject(Session, "board-1", mine));
+        Assert.True(ok!["ok"]!.GetValue<bool>());
+        Assert.Equal(mine, Assert.Single(erased));
+    }
+
+    [Fact]
+    public async Task PlaceOnWhiteboard_WithAShapeTheBoardDoesNotHave_IsRefusedWithoutAsking()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("board-1", "Sprint planning", Png);
+
+        var json = JsonNode.Parse(await tools.PlaceOnWhiteboard(Session, "board-1", "hexagon", "Stap 1"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("not a shape", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
+    }
+
+    [Fact]
+    public async Task PlaceOnWhiteboard_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("board-1", "Sprint planning", Png);
+        registry.Grant("victim-pane", "board-1", WhiteboardCapability.Write);
+
+        McpRequestContext.Set("attacker-pane");
+        try
+        {
+            var json = JsonNode.Parse(await tools.PlaceOnWhiteboard("victim-pane", "board-1", "rectangle", "boo"));
+
+            Assert.False(json!["ok"]!.GetValue<bool>());
+            Assert.Contains("another agent", json["error"]!.GetValue<string>());
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
+    public async Task ReadConsentText_NoLongerPromisesThatAnAgentCannotDraw()
+    {
+        // AC-820/AC-823 promised the operator "writing to a whiteboard is not offered to agents at all". AC-854
+        // makes that untrue, so the promise must be gone from the prompt rather than quietly outlived.
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("board-1", "Sprint planning", Png);
+
+        await tools.ReadWhiteboard(Session, "Sprint planning");
+
+        Assert.Equal("whiteboard.read", asked[0].Scope);
+        Assert.DoesNotContain("not offered to agents", asked[0].Action);
+        Assert.Contains("separate question", asked[0].Action);
     }
 
     [Fact]
@@ -176,6 +301,7 @@ public class WhiteboardMcpToolsTests
         Assert.Equivalent(new object[] { "Sprint planning", "Retro board" }, names);
         var coupled = json["whiteboards"]!.AsArray().First(w => w!["name"]!.GetValue<string>() == "Sprint planning");
         Assert.True(coupled!["canRead"]!.GetValue<bool>());
+        Assert.False(coupled["canPlace"]!.GetValue<bool>()); // read alone is never write (AC-854)
         var uncoupled = json["whiteboards"]!.AsArray().First(w => w!["name"]!.GetValue<string>() == "Retro board");
         Assert.False(uncoupled!["canRead"]!.GetValue<bool>());
     }

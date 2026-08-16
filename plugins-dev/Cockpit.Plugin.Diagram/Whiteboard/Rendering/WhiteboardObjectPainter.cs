@@ -28,6 +28,14 @@ internal static class WhiteboardObjectPainter
     private static readonly IBrush StickyNoteTextBrush = new SolidColorBrush(Color.Parse("#3F3618"));
     private static readonly IBrush BadgeBackground = new SolidColorBrush(Color.Parse("#1F2937"), 0.85);
 
+    // The badge every renderer of a placed object pins on it: whose mark it is (AC-854) or where a picture came from.
+    public static string? BadgeFor(PlacedObject placed) => placed switch
+    {
+        { PlacedByAgent: true } => "neergezet · agent",
+        { IsPastedScreenshot: true } => "geplakt · screenshot",
+        _ => null,
+    };
+
     public static void PaintFreehand(DrawingContext context, IReadOnlyList<WhiteboardPoint> points, double thickness, bool isMarker = false)
     {
         if (points.Count < 2)

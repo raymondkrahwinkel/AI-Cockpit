@@ -17,8 +17,9 @@ using Material.Icons.Avalonia;
 namespace Cockpit.Plugin.Diagram.Whiteboard;
 
 // A whiteboard as its own window beside the cockpit (AC-842), bound to a session that is already running — the
-// whiteboard counterpart to DiagramWorkspaceBody (AC-834); read that one first. Deviation: one capability (Read),
-// and the invite is a separate, visible ask — Couple never implies Grant (AC-810's boundary).
+// whiteboard counterpart to DiagramWorkspaceBody (AC-834); read that one first. Deviation: the invite is a separate,
+// visible ask — Couple never implies Grant (AC-810's boundary) — and it only ever offers read; the agent's own write
+// grant (AC-854) is asked by the agent, per board.
 internal sealed class WhiteboardWorkspaceBody : UserControl
 {
     private static readonly PixelSize SnapshotSize = new(800, 600);
@@ -60,6 +61,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         {
             _registry.SurfaceOpened(_surfaceId, "Whiteboard", _Snapshot());
             _registry.CouplingChanged += _OnCouplingChanged;
+            _registry.ObjectPlaced += _OnObjectPlaced;
+            _registry.ObjectErased += _OnObjectErased;
 
             // A plain Couple — zero capabilities. The invite button (and read_whiteboard) still ask their own Grant.
             if (_binding.IsLive)
@@ -81,6 +84,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             }
 
             _registry.CouplingChanged -= _OnCouplingChanged;
+            _registry.ObjectPlaced -= _OnObjectPlaced;
+            _registry.ObjectErased -= _OnObjectErased;
             _registry.SurfaceClosed(_surfaceId);
         };
     }
@@ -152,7 +157,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private ConsentRequest _InvitePrompt() =>
         new(
             "Let the agent look along on this whiteboard",
-            $"Share a screenshot of this whiteboard ({SnapshotSize.Width}×{SnapshotSize.Height}) with the session's agent, exactly as it looks right now — an image of the board, not its shapes or text as data. It cannot draw on it yet.",
+            $"Share a screenshot of this whiteboard ({SnapshotSize.Width}×{SnapshotSize.Height}) with the session's agent, exactly as it looks right now — an image of the board, not its shapes or text as data. It cannot put anything on the board with this: drawing along is a separate question the agent has to ask for itself.",
             new ConsentSource(_surfaceId, null, ConsentSourceCatalog.WhiteboardInvite),
             "whiteboard.read",
             ConsentRisk.Dangerous);
@@ -163,6 +168,50 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         using var stream = new MemoryStream();
         bitmap.Save(stream, PngBitmapEncoderOptions.Default);
         return stream.ToArray();
+    }
+
+    // An agent's object arriving over MCP (AC-854): it lands in the same document the operator draws in, marked as
+    // the agent's so it is drawn and saved as such, and the registry's snapshot is refreshed so the next read of the
+    // board shows it. Nothing already on the board is touched.
+    private void _OnObjectPlaced(string surfaceId, string objectId, WhiteboardPlacement placement)
+    {
+        if (surfaceId != _surfaceId || !Enum.TryParse<PlacedShapeKind>(placement.Shape, ignoreCase: true, out var kind) || kind == PlacedShapeKind.Image)
+        {
+            return;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _control.Canvas.Document.Add(new PlacedObject
+            {
+                Id = Guid.TryParse(objectId, out var id) ? id : Guid.NewGuid(),
+                ShapeKind = kind,
+                X = placement.X,
+                Y = placement.Y,
+                Width = placement.Width,
+                Height = placement.Height,
+                Text = placement.Text,
+                PlacedByAgent = true,
+            });
+            _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
+        });
+    }
+
+    // Only ever reaches an object the agent placed itself — the registry refuses the rest before it gets here.
+    private void _OnObjectErased(string surfaceId, string objectId)
+    {
+        if (surfaceId != _surfaceId || !Guid.TryParse(objectId, out var id))
+        {
+            return;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (_control.Canvas.Document.Remove(id))
+            {
+                _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
+            }
+        });
     }
 
     private void _OnCouplingChanged(WhiteboardCouplingChange change)
@@ -270,9 +319,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _couplingLabel.Foreground = _Brush("CockpitAccentBrush");
         _pip.Foreground = coupling.CanRead ? _Brush("CockpitAccentBrush") : _Brush("CockpitTextSecondaryBrush");
         _SetChip(_readChip, "read_whiteboard", coupling.CanRead);
-        // edit_whiteboard has no backing capability yet — AC-854 adds it. The chip stays here as the display's
-        // reserved third slot so "may draw along" is never a state this bar has to be redesigned to show.
-        _SetChip(_editChip, "edit_whiteboard", granted: false);
+        _SetChip(_editChip, "place_on_whiteboard", coupling.CanWrite);
     }
 
     private static TextBlock _Chip() => new()

@@ -201,6 +201,28 @@ public class WhiteboardCanvasControlTests
         window.Close();
     }
 
+    [Fact]
+    public void AnObjectAddedToTheDocumentFromOutside_IsDrawnAndCanBeRemovedAgain()
+    {
+        // How an agent's placement reaches the live board (AC-854): the workspace adds it to the same document, so
+        // the canvas has to follow the document rather than only its own pointer gestures.
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        var placed = new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, PlacedByAgent = true };
+        document.Add(placed);
+
+        var control = Assert.Single(canvas.GetVisualDescendants().OfType<PlacedObjectControl>());
+        Assert.Same(placed, control.Model);
+
+        document.Remove(placed.Id);
+
+        Assert.Empty(canvas.GetVisualDescendants().OfType<PlacedObjectControl>());
+
+        window.Close();
+    }
+
     private static Window _Show(Control content)
     {
         var window = new Window { Width = 300, Height = 300, Content = content };
