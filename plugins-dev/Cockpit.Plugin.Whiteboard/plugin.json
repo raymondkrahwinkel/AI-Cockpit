@@ -1,7 +1,7 @@
 {
   "id": "whiteboard",
   "name": "Whiteboard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "entryAssembly": "Cockpit.Plugin.Whiteboard.dll",
   "entryType": "Cockpit.Plugin.Whiteboard.WhiteboardPlugin",
   "abstractionsVersion": 1,

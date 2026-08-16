@@ -17,6 +17,13 @@
       <Private>false</Private>
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </ProjectReference>
+    <!-- Compile-only, same pattern as Diagram (AC-809): only IWhiteboardAccessRegistry's shape is needed at
+         compile time, and PluginLoadContext falls the actual type through to the host's own already-loaded copy
+         at runtime. -->
+    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
