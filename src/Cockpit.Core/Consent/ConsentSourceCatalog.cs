@@ -19,6 +19,9 @@ public static class ConsentSourceCatalog
     // The diagram MCP server (AC-810): reading or editing a diagram surface the operator has open.
     public const string DiagramMcp = "Diagram MCP";
 
+    // The whiteboard MCP server (AC-823): reading a screenshot of a whiteboard surface the operator has open.
+    public const string WhiteboardMcp = "Whiteboard MCP";
+
     // The verify MCP server.
     public const string VerifyMcp = "Verify MCP";
 
@@ -66,7 +69,7 @@ public static class ConsentSourceCatalog
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
     public static IReadOnlyList<string> HostSources { get; } =
     [
-        TerminalMcp, DiagramMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
+        TerminalMcp, DiagramMcp, WhiteboardMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
         AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, Debug,
     ];
 
