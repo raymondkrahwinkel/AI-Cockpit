@@ -3,19 +3,19 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Workspaces;
+using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram;
 
-// AC-826: the diagrams-per-project overview. Reads AC-812's <memory>/Diagrams/<slug>.md convention across every
-// Memory row AC-827's read seam reports; "Open" hands the picked diagram to the next diagram.panel body via
-// DiagramOpenHandoff.
-internal sealed class DiagramListWorkspaceBody : UserControl
+// AC-826: the diagrams-per-project overview, a dialog rather than a workspace (AC-850). Reads AC-812's
+// <memory>/Diagrams/<slug>.md convention across every Memory row AC-827's read seam reports; "Open" opens the
+// picked diagram directly in its own window, coupled to the session already active when the dialog was opened.
+internal sealed class DiagramListDialogBody : UserControl
 {
     private readonly ICockpitHost _host;
     private readonly StackPanel _list;
 
-    public DiagramListWorkspaceBody(IWorkspaceContext context, ICockpitHost host)
+    public DiagramListDialogBody(ICockpitHost host)
     {
         _host = host;
         _list = new StackPanel { Spacing = 6, Margin = new Thickness(12) };
@@ -30,10 +30,22 @@ internal sealed class DiagramListWorkspaceBody : UserControl
         };
         DockPanel.SetDock(refresh, Dock.Right);
 
-        Content = new DockPanel { Children = { header, new ScrollViewer { Content = _list } } };
+        var activePaneId = host.Sessions.ActivePaneId;
+        var sessionLabel = host.Sessions.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
+        var couplingNote = new TextBlock
+        {
+            Text = activePaneId is null
+                ? "Geen actieve sessie — open er een om een diagram te koppelen."
+                : $"Koppelt aan {sessionLabel} — de sessie hiernaast.",
+            FontSize = 11,
+            Margin = new Thickness(12, 6, 12, 0),
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+        DockPanel.SetDock(couplingNote, Dock.Top);
+
+        Content = new DockPanel { Children = { header, couplingNote, new ScrollViewer { Content = _list } } };
         DockPanel.SetDock(header, Dock.Top);
 
-        context.RefreshRequested += (_, _) => _ = _LoadAsync();
         _ = _LoadAsync();
     }
 
@@ -85,8 +97,15 @@ internal sealed class DiagramListWorkspaceBody : UserControl
         var open = new Button { Content = "Open", Classes = { "Compact" } };
         open.Click += (_, _) =>
         {
-            DiagramOpenHandoff.Pending = (entry.Title, entry.MermaidText);
-            _ = _host.OpenWorkspaceAsync("diagram.panel");
+            if (_host.Sessions.ActivePaneId is not { } paneId)
+            {
+                _host.ShowToast("Geen actieve sessie om dit diagram aan te koppelen.", PluginToastSeverity.Information);
+                return;
+            }
+
+            // Keyed on the file path (DiagramWindow.KeyFor), so opening the same diagram again brings the
+            // existing window forward instead of a second one.
+            _ = DiagramWindow.OpenAsync(_host, new DiagramDocument(entry.FilePath, entry.Title, entry.MermaidText), paneId);
         };
 
         var renameButton = new Button { Content = "Rename", Classes = { "Compact" } };

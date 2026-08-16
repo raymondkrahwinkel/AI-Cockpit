@@ -9,6 +9,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Whiteboard;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -81,6 +82,18 @@ public class WhiteboardCollabWindowTests
         Assert.True(host.Registry.CouplingOf("pane-a", host.Registry.ListSurfaces("pane-a").Single().SurfaceId)!.CanRead);
         Assert.Equal(2, host.ConsentRequests.Count);
         Assert.Contains("screenshot", host.ConsentRequests[0].Action, StringComparison.OrdinalIgnoreCase);
+    });
+
+    [Fact]
+    public void InvokingWithNoActiveSession_ShowsAToastInsteadOfAWindow() => HeadlessAvalonia.Run(() =>
+    {
+        var (plugin, host) = _StartPlugin();
+        host.Sessions = new FakeSessions(activePaneId: null);
+
+        host.InvokeWhiteboardAction();
+
+        Assert.Empty(host.Windows);
+        Assert.Single(host.Toasts);
     });
 
     [Fact]
@@ -176,6 +189,8 @@ public class WhiteboardCollabWindowTests
 
         public List<ConsentRequest> ConsentRequests { get; } = [];
 
+        public List<string> Toasts { get; } = [];
+
         public ConsentOutcome ConsentOutcome { get; set; } = ConsentOutcome.Approved;
 
         public IServiceProvider Services { get; }
@@ -184,7 +199,10 @@ public class WhiteboardCollabWindowTests
 
         public IPluginStorage Storage { get; } = new MemoryStorage();
 
-        public ICockpitSessionObserver Sessions { get; } = new FakeSessions();
+        public ICockpitSessionObserver Sessions { get; set; } = new FakeSessions("pane-a");
+
+        public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction) =>
+            Toasts.Add(message);
 
         // The toolbar's "Whiteboard" action — standing in for an operator clicking it with a session active.
         public void InvokeWhiteboardAction() => _toolbarActions.Single(action => action.Title == "Whiteboard").OnInvoke().GetAwaiter().GetResult();
@@ -260,11 +278,11 @@ public class WhiteboardCollabWindowTests
         public void Dispose() => IsDisposed = true;
     }
 
-    private sealed class FakeSessions : ICockpitSessionObserver
+    private sealed class FakeSessions(string? activePaneId) : ICockpitSessionObserver
     {
         public string? ActiveSessionWorkingDirectory => null;
 
-        public string? ActivePaneId => "pane-a";
+        public string? ActivePaneId => activePaneId;
 
         public IReadOnlyList<OpenCockpitSession> OpenSessions { get; } = [new("pane-a", "Werksessie"), new("pane-b", "Tweede sessie")];
 
