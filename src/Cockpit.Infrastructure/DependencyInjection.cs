@@ -55,8 +55,8 @@ public static class DependencyInjection
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-diagram", typeof(Diagrams.DiagramMcpTools)));
 
         // cockpit-whiteboard (AC-823): lets an agent read a screenshot of a whiteboard surface the operator has
-        // open, gated by a Read-only Approve/Deny — same shape as cockpit-diagram above, minus edit (AC-820: the
-        // agent never writes to the canvas). AC-830 removed the standing master switch this used to sit behind.
+        // open and, since AC-854 lifted AC-820's "never writes to the canvas" boundary, put objects on it one at a
+        // time — read and write each behind their own Approve/Deny, as cockpit-diagram above does.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-whiteboard", typeof(Whiteboard.WhiteboardMcpTools)));
 
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on

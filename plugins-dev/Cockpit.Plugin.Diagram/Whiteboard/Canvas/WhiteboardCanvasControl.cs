@@ -87,7 +87,23 @@ public sealed class WhiteboardCanvasControl : Border
             _CreatePlacedControl(placed);
         }
 
-        document.Objects.CollectionChanged += (_, _) => _UpdateEmptyState();
+        // Objects can also arrive from outside this control — an agent placing one over MCP (AC-854) — so controls
+        // are kept in step with the document itself rather than only with the pointer gestures that make them.
+        document.Objects.CollectionChanged += (_, change) =>
+        {
+            foreach (var placed in change.NewItems?.OfType<PlacedObject>() ?? [])
+            {
+                _CreatePlacedControl(placed);
+            }
+
+            foreach (var placed in change.OldItems?.OfType<PlacedObject>() ?? [])
+            {
+                _DropPlacedControl(placed.Id);
+            }
+
+            _freehandLayer.InvalidateVisual();
+            _UpdateEmptyState();
+        };
         _UpdateEmptyState();
     }
 
@@ -474,6 +490,11 @@ public sealed class WhiteboardCanvasControl : Border
 
     private PlacedObjectControl _CreatePlacedControl(PlacedObject placed)
     {
+        if (_placedControls.TryGetValue(placed.Id, out var existing))
+        {
+            return existing;
+        }
+
         var control = new PlacedObjectControl(placed);
         _placedControls[placed.Id] = control;
         _surface.Children.Add(control);
@@ -481,15 +502,17 @@ public sealed class WhiteboardCanvasControl : Border
         return control;
     }
 
-    private void _RemoveObject(Guid id)
+    private void _DropPlacedControl(Guid id)
     {
-        Document.Remove(id);
-
         if (_placedControls.Remove(id, out var control))
         {
             _surface.Children.Remove(control);
         }
+    }
 
+    private void _RemoveObject(Guid id)
+    {
+        Document.Remove(id);
         _ClearHandles();
         _selectedId = null;
         _freehandLayer.SelectedId = null;

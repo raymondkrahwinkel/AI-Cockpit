@@ -109,6 +109,25 @@ public class WhiteboardSnapshotRendererTests
         Assert.NotEqual(plainPixel, badgePixel);
     }
 
+    [Fact]
+    public void AnAgentPlacedObject_IsBadged_AndSoTellsItselfApartFromTheOperatorsOwnWork()
+    {
+        // AC-854: what the agent put down must stay recognisable as the agent's wherever the board is drawn — the
+        // PNG snapshot included, which is also what a saved-and-reopened board renders from.
+        var agentDocument = new WhiteboardDocument();
+        agentDocument.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 0, Y = 0, Width = 100, Height = 60, PlacedByAgent = true });
+
+        var operatorDocument = new WhiteboardDocument();
+        operatorDocument.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 0, Y = 0, Width = 100, Height = 60 });
+
+        var badgePixel = _PixelAt(_Render(agentDocument), 10, 55);
+        var plainPixel = _PixelAt(_Render(operatorDocument), 10, 55);
+
+        Assert.NotEqual(plainPixel, badgePixel);
+        Assert.Equal("neergezet · agent", WhiteboardObjectPainter.BadgeFor(agentDocument.Objects.OfType<PlacedObject>().Single()));
+        Assert.Null(WhiteboardObjectPainter.BadgeFor(operatorDocument.Objects.OfType<PlacedObject>().Single()));
+    }
+
     private static byte[] _TinyPngBytes()
     {
         using var bitmap = new RenderTargetBitmap(new PixelSize(4, 4));

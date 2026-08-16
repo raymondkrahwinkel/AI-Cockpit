@@ -1,13 +1,26 @@
 namespace Cockpit.Core.Abstractions.Whiteboard;
 
-// An open whiteboard surface the agent could ask to read: its stable id and the name the operator sees.
+// An open whiteboard surface the agent could ask to read or put something on: its stable id and the name the
+// operator sees.
 public sealed record WhiteboardSurface(string SurfaceId, string Name);
 
-// What one session holds on a surface. Unlike DiagramCoupling there is no capability enum — AC-823 offers exactly
-// one capability (Read; there is no edit_whiteboard, the agent never writes to the canvas) — but coupling is still
-// separate from granting it, so "coupled, nothing granted yet" stays a real, distinct state (AC-810's precedent).
-// LastReadAt is AC-842's "gelezen 15:11": when this session's read_whiteboard last actually returned a snapshot.
-public sealed record WhiteboardCoupling(string SessionId, bool CanRead, DateTimeOffset? LastReadAt = null);
+// What an agent may do with a coupled surface. AC-820/AC-823 deliberately shipped Read alone ("an agent never
+// writes to the canvas"); Raymond lifted that boundary on 2026-08-16 (AC-854) — a whiteboard is a collab surface,
+// so the agent works on it too. Write is asked and granted separately from Read, like DiagramCapability.Edit.
+public enum WhiteboardCapability
+{
+    Read,
+    Write,
+}
+
+// What one session holds on a surface: "coupled, nothing granted yet" is a real state (AC-810's precedent), and
+// granting Write always sets CanRead too — putting something on a board you cannot see is not a narrower grant.
+// LastReadAt is AC-842's "gelezen 15:11": when this session's read_whiteboard last returned a snapshot.
+public sealed record WhiteboardCoupling(string SessionId, bool CanRead, bool CanWrite = false, DateTimeOffset? LastReadAt = null);
+
+// One object an agent asks to put on a board (AC-854): a template shape, a sticky note or a bare label, in the
+// board's own coordinates. Shape names are PlacedShapeKind's, matched case-insensitively by the whiteboard plugin.
+public sealed record WhiteboardPlacement(string Shape, string? Text, double X, double Y, double Width, double Height);
 
 // A surface as `list_whiteboards` reports it to one agent session — the surface plus what that session already
 // holds on it, or null when there is no coupling at all yet.
@@ -19,9 +32,9 @@ public sealed record WhiteboardCouplingChange(string SurfaceId, WhiteboardCoupli
 
 /// <summary>
 /// The source of truth for whiteboard-surface access (AC-823) — the whiteboard counterpart to
-/// <c>IDiagramAccessRegistry</c> (AC-810); read that one first. Deviations: one capability only (Read — there is no
-/// edit_whiteboard), and what a surface holds is a rendered PNG snapshot (AC-821's
-/// <c>IWhiteboardSnapshotRenderer</c> output), not text.
+/// <c>IDiagramAccessRegistry</c> (AC-810); read that one first. Deviations: what a surface holds is a rendered PNG
+/// snapshot (AC-821's <c>IWhiteboardSnapshotRenderer</c> output), not text, and the write path adds objects one at a
+/// time (AC-854) rather than replacing the board — an agent never removes or overwrites the operator's own work.
 /// </summary>
 public interface IWhiteboardAccessRegistry
 {
@@ -65,11 +78,23 @@ public interface IWhiteboardAccessRegistry
     /// <summary>Establishes a zero-capability coupling if this session holds none yet on the surface. Idempotent. Throws for an unknown surface, or one coupled to a different session.</summary>
     void Couple(string sessionId, string surfaceId);
 
-    /// <summary>Grants this session Read on the surface (creating a coupling first if needed). Throws for an unknown surface, or one coupled to a different session.</summary>
-    void Grant(string sessionId, string surfaceId);
+    /// <summary>Widens this session's coupling to also hold <paramref name="capability"/> (creating a coupling first if needed). <see cref="WhiteboardCapability.Write"/> grants <see cref="WhiteboardCapability.Read"/> alongside it. Throws for an unknown surface, or one coupled to a different session.</summary>
+    void Grant(string sessionId, string surfaceId, WhiteboardCapability capability = WhiteboardCapability.Read);
 
     /// <summary>The surface's current snapshot, or null when this session does not hold Read on it.</summary>
     byte[]? ReadCoupled(string sessionId, string surfaceId);
+
+    /// <summary>Puts one object on the surface on this session's behalf and raises <see cref="ObjectPlaced"/>. Returns the id the object got, or null when this session does not hold <see cref="WhiteboardCapability.Write"/>.</summary>
+    string? PlaceCoupled(string sessionId, string surfaceId, WhiteboardPlacement placement);
+
+    /// <summary>Removes an object this same session placed and raises <see cref="ObjectErased"/>. False for anything else — the operator's own work is not an agent's to take away (AC-854).</summary>
+    bool ErasePlaced(string sessionId, string surfaceId, string objectId);
+
+    /// <summary>Raised for each object an agent put on a surface, with the id stamped on it, so the board can draw it.</summary>
+    event Action<string, string, WhiteboardPlacement>? ObjectPlaced;
+
+    /// <summary>Raised when an agent takes back an object it placed itself — surface id and object id.</summary>
+    event Action<string, string>? ObjectErased;
 
     /// <summary>Records that this session's read_whiteboard just returned a snapshot, so the board can show when it was last read (AC-842). No-op when this session does not hold Read.</summary>
     void MarkRead(string sessionId, string surfaceId);

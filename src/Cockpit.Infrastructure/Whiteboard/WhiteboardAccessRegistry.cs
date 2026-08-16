@@ -4,8 +4,9 @@ using Cockpit.Core.Abstractions.Whiteboard;
 namespace Cockpit.Infrastructure.Whiteboard;
 
 // The live coupling state behind the whiteboard-access MCP (AC-823) — the whiteboard counterpart to
-// DiagramAccessRegistry (AC-810), but holding a rendered PNG snapshot per surface instead of text, and only the one
-// Read capability — there is no edit_whiteboard to widen into.
+// DiagramAccessRegistry (AC-810), but holding a rendered PNG snapshot per surface instead of text, and a write path
+// (AC-854) that only ever adds: it remembers which objects each session put there, so an agent can take back its
+// own and nothing else.
 internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISingletonService
 {
     private readonly object _lock = new();
@@ -15,6 +16,10 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     public event Action<string, byte[]>? SnapshotChanged;
 
     public event Action<WhiteboardCouplingChange>? CouplingChanged;
+
+    public event Action<string, string, WhiteboardPlacement>? ObjectPlaced;
+
+    public event Action<string, string>? ObjectErased;
 
     public void SurfaceOpened(string surfaceId, string name, byte[] initialSnapshotPng)
     {
@@ -151,8 +156,9 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
     }
 
-    public void Grant(string sessionId, string surfaceId)
+    public void Grant(string sessionId, string surfaceId, WhiteboardCapability capability = WhiteboardCapability.Read)
     {
+        var write = capability == WhiteboardCapability.Write;
         WhiteboardCoupling coupling;
         lock (_lock)
         {
@@ -168,17 +174,54 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
                     throw new InvalidOperationException($"Whiteboard surface '{surfaceId}' is already coupled to another agent.");
                 }
 
-                coupling = existing with { CanRead = true };
+                coupling = existing with { CanRead = true, CanWrite = existing.CanWrite || write };
             }
             else
             {
-                coupling = new WhiteboardCoupling(sessionId, CanRead: true);
+                coupling = new WhiteboardCoupling(sessionId, CanRead: true, CanWrite: write);
             }
 
             _couplings[surfaceId] = coupling;
         }
 
         CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
+    }
+
+    public string? PlaceCoupled(string sessionId, string surfaceId, WhiteboardPlacement placement)
+    {
+        string objectId;
+        lock (_lock)
+        {
+            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanWrite)
+                || !_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return null;
+            }
+
+            objectId = Guid.NewGuid().ToString();
+            surface.PlacedBy[objectId] = sessionId;
+        }
+
+        ObjectPlaced?.Invoke(surfaceId, objectId, placement);
+        return objectId;
+    }
+
+    public bool ErasePlaced(string sessionId, string surfaceId, string objectId)
+    {
+        lock (_lock)
+        {
+            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanWrite)
+                || !_surfaces.TryGetValue(surfaceId, out var surface)
+                || !(surface.PlacedBy.TryGetValue(objectId, out var placedBy) && placedBy == sessionId))
+            {
+                return false;
+            }
+
+            surface.PlacedBy.Remove(objectId);
+        }
+
+        ObjectErased?.Invoke(surfaceId, objectId);
+        return true;
     }
 
     public byte[]? ReadCoupled(string sessionId, string surfaceId)
@@ -234,5 +277,9 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         public string Name { get; set; } = name;
 
         public byte[] SnapshotPng { get; set; } = snapshotPng;
+
+        // Object id -> the session that placed it. Anything not in here is the operator's (or another agent's), and
+        // an agent asking to erase it is refused rather than obeyed.
+        public Dictionary<string, string> PlacedBy { get; } = new(StringComparer.Ordinal);
     }
 }

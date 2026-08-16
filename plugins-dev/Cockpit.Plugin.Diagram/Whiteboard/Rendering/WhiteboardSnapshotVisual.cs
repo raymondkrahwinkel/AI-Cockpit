@@ -42,7 +42,7 @@ internal sealed class WhiteboardSnapshotVisual : Control
                             new Rect(placed.X, placed.Y, placed.Width, placed.Height),
                             placed.Text,
                             image,
-                            placed.IsPastedScreenshot ? "geplakt · screenshot" : null);
+                            WhiteboardObjectPainter.BadgeFor(placed));
                     }
 
                     break;

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
@@ -24,6 +25,54 @@ public class WhiteboardAccessIntegrationTests
 {
     [Fact]
     public async Task OpeningThePanel_RegistersARealSnapshot_ThatReadWhiteboardReturnsUnchanged() => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (plugin, registry, surfaceId) = await _OpenBoardAsync();
+
+        // The panel signed up with a real rendered snapshot, not a hand-fed byte array — PeekSnapshot is the
+        // operator-trusted read the consent prompt and ReadWhiteboard both build from.
+        var peeked = registry.PeekSnapshot(surfaceId);
+        Assert.NotNull(peeked);
+        Assert.NotEmpty(peeked!);
+
+        var tools = new WhiteboardMcpTools(registry, new AlwaysApprove());
+        var json = JsonNode.Parse(await tools.ReadWhiteboard("agent-pane", surfaceId));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(Convert.ToBase64String(peeked!), json["imageBase64"]!.GetValue<string>());
+
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public async Task PlacingAnObject_ReachesTheRealBoard_AndTheAgentCanOnlyTakeBackItsOwn() => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        // AC-854 end to end: the write path is only real if what the agent places actually lands on the operator's
+        // board and comes back in the snapshot it reads.
+        var (plugin, registry, surfaceId) = await _OpenBoardAsync();
+        var tools = new WhiteboardMcpTools(registry, new AlwaysApprove());
+        var empty = registry.PeekSnapshot(surfaceId)!;
+
+        var placed = JsonNode.Parse(await tools.PlaceOnWhiteboard("agent-pane", surfaceId, "stickynote", "Van de agent", x: 100, y: 100));
+        Assert.True(placed!["ok"]!.GetValue<bool>());
+        Dispatcher.UIThread.RunJobs();
+
+        var withNote = registry.PeekSnapshot(surfaceId)!;
+        Assert.NotEqual(empty, withNote);
+
+        var strange = JsonNode.Parse(await tools.EraseWhiteboardObject("agent-pane", surfaceId, Guid.NewGuid().ToString()));
+        Assert.False(strange!["ok"]!.GetValue<bool>());
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(withNote, registry.PeekSnapshot(surfaceId));
+
+        var erased = JsonNode.Parse(await tools.EraseWhiteboardObject("agent-pane", surfaceId, placed["objectId"]!.GetValue<string>()));
+        Assert.True(erased!["ok"]!.GetValue<bool>());
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(empty, registry.PeekSnapshot(surfaceId));
+
+        plugin.Dispose();
+    });
+
+    private static async Task<(ICockpitPlugin Plugin, WhiteboardAccessRegistry Registry, string SurfaceId)> _OpenBoardAsync()
     {
         var folder = _LocatePluginOutput();
         Assert.NotNull(folder);
@@ -51,22 +100,8 @@ public class WhiteboardAccessIntegrationTests
         var dialogKey = Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
         Assert.IsAssignableFrom<Control>(host.LastDialogContent);
 
-        var surfaceId = dialogKey["whiteboard.document.".Length..];
-
-        // The panel signed up with a real rendered snapshot, not a hand-fed byte array — PeekSnapshot is the
-        // operator-trusted read the consent prompt and ReadWhiteboard both build from.
-        var peeked = registry.PeekSnapshot(surfaceId);
-        Assert.NotNull(peeked);
-        Assert.NotEmpty(peeked!);
-
-        var tools = new WhiteboardMcpTools(registry, new AlwaysApprove());
-        var json = JsonNode.Parse(await tools.ReadWhiteboard("agent-pane", surfaceId));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(Convert.ToBase64String(peeked!), json["imageBase64"]!.GetValue<string>());
-
-        plugin.Dispose();
-    });
+        return (plugin, registry, dialogKey["whiteboard.document.".Length..]);
+    }
 
     // Walks up from the test output to the repo root and finds the plugin's build output (either config).
     private static string? _LocatePluginOutput()

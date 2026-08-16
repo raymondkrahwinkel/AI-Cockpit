@@ -35,4 +35,8 @@ public sealed class PlacedObject : WhiteboardObject
 
     // Only true for a clipboard paste — drives the "geplakt · screenshot" badge, never set for a file insert.
     public bool IsPastedScreenshot { get; init; }
+
+    // True for an object an agent put down over MCP (AC-854) — badged as the agent's wherever the board is drawn,
+    // live and in the PNG snapshot, and carried in the saved document so it survives reopening (W-2/AC-843).
+    public bool PlacedByAgent { get; init; }
 }
