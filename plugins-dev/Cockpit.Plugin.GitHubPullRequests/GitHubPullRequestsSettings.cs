@@ -44,6 +44,13 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
         set => storage.Set("template", value);
     }
 
+    // Whether the get_pr_status MCP tool (AC-818) is offered to sessions. On by default until the operator turns it off.
+    public bool McpEnabled
+    {
+        get => storage.Get<bool?>("mcpEnabled") ?? true;
+        set => storage.Set("mcpEnabled", value);
+    }
+
     // Whether a pull request that starts waiting for your review raises a toast (default on). GitHub CLI mode only — the single-repo HTTP mode has no review-requested search.
     public bool NotifyOnReviewRequests
     {
