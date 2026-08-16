@@ -45,6 +45,24 @@ public class DiagramMcpToolsTests
     }
 
     [Fact]
+    public async Task ReadDiagram_ReflectsAnOperatorEditMadeSinceTheAgentLastRead_WithNoSeparateSyncStep()
+    {
+        // AC-838: the operator->registry direction. UpdateText is the operator's own write path (the diagram panel's
+        // hand-edit actions), independent of the agent's coupling — the next read_diagram must see it immediately.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var before = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+        Assert.Equal(Source, before!["source"]!.GetValue<string>());
+
+        const string EditedByOperator = "flowchart LR\nA-->B\nB-->C";
+        registry.UpdateText("diagram-1", EditedByOperator);
+
+        var after = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+        Assert.Equal(EditedByOperator, after!["source"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void Coupling_OnItsOwn_GrantsNoCapabilities()
     {
         // AC-810 DoD: the registry supports a "coupled, nothing granted yet" state — the shape AC-816's quick-start
