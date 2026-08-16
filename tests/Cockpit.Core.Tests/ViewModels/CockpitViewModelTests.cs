@@ -1306,6 +1306,53 @@ public class CockpitViewModelTests
         Assert.False(session.HasUsageWarning);
     }
 
+    // AC-734: the assistant's own tool-server process is a direct child of the cockpit that is not in `Sessions`
+    // (see `CreateAssistantSession`), so it lands in `usage.Parts.Children` labeled with the raw process name —
+    // "claude" — same as any other MCP tool server. Matched here by process id instead.
+    [Fact]
+    public void TheAssistantsOwnProcess_IsLabelledAssistant_NotTheBareProcessName()
+    {
+        const long Megabyte = 1024 * 1024;
+        var reader = Substitute.For<IProcessTableReader>();
+        reader.Read().Returns([
+            new ProcessRow(4242, Environment.ProcessId, TimeSpan.Zero, 689 * Megabyte, "claude"),
+        ]);
+
+        var vm = NewVm(resourceMonitor: new ResourceMonitor(reader));
+        var assistant = vm.CreateAssistantSession("assistant");
+        Assert.NotNull(assistant);
+        assistant!.ProcessId = 4242;
+
+        vm.SampleResources();
+
+        var row = Assert.Single(vm.ResourceRows, row => row.Memory == "689 MB");
+        Assert.Equal("Assistant", row.Title);
+    }
+
+    // A second, unrelated process that happens to share the literal name "claude" merges with the assistant's own
+    // into one grouped line (`CockpitBreakdown`'s existing dedup) — and a merged line carries no single process id
+    // to trust, so it is left on the generic name rather than guessed at.
+    [Fact]
+    public void ASecondUnrelatedClaudeProcess_LeavesTheRowOnItsGenericName()
+    {
+        const long Megabyte = 1024 * 1024;
+        var reader = Substitute.For<IProcessTableReader>();
+        reader.Read().Returns([
+            new ProcessRow(4242, Environment.ProcessId, TimeSpan.Zero, 689 * Megabyte, "claude"),
+            new ProcessRow(4343, Environment.ProcessId, TimeSpan.Zero, 50 * Megabyte, "claude"),
+        ]);
+
+        var vm = NewVm(resourceMonitor: new ResourceMonitor(reader));
+        var assistant = vm.CreateAssistantSession("assistant");
+        Assert.NotNull(assistant);
+        assistant!.ProcessId = 4242;
+
+        vm.SampleResources();
+
+        Assert.DoesNotContain(vm.ResourceRows, row => row.Title == "Assistant");
+        Assert.Contains(vm.ResourceRows, row => row.Title == "claude ×2");
+    }
+
     private static CockpitViewModel NewVm(
         ISessionDialogService? dialogService = null,
         ITerminalSettingsStore? terminalSettingsStore = null,

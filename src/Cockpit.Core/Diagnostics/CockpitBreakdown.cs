@@ -19,13 +19,17 @@ public static class CockpitBreakdown
 
         var children = rows
             .Where(row => row.ParentProcessId == cockpitProcessId && !sessionProcessIds.Contains(row.ProcessId))
-            .Select(row => new ProcessGroupUsage(row.Name, ProcessTree.Sum(rows, row.ProcessId).WorkingSetBytes))
+            .Select(row => new ProcessGroupUsage(row.Name, ProcessTree.Sum(rows, row.ProcessId).WorkingSetBytes, row.ProcessId))
             // Two MCP servers started the same way carry the same name; they are one line, because "npm exec" twice
             // over is not a thing the operator can tell apart or act on separately.
             .GroupBy(child => child.Name, StringComparer.Ordinal)
             .Select(group => new ProcessGroupUsage(
                 group.Count() == 1 ? group.Key : $"{group.Key} ×{group.Count()}",
-                group.Sum(child => child.MemoryBytes)))
+                group.Sum(child => child.MemoryBytes),
+                // Only a singleton group can be pinned to one process id — two same-named processes merged into
+                // one line have no single id left to mean, so callers that want to match a specific process (the
+                // assistant's own, AC-734) get null rather than a guess at which of the two it was.
+                group.Count() == 1 ? group.Single().ProcessId : null))
             .OrderByDescending(child => child.MemoryBytes)
             .ToList();
 
@@ -39,5 +43,6 @@ public sealed record CockpitParts(long OwnBytes, IReadOnlyList<ProcessGroupUsage
     public static readonly CockpitParts None = new(0, []);
 }
 
-// One child process tree under the cockpit: what it is, and what it holds.
-public sealed record ProcessGroupUsage(string Name, long MemoryBytes);
+// One child process tree under the cockpit: what it is, what it holds, and — only while it is the sole process
+// carrying that name — the id a caller can match it against (AC-734).
+public sealed record ProcessGroupUsage(string Name, long MemoryBytes, int? ProcessId = null);

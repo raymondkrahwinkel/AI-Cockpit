@@ -74,6 +74,35 @@ public class CockpitBreakdownTests
         Assert.Equal(188_000_000, child.MemoryBytes);
     }
 
+    // AC-734: a caller that wants to match one specific child (the assistant's own process) needs its id, and only
+    // a singleton group can carry one honestly — see the merged case below.
+    [Fact]
+    public void ASingleToolServer_CarriesItsProcessId()
+    {
+        var rows = new List<ProcessRow>
+        {
+            new(10, 1, TimeSpan.Zero, 300_000_000, "Cockpit.App"),
+            new(20, 10, TimeSpan.Zero, 95_000_000, "npm exec @model"),
+        };
+
+        Assert.Equal(20, CockpitBreakdown.From(rows, 10, []).Children.Single().ProcessId);
+    }
+
+    // Two same-named children merge into one line with no single id left to mean — a caller matching on id must
+    // not be handed either one's id at random.
+    [Fact]
+    public void TwoToolServersWithTheSameName_CarryNoProcessId()
+    {
+        var rows = new List<ProcessRow>
+        {
+            new(10, 1, TimeSpan.Zero, 300_000_000, "Cockpit.App"),
+            new(20, 10, TimeSpan.Zero, 95_000_000, "npm exec @model"),
+            new(21, 10, TimeSpan.Zero, 93_000_000, "npm exec @model"),
+        };
+
+        Assert.Null(CockpitBreakdown.From(rows, 10, []).Children.Single().ProcessId);
+    }
+
     [Fact]
     public void TheParts_AddUpToTheTreeTheStatusBarShows()
     {
