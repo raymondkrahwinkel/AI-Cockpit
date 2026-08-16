@@ -157,7 +157,7 @@ public interface IDiagramAccessRegistry
 
     // ---- The diff-poort (AC-825): a proposal sits between "delivered" and "applied" ----
 
-    /// <summary>Raised when a surface's pending proposal changes — set on a fresh <see cref="Propose"/>, null once resolved, discarded, or the surface/session that made it goes away.</summary>
+    /// <summary>Raised when a surface's pending proposal changes — set on a fresh <see cref="Propose"/>, re-raised with recomputed blocks when the surface's text moved under it, null once resolved, discarded, or the surface/session that made it goes away.</summary>
     event Action<string, DiagramProposal?>? ProposalChanged;
 
     /// <summary>Records `proposedText` as a pending proposal on `surfaceId`, computed against the surface's current text — it does not touch the stored source. Returns false when `sessionId` does not hold <see cref="DiagramCapability.Edit"/> on the surface.</summary>
@@ -166,7 +166,7 @@ public interface IDiagramAccessRegistry
     /// <summary>The surface's pending proposal, or null when there is none.</summary>
     DiagramProposal? PendingProposal(string surfaceId);
 
-    /// <summary>Applies the pending proposal's blocks using the operator's per-block decision (see <see cref="DiagramDiff.Apply"/>), writes the merged result into the surface (raising <see cref="TextChanged"/>), and clears the proposal. Returns false when there is no pending proposal on this surface.</summary>
+    /// <summary>Applies the pending proposal's blocks using the operator's per-block decision (see <see cref="DiagramDiff.Apply"/>), writes the merged result into the surface (raising <see cref="TextChanged"/>), and clears the proposal. The blocks it applies are always against the surface as it stands — a hand-edit or per-object edit under a waiting proposal rebases it (AC-845) rather than being overwritten by it. Returns false when there is no pending proposal on this surface.</summary>
     bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks);
 
     /// <summary>Discards the surface's pending proposal without writing anything — the whole thing, or whatever of it was still undecided.</summary>
