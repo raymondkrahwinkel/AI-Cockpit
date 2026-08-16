@@ -76,7 +76,7 @@ public class DiagramCollabWindowTests
         var content = host.Windows[0].Content;
         var window = _Show(content);
 
-        host.Bindings[0].End();
+        host.EndSession("pane-a");
         Dispatcher.UIThread.RunJobs();
 
         Assert.Null(host.Registry.ListSurfaces("pane-a").Single().Coupling);
@@ -175,6 +175,17 @@ public class DiagramCollabWindowTests
         // "Nieuw diagram" — the one entry point that already names a session, standing in for an operator who
         // ticks "couple to this session" and hits Enter on the prefilled name.
         public void InvokeQuickStart() => _toolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+
+        // Both halves of what the cockpit does when a session closes: it releases that session's couplings
+        // (CockpitViewModel's driver-side teardown) and every binding on it reports Ended.
+        public void EndSession(string paneId)
+        {
+            Registry.SessionEnded(paneId);
+            foreach (var binding in Bindings.Where(binding => binding.PaneId == paneId))
+            {
+                binding.End();
+            }
+        }
 
         public void AddSettings(Func<Control> createView)
         {

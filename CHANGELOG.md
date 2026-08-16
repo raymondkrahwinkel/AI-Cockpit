@@ -308,6 +308,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: closing a session left the "agent connected" bar standing on any diagram or whiteboard it was working
+  with, for an agent that no longer existed. Worse, that stale connection held the surface: no other session could
+  be connected to it, and there was no agent left to disconnect. Closing a session now releases what it held on a
+  diagram or a whiteboard, the way it already did for a terminal pane.
 - fixed: on Linux, reopening the cockpit maximized restored the maximized flag but not the actual window state —
   it looked like a normal window and the maximize button needed two clicks before it would fill the screen. The
   window now comes up genuinely maximized from the start.

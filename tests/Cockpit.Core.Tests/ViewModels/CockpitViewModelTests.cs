@@ -8,7 +8,9 @@ using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Layout;
@@ -1230,16 +1232,23 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public async Task ClosingASession_ReleasesTheTerminalCouplingsItDrove()
+    public async Task ClosingASession_ReleasesEveryCouplingItDrove()
     {
+        // AC-834: the diagram and whiteboard registries are the same shape as the terminal one but were never
+        // released here, so a coupled surface kept an "agent connected" bar for an agent that was gone — and held
+        // the surface against every other session, since IsCoupledByAnother refuses a second one.
         var terminals = Substitute.For<ITerminalAccessRegistry>();
-        var vm = NewVm(terminals: terminals);
+        var diagrams = Substitute.For<IDiagramAccessRegistry>();
+        var whiteboards = Substitute.For<IWhiteboardAccessRegistry>();
+        var vm = NewVm(terminals: terminals, diagrams: diagrams, whiteboards: whiteboards);
         await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions[0];
 
         await vm.ConfirmCloseSessionCommand.ExecuteAsync(session);
 
         terminals.Received(1).SessionEnded(session.PaneId);
+        diagrams.Received(1).SessionEnded(session.PaneId);
+        whiteboards.Received(1).SessionEnded(session.PaneId);
     }
 
     // AC-692/AC-700: drives the real `SampleResources`/`ResourceMonitor` wire over a fake process table, and demands
@@ -1359,6 +1368,8 @@ public class CockpitViewModelTests
         ILayoutSettingsStore? layoutSettingsStore = null,
         IPluginDialogHost? pluginDialogHost = null,
         ITerminalAccessRegistry? terminals = null,
+        IDiagramAccessRegistry? diagrams = null,
+        IWhiteboardAccessRegistry? whiteboards = null,
         ProjectsViewModel? projects = null,
         IFirstRunWizard? firstRunWizard = null,
         Func<string, bool>? tryOpenExternalLink = null,
@@ -1402,6 +1413,8 @@ public class CockpitViewModelTests
             terminalSettingsStore,
             pluginDialogHost: pluginDialogHost,
             terminals: terminals,
+            diagrams: diagrams,
+            whiteboards: whiteboards,
             projects: projects,
             firstRunWizard: firstRunWizard,
             tryOpenExternalLink: tryOpenExternalLink,

@@ -117,13 +117,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
         return binding;
     }
 
-    // The session behind this window ended. Nothing here closes the window — the diagram stays open and says so.
-    // The registry's own SessionEnded is never called by the host today (only the terminal one is), so this is
-    // also what actually drops the coupling.
+    // The session behind this window ended. Nothing here closes the window, and nothing here drops the coupling
+    // either — the host releases it (AC-834, CockpitViewModel's driver-side teardown) and the registry's own
+    // CouplingChanged brings that back. This only supplies the name that is gone by then.
     private void _OnSessionEnded(object? sender, EventArgs e) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
     {
         _endedSessionName = _boundSessionName;
-        _registry?.Disconnect(_surfaceId);
         _RefreshCouplingBar();
     });
 
