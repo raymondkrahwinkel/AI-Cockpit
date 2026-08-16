@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Svg.Skia;
 using Cockpit.Core.Abstractions.Diagrams;
+using Cockpit.Core.Diagrams;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -29,6 +30,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private const double WheelZoomStepBase = 1.15;
     private const double ButtonZoomStep = 1.25;
 
+    // A press that travels less than this is a click on an object, not a pan (AC-841: no gesture has to be guessed
+    // apart from another).
+    private const double ClickSlopPx = 4;
+
     private static readonly Cursor _PanCursor = new(StandardCursorType.Hand);
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
@@ -37,6 +42,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly string _surfaceId;
     private readonly string _documentTitle;
     private readonly Avalonia.Svg.Skia.Svg _svg;
+    private readonly Canvas _overlay;
+    private readonly Panel _surface;
     private readonly Border _viewport;
     private readonly TextBlock _zoomLabel;
     private readonly Border _couplingBar;
@@ -63,7 +70,17 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private Vector _panOffsetStart;
     private DiagramProposal? _pendingProposal;
     private readonly HashSet<int> _acceptedBlocks = [];
-    private int _handAddedNodeSeq;
+    private readonly Button _connectButton;
+    private readonly Button _renameButton;
+    private readonly Button _deleteButton;
+    private readonly TextBlock _handHint;
+    private IReadOnlyList<DiagramObjectAt> _objects = [];
+    private DiagramObjectAt? _selected;
+    private string? _connectFrom;
+    private bool _isConnecting;
+    private bool _placementHintShown;
+    private double _svgScale = 1;
+    private DiagramObjectAt? _pressedOn;
     private IPluginSessionBinding _binding;
     private string? _boundSessionName;
     private string? _endedSessionName;
@@ -86,6 +103,17 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Stretch = Stretch.Uniform,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        // AC-841: selection, the "jij bewerkt" marking and the rename box sit on their own canvas above the render, in
+        // the SVG's own coordinates — so zoom and pan move them with the picture rather than beside it. No background,
+        // so only the rename box itself takes the pointer; the marks let a click through to the diagram under them.
+        _overlay = new Canvas();
+        _surface = new Panel
+        {
+            Children = { _svg, _overlay },
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
             RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative),
         };
         _viewport = _BuildViewport();
@@ -93,7 +121,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _handHint) = _BuildToolbar();
 
         Content = new DockPanel
         {
@@ -136,6 +164,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
             if (_registry is null)
             {
                 return;
+            }
+
+            if (_selected is { } stillHeld)
+            {
+                _registry.ReleaseObject(_surfaceId, stillHeld.HoldKey);
             }
 
             _registry.CouplingChanged -= _OnCouplingChanged;
@@ -236,15 +269,6 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _registry?.UpdateText(_surfaceId, DiagramDocument.Sample);
     }
 
-    // AC-840's minimal hand-edit: enough to build up from empty by hand. Full editing is AC-841/D-5's.
-    private void _AddNode()
-    {
-        _handAddedNodeSeq++;
-        var updated = $"{_sourceBox.Text}\n    N{_handAddedNodeSeq}[Node {_handAddedNodeSeq}]";
-        _RenderInto(updated);
-        _registry?.UpdateText(_surfaceId, updated);
-    }
-
     private void _RenderInto(string source)
     {
         // Straight from Mermaider, no CssFlattener step: measured (AC-809) that Svg.Controls.Skia.Avalonia's own
@@ -265,6 +289,25 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _diagramSize = bounds is { Width: > 0, Height: > 0 } rect ? new Size(rect.Width, rect.Height) : new Size(340, 200);
         _svg.Width = _diagramSize.Width;
         _svg.Height = _diagramSize.Height;
+        _surface.Width = _overlay.Width = _diagramSize.Width;
+        _surface.Height = _overlay.Height = _diagramSize.Height;
+
+        // AC-841: the objects and how far one SVG unit was stretched to get onto the control, so a click maps back to
+        // the id the source uses. The selection is looked up again — the agent may have removed what was selected.
+        var svgWidth = DiagramSurfaceMap.Width(_currentSvg);
+        _svgScale = svgWidth > 0 ? _diagramSize.Width / svgWidth : 1;
+        _objects = DiagramSurfaceMap.Read(_currentSvg);
+        if (_selected is { } held)
+        {
+            _selected = _objects.FirstOrDefault(o => o.HoldKey == held.HoldKey);
+            if (_selected is null)
+            {
+                _registry?.ReleaseObject(_surfaceId, held.HoldKey);
+            }
+        }
+
+        _RefreshOverlay();
+        _RefreshHandEditBar();
 
         if (_isFitMode)
         {
@@ -282,7 +325,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // math, not scroll offset, so a huge diagram never grows the layout past the window around it.
     private Border _BuildViewport()
     {
-        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _svg };
+        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _surface };
         viewport.SizeChanged += (_, _) =>
         {
             if (_isFitMode)
@@ -293,8 +336,16 @@ internal sealed class DiagramWorkspaceBody : UserControl
         viewport.AddHandler(InputElement.PointerWheelChangedEvent, _OnViewportWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
         viewport.PointerPressed += _OnViewportPointerPressed;
         viewport.PointerMoved += _OnViewportPointerMoved;
-        viewport.PointerReleased += (_, _) => _EndPan();
+        viewport.PointerReleased += _OnViewportPointerReleased;
         viewport.PointerCaptureLost += (_, _) => _EndPan();
+        // Two clicks in connect mode are the two ends of a connection, not a rename.
+        viewport.DoubleTapped += (_, e) =>
+        {
+            if (!_isConnecting)
+            {
+                _StartRename(_ObjectAt(e.GetPosition(_surface)));
+            }
+        };
         return viewport;
     }
 
@@ -304,9 +355,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y));
     }
 
-    // AC-837's input convention: plain left-drag pans — there is no edit interaction on a diagram yet, so nothing
-    // competes for the gesture. D-5/AC-841's hand-editing must gate its own drag behind an explicit mode (or a
-    // different button/modifier) rather than overload this one, so pan and edit are never guessed apart.
+    // AC-837's input convention stands: plain left-drag pans. AC-841 adds no gesture of its own — a press that never
+    // travels is a click on an object, and connecting is an explicit mode, so pan and edit are never guessed apart.
     private void _OnViewportPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(_viewport).Properties.IsLeftButtonPressed)
@@ -314,6 +364,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
+        _pressedOn = _ObjectAt(e.GetPosition(_surface));
         _isPanning = true;
         _panPointerStart = e.GetPosition(_viewport);
         _panOffsetStart = _panOffset;
@@ -329,9 +380,34 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
-        _panOffset = _panOffsetStart + (e.GetPosition(_viewport) - _panPointerStart);
+        Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
+        _panOffset = _panOffsetStart + travelled;
         _isFitMode = false;
         _ApplyTransform();
+
+        // Dragging a node is the one thing this surface will not do: Mermaid has no coordinates, so the next render
+        // would put it back. Say where that does live rather than letting the gesture look broken.
+        if (_pressedOn is { Kind: DiagramObjectAt.Node } && !_placementHintShown && travelled.Length > ClickSlopPx * 4)
+        {
+            _placementHintShown = true;
+            _host.ShowToast(
+                "Een diagram plaatst zichzelf — vrij slepen doe je op het whiteboard. Hier bewerk je de structuur.",
+                PluginToastSeverity.Information);
+        }
+    }
+
+    private void _OnViewportPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var wasPanning = _isPanning;
+        Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
+        _EndPan();
+
+        if (wasPanning && travelled.Length <= ClickSlopPx)
+        {
+            _OnSurfaceClicked(_ObjectAt(e.GetPosition(_surface)));
+        }
+
+        _pressedOn = null;
     }
 
     private void _EndPan()
@@ -343,6 +419,237 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         _isPanning = false;
         _viewport.Cursor = _PanCursor;
+    }
+
+    // ---- Hand-editing on the surface itself (AC-841/D-5) ----
+
+    private DiagramObjectAt? _ObjectAt(Point surfacePoint) => _svgScale <= 0
+        ? null
+        : DiagramSurfaceMap.At(_objects, new DiagramPoint(surfacePoint.X / _svgScale, surfacePoint.Y / _svgScale));
+
+    private void _OnSurfaceClicked(DiagramObjectAt? hit)
+    {
+        if (!_isConnecting)
+        {
+            _Select(hit);
+            return;
+        }
+
+        // Connecting is two clicks in an explicit mode: the tail, then the head. Anything else ends the mode rather
+        // than leaving the operator in it without knowing.
+        if (hit is not { Kind: DiagramObjectAt.Node } node)
+        {
+            _SetConnecting(false);
+            return;
+        }
+
+        if (_connectFrom is null)
+        {
+            _connectFrom = node.Id;
+            _RefreshHandEditBar();
+            return;
+        }
+
+        var from = _connectFrom;
+        _SetConnecting(false);
+        _Apply(new DiagramHandEdit(DiagramHandEditKind.Connect, from, node.Id));
+    }
+
+    // Selecting is holding: while the operator has an object under their hand the agent's edit naming it is refused
+    // (AC-852's hold), and everything else in the diagram stays open to it.
+    private void _Select(DiagramObjectAt? hit)
+    {
+        if (_selected is { } previous)
+        {
+            _registry?.ReleaseObject(_surfaceId, previous.HoldKey);
+        }
+
+        _selected = hit;
+        if (hit is not null)
+        {
+            _registry?.HoldObject(_surfaceId, hit.HoldKey);
+        }
+
+        _RefreshOverlay();
+        _RefreshHandEditBar();
+        _RefreshCouplingBar();
+    }
+
+    private void _SetConnecting(bool on)
+    {
+        _isConnecting = on;
+        _connectFrom = null;
+        _RefreshHandEditBar();
+    }
+
+    // Renaming happens where the node is: a box over the node itself, Enter to keep it, Escape to leave it as it was.
+    private void _StartRename(DiagramObjectAt? hit)
+    {
+        if (hit is not { Kind: DiagramObjectAt.Node } node || _registry is null)
+        {
+            return;
+        }
+
+        _Select(node);
+        var box = new TextBox
+        {
+            Text = node.Label,
+            MinWidth = Math.Max(80, node.Bounds.Width * _svgScale),
+            FontSize = 13,
+            Padding = new Thickness(4, 2),
+        };
+        Canvas.SetLeft(box, node.Bounds.X * _svgScale);
+        Canvas.SetTop(box, node.Bounds.Y * _svgScale);
+        _overlay.Children.Add(box);
+        box.SelectAll();
+        box.Focus();
+
+        box.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                _overlay.Children.Remove(box);
+                _Apply(new DiagramHandEdit(DiagramHandEditKind.RenameNode, node.Id, Label: box.Text ?? node.Label));
+            }
+            else if (key.Key == Key.Escape)
+            {
+                key.Handled = true;
+                _overlay.Children.Remove(box);
+                _RefreshOverlay();
+            }
+        };
+    }
+
+    // A new node is named as it is made, and gets an id of its own: the label carries the wording, the id is what the
+    // connections are written in terms of.
+    private void _AddNode(Control anchor)
+    {
+        var name = new TextBox { Width = 200, PlaceholderText = "Naam van de node" };
+        var confirm = new Button { Content = "Toevoegen", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var flyout = new Flyout
+        {
+            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { name, confirm } },
+        };
+
+        void Add()
+        {
+            flyout.Hide();
+            var label = string.IsNullOrWhiteSpace(name.Text) ? "Nieuwe node" : name.Text!.Trim();
+            _Apply(new DiagramHandEdit(DiagramHandEditKind.AddNode, _NextNodeId(), Label: label));
+        }
+
+        confirm.Click += (_, _) => Add();
+        name.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                Add();
+            }
+        };
+
+        flyout.ShowAt(anchor);
+        name.Focus();
+    }
+
+    // N1, N2, … past whatever N-numbers the source already carries, so a hand-added node never collides with one the
+    // agent (or an earlier hand-edit) put there.
+    private string _NextNodeId()
+    {
+        var used = _objects.Where(o => o.Kind == DiagramObjectAt.Node)
+            .Select(o => o.Id)
+            .Where(id => id.Length > 1 && id[0] == 'N' && id[1..].All(char.IsDigit))
+            .Select(id => int.Parse(id[1..]))
+            .DefaultIfEmpty(0)
+            .Max();
+        return $"N{used + 1}";
+    }
+
+    private void _DeleteSelected()
+    {
+        if (_selected is not { } target)
+        {
+            return;
+        }
+
+        _Apply(target.To is { } head
+            ? new DiagramHandEdit(DiagramHandEditKind.Disconnect, target.Id, head)
+            : new DiagramHandEdit(DiagramHandEditKind.RemoveNode, target.Id));
+    }
+
+    // One handling is one change towards the registry (AC-838's write path, under the same lock as the agent's), and
+    // the re-render comes back through TextChanged — never a half state written here and repaired afterwards.
+    private void _Apply(DiagramHandEdit edit)
+    {
+        if (_registry is null)
+        {
+            return;
+        }
+
+        if (_registry.ApplyHandEdit(_surfaceId, edit) is { } refusal)
+        {
+            _host.ShowToast(refusal, PluginToastSeverity.Warning);
+        }
+    }
+
+    private void _RefreshOverlay()
+    {
+        _overlay.Children.Clear();
+        if (_selected is not { } selected || selected.Bounds.Width <= 0 && selected.Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        var bounds = new Rect(
+            selected.Bounds.X * _svgScale,
+            selected.Bounds.Y * _svgScale,
+            selected.Bounds.Width * _svgScale,
+            selected.Bounds.Height * _svgScale).Inflate(4);
+
+        var outline = new Border
+        {
+            Width = bounds.Width,
+            Height = bounds.Height,
+            BorderThickness = new Thickness(2),
+            BorderBrush = _Brush("CockpitAccentBrush"),
+            CornerRadius = new CornerRadius(6),
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(outline, bounds.X);
+        Canvas.SetTop(outline, bounds.Y);
+
+        var mark = new Border
+        {
+            Background = _Brush("CockpitAccentBrush"),
+            Padding = new Thickness(5, 1),
+            CornerRadius = new CornerRadius(4),
+            IsHitTestVisible = false,
+            Child = new TextBlock { Text = "jij bewerkt", FontSize = 10, Foreground = Brushes.White },
+        };
+        Canvas.SetLeft(mark, bounds.X);
+        Canvas.SetTop(mark, bounds.Y - 18);
+
+        _overlay.Children.Add(outline);
+        _overlay.Children.Add(mark);
+    }
+
+    private void _RefreshHandEditBar()
+    {
+        var editable = _registry is not null;
+        _connectButton.IsEnabled = editable;
+        _renameButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
+        _deleteButton.IsEnabled = editable && _selected is not null;
+        _connectButton.Content = _isConnecting ? "Verbinden…" : "Verbinden";
+
+        _handHint.Text = _isConnecting
+            ? _connectFrom is null ? "Klik de node waar de verbinding begint." : $"Klik de node waar {_connectFrom} naartoe wijst."
+            : _selected switch
+            {
+                { Kind: DiagramObjectAt.Node } node => $"Node {node.Id} geselecteerd — dubbelklik om te hernoemen.",
+                { To: { } head } edge => $"Verbinding {edge.Id} → {head} geselecteerd.",
+                _ => "",
+            };
     }
 
     private void _ZoomByButton(double factor) =>
@@ -373,7 +680,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
     private void _ApplyTransform()
     {
-        _svg.RenderTransform = new MatrixTransform(new Matrix(_zoom, 0, 0, _zoom, _panOffset.X, _panOffset.Y));
+        _surface.RenderTransform = new MatrixTransform(new Matrix(_zoom, 0, 0, _zoom, _panOffset.X, _panOffset.Y));
         _zoomLabel.Text = $"{_zoom * 100:0}%";
     }
 
@@ -397,7 +704,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // AC-813: PNG and SVG only — no PDF (host-dependency decision, see AC-813), no JPG (lossy artifacts on
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
-    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus) _BuildToolbar()
+    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus,
+        Button Connect, Button Rename, Button Delete, TextBlock Hint) _BuildToolbar()
     {
         var export = new Button
         {
@@ -438,12 +746,27 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Children = { zoomOut, zoomLabel, zoomIn, fit },
         };
 
-        // AC-840: leeg is een beginpunt, niet een doodlopende weg — the minimal hand-edit is one button that adds
-        // a node. The AC-809 sample is reachable the same way, as an explicit insert rather than a silent default.
+        // AC-840: leeg is een beginpunt, niet een doodlopende weg — the AC-809 sample is reachable as an explicit
+        // insert rather than a silent default. AC-841 adds the rest of the hand-editing beside it: what the operator
+        // clicked on the render decides what these act on.
         var insertSample = new Button { Content = "Voorbeeld invoegen", Classes = { "Compact" } };
         insertSample.Click += (_, _) => _InsertSample();
-        var addNode = new Button { Content = "+ Node", Classes = { "Compact" } };
-        addNode.Click += (_, _) => _AddNode();
+        // Without a registry (an older host) there is nothing to write a hand-edit into, so the buttons say so by
+        // being off rather than failing silently when pressed.
+        var addNode = new Button { Content = "+ Node", Classes = { "Compact" }, IsEnabled = _registry is not null };
+        addNode.Click += (_, _) => _AddNode(addNode);
+        var connect = new Button { Content = "Verbinden", Classes = { "Compact" } };
+        connect.Click += (_, _) => _SetConnecting(!_isConnecting);
+        var rename = new Button { Content = "Hernoemen", Classes = { "Compact" } };
+        rename.Click += (_, _) => _StartRename(_selected);
+        var delete = new Button { Content = "Verwijderen", Classes = { "Compact" } };
+        delete.Click += (_, _) => _DeleteSelected();
+        var hint = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
 
         // AC-839: waar dit diagram woont, naast de knop die het daar zet — "Nog geen bestand" is een toestand die
         // het venster net zo goed toont als een pad.
@@ -463,14 +786,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertSample, addNode, save, saveStatus },
+            Children = { insertSample, addNode, connect, rename, delete, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
         DockPanel.SetDock(export, Dock.Right);
         DockPanel.SetDock(handEditControls, Dock.Left);
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, connect, rename, delete, hint);
     }
 
     // Eén opslagweg voor beide herkomsten (AC-839): een hand-bewerking en een aangenomen agent-voorstel komen
@@ -756,9 +1079,15 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         var name = _binding.SessionName ?? _boundSessionName ?? coupling.SessionId;
-        _couplingLabel.Text = coupling.HasAnyCapability
-            ? $"Agent connected — session {name}"
-            : $"Agent connected — session {name} (no capabilities granted yet)";
+
+        // AC-841: allebei tegelijk in hetzelfde diagram — zodra de operator iets vasthoudt terwijl de agent mag
+        // bewerken, zegt de regel dat ook, in plaats van alleen wie er gekoppeld is.
+        _couplingLabel.Text = (coupling.HasAnyCapability, coupling.CanEdit && _selected is not null) switch
+        {
+            (_, true) => $"2 tegelijk aan het werk — jij en sessie {name}",
+            (true, _) => $"Agent connected — session {name}",
+            _ => $"Agent connected — session {name} (no capabilities granted yet)",
+        };
         _couplingLabel.Foreground = _Brush("CockpitAccentBrush");
         _SetChip(_readChip, "read_diagram", coupling.CanRead);
         _SetChip(_editChip, "edit_diagram", coupling.CanEdit);

@@ -39,6 +39,20 @@ public sealed record DiagramProposal(
     IReadOnlyList<string> FidelityFindings,
     IReadOnlyList<DiagramDiffBlock> Blocks);
 
+// The five changes a hand-edit on the diagram surface can make (AC-841) — the same set the agent's per-object
+// tools make, so both sides reach the source through one path.
+public enum DiagramHandEditKind
+{
+    AddNode,
+    RenameNode,
+    RemoveNode,
+    Connect,
+    Disconnect,
+}
+
+// One hand-edit: `Id` is the node, or the connection's tail when `To` is set.
+public sealed record DiagramHandEdit(DiagramHandEditKind Kind, string Id, string? To = null, string? Label = null);
+
 /// <summary>
 /// The source of truth for diagram-surface access (AC-810) — the diagram counterpart to
 /// <c>ITerminalAccessRegistry</c> (AC-34); read that one first. Deviations: a diagram is a state, not a stream, so
@@ -105,6 +119,14 @@ public interface IDiagramAccessRegistry
 
     /// <summary>Raised for each applied per-object edit with a one-line summary of what changed — what the activity strip (AC-848) shows per handling, rather than "the whole source was replaced".</summary>
     event Action<string, string>? ObjectEdited;
+
+    /// <summary>
+    /// Applies one hand-edit the operator made on the surface itself (AC-841), under the same lock as
+    /// <see cref="EditCoupled"/>: one change, never a series of half states, and never overwriting an agent edit to a
+    /// different object. Returns null when it landed, or the reason it was refused — an unknown surface, a change the
+    /// per-object grammar cannot make, or one that would not leave valid Mermaid behind.
+    /// </summary>
+    string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit);
 
     // ---- The operator's "jij bewerkt" hold (AC-841/D-5) ----
 

@@ -17,12 +17,6 @@ internal sealed class DiagramMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
-    // Fidelity checking (AC-808) only needs the SVG's structure, not the operator's actual theme colours — the app
-    // theme lives in Cockpit.App, which Infrastructure cannot see. Any valid theme renders the same structure.
-    private static readonly MermaidTheme NeutralTheme = new(
-        Bg: "#000000", Fg: "#ffffff", Line: "#888888", Accent: "#5b8def",
-        Muted: "#999999", Surface: "#111111", Border: "#888888", FontSizePx: 13);
-
     private readonly IDiagramAccessRegistry _registry;
     private readonly IConsentBroker? _consent;
 
@@ -328,7 +322,7 @@ internal sealed class DiagramMcpTools
     {
         try
         {
-            fidelity = MermaidRenderPipeline.Render(source, NeutralTheme).Fidelity;
+            fidelity = MermaidRenderPipeline.Render(source, MermaidTheme.Neutral).Fidelity;
             return true;
         }
         catch (Exception)

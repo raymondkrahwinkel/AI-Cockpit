@@ -39,6 +39,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Approve/Deny from reading: an agent that is already reading a board has to ask again before it may touch it, and
   the prompt says what it is about to put down.
 
+- added: you can now edit a diagram on the picture itself — click a node to take it, double-click to rename it, add a
+  node, draw a connection between two of them, remove what you no longer want, all without opening the source. The
+  source stays the truth and stays read-only: it shows what your handling made of it. Dragging a node somewhere is
+  deliberately not offered — Mermaid has no coordinates, so the next render would put it back; the whiteboard is where
+  free placement lives, and the diagram says so when you try. While you have an object under your hand it is marked as
+  yours and an agent's edit naming that object is refused with a reason it can retry on, while its work on any other
+  object carries on beside yours — two of you in the same diagram at the same time, and neither one overwrites the
+  other's change.
+
 - added: a diagram now opens in its own window beside the cockpit — drag it, resize it, park it on a second screen —
   hooked up to the session you are already talking to instead of starting a fresh one of its own. One window per
   diagram: opening the same one again brings that window forward, and two diagrams from one session are two windows

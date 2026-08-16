@@ -269,6 +269,59 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         return true;
     }
 
+    // The operator's own edits take the same read-modify-write-under-the-lock path as the agent's (AC-841), so the
+    // two land beside each other instead of one replacing the whole source the other was working in.
+    public string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit)
+    {
+        string text, summary;
+        lock (_lock)
+        {
+            if (!_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return "Dit diagram staat niet meer open.";
+            }
+
+            var result = edit.Kind switch
+            {
+                DiagramHandEditKind.AddNode => DiagramObjectEdit.AddNode(surface.Text, edit.Id, edit.Label ?? edit.Id),
+                DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(surface.Text, edit.Id, edit.Label ?? edit.Id),
+                DiagramHandEditKind.RemoveNode => DiagramObjectEdit.RemoveNode(surface.Text, edit.Id),
+                DiagramHandEditKind.Connect => DiagramObjectEdit.Connect(surface.Text, edit.Id, edit.To ?? "", edit.Label),
+                _ => DiagramObjectEdit.Disconnect(surface.Text, edit.Id, edit.To ?? ""),
+            };
+
+            if (result.Refusal is { } reason)
+            {
+                return reason;
+            }
+
+            if (!_Renders(result.Text!))
+            {
+                return "Deze bewerking zou geen geldige Mermaid overlaten, dus er is niets veranderd.";
+            }
+
+            surface.Text = text = result.Text!;
+            summary = result.Summary;
+        }
+
+        TextChanged?.Invoke(surfaceId, text);
+        ObjectEdited?.Invoke(surfaceId, summary);
+        return null;
+    }
+
+    private static bool _Renders(string source)
+    {
+        try
+        {
+            MermaidRenderPipeline.Render(source, MermaidTheme.Neutral);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     public void HoldObject(string surfaceId, string objectId)
     {
         lock (_lock)
