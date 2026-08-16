@@ -4,11 +4,10 @@ using ModelContextProtocol.Server;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-// AC-818: PR status (checks/mergeable/reviews/title) for agent sessions and the assistant, over MCP — so three
-// sessions all waiting on the same PR do not each shell out to `gh pr view` on their own. Wraps
-// `GitHubPrGhClient.GetPullRequestStatusAsync` in a short-TTL cache keyed by owner/repo/number: the first call
-// for a PR within the window starts the fetch under the lock and stores the in-flight task itself, so a
-// concurrent call for the *same* PR finds it there and awaits that one task instead of starting its own.
+// AC-818: PR status over MCP, so sessions waiting on the same PR don't each shell out to `gh pr view`. Wraps
+// `GitHubPrGhClient.GetPullRequestStatusAsync` in a short-TTL cache: the in-flight task itself is stored, so a
+// concurrent call for the same PR awaits it instead of starting its own.
+//
 // Question-driven, not a background poller — nothing runs until a caller actually asks about a PR.
 internal sealed class GitHubPullRequestsMcpTools
 {

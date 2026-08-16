@@ -3,9 +3,8 @@ using System.Text.Json;
 namespace Cockpit.Plugin.GitHubPullRequests;
 
 // Turns one `statusCheckRollup` entry (AC-802) into a `PullRequestCheck` — shared by
-// `SessionPullRequestStatusClient` (the session banner's own-checkout `gh pr view`) and
-// `GitHubPrGhClient.GetPullRequestStatusAsync` (AC-818's by-number lookup), since both read the identical
-// GitHub Actions CheckRun / legacy StatusContext shape.
+// `SessionPullRequestStatusClient` and `GitHubPrGhClient.GetPullRequestStatusAsync` (AC-818), since both read
+// the identical CheckRun / StatusContext shape.
 internal static class PullRequestCheckRollupParser
 {
     public static PullRequestCheck Parse(JsonElement element)

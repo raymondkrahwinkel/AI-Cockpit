@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-// AC-818: the short-TTL cache behind get_pr_status is only useful if concurrent callers for the same PR truly
-// share one in-flight fetch rather than each starting their own. Asserted at the Task-identity level so the
-// test does not depend on `gh` being installed/authenticated in CI — the cache stores (and returns) the same
-// Task instance before it needs to complete.
+// AC-818: proves concurrent callers for the same PR share one in-flight fetch. Asserted via Task identity so
+// it does not depend on `gh` being installed/authenticated in CI.
 public class GitHubPullRequestsMcpToolsTests
 {
     [Fact]

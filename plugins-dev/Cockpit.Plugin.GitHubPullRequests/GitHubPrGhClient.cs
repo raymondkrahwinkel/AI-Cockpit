@@ -414,10 +414,8 @@ internal sealed class GitHubPrGhClient
         return result;
     }
 
-    // AC-818: one pull request's live status by owner/repo/number — checks, mergeable, review decision, title —
-    // the per-PR counterpart to the cross-repo searches above. Used by the MCP status tool so an agent or the
-    // assistant can ask "is #620 green yet" without shelling out to `gh pr view` itself. Not cached here: the MCP
-    // tool's own short-TTL cache is what coalesces concurrent callers, so this always asks gh fresh.
+    // AC-818: one pull request's live status by owner/repo/number, for the MCP status tool. Not cached here —
+    // the MCP tool's own short-TTL cache coalesces concurrent callers, so this always asks gh fresh.
     public async Task<GitHubPullRequestStatus?> GetPullRequestStatusAsync(string owner, string repo, int number, CancellationToken cancellationToken)
     {
         string json;
