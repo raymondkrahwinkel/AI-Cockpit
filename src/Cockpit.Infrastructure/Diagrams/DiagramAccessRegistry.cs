@@ -90,6 +90,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public void UpdateText(string surfaceId, string text)
     {
+        DiagramProposal? rebased;
         lock (_lock)
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
@@ -98,9 +99,11 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             }
 
             surface.Text = text;
+            rebased = _Rebase(surfaceId, text);
         }
 
         TextChanged?.Invoke(surfaceId, text);
+        _Announce(surfaceId, rebased);
     }
 
     public void Disconnect(string surfaceId)
@@ -278,6 +281,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     public bool EditCoupled(string sessionId, string surfaceId, Func<string, (string? Text, string Summary)> edit)
     {
         string text, summary;
+        DiagramProposal? rebased;
         lock (_lock)
         {
             if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
@@ -294,10 +298,12 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             surface.Text = text = edited;
             summary = describedAs;
+            rebased = _Rebase(surfaceId, text);
         }
 
         TextChanged?.Invoke(surfaceId, text);
         ObjectEdited?.Invoke(surfaceId, summary);
+        _Announce(surfaceId, rebased);
         return true;
     }
 
@@ -306,6 +312,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     public string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit)
     {
         string text, summary;
+        DiagramProposal? rebased;
         lock (_lock)
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
@@ -334,10 +341,12 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             surface.Text = text = result.Text!;
             summary = result.Summary;
+            rebased = _Rebase(surfaceId, text);
         }
 
         TextChanged?.Invoke(surfaceId, text);
         ObjectEdited?.Invoke(surfaceId, summary);
+        _Announce(surfaceId, rebased);
         return null;
     }
 
@@ -427,6 +436,33 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
         ProposalChanged?.Invoke(surfaceId, proposal);
         return true;
+    }
+
+    // AC-845: sinds AC-841/AC-852 kan de bron veranderen terwijl een voorstel in de poort wacht — met de hand of
+    // door de agent. Toepassen zou dan blokken schrijven die tegen de oude tekst zijn berekend en dat werk
+    // stilzwijgend overschrijven, dus wordt het voorstel herrekend tegen de tekst zoals die nu is. Onder _lock.
+    private DiagramProposal? _Rebase(string surfaceId, string text)
+    {
+        if (!_proposals.TryGetValue(surfaceId, out var proposal))
+        {
+            return null;
+        }
+
+        var rebased = proposal with
+        {
+            ChangeSummary = DiagramChangeSummary.Describe(text, proposal.ProposedText),
+            Blocks = DiagramDiff.Compute(text, proposal.ProposedText),
+        };
+        _proposals[surfaceId] = rebased;
+        return rebased;
+    }
+
+    private void _Announce(string surfaceId, DiagramProposal? rebased)
+    {
+        if (rebased is not null)
+        {
+            ProposalChanged?.Invoke(surfaceId, rebased);
+        }
     }
 
     public DiagramProposal? PendingProposal(string surfaceId)

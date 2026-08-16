@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Consent;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
@@ -26,6 +27,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
     private readonly ICockpitHost _host;
     private readonly IWhiteboardAccessRegistry? _registry;
+    private readonly IDiagramAccessRegistry? _diagrams;
     private readonly IWhiteboardSnapshotRenderer _renderer = new WhiteboardSnapshotRenderer();
     private readonly WhiteboardControl _control;
     private readonly string _surfaceId;
@@ -42,6 +44,11 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private readonly Button _coupleButton;
     private readonly Button _disconnectButton;
     private readonly Button _inviteButton;
+    private readonly Button _convertButton;
+    private readonly TextBlock _convertStatus;
+    private string? _convertTarget;
+    private bool _convertAsked;
+    private int _proposals;
     private WhiteboardCoupling? _current;
     private IPluginSessionBinding _binding;
     private string? _boundSessionName;
@@ -54,6 +61,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     {
         _host = host;
         _registry = host.Services.GetService(typeof(IWhiteboardAccessRegistry)) as IWhiteboardAccessRegistry;
+        _diagrams = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
@@ -68,6 +76,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         (_saveBar, _saveButton, _saveStatus) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
+        (var convertBar, _convertButton, _convertStatus) = _BuildConvertBar();
         _activityStrip = new ActivityStrip(host, _surfaceId, whiteboard: true, key =>
         {
             if (Guid.TryParse(key, out var id))
@@ -76,10 +85,11 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             }
         });
 
-        Content = new DockPanel { Children = { _saveBar, _couplingBar, _activityStrip, _control } };
+        Content = new DockPanel { Children = { _saveBar, _couplingBar, _activityStrip, convertBar, _control } };
         DockPanel.SetDock(_saveBar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
+        DockPanel.SetDock(convertBar, Dock.Bottom);
         _RefreshSaveBar();
 
         _binding = _Bind(sessionPaneId);
@@ -101,6 +111,13 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             }
         }
 
+        // AC-845: the statusregel does not take the agent's word for it — it counts proposals as they reach the
+        // poort, so "1 omzetting voorgesteld" means one really landed there.
+        if (_diagrams is not null)
+        {
+            _diagrams.ProposalChanged += _OnProposalChanged;
+        }
+
         // No registry (an older host) means coupling cannot be shown or offered at all (AC-834's precedent).
         _couplingBar.IsVisible = _registry is not null;
         _RefreshCouplingBar();
@@ -108,6 +125,11 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         DetachedFromVisualTree += (_, _) =>
         {
             _binding.Dispose();
+            if (_diagrams is not null)
+            {
+                _diagrams.ProposalChanged -= _OnProposalChanged;
+            }
+
             if (_registry is null)
             {
                 return;
@@ -192,6 +214,97 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             new ConsentSource(_surfaceId, null, ConsentSourceCatalog.WhiteboardInvite),
             "whiteboard.read",
             ConsentRisk.Dangerous);
+
+    // W-4/AC-845: onder het bord, met zijn eigen statusregel — de knop staat er ook als hij uit is, want "waarom
+    // kan dit niet" is precies wat de operator hier moet kunnen lezen.
+    private (Border Bar, Button Convert, TextBlock Status) _BuildConvertBar()
+    {
+        var convert = new Button { Content = "Naar diagram omzetten", Classes = { "Compact" } };
+        convert.Click += (_, _) => _ShowConvertMenu(convert);
+        var status = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 520,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+
+        var bar = new Border
+        {
+            Padding = new Thickness(8, 4),
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { convert, status } },
+        };
+        return (bar, convert, status);
+    }
+
+    // Twee antwoorden (AC-845): omzetten — naar een diagram dat al openstaat, of naar een nieuw venster — of alleen
+    // opschrijven. Waar het heen gaat wordt gevraagd, niet geraden (AC-812's regel).
+    private void _ShowConvertMenu(Control anchor)
+    {
+        var flyout = new MenuFlyout();
+        var fresh = new MenuItem { Header = "Omzetten naar een nieuw diagram" };
+        fresh.Click += (_, _) => _ConvertToNew();
+        flyout.Items.Add(fresh);
+
+        // Een diagram dat een andere agent vasthoudt zou een doodlopende keuze zijn: edit_diagram weigert daar.
+        foreach (var surface in _diagrams?.ListSurfaces(_binding.PaneId).Where(s => !_diagrams.IsCoupledByAnother(_binding.PaneId, s.SurfaceId)) ?? [])
+        {
+            var item = new MenuItem { Header = $"Omzetten naar \"{surface.Name}\"" };
+            item.Click += (_, _) => _Convert(surface.SurfaceId, surface.Name);
+            flyout.Items.Add(item);
+        }
+
+        var writeDown = new MenuItem { Header = "Alleen opschrijven" };
+        writeDown.Click += (_, _) => _Ask(WhiteboardToDiagram.WriteDownPrompt(_documentTitle), target: null);
+        flyout.Items.Add(new Separator());
+        flyout.Items.Add(writeDown);
+        flyout.ShowAt(anchor);
+    }
+
+    // Een omzetting zonder doel opent er zelf een: leeg, zodat ook dit pad door de diff-poort gaat in plaats van
+    // met een klaar diagram binnen te komen.
+    private void _ConvertToNew()
+    {
+        var document = DiagramDocument.New($"{_documentTitle} — diagram");
+        _ = DiagramWindow.OpenAsync(_host, document, _binding.IsLive ? _binding.PaneId : null);
+        _Convert(document.Id, document.Title);
+    }
+
+    private void _Convert(string surfaceId, string name) =>
+        _Ask(WhiteboardToDiagram.ConvertPrompt(_documentTitle, surfaceId, name), surfaceId);
+
+    private void _Ask(string prompt, string? target)
+    {
+        _convertTarget = target;
+        _convertAsked = target is not null;
+        _proposals = 0;
+        _RefreshConvertBar();
+        _ = _binding.SendAsync(prompt);
+    }
+
+    // Alleen een voorstel op hét diagram waar deze omzetting heen ging telt: elk ander voorstel gaat over werk dat
+    // niets met dit bord te maken heeft.
+    private void _OnProposalChanged(string surfaceId, DiagramProposal? proposal)
+    {
+        if (surfaceId != _convertTarget || proposal is null)
+        {
+            return;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _proposals++;
+            _RefreshConvertBar();
+        });
+    }
+
+    private void _RefreshConvertBar()
+    {
+        var blocker = WhiteboardToDiagram.Blocker(_diagrams is not null, _binding.IsLive, _current);
+        _convertButton.IsEnabled = blocker is null;
+        _convertStatus.Text = blocker ?? WhiteboardToDiagram.Status(_convertAsked, _proposals);
+    }
 
     private byte[] _Snapshot()
     {
@@ -432,6 +545,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
     private void _RefreshCouplingBar()
     {
+        _RefreshConvertBar();
         var coupled = _current is not null;
         _disconnectButton.IsVisible = coupled;
         _coupleButton.IsVisible = !coupled;
