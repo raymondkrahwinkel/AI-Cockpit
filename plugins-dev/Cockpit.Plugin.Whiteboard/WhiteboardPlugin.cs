@@ -1,6 +1,5 @@
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
-using Cockpit.Plugin.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -24,7 +23,7 @@ public sealed class WhiteboardPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Whiteboard", _ => new WhiteboardControl(new WhiteboardDocument()))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Whiteboard", context => new WhiteboardWorkspaceBody(context, host))
         {
             IconKind = MaterialIconKind.Pencil,
             Description = "A freehand whiteboard: pencil, shape templates, pasted screenshots.",
