@@ -916,6 +916,21 @@ internal sealed class CockpitHost(
             ? Task.CompletedTask
             : _MutateSessionAsync(paneId, session => session.InjectAndSubmit(text));
 
+    public IPluginSessionBinding BindToSession(string paneId)
+    {
+        if (string.IsNullOrEmpty(paneId) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        {
+            return new DetachedSessionBinding(paneId ?? string.Empty);
+        }
+
+        // FindSession walks the session collections, which only the UI thread may do while panes come and go.
+        bool IsLive() => cockpit.FindSession(paneId) is not null;
+
+        return (Dispatcher.UIThread.CheckAccess() ? IsLive() : Dispatcher.UIThread.Invoke(IsLive))
+            ? new CockpitSessionBinding(paneId, cockpit, sessions, SendToSessionAsync)
+            : new DetachedSessionBinding(paneId);
+    }
+
     public Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, System.Threading.CancellationToken cancellationToken) =>
         services.GetService<CockpitViewModel>() is { } cockpit
             ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken)
