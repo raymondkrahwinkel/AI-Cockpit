@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Diagram\Cockpit.Plugin.Diagram.csproj" />
+    <!-- The plugin references this compile-only (AC-809); the test host has no host app to fall through to,
+         so IDiagramAccessRegistry's real assembly is needed here at run time too. -->
+    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

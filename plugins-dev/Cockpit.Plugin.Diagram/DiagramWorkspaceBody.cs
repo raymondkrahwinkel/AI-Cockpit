@@ -45,7 +45,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private DiagramProposal? _pendingProposal;
     private readonly HashSet<int> _acceptedBlocks = [];
 
-    public DiagramWorkspaceBody(IWorkspaceContext context, ICockpitHost host)
+    public DiagramWorkspaceBody(IWorkspaceContext context, ICockpitHost host, DiagramQuickStart? quickStart = null)
     {
         _host = host;
         _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
@@ -97,7 +97,18 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         if (_registry is not null)
         {
-            _registry.SurfaceOpened(_surfaceId, initialTitle, initialText);
+            // AC-816: a quick-start's name seeds the surface's display name, and coupling a chosen session here
+            // is a plain Couple — zero capabilities, same as every other coupling (see DiagramQuickStart). Falls
+            // back to AC-826's list hand-off (initialTitle/initialText) when there is no quick-start.
+            if (quickStart is { } request)
+            {
+                request.ApplyTo(_registry, _surfaceId, initialText);
+            }
+            else
+            {
+                _registry.SurfaceOpened(_surfaceId, initialTitle, initialText);
+            }
+
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.TextChanged += _OnTextChanged;
             _registry.ProposalChanged += _OnProposalChanged;

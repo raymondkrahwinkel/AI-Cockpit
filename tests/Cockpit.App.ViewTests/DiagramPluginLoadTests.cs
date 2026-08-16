@@ -1,5 +1,6 @@
 using System.Runtime.Loader;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
@@ -63,6 +64,8 @@ public class DiagramPluginLoadTests
         var listBody = host.WorkspaceTypes[1].CreateBody(new FakeWorkspaceContext());
         Assert.IsAssignableFrom<Control>(listBody);
 
+        // AC-816: the quick-start button now opens a dialog first; RecordingHost.ShowDialogAsync builds it and
+        // clicks straight through with the prefilled name, the same "Enter is enough" default an operator gets.
         toolbarAction.OnInvoke().GetAwaiter().GetResult();
         Assert.Equal(["diagram.panel"], host.OpenedWorkspaceTypeIds);
 
@@ -126,7 +129,15 @@ public class DiagramPluginLoadTests
             return Task.CompletedTask;
         }
 
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
+        // Builds the quick-start dialog's content and clicks its "Openen" button straight away, standing in for
+        // an operator who typed nothing and hit Enter — the prefilled name is already a working default.
+        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560)
+        {
+            var content = createContent();
+            var confirm = content.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Openen"));
+            confirm.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class NoActions : ICockpitActions
