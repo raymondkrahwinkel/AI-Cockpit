@@ -28,6 +28,17 @@ public sealed record DiagramSurfaceView(string SurfaceId, string Name, DiagramCo
 // `Coupling` is null when it just decoupled.
 public sealed record DiagramCouplingChange(string SurfaceId, DiagramCoupling? Coupling);
 
+// An edit an agent delivered via `edit_diagram` (AC-825), awaiting the operator's per-block accept/reject before
+// any of it reaches the surface's stored source — the diff-poort itself. `FidelityFindings` is AC-808's report on
+// `ProposedText`, carried on the proposal so it is visible before acceptance, not only on the result afterwards.
+public sealed record DiagramProposal(
+    string SurfaceId,
+    string SessionId,
+    string ProposedText,
+    string ChangeSummary,
+    IReadOnlyList<string> FidelityFindings,
+    IReadOnlyList<DiagramDiffBlock> Blocks);
+
 /// <summary>
 /// The source of truth for diagram-surface access (AC-810) — the diagram counterpart to
 /// <c>ITerminalAccessRegistry</c> (AC-34); read that one first. Deviations: a diagram is a state, not a stream, so
@@ -86,4 +97,21 @@ public interface IDiagramAccessRegistry
 
     /// <summary>Breaks every coupling this agent session held (its session ended or crashed).</summary>
     void SessionEnded(string sessionId);
+
+    // ---- The diff-poort (AC-825): a proposal sits between "delivered" and "applied" ----
+
+    /// <summary>Raised when a surface's pending proposal changes — set on a fresh <see cref="Propose"/>, null once resolved, discarded, or the surface/session that made it goes away.</summary>
+    event Action<string, DiagramProposal?>? ProposalChanged;
+
+    /// <summary>Records `proposedText` as a pending proposal on `surfaceId`, computed against the surface's current text — it does not touch the stored source. Returns false when `sessionId` does not hold <see cref="DiagramCapability.Edit"/> on the surface.</summary>
+    bool Propose(string sessionId, string surfaceId, string proposedText, string changeSummary, IReadOnlyList<string> fidelityFindings);
+
+    /// <summary>The surface's pending proposal, or null when there is none.</summary>
+    DiagramProposal? PendingProposal(string surfaceId);
+
+    /// <summary>Applies the pending proposal's blocks using the operator's per-block decision (see <see cref="DiagramDiff.Apply"/>), writes the merged result into the surface (raising <see cref="TextChanged"/>), and clears the proposal. Returns false when there is no pending proposal on this surface.</summary>
+    bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks);
+
+    /// <summary>Discards the surface's pending proposal without writing anything — the whole thing, or whatever of it was still undecided.</summary>
+    bool DiscardProposal(string surfaceId);
 }
