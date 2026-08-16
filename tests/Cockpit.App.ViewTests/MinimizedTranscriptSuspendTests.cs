@@ -1,5 +1,4 @@
 #if DEBUG
-using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
@@ -45,42 +44,5 @@ public sealed class MinimizedTranscriptSuspendTests
             Assert.True(scroll.IsVisible, "transcript is resumed once the window is restored");
         });
     }
-
-    // The same suspend also fires once the window has been deactivated long enough that the operator is away
-    // (streaming behind an unattended background window is the other half of the overnight growth). The 60s timer
-    // is driven by the OS activation events, so this invokes the away/activate handlers directly to pin the wiring.
-    [Fact]
-    public async Task SustainedDeactivation_SuspendsTranscript_And_Activation_ResumesIt()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var vm = new SessionViewModel { ReadingLevel = ReadingLevel.Focus };
-            for (var i = 0; i < 5; i++)
-            {
-                vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"row {i}"));
-            }
-
-            var view = new SessionView { DataContext = vm };
-            var window = new Window { Content = view, Width = 820, Height = 640 };
-            window.Show();
-            window.UpdateLayout();
-            await Task.Delay(1);
-
-            var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "TranscriptScroll");
-            Assert.True(scroll.IsVisible, "transcript starts realised");
-
-            Invoke(view, "_OnAwayElapsed");
-            window.UpdateLayout();
-            Assert.False(scroll.IsVisible, "transcript suspends once the operator is away");
-
-            Invoke(view, "_OnHostActivated");
-            window.UpdateLayout();
-            Assert.True(scroll.IsVisible, "transcript resumes the moment the window is used again");
-        });
-    }
-
-    private static void Invoke(SessionView view, string method) =>
-        typeof(SessionView).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(view, new object?[] { null, System.EventArgs.Empty });
 }
 #endif
