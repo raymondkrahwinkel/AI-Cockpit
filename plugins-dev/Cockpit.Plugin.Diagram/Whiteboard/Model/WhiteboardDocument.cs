@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace Cockpit.Plugin.Whiteboard.Model;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 public sealed class WhiteboardDocument
 {

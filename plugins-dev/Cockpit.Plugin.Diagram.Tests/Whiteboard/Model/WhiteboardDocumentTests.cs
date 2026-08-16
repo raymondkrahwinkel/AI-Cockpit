@@ -1,6 +1,6 @@
-using Cockpit.Plugin.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-namespace Cockpit.Plugin.Whiteboard.Tests.Model;
+namespace Cockpit.Plugin.Diagram.Tests.Whiteboard.Model;
 
 public class WhiteboardDocumentTests
 {

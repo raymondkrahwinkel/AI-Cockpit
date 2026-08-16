@@ -1,10 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Cockpit.Plugin.Whiteboard.Model;
-using Cockpit.Plugin.Whiteboard.Rendering;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
-namespace Cockpit.Plugin.Whiteboard.Canvas;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 
 // Every freehand stroke drawn in one pass, in the surface's own absolute coordinates — a stroke has no bounding
 // box worth positioning a control at, unlike a PlacedObject. Selection is asked of the canvas, not hit-tested here.

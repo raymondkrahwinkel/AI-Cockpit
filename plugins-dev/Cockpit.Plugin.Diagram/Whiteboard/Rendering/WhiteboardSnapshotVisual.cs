@@ -2,9 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Cockpit.Plugin.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-namespace Cockpit.Plugin.Whiteboard.Rendering;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
 // Paints straight from the document, never from a live control tree — so it renders the same whether or not any
 // window showing the board actually exists.

@@ -1,8 +1,11 @@
-Diagram Builder plugin — Third-Party Notices
-=============================================
+Diagram & Whiteboard plugin — Third-Party Notices
+=================================================
 
 This plugin's own code is covered by the terms of the host repository's LICENSE. This file lists the
 third-party components this plugin ships in its zip, together with their licence text (AC-809).
+
+The whiteboard surface (AC-836) added nothing to this list: it draws with Avalonia's own primitives, which
+are host-provided and never shipped here.
 
 Mermaid rendering does not imply endorsement or affiliation with the Mermaid project; this plugin only
 supports Mermaid diagram syntax as an input format.
@@ -32,7 +35,32 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-Svg.Controls.Skia.Avalonia
+Microsoft.Extensions.ObjectPool (a dependency of Mermaider, and shipped alongside it)
+----------------------------------------------------------------------------
+Source: https://github.com/dotnet/aspnetcore
+
+MIT License
+
+Copyright (c) .NET Foundation and Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
+following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial
+portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+Svg.Controls.Skia.Avalonia (host-provided at runtime, not shipped in this zip — listed because the plugin
+builds against it)
 ----------------------------------------------------------------------------
 Source: https://github.com/wieslawsoltes/Svg.Skia
 

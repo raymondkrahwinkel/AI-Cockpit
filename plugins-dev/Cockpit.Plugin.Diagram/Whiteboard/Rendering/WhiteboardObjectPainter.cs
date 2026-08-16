@@ -1,9 +1,9 @@
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Cockpit.Plugin.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
-namespace Cockpit.Plugin.Whiteboard.Rendering;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
 // One fixed visual language, shared by the live canvas and the raster snapshot: freehand is always yellow, a
 // placed object (template or paste) is always this crisp blue. The distinction lives in WhiteboardObjectKind

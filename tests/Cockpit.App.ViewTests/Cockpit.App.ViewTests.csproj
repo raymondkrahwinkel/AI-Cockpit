@@ -38,10 +38,6 @@
          the one plugin whose contribution is an Avalonia control, which needs a real platform to construct. -->
     <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Diagram/Cockpit.Plugin.Diagram.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
-    <!-- AC-822: same build-dependency-only shape as the Diagram reference above — WhiteboardPluginLoadTests loads
-         it through the real PluginActivator/PluginLoadContext from its build output. -->
-    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Whiteboard/Cockpit.Plugin.Whiteboard.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>

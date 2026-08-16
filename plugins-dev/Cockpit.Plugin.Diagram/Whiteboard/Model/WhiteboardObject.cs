@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Whiteboard.Model;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 // What made the object, not how it happens to be coloured — AC-823's MCP surface reads this field, never a brush.
 public enum WhiteboardObjectKind

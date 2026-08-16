@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 
-namespace Cockpit.Plugin.Whiteboard.Tests;
+namespace Cockpit.Plugin.Diagram.Tests.Whiteboard;
 
 // An Avalonia runtime without a screen. The painter draws fixed colours, not themed resources, so unlike the
 // workflow canvas's fixture this needs no Theme.axaml load — Skia is enough to read real pixels back.
