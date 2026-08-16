@@ -9,11 +9,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Diagram;
 
-// Read-only log of what an agent did on one diagram or whiteboard surface (AC-848). Fed straight from
-// ICockpitSessionObserver.ToolActivityObserved (AC-116) — no new registry plumbing — filtered to this surface's
-// own object-edit tools and whichever pane is currently coupled to it. Never blank: with nothing to show yet it
-// says so, because since AC-852/AC-854 removed the diff-gate for these tools, this strip is the only place an
-// agent's edit becomes visible at all.
+// Read-only log of what an agent did on one diagram or whiteboard surface (AC-848), fed straight from
+// ICockpitSessionObserver.ToolActivityObserved (AC-116) — no new registry plumbing, just this surface's own
+// object-edit tools and whichever pane is currently coupled to it.
 internal sealed class ActivityStrip : Border
 {
     private const int MaxLines = 200;
@@ -44,6 +42,8 @@ internal sealed class ActivityStrip : Border
         BorderBrush = _Brush("CockpitHairlineBrush");
         BorderThickness = new Thickness(0, 1, 0, 0);
 
+        // Never blank: since AC-852/AC-854 dropped the diff-gate for these tools, this strip is the only place
+        // an agent's edit becomes visible at all, so nothing-yet has to say so rather than look empty.
         _emptyLabel = new TextBlock
         {
             Text = "Deze sessie levert geen activiteit.",
