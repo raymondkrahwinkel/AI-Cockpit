@@ -4,20 +4,26 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Core.Consent;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Workspaces;
+using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
 
-// AC-829: the panel as IWhiteboardAccessRegistry's producer — DiagramWorkspaceBody's pattern (AC-824/AC-810),
-// narrowed to AC-823's one capability: sign up on open, show the coupling bar, keep the registry's snapshot in
-// step with what the operator draws.
+// A whiteboard as its own window beside the cockpit (AC-842), bound to a session that is already running — the
+// whiteboard counterpart to DiagramWorkspaceBody (AC-834); read that one first. Deviation: one capability (Read),
+// and the invite is a separate, visible ask — Couple never implies Grant (AC-810's boundary).
 internal sealed class WhiteboardWorkspaceBody : UserControl
 {
     private static readonly PixelSize SnapshotSize = new(800, 600);
 
+    private readonly ICockpitHost _host;
     private readonly IWhiteboardAccessRegistry? _registry;
     private readonly IWhiteboardSnapshotRenderer _renderer = new WhiteboardSnapshotRenderer();
     private readonly WhiteboardControl _control;
@@ -25,29 +31,50 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
+    private readonly TextBlock _editChip;
+    private readonly MaterialIcon _pip;
+    private readonly Button _coupleButton;
+    private readonly Button _disconnectButton;
+    private readonly Button _inviteButton;
     private WhiteboardCoupling? _current;
+    private IPluginSessionBinding _binding;
+    private string? _boundSessionName;
+    private string? _endedSessionName;
 
-    public WhiteboardWorkspaceBody(IWorkspaceContext context, ICockpitHost host)
+    public WhiteboardWorkspaceBody(ICockpitHost host, string surfaceId, string? sessionPaneId)
     {
+        _host = host;
         _registry = host.Services.GetService(typeof(IWhiteboardAccessRegistry)) as IWhiteboardAccessRegistry;
-        _surfaceId = context.WorkspaceId;
+        _surfaceId = surfaceId;
         _control = new WhiteboardControl(new WhiteboardDocument());
         _control.Canvas.Changed += (_, _) => _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
 
-        (_couplingBar, _couplingLabel, _readChip) = _BuildCouplingBar();
+        (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
 
         Content = new DockPanel { Children = { _couplingBar, _control } };
         DockPanel.SetDock(_couplingBar, Dock.Top);
+
+        _binding = _Bind(sessionPaneId);
 
         if (_registry is not null)
         {
             _registry.SurfaceOpened(_surfaceId, "Whiteboard", _Snapshot());
             _registry.CouplingChanged += _OnCouplingChanged;
-            _RefreshCouplingBar();
+
+            // A plain Couple — zero capabilities. The invite button (and read_whiteboard) still ask their own Grant.
+            if (_binding.IsLive)
+            {
+                _registry.Couple(_binding.PaneId, _surfaceId);
+            }
         }
+
+        // No registry (an older host) means coupling cannot be shown or offered at all (AC-834's precedent).
+        _couplingBar.IsVisible = _registry is not null;
+        _RefreshCouplingBar();
 
         DetachedFromVisualTree += (_, _) =>
         {
+            _binding.Dispose();
             if (_registry is null)
             {
                 return;
@@ -57,6 +84,78 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _registry.SurfaceClosed(_surfaceId);
         };
     }
+
+    // The name is read here and kept, not read on demand — by the time the session ends it is gone from the
+    // cockpit (mirrors DiagramWorkspaceBody._Bind, AC-834).
+    private IPluginSessionBinding _Bind(string? paneId)
+    {
+        var binding = _host.BindToSession(paneId ?? "");
+        _boundSessionName = binding.SessionName ?? (binding.IsLive ? binding.PaneId : null);
+        binding.Ended += _OnSessionEnded;
+        return binding;
+    }
+
+    private void _OnSessionEnded(object? sender, EventArgs e) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        _endedSessionName = _boundSessionName;
+        _RefreshCouplingBar();
+    });
+
+    // The way out of "window open, no agent" — after the bound session ended or the operator disconnected.
+    private void _Recouple(string paneId)
+    {
+        try
+        {
+            _registry?.Couple(paneId, _surfaceId);
+        }
+        catch (InvalidOperationException exception)
+        {
+            _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+            return;
+        }
+
+        _binding.Ended -= _OnSessionEnded;
+        _binding.Dispose();
+        _binding = _Bind(paneId);
+        _endedSessionName = null;
+        _RefreshCouplingBar();
+    }
+
+    // AC-842's invite: a Grant *request*, not a silent Grant — the same Approve/Deny gate read_whiteboard uses,
+    // just asked from the board instead of from the agent. The wording is Cockpit's, never the agent's.
+    private async Task _InviteAsync()
+    {
+        if (_current is not { CanRead: false } || !_binding.IsLive)
+        {
+            return;
+        }
+
+        var paneId = _binding.PaneId;
+        var decision = await _host.RequestConsentAsync(_InvitePrompt());
+        if (!decision.IsApproved)
+        {
+            return;
+        }
+
+        try
+        {
+            _registry?.Couple(paneId, _surfaceId);
+            _registry?.Grant(paneId, _surfaceId);
+        }
+        catch (InvalidOperationException exception)
+        {
+            _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+        }
+    }
+
+    // Names what is really shared, the same rule WhiteboardMcpTools._PromptFor follows for the agent-initiated ask.
+    private ConsentRequest _InvitePrompt() =>
+        new(
+            "Let the agent look along on this whiteboard",
+            $"Share a screenshot of this whiteboard ({SnapshotSize.Width}×{SnapshotSize.Height}) with the session's agent, exactly as it looks right now — an image of the board, not its shapes or text as data. It cannot draw on it yet.",
+            new ConsentSource(_surfaceId, null, ConsentSourceCatalog.WhiteboardInvite),
+            "whiteboard.read",
+            ConsentRisk.Dangerous);
 
     private byte[] _Snapshot()
     {
@@ -77,14 +176,25 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         Avalonia.Threading.Dispatcher.UIThread.Post(_RefreshCouplingBar);
     }
 
-    // The "agent connected" bar (AC-810/AC-824's precedent), narrowed to AC-823's one capability — no edit chip,
-    // AC-820's fixed boundary for this surface.
-    private (Border Bar, TextBlock Label, TextBlock ReadChip) _BuildCouplingBar()
+    // The "agent connected" bar (AC-810/AC-824/AC-834's precedent), always on screen: "no agent on this board" is
+    // a real state — after the session ended, or after Disconnect — not one the bar should hide from.
+    private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip, MaterialIcon Pip, Button Couple, Button Disconnect, Button Invite) _BuildCouplingBar()
     {
+        var pip = new MaterialIcon { Kind = MaterialIconKind.RobotOutline, Width = 15, Height = 15 };
         var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Foreground = _Brush("CockpitAccentBrush") };
         var readChip = _Chip();
+        var editChip = _Chip();
+
+        var invite = new Button { Content = "Laat sdk meekijken", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+        invite.Click += (_, _) => _ = _InviteAsync();
+
         var disconnect = new Button { Content = "Disconnect", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
         disconnect.Click += (_, _) => _registry?.Disconnect(_surfaceId);
+
+        var couple = new Button { Content = "Koppelen…", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+        couple.Click += (_, _) => _ShowSessionPicker(couple);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { couple, invite, disconnect } };
 
         var bar = new Border
         {
@@ -93,39 +203,76 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             Background = _Brush("CockpitSecondaryBgBrush"),
             BorderBrush = _Brush("CockpitAccentBrush"),
             BorderThickness = new Thickness(1),
-            IsVisible = false,
             Child = new DockPanel
             {
                 Children =
                 {
-                    disconnect,
+                    actions,
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
                         Spacing = 6,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Children = { label, readChip },
+                        Children = { pip, label, readChip, editChip },
                     },
                 },
             },
         };
-        DockPanel.SetDock(disconnect, Dock.Right);
+        DockPanel.SetDock(actions, Dock.Right);
 
-        return (bar, label, readChip);
+        return (bar, label, readChip, editChip, pip, couple, disconnect, invite);
+    }
+
+    // The open sessions by name (AC-833), so recoupling names a session instead of guessing one.
+    private void _ShowSessionPicker(Control anchor)
+    {
+        var open = _host.Sessions.OpenSessions;
+        var flyout = new MenuFlyout();
+        if (open.Count == 0)
+        {
+            flyout.Items.Add(new MenuItem { Header = "Geen open sessies", IsEnabled = false });
+        }
+
+        foreach (var session in open)
+        {
+            var item = new MenuItem { Header = session.Name };
+            item.Click += (_, _) => _Recouple(session.PaneId);
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(anchor);
     }
 
     private void _RefreshCouplingBar()
     {
-        _couplingBar.IsVisible = _current is not null;
+        var coupled = _current is not null;
+        _disconnectButton.IsVisible = coupled;
+        _coupleButton.IsVisible = !coupled;
+        _inviteButton.IsVisible = coupled && _current is { CanRead: false };
+        _readChip.IsVisible = coupled;
+        _editChip.IsVisible = coupled;
+
         if (_current is not { } coupling)
         {
+            _couplingLabel.Text = _endedSessionName is { } ended
+                ? $"Sessie {ended} is afgelopen — dit venster blijft open."
+                : "Geen agent gekoppeld.";
+            _couplingLabel.Foreground = _Brush("CockpitTextSecondaryBrush");
+            _pip.Foreground = _Brush("CockpitTextSecondaryBrush");
             return;
         }
 
+        var name = _binding.SessionName ?? _boundSessionName ?? coupling.SessionId;
+        var readAt = coupling.LastReadAt is { } at ? $" · gelezen {at.ToLocalTime():HH:mm}" : "";
         _couplingLabel.Text = coupling.CanRead
-            ? $"Agent connected — session {coupling.SessionId}"
-            : $"Agent connected — session {coupling.SessionId} (no capabilities granted yet)";
+            ? $"Agent connected — session {name}{readAt}"
+            : $"Agent connected — session {name} (no capabilities granted yet)";
+        _couplingLabel.Foreground = _Brush("CockpitAccentBrush");
+        _pip.Foreground = coupling.CanRead ? _Brush("CockpitAccentBrush") : _Brush("CockpitTextSecondaryBrush");
         _SetChip(_readChip, "read_whiteboard", coupling.CanRead);
+        // edit_whiteboard has no backing capability yet — AC-854 adds it. The chip stays here as the display's
+        // reserved third slot so "may draw along" is never a state this bar has to be redesigned to show.
+        _SetChip(_editChip, "edit_whiteboard", granted: false);
     }
 
     private static TextBlock _Chip() => new()

@@ -194,6 +194,23 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         }
     }
 
+    public void MarkRead(string sessionId, string surfaceId)
+    {
+        WhiteboardCoupling coupling;
+        lock (_lock)
+        {
+            if (!_couplings.TryGetValue(surfaceId, out var existing) || existing.SessionId != sessionId || !existing.CanRead)
+            {
+                return;
+            }
+
+            coupling = existing with { LastReadAt = DateTimeOffset.UtcNow };
+            _couplings[surfaceId] = coupling;
+        }
+
+        CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
+    }
+
     public void SessionEnded(string sessionId)
     {
         List<string> dropped;

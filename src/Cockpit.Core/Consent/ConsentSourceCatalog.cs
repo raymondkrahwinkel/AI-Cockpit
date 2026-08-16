@@ -22,6 +22,11 @@ public static class ConsentSourceCatalog
     // The whiteboard MCP server (AC-823): reading a screenshot of a whiteboard surface the operator has open.
     public const string WhiteboardMcp = "Whiteboard MCP";
 
+    // The whiteboard's own "Laat sdk meekijken" button (AC-842): the operator inviting the coupled session's agent
+    // to read the board, kept apart from WhiteboardMcp so the audit trail (and its bypass switch) can tell the
+    // operator's own invite from the agent asking for itself.
+    public const string WhiteboardInvite = "Whiteboard invite";
+
     // The verify MCP server.
     public const string VerifyMcp = "Verify MCP";
 
@@ -69,7 +74,7 @@ public static class ConsentSourceCatalog
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
     public static IReadOnlyList<string> HostSources { get; } =
     [
-        TerminalMcp, DiagramMcp, WhiteboardMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
+        TerminalMcp, DiagramMcp, WhiteboardMcp, WhiteboardInvite, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
         AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, Debug,
     ];
 

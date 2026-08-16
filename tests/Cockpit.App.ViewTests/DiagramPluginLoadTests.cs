@@ -78,8 +78,10 @@ public class DiagramPluginLoadTests
         var whiteboardBody = host.WorkspaceTypes[2].CreateBody(new FakeWorkspaceContext());
         Assert.IsAssignableFrom<Control>(whiteboardBody);
 
+        // AC-842: the toolbar action now opens a window bound to the active session, not a workspace tab.
         host.ToolbarActions[2].OnInvoke().GetAwaiter().GetResult();
-        Assert.Equal(["whiteboard.panel"], host.OpenedWorkspaceTypeIds);
+        Assert.Empty(host.OpenedWorkspaceTypeIds);
+        Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
 
         plugin.Dispose();
     });

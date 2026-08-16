@@ -61,6 +61,7 @@ internal sealed class WhiteboardMcpTools
         }
 
         var snapshotPng = _registry.ReadCoupled(caller, surface.SurfaceId) ?? [];
+        _registry.MarkRead(caller, surface.SurfaceId);
         return _Serialize(new
         {
             ok = true,
