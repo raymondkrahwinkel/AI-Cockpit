@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -15,9 +16,9 @@ using MermaidRenderOptions = Mermaider.Models.RenderOptions;
 
 namespace Cockpit.Plugin.Diagram;
 
-// The whole body of a Diagram workspace (AC-809 proved the panel survives the plugin boundary; AC-810 wires it into
-// the cockpit-diagram MCP coupling as a real, live surface). Registers itself with the host's IDiagramAccessRegistry
-// under its own WorkspaceId, so read_diagram/edit_diagram see this panel's actual text rather than a static demo.
+// The whole body of a Diagram workspace (AC-809 proved the panel survives the plugin boundary; AC-810 wired the
+// cockpit-diagram MCP coupling; AC-824 makes the panel itself the surface — an embedded live conversation, AC-810's
+// coupling bar unchanged, and a diagram card beside it that keeps pace with the conversation).
 internal sealed class DiagramWorkspaceBody : UserControl
 {
     private const string SampleDiagram = """
@@ -37,6 +38,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
     private readonly TextBlock _editChip;
+    private readonly ToggleButton _sourceToggle;
+    private readonly TextBox _sourceBox;
     private string _currentSvg = "";
 
     public DiagramWorkspaceBody(IWorkspaceContext context, ICockpitHost host)
@@ -48,17 +51,35 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // A fixed size, not Stretch=Fill: Avalonia.Svg.Skia.Svg's first measure pass returns a small placeholder
         // before its picture is ready, and nothing here forces a second layout pass once it is — a host-side
         // concern for whichever ticket designs the real panel ([e]), not this one.
-        _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!) { Stretch = Stretch.Uniform, Width = 400, Height = 200, Margin = new Thickness(16) };
+        _svg = new Avalonia.Svg.Skia.Svg(baseUri: null!) { Stretch = Stretch.Uniform, Width = 340, Height = 200, Margin = new Thickness(16) };
 
         (_couplingBar, _couplingLabel, _readChip, _editChip) = _BuildCouplingBar();
+        (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         var toolbar = _BuildToolbar();
 
-        Content = new DockPanel
+        // AC-824: the conversation is the surface — a live embedded session, same mechanism FanOut/Autopilot use
+        // (IWorkspaceContext.EmbedSession). The host owns its lifetime and ends it when this workspace closes.
+        var conversation = context.EmbedSession(new EmbeddedSessionRequest()).View;
+
+        var diagramCard = new Border
         {
-            Children = { toolbar, _couplingBar, _svg },
+            BorderThickness = new Thickness(1, 0, 0, 0),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Child = new DockPanel
+            {
+                Children = { toolbar, _couplingBar, _sourceToggle, _sourceBox, new ScrollViewer { Content = _svg } },
+            },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
+        DockPanel.SetDock(_sourceToggle, Dock.Bottom);
+        DockPanel.SetDock(_sourceBox, Dock.Bottom);
+
+        var layout = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,380") };
+        layout.Children.Add(conversation);
+        layout.Children.Add(diagramCard);
+        Grid.SetColumn(diagramCard, 1);
+        Content = layout;
 
         _RenderInto(SampleDiagram);
 
@@ -120,6 +141,24 @@ internal sealed class DiagramWorkspaceBody : UserControl
         });
         _currentSvg = markup;
         _svg.SvgSource = SvgSource.LoadFromSvg(markup);
+        _sourceBox.Text = source;
+    }
+
+    // AC-824: the Mermaid source is one click away — collapsed under the render, never only in memory.
+    private static (ToggleButton Toggle, TextBox Box) _BuildSourceToggle()
+    {
+        var box = new TextBox
+        {
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            FontFamily = new FontFamily("Consolas,Menlo,monospace"),
+            MaxHeight = 180,
+            Margin = new Thickness(8, 0, 8, 8),
+            IsVisible = false,
+        };
+        var toggle = new ToggleButton { Content = "Toon bron", Classes = { "Compact" }, Margin = new Thickness(8, 4) };
+        toggle.IsCheckedChanged += (_, _) => box.IsVisible = toggle.IsChecked == true;
+        return (toggle, box);
     }
 
     // AC-813: PNG and SVG only — no PDF (host-dependency decision, see AC-813), no JPG (lossy artifacts on
