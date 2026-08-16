@@ -311,7 +311,7 @@ public class DiagramAccessRegistryTests
         registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
 
         registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RenameNode, "A", Label: "Begin"));
-        registry.EditCoupled("session-a", "surface-1", source =>
+        registry.EditCoupled("session-a", "surface-1", DiagramHandEditKind.RenameNode, "B", source =>
         {
             var edit = DiagramObjectEdit.RenameNode(source, "B", "Klaar");
             return (edit.Text, edit.Summary);

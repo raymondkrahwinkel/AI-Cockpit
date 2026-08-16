@@ -1,8 +1,10 @@
-using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Cockpit.Core.Abstractions.Diagrams;
+using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Diagram.Tests;
@@ -10,30 +12,210 @@ namespace Cockpit.Plugin.Diagram.Tests;
 [Collection("avalonia")]
 public class ActivityStripTests
 {
-    private sealed class FakeSessions : ICockpitSessionObserver
+    // Only the members ActivityStrip actually calls (History/HistoryChanged/Revert) do anything; everything else
+    // on the interface is a no-op stand-in, the same shape FakeHost below takes for ICockpitHost.
+    private sealed class FakeDiagramRegistry : IDiagramAccessRegistry
     {
-        public string? ActiveSessionWorkingDirectory => null;
+        private readonly Dictionary<string, List<DiagramHistoryEntry>> _history = new();
 
-        public event EventHandler? ActiveSessionChanged { add { } remove { } }
+        public List<string> RevertCalls { get; } = [];
 
-        public event EventHandler<SessionOutputText>? OutputProduced { add { } remove { } }
+        public string? NextRevertRefusal { get; set; }
 
-        public event EventHandler<SessionToolActivity>? ToolActivityObserved;
+        public event Action<string, string>? TextChanged { add { } remove { } }
 
-        public void Raise(SessionToolActivity activity) => ToolActivityObserved?.Invoke(this, activity);
+        public event Action<DiagramCouplingChange>? CouplingChanged { add { } remove { } }
+
+        public event Action<string, DiagramProposal?>? ProposalChanged { add { } remove { } }
+
+        public event Action<string, string>? ObjectEdited { add { } remove { } }
+
+        public event Action<string>? HistoryChanged;
+
+        public void Seed(string surfaceId, DiagramHistoryEntry entry) =>
+            (_history.TryGetValue(surfaceId, out var list) ? list : _history[surfaceId] = []).Add(entry);
+
+        public void Raise(string surfaceId) => HistoryChanged?.Invoke(surfaceId);
+
+        public IReadOnlyList<DiagramHistoryEntry> History(string surfaceId) =>
+            _history.TryGetValue(surfaceId, out var list) ? list : [];
+
+        public string? Revert(string surfaceId, string entryId)
+        {
+            RevertCalls.Add(entryId);
+            if (NextRevertRefusal is { } reason)
+            {
+                return reason;
+            }
+
+            var list = _history[surfaceId];
+            var index = list.FindIndex(entry => entry.Id == entryId);
+            list[index] = list[index] with { Reverted = true };
+            HistoryChanged?.Invoke(surfaceId);
+            return null;
+        }
+
+        public void SurfaceOpened(string surfaceId, string name, string initialText)
+        {
+        }
+
+        public void SurfaceClosed(string surfaceId)
+        {
+        }
+
+        public void UpdateText(string surfaceId, string text)
+        {
+        }
+
+        public void Disconnect(string surfaceId)
+        {
+        }
+
+        public string? PeekText(string surfaceId) => null;
+
+        public IReadOnlyList<DiagramSurfaceView> ListSurfaces(string sessionId) => [];
+
+        public DiagramSurface? Resolve(string surfaceRef) => null;
+
+        public DiagramCoupling? CouplingOf(string sessionId, string surfaceId) => null;
+
+        public bool IsCoupledByAnother(string sessionId, string surfaceId) => false;
+
+        public void Couple(string sessionId, string surfaceId)
+        {
+        }
+
+        public void Grant(string sessionId, string surfaceId, DiagramCapability capability)
+        {
+        }
+
+        public string? ReadCoupled(string sessionId, string surfaceId) => null;
+
+        public bool WriteCoupled(string sessionId, string surfaceId, string text) => false;
+
+        public bool EditCoupled(string sessionId, string surfaceId, DiagramHandEditKind kind, string objectKey, Func<string, (string? Text, string Summary)> edit) => false;
+
+        public string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit) => null;
+
+        public void HoldObject(string surfaceId, string objectId)
+        {
+        }
+
+        public void ReleaseObject(string surfaceId, string objectId)
+        {
+        }
+
+        public bool IsHeldByOperator(string surfaceId, string objectId) => false;
+
+        public void SessionEnded(string sessionId)
+        {
+        }
+
+        public bool Propose(string sessionId, string surfaceId, string proposedText, string changeSummary, IReadOnlyList<string> fidelityFindings) => false;
+
+        public DiagramProposal? PendingProposal(string surfaceId) => null;
+
+        public bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks) => false;
+
+        public bool DiscardProposal(string surfaceId) => false;
+    }
+
+    private sealed class FakeWhiteboardRegistry : IWhiteboardAccessRegistry
+    {
+        private readonly Dictionary<string, List<WhiteboardHistoryEntry>> _history = new();
+
+        public List<string> RevertCalls { get; } = [];
+
+        public event Action<string, byte[]>? SnapshotChanged { add { } remove { } }
+
+        public event Action<WhiteboardCouplingChange>? CouplingChanged { add { } remove { } }
+
+        public event Action<string, string, WhiteboardPlacement>? ObjectPlaced { add { } remove { } }
+
+        public event Action<string, string>? ObjectErased { add { } remove { } }
+
+        public event Action<string>? HistoryChanged { add { } remove { } }
+
+        public void Seed(string surfaceId, WhiteboardHistoryEntry entry) =>
+            (_history.TryGetValue(surfaceId, out var list) ? list : _history[surfaceId] = []).Add(entry);
+
+        public IReadOnlyList<WhiteboardHistoryEntry> History(string surfaceId) =>
+            _history.TryGetValue(surfaceId, out var list) ? list : [];
+
+        public string? Revert(string surfaceId, string entryId)
+        {
+            RevertCalls.Add(entryId);
+            return "Het terughalen van een verwijderd object kan nog niet worden teruggedraaid.";
+        }
+
+        public void SurfaceOpened(string surfaceId, string name, byte[] initialSnapshotPng)
+        {
+        }
+
+        public void SurfaceClosed(string surfaceId)
+        {
+        }
+
+        public void UpdateSnapshot(string surfaceId, byte[] snapshotPng)
+        {
+        }
+
+        public void Disconnect(string surfaceId)
+        {
+        }
+
+        public byte[]? PeekSnapshot(string surfaceId) => null;
+
+        public IReadOnlyList<WhiteboardSurfaceView> ListSurfaces(string sessionId) => [];
+
+        public WhiteboardSurface? Resolve(string surfaceRef) => null;
+
+        public WhiteboardCoupling? CouplingOf(string sessionId, string surfaceId) => null;
+
+        public bool IsCoupledByAnother(string sessionId, string surfaceId) => false;
+
+        public void Couple(string sessionId, string surfaceId)
+        {
+        }
+
+        public void Grant(string sessionId, string surfaceId, WhiteboardCapability capability = WhiteboardCapability.Read)
+        {
+        }
+
+        public byte[]? ReadCoupled(string sessionId, string surfaceId) => null;
+
+        public string? PlaceCoupled(string sessionId, string surfaceId, WhiteboardPlacement placement) => null;
+
+        public bool ErasePlaced(string sessionId, string surfaceId, string objectId) => false;
+
+        public void MarkRead(string sessionId, string surfaceId)
+        {
+        }
+
+        public void SessionEnded(string sessionId)
+        {
+        }
     }
 
     private sealed class FakeHost : ICockpitHost
     {
-        public FakeSessions FakeSessions { get; } = new();
+        public FakeHost(FakeDiagramRegistry? diagram = null, FakeWhiteboardRegistry? whiteboard = null)
+        {
+            Services = new FakeServices(diagram, whiteboard);
+        }
 
-        public IServiceProvider Services { get; } = new EmptyServiceProvider();
+        public List<string> Toasts { get; } = [];
+
+        public IServiceProvider Services { get; }
 
         public ICockpitActions Actions => throw new NotSupportedException();
 
         public IPluginStorage Storage => throw new NotSupportedException();
 
-        public ICockpitSessionObserver Sessions => FakeSessions;
+        public ICockpitSessionObserver Sessions => throw new NotSupportedException();
+
+        public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
+            Toasts.Add(message);
 
         public void AddSettings(Func<Control> createView)
         {
@@ -50,27 +232,13 @@ public class ActivityStripTests
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
             Task.CompletedTask;
 
-        private sealed class EmptyServiceProvider : IServiceProvider
+        private sealed class FakeServices(FakeDiagramRegistry? diagram, FakeWhiteboardRegistry? whiteboard) : IServiceProvider
         {
-            public object? GetService(Type serviceType) => null;
+            public object? GetService(Type serviceType) =>
+                serviceType == typeof(IDiagramAccessRegistry) ? diagram :
+                serviceType == typeof(IWhiteboardAccessRegistry) ? whiteboard :
+                null;
         }
-    }
-
-    private static string _Result(string id, string? changed = null, string? placed = null)
-    {
-        var json = new JsonObject { ["ok"] = true, ["id"] = id };
-        if (changed is not null)
-        {
-            json["changed"] = changed;
-        }
-
-        if (placed is not null)
-        {
-            json["objectId"] = "obj-1";
-            json["placed"] = placed;
-        }
-
-        return json.ToJsonString();
     }
 
     // A strip's ScrollViewer is a templated control — its content only joins the visual tree once the template
@@ -87,82 +255,75 @@ public class ActivityStripTests
     private static List<string?> _Texts(Control content) =>
         content.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsVisible).Select(t => t.Text).ToList();
 
+    private static DiagramHistoryEntry DiagramEntry(string id, string origin, string summary, string objectKey = "N1", bool reverted = false) =>
+        new(id, origin, DiagramHandEditKind.AddNode, objectKey, summary, DateTime.Now, reverted);
+
     [Fact]
     public void NoActivityYet_ShowsTheExplicitEmptyMessage_NeverABlankStrip()
     {
-        var host = new FakeHost();
+        var host = new FakeHost(new FakeDiagramRegistry());
         var strip = new ActivityStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
 
-        Assert.Contains("Deze sessie levert geen activiteit.", _Texts(strip));
+        Assert.Contains("Nog geen activiteit op dit oppervlak.", _Texts(strip));
 
         window.Close();
     }
 
     [Fact]
-    public void MatchingToolActivity_OnThisSurfaceAndPane_AddsAReadableLine()
+    public void JournaledEntry_ForThisSurface_AddsAReadableLine()
     {
-        var host = new FakeHost();
+        var registry = new FakeDiagramRegistry();
+        registry.Seed("surface-1", DiagramEntry("e1", "agent-pane", "added node N1 \"Foo\""));
+        var host = new FakeHost(registry);
         var strip = new ActivityStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
-        strip.SetSession("pane-a", "Werksessie");
-
-        host.FakeSessions.Raise(new SessionToolActivity(
-            "pane-a", "mcp__cockpit-diagram__add_node", """{"id":"N1","label":"Foo"}""",
-            _Result("surface-1", changed: "added node N1 \"Foo\""), IsError: false));
 
         var texts = _Texts(strip);
         Assert.Contains("added node N1 \"Foo\"", texts);
-        Assert.DoesNotContain("Deze sessie levert geen activiteit.", texts);
+        Assert.DoesNotContain("Nog geen activiteit op dit oppervlak.", texts);
 
         window.Close();
     }
 
     [Fact]
-    public void ToolActivity_FromADifferentPane_IsIgnored()
+    public void JournaledEntry_ForADifferentSurface_IsNotShown()
     {
-        var host = new FakeHost();
+        var registry = new FakeDiagramRegistry();
+        registry.Seed("surface-2", DiagramEntry("e1", "agent-pane", "added node N1 \"Foo\""));
+        var host = new FakeHost(registry);
+        var strip = new ActivityStrip(host, "surface-1", whiteboard: false, null);
+        var window = _Show(strip);
+
+        Assert.Contains("Nog geen activiteit op dit oppervlak.", _Texts(strip));
+
+        window.Close();
+    }
+
+    [Fact]
+    public void OperatorOrigin_IsLabelledOperator_RegardlessOfTheCoupledAgent()
+    {
+        var registry = new FakeDiagramRegistry();
+        registry.Seed("surface-1", DiagramEntry("e1", "operator", "renamed node A to \"Begin\""));
+        var host = new FakeHost(registry);
         var strip = new ActivityStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
         strip.SetSession("pane-a", "Werksessie");
 
-        host.FakeSessions.Raise(new SessionToolActivity(
-            "pane-b", "mcp__cockpit-diagram__add_node", """{"id":"N1","label":"Foo"}""",
-            _Result("surface-1", changed: "added node N1 \"Foo\""), IsError: false));
-
-        Assert.Contains("Deze sessie levert geen activiteit.", _Texts(strip));
+        var texts = _Texts(strip);
+        Assert.Contains(texts, text => text is not null && text.Contains("operator", StringComparison.Ordinal));
 
         window.Close();
     }
 
     [Fact]
-    public void ToolActivity_ForADifferentSurface_IsIgnored()
+    public void WhiteboardPlace_ProducesAReadableLine()
     {
-        var host = new FakeHost();
-        var strip = new ActivityStrip(host, "surface-1", whiteboard: false, null);
-        var window = _Show(strip);
-        strip.SetSession("pane-a", "Werksessie");
-
-        host.FakeSessions.Raise(new SessionToolActivity(
-            "pane-a", "mcp__cockpit-diagram__add_node", """{"id":"N1","label":"Foo"}""",
-            _Result("surface-2", changed: "added node N1 \"Foo\""), IsError: false));
-
-        Assert.Contains("Deze sessie levert geen activiteit.", _Texts(strip));
-
-        window.Close();
-    }
-
-    [Fact]
-    public void WhiteboardPlace_ProducesAReadableLine_FromThePlacedField()
-    {
-        var host = new FakeHost();
+        var registry = new FakeWhiteboardRegistry();
+        registry.Seed("board-1", new WhiteboardHistoryEntry("e1", "pane-a", WhiteboardHistoryKind.Place, "obj-1", "placed a rectangle reading \"Foo\"", DateTime.Now, Reverted: false));
+        var host = new FakeHost(whiteboard: registry);
         var strip = new ActivityStrip(host, "board-1", whiteboard: true, null);
         var window = _Show(strip);
-        strip.SetSession("pane-a", "Werksessie");
-
-        host.FakeSessions.Raise(new SessionToolActivity(
-            "pane-a", "mcp__cockpit-whiteboard__place_on_whiteboard", """{"whiteboard":"board-1","shape":"rectangle"}""",
-            _Result("board-1", placed: "a rectangle reading \"Foo\""), IsError: false));
 
         Assert.Contains("placed a rectangle reading \"Foo\"", _Texts(strip));
 
@@ -170,20 +331,62 @@ public class ActivityStripTests
     }
 
     [Fact]
-    public void RevertButton_IsClickableAndNoOp_WithATooltipExplainingItIsNotYetAvailable()
+    public void RevertButton_OnAnUndoneEdit_CallsRevertAndTheRowShowsReverted()
     {
-        var host = new FakeHost();
+        var registry = new FakeDiagramRegistry();
+        registry.Seed("surface-1", DiagramEntry("e1", "pane-a", "added node N1 \"Foo\""));
+        var host = new FakeHost(registry);
         var strip = new ActivityStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
         strip.SetSession("pane-a", "Werksessie");
-        host.FakeSessions.Raise(new SessionToolActivity(
-            "pane-a", "mcp__cockpit-diagram__add_node", """{"id":"N1","label":"Foo"}""",
-            _Result("surface-1", changed: "added node N1 \"Foo\""), IsError: false));
 
         var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
         Assert.True(revert.IsEnabled);
-        Assert.Contains("AC-853", (string)ToolTip.GetTip(revert)!);
+
+        _RaiseClick(revert);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(["e1"], registry.RevertCalls);
+        Assert.Empty(host.Toasts);
+        var reRevert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
+        Assert.False(reRevert.IsEnabled);
+        Assert.Contains(_Texts(strip), text => text is not null && text.Contains("teruggedraaid", StringComparison.Ordinal));
 
         window.Close();
     }
+
+    [Fact]
+    public void RevertButton_OnAnAlreadyRevertedEdit_IsDisabledUpFront()
+    {
+        var registry = new FakeDiagramRegistry();
+        registry.Seed("surface-1", DiagramEntry("e1", "pane-a", "added node N1 \"Foo\"", reverted: true));
+        var host = new FakeHost(registry);
+        var strip = new ActivityStrip(host, "surface-1", whiteboard: false, null);
+        var window = _Show(strip);
+
+        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
+        Assert.False(revert.IsEnabled);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void RevertButton_OnAnEraseEntry_IsDisabled_TakingBackARemovedObjectIsNotSupportedYet()
+    {
+        var registry = new FakeWhiteboardRegistry();
+        registry.Seed("board-1", new WhiteboardHistoryEntry("e1", "pane-a", WhiteboardHistoryKind.Erase, "obj-1", "erased an object", DateTime.Now, Reverted: false));
+        var host = new FakeHost(whiteboard: registry);
+        var strip = new ActivityStrip(host, "board-1", whiteboard: true, null);
+        var window = _Show(strip);
+
+        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
+        Assert.False(revert.IsEnabled);
+
+        window.Close();
+    }
+
+    // Avalonia headless has no real pointer pipeline in this test project's setup, so a click is raised directly
+    // through the button's routed event rather than simulated input.
+    private static void _RaiseClick(Button button) =>
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
 }

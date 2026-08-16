@@ -58,6 +58,12 @@ public sealed record DiagramHandEdit(DiagramHandEditKind Kind, string Id, string
 // asks consent, the plugin opens the window. `SessionId` is the caller the surface couples to on arrival.
 public sealed record DiagramOpenRequest(string SurfaceId, string Name, string Text, string SessionId);
 
+// AC-853: one journaled per-object edit — operator hand-edit or agent tool call, either can be undone — with enough
+// kept to compute that one edit's own inverse against the surface as it stands *now*, not as it stood then.
+// `ObjectKey` is the node id, or "from->to" for a connection, the same convention the activity strip's jump-to
+// already uses. `Origin` is "operator" or the agent session id that made it.
+public sealed record DiagramHistoryEntry(string Id, string Origin, DiagramHandEditKind Kind, string ObjectKey, string Summary, DateTime When, bool Reverted);
+
 /// <summary>
 /// The source of truth for diagram-surface access (AC-810) — the diagram counterpart to
 /// <c>ITerminalAccessRegistry</c> (AC-34); read that one first. Deviations: a diagram is a state, not a stream, so
@@ -117,10 +123,12 @@ public interface IDiagramAccessRegistry
     /// <summary>
     /// Applies a per-object edit (AC-852) under the registry's own lock: <paramref name="edit"/> gets the text as it
     /// stands then and returns the new text plus a readable summary, or a null text to change nothing — so two edits
-    /// naming different objects both land, neither overwriting the whole of the other. Raises <see cref="TextChanged"/>
-    /// and <see cref="ObjectEdited"/>; false without <see cref="DiagramCapability.Edit"/> or when nothing changed.
+    /// naming different objects both land, neither overwriting the whole of the other. <paramref name="kind"/> and
+    /// <paramref name="objectKey"/> describe the same edit structurally, so it can be journaled for a later targeted
+    /// <see cref="Revert"/> (AC-853). Raises <see cref="TextChanged"/>, <see cref="ObjectEdited"/> and
+    /// <see cref="HistoryChanged"/>; false without <see cref="DiagramCapability.Edit"/> or when nothing changed.
     /// </summary>
-    bool EditCoupled(string sessionId, string surfaceId, Func<string, (string? Text, string Summary)> edit);
+    bool EditCoupled(string sessionId, string surfaceId, DiagramHandEditKind kind, string objectKey, Func<string, (string? Text, string Summary)> edit);
 
     /// <summary>Raised for each applied per-object edit with a one-line summary of what changed — what the activity strip (AC-848) shows per handling, rather than "the whole source was replaced".</summary>
     event Action<string, string>? ObjectEdited;
@@ -132,6 +140,23 @@ public interface IDiagramAccessRegistry
     /// per-object grammar cannot make, or one that would not leave valid Mermaid behind.
     /// </summary>
     string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit);
+
+    // ---- Undo (AC-853): the vangnet that replaces the diff-poort for the tools that write straight through ----
+
+    /// <summary>This surface's journaled per-object edits, oldest first — both origins, so the activity strip (AC-848) can offer a targeted revert per line.</summary>
+    IReadOnlyList<DiagramHistoryEntry> History(string surfaceId);
+
+    /// <summary>Raised whenever a surface's history changes: a new edit journaled, or one marked reverted.</summary>
+    event Action<string>? HistoryChanged;
+
+    /// <summary>
+    /// Undoes exactly the one journaled edit named by <paramref name="entryId"/> — never "the last change" — by
+    /// computing that edit's own inverse and applying it to the surface as it stands right now. Because the inverse
+    /// is scoped to the same object the original edit named, an older entry can be reverted without touching a
+    /// different object's edit made since. Returns null when it landed, or the reason it was refused: unknown
+    /// surface or entry, already reverted, or the inverse would no longer leave valid Mermaid behind.
+    /// </summary>
+    string? Revert(string surfaceId, string entryId);
 
     // ---- The operator's "jij bewerkt" hold (AC-841/D-5) ----
 

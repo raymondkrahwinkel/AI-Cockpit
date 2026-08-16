@@ -13,6 +13,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     private readonly Dictionary<string, DiagramCoupling> _couplings = new(StringComparer.Ordinal); // surfaceId -> coupling
     private readonly Dictionary<string, DiagramProposal> _proposals = new(StringComparer.Ordinal); // surfaceId -> pending proposal
     private readonly Dictionary<string, string> _awaitingCoupling = new(StringComparer.Ordinal); // surfaceId -> session that asked for it (AC-835)
+    private readonly Dictionary<string, List<HistoryEntry>> _history = new(StringComparer.Ordinal); // surfaceId -> its edits, oldest first
 
     public event Action<string, string>? TextChanged;
 
@@ -23,6 +24,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     public event Action<string, string>? ObjectEdited;
 
     public event Action<DiagramOpenRequest>? OpenRequested;
+
+    public event Action<string>? HistoryChanged;
 
     public void SurfaceOpened(string surfaceId, string name, string initialText)
     {
@@ -75,6 +78,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             _surfaces.Remove(surfaceId);
             wasCoupled = _couplings.Remove(surfaceId);
             hadProposal = _proposals.Remove(surfaceId);
+            _history.Remove(surfaceId);
         }
 
         if (wasCoupled)
@@ -278,7 +282,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     // The read-modify-write happens inside the lock, so an edit naming one object cannot be computed against a
     // stale copy and land on top of a change to a different one.
     // ponytail: single lock, and `edit` renders under it — per-surface locks if that is ever felt.
-    public bool EditCoupled(string sessionId, string surfaceId, Func<string, (string? Text, string Summary)> edit)
+    public bool EditCoupled(string sessionId, string surfaceId, DiagramHandEditKind kind, string objectKey, Func<string, (string? Text, string Summary)> edit)
     {
         string text, summary;
         DiagramProposal? rebased;
@@ -290,7 +294,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 return false;
             }
 
-            var (edited, describedAs) = edit(surface.Text);
+            var before = surface.Text;
+            var (edited, describedAs) = edit(before);
             if (edited is null)
             {
                 return false;
@@ -298,11 +303,13 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             surface.Text = text = edited;
             summary = describedAs;
+            _Journal(surfaceId, sessionId, kind, objectKey, summary, before, text);
             rebased = _Rebase(surfaceId, text);
         }
 
         TextChanged?.Invoke(surfaceId, text);
         ObjectEdited?.Invoke(surfaceId, summary);
+        HistoryChanged?.Invoke(surfaceId);
         _Announce(surfaceId, rebased);
         return true;
     }
@@ -320,13 +327,14 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 return "Dit diagram staat niet meer open.";
             }
 
+            var before = surface.Text;
             var result = edit.Kind switch
             {
-                DiagramHandEditKind.AddNode => DiagramObjectEdit.AddNode(surface.Text, edit.Id, edit.Label ?? edit.Id),
-                DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(surface.Text, edit.Id, edit.Label ?? edit.Id),
-                DiagramHandEditKind.RemoveNode => DiagramObjectEdit.RemoveNode(surface.Text, edit.Id),
-                DiagramHandEditKind.Connect => DiagramObjectEdit.Connect(surface.Text, edit.Id, edit.To ?? "", edit.Label),
-                _ => DiagramObjectEdit.Disconnect(surface.Text, edit.Id, edit.To ?? ""),
+                DiagramHandEditKind.AddNode => DiagramObjectEdit.AddNode(before, edit.Id, edit.Label ?? edit.Id),
+                DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(before, edit.Id, edit.Label ?? edit.Id),
+                DiagramHandEditKind.RemoveNode => DiagramObjectEdit.RemoveNode(before, edit.Id),
+                DiagramHandEditKind.Connect => DiagramObjectEdit.Connect(before, edit.Id, edit.To ?? "", edit.Label),
+                _ => DiagramObjectEdit.Disconnect(before, edit.Id, edit.To ?? ""),
             };
 
             if (result.Refusal is { } reason)
@@ -341,14 +349,134 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             surface.Text = text = result.Text!;
             summary = result.Summary;
+            var objectKey = edit.Kind is DiagramHandEditKind.Connect or DiagramHandEditKind.Disconnect ? $"{edit.Id}->{edit.To}" : edit.Id;
+            _Journal(surfaceId, "operator", edit.Kind, objectKey, summary, before, text);
             rebased = _Rebase(surfaceId, text);
         }
 
         TextChanged?.Invoke(surfaceId, text);
         ObjectEdited?.Invoke(surfaceId, summary);
+        HistoryChanged?.Invoke(surfaceId);
         _Announce(surfaceId, rebased);
         return null;
     }
+
+    // AC-853: called under the same lock the edit itself just landed under, so the entry's before/after snapshot is
+    // exactly what that one edit changed — never a window where a concurrent edit could slip between the two.
+    // Keeps only what changed (the removed lines, if any): re-deriving "what would undo this" from a full-text diff
+    // at revert time would have to guess which of possibly many differences was this edit's; capturing it now does not.
+    // ponytail: unbounded for a surface's lifetime — trimmed like the strip's own row cap if that is ever felt.
+    private void _Journal(string surfaceId, string origin, DiagramHandEditKind kind, string objectKey, string summary, string before, string after)
+    {
+        var entries = _history.TryGetValue(surfaceId, out var list) ? list : _history[surfaceId] = [];
+        entries.Add(new HistoryEntry(Guid.NewGuid().ToString("N"), origin, kind, objectKey, summary, DateTime.Now, _Removed(before, after)));
+    }
+
+    public IReadOnlyList<DiagramHistoryEntry> History(string surfaceId)
+    {
+        lock (_lock)
+        {
+            return _history.TryGetValue(surfaceId, out var entries)
+                ? entries.Select(entry => new DiagramHistoryEntry(entry.Id, entry.Origin, entry.Kind, entry.ObjectKey, entry.Summary, entry.When, entry.Reverted)).ToList()
+                : [];
+        }
+    }
+
+    // Undoes exactly one journaled edit by re-deriving its inverse from what it changed and applying that inverse to
+    // the surface as it stands *now* — never by rewinding the whole text — so it cannot discard a different object's
+    // edit made since (AC-853's whole point: two writers, one targeted undo). AddNode/Connect invert by removing the
+    // same object by id — robust even if it was renamed since; RemoveNode/Disconnect/RenameNode invert by restoring
+    // exactly the lines this edit removed, captured at journal time.
+    public string? Revert(string surfaceId, string entryId)
+    {
+        string text;
+        DiagramProposal? rebased;
+        lock (_lock)
+        {
+            if (!_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return "Dit diagram staat niet meer open.";
+            }
+
+            if (!_history.TryGetValue(surfaceId, out var entries) || entries.Find(candidate => candidate.Id == entryId) is not { } entry)
+            {
+                return "Deze bewerking is niet gevonden.";
+            }
+
+            if (entry.Reverted)
+            {
+                return "Deze bewerking is al teruggedraaid.";
+            }
+
+            var result = entry.Kind switch
+            {
+                DiagramHandEditKind.AddNode => DiagramObjectEdit.RemoveNode(surface.Text, entry.ObjectKey),
+                DiagramHandEditKind.Connect => _DisconnectByKey(surface.Text, entry.ObjectKey),
+                DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines) ?? entry.ObjectKey),
+                _ => _Restore(surface.Text, entry.RemovedLines), // RemoveNode, Disconnect
+            };
+
+            if (result.Refusal is { } reason)
+            {
+                return reason;
+            }
+
+            if (!_Renders(result.Text!))
+            {
+                return "Terugdraaien zou geen geldige Mermaid overlaten, dus er is niets veranderd.";
+            }
+
+            surface.Text = text = result.Text!;
+            entry.Reverted = true;
+            rebased = _Rebase(surfaceId, text);
+        }
+
+        TextChanged?.Invoke(surfaceId, text);
+        HistoryChanged?.Invoke(surfaceId);
+        _Announce(surfaceId, rebased);
+        return null;
+    }
+
+    private static DiagramEdit _DisconnectByKey(string source, string objectKey) =>
+        objectKey.Split("->", 2) is [var from, var to]
+            ? DiagramObjectEdit.Disconnect(source, from, to)
+            : DiagramEdit.Refuse("Deze verbinding is niet meer te herkennen.");
+
+    private static DiagramEdit _Restore(string source, IReadOnlyList<string> removedLines) =>
+        removedLines.Count == 0
+            ? DiagramEdit.Refuse("Er is niets vastgelegd om terug te zetten.")
+            : DiagramEdit.Change(string.Join("\n", _Lines(source).Concat(removedLines)), "restored");
+
+    // The label between the first and last quote of a captured node line — safe because a label is always written
+    // quoted with its own quotes escaped away (DiagramObjectEdit.Clean), so those two are never anything else.
+    private static string? _QuotedLabel(IReadOnlyList<string> removedLines)
+    {
+        if (removedLines.Count == 0)
+        {
+            return null;
+        }
+
+        var line = removedLines[0];
+        var first = line.IndexOf('"');
+        var last = line.LastIndexOf('"');
+        return first >= 0 && last > first ? line[(first + 1)..last] : null;
+    }
+
+    // Multiset subtraction, order preserved: every line `after` still has removes one matching occurrence from
+    // `before`, so what is left is exactly what this edit took out — one node's definition and its connection
+    // lines for RemoveNode, the one line for Disconnect or RenameNode's old wording, nothing for AddNode/Connect.
+    private static List<string> _Removed(string before, string after)
+    {
+        var remaining = new List<string>(_Lines(before));
+        foreach (var line in _Lines(after))
+        {
+            remaining.Remove(line);
+        }
+
+        return remaining;
+    }
+
+    private static string[] _Lines(string source) => source.ReplaceLineEndings("\n").Split('\n');
 
     private static bool _Renders(string source)
     {
@@ -515,5 +643,26 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
         // The objects the operator has under their hand right now (AC-841's "jij bewerkt" marking).
         public HashSet<string> HeldByOperator { get; } = new(StringComparer.Ordinal);
+    }
+
+    // AC-853's journal row: RemovedLines is only ever read back for RemoveNode/Disconnect/RenameNode's inverse
+    // (empty for AddNode/Connect, which invert by object id instead).
+    private sealed class HistoryEntry(string id, string origin, DiagramHandEditKind kind, string objectKey, string summary, DateTime when, List<string> removedLines)
+    {
+        public string Id { get; } = id;
+
+        public string Origin { get; } = origin;
+
+        public DiagramHandEditKind Kind { get; } = kind;
+
+        public string ObjectKey { get; } = objectKey;
+
+        public string Summary { get; } = summary;
+
+        public DateTime When { get; } = when;
+
+        public bool Reverted { get; set; }
+
+        public List<string> RemovedLines { get; } = removedLines;
     }
 }

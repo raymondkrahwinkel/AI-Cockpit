@@ -169,7 +169,7 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The new node's id: one word of letters, digits or underscores.")] string id,
         [Description("The text drawn inside the node.")] string label) =>
-        _ApplyObjectEditAsync(session, diagram, $"add node \"{_SingleLine(label)}\"", [id],
+        _ApplyObjectEditAsync(session, diagram, $"add node \"{_SingleLine(label)}\"", DiagramHandEditKind.AddNode, id, [id],
             source => DiagramObjectEdit.AddNode(source, id, label));
 
     [McpServerTool(Name = "rename_node")]
@@ -179,7 +179,7 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The id of the node to rename, as it appears in the source.")] string id,
         [Description("The new text to draw inside the node.")] string label) =>
-        _ApplyObjectEditAsync(session, diagram, $"rename node {_SingleLine(id)} to \"{_SingleLine(label)}\"", [id],
+        _ApplyObjectEditAsync(session, diagram, $"rename node {_SingleLine(id)} to \"{_SingleLine(label)}\"", DiagramHandEditKind.RenameNode, id, [id],
             source => DiagramObjectEdit.RenameNode(source, id, label));
 
     [McpServerTool(Name = "remove_node")]
@@ -188,7 +188,7 @@ internal sealed class DiagramMcpTools
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The id of the node to remove.")] string id) =>
-        _ApplyObjectEditAsync(session, diagram, $"remove node {_SingleLine(id)} and its connections", [id],
+        _ApplyObjectEditAsync(session, diagram, $"remove node {_SingleLine(id)} and its connections", DiagramHandEditKind.RemoveNode, id, [id],
             source => DiagramObjectEdit.RemoveNode(source, id));
 
     [McpServerTool(Name = "connect_nodes")]
@@ -199,7 +199,7 @@ internal sealed class DiagramMcpTools
         [Description("The id of the node the connection starts at.")] string from,
         [Description("The id of the node the connection ends at.")] string to,
         [Description("Optional text drawn on the connection.")] string? label = null) =>
-        _ApplyObjectEditAsync(session, diagram, $"connect {_SingleLine(from)} -> {_SingleLine(to)}", [from, to, $"{from}->{to}"],
+        _ApplyObjectEditAsync(session, diagram, $"connect {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.Connect, $"{from}->{to}", [from, to, $"{from}->{to}"],
             source => DiagramObjectEdit.Connect(source, from, to, label));
 
     [McpServerTool(Name = "disconnect_nodes")]
@@ -209,16 +209,19 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The id of the node the connection starts at.")] string from,
         [Description("The id of the node the connection ends at.")] string to) =>
-        _ApplyObjectEditAsync(session, diagram, $"disconnect {_SingleLine(from)} -> {_SingleLine(to)}", [from, to, $"{from}->{to}"],
+        _ApplyObjectEditAsync(session, diagram, $"disconnect {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.Disconnect, $"{from}->{to}", [from, to, $"{from}->{to}"],
             source => DiagramObjectEdit.Disconnect(source, from, to));
 
     // The one path every per-object tool takes (AC-852). Same Edit consent as edit_diagram, then the edit itself
     // runs inside the registry's lock: the hold check, the line surgery and the "is this still valid Mermaid"
-    // render all see one text, and nothing is written unless all three pass.
+    // render all see one text, and nothing is written unless all three pass. `kind`/`objectKey` describe the same
+    // edit structurally so the registry can journal it for a later targeted undo (AC-853).
     private async Task<string> _ApplyObjectEditAsync(
         string session,
         string diagram,
         string ask,
+        DiagramHandEditKind kind,
+        string objectKey,
         string[] objects,
         Func<string, DiagramEdit> edit)
     {
@@ -236,7 +239,7 @@ internal sealed class DiagramMcpTools
         string? refusal = null;
         var summary = "";
         var fidelity = new DiagramFidelity([]);
-        var applied = _registry.EditCoupled(caller, surface.SurfaceId, current =>
+        var applied = _registry.EditCoupled(caller, surface.SurfaceId, kind, objectKey, current =>
         {
             if (objects.FirstOrDefault(name => _registry.IsHeldByOperator(surface.SurfaceId, name)) is { } held)
             {
