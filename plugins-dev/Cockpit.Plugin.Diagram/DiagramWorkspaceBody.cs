@@ -48,6 +48,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly Border _proposalPanel;
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
+    private readonly Button _saveButton;
+    private readonly TextBlock _saveStatus;
+    private string? _filePath;
+    private string _savedText;
+    private string? _fileAsLastSeen;
     private string _currentSvg = "";
     private double _zoom = 1.0;
     private Vector _panOffset;
@@ -69,6 +74,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
         _surfaceId = document.Id;
         _documentTitle = document.Title;
+        _filePath = document.FilePath;
+        _savedText = document.MermaidText;
+        _fileAsLastSeen = _ReadFile(_filePath);
 
         // AC-837: no fixed size and no ScrollViewer. Avalonia.Svg.Skia.Svg's own measure gives a placeholder size
         // before its picture is ready, so `_RenderInto` reads the real size off the Skia picture instead, and
@@ -85,7 +93,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus) = _BuildToolbar();
 
         Content = new DockPanel
         {
@@ -266,6 +274,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
         {
             _ApplyTransform();
         }
+
+        _RefreshSaveBar();
     }
 
     // The zoom/pan surface (AC-837): a plain Border, not a ScrollViewer — panning is our own RenderTransform
@@ -387,7 +397,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // AC-813: PNG and SVG only — no PDF (host-dependency decision, see AC-813), no JPG (lossy artifacts on
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
-    private (Border Toolbar, TextBlock ZoomLabel) _BuildToolbar()
+    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus) _BuildToolbar()
     {
         var export = new Button
         {
@@ -434,19 +444,117 @@ internal sealed class DiagramWorkspaceBody : UserControl
         insertSample.Click += (_, _) => _InsertSample();
         var addNode = new Button { Content = "+ Node", Classes = { "Compact" } };
         addNode.Click += (_, _) => _AddNode();
+
+        // AC-839: waar dit diagram woont, naast de knop die het daar zet — "Nog geen bestand" is een toestand die
+        // het venster net zo goed toont als een pad.
+        var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
+        save.Click += (_, _) => _ = _SaveAsync();
+        var saveStatus = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            MaxWidth = 320,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+
         var handEditControls = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertSample, addNode },
+            Children = { insertSample, addNode, save, saveStatus },
         };
 
         var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
         DockPanel.SetDock(export, Dock.Right);
         DockPanel.SetDock(handEditControls, Dock.Left);
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus);
+    }
+
+    // Eén opslagweg voor beide herkomsten (AC-839): een hand-bewerking en een aangenomen agent-voorstel komen
+    // allebei via _RenderInto binnen, dus "onbewaarde wijzigingen" is voor allebei dezelfde vergelijking.
+    private async Task _SaveAsync()
+    {
+        if (_filePath is { } existing)
+        {
+            _Persist(text =>
+            {
+                DiagramCatalog.Write(existing, _documentTitle, text, _fileAsLastSeen);
+                return existing;
+            });
+            return;
+        }
+
+        var homes = DiagramCatalog.WritableHomes(await _host.GetProjectMemoryRowsAsync(_binding.IsLive ? _binding.PaneId : null));
+        if (homes.Count == 0)
+        {
+            _host.ShowToast(
+                "Dit project heeft geen geheugenpad — voeg er een toe in de projecteditor voordat je een diagram opslaat.",
+                PluginToastSeverity.Warning);
+            return;
+        }
+
+        if (homes.Count == 1)
+        {
+            _Persist(text => DiagramCatalog.Create(homes[0].Reference, _documentTitle, text));
+            return;
+        }
+
+        // Meer dan één geheugenpad: vragen, niet kiezen (AC-812). Het antwoord blijft bij dít diagram — het
+        // verandert niets aan de projectinstellingen.
+        var flyout = new MenuFlyout();
+        foreach (var home in homes)
+        {
+            var item = new MenuItem { Header = home.Label ?? home.Reference };
+            item.Click += (_, _) => _Persist(text => DiagramCatalog.Create(home.Reference, _documentTitle, text));
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(_saveButton);
+    }
+
+    // The writer only says where it landed; the bookkeeping and the one error path live here.
+    private void _Persist(Func<string, string> write)
+    {
+        var text = _sourceBox.Text ?? "";
+        try
+        {
+            _filePath = write(text);
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Opslaan is niet gelukt: {exception.Message}", PluginToastSeverity.Error);
+            return;
+        }
+
+        _savedText = text;
+        _fileAsLastSeen = _ReadFile(_filePath);
+        _RefreshSaveBar();
+    }
+
+    // Null (unreadable, or no file yet) means the next save skips the changed-underneath check rather than
+    // refusing on a baseline it never had.
+    private static string? _ReadFile(string? filePath)
+    {
+        try
+        {
+            return filePath is not null && File.Exists(filePath) ? File.ReadAllText(filePath) : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private void _RefreshSaveBar()
+    {
+        var dirty = (_sourceBox.Text ?? "") != _savedText;
+        var where = _filePath ?? "Nog geen bestand";
+        _saveStatus.Text = dirty ? $"{where} · onbewaarde wijzigingen" : where;
+        ToolTip.SetTip(_saveStatus, _filePath);
+        _saveButton.IsEnabled = dirty || _filePath is null;
     }
 
     private static MenuItem _ExportMenuItem(string header, Action onClick)
