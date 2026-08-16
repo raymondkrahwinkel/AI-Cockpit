@@ -9,12 +9,9 @@ internal readonly record struct DiagramEdit(string? Text, string Summary, string
     public static DiagramEdit Refuse(string reason) => new(null, "", reason);
 }
 
-// AC-852: editing a diagram one object at a time. Line surgery on the Mermaid source rather than a
-// parse-and-re-emit round trip — the source stays the operator's own text, and a call only rewrites the lines
-// naming its object, so two edits on different objects both survive instead of last-writer-wins.
-//
-// ponytail: flowchart/graph only, and a chain line ('A --> B --> C') is refused rather than split — edit_diagram
-// (which keeps its diff gate) stays the way to make either of those changes.
+// AC-852: editing a diagram one object at a time. Line surgery rather than a parse-and-re-emit round trip — the
+// source stays the operator's own text, and a call only rewrites the lines naming its object.
+// ponytail: flowchart/graph only, and a chain ('A --> B --> C') is refused rather than split — edit_diagram does both.
 internal static class DiagramObjectEdit
 {
     private const string DefaultHeader = "flowchart TD";
@@ -196,8 +193,12 @@ internal static class DiagramObjectEdit
 
     private static string[] Lines(string source) => source.ReplaceLineEndings("\n").Split('\n');
 
+    // Normalized like every other path here (Lines/string.Join), so an appended line never leaves the source
+    // half CRLF and half LF.
     private static string Append(string source, string line) =>
-        string.IsNullOrWhiteSpace(source) ? $"{DefaultHeader}\n{line}" : $"{source.TrimEnd()}\n{line}";
+        string.IsNullOrWhiteSpace(source)
+            ? $"{DefaultHeader}\n{line}"
+            : $"{string.Join("\n", Lines(source)).TrimEnd()}\n{line}";
 
     // The lines past any YAML front matter and comments — the first of them is the header keyword.
     private static IEnumerable<string> Body(string[] lines)

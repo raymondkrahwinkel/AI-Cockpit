@@ -96,12 +96,10 @@ public interface IDiagramAccessRegistry
     bool WriteCoupled(string sessionId, string surfaceId, string text);
 
     /// <summary>
-    /// Applies a per-object edit (AC-852) to the surface's text under the registry's own lock: <paramref name="edit"/>
-    /// is handed the text as it stands at that moment and returns the new text plus a readable summary of what it
-    /// changed, or a null text to change nothing. Two edits naming different objects therefore both land — there is
-    /// no read-then-replace window in which one overwrites the whole of the other. Raises <see cref="TextChanged"/>
-    /// and <see cref="ObjectEdited"/> on success; returns false when this session does not hold
-    /// <see cref="DiagramCapability.Edit"/>, the surface is gone, or <paramref name="edit"/> changed nothing.
+    /// Applies a per-object edit (AC-852) under the registry's own lock: <paramref name="edit"/> gets the text as it
+    /// stands then and returns the new text plus a readable summary, or a null text to change nothing — so two edits
+    /// naming different objects both land, neither overwriting the whole of the other. Raises <see cref="TextChanged"/>
+    /// and <see cref="ObjectEdited"/>; false without <see cref="DiagramCapability.Edit"/> or when nothing changed.
     /// </summary>
     bool EditCoupled(string sessionId, string surfaceId, Func<string, (string? Text, string Summary)> edit);
 

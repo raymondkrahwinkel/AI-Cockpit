@@ -241,9 +241,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     }
 
     // The read-modify-write happens inside the lock, so an edit naming one object cannot be computed against a
-    // stale copy and land on top of another agent's or the operator's change to a different one.
-    // ponytail: that means `edit` runs under the registry's single lock (it renders to check its own output) —
-    // per-surface locks if a busy surface ever makes that felt.
+    // stale copy and land on top of a change to a different one.
+    // ponytail: single lock, and `edit` renders under it — per-surface locks if that is ever felt.
     public bool EditCoupled(string sessionId, string surfaceId, Func<string, (string? Text, string Summary)> edit)
     {
         string text, summary;
