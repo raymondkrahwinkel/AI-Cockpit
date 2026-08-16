@@ -504,6 +504,24 @@ public interface ICockpitHost
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
     /// <summary>
+    /// Binds a plugin surface — a diagram window, a whiteboard (AC-832) — to the session already running behind
+    /// <paramref name="paneId"/>, so the surface belongs to the conversation the operator is having instead of
+    /// standing next to it. The binding reads that session's identity and hears it end, and writes back through
+    /// <see cref="SendToSessionAsync"/>; it starts nothing and ends nothing, which is what keeps it away from
+    /// <c>IWorkspaceContext.EmbedSession</c>. That one mints a fresh session panel, and pointing a second one at a
+    /// pane the grid already draws would build a rival view over the same pty.
+    /// <para>
+    /// Never null and never throws: a pane id no session is running behind — unknown, or ended since — comes back as
+    /// a <see cref="DetachedSessionBinding"/>, which is the same not-<see cref="IPluginSessionBinding.IsLive"/> state
+    /// a binding reaches when its session ends. Bind as many surfaces to one session as you like; a binding holds no
+    /// view of it.
+    /// </para>
+    /// Default returns that detached binding so existing <see cref="ICockpitHost"/> implementations (test fakes,
+    /// older plugin builds) keep compiling untouched — only the app's own host reaches a live session.
+    /// </summary>
+    IPluginSessionBinding BindToSession(string paneId) => new DetachedSessionBinding(paneId);
+
+    /// <summary>
     /// Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) and returns its path and branch, or
     /// null when <paramref name="repositoryDirectory"/> is not a git repository or the host has no worktree manager. An
     /// Autopilot run creates one at its start and passes the returned <see cref="Workspaces.PluginWorktreeInfo.Path"/> to
