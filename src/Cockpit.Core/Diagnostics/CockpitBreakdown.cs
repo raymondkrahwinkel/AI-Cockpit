@@ -26,9 +26,7 @@ public static class CockpitBreakdown
             .Select(group => new ProcessGroupUsage(
                 group.Count() == 1 ? group.Key : $"{group.Key} ×{group.Count()}",
                 group.Sum(child => child.MemoryBytes),
-                // Only a singleton group can be pinned to one process id — two same-named processes merged into
-                // one line have no single id left to mean, so callers that want to match a specific process (the
-                // assistant's own, AC-734) get null rather than a guess at which of the two it was.
+                // AC-734: null once merged — two same-named processes have no single id left to mean.
                 group.Count() == 1 ? group.Single().ProcessId : null))
             .OrderByDescending(child => child.MemoryBytes)
             .ToList();

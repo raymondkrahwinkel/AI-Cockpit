@@ -3582,11 +3582,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 _Megabytes(usage.Parts.OwnBytes),
                 _Share(usage.Parts.OwnBytes, usage.MemoryBytes)))
             .Concat(usage.Parts.Children.Select(child => new ResourceRowViewModel(
-                // AC-734: the assistant's own process is a child like any other MCP tool server — it just happens
-                // to be excluded from `Sessions` (see `CreateAssistantSession`), which is what lands it here rather
-                // than in a row of its own above. Matched by process id, not by the raw "claude" process name: a
-                // second, unrelated same-named child would merge into one grouped row with no id left to trust
-                // (`CockpitBreakdown.From`), and that row keeps the generic name rather than a guess.
+                // AC-734: matched by process id, not by the raw "claude" name, so a second same-named child stays
+                // on its generic label rather than being guessed at.
                 child.ProcessId is { } pid && pid == AssistantPane?.ProcessId ? "Assistant" : child.Name,
                 "a tool server the cockpit started",
                 _Megabytes(child.MemoryBytes),
