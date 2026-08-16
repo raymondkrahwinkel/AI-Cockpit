@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Canvas + datamodel only (AC-821). AC-822 adds plugin.json and an ICockpitPlugin registration on top. -->
+  <!-- Whiteboard plugin-schil (AC-822): the ALC rule is AC-809's, proven there and reapplied unchanged — Avalonia
+       compile-only (ExcludeAssets=runtime;native), falls through to the host's own copy at runtime. Lighter than
+       AC-809: this canvas draws with Avalonia's own Canvas/Path/DrawingContext, no Svg.Controls.Skia.Avalonia, so
+       no second SkiaSharp/HarfBuzzSharp layer to exclude (verified empirically — see plugin.json). -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -10,13 +13,34 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): Avalonia.Remote.Protocol is Avalonia's own transitive dependency and still lands as a
+         stray, unloaded DLL unless excluded explicitly here too. -->
+    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons" Version="3.0.2">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Plugin.Whiteboard.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

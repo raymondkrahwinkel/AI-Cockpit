@@ -11,13 +11,12 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-809's ALC measurement: loads the real, compiled Diagram plugin through the actual
-/// <see cref="PluginActivator"/>/<see cref="PluginLoadContext"/> and checks that nothing Avalonia-family
-/// loaded into the plugin's own context. No pixel sampling — Avalonia's headless renderer doesn't reliably
-/// composite this control's custom draw op; the real render was verified in a running dev cockpit (AC-809).
+/// AC-822's ALC measurement, same shape as <see cref="DiagramPluginLoadTests"/> (AC-809): loads the real, compiled
+/// Whiteboard plugin through the actual <see cref="PluginActivator"/>/<see cref="PluginLoadContext"/> and checks
+/// that nothing Avalonia-family loaded into the plugin's own context.
 /// </summary>
 [Collection("avalonia")]
-public class DiagramPluginLoadTests
+public class WhiteboardPluginLoadTests
 {
     [Fact]
     public void ActivatesAndContributes_WithNoAvaloniaFamilyAssemblyInThePluginsOwnContext() => HeadlessAvalonia.Run(() =>
@@ -30,7 +29,7 @@ public class DiagramPluginLoadTests
         Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
-        var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
+        var discovered = new DiscoveredPlugin(folder, "whiteboard", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
         var plugin = activator.Activate(discovered);
@@ -42,12 +41,11 @@ public class DiagramPluginLoadTests
         plugin.Initialize(host);
 
         var registration = Assert.Single(host.WorkspaceTypes);
-        Assert.Equal("diagram.panel", registration.Id);
+        Assert.Equal("whiteboard.panel", registration.Id);
         var toolbarAction = Assert.Single(host.ToolbarActions);
 
         // The measurement: nothing named "Avalonia*" ever loaded into the plugin's own AssemblyLoadContext —
-        // everything the panel needed from the Avalonia family (including Svg.Controls.Skia.Avalonia's own
-        // Avalonia.Skia dependency) came from the host's default context instead.
+        // everything the panel needed from the Avalonia family came from the host's default context instead.
         var pluginAlc = AssemblyLoadContext.GetLoadContext(plugin.GetType().Assembly);
         Assert.NotNull(pluginAlc);
         Assert.DoesNotContain(pluginAlc!.Assemblies, a => a.GetName().Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true);
@@ -60,7 +58,7 @@ public class DiagramPluginLoadTests
         Assert.IsAssignableFrom<Control>(body);
 
         toolbarAction.OnInvoke().GetAwaiter().GetResult();
-        Assert.Equal(["diagram.panel"], host.OpenedWorkspaceTypeIds);
+        Assert.Equal(["whiteboard.panel"], host.OpenedWorkspaceTypeIds);
 
         plugin.Dispose();
     });
@@ -71,11 +69,11 @@ public class DiagramPluginLoadTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidateRoot = Path.Combine(directory.FullName, "plugins-dev", "Cockpit.Plugin.Diagram", "bin");
+            var candidateRoot = Path.Combine(directory.FullName, "plugins-dev", "Cockpit.Plugin.Whiteboard", "bin");
             if (Directory.Exists(candidateRoot))
             {
                 var dll = Directory
-                    .EnumerateFiles(candidateRoot, "Cockpit.Plugin.Diagram.dll", SearchOption.AllDirectories)
+                    .EnumerateFiles(candidateRoot, "Cockpit.Plugin.Whiteboard.dll", SearchOption.AllDirectories)
                     .FirstOrDefault();
                 return dll is null ? null : Path.GetDirectoryName(dll);
             }
@@ -151,29 +149,14 @@ public class DiagramPluginLoadTests
 
         public ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
 
-        // AC-824: the body now embeds a session as its own surface, so this needs a placeable stand-in
-        // rather than a throw — same shape as Cockpit.Plugin.FanOut.Tests' FakeEmbeddedSession.
-        public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request) => new FakeEmbeddedSession();
+        // The Whiteboard workspace body never embeds a session (unlike Diagram's, AC-824), so this is never
+        // actually called by CreateBody — implemented only to satisfy the interface.
+        public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request) => throw new NotSupportedException();
 
         public event EventHandler? RefreshRequested
         {
             add { }
             remove { }
         }
-    }
-
-    private sealed class FakeEmbeddedSession : IEmbeddedSession
-    {
-        public Control View { get; } = new Border();
-
-        public string PaneId => "pane-fake";
-
-        public Task CloseAsync() => Task.CompletedTask;
-
-        public void SetInputEnabled(bool enabled)
-        {
-        }
-
-        public Task<string?> Completion { get; } = Task.FromResult<string?>(null);
     }
 }
