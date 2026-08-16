@@ -3582,7 +3582,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 _Megabytes(usage.Parts.OwnBytes),
                 _Share(usage.Parts.OwnBytes, usage.MemoryBytes)))
             .Concat(usage.Parts.Children.Select(child => new ResourceRowViewModel(
-                child.Name,
+                // AC-734: matched by process id, not by the raw "claude" name, so a second same-named child stays
+                // on its generic label rather than being guessed at.
+                child.ProcessId is { } pid && pid == AssistantPane?.ProcessId ? "Assistant" : child.Name,
                 "a tool server the cockpit started",
                 _Megabytes(child.MemoryBytes),
                 _Share(child.MemoryBytes, usage.MemoryBytes))));
