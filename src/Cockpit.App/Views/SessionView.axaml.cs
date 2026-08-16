@@ -32,6 +32,22 @@ public partial class SessionView : UserControl
 
     private bool _pointerHeld;
 
+    // The window this pane is attached to, watched for minimise/deactivation. While a window is minimised — or left
+    // in the background unattended — a streaming transcript keeps recycling rows whose teardown never fully lands
+    // (the recycled containers stay reachable through the full app's style-activator web), so they pile up without
+    // bound. That is the overnight "idle at multi-GB" growth: an agent streams while nobody is at the window.
+    // Suspend the transcript (collapse its scroll owner — see _ApplySuspend) whenever the window is minimised, or
+    // has been deactivated long enough that the operator is plainly away; the panel then dematerialises its rows and
+    // builds no new ones, exactly as an inactive tab does. Restored the moment the window is used again.
+    private Window? _hostWindow;
+
+    // The operator is "away" once the window has been deactivated this long — long enough that a quick side-by-side
+    // focus switch never trips it, only genuinely stepping away (lunch, overnight) does.
+    private static readonly TimeSpan AwayAfter = TimeSpan.FromSeconds(60);
+    private DispatcherTimer? _awayTimer;
+    private bool _minimised;
+    private bool _away;
+
     // Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
     // instead of freezing at whatever it read on first render — and, since AC-531, the background-work
     // pop-out's own per-task elapsed times alongside it. Lives here rather than in the view model: the derived
@@ -119,6 +135,21 @@ public partial class SessionView : UserControl
         _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _activityAgeTicker.Tick += _OnActivityAgeTick;
         _activityAgeTicker.Start();
+
+        if (TopLevel.GetTopLevel(this) is Window window)
+        {
+            _hostWindow = window;
+            window.PropertyChanged += _OnHostWindowPropertyChanged;
+            window.Deactivated += _OnHostDeactivated;
+            window.Activated += _OnHostActivated;
+            _minimised = window.WindowState == WindowState.Minimized;
+            _away = false;
+            if (!window.IsActive)
+            {
+                _StartAwayTimer();
+            }
+            _ApplySuspend();
+        }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -131,6 +162,17 @@ public partial class SessionView : UserControl
 
         _activityAgeTicker?.Stop();
         _activityAgeTicker = null;
+
+        if (_hostWindow is { } hostWindow)
+        {
+            hostWindow.PropertyChanged -= _OnHostWindowPropertyChanged;
+            hostWindow.Deactivated -= _OnHostDeactivated;
+            hostWindow.Activated -= _OnHostActivated;
+            _hostWindow = null;
+        }
+
+        _awayTimer?.Stop();
+        _awayTimer = null;
 
         base.OnDetachedFromVisualTree(e);
 
@@ -146,6 +188,63 @@ public partial class SessionView : UserControl
             && Avalonia.Rendering.Composition.ElementComposition.GetElementVisual(root)?.Compositor is { } compositor)
         {
             _ = compositor.RequestCommitAsync();
+        }
+    }
+
+    private void _OnHostWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Window.WindowStateProperty)
+        {
+            _minimised = e.GetNewValue<WindowState>() == WindowState.Minimized;
+            _ApplySuspend();
+        }
+    }
+
+    // Deactivation only counts once it has lasted `AwayAfter`: a quick side-by-side focus switch must not blank the
+    // transcript, only genuinely stepping away should. A running DispatcherTimer ticks regardless of window focus.
+    private void _OnHostDeactivated(object? sender, EventArgs e) => _StartAwayTimer();
+
+    private void _OnHostActivated(object? sender, EventArgs e)
+    {
+        _awayTimer?.Stop();
+        if (_away)
+        {
+            _away = false;
+            _ApplySuspend();
+        }
+    }
+
+    private void _StartAwayTimer()
+    {
+        _awayTimer ??= new DispatcherTimer { Interval = AwayAfter };
+        _awayTimer.Tick -= _OnAwayElapsed;
+        _awayTimer.Tick += _OnAwayElapsed;
+        _awayTimer.Start();
+    }
+
+    private void _OnAwayElapsed(object? sender, EventArgs e)
+    {
+        _awayTimer?.Stop();
+        if (!_away)
+        {
+            _away = true;
+            _ApplySuspend();
+        }
+    }
+
+    // Collapse the transcript's scroll owner whenever the window is minimised or the operator is away: the
+    // virtualising panel then dematerialises its realised rows (that runs on layout, which neither state pauses) and
+    // builds no new ones, so a streaming agent cannot pile recycled rows up behind an unattended window. Restored —
+    // landing back on the newest row if we were following it — the moment the window is used again. Targets the
+    // scroll owner, not TranscriptItems (whose IsVisible is already bound to HasTranscript).
+    private void _ApplySuspend()
+    {
+        var suspend = _minimised || _away;
+        TranscriptScroll.IsVisible = !suspend;
+
+        if (!suspend && _stickToBottom)
+        {
+            Dispatcher.UIThread.Post(_FollowNewest);
         }
     }
 

@@ -434,16 +434,24 @@
                                                                  Classes="toolBody" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                                                  IsVisible="{Binding HasResult}"/>
                                         </StackPanel>
-                                        <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
-                                             value outranks a style setter, so only blanking is available. -->
-                                        <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
-                                            <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
-                                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                            <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
-                                                    Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </WrapPanel>
+                                        <!-- Lazy via PermissionBranch, like the row-level consent panel below: a
+                                             consent Button bound to the session's long-lived command pins the whole
+                                             recycled row through its CanExecuteChanged subscription, so it is handed
+                                             out only while pending and torn out on resolve. See PermissionBranch. -->
+                                        <ContentControl Content="{Binding PermissionBranch}">
+                                            <ContentControl.DataTemplates>
+                                                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+                                                    <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal">
+                                                        <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
+                                                                Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
+                                                                CommandParameter="{Binding}"/>
+                                                        <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
+                                                                Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
+                                                                CommandParameter="{Binding}"/>
+                                                    </WrapPanel>
+                                                </DataTemplate>
+                                            </ContentControl.DataTemplates>
+                                        </ContentControl>
                                     </StackPanel>
 
                                     <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
@@ -486,25 +494,34 @@
                  the row as the parameter, so allow/deny/always actually resolve the
                  session's pending decision and persist the always-allow rule. Compact
                  row: Allow gets the accent, the rest stay quiet and wrap if narrow. -->
-            <!-- paneChromeBlank, not paneChrome as elsewhere here: IsVisible is bound, and a local
-                 value outranks a style setter, so only blanking is available. -->
             <!-- AC-715: a question row answers with its own Send, so it must not also offer the
-                 four consent buttons — none of them is an answer. -->
-            <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal"
-                       IsVisible="{Binding IsPendingToolPermission}">
-                <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
-                        Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
-                        CommandParameter="{Binding}"/>
-                <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
-                        Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
-                        CommandParameter="{Binding}"/>
-                <Button Content="Always (exact)" Classes="Compact" Margin="0,4,6,0"
-                        Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysExactToolCommand}"
-                        CommandParameter="{Binding}"/>
-                <Button Content="Always (wildcard)" Classes="Compact" Margin="0,4,0,0"
-                        Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysWildcardToolCommand}"
-                        CommandParameter="{Binding}"/>
-            </WrapPanel>
+                 four consent buttons — none of them is an answer.
+                 Built lazily via PermissionBranch (not just IsVisible): a consent Button bound to the session's
+                 long-lived command subscribes to its CanExecuteChanged, so one left in the tree past its pending
+                 moment pins the whole recycled row. Content is `this` only while pending, so a resolved tool has
+                 no buttons to pin it and resolving one tears them out. See PermissionBranch's remarks. -->
+            <ContentControl Content="{Binding PermissionBranch}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="vm:TranscriptEntryViewModel">
+                        <!-- paneChromeBlank, not paneChrome: IsVisible would be redundant now the whole panel is
+                             handed out only while pending, so it is left off. -->
+                        <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal">
+                            <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
+                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
+                                    Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Content="Always (exact)" Classes="Compact" Margin="0,4,6,0"
+                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysExactToolCommand}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Content="Always (wildcard)" Classes="Compact" Margin="0,4,0,0"
+                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysWildcardToolCommand}"
+                                    CommandParameter="{Binding}"/>
+                        </WrapPanel>
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- AC-715: the row's own optional action — one labelled button any row kind can
                  carry, so a row that needs an affordance (AC-713's "Login" on an auth-error

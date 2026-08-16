@@ -31,6 +31,14 @@ public partial class AssistantChatWindow : Window
     private PropertyChangedEventHandler? _sessionHandler;
     private SessionViewModel? _attachedSession;
 
+    // Suspend the transcript (collapse the scroll owner) while minimised or once the window has been left unattended
+    // for `AwayAfter`, so a streaming agent cannot pile recycled rows up behind an idle window — same fix as
+    // SessionView (see its _ApplySuspend).
+    private static readonly TimeSpan AwayAfter = TimeSpan.FromSeconds(60);
+    private Avalonia.Threading.DispatcherTimer? _awayTimer;
+    private bool _minimised;
+    private bool _away;
+
     private ScrollViewer? _transcriptScroll;
 
     // Cockpit serves no external UI-Automation tree (see NoChildrenWindowPeer) — the assistant has its own in-app
@@ -148,6 +156,11 @@ public partial class AssistantChatWindow : Window
     // detaches this peephole's own event subscription, never the session — see its own remarks.
     protected override void OnClosed(EventArgs e)
     {
+        Deactivated -= _OnDeactivated;
+        Activated -= _OnActivated;
+        _awayTimer?.Stop();
+        _awayTimer = null;
+
         TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
         TranscriptScroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
         TranscriptScroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
@@ -189,6 +202,76 @@ public partial class AssistantChatWindow : Window
 
         Dispatcher.UIThread.Post(() => InputBox.Focus());
         Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
+
+        Deactivated += _OnDeactivated;
+        Activated += _OnActivated;
+        _minimised = WindowState == WindowState.Minimized;
+        if (!IsActive)
+        {
+            _StartAwayTimer();
+        }
+        _ApplySuspend();
+    }
+
+    // Same leak, same fix as SessionView (see its _ApplySuspend): while this window is minimised — or left idle in
+    // the background — a streaming transcript keeps recycling rows whose teardown never fully lands, so they pile up.
+    // Collapse the scroll owner then, so the panel dematerialises its rows and builds no new ones; restore on use.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == WindowStateProperty && _transcriptScroll is not null)
+        {
+            _minimised = change.GetNewValue<WindowState>() == WindowState.Minimized;
+            _ApplySuspend();
+        }
+    }
+
+    // Deactivation only counts once it has lasted `AwayAfter`, so a quick focus switch never blanks the transcript.
+    private void _OnDeactivated(object? sender, EventArgs e) => _StartAwayTimer();
+
+    private void _OnActivated(object? sender, EventArgs e)
+    {
+        _awayTimer?.Stop();
+        if (_away)
+        {
+            _away = false;
+            _ApplySuspend();
+        }
+    }
+
+    private void _StartAwayTimer()
+    {
+        _awayTimer ??= new Avalonia.Threading.DispatcherTimer { Interval = AwayAfter };
+        _awayTimer.Tick -= _OnAwayElapsed;
+        _awayTimer.Tick += _OnAwayElapsed;
+        _awayTimer.Start();
+    }
+
+    private void _OnAwayElapsed(object? sender, EventArgs e)
+    {
+        _awayTimer?.Stop();
+        if (!_away)
+        {
+            _away = true;
+            _ApplySuspend();
+        }
+    }
+
+    private void _ApplySuspend()
+    {
+        if (_transcriptScroll is null)
+        {
+            return;
+        }
+
+        var suspend = _minimised || _away;
+        TranscriptScroll.IsVisible = !suspend;
+
+        if (!suspend && _stickToBottom)
+        {
+            Dispatcher.UIThread.Post(_FollowNewest);
+        }
     }
 
     private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)

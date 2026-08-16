@@ -191,6 +191,16 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // The generic allow/deny row: every pending consent except a question, which has its own Send.
     public bool IsPendingToolPermission => IsPendingPermission && !HasQuestionPrompts;
 
+    // Built lazily like the row-kind branches above (AC-722/#614): the allow/deny/always buttons bind to the
+    // session's long-lived AsyncRelayCommands, so each one subscribes to that command's CanExecuteChanged — which
+    // means the command holds the button, and the button's `$parent[TranscriptRowView]` binding holds the whole
+    // recycled row (measured in the real app: every realised tool row leaked its consent buttons through this
+    // chain, ~60 rows pinned per scroll pass, released only on close). Handing the buttons to the template only
+    // while the row is actually pending means a resolved tool has none to pin it, and resolving one flips this to
+    // null so the ContentControl tears the buttons out — detaching them and dropping the CanExecuteChanged
+    // subscription. Non-pending tool rows (the overwhelming majority) never build them at all.
+    public object? PermissionBranch => IsPendingToolPermission ? this : null;
+
     // Send only lights up once every question on the card has an answer — a half-filled card would send the agent
     // an answers object missing the keys it asked about.
     public bool CanSubmitAnswers =>
@@ -511,6 +521,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowHumanToolLine));
         OnPropertyChanged(nameof(HumanToolText));
         OnPropertyChanged(nameof(IsPendingToolPermission));
+        OnPropertyChanged(nameof(PermissionBranch));
         OnPropertyChanged(nameof(CanSubmitAnswers));
     }
 
