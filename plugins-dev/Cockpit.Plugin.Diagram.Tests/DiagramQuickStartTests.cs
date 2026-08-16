@@ -2,10 +2,8 @@ using Cockpit.Core.Abstractions.Diagrams;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
-/// <summary>
-/// AC-816 DoD: a session chosen at quick-start must come out of surface creation with zero capabilities —
-/// <c>Couple</c>, never <c>Grant</c> — so <c>read_diagram</c>/<c>edit_diagram</c> still ask their own consent.
-/// </summary>
+// AC-816 DoD: a session chosen at quick-start must come out of surface creation with zero capabilities —
+// Couple, never Grant — so read_diagram/edit_diagram still ask their own consent.
 public class DiagramQuickStartTests
 {
     [Fact]
