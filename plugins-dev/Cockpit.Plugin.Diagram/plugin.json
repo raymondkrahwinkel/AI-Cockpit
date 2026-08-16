@@ -1,11 +1,11 @@
 {
   "id": "diagram",
-  "name": "Diagram Builder",
+  "name": "Diagram & Whiteboard",
   "version": "0.9.0",
   "entryAssembly": "Cockpit.Plugin.Diagram.dll",
   "entryType": "Cockpit.Plugin.Diagram.DiagramPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "0.23.0",
-  "description": "Opens a Mermaid diagram in its own window, bound to a session you already have running.",
+  "description": "Opens a Mermaid diagram in its own window, bound to a session you already have running, and a freehand whiteboard panel.",
   "author": "Cockpit"
 }

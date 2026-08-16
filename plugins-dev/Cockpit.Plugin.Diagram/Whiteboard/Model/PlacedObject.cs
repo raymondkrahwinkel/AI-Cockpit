@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Whiteboard.Model;
+namespace Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 // The toolbar's flyout offers the first eight; Image is never chosen there — it is what a clipboard paste creates.
 public enum PlacedShapeKind

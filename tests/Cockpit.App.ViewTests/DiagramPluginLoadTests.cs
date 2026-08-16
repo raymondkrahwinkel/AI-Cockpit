@@ -42,7 +42,9 @@ public class DiagramPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        Assert.Equal(["diagram.panel", "diagram.list"], host.WorkspaceTypes.Select(r => r.Id));
+        // AC-836: one plugin, both surfaces — the whiteboard keeps its own workspace type id, so a saved
+        // workspace that held "whiteboard.panel" still finds it after the merge.
+        Assert.Equal(["diagram.panel", "diagram.list", "whiteboard.panel"], host.WorkspaceTypes.Select(r => r.Id));
         var registration = host.WorkspaceTypes[0];
         var toolbarAction = host.ToolbarActions[0];
 
@@ -70,6 +72,14 @@ public class DiagramPluginLoadTests
         toolbarAction.OnInvoke().GetAwaiter().GetResult();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
         Assert.Single(host.DialogKeys, key => key.StartsWith("diagram.document.", StringComparison.Ordinal));
+
+        // AC-836: the whiteboard surface builds from the same ALC — with no IWhiteboardAccessRegistry in this
+        // host's services, which is the "no host to fall through to" case the panel has to survive.
+        var whiteboardBody = host.WorkspaceTypes[2].CreateBody(new FakeWorkspaceContext());
+        Assert.IsAssignableFrom<Control>(whiteboardBody);
+
+        host.ToolbarActions[2].OnInvoke().GetAwaiter().GetResult();
+        Assert.Equal(["whiteboard.panel"], host.OpenedWorkspaceTypeIds);
 
         plugin.Dispose();
     });

@@ -262,6 +262,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the whiteboard now comes with the diagram plugin instead of being a plugin of its own — one install,
+  one update, and both surfaces stay exactly what they were: a diagram is still Mermaid text an agent may be given
+  permission to edit, a whiteboard is still a drawing an agent can only ever be shown. Whiteboards you already have
+  open keep working. If you had both plugins installed, the cockpit offers once, after the update, to remove the
+  old whiteboard plugin; keep it and nothing is taken away.
+
 - changed: a second Cockpit reaching this one over the network now counts as one remote caller rather than as
   nothing in particular. It is never treated as one of your sessions: it cannot set a session's statusline, read an
   agent's mail, answer a permission prompt or reuse one you granted a session on this machine, and the assistant's own servers

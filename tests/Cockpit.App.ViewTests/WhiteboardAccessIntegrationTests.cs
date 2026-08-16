@@ -33,7 +33,7 @@ public class WhiteboardAccessIntegrationTests
         Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
-        var discovered = new DiscoveredPlugin(folder, "whiteboard", manifest, hash, PluginLoadDecision.Load);
+        var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
         var plugin = activator.Activate(discovered);
@@ -44,7 +44,9 @@ public class WhiteboardAccessIntegrationTests
         var host = new RecordingHost(registry);
         plugin.Initialize(host);
 
-        var registration = Assert.Single(host.WorkspaceTypes);
+        // AC-836: the whiteboard is one of the merged plugin's surfaces now, so it is picked by id rather than
+        // being the only registration.
+        var registration = Assert.Single(host.WorkspaceTypes, type => type.Id == "whiteboard.panel");
         var body = registration.CreateBody(new FakeWorkspaceContext());
         Assert.IsAssignableFrom<Control>(body);
 
@@ -69,11 +71,11 @@ public class WhiteboardAccessIntegrationTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidateRoot = Path.Combine(directory.FullName, "plugins-dev", "Cockpit.Plugin.Whiteboard", "bin");
+            var candidateRoot = Path.Combine(directory.FullName, "plugins-dev", "Cockpit.Plugin.Diagram", "bin");
             if (Directory.Exists(candidateRoot))
             {
                 var dll = Directory
-                    .EnumerateFiles(candidateRoot, "Cockpit.Plugin.Whiteboard.dll", SearchOption.AllDirectories)
+                    .EnumerateFiles(candidateRoot, "Cockpit.Plugin.Diagram.dll", SearchOption.AllDirectories)
                     .FirstOrDefault();
                 return dll is null ? null : Path.GetDirectoryName(dll);
             }

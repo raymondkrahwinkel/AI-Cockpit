@@ -1,21 +1,26 @@
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Plugin.Diagram.Whiteboard;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Diagram;
 
 // Plugin-schil proof (AC-809): a workspace panel plus a toolbar action, so both host surfaces are exercised.
+// AC-836 folded the whiteboard in here as a second surface — same shell, its own registry, capabilities, MCP
+// server and consent text, so the agent never sees one document that changes shape.
 public sealed class DiagramPlugin : ICockpitPlugin
 {
     private const string WorkspaceTypeId = "diagram.panel";
     private const string ListWorkspaceTypeId = "diagram.list";
+    private const string WhiteboardWorkspaceTypeId = "whiteboard.panel";
 
+    // The id stays "diagram" so an existing install gets this as an update, not as a second plugin (AC-836).
     public PluginMetadata Metadata { get; } = new(
         Id: "diagram",
-        DisplayName: "Diagram Builder",
+        DisplayName: "Diagram & Whiteboard",
         Author: "Cockpit",
-        Description: "Renders a Mermaid-syntax diagram in a workspace panel.");
+        Description: "Renders a Mermaid-syntax diagram, and a freehand whiteboard, in a workspace panel.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -48,11 +53,21 @@ public sealed class DiagramPlugin : ICockpitPlugin
             Description = "Every diagram saved in this project's memory.",
         });
 
+        // AC-822's surface, unchanged by the merge (AC-836): its own workspace type, its own registry.
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(WhiteboardWorkspaceTypeId, "Whiteboard", context => new WhiteboardWorkspaceBody(context, host))
+        {
+            IconKind = MaterialIconKind.Pencil,
+            Description = "A freehand whiteboard: pencil, shape templates, pasted screenshots.",
+        });
+
         // AC-816: replaces the plain "Diagram Builder" open with a one-screen quick-start (name + optional session).
         host.AddToolbarAction(new ToolbarAction("Nieuw diagram", MaterialIconKind.Sitemap, () => _QuickStartAsync(host)));
 
         host.AddToolbarAction(new ToolbarAction("Diagrams", MaterialIconKind.FormatListBulleted,
             () => host.OpenWorkspaceAsync(ListWorkspaceTypeId)));
+
+        host.AddToolbarAction(new ToolbarAction("Whiteboard", MaterialIconKind.Pencil,
+            () => host.OpenWorkspaceAsync(WhiteboardWorkspaceTypeId)));
     }
 
     // AC-834: the quick-start's two answers — a name and a session that is already running — are exactly what a

@@ -117,11 +117,11 @@ public partial class ThemeHexColorGuardTests
         // The whiteboard's own surface (AC-821/AC-822): white paper, a yellow pencil ink and a blue shape stroke,
         // same argument as the workflow canvas's kind stripes above — a whiteboard's content is deliberately not
         // theme-driven, the way a real sheet of paper stays white under any repaint of the app around it.
-        "plugins-dev/Cockpit.Plugin.Whiteboard/Canvas/WhiteboardCanvasControl.cs",
-        "plugins-dev/Cockpit.Plugin.Whiteboard/Canvas/FreehandLayer.cs",
-        "plugins-dev/Cockpit.Plugin.Whiteboard/Canvas/ResizeHandle.cs",
-        "plugins-dev/Cockpit.Plugin.Whiteboard/Rendering/WhiteboardSnapshotVisual.cs",
-        "plugins-dev/Cockpit.Plugin.Whiteboard/Rendering/WhiteboardObjectPainter.cs",
+        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/WhiteboardCanvasControl.cs",
+        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/FreehandLayer.cs",
+        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/ResizeHandle.cs",
+        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardSnapshotVisual.cs",
+        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardObjectPainter.cs",
     };
 
     [Fact]

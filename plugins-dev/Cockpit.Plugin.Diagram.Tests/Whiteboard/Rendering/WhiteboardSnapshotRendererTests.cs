@@ -2,10 +2,10 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Cockpit.Plugin.Whiteboard.Model;
-using Cockpit.Plugin.Whiteboard.Rendering;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
-namespace Cockpit.Plugin.Whiteboard.Tests.Rendering;
+namespace Cockpit.Plugin.Diagram.Tests.Whiteboard.Rendering;
 
 // The one guarantee AC-822 and AC-823 both build on: a document renders to a raster image with freehand yellow
 // and placed objects blue-strict, at any moment, with no window required.
