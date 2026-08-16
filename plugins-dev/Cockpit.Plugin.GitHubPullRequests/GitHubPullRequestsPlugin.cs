@@ -26,7 +26,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         Id: "github-pull-requests",
         DisplayName: "GitHub Pull Requests",
         Author: "Cockpit",
-        Description: "Shows how many open GitHub pull requests are yours in the left menu — a button with a live \"N / M\" badge, your own open PR count next to how many are waiting on your review — refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP. Clicking it opens a dialog listing every open PR in a searchable, sortable grid with an \"Assigned to me\" filter, plus a Dashboard widget showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). A pull request that starts waiting for your review raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.");
+        Description: "Shows how many open GitHub pull requests are yours in the left menu — a button with a live \"N / M\" badge, your own open PR count next to how many are waiting on your review — refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP. Clicking it opens a dialog listing every open PR in a searchable, sortable grid with an \"Assigned to me\" filter, plus a Dashboard widget showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). A pull request that starts waiting for your review raises a toast with an \"Open in browser\" button. The prompt template is editable in settings. Also offers a get_pr_status MCP tool so agent sessions and the assistant can ask for one PR's checks/mergeable/reviews/title without polling GitHub themselves.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -49,6 +49,11 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         host.AddSessionBanner(session => new SessionPullRequestBannerControl(session));
 
         var settings = new GitHubPullRequestsSettings(host.Storage);
+
+        // AC-818: get_pr_status over MCP — checks/mergeable/reviews/title for one PR, cached briefly so several
+        // sessions waiting on the same PR share one `gh` call. Reuses this plugin's own gh-CLI client, not a
+        // second GitHub client.
+        _ = host.AddMcpEndpoint("cockpit-github-pull-requests", new GitHubPullRequestsMcpTools(new GitHubPrGhClient()), isEnabled: () => settings.McpEnabled);
 
         // One refresh source per plugin instance (AC-515): it polls in the background regardless of which of the
         // views below is on screen, and every one of them subscribes to it rather than fetching for itself — every
