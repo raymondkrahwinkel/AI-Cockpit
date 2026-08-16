@@ -29,6 +29,10 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private readonly IWhiteboardSnapshotRenderer _renderer = new WhiteboardSnapshotRenderer();
     private readonly WhiteboardControl _control;
     private readonly string _surfaceId;
+    private readonly string _documentTitle;
+    private readonly Border _saveBar;
+    private readonly Button _saveButton;
+    private readonly TextBlock _saveStatus;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
@@ -41,25 +45,39 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private IPluginSessionBinding _binding;
     private string? _boundSessionName;
     private string? _endedSessionName;
+    private string? _filePath;
+    private string _savedText;
+    private string? _fileAsLastSeen;
 
-    public WhiteboardWorkspaceBody(ICockpitHost host, string surfaceId, string? sessionPaneId)
+    public WhiteboardWorkspaceBody(ICockpitHost host, WhiteboardDocument document, string? sessionPaneId)
     {
         _host = host;
         _registry = host.Services.GetService(typeof(IWhiteboardAccessRegistry)) as IWhiteboardAccessRegistry;
-        _surfaceId = surfaceId;
-        _control = new WhiteboardControl(new WhiteboardDocument());
-        _control.Canvas.Changed += (_, _) => _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
+        _surfaceId = document.Id;
+        _documentTitle = document.Title;
+        _filePath = document.FilePath;
+        _savedText = WhiteboardCatalog.Serialize(document);
+        _fileAsLastSeen = _ReadFile(_filePath);
+        _control = new WhiteboardControl(document);
+        _control.Canvas.Changed += (_, _) =>
+        {
+            _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
+            _RefreshSaveBar();
+        };
 
+        (_saveBar, _saveButton, _saveStatus) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
 
-        Content = new DockPanel { Children = { _couplingBar, _control } };
+        Content = new DockPanel { Children = { _saveBar, _couplingBar, _control } };
+        DockPanel.SetDock(_saveBar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
+        _RefreshSaveBar();
 
         _binding = _Bind(sessionPaneId);
 
         if (_registry is not null)
         {
-            _registry.SurfaceOpened(_surfaceId, "Whiteboard", _Snapshot());
+            _registry.SurfaceOpened(_surfaceId, _documentTitle, _Snapshot());
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.ObjectPlaced += _OnObjectPlaced;
             _registry.ObjectErased += _OnObjectErased;
@@ -170,6 +188,108 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         return stream.ToArray();
     }
 
+    // W-2/AC-843: the statusregel — same shape as DiagramWorkspaceBody's save bar (AC-839), one Opslaan button plus
+    // where-it-landed text, so the board round-trips through the same 0/1/meerdere-paden rule as a diagram.
+    private (Border Bar, Button Save, TextBlock Status) _BuildSaveBar()
+    {
+        var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
+        save.Click += (_, _) => _ = _SaveAsync();
+        var status = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            MaxWidth = 320,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+
+        var bar = new Border
+        {
+            Padding = new Thickness(8, 4),
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { save, status } },
+        };
+        return (bar, save, status);
+    }
+
+    // Eén opslagweg (AC-839's precedent): een hand-tekening, een neergezette vorm, een plakte afbeelding en een
+    // agent-plaatsing (AC-854) komen allemaal via Document.Objects binnen, dus dit is voor alle vier dezelfde save.
+    private async Task _SaveAsync()
+    {
+        if (_filePath is { } existing)
+        {
+            _Persist(() =>
+            {
+                WhiteboardCatalog.Write(existing, _control.Canvas.Document, _fileAsLastSeen);
+                return existing;
+            });
+            return;
+        }
+
+        var homes = WhiteboardCatalog.WritableHomes(await _host.GetProjectMemoryRowsAsync(_binding.IsLive ? _binding.PaneId : null));
+        if (homes.Count == 0)
+        {
+            _host.ShowToast(
+                "Dit project heeft geen geheugenpad — voeg er een toe in de projecteditor voordat je een whiteboard opslaat.",
+                PluginToastSeverity.Warning);
+            return;
+        }
+
+        if (homes.Count == 1)
+        {
+            _Persist(() => WhiteboardCatalog.Create(homes[0].Reference, _control.Canvas.Document));
+            return;
+        }
+
+        // Meer dan één geheugenpad: vragen, niet kiezen (AC-812). Het antwoord blijft bij dít bord.
+        var flyout = new MenuFlyout();
+        foreach (var home in homes)
+        {
+            var item = new MenuItem { Header = home.Label ?? home.Reference };
+            item.Click += (_, _) => _Persist(() => WhiteboardCatalog.Create(home.Reference, _control.Canvas.Document));
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(_saveButton);
+    }
+
+    private void _Persist(Func<string> write)
+    {
+        try
+        {
+            _filePath = write();
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Opslaan is niet gelukt: {exception.Message}", PluginToastSeverity.Error);
+            return;
+        }
+
+        _savedText = WhiteboardCatalog.Serialize(_control.Canvas.Document);
+        _fileAsLastSeen = _ReadFile(_filePath);
+        _RefreshSaveBar();
+    }
+
+    private static string? _ReadFile(string? filePath)
+    {
+        try
+        {
+            return filePath is not null && File.Exists(filePath) ? File.ReadAllText(filePath) : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private void _RefreshSaveBar()
+    {
+        var dirty = WhiteboardCatalog.Serialize(_control.Canvas.Document) != _savedText;
+        var where = _filePath ?? "Nog geen bestand";
+        _saveStatus.Text = dirty ? $"{where} · onbewaarde wijzigingen" : where;
+        ToolTip.SetTip(_saveStatus, _filePath);
+        _saveButton.IsEnabled = dirty || _filePath is null;
+    }
+
     // An agent's object arriving over MCP (AC-854): it lands in the same document the operator draws in, marked as
     // the agent's so it is drawn and saved as such, and the registry's snapshot is refreshed so the next read of the
     // board shows it. Nothing already on the board is touched.
@@ -194,6 +314,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
                 PlacedByAgent = true,
             });
             _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
+            _RefreshSaveBar();
         });
     }
 
@@ -210,6 +331,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             if (_control.Canvas.Document.Remove(id))
             {
                 _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
+                _RefreshSaveBar();
             }
         });
     }
@@ -229,6 +351,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // a real state — after the session ended, or after Disconnect — not one the bar should hide from.
     private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip, MaterialIcon Pip, Button Couple, Button Disconnect, Button Invite) _BuildCouplingBar()
     {
+        // AC-843: the snelstart name, shown here too — not just in the venstertitel — same precedent as
+        // DiagramWorkspaceBody's titleLabel (AC-840).
+        var titleLabel = new TextBlock { Text = _documentTitle, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         var pip = new MaterialIcon { Kind = MaterialIconKind.RobotOutline, Width = 15, Height = 15 };
         var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Foreground = _Brush("CockpitAccentBrush") };
         var readChip = _Chip();
@@ -262,7 +387,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
                         Orientation = Orientation.Horizontal,
                         Spacing = 6,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Children = { pip, label, readChip, editChip },
+                        Children = { titleLabel, pip, label, readChip, editChip },
                     },
                 },
             },
