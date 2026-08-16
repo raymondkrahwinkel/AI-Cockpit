@@ -32,6 +32,14 @@ public partial class SessionView : UserControl
 
     private bool _pointerHeld;
 
+    // The window this pane is attached to, watched for minimise. While a window is minimised its renderer is
+    // paused, so a streaming transcript's recycled rows never get the compositor commit that removes their server
+    // scene visuals — they pile up without bound (measured: a pane streamed minimised keeps every recycled row and
+    // its heavy control tree; shown, it keeps one viewport's worth). That is the overnight "idle at multi-GB, 0
+    // sessions" growth: the operator minimises Cockpit while an agent streams. Suspend realisation while minimised
+    // (see _ApplyRendererPause) — the same thing an inactive tab already does, so its transcript stays at zero.
+    private Window? _hostWindow;
+
     // Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
     // instead of freezing at whatever it read on first render — and, since AC-531, the background-work
     // pop-out's own per-task elapsed times alongside it. Lives here rather than in the view model: the derived
@@ -119,6 +127,13 @@ public partial class SessionView : UserControl
         _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _activityAgeTicker.Tick += _OnActivityAgeTick;
         _activityAgeTicker.Start();
+
+        if (TopLevel.GetTopLevel(this) is Window window)
+        {
+            _hostWindow = window;
+            window.PropertyChanged += _OnHostWindowPropertyChanged;
+            _ApplyRendererPause(window.WindowState);
+        }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -131,6 +146,12 @@ public partial class SessionView : UserControl
 
         _activityAgeTicker?.Stop();
         _activityAgeTicker = null;
+
+        if (_hostWindow is { } hostWindow)
+        {
+            hostWindow.PropertyChanged -= _OnHostWindowPropertyChanged;
+            _hostWindow = null;
+        }
 
         base.OnDetachedFromVisualTree(e);
 
@@ -146,6 +167,29 @@ public partial class SessionView : UserControl
             && Avalonia.Rendering.Composition.ElementComposition.GetElementVisual(root)?.Compositor is { } compositor)
         {
             _ = compositor.RequestCommitAsync();
+        }
+    }
+
+    private void _OnHostWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Window.WindowStateProperty)
+        {
+            _ApplyRendererPause(e.GetNewValue<WindowState>());
+        }
+    }
+
+    // Minimised: collapse the transcript's scroll owner so the virtualising panel dematerialises its realised rows
+    // (that runs on layout, which a minimise does not pause) and stops building new ones — no churn the paused
+    // renderer can never clean up. Restored on un-minimise, landing back on the newest row if we were following it.
+    // Targets the scroll owner, not TranscriptItems (whose IsVisible is already bound to HasTranscript).
+    private void _ApplyRendererPause(WindowState state)
+    {
+        var minimised = state == WindowState.Minimized;
+        TranscriptScroll.IsVisible = !minimised;
+
+        if (!minimised && _stickToBottom)
+        {
+            Dispatcher.UIThread.Post(_FollowNewest);
         }
     }
 

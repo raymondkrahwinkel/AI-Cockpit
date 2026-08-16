@@ -189,6 +189,34 @@ public partial class AssistantChatWindow : Window
 
         Dispatcher.UIThread.Post(() => InputBox.Focus());
         Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
+
+        _ApplyRendererPause(WindowState);
+    }
+
+    // Same leak, same fix as SessionView (see its _ApplyRendererPause): while this window is minimised its renderer
+    // is paused, so the transcript's recycled rows never get the compositor commit that removes their scene visuals
+    // and pile up. Collapse the scroll owner while minimised so the panel dematerialises its rows and stops building
+    // new ones; restore on un-minimise. Guarded on the resolved scroll so an early WindowState init cannot touch the
+    // template before _OnOpened has built it.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == WindowStateProperty && _transcriptScroll is not null)
+        {
+            _ApplyRendererPause(change.GetNewValue<WindowState>());
+        }
+    }
+
+    private void _ApplyRendererPause(WindowState state)
+    {
+        var minimised = state == WindowState.Minimized;
+        TranscriptScroll.IsVisible = !minimised;
+
+        if (!minimised && _stickToBottom)
+        {
+            Dispatcher.UIThread.Post(_FollowNewest);
+        }
     }
 
     private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
