@@ -1161,22 +1161,6 @@
                                       IsChecked="{Binding Security.TerminalAccessEnabled}"/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
-                                <TextBlock Text="Let an agent read or edit a diagram" FontWeight="SemiBold"/>
-                                <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="When on, an agent can ask to read or edit a diagram surface you have open — you approve reading and editing separately, and reading always hands over the diagram exactly as it stands (never just what changed since). Off by default: while off the feature is not offered to any agent at all."/>
-                            </StackPanel>
-                            <CheckBox Content="Allow agents to read or edit my open diagrams (with per-surface, per-capability approval)"
-                                      IsChecked="{Binding Security.DiagramAccessEnabled}"/>
-
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
-                                <TextBlock Text="Let an agent read a whiteboard" FontWeight="SemiBold"/>
-                                <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="When on, an agent can ask to see a screenshot of a whiteboard surface you have open — you approve each surface, and what it receives is an image of the board exactly as it looks, not its shapes or strokes as data. It can never draw on it: writing to a whiteboard is not offered to agents at all. Off by default: while off the feature is not offered to any agent at all."/>
-                            </StackPanel>
-                            <CheckBox Content="Allow agents to see a screenshot of my open whiteboards (with per-surface approval)"
-                                      IsChecked="{Binding Security.WhiteboardAccessEnabled}"/>
-
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
                                 <TextBlock Text="Accept connections from a second Cockpit" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="Off by default: every MCP endpoint this cockpit hosts stays reachable only from this machine. Turning it on adds a second, TLS-protected listener on your network for each one, guarded by a shared key (generated for you below) instead of this run's own key — a second Cockpit types the address and key into its 'Add MCP server' dialog to reach this one as a node. Takes effect the next time you start Cockpit, not immediately."/>

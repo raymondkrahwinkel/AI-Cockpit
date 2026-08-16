@@ -71,12 +71,6 @@ internal sealed class CockpitConfigFile
     // The terminal-access master switch (AC-34); owned by the terminal-access settings store. Absent/false means the cockpit-terminal MCP is not advertised to any session.
     public TerminalAccessSettingsEntry? TerminalAccess { get; set; }
 
-    // The diagram-access master switch (AC-810); owned by the diagram-access settings store. Absent/false means the cockpit-diagram MCP is not advertised to any session.
-    public DiagramAccessSettingsEntry? DiagramAccess { get; set; }
-
-    // The whiteboard-access master switch (AC-823); owned by the whiteboard-access settings store. Absent/false means the cockpit-whiteboard MCP is not advertised to any session.
-    public WhiteboardAccessSettingsEntry? WhiteboardAccess { get; set; }
-
     // The network-node master switch and its persistent shared secret (AC-790); owned by the node-endpoint settings
     // store. Absent/false means every mounted MCP endpoint stays loopback-only.
     public NodeEndpointSettingsEntry? NodeEndpoint { get; set; }

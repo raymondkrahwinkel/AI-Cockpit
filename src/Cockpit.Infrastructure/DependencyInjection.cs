@@ -50,20 +50,14 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
-        // cockpit-diagram (AC-810): lets an agent read and edit a diagram surface the operator has open, gated by
-        // its own master switch and a per-capability Approve/Deny — the same shape as cockpit-terminal above.
-        services.AddSingleton(provider => new CockpitMcpEndpoint(
-            "cockpit-diagram",
-            typeof(Diagrams.DiagramMcpTools),
-            () => provider.GetRequiredService<Diagrams.DiagramAccessState>().Enabled));
+        // cockpit-diagram (AC-810): lets an agent read and edit a diagram surface the operator has open, gated by a
+        // per-capability Approve/Deny (AC-830 removed the standing master switch this used to sit behind).
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-diagram", typeof(Diagrams.DiagramMcpTools)));
 
         // cockpit-whiteboard (AC-823): lets an agent read a screenshot of a whiteboard surface the operator has
-        // open, gated by its own master switch and a Read-only Approve/Deny — same shape as cockpit-diagram above,
-        // minus edit (AC-820: the agent never writes to the canvas).
-        services.AddSingleton(provider => new CockpitMcpEndpoint(
-            "cockpit-whiteboard",
-            typeof(Whiteboard.WhiteboardMcpTools),
-            () => provider.GetRequiredService<Whiteboard.WhiteboardAccessState>().Enabled));
+        // open, gated by a Read-only Approve/Deny — same shape as cockpit-diagram above, minus edit (AC-820: the
+        // agent never writes to the canvas). AC-830 removed the standing master switch this used to sit behind.
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-whiteboard", typeof(Whiteboard.WhiteboardMcpTools)));
 
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
         // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
