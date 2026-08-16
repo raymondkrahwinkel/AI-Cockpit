@@ -6295,10 +6295,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        // The assistant's own session feeds this handler purely for the status plumbing (AC-543) — it is
-        // not a session the operator watches for attention/finished/idle toasts, and AttentionNotifier
-        // renders those as real OS notifications (AC-735: "Assistant Profile" / "Done" was showing up in
-        // the OS window switcher).
+        // The assistant's session feeds this handler only for status plumbing (AC-543), never for the
+        // OS-level attention/finished toasts a real session gets (AC-735).
         if (ReferenceEquals(session, _assistantSession))
         {
             return;
