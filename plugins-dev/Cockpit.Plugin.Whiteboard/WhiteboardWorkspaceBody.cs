@@ -11,10 +11,9 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Whiteboard;
 
-// AC-829: the panel as IWhiteboardAccessRegistry's producer — same pattern DiagramWorkspaceBody (AC-824/AC-810)
-// uses for IDiagramAccessRegistry, narrowed to AC-823's one capability: sign up on open, show the coupling bar,
-// keep the registry's snapshot in step with what the operator draws. No embedded conversation (that is AC-824's
-// own concern for the diagram surface, not asked for here).
+// AC-829: the panel as IWhiteboardAccessRegistry's producer — DiagramWorkspaceBody's pattern (AC-824/AC-810),
+// narrowed to AC-823's one capability: sign up on open, show the coupling bar, keep the registry's snapshot in
+// step with what the operator draws.
 internal sealed class WhiteboardWorkspaceBody : UserControl
 {
     private static readonly PixelSize SnapshotSize = new(800, 600);
