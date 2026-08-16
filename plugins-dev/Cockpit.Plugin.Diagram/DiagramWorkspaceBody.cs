@@ -55,6 +55,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly Border _proposalPanel;
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
+    private readonly ActivityStrip _activityStrip;
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
     private string? _filePath;
@@ -122,22 +123,25 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _handHint) = _BuildToolbar();
+        _activityStrip = new ActivityStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, _viewport },
+            Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, _activityStrip, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
         DockPanel.SetDock(_proposalPanel, Dock.Top);
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
+        DockPanel.SetDock(_activityStrip, Dock.Bottom);
 
         _RenderInto(document.MermaidText);
 
         // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
         // session is gone — lands on DetachedSessionBinding, which is the "no agent on this diagram" state.
         _binding = _Bind(sessionPaneId);
+        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
 
         if (_registry is not null)
         {
@@ -215,6 +219,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _binding.Ended -= _OnSessionEnded;
         _binding.Dispose();
         _binding = _Bind(paneId);
+        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
         _endedSessionName = null;
         _RefreshCouplingBar();
     }
@@ -473,6 +478,41 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _RefreshOverlay();
         _RefreshHandEditBar();
         _RefreshCouplingBar();
+    }
+
+    // AC-848: a click on an activity-strip line jumps to the object it named. A highlight only, deliberately not
+    // _Select — that would take the operator-hold an agent's edits are refused against (AC-852), which a line of
+    // history has no business acquiring.
+    private async Task _FlashObjectAsync(string holdKey)
+    {
+        var target = _objects.FirstOrDefault(o => o.HoldKey == holdKey);
+        if (target is null)
+        {
+            _host.ShowToast("Dat object staat niet meer op dit diagram.", PluginToastSeverity.Information);
+            return;
+        }
+
+        var bounds = new Rect(
+            target.Bounds.X * _svgScale,
+            target.Bounds.Y * _svgScale,
+            target.Bounds.Width * _svgScale,
+            target.Bounds.Height * _svgScale).Inflate(4);
+        var outline = new Border
+        {
+            Width = bounds.Width,
+            Height = bounds.Height,
+            BorderThickness = new Thickness(2),
+            BorderBrush = _Brush("CockpitAccentBrush"),
+            CornerRadius = new CornerRadius(6),
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(outline, bounds.X);
+        Canvas.SetTop(outline, bounds.Y);
+
+        _overlay.Children.Clear();
+        _overlay.Children.Add(outline);
+        await Task.Delay(1200);
+        _RefreshOverlay();
     }
 
     private void _SetConnecting(bool on)

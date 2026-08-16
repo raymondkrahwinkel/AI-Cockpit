@@ -33,6 +33,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private readonly Border _saveBar;
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
+    private readonly ActivityStrip _activityStrip;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
@@ -67,13 +68,22 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         (_saveBar, _saveButton, _saveStatus) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
+        _activityStrip = new ActivityStrip(host, _surfaceId, whiteboard: true, key =>
+        {
+            if (Guid.TryParse(key, out var id))
+            {
+                _control.Canvas.SelectObject(id);
+            }
+        });
 
-        Content = new DockPanel { Children = { _saveBar, _couplingBar, _control } };
+        Content = new DockPanel { Children = { _saveBar, _couplingBar, _activityStrip, _control } };
         DockPanel.SetDock(_saveBar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
+        DockPanel.SetDock(_activityStrip, Dock.Bottom);
         _RefreshSaveBar();
 
         _binding = _Bind(sessionPaneId);
+        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
 
         if (_registry is not null)
         {
@@ -140,6 +150,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _binding.Ended -= _OnSessionEnded;
         _binding.Dispose();
         _binding = _Bind(paneId);
+        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
         _endedSessionName = null;
         _RefreshCouplingBar();
     }

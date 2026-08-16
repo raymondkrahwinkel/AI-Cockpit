@@ -121,6 +121,17 @@ public sealed class WhiteboardCanvasControl : Border
     // Raised after the tool switches, including the automatic switch back to Select once a shape is placed.
     public event EventHandler? ToolChanged;
 
+    // AC-848: a click on an activity-strip line jumps to the object it named — the same select-and-show-handles as
+    // a click on the canvas itself, just triggered from off-canvas. A no-op when the object is gone (erased since).
+    public void SelectObject(Guid id)
+    {
+        if (Document.Find(id) is not null)
+        {
+            UseSelectTool();
+            _Select(id);
+        }
+    }
+
     public void UseSelectTool() => _SetTool(WhiteboardTool.Select);
 
     public void UsePencilTool() => _SetTool(WhiteboardTool.Pencil);
