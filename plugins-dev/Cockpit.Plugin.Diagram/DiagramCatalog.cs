@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Plugin.Diagram;
 
-/// <summary>One diagram found under a Memory row's <c>Diagrams/</c> folder (AC-812's file convention).</summary>
+// One diagram found under a Memory row's Diagrams/ folder (AC-812's file convention).
 internal readonly record struct DiagramEntry(string Title, string FilePath, string HomeLabel, string MermaidText);
 
 // AC-826: lists AC-812's <memory>/Diagrams/<slug>.md files across every Memory row AC-827's read seam reports.
