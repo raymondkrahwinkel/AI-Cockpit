@@ -10,8 +10,10 @@ using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Diagrams;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Whiteboard;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Terminal;
 
@@ -30,6 +32,8 @@ public sealed partial class SecurityOptionsViewModel(
     ITerminalAccessSettingsStore? terminalAccessSettings = null,
     IDiagramAccessSwitch? diagramAccessSwitch = null,
     IDiagramAccessSettingsStore? diagramAccessSettings = null,
+    IWhiteboardAccessSwitch? whiteboardAccessSwitch = null,
+    IWhiteboardAccessSettingsStore? whiteboardAccessSettings = null,
     INodeEndpointSettingsStore? nodeEndpointSettings = null,
     IEnumerable<ICockpitInternalMcpProvider>? mcpEndpointHosts = null,
     INodePairingBroker? nodePairing = null,
@@ -51,6 +55,9 @@ public sealed partial class SecurityOptionsViewModel(
 
     // Same guard as _loadingTerminalAccess, for the diagram-access toggle (AC-810).
     private bool _loadingDiagramAccess;
+
+    // Same guard as _loadingTerminalAccess, for the whiteboard-access toggle (AC-823).
+    private bool _loadingWhiteboardAccess;
 
     // True only while RefreshAsync seeds the node toggle from disk (AC-790) — same guard, same reason, as
     // _loadingTerminalAccess above.
@@ -79,6 +86,12 @@ public sealed partial class SecurityOptionsViewModel(
     // advertised to any session. Turning it on makes it reachable, still behind a per-capability Approve/Deny.
     [ObservableProperty]
     private bool _diagramAccessEnabled;
+
+    // The whiteboard-access master switch (AC-823): off by default. While off, the `cockpit-whiteboard` MCP is not
+    // advertised to any session. Turning it on makes it reachable, still behind a per-surface Approve/Deny — reading
+    // only, there is no edit_whiteboard to grant.
+    [ObservableProperty]
+    private bool _whiteboardAccessEnabled;
 
     // The network-node master switch (AC-790): off by default. While off, every mounted MCP endpoint stays
     // loopback-only. Turning it on takes effect on the next launch — unlike the terminal-access toggle above, this
@@ -268,6 +281,19 @@ public sealed partial class SecurityOptionsViewModel(
             if (diagramAccessSwitch is not null)
             {
                 diagramAccessSwitch.Enabled = diagram.Enabled;
+            }
+        }
+
+        // AC-823: same "absent in design-time/unit-test graph" shape as terminal access above.
+        if (whiteboardAccessSettings is not null)
+        {
+            var whiteboard = await whiteboardAccessSettings.LoadAsync().ConfigureAwait(true);
+            _loadingWhiteboardAccess = true;
+            WhiteboardAccessEnabled = whiteboard.Enabled;
+            _loadingWhiteboardAccess = false;
+            if (whiteboardAccessSwitch is not null)
+            {
+                whiteboardAccessSwitch.Enabled = whiteboard.Enabled;
             }
         }
 
@@ -547,6 +573,22 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         await diagramAccessSettings.SaveAsync(new DiagramAccessSettings { Enabled = value }).ConfigureAwait(true);
+    }
+
+    // Mirrors OnTerminalAccessEnabledChanged above, for the whiteboard-access switch (AC-823).
+    async partial void OnWhiteboardAccessEnabledChanged(bool value)
+    {
+        if (_loadingWhiteboardAccess || whiteboardAccessSettings is null)
+        {
+            return;
+        }
+
+        if (whiteboardAccessSwitch is not null)
+        {
+            whiteboardAccessSwitch.Enabled = value;
+        }
+
+        await whiteboardAccessSettings.SaveAsync(new WhiteboardAccessSettings { Enabled = value }).ConfigureAwait(true);
     }
 
     // The node toggle changed (AC-790). Unlike terminal access above, this never flips anything live — the
