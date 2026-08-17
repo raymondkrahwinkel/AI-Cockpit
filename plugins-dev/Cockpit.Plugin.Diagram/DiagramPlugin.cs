@@ -12,9 +12,7 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Diagram;
 
 // Plugin-schil proof (AC-809): a toolbar action plus a window, so both host surfaces are exercised.
-// AC-836 folded the whiteboard in here as a second surface, AC-864/AC-873 a third (wireframe) — same shell, each
-// with its own registry, capabilities, MCP server and consent text, so the agent never sees one document that
-// changes shape.
+// AC-836/AC-864 folded whiteboard and wireframe in as a second and third surface, same shell each.
 public sealed class DiagramPlugin : ICockpitPlugin
 {
     // Reused as the diagrams dialog's ShowDialogAsync singleInstanceKey — one list at a time (AC-850).

@@ -15,10 +15,9 @@ using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
 
-// The whole body of a wireframe window (AC-873), same shape as DiagramWorkspaceBody (AC-834/AC-837) — read that one
-// first. Deviations: the render is a live Avalonia control tree, not an SVG picture, so it is measured against a
-// fixed design canvas rather than a size read off a rendered picture; and there is no hand-editing here yet — the
-// source box is read-only end to end until WF-5 gives the surface its own click-to-edit.
+// The whole body of a wireframe window (AC-873), same shape as DiagramWorkspaceBody — read that one first.
+// Deviations: measured against a fixed design canvas rather than a size read off a rendered picture, and no
+// hand-editing yet — the source box stays read-only until WF-5.
 internal sealed class WireframeWorkspaceBody : UserControl
 {
     // AC-837 zoom/pan range and wheel feel, same constants as the diagram.
