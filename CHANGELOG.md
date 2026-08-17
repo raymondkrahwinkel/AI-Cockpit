@@ -294,6 +294,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   creating a duplicate when you ask it to set a project up. One connection being unreachable or signed out never
   hides what the others have to offer.
 
+- added: you can now plant a pin on a diagram or whiteboard object with a question — it lands right away as a
+  "📍 pin N" reference in the coupled session's chat, so the agent can answer without a second chat window. A pin
+  stays attached to its object across a re-render, and a Pins panel lists every one with a "Sluiten" button once
+  it's been answered. Without a coupled session, planting a pin is switched off — the button says why.
+
 ### Changed
 
 - changed: the whiteboard now comes with the diagram plugin instead of being a plugin of its own — one install,

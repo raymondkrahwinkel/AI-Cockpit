@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -33,7 +34,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private readonly Border _saveBar;
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
+    private readonly Button _pinButton;
     private readonly ActivityStrip _activityStrip;
+    private readonly PinStrip _pinStrip;
     private readonly PresenceIndicators _presence;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
@@ -71,7 +74,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _RefreshSaveBar();
         };
 
-        (_saveBar, _saveButton, _saveStatus) = _BuildSaveBar();
+        (_saveBar, _saveButton, _saveStatus, _pinButton) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
         (var convertBar, _convertButton, _convertStatus) = _BuildConvertBar();
         _activityStrip = new ActivityStrip(host, _surfaceId, new WhiteboardActivityJournal(_registry), key =>
@@ -81,19 +84,31 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
                 _control.Canvas.SelectObject(id);
             }
         });
+        _pinStrip = new PinStrip(host, _surfaceId, whiteboard: true, key =>
+        {
+            if (Guid.TryParse(key, out var id))
+            {
+                _control.Canvas.SelectObject(id);
+            }
+        });
         _presence = new PresenceIndicators(host, _surfaceId, whiteboard: true);
+        _control.Canvas.SelectionChanged += (_, _) => _RefreshPinButton();
 
-        Content = new DockPanel { Children = { _saveBar, _couplingBar, _presence, _activityStrip, convertBar, _control } };
+        Content = new DockPanel { Children = { _saveBar, _couplingBar, _presence, _pinStrip, _activityStrip, convertBar, _control } };
         DockPanel.SetDock(_saveBar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
         DockPanel.SetDock(_presence, Dock.Top);
+        DockPanel.SetDock(_pinStrip, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
         DockPanel.SetDock(convertBar, Dock.Bottom);
         _RefreshSaveBar();
 
-        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, _RefreshCouplingBar);
+        // Bound before the first _RefreshPinButton (AC-849): that reads _sessionBinding.IsLive for the pin button.
+        // The same callback that refreshes the coupling bar on a change refreshes that button too.
+        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshPinButton(); });
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _RefreshPinButton();
 
         if (_registry is not null)
         {
@@ -156,6 +171,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _RefreshCouplingBar();
+        _RefreshPinButton();
     }
 
     // AC-842's invite: a Grant *request*, not a silent Grant — the same Approve/Deny gate read_whiteboard uses,
@@ -294,8 +310,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     }
 
     // W-2/AC-843: the statusregel — same shape as DiagramWorkspaceBody's save bar (AC-839), one Opslaan button plus
-    // where-it-landed text, so the board round-trips through the same 0/1/meerdere-paden rule as a diagram.
-    private (Border Bar, Button Save, TextBlock Status) _BuildSaveBar()
+    // where-it-landed text. AC-849's Prikken sits beside it — the operator's question about whatever is selected,
+    // sent to the coupled session as a "📍 pin N" reference, see _AddPin.
+    private (Border Bar, Button Save, TextBlock Status, Button Pin) _BuildSaveBar()
     {
         var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
@@ -307,13 +324,74 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
+        var pin = new Button { Content = "Prikken", Classes = { "Compact" } };
+        pin.Click += (_, _) => _AddPin(pin);
 
         var bar = new Border
         {
             Padding = new Thickness(8, 4),
-            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { save, status } },
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { save, status, pin } },
         };
-        return (bar, save, status);
+        return (bar, save, status, pin);
+    }
+
+    // AC-849: prikken needs both a selected object and a live session to send the reference to — same "explain at
+    // the point of use" rule as DiagramWorkspaceBody._RefreshHandEditBar's pin button.
+    private void _RefreshPinButton()
+    {
+        var selected = _control.Canvas.SelectedId is not null;
+        _pinButton.IsEnabled = _registry is not null && _sessionBinding.IsLive && selected;
+        ToolTip.SetTip(
+            _pinButton,
+            !_sessionBinding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
+            : !selected ? "Selecteer eerst een object om te prikken."
+            : "Prik een vraag op dit object.");
+    }
+
+    // AC-849: plants a pin on the selected object and sends its "📍 pin N" reference to the coupled session right
+    // away — same fire-and-forget SendAsync as _Ask's convert prompt, since a pin's whole point is landing as a
+    // chat message, not living only on this board.
+    private void _AddPin(Control anchor)
+    {
+        if (_registry is null || !_sessionBinding.IsLive || _control.Canvas.SelectedId is not { } id)
+        {
+            return;
+        }
+
+        var label = _control.Canvas.Document.Find(id) is PlacedObject placed ? placed.Text ?? placed.ShapeKind.ToString() : null;
+        var question = new TextBox { Width = 260, PlaceholderText = "Waar twijfel je over?" };
+        var confirm = new Button { Content = "Prikken", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var flyout = new Flyout
+        {
+            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { question, confirm } },
+        };
+
+        void Plant()
+        {
+            var text = question.Text?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            flyout.Hide();
+            _registry.AddPin(_surfaceId, id.ToString(), text);
+            var index = _registry.Pins(_surfaceId).Count;
+            _ = _sessionBinding.SendAsync(PinMessage.Compose(_documentTitle, index, label, text));
+        }
+
+        confirm.Click += (_, _) => Plant();
+        question.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                Plant();
+            }
+        };
+
+        flyout.ShowAt(anchor);
+        question.Focus();
     }
 
     // Eén opslagweg (AC-839's precedent): een hand-tekening, een neergezette vorm, een plakte afbeelding en een
