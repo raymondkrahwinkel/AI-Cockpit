@@ -10,10 +10,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Diagram;
 
-// AC-847: what a coupled surface is doing right now, at a glance — an agent pip and an operator pip, one line of
-// "what's happening", one running change count. Same shared-registry shape as ActivityStrip (read that one first),
-// and the same "absent, not empty-but-present" discipline: with nothing coupled this whole control collapses rather
-// than showing idle pips and a blank line.
+// AC-847: what a coupled surface is doing right now — an agent pip, an operator pip, a "what's happening" line, a
+// running change count. Same shared-registry shape as ActivityStrip (read that one first), and the same "absent,
+// not empty-but-present" discipline: with nothing coupled this whole control collapses instead of showing idle pips.
 internal sealed class PresenceIndicators : Border
 {
     // How long a fresh non-operator edit counts as "writing" before the pip and the live line settle back to
@@ -167,10 +166,9 @@ internal sealed class PresenceIndicators : Border
     private static (string Origin, string Summary, bool Reverted)? _LastEntry(IReadOnlyList<WhiteboardHistoryEntry>? entries) =>
         entries is { Count: > 0 } list ? (list[^1].Origin, list[^1].Summary, list[^1].Reverted) : null;
 
-    // One shared clock for the "writing" state: the agent pip's colour and the live line's wording never disagree
-    // about whether an edit is still fresh, because both read this same flag. Same generation-counter shape as
-    // DiagramWorkspaceBody's own glow timer, so a rapid second edit restarts the window rather than an older timer
-    // clearing a newer one.
+    // One shared clock: the pip colour and the live line never disagree about freshness, because both read this
+    // flag. Generation-counter shape, like DiagramWorkspaceBody's own glow timer, so a rapid second edit restarts
+    // the window rather than an older timer clearing a newer one.
     private async Task _PulseWritingAsync()
     {
         var myGeneration = ++_writingGeneration;

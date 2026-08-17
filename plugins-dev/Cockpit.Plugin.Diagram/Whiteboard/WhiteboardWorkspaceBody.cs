@@ -19,8 +19,7 @@ namespace Cockpit.Plugin.Diagram.Whiteboard;
 
 // A whiteboard as its own window beside the cockpit (AC-842), bound to a session that is already running — the
 // whiteboard counterpart to DiagramWorkspaceBody (AC-834); read that one first. Deviation: the invite is a separate,
-// visible ask — Couple never implies Grant (AC-810's boundary) — and it only ever offers read; the agent's own write
-// grant (AC-854) is asked by the agent, per board.
+// visible ask (Couple never implies Grant, AC-810) and only ever offers read; write (AC-854) is asked by the agent.
 internal sealed class WhiteboardWorkspaceBody : UserControl
 {
     private static readonly PixelSize SnapshotSize = new(800, 600);
