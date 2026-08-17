@@ -51,8 +51,8 @@ public partial class SessionView : UserControl
     // Windows and X11. DiagnosticsBackgroundService's probe is the one thing in the process that sees it.
     private bool _renderClockPaused;
 
-    // Set by a test before this is attached; otherwise resolved from the container on attach, the same lazy
-    // service lookup TtyView does. Null in any host that has no diagnostics service — then only minimising pauses.
+    // Set by a test before this is attached; otherwise resolved from the container on attach, and only on macOS —
+    // see _ResolveDiagnostics. Null leaves this pane on exactly the pre-AC-883 behaviour: minimising, nothing else.
     internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
     // Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
@@ -149,7 +149,7 @@ public partial class SessionView : UserControl
             window.PropertyChanged += _OnHostWindowPropertyChanged;
             _windowMinimised = window.WindowState == WindowState.Minimized;
 
-            Diagnostics ??= Program.Services?.GetService<DiagnosticsBackgroundService>();
+            _ResolveDiagnostics();
             if (Diagnostics is { } diagnostics)
             {
                 diagnostics.RenderersShouldPauseChanged += _OnRenderersShouldPauseChanged;
@@ -207,6 +207,17 @@ public partial class SessionView : UserControl
         {
             _windowMinimised = e.GetNewValue<WindowState>() == WindowState.Minimized;
             _ApplyRendererPause();
+        }
+    }
+
+    // macOS only, and gated here rather than only inside the decision: on Windows and X11 the pane must not even
+    // subscribe. An inert delegate is still a delegate held by a process-lifetime singleton, and those platforms
+    // have no problem to solve. A test sets Diagnostics itself, so it can exercise the macOS path off a Mac.
+    private void _ResolveDiagnostics()
+    {
+        if (Diagnostics is null && OperatingSystem.IsMacOS())
+        {
+            Diagnostics = Program.Services?.GetService<DiagnosticsBackgroundService>();
         }
     }
 

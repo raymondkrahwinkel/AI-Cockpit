@@ -9,6 +9,8 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Sessions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.ViewTests;
@@ -171,6 +173,50 @@ public sealed class RenderClockStallPauseTests
 
             window.Close();
         });
+    }
+
+    [Fact]
+    public void OnWindowsAndLinux_APaneDoesNotEvenSubscribe()
+    {
+        // The hard requirement from AC-882: their behaviour after af2fe273/cc85ca1e must not change at all. Gating
+        // only the decision would still leave every pane holding a delegate on a process-lifetime singleton — an
+        // inert leak surface on platforms with no problem to solve. So the resolve itself is gated, and this says so.
+        // The container is populated on purpose: with Program.Services left null, "resolved nothing" and "was never
+        // allowed to resolve" are indistinguishable, and the first draft of this test passed on that emptiness.
+        var previous = Program.Services;
+        var container = new ServiceCollection()
+            .AddSingleton<DiagnosticsBackgroundService>()
+            .AddSingleton(NullLogger<DiagnosticsBackgroundService>.Instance)
+            .AddSingleton<ILogger<DiagnosticsBackgroundService>>(NullLogger<DiagnosticsBackgroundService>.Instance)
+            .BuildServiceProvider();
+
+        try
+        {
+            Program.Services = container;
+
+            HeadlessAvalonia.Run(() =>
+            {
+                Assert.NotNull(Program.Services.GetService<DiagnosticsBackgroundService>());
+
+                var vm = new SessionViewModel { ReadingLevel = ReadingLevel.Focus };
+                var view = new SessionView { DataContext = vm };
+                var window = new Window { Content = view, Width = 820, Height = 640 };
+                window.Show();
+                window.UpdateLayout();
+
+                Assert.True(
+                    OperatingSystem.IsMacOS() || view.Diagnostics is null,
+                    "a pane off macOS reached into the container anyway, so it is subscribing to a signal that can "
+                    + "never fire there — the pre-AC-883 Windows/Linux path is no longer untouched");
+
+                window.Close();
+            });
+        }
+        finally
+        {
+            Program.Services = previous;
+            container.Dispose();
+        }
     }
 
     private static (SessionView View, Window Window, ScrollViewer Scroll) _ShowPane(

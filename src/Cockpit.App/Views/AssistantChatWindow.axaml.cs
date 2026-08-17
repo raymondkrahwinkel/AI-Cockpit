@@ -40,7 +40,8 @@ public partial class AssistantChatWindow : Window
     private bool _windowMinimised;
     private bool _renderClockPaused;
 
-    // Set by a test before this is shown; otherwise resolved from the container on open.
+    // Set by a test before this is shown; otherwise resolved from the container on open, and only on macOS — see
+    // SessionView._ResolveDiagnostics for why Windows and X11 must not even subscribe.
     internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
     // Cockpit serves no external UI-Automation tree (see NoChildrenWindowPeer) — the assistant has its own in-app
@@ -208,7 +209,11 @@ public partial class AssistantChatWindow : Window
 
         _windowMinimised = WindowState == WindowState.Minimized;
 
-        Diagnostics ??= Program.Services?.GetService<DiagnosticsBackgroundService>();
+        if (Diagnostics is null && OperatingSystem.IsMacOS())
+        {
+            Diagnostics = Program.Services?.GetService<DiagnosticsBackgroundService>();
+        }
+
         if (Diagnostics is { } diagnostics)
         {
             diagnostics.RenderersShouldPauseChanged += _OnRenderersShouldPauseChanged;
