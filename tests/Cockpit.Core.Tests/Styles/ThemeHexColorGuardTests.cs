@@ -122,6 +122,11 @@ public partial class ThemeHexColorGuardTests
         "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/ResizeHandle.cs",
         "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardSnapshotVisual.cs",
         "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardObjectPainter.cs",
+
+        // The wireframe sketch's greys (AC-871): a wireframe must read as a sketch, never as a finished design, so
+        // no product colour belongs in it. All eight literals are achromatic — no token to point at even in
+        // principle — and whole-file by this set's own criterion, since it is one reason repeated.
+        "plugins-dev/Cockpit.Plugin.Diagram/Wireframe/Rendering/WireframePalette.cs",
     };
 
     [Fact]

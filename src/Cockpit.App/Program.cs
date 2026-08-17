@@ -24,7 +24,9 @@ namespace Cockpit.App;
 
 sealed class Program
 {
-    public static IServiceProvider Services { get; private set; } = null!;
+    // AC-883: internal rather than private so a view test can populate the container and then prove a pane did
+    // *not* reach into it. With it null, "resolved nothing" and "was never allowed to resolve" look identical.
+    public static IServiceProvider Services { get; internal set; } = null!;
 
     // How long a restart-launched instance waits for the outgoing one to release the single-instance claim before
     // giving up. The outgoing side is hard-exited by the exit watchdog within a few seconds (bug #32), and the

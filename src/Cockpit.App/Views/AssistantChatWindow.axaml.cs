@@ -11,7 +11,9 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
 
@@ -32,6 +34,15 @@ public partial class AssistantChatWindow : Window
     private SessionViewModel? _attachedSession;
 
     private ScrollViewer? _transcriptScroll;
+
+    // The two independent reasons this window's renderer can be paused, kept apart so lifting one never lifts the
+    // other. See SessionView's own fields — same pause, same AC-883 reasoning, one window further out.
+    private bool _windowMinimised;
+    private bool _renderClockPaused;
+
+    // Set by a test before this is shown; otherwise resolved from the container on open, and only on macOS — see
+    // SessionView._ResolveDiagnostics for why Windows and X11 must not even subscribe.
+    internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
     // Cockpit serves no external UI-Automation tree (see NoChildrenWindowPeer) — the assistant has its own in-app
     // voice channel, and exposing one to external UIA clients leaks the transcript (Avalonia #8240). The window
@@ -161,6 +172,12 @@ public partial class AssistantChatWindow : Window
             vm.Dispose();
         }
 
+        // The service outlives this window, so a missed unsubscribe keeps the whole closed window alive.
+        if (Diagnostics is { } diagnostics)
+        {
+            diagnostics.RenderersShouldPauseChanged -= _OnRenderersShouldPauseChanged;
+        }
+
         base.OnClosed(e);
     }
 
@@ -190,7 +207,20 @@ public partial class AssistantChatWindow : Window
         Dispatcher.UIThread.Post(() => InputBox.Focus());
         Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
 
-        _ApplyRendererPause(WindowState);
+        _windowMinimised = WindowState == WindowState.Minimized;
+
+        if (Diagnostics is null && OperatingSystem.IsMacOS())
+        {
+            Diagnostics = Program.Services?.GetService<DiagnosticsBackgroundService>();
+        }
+
+        if (Diagnostics is { } diagnostics)
+        {
+            diagnostics.RenderersShouldPauseChanged += _OnRenderersShouldPauseChanged;
+            _renderClockPaused = diagnostics.RenderersShouldPause;
+        }
+
+        _ApplyRendererPause();
     }
 
     // Same leak, same fix as SessionView (see its _ApplyRendererPause): while this window is minimised its renderer
@@ -204,16 +234,31 @@ public partial class AssistantChatWindow : Window
 
         if (change.Property == WindowStateProperty && _transcriptScroll is not null)
         {
-            _ApplyRendererPause(change.GetNewValue<WindowState>());
+            _windowMinimised = change.GetNewValue<WindowState>() == WindowState.Minimized;
+            _ApplyRendererPause();
         }
     }
 
-    private void _ApplyRendererPause(WindowState state)
-    {
-        var minimised = state == WindowState.Minimized;
-        TranscriptScroll.IsVisible = !minimised;
+    private void _OnRenderersShouldPauseChanged(object? sender, bool paused) => SetRenderClockPaused(paused);
 
-        if (!minimised && _stickToBottom)
+    // Internal so a view test can drive the edge; production reaches it through the event above. Guarded on the
+    // resolved scroll for the same reason OnPropertyChanged is — a signal can arrive before _OnOpened built it.
+    internal void SetRenderClockPaused(bool paused)
+    {
+        _renderClockPaused = paused;
+
+        if (_transcriptScroll is not null)
+        {
+            _ApplyRendererPause();
+        }
+    }
+
+    private void _ApplyRendererPause()
+    {
+        var paused = _windowMinimised || _renderClockPaused;
+        TranscriptScroll.IsVisible = !paused;
+
+        if (!paused && _stickToBottom)
         {
             Dispatcher.UIThread.Post(_FollowNewest);
         }
