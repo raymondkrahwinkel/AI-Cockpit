@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
@@ -27,13 +28,14 @@ internal sealed class PluginTtySessionProviderAdapter(
     IMcpOAuthCoordinator? oauthCoordinator = null,
     ILogger<PluginTtySessionProviderAdapter>? logger = null,
     ISessionConversationSink? conversationSink = null,
-    IMcpOAuthProxy? oauthProxy = null) : ITtySessionProvider
+    IMcpOAuthProxy? oauthProxy = null,
+    IWorktreeManager? worktreeManager = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
-        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId);
+        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory);
 
         // AC-408: the same pane id TtyLauncher puts on the base environment as COCKPIT_PANE_ID, read back here
         // (rather than added to TtyLaunchContext itself) so ReportConversationId below knows which pane a later
@@ -77,7 +79,7 @@ internal sealed class PluginTtySessionProviderAdapter(
     // delegation, rather than blocking the launch. `projectId` (AC-218) scopes the registry read
     // to that project's own view — resolved host-side into the launch context, never a paneId→projectId lookup
     // here (that would need a UI-thread hop this synchronous spawn path cannot take).
-    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId)
+    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory)
     {
         if (mcpServerCatalog is null)
         {
@@ -87,7 +89,12 @@ internal sealed class PluginTtySessionProviderAdapter(
         try
         {
             var registry = mcpServerCatalog.GetServersForProjectAsync(projectId).GetAwaiter().GetResult();
-            var selected = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
+            // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
+            // directory names it explicitly here rather than through operator config. Blocking is consistent with
+            // the catalog read above — this spawn path is synchronous all the way out to ITtyLauncher.Launch.
+            var autoMounted = GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, CancellationToken.None).GetAwaiter().GetResult();
+            var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
+            var selected = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
             var servers = new List<PluginMcpServer>();
 
             // One budget for the whole launch, not one per server: this is the window in which the application stops

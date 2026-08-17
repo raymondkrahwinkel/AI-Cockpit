@@ -53,7 +53,9 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         // AC-818: get_pr_status over MCP — checks/mergeable/reviews/title for one PR, cached briefly so several
         // sessions waiting on the same PR share one `gh` call. Reuses this plugin's own gh-CLI client, not a
         // second GitHub client.
-        _ = host.AddMcpEndpoint("cockpit-github-pull-requests", new GitHubPullRequestsMcpTools(new GitHubPrGhClient()), isEnabled: () => settings.McpEnabled);
+
+        // AC-869: internal — the host auto-mounts it per git-repo session or the assistant, hidden otherwise.
+        _ = host.AddMcpEndpoint("cockpit-github-pull-requests", new GitHubPullRequestsMcpTools(new GitHubPrGhClient()), isEnabled: () => settings.McpEnabled, isInternal: true);
 
         // One refresh source per plugin instance (AC-515): it polls in the background regardless of which of the
         // views below is on screen, and every one of them subscribes to it rather than fetching for itself — every

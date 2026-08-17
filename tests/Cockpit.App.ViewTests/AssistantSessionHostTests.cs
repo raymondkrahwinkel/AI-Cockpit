@@ -248,6 +248,16 @@ public class AssistantSessionHostTests
         Assert.Contains(AssistantIdentity.McpServerName, selection);
     }
 
+    // AC-869: the assistant always has cockpit-github-pull-requests, regardless of its working directory — the
+    // git-repo rule other sessions get it through does not apply to the assistant at all.
+    [Fact]
+    public void McpSelection_AlwaysNamesTheGitHubPullRequestsServer()
+    {
+        var selection = AssistantSessionHost.McpSelection(_Profile(), []);
+
+        Assert.Contains(GitHubPullRequestsMcp.ServerName, selection);
+    }
+
     [Fact]
     public void McpSelection_WithNoSavedSelection_StillCarriesTheOperatorsOrdinaryServers()
     {
@@ -301,6 +311,7 @@ public class AssistantSessionHostTests
                 "depot",
                 AssistantIdentity.McpServerName,
                 AssistantIdentity.ActMcpServerName,
+                GitHubPullRequestsMcp.ServerName,
             },
             selection);
     }

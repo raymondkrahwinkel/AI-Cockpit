@@ -832,6 +832,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             AssistantIdentity.McpServerName,
             AssistantIdentity.ActMcpServerName,
+            // AC-869: the assistant always has cockpit-github-pull-requests, regardless of working directory —
+            // the one launch other than a git-repo session that names this internal endpoint.
+            GitHubPullRequestsMcp.ServerName,
         };
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they

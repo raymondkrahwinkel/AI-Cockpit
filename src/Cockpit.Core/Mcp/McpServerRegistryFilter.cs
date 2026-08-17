@@ -55,4 +55,24 @@ public static class McpServerRegistryFilter
         sessionSelection ?? (profileSelection is not null
             ? new HashSet<string>(profileSelection, StringComparer.OrdinalIgnoreCase)
             : null);
+
+    // AC-869: folds auto-mount names into `selection` before ApplySessionSelection narrows the registry. A
+    // null selection is materialized into the no-selection fan-out (OfferedToOperator) plus those names —
+    // the same trick AssistantSessionHost.McpSelection uses for its own two servers.
+    public static IReadOnlySet<string>? WithAutoMountedServers(
+        IReadOnlySet<string>? selection,
+        IReadOnlyList<McpServerConfig> registry,
+        IReadOnlyCollection<string> autoMountedServerNames)
+    {
+        if (autoMountedServerNames.Count == 0)
+        {
+            return selection;
+        }
+
+        var result = selection is null
+            ? new HashSet<string>(OfferedToOperator(registry).Select(server => server.Name), StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(selection, StringComparer.OrdinalIgnoreCase);
+        result.UnionWith(autoMountedServerNames);
+        return result;
+    }
 }

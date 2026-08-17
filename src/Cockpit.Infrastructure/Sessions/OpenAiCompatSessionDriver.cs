@@ -123,7 +123,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
         // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
-        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, cancellationToken).ConfigureAwait(false);
+        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken).ConfigureAwait(false);
 
         // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
         // which selection, so a local-model session missing its MCP servers is a log line rather than a silent
