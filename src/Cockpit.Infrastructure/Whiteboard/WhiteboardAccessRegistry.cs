@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Infrastructure.Collab;
 
 namespace Cockpit.Infrastructure.Whiteboard;
 
@@ -11,8 +12,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
 {
     private readonly object _lock = new();
     private readonly Dictionary<string, Surface> _surfaces = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, WhiteboardCoupling> _couplings = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _awaitingCoupling = new(StringComparer.Ordinal); // surfaceId -> session that asked for it (AC-835)
+    private readonly CouplingLedger<WhiteboardCoupling> _ledger = new(coupling => coupling.SessionId);
     private readonly Dictionary<string, List<HistoryEntry>> _history = new(StringComparer.Ordinal); // surfaceId -> its actions, oldest first
 
     public event Action<string, byte[]>? SnapshotChanged;
@@ -29,7 +29,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
 
     public void SurfaceOpened(string surfaceId, string name, byte[] initialSnapshotPng)
     {
-        WhiteboardCoupling? asked = null;
+        WhiteboardCoupling? asked;
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var existing))
@@ -42,10 +42,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
 
             // AC-835: this board is here because an agent asked for it, so it arrives coupled to that agent — with
             // nothing granted: reading it and drawing on it stay their own separate asks.
-            if (_awaitingCoupling.Remove(surfaceId, out var session) && !_couplings.ContainsKey(surfaceId))
-            {
-                _couplings[surfaceId] = asked = new WhiteboardCoupling(session, CanRead: false);
-            }
+            asked = _ledger.ConsumeAwaiting(surfaceId, session => new WhiteboardCoupling(session, CanRead: false));
         }
 
         if (asked is not null)
@@ -63,7 +60,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
 
         lock (_lock)
         {
-            _awaitingCoupling[request.SurfaceId] = request.SessionId;
+            _ledger.MarkAwaiting(request.SurfaceId, request.SessionId);
         }
 
         listeners(request);
@@ -76,7 +73,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         lock (_lock)
         {
             _surfaces.Remove(surfaceId);
-            wasCoupled = _couplings.Remove(surfaceId);
+            wasCoupled = _ledger.Remove(surfaceId);
             _history.Remove(surfaceId);
         }
 
@@ -105,7 +102,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     {
         lock (_lock)
         {
-            if (!_couplings.Remove(surfaceId))
+            if (!_ledger.Remove(surfaceId))
             {
                 return;
             }
@@ -127,10 +124,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         lock (_lock)
         {
             return _surfaces
-                .Select(surface => new WhiteboardSurfaceView(
-                    surface.Key,
-                    surface.Value.Name,
-                    _couplings.TryGetValue(surface.Key, out var coupling) && coupling.SessionId == sessionId ? coupling : null))
+                .Select(surface => new WhiteboardSurfaceView(surface.Key, surface.Value.Name, _ledger.CouplingOf(sessionId, surface.Key)))
                 .ToList();
         }
     }
@@ -153,7 +147,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     {
         lock (_lock)
         {
-            return _couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId ? coupling : null;
+            return _ledger.CouplingOf(sessionId, surfaceId);
         }
     }
 
@@ -161,35 +155,23 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     {
         lock (_lock)
         {
-            return _couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId != sessionId;
+            return _ledger.IsCoupledByAnother(sessionId, surfaceId);
         }
     }
 
     public void Couple(string sessionId, string surfaceId)
     {
-        WhiteboardCoupling coupling;
+        WhiteboardCoupling? coupling;
         lock (_lock)
         {
-            if (!_surfaces.ContainsKey(surfaceId))
-            {
-                throw new InvalidOperationException($"Whiteboard surface '{surfaceId}' is not open.");
-            }
-
-            if (_couplings.TryGetValue(surfaceId, out var existing))
-            {
-                if (existing.SessionId != sessionId)
-                {
-                    throw new InvalidOperationException($"Whiteboard surface '{surfaceId}' is already coupled to another agent.");
-                }
-
-                return; // Already coupled to this session, zero-capability or otherwise — nothing to change or announce.
-            }
-
-            coupling = new WhiteboardCoupling(sessionId, CanRead: false);
-            _couplings[surfaceId] = coupling;
+            coupling = _ledger.Couple(sessionId, surfaceId, _surfaces.ContainsKey(surfaceId), "Whiteboard",
+                session => new WhiteboardCoupling(session, CanRead: false));
         }
 
-        CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
+        if (coupling is not null)
+        {
+            CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
+        }
     }
 
     public void Grant(string sessionId, string surfaceId, WhiteboardCapability capability = WhiteboardCapability.Read)
@@ -203,7 +185,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
                 throw new InvalidOperationException($"Whiteboard surface '{surfaceId}' is not open.");
             }
 
-            if (_couplings.TryGetValue(surfaceId, out var existing))
+            if (_ledger.TryGet(surfaceId, out var existing))
             {
                 if (existing.SessionId != sessionId)
                 {
@@ -217,7 +199,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
                 coupling = new WhiteboardCoupling(sessionId, CanRead: true, CanWrite: write);
             }
 
-            _couplings[surfaceId] = coupling;
+            _ledger.Set(surfaceId, coupling);
         }
 
         CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
@@ -228,7 +210,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         string objectId;
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanWrite)
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanWrite)
                 || !_surfaces.TryGetValue(surfaceId, out var surface))
             {
                 return null;
@@ -248,7 +230,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     {
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanWrite)
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanWrite)
                 || !_surfaces.TryGetValue(surfaceId, out var surface)
                 || !(surface.PlacedBy.TryGetValue(objectId, out var placedBy) && placedBy == sessionId))
             {
@@ -329,7 +311,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     {
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanRead))
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanRead))
             {
                 return null;
             }
@@ -343,13 +325,13 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         WhiteboardCoupling coupling;
         lock (_lock)
         {
-            if (!_couplings.TryGetValue(surfaceId, out var existing) || existing.SessionId != sessionId || !existing.CanRead)
+            if (!_ledger.TryGet(surfaceId, out var existing) || existing.SessionId != sessionId || !existing.CanRead)
             {
                 return;
             }
 
             coupling = existing with { LastReadAt = DateTimeOffset.UtcNow };
-            _couplings[surfaceId] = coupling;
+            _ledger.Set(surfaceId, coupling);
         }
 
         CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
@@ -360,11 +342,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         List<string> dropped;
         lock (_lock)
         {
-            dropped = _couplings.Where(entry => entry.Value.SessionId == sessionId).Select(entry => entry.Key).ToList();
-            foreach (var surfaceId in dropped)
-            {
-                _couplings.Remove(surfaceId);
-            }
+            dropped = _ledger.RemoveAllFor(sessionId);
         }
 
         foreach (var surfaceId in dropped)
