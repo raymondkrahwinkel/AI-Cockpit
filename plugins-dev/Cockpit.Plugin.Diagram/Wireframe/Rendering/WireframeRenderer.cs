@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugin.Diagram.Wireframe.Model;
+using Cockpit.Core.Wireframe.Model;
 using static Cockpit.Plugin.Diagram.Wireframe.Rendering.WireframePalette;
 
 namespace Cockpit.Plugin.Diagram.Wireframe.Rendering;

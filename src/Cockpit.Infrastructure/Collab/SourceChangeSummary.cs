@@ -1,9 +1,10 @@
-namespace Cockpit.Infrastructure.Diagrams;
+namespace Cockpit.Infrastructure.Collab;
 
-// What `edit_diagram`'s consent prompt says about the change, derived mechanically (AC-810, same requirement as
-// AC-489: a wrong description is a consent bug, not a copy bug). Counts the longest shared run of lines (an LCS)
+// What a whole-source edit's consent prompt says about the change, derived mechanically (AC-810, same requirement
+// as AC-489: a wrong description is a consent bug, not a copy bug). Counts the longest shared run of lines (an LCS)
 // rather than a raw line-count delta, which would call an in-place rewrite "unchanged" whenever the counts match.
-internal static class DiagramChangeSummary
+// Shared by every text-carrying collab surface (AC-872), so it names no format of its own.
+internal static class SourceChangeSummary
 {
     public static string Describe(string before, string after)
     {

@@ -1,5 +1,5 @@
-using Cockpit.Plugin.Diagram.Wireframe;
-using Cockpit.Plugin.Diagram.Wireframe.Model;
+using Cockpit.Core.Wireframe;
+using Cockpit.Core.Wireframe.Model;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 

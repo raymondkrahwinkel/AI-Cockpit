@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Consent;
+using Cockpit.Infrastructure.Collab;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -11,7 +12,7 @@ namespace Cockpit.Infrastructure.Diagrams;
 
 // The `cockpit-diagram` MCP tools (AC-810), gated per-capability like `cockpit-terminal` (AC-34) — read that class
 // first. Deviations: `read_diagram` always returns the surface as it stands (a state, not a stream), and
-// `edit_diagram`'s consent text is derived from the real change (DiagramChangeSummary), never agent prose (cf. AC-489).
+// `edit_diagram`'s consent text is derived from the real change (SourceChangeSummary), never agent prose (cf. AC-489).
 // The per-object tools (AC-852) share Edit's one ask but write straight through: only `edit_diagram` still diffs.
 internal sealed class DiagramMcpTools
 {
@@ -139,7 +140,7 @@ internal sealed class DiagramMcpTools
         }
 
         var caller = McpRequestContext.CurrentPaneId ?? session;
-        var changeSummary = DiagramChangeSummary.Describe(_registry.PeekText(surface.SurfaceId) ?? "", source);
+        var changeSummary = SourceChangeSummary.Describe(_registry.PeekText(surface.SurfaceId) ?? "", source);
         if (await _EnsureCapabilityAsync(caller, surface, DiagramCapability.Edit, changeSummary).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
@@ -338,7 +339,7 @@ internal sealed class DiagramMcpTools
 
     // Read's prompt names the diagram and its size, because a snapshot read hands over everything already in it
     // (AC-810's deviation from AC-34: there is no "since the coupling" to lean on). Edit's prompt states the change
-    // itself, mechanically derived (DiagramChangeSummary), never text the calling agent composed.
+    // itself, mechanically derived (SourceChangeSummary), never text the calling agent composed.
     private static ConsentRequest _PromptFor(DiagramSurface surface, DiagramCapability needed, bool widening, string? changeSummary) =>
         needed == DiagramCapability.Read
             ? new ConsentRequest(

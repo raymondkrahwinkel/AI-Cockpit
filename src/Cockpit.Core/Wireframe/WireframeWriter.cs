@@ -1,11 +1,11 @@
 using System.Text;
-using Cockpit.Plugin.Diagram.Wireframe.Model;
+using Cockpit.Core.Wireframe.Model;
 
-namespace Cockpit.Plugin.Diagram.Wireframe;
+namespace Cockpit.Core.Wireframe;
 
 // The way back from tree to source text (AC-871). Two spaces per level is the canonical form the docs describe,
 // so parse-then-write on a canonical source gives the same text back character for character.
-internal static class WireframeWriter
+public static class WireframeWriter
 {
     public static string Write(WireframeNode root)
     {
@@ -14,9 +14,28 @@ internal static class WireframeWriter
         return builder.ToString().TrimEnd('\n');
     }
 
+    // One node as a single source line, indented by `indent` spaces and without its children.
+    public static string Line(WireframeNode node, int indent)
+    {
+        var builder = new StringBuilder();
+        _WriteLine(node, indent, builder);
+        return builder.ToString();
+    }
+
     private static void _Write(WireframeNode node, int depth, StringBuilder builder)
     {
-        builder.Append(' ', depth * 2).Append(node.Kind.ToString().ToLowerInvariant());
+        _WriteLine(node, depth * 2, builder);
+        builder.Append('\n');
+
+        foreach (var child in node.Children)
+        {
+            _Write(child, depth + 1, builder);
+        }
+    }
+
+    private static void _WriteLine(WireframeNode node, int indent, StringBuilder builder)
+    {
+        builder.Append(' ', indent).Append(node.Kind.ToString().ToLowerInvariant());
 
         if (node.Text is not null)
         {
@@ -41,14 +60,10 @@ internal static class WireframeWriter
                 builder.Append(modifier.Value);
             }
         }
-
-        builder.Append('\n');
-
-        foreach (var child in node.Children)
-        {
-            _Write(child, depth + 1, builder);
-        }
     }
+
+    // One piece of text as the source spells it: double-quoted, with its own quotes and backslashes escaped.
+    public static string Quote(string text) => $"\"{_Escape(text)}\"";
 
     private static string _Escape(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }

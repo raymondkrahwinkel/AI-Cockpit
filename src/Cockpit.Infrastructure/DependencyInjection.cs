@@ -59,6 +59,12 @@ public static class DependencyInjection
         // time — read and write each behind their own Approve/Deny, as cockpit-diagram above does.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-whiteboard", typeof(Whiteboard.WhiteboardMcpTools)));
 
+        // cockpit-wireframe (AC-872): the third collab surface — an agent writes a screen sketch in the wireframe
+        // text format and edits it component by component, read and edit each behind their own Approve/Deny. Its
+        // own server rather than tools on cockpit-diagram, because add_node and add_component are two vocabularies
+        // and one server carrying both would offer tools that mean nothing half the time (AC-864's grooming).
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-wireframe", typeof(Wireframe.WireframeMcpTools)));
+
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
         // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
         // cockpit-session and unlike cockpit-verify/cockpit-worktrees, because this one is now a delivery route

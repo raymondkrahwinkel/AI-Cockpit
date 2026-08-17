@@ -1,11 +1,11 @@
 using System.Text;
-using Cockpit.Plugin.Diagram.Wireframe.Model;
+using Cockpit.Core.Wireframe.Model;
 
-namespace Cockpit.Plugin.Diagram.Wireframe;
+namespace Cockpit.Core.Wireframe;
 
 // The whole wireframe language (AC-871): one component per line, `type "tekst" modifiers…`, nesting by
 // indentation. Nothing here is executable and nothing carries coordinates — the renderer decides placement.
-internal static class WireframeParser
+public static class WireframeParser
 {
     public static WireframeParseResult Parse(string source)
     {
