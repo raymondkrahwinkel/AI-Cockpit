@@ -20,8 +20,10 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class RenderClockWakeTests
 {
-    // CommitGraceTicks is 10, so at 60fps the loop stops asking for ticks ~170ms after the last commit.
-    private static readonly TimeSpan LongEnoughToPark = TimeSpan.FromMilliseconds(600);
+    // Poll rather than sleep a fixed span: the clock is process-wide, and windows other tests in this collection
+    // left open keep waking it. A single sleep-then-look reads whatever moment it lands on and fails at random
+    // (measured: green alone and in one full run, red in the next). Polling waits for a parked moment instead.
+    private static readonly TimeSpan ParkBudget = TimeSpan.FromSeconds(20);
 
     // Two orders of magnitude over a healthy round trip, and well under RenderClockHeartbeat.StallAfter, so this
     // fails on a broken wake edge rather than on a slow CI runner.
@@ -40,12 +42,18 @@ public sealed class RenderClockWakeTests
 
             // Settle first, so the idle below starts from a quiet pipeline rather than from the show.
             await compositor.RequestCommitAsync();
-            await Task.Delay(LongEnoughToPark);
+
+            var waited = TimeSpan.Zero;
+            while (!_RenderClockIsParked(compositor) && waited < ParkBudget)
+            {
+                await Task.Delay(50);
+                waited += TimeSpan.FromMilliseconds(50);
+            }
 
             Assert.True(
                 _RenderClockIsParked(compositor),
-                $"the render clock was still ticking after {LongEnoughToPark.TotalMilliseconds:0}ms of idle, so this "
-                + "test cannot prove anything about waking it — raise LongEnoughToPark or check CommitGraceTicks");
+                $"the render clock was still ticking after {waited.TotalMilliseconds:0}ms of idle, so this test "
+                + "cannot prove anything about waking it — a neighbouring test is keeping the compositor busy");
 
             var commit = compositor.RequestCommitAsync();
             var first = await Task.WhenAny(commit, Task.Delay(CommitBudget));
