@@ -56,10 +56,9 @@ public static class McpServerRegistryFilter
             ? new HashSet<string>(profileSelection, StringComparer.OrdinalIgnoreCase)
             : null);
 
-    // AC-869: folds auto-mount names (e.g. a git-repo-only Internal endpoint, judged outside this pure filter)
-    // into `selection` before ApplySessionSelection narrows the registry. A null selection is materialized
-    // into the no-selection fan-out (OfferedToOperator) plus those names — the same trick
-    // AssistantSessionHost.McpSelection already uses for its own two servers. Empty input is a no-op.
+    // AC-869: folds auto-mount names into `selection` before ApplySessionSelection narrows the registry. A
+    // null selection is materialized into the no-selection fan-out (OfferedToOperator) plus those names —
+    // the same trick AssistantSessionHost.McpSelection uses for its own two servers.
     public static IReadOnlySet<string>? WithAutoMountedServers(
         IReadOnlySet<string>? selection,
         IReadOnlyList<McpServerConfig> registry,
