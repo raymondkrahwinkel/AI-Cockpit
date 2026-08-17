@@ -77,7 +77,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         (_saveBar, _saveButton, _saveStatus, _pinButton) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
         (var convertBar, _convertButton, _convertStatus) = _BuildConvertBar();
-        _activityStrip = new ActivityStrip(host, _surfaceId, new WhiteboardActivityJournal(_registry), key =>
+        var whiteboardJournal = new WhiteboardActivityJournal(_registry);
+        _activityStrip = new ActivityStrip(host, _surfaceId, whiteboardJournal, key =>
         {
             if (Guid.TryParse(key, out var id))
             {
@@ -91,7 +92,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
                 _control.Canvas.SelectObject(id);
             }
         });
-        _presence = new PresenceIndicators(host, _surfaceId, whiteboard: true);
+        _presence = new PresenceIndicators(_surfaceId, whiteboardJournal, whiteboardJournal);
         _control.Canvas.SelectionChanged += (_, _) => _RefreshPinButton();
 
         Content = new DockPanel { Children = { _saveBar, _couplingBar, _presence, _pinStrip, _activityStrip, convertBar, _control } };

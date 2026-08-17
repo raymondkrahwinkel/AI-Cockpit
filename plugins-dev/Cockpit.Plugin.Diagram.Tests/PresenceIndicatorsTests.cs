@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Plugin.Diagram.Collab;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
@@ -34,8 +35,8 @@ public class PresenceIndicatorsTests
     public void NoCoupling_TheWholeControlIsHidden()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var host = new ActivityStripTests.FakeHost(registry);
-        var presence = new PresenceIndicators(host, "surface-1", whiteboard: false);
+        var journal = new DiagramActivityJournal(registry);
+        var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
 
         Assert.False(presence.IsVisible);
@@ -47,8 +48,8 @@ public class PresenceIndicatorsTests
     public void CoupledWithZeroCapability_IsVisible_AndBothPipsAreIdle()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var host = new ActivityStripTests.FakeHost(registry);
-        var presence = new PresenceIndicators(host, "surface-1", whiteboard: false);
+        var journal = new DiagramActivityJournal(registry);
+        var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
 
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: false, CanEdit: false));
@@ -65,8 +66,8 @@ public class PresenceIndicatorsTests
     public void CoupledWithRead_ShowsTheReadingPipAndLine()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var host = new ActivityStripTests.FakeHost(registry);
-        var presence = new PresenceIndicators(host, "surface-1", whiteboard: false);
+        var journal = new DiagramActivityJournal(registry);
+        var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
 
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: true, CanEdit: false));
@@ -82,8 +83,8 @@ public class PresenceIndicatorsTests
     public void AFreshNonOperatorEdit_SwitchesTheAgentPipAndLineToWriting()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var host = new ActivityStripTests.FakeHost(registry);
-        var presence = new PresenceIndicators(host, "surface-1", whiteboard: false);
+        var journal = new DiagramActivityJournal(registry);
+        var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
         presence.SetSession("pane-a", "Werksessie");
 
@@ -104,8 +105,8 @@ public class PresenceIndicatorsTests
     public void OperatorHold_SwitchesTheOperatorPipToWriting()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var host = new ActivityStripTests.FakeHost(registry);
-        var presence = new PresenceIndicators(host, "surface-1", whiteboard: false);
+        var journal = new DiagramActivityJournal(registry);
+        var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: true, CanEdit: true));
         Dispatcher.UIThread.RunJobs();
@@ -124,8 +125,8 @@ public class PresenceIndicatorsTests
         var registry = new ActivityStripTests.FakeDiagramRegistry();
         // Already there before the window opened — not part of "since I've been watching".
         registry.Seed("surface-1", DiagramEntry("e0", "operator", "renamed A to \"Begin\""));
-        var host = new ActivityStripTests.FakeHost(registry);
-        var presence = new PresenceIndicators(host, "surface-1", whiteboard: false);
+        var journal = new DiagramActivityJournal(registry);
+        var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: true, CanEdit: true));
 
@@ -150,8 +151,8 @@ public class PresenceIndicatorsTests
     public void Whiteboard_NoCoupling_IsAlsoHidden_ThenVisibleOnceCoupled()
     {
         var registry = new ActivityStripTests.FakeWhiteboardRegistry();
-        var host = new ActivityStripTests.FakeHost(whiteboard: registry);
-        var presence = new PresenceIndicators(host, "board-1", whiteboard: true);
+        var journal = new WhiteboardActivityJournal(registry);
+        var presence = new PresenceIndicators("board-1", journal, journal);
         var window = _Show(presence);
 
         Assert.False(presence.IsVisible);

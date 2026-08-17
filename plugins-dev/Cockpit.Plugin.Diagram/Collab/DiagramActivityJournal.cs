@@ -2,10 +2,16 @@ using Cockpit.Core.Abstractions.Diagrams;
 
 namespace Cockpit.Plugin.Diagram.Collab;
 
-// Adapts IDiagramAccessRegistry to ISurfaceActivityJournal (AC-870). Null when an older host has no registry to
-// resolve — same "no journal at all" state the registry-less branch left ActivityStrip in before this ticket.
-internal sealed class DiagramActivityJournal(IDiagramAccessRegistry? registry) : ISurfaceActivityJournal
+// Adapts IDiagramAccessRegistry to ISurfaceActivityJournal (AC-870) and ISurfaceCouplingSource (AC-879). Null when
+// an older host has no registry to resolve — same "no journal/coupling at all" state the registry-less branch left
+// ActivityStrip/PresenceIndicators in before these tickets.
+internal sealed class DiagramActivityJournal(IDiagramAccessRegistry? registry) : ISurfaceActivityJournal, ISurfaceCouplingSource
 {
+    // Maps each subscriber's own delegate to the registry-shaped wrapper actually registered on the registry, so
+    // remove detaches the exact same handler add attached — CouplingChanged's flattened signature differs from the
+    // registry's own event, unlike HistoryChanged below, so a straight pass-through will not do.
+    private readonly Dictionary<Action<string, bool, bool>, Action<DiagramCouplingChange>> _couplingHandlers = new();
+
     public event Action<string>? HistoryChanged
     {
         add
@@ -21,6 +27,30 @@ internal sealed class DiagramActivityJournal(IDiagramAccessRegistry? registry) :
             {
                 registry.HistoryChanged -= value;
             }
+        }
+    }
+
+    public event Action<string, bool, bool>? CouplingChanged
+    {
+        add
+        {
+            if (registry is null || value is null)
+            {
+                return;
+            }
+
+            void Forward(DiagramCouplingChange change) => value(change.SurfaceId, change.Coupling is not null, change.Coupling?.CanRead ?? false);
+            _couplingHandlers[value] = Forward;
+            registry.CouplingChanged += Forward;
+        }
+        remove
+        {
+            if (registry is null || value is null || !_couplingHandlers.Remove(value, out var forward))
+            {
+                return;
+            }
+
+            registry.CouplingChanged -= forward;
         }
     }
 
