@@ -23,12 +23,17 @@ internal sealed class WhiteboardListDialogBody : UserControl
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
         refresh.Click += (_, _) => _ = _LoadAsync();
 
+        // AC-896: "Nieuw whiteboard" moved here from the "..." menu, next to Refresh.
+        var newWhiteboard = new Button { Content = "Nieuw whiteboard", Classes = { "Compact" } };
+        newWhiteboard.Click += (_, _) => _ = _QuickStartAsync();
+
         var header = new DockPanel
         {
             Margin = new Thickness(12, 12, 12, 0),
-            Children = { refresh, new TextBlock { Text = "Whiteboards", FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center } },
+            Children = { refresh, newWhiteboard, new TextBlock { Text = "Whiteboards", FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center } },
         };
         DockPanel.SetDock(refresh, Dock.Right);
+        DockPanel.SetDock(newWhiteboard, Dock.Right);
 
         var activePaneId = host.Sessions.ActivePaneId;
         var sessionLabel = host.Sessions.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
@@ -53,6 +58,18 @@ internal sealed class WhiteboardListDialogBody : UserControl
     {
         var rows = await _host.GetProjectMemoryRowsAsync();
         _Render(WhiteboardCatalog.List(rows), rows.Count);
+    }
+
+    // W-2/AC-843/AC-896: DiagramListDialogBody._QuickStartAsync's counterpart — an unsaved board starts empty,
+    // named for what the operator asked for, and only ever gets a file once it is first saved (AC-812's rule).
+    private async Task _QuickStartAsync()
+    {
+        if (await WhiteboardQuickStartDialog.ShowAsync(_host, "Nieuw whiteboard") is not { } quickStart)
+        {
+            return;
+        }
+
+        await WhiteboardWindow.OpenAsync(_host, new WhiteboardDocument(title: quickStart.Name), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<WhiteboardEntry> entries, int memoryRowCount)

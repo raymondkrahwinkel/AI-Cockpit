@@ -23,12 +23,17 @@ internal sealed class DiagramListDialogBody : UserControl
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
         refresh.Click += (_, _) => _ = _LoadAsync();
 
+        // AC-896: "Nieuw diagram" moved here from the "..." menu, next to Refresh.
+        var newDiagram = new Button { Content = "Nieuw diagram", Classes = { "Compact" } };
+        newDiagram.Click += (_, _) => _ = _QuickStartAsync();
+
         var header = new DockPanel
         {
             Margin = new Thickness(12, 12, 12, 0),
-            Children = { refresh, new TextBlock { Text = "Diagrams", FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center } },
+            Children = { refresh, newDiagram, new TextBlock { Text = "Diagrams", FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center } },
         };
         DockPanel.SetDock(refresh, Dock.Right);
+        DockPanel.SetDock(newDiagram, Dock.Right);
 
         var activePaneId = host.Sessions.ActivePaneId;
         var sessionLabel = host.Sessions.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
@@ -54,6 +59,18 @@ internal sealed class DiagramListDialogBody : UserControl
         var rows = await _host.GetProjectMemoryRowsAsync();
         var entries = DiagramCatalog.List(rows);
         _Render(entries, rows.Count);
+    }
+
+    // AC-834/AC-896: the quick-start's two answers — a name and a session that is already running — are exactly
+    // what a diagram window needs, so it opens one instead of a tab.
+    private async Task _QuickStartAsync()
+    {
+        if (await DiagramQuickStartDialog.ShowAsync(_host, "Nieuw diagram") is not { } quickStart)
+        {
+            return;
+        }
+
+        await DiagramWindow.OpenAsync(_host, DiagramDocument.New(quickStart.Name), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<DiagramEntry> entries, int memoryRowCount)

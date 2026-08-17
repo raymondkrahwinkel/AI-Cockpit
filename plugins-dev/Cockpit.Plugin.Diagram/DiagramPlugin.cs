@@ -38,24 +38,14 @@ public sealed class DiagramPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — every ⋯ item now opens a
-        // window or a dialog instead of a workspace.
-        host.AddToolbarAction(new ToolbarAction("Nieuw diagram", MaterialIconKind.Sitemap, () => _QuickStartAsync(host)));
-
-        // AC-826's list, now a dialog rather than a workspace.
+        // window or a dialog instead of a workspace. AC-896: the "Nieuw ..." actions moved into their panel's
+        // own header, next to Refresh — only the panel openers stay here.
         host.AddToolbarAction(new ToolbarAction("Diagrams", MaterialIconKind.FormatListBulleted,
             () => host.ShowDialogAsync("Diagrams", () => new DiagramListDialogBody(host), ListDialogKey, width: 520, height: 600)));
 
-        // AC-842: a window beside the cockpit, not a tab — bound to whatever session is already active, no
-        // separate session-picker step (the window model fixes the coupling at open time). W-2/AC-843: named at
-        // the door, same snelstart shape as the diagram's.
-        host.AddToolbarAction(new ToolbarAction("Nieuw whiteboard", MaterialIconKind.Pencil, () => _WhiteboardQuickStartAsync(host)));
-
-        // W-2/AC-843's list, DiagramListDialogBody's counterpart — how a saved board is reopened.
         host.AddToolbarAction(new ToolbarAction("Whiteboards", MaterialIconKind.FormatListBulleted,
             () => host.ShowDialogAsync("Whiteboards", () => new WhiteboardListDialogBody(host), WhiteboardListDialogKey, width: 520, height: 600)));
 
-        // AC-873: the wireframe surface, same window-not-tab shape as the other two.
-        host.AddToolbarAction(new ToolbarAction("Nieuw wireframe", MaterialIconKind.ViewGridOutline, () => _WireframeQuickStartAsync(host)));
         host.AddToolbarAction(new ToolbarAction("Wireframes", MaterialIconKind.FormatListBulleted,
             () => host.ShowDialogAsync("Wireframes", () => new WireframeListDialogBody(host), WireframeListDialogKey, width: 520, height: 600)));
 
@@ -97,42 +87,6 @@ public sealed class DiagramPlugin : ICockpitPlugin
     private Action<DiagramOpenRequest>? _onDiagramOpen;
     private Action<WhiteboardOpenRequest>? _onWhiteboardOpen;
     private Action<WireframeOpenRequest>? _onWireframeOpen;
-
-    // AC-834: the quick-start's two answers — a name and a session that is already running — are exactly what a
-    // diagram window needs, so it opens one instead of a tab.
-    private async Task _QuickStartAsync(ICockpitHost host)
-    {
-        if (await DiagramQuickStartDialog.ShowAsync(host, "Nieuw diagram") is not { } quickStart)
-        {
-            return;
-        }
-
-        await DiagramWindow.OpenAsync(host, DiagramDocument.New(quickStart.Name), quickStart.SessionPaneId);
-    }
-
-    // W-2/AC-843: DiagramPlugin._QuickStartAsync's counterpart — an unsaved board starts empty, named for what
-    // the operator asked for, and only ever gets a file once it is first saved (AC-812's rule, one folder over).
-    private async Task _WhiteboardQuickStartAsync(ICockpitHost host)
-    {
-        if (await WhiteboardQuickStartDialog.ShowAsync(host, "Nieuw whiteboard") is not { } quickStart)
-        {
-            return;
-        }
-
-        await WhiteboardWindow.OpenAsync(host, new WhiteboardDocument(title: quickStart.Name), quickStart.SessionPaneId);
-    }
-
-    // AC-873: DiagramPlugin._QuickStartAsync's counterpart — a quick-started wireframe opens with the single
-    // childless "screen" line (WireframeDocument.Empty), never a bare document with nothing to render.
-    private async Task _WireframeQuickStartAsync(ICockpitHost host)
-    {
-        if (await WireframeQuickStartDialog.ShowAsync(host, "Nieuw wireframe") is not { } quickStart)
-        {
-            return;
-        }
-
-        await WireframeWindow.OpenAsync(host, WireframeDocument.New(quickStart.Name), quickStart.SessionPaneId);
-    }
 
     public void Dispose()
     {
