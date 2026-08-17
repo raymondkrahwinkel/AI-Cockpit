@@ -304,6 +304,36 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
         return WireframeEditResult.Applied(summary);
     }
 
+    // The operator's own handling takes the same read-modify-write-under-the-lock path as the agent's (AC-875), so
+    // the two land beside each other instead of one overwriting the source the other was working in. The hold is not
+    // checked here: it exists to keep the agent off what the operator has under their hand, not the reverse.
+    public string? ApplyHandEdit(string surfaceId, WireframeComponentEdit edit)
+    {
+        string text, summary;
+        lock (_lock)
+        {
+            if (!_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return "Dit wireframe staat niet meer open.";
+            }
+
+            var result = WireframeComponentEditor.Apply(surface.Text, edit);
+            if (result.Text is not { } edited)
+            {
+                return result.Refusal ?? Unavailable;
+            }
+
+            surface.Text = text = edited;
+            summary = result.Summary;
+            _Journal(surfaceId, "operator", edit.Kind, _KeyOf(edit), summary, result.Patches);
+        }
+
+        TextChanged?.Invoke(surfaceId, text);
+        ComponentEdited?.Invoke(surfaceId, summary);
+        HistoryChanged?.Invoke(surfaceId);
+        return null;
+    }
+
     public IReadOnlyList<WireframeHistoryEntry> History(string surfaceId)
     {
         lock (_lock)

@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
@@ -15,9 +16,9 @@ using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
 
-// The whole body of a wireframe window (AC-873), same shape as DiagramWorkspaceBody — read that one first.
-// Deviations: measured against a fixed design canvas rather than a size read off a rendered picture, and no
-// hand-editing yet — the source box stays read-only until WF-5.
+// The whole body of a wireframe window (AC-873, hand-editing AC-875), same shape as DiagramWorkspaceBody — read that
+// one first. Deviation: measured against a fixed design canvas rather than a size read off a rendered picture, and a
+// component is selected by clicking the control it was drawn as, which carries its own source line (AC-871).
 internal sealed class WireframeWorkspaceBody : UserControl
 {
     // AC-837 zoom/pan range and wheel feel, same constants as the diagram.
@@ -25,6 +26,10 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private const double MaxZoom = 8.0;
     private const double WheelZoomStepBase = 1.15;
     private const double ButtonZoomStep = 1.25;
+
+    // How far the pointer may travel before a press stops counting as a click on a component (AC-837's convention,
+    // same slop as the diagram).
+    private const double ClickSlopPx = 3;
 
     // The design canvas a wireframe is measured against — wide enough that a desktop screen's whole layout needs
     // zoom/pan to see at once, which is the point of AC-837 here (a diagram's SVG carries its own natural size;
@@ -39,6 +44,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly string _surfaceId;
     private readonly string _documentTitle;
     private readonly Panel _surface;
+    private readonly Panel _render;
+    private readonly Canvas _overlay;
     private readonly Border _viewport;
     private readonly TextBlock _zoomLabel;
     private readonly Border _couplingBar;
@@ -53,12 +60,24 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly PresenceIndicators _presence;
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
+    private readonly Button _addButton;
+    private readonly Button _textButton;
+    private readonly Button _deleteButton;
+    private readonly Button _upButton;
+    private readonly Button _downButton;
+    private readonly Button _moveButton;
+    private readonly TextBlock _handHint;
     private double _zoom = 1.0;
     private Vector _panOffset;
     private bool _isFitMode = true;
     private bool _isPanning;
     private Point _panPointerStart;
     private Vector _panOffsetStart;
+    private WireframeNode? _root;
+    private WireframeNode? _selected;
+    private WireframeNode? _pressedOn;
+    private string? _expectedText;
+    private bool _placementHintShown;
     private WireframeCoupling? _current;
     private SurfaceSessionBinding _sessionBinding;
     private string? _filePath;
@@ -77,6 +96,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         // No fixed control size beyond the design canvas below: `_viewport` positions/scales `_surface` itself via
         // RenderTransform for zoom and pan, same as DiagramWorkspaceBody's `_surface`.
+        //
+        // AC-875: the selection mark and the inline text box sit on their own canvas above the render, inside the same
+        // transform — so zoom and pan move them with the wireframe rather than beside it. The render lives in its own
+        // panel so re-rendering it leaves the overlay alone.
+        _render = new Panel();
+        _overlay = new Canvas();
         _surface = new Panel
         {
             Width = CanvasSize.Width,
@@ -84,12 +109,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative),
+            Children = { _render, _overlay },
         };
         _viewport = _BuildViewport();
 
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus,
+            _addButton, _textButton, _deleteButton, _upButton, _downButton, _moveButton, _handHint) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
@@ -109,6 +136,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         // session is gone — lands on a not-live binding, which is the "no agent on this wireframe" state.
         _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, _RefreshCouplingBar);
         _RenderInto(document.Text);
+        _RefreshHandEditBar();
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
 
@@ -137,6 +165,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
             if (_registry is null)
             {
                 return;
+            }
+
+            if (_selected is { } stillHeld)
+            {
+                _registry.ReleaseComponent(_surfaceId, stillHeld.Line);
             }
 
             _registry.CouplingChanged -= _OnCouplingChanged;
@@ -186,10 +219,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
     {
         _sourceBox.Text = source;
         var parsed = WireframeParser.Parse(source);
-        Control content = parsed.Root is { } root ? WireframeRenderer.Render(root) : _BuildErrorPanel(parsed.Errors);
+        _root = parsed.Root;
+        Control content = _root is { } root ? WireframeRenderer.Render(root) : _BuildErrorPanel(parsed.Errors);
 
-        _surface.Children.Clear();
-        _surface.Children.Add(content);
+        _render.Children.Clear();
+        _render.Children.Add(content);
+        _ReattachSelection();
 
         if (_isFitMode)
         {
@@ -202,6 +237,46 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         _RefreshSaveBar();
     }
+
+    // Every source change — the operator's own handling, an agent's, a revert — arrives as a fresh tree, so the node
+    // the selection pointed at is gone. Found back by what it is rather than by where it was: a move gives it a new
+    // line number, and taking the line number at face value would hand the selection, and with it the hold an agent is
+    // refused against, to whichever component slid into that line. Nearest line breaks the tie, since two components
+    // reading exactly alike is a real possibility in a wireframe.
+    private void _ReattachSelection()
+    {
+        if (_selected is not { } previous)
+        {
+            return;
+        }
+
+        var wording = _expectedText ?? previous.Text;
+        _expectedText = null;
+        var found = _root is { } root
+            ? _Components(root)
+                .Where(node => node.Kind == previous.Kind && node.Text == wording)
+                .OrderBy(node => Math.Abs(node.Line - previous.Line))
+                .FirstOrDefault()
+            : null;
+
+        if (found is null || found.Line != previous.Line)
+        {
+            _registry?.ReleaseComponent(_surfaceId, previous.Line);
+        }
+
+        _selected = found;
+        if (found is not null && found.Line != previous.Line)
+        {
+            _registry?.HoldComponent(_surfaceId, found.Line);
+        }
+
+        _presence.SetOperatorWriting(found is not null);
+        _RefreshOverlay();
+        _RefreshHandEditBar();
+    }
+
+    private static IEnumerable<WireframeNode> _Components(WireframeNode node) =>
+        new[] { node }.Concat(node.Children.SelectMany(_Components));
 
     private static Control _BuildErrorPanel(IReadOnlyList<WireframeParseError> errors)
     {
@@ -234,7 +309,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     }
 
     // The zoom/pan surface (AC-837): a plain Border, not a ScrollViewer — panning is our own RenderTransform math,
-    // same shape as DiagramWorkspaceBody's viewport, minus the click/hand-edit handling WF-5 will add.
+    // same shape as DiagramWorkspaceBody's viewport.
     private Border _BuildViewport()
     {
         var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _surface };
@@ -248,8 +323,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         viewport.AddHandler(InputElement.PointerWheelChangedEvent, _OnViewportWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
         viewport.PointerPressed += _OnViewportPointerPressed;
         viewport.PointerMoved += _OnViewportPointerMoved;
-        viewport.PointerReleased += (_, _) => _EndPan();
+        viewport.PointerReleased += _OnViewportPointerReleased;
         viewport.PointerCaptureLost += (_, _) => _EndPan();
+        viewport.DoubleTapped += (_, e) => _StartTextEdit(_NodeUnder(e.Source));
         return viewport;
     }
 
@@ -259,6 +335,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y));
     }
 
+    // AC-837's input convention stands unchanged on this surface too: plain left-drag pans, and a press that never
+    // travels is a click on a component. AC-875 adds no gesture of its own, so a drag is never guessed between
+    // panning and moving a component — moving is what the arrows and "Verplaats naar…" are for.
     private void _OnViewportPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(_viewport).Properties.IsLeftButtonPressed)
@@ -266,6 +345,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return;
         }
 
+        _pressedOn = _NodeUnder(e.Source);
         _isPanning = true;
         _panPointerStart = e.GetPosition(_viewport);
         _panOffsetStart = _panOffset;
@@ -281,9 +361,35 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return;
         }
 
-        _panOffset = _panOffsetStart + (e.GetPosition(_viewport) - _panPointerStart);
+        Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
+        _panOffset = _panOffsetStart + travelled;
         _isFitMode = false;
         _ApplyTransform();
+
+        // Dragging a component somewhere is the one thing this surface will not do: the format has no coordinates, so
+        // the next render would put it straight back. Say where that does live rather than letting the gesture look
+        // broken — same answer, same wording shape as the diagram's.
+        if (_pressedOn is not null && !_placementHintShown && travelled.Length > ClickSlopPx * 4)
+        {
+            _placementHintShown = true;
+            _host.ShowToast(
+                "Een wireframe plaatst zichzelf — vrij slepen doe je op het whiteboard. Hier verplaats je een component binnen de structuur, met de pijlen of «Verplaats naar…».",
+                PluginToastSeverity.Information);
+        }
+    }
+
+    private void _OnViewportPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var wasPanning = _isPanning;
+        Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
+        _EndPan();
+
+        if (wasPanning && travelled.Length <= ClickSlopPx)
+        {
+            _Select(_pressedOn);
+        }
+
+        _pressedOn = null;
     }
 
     private void _EndPan()
@@ -296,6 +402,271 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _isPanning = false;
         _viewport.Cursor = _PanCursor;
     }
+
+    // ---- Hand-editing on the surface itself (AC-875) ----
+
+    // The component a click landed on: the nearest control at or above the hit that carries a source node (AC-871's
+    // attached property). Chrome the renderer draws without a node of its own — a tab strip, a skeleton row — so
+    // resolves to the component it belongs to rather than to nothing.
+    private static WireframeNode? _NodeUnder(object? source)
+    {
+        for (var control = source as Control; control is not null; control = control.Parent as Control)
+        {
+            if (WireframeSource.GetNode(control) is { } node)
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    // Selecting is holding: while the operator has a component under their hand an agent's edit naming that line is
+    // refused with a reason (AC-872's hold), and every other component stays open to it.
+    private void _Select(WireframeNode? node)
+    {
+        if (_selected is { } previous)
+        {
+            _registry?.ReleaseComponent(_surfaceId, previous.Line);
+        }
+
+        _selected = node;
+        if (node is not null)
+        {
+            _registry?.HoldComponent(_surfaceId, node.Line);
+        }
+
+        _presence.SetOperatorWriting(node is not null);
+        _RefreshOverlay();
+        _RefreshHandEditBar();
+    }
+
+    // Posted rather than drawn straight away: the mark is placed from the selected control's own laid-out bounds, and
+    // right after a render those are not measured yet.
+    private void _RefreshOverlay() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(_DrawOverlay, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    private void _DrawOverlay()
+    {
+        // Only the marks are cleared; an inline text box in flight keeps its place, since a re-render underneath it
+        // is exactly when the operator is still typing.
+        foreach (var mark in _overlay.Children.OfType<Border>().ToList())
+        {
+            _overlay.Children.Remove(mark);
+        }
+
+        if (_selected is not { } node || _ControlFor(node) is not { } control
+            || control.TranslatePoint(default, _surface) is not { } origin)
+        {
+            return;
+        }
+
+        var bounds = new Rect(origin, control.Bounds.Size).Inflate(3);
+        var outline = new Border
+        {
+            Width = bounds.Width,
+            Height = bounds.Height,
+            BorderThickness = new Thickness(2),
+            BorderBrush = _Brush("CockpitAccentBrush"),
+            CornerRadius = new CornerRadius(4),
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(outline, bounds.X);
+        Canvas.SetTop(outline, bounds.Y);
+        _overlay.Children.Add(outline);
+    }
+
+    private Control? _ControlFor(WireframeNode node) => _render
+        .GetVisualDescendants()
+        .OfType<Control>()
+        .FirstOrDefault(control => ReferenceEquals(WireframeSource.GetNode(control), node));
+
+    // Changing the wording happens where the component is: a box over the component itself, Enter to keep it, Escape
+    // to leave it as it was — the diagram's rename, one folder over.
+    private void _StartTextEdit(WireframeNode? node)
+    {
+        if (node is null || _registry is null || _ControlFor(node) is not { } control
+            || control.TranslatePoint(default, _surface) is not { } origin)
+        {
+            return;
+        }
+
+        _Select(node);
+        var box = new TextBox
+        {
+            Text = node.Text ?? "",
+            MinWidth = Math.Max(120, control.Bounds.Width),
+            FontSize = 13,
+            Padding = new Thickness(4, 2),
+        };
+        Canvas.SetLeft(box, origin.X);
+        Canvas.SetTop(box, origin.Y);
+        _overlay.Children.Add(box);
+        box.SelectAll();
+        box.Focus();
+
+        box.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                _overlay.Children.Remove(box);
+
+                // The wording is what the selection is found back by, so the new one has to be known before the
+                // rebuilt source arrives — otherwise this component is looked for under the name it no longer has.
+                _expectedText = box.Text ?? "";
+                _Apply(WireframeComponentEdit.SetText(node.Line, _expectedText));
+            }
+            else if (key.Key == Key.Escape)
+            {
+                key.Handled = true;
+                _overlay.Children.Remove(box);
+            }
+        };
+    }
+
+    // A new component is named and typed as it is made, and lands either inside the selected container or straight
+    // after the selected component — the two the format allows, offered as two buttons rather than guessed from where
+    // the pointer was.
+    private void _AddComponent(Control anchor)
+    {
+        if (_selected is not { } target || _root is not { } root)
+        {
+            return;
+        }
+
+        var kinds = Enum.GetValues<WireframeNodeKind>().Where(kind => kind != WireframeNodeKind.Screen).ToList();
+        var type = new ComboBox
+        {
+            ItemsSource = kinds.Select(WireframeHandEdit.Keyword).ToList(),
+            SelectedIndex = kinds.IndexOf(WireframeNodeKind.Label),
+            MinWidth = 140,
+        };
+        var text = new TextBox { Width = 220, PlaceholderText = "Tekst (mag leeg)" };
+        var asChild = new Button { Content = "In deze container", Classes = { "Compact" }, IsEnabled = target.IsContainer };
+        var asSibling = new Button { Content = "Hieronder", Classes = { "Compact" }, IsEnabled = target != root };
+        var flyout = new Flyout
+        {
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Margin = new Thickness(12),
+                Children =
+                {
+                    type,
+                    text,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { asChild, asSibling } },
+                },
+            },
+        };
+
+        void Add(bool child)
+        {
+            flyout.Hide();
+            var keyword = type.SelectedItem as string ?? WireframeHandEdit.Keyword(WireframeNodeKind.Label);
+            var wording = string.IsNullOrWhiteSpace(text.Text) ? null : text.Text!.Trim();
+            var edit = child
+                ? WireframeHandEdit.AddChild(target.Line, keyword, wording)
+                : WireframeHandEdit.AddSibling(root, target.Line, keyword, wording);
+            if (edit is not null)
+            {
+                _Apply(edit);
+            }
+        }
+
+        asChild.Click += (_, _) => Add(child: true);
+        asSibling.Click += (_, _) => Add(child: false);
+        flyout.ShowAt(anchor);
+        text.Focus();
+    }
+
+    // Removing what is selected leaves nothing to hold, so the selection goes with it — before the rebuilt source
+    // arrives, which is what keeps _ReattachSelection from looking for a component that is gone on purpose.
+    private void _DeleteSelected()
+    {
+        if (_selected is { } target && _Apply(WireframeComponentEdit.Remove(target.Line)))
+        {
+            _Select(null);
+        }
+    }
+
+    private void _Reorder(int delta)
+    {
+        if (_selected is { } target && _root is { } root && WireframeHandEdit.Reorder(root, target.Line, delta) is { } edit)
+        {
+            _Apply(edit);
+        }
+    }
+
+    // Into another container: the ones it can go into, named and numbered, rather than a drop target to aim at.
+    private void _MoveInto(Control anchor)
+    {
+        if (_selected is not { } target || _root is not { } root)
+        {
+            return;
+        }
+
+        var flyout = new MenuFlyout();
+        foreach (var destination in WireframeHandEdit.Destinations(root, target.Line))
+        {
+            var item = new MenuItem { Header = $"{_Describe(destination)} — regel {destination.Line}" };
+            var line = destination.Line;
+            item.Click += (_, _) => _Apply(WireframeComponentEdit.Move(target.Line, line, position: null));
+            flyout.Items.Add(item);
+        }
+
+        if (flyout.Items.Count == 0)
+        {
+            _host.ShowToast("Er is geen andere container om dit component in te zetten.", PluginToastSeverity.Information);
+            return;
+        }
+
+        flyout.ShowAt(anchor);
+    }
+
+    // One handling is one change towards the registry, under the same lock as the agent's — never a half state
+    // written here and repaired afterwards. The re-render comes back through TextChanged.
+    private bool _Apply(WireframeComponentEdit edit)
+    {
+        if (_registry is null)
+        {
+            return false;
+        }
+
+        // The per-component grammar words its refusals for the agent that normally calls it; the buttons above turn
+        // the reachable ones off beforehand, so what gets through here is genuinely exceptional and worth showing raw.
+        if (_registry.ApplyHandEdit(_surfaceId, edit) is not { } refusal)
+        {
+            return true;
+        }
+
+        _expectedText = null;
+        _host.ShowToast(refusal, PluginToastSeverity.Warning);
+        return false;
+    }
+
+    private void _RefreshHandEditBar()
+    {
+        var editable = _registry is not null;
+        var target = _selected;
+        var placement = target is not null && _root is { } root ? WireframeHandEdit.Placement(root, target.Line) : null;
+
+        _addButton.IsEnabled = editable && target is not null;
+        _textButton.IsEnabled = editable && target is not null;
+        _deleteButton.IsEnabled = editable && target is not null && target != _root;
+        _upButton.IsEnabled = editable && placement is { Index: > 0 };
+        _downButton.IsEnabled = editable && placement is { } at && at.Index < at.Parent.Children.Count - 1;
+        _moveButton.IsEnabled = editable && target is not null && target != _root;
+
+        _handHint.Text = target is null
+            ? "Klik een component om het te bewerken."
+            : $"{_Describe(target)} op regel {target.Line} — dubbelklik om de tekst te wijzigen.";
+    }
+
+    // A component named the way the operator reads it: "input «E-mailadres»", or the bare keyword when it carries no
+    // text of its own.
+    private static string _Describe(WireframeNode node) =>
+        string.IsNullOrEmpty(node.Text) ? WireframeHandEdit.Keyword(node.Kind) : $"{WireframeHandEdit.Keyword(node.Kind)} «{node.Text}»";
 
     private void _ZoomByButton(double factor) =>
         _ZoomAround(new Point(_viewport.Bounds.Width / 2, _viewport.Bounds.Height / 2), _zoom * factor);
@@ -330,8 +701,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     }
 
     // AC-811: the wireframe source is one click away — collapsed under the render, never only in memory. Always
-    // read-only: hand-editing the DSL text directly is not this ticket's (or WF-5's) shape — edits go through the
-    // registry's per-component path so the journal and "jij bewerkt" hold both see them.
+    // read-only, AC-875 included: the source stays the truth and is rebuilt from each handling, so an edit goes
+    // through the registry's per-component path where the journal and the "jij bewerkt" hold both see it.
     private static (ToggleButton Toggle, TextBox Box) _BuildSourceToggle()
     {
         var box = new TextBox
@@ -348,7 +719,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return (toggle, box);
     }
 
-    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus) _BuildToolbar()
+    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus,
+        Button Add, Button Text, Button Delete, Button Up, Button Down, Button Move, TextBlock Hint) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -379,23 +751,47 @@ internal sealed class WireframeWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
-        var saveControls = new StackPanel
+        // AC-875: wat de operator op het oppervlak aanklikte bepaalt waarop deze knoppen werken. Verplaatsen zit hier
+        // en niet in een sleepgebaar — het formaat kent geen coördinaten, dus slepen blijft pannen (zie _OnViewport…).
+        var add = new Button { Content = "+ Component…", Classes = { "Compact" } };
+        add.Click += (_, _) => _AddComponent(add);
+        var text = new Button { Content = "Tekst…", Classes = { "Compact" } };
+        text.Click += (_, _) => _StartTextEdit(_selected);
+        var delete = new Button { Content = "Verwijderen", Classes = { "Compact" } };
+        delete.Click += (_, _) => _DeleteSelected();
+        var up = new Button { Content = "↑", Classes = { "Compact" }, MinWidth = 28 };
+        ToolTip.SetTip(up, "Eén plek naar boven binnen dezelfde container.");
+        up.Click += (_, _) => _Reorder(-1);
+        var down = new Button { Content = "↓", Classes = { "Compact" }, MinWidth = 28 };
+        ToolTip.SetTip(down, "Eén plek naar beneden binnen dezelfde container.");
+        down.Click += (_, _) => _Reorder(1);
+        var move = new Button { Content = "Verplaats naar…", Classes = { "Compact" } };
+        move.Click += (_, _) => _MoveInto(move);
+        var hint = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+
+        var handEditControls = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { save, saveStatus },
+            Children = { add, text, delete, up, down, move, save, saveStatus, hint },
         };
 
-        var bar = new DockPanel { Children = { saveControls, zoomControls } };
-        DockPanel.SetDock(saveControls, Dock.Left);
+        var bar = new DockPanel { Children = { handEditControls, zoomControls } };
+        DockPanel.SetDock(handEditControls, Dock.Left);
         DockPanel.SetDock(zoomControls, Dock.Right);
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
+            add, text, delete, up, down, move, hint);
     }
 
     // Eén opslagweg (AC-839's precedent, one folder over): the source box always mirrors the surface's current
-    // text — an agent's edit_wireframe today, a hand-edit once WF-5 lands — so "onbewaarde wijzigingen" is the
-    // same comparison for both.
+    // text — an agent's edit_wireframe and the operator's own handling (AC-875) both arrive through TextChanged — so
+    // "onbewaarde wijzigingen" is the same comparison for both.
     private async Task _SaveAsync()
     {
         if (_filePath is { } existing)

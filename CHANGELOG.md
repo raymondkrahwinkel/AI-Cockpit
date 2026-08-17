@@ -39,6 +39,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: wireframes can now be saved, renamed and reopened, the same way diagrams and whiteboards already were — an
   "Opslaan" button that shows where the file lives and flags unsaved changes, and a "Wireframes" list across every
   memory location that opens a saved one straight back into its own window.
+- added: you can now change a wireframe by hand on the sketch itself, not only by asking the agent — click a
+  component to take it, then change its wording (or double-click it), add one inside it or below it, remove it, and
+  move it up, down or into another container. Every handling rewrites the wireframe's source text, which stays the
+  truth and stays read-only, and lands in the activity strip beside the agent's own edits so either can be undone on
+  its own. While you have a component under your hand the agent is refused on that one and told why, and keeps
+  working on the rest of the wireframe. Dragging still pans the view: a wireframe places itself, so there is nothing
+  to drop anywhere — free placement is what the whiteboard is for.
 
 ### Fixed
 
