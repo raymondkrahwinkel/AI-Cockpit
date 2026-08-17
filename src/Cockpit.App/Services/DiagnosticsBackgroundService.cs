@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Diagnostics;
@@ -14,6 +15,11 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan SnapshotInterval = TimeSpan.FromSeconds(10);
+
+    // AC-882: how often to ask the compositor for a commit and time how long it takes to be processed. The probe
+    // costs one extra frame per interval on an otherwise idle app — the price of knowing the render clock still
+    // wakes, which nothing else in the process can tell us.
+    private static readonly TimeSpan RenderClockProbeInterval = TimeSpan.FromSeconds(10);
 #if DEBUG
     // Opt-in only: the leak-tracker's periodic report forces a full blocking gen2 GC, so a normal debug run must
     // not pay that stutter. Set COCKPIT_LEAKSIM=1 to arm the leak diagnostics (and the on-demand leak-sim trigger).
@@ -32,6 +38,17 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // cross-thread 64-bit access. -1 means "no pong yet", which _Run uses to avoid arming the heartbeat before
     // the dispatcher loop is even pumping.
     private long _lastPongTicks = -1;
+
+    // Set on the background thread before the probe is posted, cleared by the commit's continuation on whichever
+    // thread completes it. While true no second probe is posted, so an outstanding probe is the stall itself.
+    private volatile bool _probeInFlight;
+
+    // Stamped on the UI thread when the commit is actually requested, not when the probe was posted: a hung UI
+    // thread then delays the probe rather than reading as a stalled render clock (that is _LogHang's job).
+    private long _probeStartedTicks;
+
+    // Last completed probe's round trip; -1 until one completes. Reported on the snapshot line as rclock=.
+    private long _probeRoundTripTicks = -1;
 
     public DiagnosticsBackgroundService(ILogger<DiagnosticsBackgroundService> logger)
     {
@@ -59,6 +76,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         var nextSnapshotAt = TimeSpan.Zero;
         var warned = false;
         var hangStartedAt = TimeSpan.Zero;
+        var renderClockWarned = false;
+        var renderStallStartedAt = TimeSpan.Zero;
+        var nextProbeAt = TimeSpan.Zero;
 #if DEBUG
         var nextLeakAt = TimeSpan.Zero;
 #endif
@@ -93,9 +113,32 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                     warned = decision.Warned;
                 }
 
+                if (!_probeInFlight && now >= nextProbeAt)
+                {
+                    nextProbeAt = now + RenderClockProbeInterval;
+                    _probeInFlight = true;
+                    Interlocked.Exchange(ref _probeStartedTicks, 0);
+                    Dispatcher.UIThread.Post(_StartRenderClockProbe, DispatcherPriority.Background);
+                }
+
+                var renderDecision = RenderClockHeartbeat.Decide(_ProbeInFlightFor(now), renderClockWarned);
+                if (renderDecision.Stalled)
+                {
+                    renderStallStartedAt = now;
+                    _logger.LogWarning(
+                        "renderclock stalled since={Since:0.0}s — a forced compositor commit has not been processed",
+                        RenderClockHeartbeat.StallAfter.TotalSeconds);
+                }
+                else if (renderDecision.Resumed)
+                {
+                    _logger.LogWarning("renderclock resumed after={Duration:0.0}s", (now - renderStallStartedAt).TotalSeconds);
+                }
+
+                renderClockWarned = renderDecision.Warned;
+
                 if (_snapshotsEnabled && now >= nextSnapshotAt)
                 {
-                    _WriteSnapshot(cpu);
+                    _WriteSnapshot(cpu, renderClockWarned);
                     nextSnapshotAt = now + SnapshotInterval;
                 }
 #if DEBUG
@@ -119,7 +162,54 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         }
     }
 
-    private void _WriteSnapshot(_CpuSampler cpu)
+    // Null while nothing is outstanding, and while a posted probe is still waiting for the UI thread to run it.
+    private TimeSpan? _ProbeInFlightFor(TimeSpan now)
+    {
+        if (!_probeInFlight)
+        {
+            return null;
+        }
+
+        var startedAt = Interlocked.Read(ref _probeStartedTicks);
+        return startedAt > 0 ? TimeSpan.FromTicks(now.Ticks - startedAt) : null;
+    }
+
+    // AC-882: the one thing that proves the render clock can still be woken. Avalonia's commit chain wakes a
+    // parked clock itself (ServerCompositor.EnqueueBatch → IRenderLoop.Wakeup), so a commit that never reports
+    // Processed means the platform timer stopped delivering ticks and Wakeup can no longer reach it.
+    private void _StartRenderClockProbe()
+    {
+        try
+        {
+            if (Compositor.TryGetDefaultCompositor() is not { } compositor)
+            {
+                // No platform yet, or already torn down. Not a stall — try again on the next interval.
+                _probeInFlight = false;
+                return;
+            }
+
+            var startedAt = _clock.Elapsed;
+            Interlocked.Exchange(ref _probeStartedTicks, startedAt.Ticks);
+
+            compositor.RequestCommitAsync().ContinueWith(
+                _ =>
+                {
+                    Interlocked.Exchange(ref _probeRoundTripTicks, (_clock.Elapsed - startedAt).Ticks);
+                    _probeInFlight = false;
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+        catch (Exception exception)
+        {
+            // Leaving _probeInFlight set would read as a permanent stall from here on — the opposite of a diagnostic.
+            _probeInFlight = false;
+            _logger.LogWarning(exception, "A render-clock probe could not be started; the next one will try again.");
+        }
+    }
+
+    private void _WriteSnapshot(_CpuSampler cpu, bool renderClockStalled)
     {
         var snapshot = DiagnosticsCollector.SelfReadSnapshot();
         var memory = snapshot.Memory;
@@ -129,7 +219,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
         _logger.LogInformation(
             "diag rss={Rss} peak={Peak} virt={Virt} priv={Priv} heap={Heap} live={Live} alloc={Alloc} " +
-            "gc={Gen0}/{Gen1}/{Gen2} gcpause={GcPause:0.0}% handles={Handles} threads={Threads} tp={Pending}/{ThreadPoolCount} cpu={Cpu:0.0}%",
+            "gc={Gen0}/{Gen1}/{Gen2} gcpause={GcPause:0.0}% handles={Handles} threads={Threads} tp={Pending}/{ThreadPoolCount} " +
+            "cpu={Cpu:0.0}% rclock={RenderClock}",
             _Compact(memory.ResidentBytes),
             _Compact(memory.PeakResidentBytes),
             _Compact(memory.VirtualBytes),
@@ -145,7 +236,23 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             process.Threads.Count,
             ThreadPool.PendingWorkItemCount,
             ThreadPool.ThreadCount,
-            cpu.PercentSinceLastCall());
+            cpu.PercentSinceLastCall(),
+            _RenderClockText(renderClockStalled));
+    }
+
+    // AC-882: the field that makes a future macOS reproduction decisive instead of inferred — how long the last
+    // forced commit took to be processed, or that one is outstanding past the stall threshold.
+    private string _RenderClockText(bool stalled)
+    {
+        if (stalled)
+        {
+            return "stalled";
+        }
+
+        var ticks = Interlocked.Read(ref _probeRoundTripTicks);
+        return ticks < 0
+            ? "n/a"
+            : TimeSpan.FromTicks(ticks).TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) + "ms";
     }
 
     // Not elsewhere in Cockpit.Core.Diagnostics because nothing else needs it: the Debug tab's report never

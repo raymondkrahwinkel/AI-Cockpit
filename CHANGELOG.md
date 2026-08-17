@@ -37,6 +37,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   off the edge is never clipped. Deleting an image that has annotations on it now asks whether to remove them too
   or leave them behind on the board, instead of silently dragging them along or orphaning them.
 
+- added: the diagnostics log now reports whether the cockpit's render clock is still alive. It stops on its own
+  whenever nothing needs drawing, and normally wakes again by itself; if it ever stops and stays stopped — the
+  shape a display that has gone to sleep can take — the log now says so, and says when it came back. The
+  ten-second diagnostics line carries the measurement as `rclock=`, so a report of a cockpit growing in memory
+  while nobody is looking at it can be settled from the log instead of guessed at.
+
 - added: a diagram or whiteboard window now shows presence at a glance the moment an agent is coupled to it — a pip
   for the agent and one for you, coloured by what each of you is doing right now (idle, reading along, or actively
   writing), a one-line summary of what's happening, and a running count of changes made since you opened the window.
