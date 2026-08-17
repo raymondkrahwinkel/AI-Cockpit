@@ -473,7 +473,14 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            _control.Canvas.Document.Add(new PlacedObject
+            var document = _control.Canvas.Document;
+
+            // W-6/AC-851: an agent's placement binds to a pasted image underneath it exactly like the operator's
+            // own strokes and shapes do — same geometric rule, no separate parameter the agent has to pass.
+            var parentId = WhiteboardBinding.FindParentImage(
+                document, placement.X + (placement.Width / 2), placement.Y + (placement.Height / 2))?.Id;
+
+            document.Add(new PlacedObject
             {
                 Id = Guid.TryParse(objectId, out var id) ? id : Guid.NewGuid(),
                 ShapeKind = kind,
@@ -483,6 +490,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
                 Height = placement.Height,
                 Text = placement.Text,
                 PlacedByAgent = true,
+                ParentImageId = parentId,
             });
             _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
             _RefreshSaveBar();

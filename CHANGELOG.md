@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a stroke or object drawn over a pasted image on the whiteboard now sticks to that image — move or resize
+  the picture and the annotations move and scale with it, staying on the same spot. An annotation that hangs partly
+  off the edge is never clipped. Deleting an image that has annotations on it now asks whether to remove them too
+  or leave them behind on the board, instead of silently dragging them along or orphaning them.
+
 - added: a diagram or whiteboard window now shows presence at a glance the moment an agent is coupled to it — a pip
   for the agent and one for you, coloured by what each of you is doing right now (idle, reading along, or actively
   writing), a one-line summary of what's happening, and a running count of changes made since you opened the window.
