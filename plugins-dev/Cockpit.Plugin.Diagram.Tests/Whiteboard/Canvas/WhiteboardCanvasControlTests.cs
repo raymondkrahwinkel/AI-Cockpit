@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
@@ -219,6 +220,194 @@ public class WhiteboardCanvasControlTests
         document.Remove(placed.Id);
 
         Assert.Empty(canvas.GetVisualDescendants().OfType<PlacedObjectControl>());
+
+        window.Close();
+    }
+
+    // W-6/AC-851: a stroke drawn over a pasted image belongs to it, and moving/resizing the image carries it along
+    // — the ticket's own acceptance test (plakken -> tekenen -> verplaatsen -> aantekening staat nog op dezelfde plek).
+    [Fact]
+    public void PencilTool_DrawingOverAPastedImage_BindsTheStrokeToIt()
+    {
+        var document = new WhiteboardDocument();
+        var image = new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 };
+        document.Add(image);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UsePencilTool();
+        window.MouseDown(new Point(30, 30), MouseButton.Left);
+        window.MouseMove(new Point(60, 30));
+        window.MouseUp(new Point(60, 30), MouseButton.Left);
+
+        var stroke = Assert.IsType<FreehandStroke>(document.Objects.Single(o => o.Kind == WhiteboardObjectKind.Freehand));
+        Assert.Equal(image.Id, stroke.ParentImageId);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void PencilTool_DrawingOffAnyImage_LeavesTheStrokeUnbound()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 200, Y = 200, Width = 40, Height = 40 });
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UsePencilTool();
+        window.MouseDown(new Point(10, 10), MouseButton.Left);
+        window.MouseMove(new Point(40, 10));
+        window.MouseUp(new Point(40, 10), MouseButton.Left);
+
+        var stroke = Assert.IsType<FreehandStroke>(document.Objects.Single(o => o.Kind == WhiteboardObjectKind.Freehand));
+        Assert.Null(stroke.ParentImageId);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void DraggingAPastedImage_CarriesABoundStroke_ByTheSameDelta()
+    {
+        var document = new WhiteboardDocument();
+        var image = new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 };
+        document.Add(image);
+        var stroke = new FreehandStroke { Points = [new WhiteboardPoint(30, 30), new WhiteboardPoint(60, 30)], ParentImageId = image.Id };
+        document.Add(stroke);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseSelectTool();
+        window.MouseDown(new Point(20, 20), MouseButton.Left);
+        window.MouseMove(new Point(45, 45));
+        window.MouseUp(new Point(45, 45), MouseButton.Left);
+
+        Assert.Equal(35, image.X);
+        Assert.Equal(35, image.Y);
+        Assert.Equal(new WhiteboardPoint(55, 55), stroke.Points[0]);
+        Assert.Equal(new WhiteboardPoint(85, 55), stroke.Points[1]);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void ResizingAPastedImage_ScalesABoundChild_Proportionally()
+    {
+        var document = new WhiteboardDocument();
+        var image = new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 };
+        document.Add(image);
+        var label = new PlacedObject { ShapeKind = PlacedShapeKind.Text, X = 50, Y = 40, Width = 10, Height = 10, ParentImageId = image.Id };
+        document.Add(label);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseSelectTool();
+        window.MouseDown(new Point(20, 20), MouseButton.Left);
+        window.MouseUp(new Point(20, 20), MouseButton.Left);
+        Assert.Equal(image.Id, canvas.SelectedId);
+
+        // Bottom-right handle sits dead centre on the image's bottom-right corner (10+80, 10+60) = (90, 70).
+        window.MouseDown(new Point(90, 70), MouseButton.Left);
+        window.MouseMove(new Point(140, 130));
+        window.MouseUp(new Point(140, 130), MouseButton.Left);
+
+        Assert.Equal(130, image.Width);
+        Assert.Equal(120, image.Height);
+        Assert.Equal(75, label.X);
+        Assert.Equal(70, label.Y);
+        Assert.Equal(16.25, label.Width);
+        Assert.Equal(20, label.Height);
+
+        window.Close();
+    }
+
+    // W-6/AC-851: deleting a pasted image with annotations stuck to it must ask, not silently delete or orphan.
+    [Fact]
+    public void DeletingAPastedImage_WithBoundAnnotations_AsksInsteadOfDeletingSilently()
+    {
+        var document = new WhiteboardDocument();
+        var image = new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 };
+        document.Add(image);
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Text, X = 20, Y = 20, Width = 10, Height = 10, ParentImageId = image.Id });
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseSelectTool();
+        window.MouseDown(new Point(70, 60), MouseButton.Left);
+        window.MouseUp(new Point(70, 60), MouseButton.Left);
+
+        window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
+
+        Assert.Equal(2, document.Objects.Count);
+        var prompt = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Alleen de afbeelding"));
+        Assert.NotNull(prompt);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void DeletingAPastedImage_ChoosingBoth_RemovesTheImageAndItsAnnotations()
+    {
+        var document = new WhiteboardDocument();
+        var image = new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 };
+        document.Add(image);
+        var label = new PlacedObject { ShapeKind = PlacedShapeKind.Text, X = 20, Y = 20, Width = 10, Height = 10, ParentImageId = image.Id };
+        document.Add(label);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseSelectTool();
+        window.MouseDown(new Point(70, 60), MouseButton.Left);
+        window.MouseUp(new Point(70, 60), MouseButton.Left);
+        window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
+
+        var both = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Afbeelding en"));
+        both.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Empty(document.Objects);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void DeletingAPastedImage_ChoosingDetach_RemovesOnlyTheImage_AndUnbindsTheAnnotation()
+    {
+        var document = new WhiteboardDocument();
+        var image = new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 };
+        document.Add(image);
+        var label = new PlacedObject { ShapeKind = PlacedShapeKind.Text, X = 20, Y = 20, Width = 10, Height = 10, ParentImageId = image.Id };
+        document.Add(label);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseSelectTool();
+        window.MouseDown(new Point(70, 60), MouseButton.Left);
+        window.MouseUp(new Point(70, 60), MouseButton.Left);
+        window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
+
+        var detach = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Alleen de afbeelding"));
+        detach.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal(label, Assert.Single(document.Objects));
+        Assert.Null(label.ParentImageId);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void Delete_RemovesAPastedImage_WithoutAnnotations_Immediately_NoPrompt()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 });
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseSelectTool();
+        window.MouseDown(new Point(20, 20), MouseButton.Left);
+        window.MouseUp(new Point(20, 20), MouseButton.Left);
+        window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
+
+        Assert.Empty(document.Objects);
+        Assert.DoesNotContain(canvas.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Wat moet er gebeuren met de aantekeningen op deze afbeelding?");
 
         window.Close();
     }

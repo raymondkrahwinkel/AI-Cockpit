@@ -53,6 +53,8 @@ public sealed class WhiteboardCanvasControl : Border
     private TextBox? _activeEditor;
     private PlacedObjectControl? _editingControl;
 
+    private Border? _deleteImagePrompt;
+
     private Guid? _selectedId;
     private PlacedShapeKind _pendingShapeKind = PlacedShapeKind.Rectangle;
 
@@ -263,8 +265,21 @@ public sealed class WhiteboardCanvasControl : Border
 
         if (_draggingPlaced is { } dragging)
         {
+            var oldX = dragging.Model.X;
+            var oldY = dragging.Model.Y;
             dragging.Model.X = point.X - _dragOffset.X;
             dragging.Model.Y = point.Y - _dragOffset.Y;
+
+            // W-6/AC-851: dragging a pasted image carries whatever is anchored to it along by the same delta.
+            if (dragging.Model.ShapeKind == PlacedShapeKind.Image)
+            {
+                WhiteboardBinding.CarryChildren(
+                    Document, dragging.Model.Id,
+                    oldX, oldY, dragging.Model.Width, dragging.Model.Height,
+                    dragging.Model.X, dragging.Model.Y, dragging.Model.Width, dragging.Model.Height);
+                _RefreshChildControls(dragging.Model.Id);
+            }
+
             _PositionPlaced(dragging);
             _PositionHandlesFor(dragging);
             return;
@@ -287,11 +302,13 @@ public sealed class WhiteboardCanvasControl : Border
             if (stroke.Count >= 2)
             {
                 var isMarker = _activeStrokeIsMarker;
+                var (centerX, centerY) = _BoundsCenter(stroke);
                 Document.Add(new FreehandStroke
                 {
                     Points = stroke,
                     IsMarker = isMarker,
                     Thickness = isMarker ? MarkerThickness : PencilThickness,
+                    ParentImageId = WhiteboardBinding.FindParentImage(Document, centerX, centerY)?.Id,
                 });
                 _freehandLayer.InvalidateVisual();
                 Changed?.Invoke(this, EventArgs.Empty);
@@ -314,6 +331,11 @@ public sealed class WhiteboardCanvasControl : Border
                 _PositionPlaced(shape);
                 shape.Refresh();
             }
+
+            // W-6/AC-851: a shape or label dropped over a pasted image belongs to it — same rule as a freehand
+            // stroke's. Image itself is never a shape-tool choice, so this never binds an image to another image.
+            shape.Model.ParentImageId = WhiteboardBinding.FindParentImage(
+                Document, shape.Model.X + (shape.Model.Width / 2), shape.Model.Y + (shape.Model.Height / 2))?.Id;
 
             _shapeInProgress = null;
             _shapeStartPoint = null;
@@ -358,7 +380,7 @@ public sealed class WhiteboardCanvasControl : Border
 
         if (e.Key is Key.Delete or Key.Back && _selectedId is { } id)
         {
-            _RemoveObject(id);
+            _RequestRemove(id);
             e.Handled = true;
         }
     }
@@ -521,6 +543,113 @@ public sealed class WhiteboardCanvasControl : Border
         }
     }
 
+    // W-6/AC-851: deleting a pasted image that annotations are anchored to must ask what happens to them — never
+    // silently drag them into deletion, never silently orphan them. Anything else deletes immediately, as before.
+    private void _RequestRemove(Guid id)
+    {
+        if (Document.Find(id) is PlacedObject { ShapeKind: PlacedShapeKind.Image } &&
+            WhiteboardBinding.ChildrenOf(Document, id) is { Count: > 0 } children &&
+            _placedControls.TryGetValue(id, out var control))
+        {
+            _ShowDeleteImageMenu(id, children, control);
+            return;
+        }
+
+        _RemoveObject(id);
+    }
+
+    // An inline panel dropped straight onto the surface — the same "no popup" approach _BeginTextEdit already uses
+    // for its TextBox — rather than a MenuFlyout, which needs an overlay layer this borderless canvas doesn't own.
+    private void _ShowDeleteImageMenu(Guid imageId, IReadOnlyList<WhiteboardObject> children, PlacedObjectControl anchor)
+    {
+        _DismissDeleteImagePrompt();
+
+        var both = new Button { Content = $"Afbeelding en {children.Count} aantekening(en) verwijderen", Classes = { "Compact" } };
+        both.Click += (_, _) =>
+        {
+            foreach (var child in children)
+            {
+                Document.Remove(child.Id);
+            }
+
+            _DismissDeleteImagePrompt();
+            _RemoveObject(imageId);
+        };
+
+        var detach = new Button { Content = "Alleen de afbeelding — aantekeningen loskoppelen", Classes = { "Compact" } };
+        detach.Click += (_, _) =>
+        {
+            foreach (var child in children)
+            {
+                child.ParentImageId = null;
+            }
+
+            _DismissDeleteImagePrompt();
+            _RemoveObject(imageId);
+        };
+
+        var cancel = new Button { Content = "Annuleren", Classes = { "Compact" } };
+        cancel.Click += (_, _) => _DismissDeleteImagePrompt();
+
+        var prompt = new Border
+        {
+            Background = Brushes.White,
+            BorderBrush = Brushes.Black,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new TextBlock { Text = "Wat moet er gebeuren met de aantekeningen op deze afbeelding?", TextWrapping = TextWrapping.Wrap, MaxWidth = 220 },
+                    both,
+                    detach,
+                    cancel,
+                },
+            },
+        };
+
+        _deleteImagePrompt = prompt;
+        _surface.Children.Add(prompt);
+        Avalonia.Controls.Canvas.SetLeft(prompt, anchor.Model.X);
+        Avalonia.Controls.Canvas.SetTop(prompt, anchor.Model.Y);
+    }
+
+    private void _DismissDeleteImagePrompt()
+    {
+        if (_deleteImagePrompt is { } prompt)
+        {
+            _surface.Children.Remove(prompt);
+            _deleteImagePrompt = null;
+        }
+    }
+
+    // Repositions every control belonging to `parentId`'s children after WhiteboardBinding.CarryChildren mutated
+    // their model geometry — placed children need their canvas position + size, freehand children only a repaint.
+    private void _RefreshChildControls(Guid parentId)
+    {
+        foreach (var child in Document.Objects.Where(o => o.ParentImageId == parentId))
+        {
+            if (child is PlacedObject placedChild && _placedControls.TryGetValue(placedChild.Id, out var childControl))
+            {
+                _PositionPlaced(childControl);
+                childControl.Refresh();
+            }
+        }
+
+        _freehandLayer.InvalidateVisual();
+    }
+
+    private static (double X, double Y) _BoundsCenter(IReadOnlyList<WhiteboardPoint> points)
+    {
+        var minX = points.Min(p => p.X);
+        var minY = points.Min(p => p.Y);
+        var maxX = points.Max(p => p.X);
+        var maxY = points.Max(p => p.Y);
+        return ((minX + maxX) / 2, (minY + maxY) / 2);
+    }
+
     private void _RemoveObject(Guid id)
     {
         Document.Remove(id);
@@ -651,6 +780,17 @@ public sealed class WhiteboardCanvasControl : Border
             }
 
             height = MinPlacedSize;
+        }
+
+        // W-6/AC-851: scale/translate whatever is anchored to this image using the fixed start bounds, same
+        // non-incremental basis _resizeStartBounds already gives the resize itself — no drift across pointer moves.
+        if (control.Model.ShapeKind == PlacedShapeKind.Image)
+        {
+            WhiteboardBinding.CarryChildren(
+                Document, control.Model.Id,
+                bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                x, y, width, height);
+            _RefreshChildControls(control.Model.Id);
         }
 
         control.Model.X = x;
