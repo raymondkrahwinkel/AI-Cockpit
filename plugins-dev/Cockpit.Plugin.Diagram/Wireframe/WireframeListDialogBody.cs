@@ -22,12 +22,17 @@ internal sealed class WireframeListDialogBody : UserControl
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
         refresh.Click += (_, _) => _ = _LoadAsync();
 
+        // AC-896: "Nieuw wireframe" moved here from the "..." menu, next to Refresh.
+        var newWireframe = new Button { Content = "Nieuw wireframe", Classes = { "Compact" } };
+        newWireframe.Click += (_, _) => _ = _QuickStartAsync();
+
         var header = new DockPanel
         {
             Margin = new Thickness(12, 12, 12, 0),
-            Children = { refresh, new TextBlock { Text = "Wireframes", FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center } },
+            Children = { refresh, newWireframe, new TextBlock { Text = "Wireframes", FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center } },
         };
         DockPanel.SetDock(refresh, Dock.Right);
+        DockPanel.SetDock(newWireframe, Dock.Right);
 
         var activePaneId = host.Sessions.ActivePaneId;
         var sessionLabel = host.Sessions.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
@@ -53,6 +58,18 @@ internal sealed class WireframeListDialogBody : UserControl
         var rows = await _host.GetProjectMemoryRowsAsync();
         var entries = WireframeCatalog.List(rows);
         _Render(entries, rows.Count);
+    }
+
+    // AC-873/AC-896: DiagramListDialogBody._QuickStartAsync's counterpart — a quick-started wireframe opens with
+    // the single childless "screen" line (WireframeDocument.New), never a bare document with nothing to render.
+    private async Task _QuickStartAsync()
+    {
+        if (await WireframeQuickStartDialog.ShowAsync(_host, "Nieuw wireframe") is not { } quickStart)
+        {
+            return;
+        }
+
+        await WireframeWindow.OpenAsync(_host, WireframeDocument.New(quickStart.Name), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<WireframeEntry> entries, int memoryRowCount)
