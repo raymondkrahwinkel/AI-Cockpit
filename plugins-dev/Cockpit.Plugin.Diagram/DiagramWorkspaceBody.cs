@@ -129,9 +129,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
-        _activityStrip = new ActivityStrip(host, _surfaceId, new DiagramActivityJournal(_registry), key => _ = _FlashObjectAsync(key));
+        var diagramJournal = new DiagramActivityJournal(_registry);
+        _activityStrip = new ActivityStrip(host, _surfaceId, diagramJournal, key => _ = _FlashObjectAsync(key));
         _pinStrip = new PinStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
-        _presence = new PresenceIndicators(host, _surfaceId, whiteboard: false);
+        _presence = new PresenceIndicators(_surfaceId, diagramJournal, diagramJournal);
 
         Content = new DockPanel
         {
