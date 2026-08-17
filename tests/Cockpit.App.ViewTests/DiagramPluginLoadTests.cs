@@ -43,9 +43,11 @@ public class DiagramPluginLoadTests
         plugin.Initialize(host);
 
         // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — nothing registers a workspace
-        // type any more, only toolbar actions: a new one and a list, per surface (W-2/AC-843).
+        // type any more, only toolbar actions: a new one and a list, per surface (W-2/AC-843, AC-873).
         Assert.Empty(host.WorkspaceTypes);
-        Assert.Equal(["Nieuw diagram", "Diagrams", "Nieuw whiteboard", "Whiteboards"], host.ToolbarActions.Select(a => a.Title));
+        Assert.Equal(
+            ["Nieuw diagram", "Diagrams", "Nieuw whiteboard", "Whiteboards", "Nieuw wireframe", "Wireframes"],
+            host.ToolbarActions.Select(a => a.Title));
 
         // The measurement: nothing named "Avalonia*" ever loaded into the plugin's own AssemblyLoadContext —
         // everything the panel needed from the Avalonia family (including Svg.Controls.Skia.Avalonia's own

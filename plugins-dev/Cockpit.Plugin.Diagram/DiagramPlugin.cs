@@ -57,7 +57,7 @@ public sealed class DiagramPlugin : ICockpitPlugin
         // AC-873: the wireframe surface, same window-not-tab shape as the other two.
         host.AddToolbarAction(new ToolbarAction("Nieuw wireframe", MaterialIconKind.ViewGridOutline, () => _WireframeQuickStartAsync(host)));
         host.AddToolbarAction(new ToolbarAction("Wireframes", MaterialIconKind.FormatListBulleted,
-            () => host.ShowDialogAsync("Wireframes", () => new WireframeListDialogBody(), WireframeListDialogKey, width: 520, height: 600)));
+            () => host.ShowDialogAsync("Wireframes", () => new WireframeListDialogBody(host), WireframeListDialogKey, width: 520, height: 600)));
 
         _ListenForAgentOpenRequests(host);
     }
