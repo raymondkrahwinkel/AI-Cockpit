@@ -2,11 +2,15 @@ using Cockpit.Core.Abstractions.Whiteboard;
 
 namespace Cockpit.Plugin.Diagram.Collab;
 
-// Adapts IWhiteboardAccessRegistry to ISurfaceActivityJournal (AC-870). Only a Place entry can still be undone —
-// see WhiteboardHistoryKind's own documented gap on Erase — so CanRevert mirrors the registry's own Revert rule
-// rather than always allowing the button and letting the registry refuse it.
-internal sealed class WhiteboardActivityJournal(IWhiteboardAccessRegistry? registry) : ISurfaceActivityJournal
+// Adapts IWhiteboardAccessRegistry to ISurfaceActivityJournal (AC-870) and ISurfaceCouplingSource (AC-879). Only a
+// Place entry can still be undone — see WhiteboardHistoryKind's own documented gap on Erase — so CanRevert mirrors
+// the registry's own Revert rule rather than always allowing the button and letting the registry refuse it.
+internal sealed class WhiteboardActivityJournal(IWhiteboardAccessRegistry? registry) : ISurfaceActivityJournal, ISurfaceCouplingSource
 {
+    // Same reason as DiagramActivityJournal's own map: CouplingChanged's flattened signature differs from the
+    // registry's own event, so remove needs the exact wrapper add registered rather than a straight pass-through.
+    private readonly Dictionary<Action<string, bool, bool>, Action<WhiteboardCouplingChange>> _couplingHandlers = new();
+
     public event Action<string>? HistoryChanged
     {
         add
@@ -22,6 +26,30 @@ internal sealed class WhiteboardActivityJournal(IWhiteboardAccessRegistry? regis
             {
                 registry.HistoryChanged -= value;
             }
+        }
+    }
+
+    public event Action<string, bool, bool>? CouplingChanged
+    {
+        add
+        {
+            if (registry is null || value is null)
+            {
+                return;
+            }
+
+            void Forward(WhiteboardCouplingChange change) => value(change.SurfaceId, change.Coupling is not null, change.Coupling?.CanRead ?? false);
+            _couplingHandlers[value] = Forward;
+            registry.CouplingChanged += Forward;
+        }
+        remove
+        {
+            if (registry is null || value is null || !_couplingHandlers.Remove(value, out var forward))
+            {
+                return;
+            }
+
+            registry.CouplingChanged -= forward;
         }
     }
 

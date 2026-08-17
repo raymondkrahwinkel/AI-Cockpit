@@ -4,15 +4,15 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Cockpit.Core.Abstractions.Diagrams;
-using Cockpit.Core.Abstractions.Whiteboard;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.Diagram.Collab;
 
 namespace Cockpit.Plugin.Diagram;
 
 // AC-847: what a coupled surface is doing right now — an agent pip, an operator pip, a "what's happening" line, a
 // running change count. Same shared-registry shape as ActivityStrip (read that one first), and the same "absent,
 // not empty-but-present" discipline: with nothing coupled this whole control collapses instead of showing idle pips.
+// AC-879: sourced from an ISurfaceActivityJournal/ISurfaceCouplingSource the caller picks, not a `bool whiteboard`
+// this class branched on — the same split ActivityStrip got in AC-870, so a third surface can supply its own.
 internal sealed class PresenceIndicators : Border
 {
     // How long a fresh non-operator edit counts as "writing" before the pip and the live line settle back to
@@ -20,9 +20,8 @@ internal sealed class PresenceIndicators : Border
     private static readonly TimeSpan WritingWindow = TimeSpan.FromSeconds(3);
 
     private readonly string _surfaceId;
-    private readonly bool _whiteboard;
-    private readonly IDiagramAccessRegistry? _diagramRegistry;
-    private readonly IWhiteboardAccessRegistry? _whiteboardRegistry;
+    private readonly ISurfaceActivityJournal _journal;
+    private readonly ISurfaceCouplingSource _coupling;
     private readonly int _baselineCount;
     private readonly Ellipse _agentPip = new() { Width = 8, Height = 8 };
     private readonly Ellipse _operatorPip = new() { Width = 8, Height = 8 };
@@ -36,18 +35,15 @@ internal sealed class PresenceIndicators : Border
     private string? _lastSummary;
     private int _writingGeneration;
 
-    public PresenceIndicators(ICockpitHost host, string surfaceId, bool whiteboard)
+    public PresenceIndicators(string surfaceId, ISurfaceActivityJournal journal, ISurfaceCouplingSource coupling)
     {
         _surfaceId = surfaceId;
-        _whiteboard = whiteboard;
-        _diagramRegistry = whiteboard ? null : host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
-        _whiteboardRegistry = whiteboard ? host.Services.GetService(typeof(IWhiteboardAccessRegistry)) as IWhiteboardAccessRegistry : null;
+        _journal = journal;
+        _coupling = coupling;
 
         // A window-session tally, not a lifetime one: whatever landed before this control existed is the baseline,
         // not part of "changed since I've been watching".
-        _baselineCount = whiteboard
-            ? _whiteboardRegistry?.History(_surfaceId).Count ?? 0
-            : _diagramRegistry?.History(_surfaceId).Count ?? 0;
+        _baselineCount = _journal.History(_surfaceId).Count;
 
         ToolTip.SetTip(_agentPip, "Agent");
         ToolTip.SetTip(_operatorPip, "Jij");
@@ -62,31 +58,13 @@ internal sealed class PresenceIndicators : Border
         Padding = new Thickness(12, 2, 12, 6);
         Child = new StackPanel { Spacing = 2, Children = { pips, _liveLine, _counterLine } };
 
-        if (_diagramRegistry is not null)
-        {
-            _diagramRegistry.CouplingChanged += _OnDiagramCouplingChanged;
-            _diagramRegistry.HistoryChanged += _OnHistoryChanged;
-        }
-
-        if (_whiteboardRegistry is not null)
-        {
-            _whiteboardRegistry.CouplingChanged += _OnWhiteboardCouplingChanged;
-            _whiteboardRegistry.HistoryChanged += _OnHistoryChanged;
-        }
+        _coupling.CouplingChanged += _OnCouplingChanged;
+        _journal.HistoryChanged += _OnHistoryChanged;
 
         DetachedFromVisualTree += (_, _) =>
         {
-            if (_diagramRegistry is not null)
-            {
-                _diagramRegistry.CouplingChanged -= _OnDiagramCouplingChanged;
-                _diagramRegistry.HistoryChanged -= _OnHistoryChanged;
-            }
-
-            if (_whiteboardRegistry is not null)
-            {
-                _whiteboardRegistry.CouplingChanged -= _OnWhiteboardCouplingChanged;
-                _whiteboardRegistry.HistoryChanged -= _OnHistoryChanged;
-            }
+            _coupling.CouplingChanged -= _OnCouplingChanged;
+            _journal.HistoryChanged -= _OnHistoryChanged;
         };
 
         _Refresh();
@@ -108,24 +86,14 @@ internal sealed class PresenceIndicators : Border
         _Refresh();
     }
 
-    private void _OnDiagramCouplingChanged(DiagramCouplingChange change)
+    private void _OnCouplingChanged(string surfaceId, bool coupled, bool hasCapability)
     {
-        if (change.SurfaceId != _surfaceId)
+        if (surfaceId != _surfaceId)
         {
             return;
         }
 
-        Dispatcher.UIThread.Post(() => _ApplyCoupling(change.Coupling is not null, change.Coupling?.CanRead ?? false));
-    }
-
-    private void _OnWhiteboardCouplingChanged(WhiteboardCouplingChange change)
-    {
-        if (change.SurfaceId != _surfaceId)
-        {
-            return;
-        }
-
-        Dispatcher.UIThread.Post(() => _ApplyCoupling(change.Coupling is not null, change.Coupling?.CanRead ?? false));
+        Dispatcher.UIThread.Post(() => _ApplyCoupling(coupled, hasCapability));
     }
 
     private void _ApplyCoupling(bool coupled, bool hasCapability)
@@ -144,9 +112,7 @@ internal sealed class PresenceIndicators : Border
 
         Dispatcher.UIThread.Post(() =>
         {
-            var last = _whiteboard
-                ? _LastEntry(_whiteboardRegistry?.History(_surfaceId))
-                : _LastEntry(_diagramRegistry?.History(_surfaceId));
+            var last = _LastEntry(_journal.History(_surfaceId));
 
             if (last is { Origin: not "operator", Reverted: false } entry)
             {
@@ -160,10 +126,7 @@ internal sealed class PresenceIndicators : Border
         });
     }
 
-    private static (string Origin, string Summary, bool Reverted)? _LastEntry(IReadOnlyList<DiagramHistoryEntry>? entries) =>
-        entries is { Count: > 0 } list ? (list[^1].Origin, list[^1].Summary, list[^1].Reverted) : null;
-
-    private static (string Origin, string Summary, bool Reverted)? _LastEntry(IReadOnlyList<WhiteboardHistoryEntry>? entries) =>
+    private static (string Origin, string Summary, bool Reverted)? _LastEntry(IReadOnlyList<SurfaceActivityEntry> entries) =>
         entries is { Count: > 0 } list ? (list[^1].Origin, list[^1].Summary, list[^1].Reverted) : null;
 
     // One shared clock: the pip colour and the live line never disagree about freshness, because both read this
@@ -208,7 +171,7 @@ internal sealed class PresenceIndicators : Border
                 ? $"{name}: {_lastSummary}{both}"
                 : $"{name} leest mee{both}";
 
-        var total = _whiteboard ? _whiteboardRegistry?.History(_surfaceId).Count ?? 0 : _diagramRegistry?.History(_surfaceId).Count ?? 0;
+        var total = _journal.History(_surfaceId).Count;
         var delta = Math.Max(0, total - _baselineCount);
         _counterLine.Text = delta switch
         {
