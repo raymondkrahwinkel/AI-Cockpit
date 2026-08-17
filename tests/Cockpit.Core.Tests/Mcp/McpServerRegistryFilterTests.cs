@@ -133,4 +133,56 @@ public class McpServerRegistryFilterTests
         Assert.NotNull(result);
         Assert.True(result.Contains("server-a"));
     }
+
+    // ── WithAutoMountedServers (AC-869): folding an internal endpoint's own mount rule into a selection ──────────
+
+    [Fact]
+    public void WithAutoMountedServers_NoAutoMountedNames_ReturnsTheSelectionUnchanged()
+    {
+        var selection = new HashSet<string> { "server-a" };
+
+        var result = McpServerRegistryFilter.WithAutoMountedServers(selection, [ServerA, InternalServer], []);
+
+        Assert.Same(selection, result);
+    }
+
+    [Fact]
+    public void WithAutoMountedServers_NoAutoMountedNames_LeavesANullSelectionNull()
+    {
+        var result = McpServerRegistryFilter.WithAutoMountedServers(null, [ServerA, InternalServer], []);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void WithAutoMountedServers_WithANullSelection_MaterializesTheNoSelectionFanOutPlusTheAutoMountedName()
+    {
+        // Null means "no restriction" — the fan-out ApplySessionSelection would already have given without this
+        // call — so the auto-mounted internal endpoint is added on top of exactly that set, not in place of it.
+        var result = McpServerRegistryFilter.WithAutoMountedServers(
+            null, [ServerA, ServerB, InternalServer], [InternalServer.Name]);
+
+        Assert.Equal(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "server-a", "server-b", InternalServer.Name }, result);
+    }
+
+    [Fact]
+    public void WithAutoMountedServers_WithAnExplicitSelection_UnionsInTheAutoMountedName()
+    {
+        var result = McpServerRegistryFilter.WithAutoMountedServers(
+            new HashSet<string> { "server-a" }, [ServerA, ServerB, InternalServer], [InternalServer.Name]);
+
+        Assert.Equal(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "server-a", InternalServer.Name }, result);
+    }
+
+    [Fact]
+    public void ApplySessionSelection_AfterWithAutoMountedServers_MountsTheInternalEndpoint_EvenWithNoOperatorSelection()
+    {
+        // The end-to-end shape AC-869 relies on: a git-repo working directory names the internal endpoint through
+        // WithAutoMountedServers, and ApplySessionSelection then mounts it even though nothing was ticked.
+        var selection = McpServerRegistryFilter.WithAutoMountedServers(null, [ServerA, InternalServer], [InternalServer.Name]);
+
+        var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, InternalServer], selection);
+
+        Assert.Contains(InternalServer, result);
+    }
 }

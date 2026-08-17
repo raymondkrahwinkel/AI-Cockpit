@@ -330,6 +330,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   repeated verbatim between its execution mandate and its closing instruction, and two filler transitions, without
   touching the guidance that keeps lighter models from analysing a step instead of building it.
 
+- changed: the GitHub pull-requests MCP tools no longer show up as a checkbox in the New-session checklist or the
+  project editor. A session started in a git repository now gets them automatically, with nothing to tick; a
+  session started somewhere else does not get them at all. The assistant always has them, wherever it is asked
+  something from.
+
 ### Removed
 
 - removed: the counts across the top of the Projects page (projects / worked on / sessions open). They sat in front

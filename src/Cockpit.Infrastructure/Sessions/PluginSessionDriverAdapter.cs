@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -17,7 +18,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // rest of the app unchanged. The Claude-CLI-only live-control members (permission mode / model / thinking-budget
 // switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 // here, gated off in the UI by `Capabilities` reporting them unsupported.
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -137,7 +138,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // session), so the fallback belongs here rather than on the dialog-only TTY route.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
 
-        var mcpServers = await _ResolveMcpServersAsync(selection, projectId, cancellationToken).ConfigureAwait(false);
+        var mcpServers = await _ResolveMcpServersAsync(selection, projectId, workingDirectory, cancellationToken).ConfigureAwait(false);
 
         // AC-165: what the plugins give this session, resolved from the pane it is starting in so a contribution
         // can depend on the project that pane belongs to. AC-408: kept on the field too, so the event loop below
@@ -309,7 +310,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // launches the session without the shared servers rather than failing the whole start, matching how the
     // Claude fan-out treats the same read. `projectId` (AC-218) scopes the registry read to that
     // project's own view, so a project's servers and by-name overrides are seen here too.
-    private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, string? projectId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, CancellationToken cancellationToken)
     {
         if (mcpServerCatalog is null)
         {
@@ -319,7 +320,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         try
         {
             var registry = await mcpServerCatalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
-            var eligible = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
+            // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
+            // directory names it explicitly here rather than through operator config.
+            var autoMounted = await GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, cancellationToken).ConfigureAwait(false);
+            var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
+            var eligible = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection)
                 .Where(McpConfigFile.IsAgentEligible)
                 .ToList();
 

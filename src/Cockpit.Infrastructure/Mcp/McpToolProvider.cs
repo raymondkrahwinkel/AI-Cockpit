@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions.Permissions;
 
@@ -23,10 +24,11 @@ internal sealed class McpToolProvider(
     IMcpOAuthCoordinator oauthCoordinator,
     McpAuthKey authKey,
     SessionMcpKeyring keyring,
-    ILogger<McpToolProvider> logger)
+    ILogger<McpToolProvider> logger,
+    IWorktreeManager? worktreeManager = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
-    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, CancellationToken cancellationToken = default)
+    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
         // AC-89: when this in-process tool loop belongs to a session with a pane id (a local-model session), mint it
         // one per-session token — used for every cockpit-hosted endpoint it connects to — so those endpoints can
@@ -38,7 +40,11 @@ internal sealed class McpToolProvider(
         // plugin's MCP servers too, and the per-session selection can narrow them like any other. Scoped to
         // projectId (AC-218) so a project's own servers and by-name overrides are seen, not just the unscoped registry.
         var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
-        var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
+        // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
+        // directory names it explicitly here rather than through operator config.
+        var autoMounted = await GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, cancellationToken).ConfigureAwait(false);
+        var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
+        var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
         var clients = new List<McpClient>();
         var tools = new List<AIFunction>();
         var connectedNames = new List<string>();

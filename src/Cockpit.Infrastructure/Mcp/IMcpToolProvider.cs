@@ -29,8 +29,14 @@ internal interface IMcpToolProvider
     /// <see cref="IMcpServerCatalog.GetServersAsync"/> — a project's own servers and its by-name overrides are seen
     /// here, not just the servers it turned off. <see langword="null"/> for a session with no project.
     /// </para>
+    /// <para>
+    /// <paramref name="workingDirectory"/> (AC-869): the session's working directory, used only to decide whether
+    /// an internal endpoint whose own mount rule is "the working directory is a git repository" (currently
+    /// cockpit-github-pull-requests) should be named for this session even though nothing in
+    /// <paramref name="enabledServerNames"/> asked for it. <see langword="null"/> means that rule never fires.
+    /// </para>
     /// </summary>
-    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, CancellationToken cancellationToken = default);
+    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Connects a single named catalog server on its own, just to read its tool list for the pre-flight token
