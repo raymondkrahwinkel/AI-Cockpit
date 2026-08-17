@@ -11,9 +11,8 @@ using Cockpit.Plugins.Abstractions.Consent;
 namespace Cockpit.Infrastructure.Diagrams;
 
 // The `cockpit-diagram` MCP tools (AC-810), gated per-capability like `cockpit-terminal` (AC-34) — read that class
-// first. Deviations: `read_diagram` always returns the surface as it stands (a state, not a stream), and
-// `edit_diagram`'s consent text is derived from the real change (SourceChangeSummary), never agent prose (cf. AC-489).
-// The per-object tools (AC-852) share Edit's one ask but write straight through: only `edit_diagram` still diffs.
+// first. Deviations: `read_diagram` returns the surface as it stands (a state, not a stream), `edit_diagram`'s
+// consent text comes from SourceChangeSummary (AC-489), and the per-object tools (AC-852) write straight through.
 internal sealed class DiagramMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };

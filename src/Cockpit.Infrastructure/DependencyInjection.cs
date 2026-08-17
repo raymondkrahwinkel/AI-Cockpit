@@ -61,8 +61,7 @@ public static class DependencyInjection
 
         // cockpit-wireframe (AC-872): the third collab surface — an agent writes a screen sketch in the wireframe
         // text format and edits it component by component, read and edit each behind their own Approve/Deny. Its
-        // own server rather than tools on cockpit-diagram, because add_node and add_component are two vocabularies
-        // and one server carrying both would offer tools that mean nothing half the time (AC-864's grooming).
+        // own server rather than tools on cockpit-diagram: add_node and add_component are two vocabularies (AC-864).
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-wireframe", typeof(Wireframe.WireframeMcpTools)));
 
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
