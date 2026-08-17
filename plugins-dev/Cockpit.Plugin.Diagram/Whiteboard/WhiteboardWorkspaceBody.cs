@@ -337,9 +337,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     }
 
     // W-2/AC-843: the statusregel — same shape as DiagramWorkspaceBody's save bar (AC-839), one Opslaan button plus
-    // where-it-landed text, so the board round-trips through the same 0/1/meerdere-paden rule as a diagram.
-    // AC-849: Prikken sits beside it — the operator's question about whatever is selected, sent to the coupled
-    // session as a "📍 pin N" reference, see _AddPin.
+    // where-it-landed text. AC-849's Prikken sits beside it — the operator's question about whatever is selected,
+    // sent to the coupled session as a "📍 pin N" reference, see _AddPin.
     private (Border Bar, Button Save, TextBlock Status, Button Pin) _BuildSaveBar()
     {
         var save = new Button { Content = "Opslaan", Classes = { "Compact" } };

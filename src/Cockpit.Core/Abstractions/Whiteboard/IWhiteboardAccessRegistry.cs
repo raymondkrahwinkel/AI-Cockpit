@@ -146,15 +146,23 @@ public interface IWhiteboardAccessRegistry
 
     // ---- Pins (AC-849): the operator's question about one object, landed as a reference in the coupled session ----
 
-    /// <summary>This surface's pins, oldest first — a pin's 1-based position in this list is the "N" in its "📍 pin N" reference.</summary>
+    /// <summary>
+    /// This surface's pins, oldest first — a pin's 1-based position in this list is the "N" in its "📍 pin N" reference.
+    /// </summary>
     IReadOnlyList<WhiteboardPin> Pins(string surfaceId);
 
-    /// <summary>Raised whenever a surface's pins change: a new one planted, or one closed.</summary>
+    /// <summary>
+    /// Raised whenever a surface's pins change: a new one planted, or one closed.
+    /// </summary>
     event Action<string>? PinsChanged;
 
-    /// <summary>Plants a pin on `objectId` and returns its id, so the caller can compose and send the "📍 pin N" reference itself.</summary>
+    /// <summary>
+    /// Plants a pin on `objectId` and returns its id, so the caller can compose and send the "📍 pin N" reference itself.
+    /// </summary>
     string AddPin(string surfaceId, string objectId, string question);
 
-    /// <summary>Marks a pin closed — the operator's own call that it has been answered, not a system-detected one. Idempotent.</summary>
+    /// <summary>
+    /// Marks a pin closed — the operator's own call that it has been answered, not a system-detected one. Idempotent.
+    /// </summary>
     void ClosePin(string surfaceId, string pinId);
 }
