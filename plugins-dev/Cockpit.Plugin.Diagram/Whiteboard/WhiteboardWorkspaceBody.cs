@@ -7,13 +7,12 @@ using Avalonia.Media.Imaging;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Consent;
+using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Notifications;
-using Cockpit.Plugins.Abstractions.Sessions;
-using Material.Icons;
 using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
@@ -53,9 +52,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private bool _convertAsked;
     private int _proposals;
     private WhiteboardCoupling? _current;
-    private IPluginSessionBinding _binding;
-    private string? _boundSessionName;
-    private string? _endedSessionName;
+    private SurfaceSessionBinding _sessionBinding;
     private string? _filePath;
     private string _savedText;
     private string? _fileAsLastSeen;
@@ -69,7 +66,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _documentTitle = document.Title;
         _filePath = document.FilePath;
         _savedText = WhiteboardCatalog.Serialize(document);
-        _fileAsLastSeen = _ReadFile(_filePath);
+        _fileAsLastSeen = SurfaceChrome.ReadFile(_filePath);
         _control = new WhiteboardControl(document);
         _control.Canvas.Changed += (_, _) =>
         {
@@ -80,7 +77,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         (_saveBar, _saveButton, _saveStatus, _pinButton) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
         (var convertBar, _convertButton, _convertStatus) = _BuildConvertBar();
-        _activityStrip = new ActivityStrip(host, _surfaceId, whiteboard: true, key =>
+        _activityStrip = new ActivityStrip(host, _surfaceId, new WhiteboardActivityJournal(_registry), key =>
         {
             if (Guid.TryParse(key, out var id))
             {
@@ -106,10 +103,11 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         DockPanel.SetDock(convertBar, Dock.Bottom);
         _RefreshSaveBar();
 
-        // Bound before the first _RefreshPinButton (AC-849): that reads _binding.IsLive for the pin button.
-        _binding = _Bind(sessionPaneId);
-        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
-        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
+        // Bound before the first _RefreshPinButton (AC-849): that reads _sessionBinding.IsLive for the pin button.
+        // The same callback that refreshes the coupling bar on a change refreshes that button too.
+        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshPinButton(); });
+        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _RefreshPinButton();
 
         if (_registry is not null)
@@ -123,9 +121,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _registry.SurfaceOpened(_surfaceId, _documentTitle, _Snapshot());
 
             // A plain Couple — zero capabilities. The invite button (and read_whiteboard) still ask their own Grant.
-            if (_binding.IsLive)
+            if (_sessionBinding.IsLive)
             {
-                _registry.Couple(_binding.PaneId, _surfaceId);
+                _registry.Couple(_sessionBinding.PaneId, _surfaceId);
             }
         }
 
@@ -142,7 +140,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         DetachedFromVisualTree += (_, _) =>
         {
-            _binding.Dispose();
+            _sessionBinding.Dispose();
             if (_diagrams is not null)
             {
                 _diagrams.ProposalChanged -= _OnProposalChanged;
@@ -161,42 +159,17 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         };
     }
 
-    // The name is read here and kept, not read on demand — by the time the session ends it is gone from the
-    // cockpit (mirrors DiagramWorkspaceBody._Bind, AC-834).
-    private IPluginSessionBinding _Bind(string? paneId)
-    {
-        var binding = _host.BindToSession(paneId ?? "");
-        _boundSessionName = binding.SessionName ?? (binding.IsLive ? binding.PaneId : null);
-        binding.Ended += _OnSessionEnded;
-        return binding;
-    }
-
-    private void _OnSessionEnded(object? sender, EventArgs e) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-    {
-        _endedSessionName = _boundSessionName;
-        _RefreshCouplingBar();
-        _RefreshPinButton();
-    });
-
     // The way out of "window open, no agent" — after the bound session ended or the operator disconnected.
     private void _Recouple(string paneId)
     {
-        try
+        if (_sessionBinding.Recouple(paneId, p => _registry?.Couple(p, _surfaceId)) is { } reason)
         {
-            _registry?.Couple(paneId, _surfaceId);
-        }
-        catch (InvalidOperationException exception)
-        {
-            _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+            _host.ShowToast(reason, PluginToastSeverity.Error);
             return;
         }
 
-        _binding.Ended -= _OnSessionEnded;
-        _binding.Dispose();
-        _binding = _Bind(paneId);
-        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
-        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
-        _endedSessionName = null;
+        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _RefreshCouplingBar();
         _RefreshPinButton();
     }
@@ -205,12 +178,12 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // just asked from the board instead of from the agent. The wording is Cockpit's, never the agent's.
     private async Task _InviteAsync()
     {
-        if (_current is not { CanRead: false } || !_binding.IsLive)
+        if (_current is not { CanRead: false } || !_sessionBinding.IsLive)
         {
             return;
         }
 
-        var paneId = _binding.PaneId;
+        var paneId = _sessionBinding.PaneId;
         var decision = await _host.RequestConsentAsync(_InvitePrompt());
         if (!decision.IsApproved)
         {
@@ -270,7 +243,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         flyout.Items.Add(fresh);
 
         // Een diagram dat een andere agent vasthoudt zou een doodlopende keuze zijn: edit_diagram weigert daar.
-        foreach (var surface in _diagrams?.ListSurfaces(_binding.PaneId).Where(s => !_diagrams.IsCoupledByAnother(_binding.PaneId, s.SurfaceId)) ?? [])
+        foreach (var surface in _diagrams?.ListSurfaces(_sessionBinding.PaneId).Where(s => !_diagrams.IsCoupledByAnother(_sessionBinding.PaneId, s.SurfaceId)) ?? [])
         {
             var item = new MenuItem { Header = $"Omzetten naar \"{surface.Name}\"" };
             item.Click += (_, _) => _Convert(surface.SurfaceId, surface.Name);
@@ -289,7 +262,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private void _ConvertToNew()
     {
         var document = DiagramDocument.New($"{_documentTitle} — diagram");
-        _ = DiagramWindow.OpenAsync(_host, document, _binding.IsLive ? _binding.PaneId : null);
+        _ = DiagramWindow.OpenAsync(_host, document, _sessionBinding.LivePaneId);
         _Convert(document.Id, document.Title);
     }
 
@@ -302,7 +275,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _convertAsked = target is not null;
         _proposals = 0;
         _RefreshConvertBar();
-        _ = _binding.SendAsync(prompt);
+        _ = _sessionBinding.SendAsync(prompt);
     }
 
     // Alleen een voorstel op hét diagram waar deze omzetting heen ging telt: elk ander voorstel gaat over werk dat
@@ -323,7 +296,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
     private void _RefreshConvertBar()
     {
-        var blocker = WhiteboardToDiagram.Blocker(_diagrams is not null, _binding.IsLive, _current);
+        var blocker = WhiteboardToDiagram.Blocker(_diagrams is not null, _sessionBinding.IsLive, _current);
         _convertButton.IsEnabled = blocker is null;
         _convertStatus.Text = blocker ?? WhiteboardToDiagram.Status(_convertAsked, _proposals);
     }
@@ -367,10 +340,10 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private void _RefreshPinButton()
     {
         var selected = _control.Canvas.SelectedId is not null;
-        _pinButton.IsEnabled = _registry is not null && _binding.IsLive && selected;
+        _pinButton.IsEnabled = _registry is not null && _sessionBinding.IsLive && selected;
         ToolTip.SetTip(
             _pinButton,
-            !_binding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
+            !_sessionBinding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
             : !selected ? "Selecteer eerst een object om te prikken."
             : "Prik een vraag op dit object.");
     }
@@ -380,7 +353,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // chat message, not living only on this board.
     private void _AddPin(Control anchor)
     {
-        if (_registry is null || !_binding.IsLive || _control.Canvas.SelectedId is not { } id)
+        if (_registry is null || !_sessionBinding.IsLive || _control.Canvas.SelectedId is not { } id)
         {
             return;
         }
@@ -404,7 +377,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             flyout.Hide();
             _registry.AddPin(_surfaceId, id.ToString(), text);
             var index = _registry.Pins(_surfaceId).Count;
-            _ = _binding.SendAsync(PinMessage.Compose(_documentTitle, index, label, text));
+            _ = _sessionBinding.SendAsync(PinMessage.Compose(_documentTitle, index, label, text));
         }
 
         confirm.Click += (_, _) => Plant();
@@ -435,7 +408,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             return;
         }
 
-        var homes = WhiteboardCatalog.WritableHomes(await _host.GetProjectMemoryRowsAsync(_binding.IsLive ? _binding.PaneId : null));
+        var homes = WhiteboardCatalog.WritableHomes(await _host.GetProjectMemoryRowsAsync(_sessionBinding.LivePaneId));
         if (homes.Count == 0)
         {
             _host.ShowToast(
@@ -475,20 +448,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         }
 
         _savedText = WhiteboardCatalog.Serialize(_control.Canvas.Document);
-        _fileAsLastSeen = _ReadFile(_filePath);
+        _fileAsLastSeen = SurfaceChrome.ReadFile(_filePath);
         _RefreshSaveBar();
-    }
-
-    private static string? _ReadFile(string? filePath)
-    {
-        try
-        {
-            return filePath is not null && File.Exists(filePath) ? File.ReadAllText(filePath) : null;
-        }
-        catch (IOException)
-        {
-            return null;
-        }
     }
 
     private void _RefreshSaveBar()
@@ -581,71 +542,17 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // a real state — after the session ended, or after Disconnect — not one the bar should hide from.
     private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip, MaterialIcon Pip, Button Couple, Button Disconnect, Button Invite) _BuildCouplingBar()
     {
-        // AC-843: the snelstart name, shown here too — not just in the venstertitel — same precedent as
-        // DiagramWorkspaceBody's titleLabel (AC-840).
-        var titleLabel = new TextBlock { Text = _documentTitle, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-        var pip = new MaterialIcon { Kind = MaterialIconKind.RobotOutline, Width = 15, Height = 15 };
-        var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Foreground = _Brush("CockpitAccentBrush") };
-        var readChip = _Chip();
-        var editChip = _Chip();
-
         var invite = new Button { Content = "Laat sdk meekijken", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
         invite.Click += (_, _) => _ = _InviteAsync();
 
-        var disconnect = new Button { Content = "Disconnect", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
-        disconnect.Click += (_, _) => _registry?.Disconnect(_surfaceId);
+        var parts = CouplingBarFactory.Build(_documentTitle, extraActions: [invite]);
+        parts.Disconnect.Click += (_, _) => _registry?.Disconnect(_surfaceId);
+        parts.Couple.Click += (_, _) => _ShowSessionPicker(parts.Couple);
 
-        var couple = new Button { Content = "Koppelen…", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
-        couple.Click += (_, _) => _ShowSessionPicker(couple);
-
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { couple, invite, disconnect } };
-
-        var bar = new Border
-        {
-            Margin = new Thickness(0, 0, 0, 6),
-            Padding = new Thickness(8, 4),
-            Background = _Brush("CockpitSecondaryBgBrush"),
-            BorderBrush = _Brush("CockpitAccentBrush"),
-            BorderThickness = new Thickness(1),
-            Child = new DockPanel
-            {
-                Children =
-                {
-                    actions,
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 6,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Children = { titleLabel, pip, label, readChip, editChip },
-                    },
-                },
-            },
-        };
-        DockPanel.SetDock(actions, Dock.Right);
-
-        return (bar, label, readChip, editChip, pip, couple, disconnect, invite);
+        return (parts.Bar, parts.Label, parts.ReadChip, parts.EditChip, parts.Pip, parts.Couple, parts.Disconnect, invite);
     }
 
-    // The open sessions by name (AC-833), so recoupling names a session instead of guessing one.
-    private void _ShowSessionPicker(Control anchor)
-    {
-        var open = _host.Sessions.OpenSessions;
-        var flyout = new MenuFlyout();
-        if (open.Count == 0)
-        {
-            flyout.Items.Add(new MenuItem { Header = "Geen open sessies", IsEnabled = false });
-        }
-
-        foreach (var session in open)
-        {
-            var item = new MenuItem { Header = session.Name };
-            item.Click += (_, _) => _Recouple(session.PaneId);
-            flyout.Items.Add(item);
-        }
-
-        flyout.ShowAt(anchor);
-    }
+    private void _ShowSessionPicker(Control anchor) => _sessionBinding.ShowSessionPicker(anchor, _Recouple);
 
     private void _RefreshCouplingBar()
     {
@@ -659,7 +566,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         if (_current is not { } coupling)
         {
-            _couplingLabel.Text = _endedSessionName is { } ended
+            _couplingLabel.Text = _sessionBinding.EndedSessionName is { } ended
                 ? $"Sessie {ended} is afgelopen — dit venster blijft open."
                 : "Geen agent gekoppeld.";
             _couplingLabel.Foreground = _Brush("CockpitTextSecondaryBrush");
@@ -667,30 +574,16 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             return;
         }
 
-        var name = _binding.SessionName ?? _boundSessionName ?? coupling.SessionId;
+        var name = _sessionBinding.DisplayName ?? coupling.SessionId;
         var readAt = coupling.LastReadAt is { } at ? $" · gelezen {at.ToLocalTime():HH:mm}" : "";
         _couplingLabel.Text = coupling.CanRead
             ? $"Agent connected — session {name}{readAt}"
             : $"Agent connected — session {name} (no capabilities granted yet)";
         _couplingLabel.Foreground = _Brush("CockpitAccentBrush");
         _pip.Foreground = coupling.CanRead ? _Brush("CockpitAccentBrush") : _Brush("CockpitTextSecondaryBrush");
-        _SetChip(_readChip, "read_whiteboard", coupling.CanRead);
-        _SetChip(_editChip, "place_on_whiteboard", coupling.CanWrite);
+        SurfaceChrome.SetChip(_readChip, "read_whiteboard", coupling.CanRead);
+        SurfaceChrome.SetChip(_editChip, "place_on_whiteboard", coupling.CanWrite);
     }
 
-    private static TextBlock _Chip() => new()
-    {
-        Margin = new Thickness(6, 0, 0, 0),
-        Padding = new Thickness(6, 1),
-        FontSize = 10,
-    };
-
-    private static void _SetChip(TextBlock chip, string name, bool granted)
-    {
-        chip.Text = granted ? $"{name} allowed" : $"{name} not granted";
-        chip.Foreground = granted ? _Brush("CockpitAccentBrush") : _Brush("CockpitTextSecondaryBrush");
-    }
-
-    private static IBrush? _Brush(string resourceKey) =>
-        Application.Current?.FindResource(resourceKey) as IBrush;
+    private static IBrush? _Brush(string resourceKey) => SurfaceChrome.Brush(resourceKey);
 }

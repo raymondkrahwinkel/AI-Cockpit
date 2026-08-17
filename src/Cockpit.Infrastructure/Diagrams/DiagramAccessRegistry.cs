@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagrams;
+using Cockpit.Infrastructure.Collab;
 
 namespace Cockpit.Infrastructure.Diagrams;
 
@@ -10,9 +11,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 {
     private readonly object _lock = new();
     private readonly Dictionary<string, Surface> _surfaces = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, DiagramCoupling> _couplings = new(StringComparer.Ordinal); // surfaceId -> coupling
+    private readonly CouplingLedger<DiagramCoupling> _ledger = new(coupling => coupling.SessionId);
     private readonly Dictionary<string, DiagramProposal> _proposals = new(StringComparer.Ordinal); // surfaceId -> pending proposal
-    private readonly Dictionary<string, string> _awaitingCoupling = new(StringComparer.Ordinal); // surfaceId -> session that asked for it (AC-835)
     private readonly Dictionary<string, List<HistoryEntry>> _history = new(StringComparer.Ordinal); // surfaceId -> its edits, oldest first
     private readonly Dictionary<string, List<PinEntry>> _pins = new(StringComparer.Ordinal); // surfaceId -> its pins, oldest first
 
@@ -32,7 +32,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public void SurfaceOpened(string surfaceId, string name, string initialText)
     {
-        DiagramCoupling? asked = null;
+        DiagramCoupling? asked;
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var existing))
@@ -45,10 +45,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             // AC-835: this window is here because an agent asked for it, so it arrives coupled to that agent —
             // zero capabilities, like every other coupling: read and edit stay their own separate asks.
-            if (_awaitingCoupling.Remove(surfaceId, out var session) && !_couplings.ContainsKey(surfaceId))
-            {
-                _couplings[surfaceId] = asked = new DiagramCoupling(session, CanRead: false, CanEdit: false);
-            }
+            asked = _ledger.ConsumeAwaiting(surfaceId, session => new DiagramCoupling(session, CanRead: false, CanEdit: false));
         }
 
         if (asked is not null)
@@ -66,7 +63,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
         lock (_lock)
         {
-            _awaitingCoupling[request.SurfaceId] = request.SessionId;
+            _ledger.MarkAwaiting(request.SurfaceId, request.SessionId);
         }
 
         listeners(request);
@@ -79,7 +76,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         lock (_lock)
         {
             _surfaces.Remove(surfaceId);
-            wasCoupled = _couplings.Remove(surfaceId);
+            wasCoupled = _ledger.Remove(surfaceId);
             hadProposal = _proposals.Remove(surfaceId);
             _history.Remove(surfaceId);
             _pins.Remove(surfaceId);
@@ -120,7 +117,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         lock (_lock)
         {
             hadProposal = _proposals.Remove(surfaceId);
-            if (!_couplings.Remove(surfaceId))
+            if (!_ledger.Remove(surfaceId))
             {
                 if (hadProposal)
                 {
@@ -152,10 +149,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         lock (_lock)
         {
             return _surfaces
-                .Select(surface => new DiagramSurfaceView(
-                    surface.Key,
-                    surface.Value.Name,
-                    _couplings.TryGetValue(surface.Key, out var coupling) && coupling.SessionId == sessionId ? coupling : null))
+                .Select(surface => new DiagramSurfaceView(surface.Key, surface.Value.Name, _ledger.CouplingOf(sessionId, surface.Key)))
                 .ToList();
         }
     }
@@ -178,7 +172,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     {
         lock (_lock)
         {
-            return _couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId ? coupling : null;
+            return _ledger.CouplingOf(sessionId, surfaceId);
         }
     }
 
@@ -186,35 +180,23 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     {
         lock (_lock)
         {
-            return _couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId != sessionId;
+            return _ledger.IsCoupledByAnother(sessionId, surfaceId);
         }
     }
 
     public void Couple(string sessionId, string surfaceId)
     {
-        DiagramCoupling coupling;
+        DiagramCoupling? coupling;
         lock (_lock)
         {
-            if (!_surfaces.ContainsKey(surfaceId))
-            {
-                throw new InvalidOperationException($"Diagram surface '{surfaceId}' is not open.");
-            }
-
-            if (_couplings.TryGetValue(surfaceId, out var existing))
-            {
-                if (existing.SessionId != sessionId)
-                {
-                    throw new InvalidOperationException($"Diagram surface '{surfaceId}' is already coupled to another agent.");
-                }
-
-                return; // Already coupled to this session, zero-capability or otherwise — nothing to change or announce.
-            }
-
-            coupling = new DiagramCoupling(sessionId, CanRead: false, CanEdit: false);
-            _couplings[surfaceId] = coupling;
+            coupling = _ledger.Couple(sessionId, surfaceId, _surfaces.ContainsKey(surfaceId), "Diagram",
+                session => new DiagramCoupling(session, CanRead: false, CanEdit: false));
         }
 
-        CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, coupling));
+        if (coupling is not null)
+        {
+            CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, coupling));
+        }
     }
 
     public void Grant(string sessionId, string surfaceId, DiagramCapability capability)
@@ -227,7 +209,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 throw new InvalidOperationException($"Diagram surface '{surfaceId}' is not open.");
             }
 
-            if (_couplings.TryGetValue(surfaceId, out var existing))
+            if (_ledger.TryGet(surfaceId, out var existing))
             {
                 if (existing.SessionId != sessionId)
                 {
@@ -247,7 +229,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                     : new DiagramCoupling(sessionId, CanRead: true, CanEdit: false);
             }
 
-            _couplings[surfaceId] = coupling;
+            _ledger.Set(surfaceId, coupling);
         }
 
         CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, coupling));
@@ -257,7 +239,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     {
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanRead))
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanRead))
             {
                 return null;
             }
@@ -270,7 +252,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     {
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
                 || !_surfaces.TryGetValue(surfaceId, out var surface))
             {
                 return false;
@@ -292,7 +274,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         DiagramProposal? rebased;
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
                 || !_surfaces.TryGetValue(surfaceId, out var surface))
             {
                 return false;
@@ -566,12 +548,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         List<string> dropped, droppedProposals;
         lock (_lock)
         {
-            dropped = _couplings.Where(entry => entry.Value.SessionId == sessionId).Select(entry => entry.Key).ToList();
-            foreach (var surfaceId in dropped)
-            {
-                _couplings.Remove(surfaceId);
-            }
-
+            dropped = _ledger.RemoveAllFor(sessionId);
             droppedProposals = dropped.Where(surfaceId => _proposals.Remove(surfaceId)).ToList();
         }
 
@@ -591,7 +568,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         DiagramProposal proposal;
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanEdit)
                 || !_surfaces.TryGetValue(surfaceId, out var surface))
             {
                 return false;

@@ -9,9 +9,9 @@ using Avalonia.Platform.Storage;
 using Avalonia.Svg.Skia;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Diagrams;
+using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
-using Cockpit.Plugins.Abstractions.Sessions;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Mermaider;
@@ -86,9 +86,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private bool _placementHintShown;
     private double _svgScale = 1;
     private DiagramObjectAt? _pressedOn;
-    private IPluginSessionBinding _binding;
-    private string? _boundSessionName;
-    private string? _endedSessionName;
+    private SurfaceSessionBinding _sessionBinding;
     private string? _agentCursorKey;
     private bool _glowActive;
     private int _glowGeneration;
@@ -102,7 +100,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _documentTitle = document.Title;
         _filePath = document.FilePath;
         _savedText = document.MermaidText;
-        _fileAsLastSeen = _ReadFile(_filePath);
+        _fileAsLastSeen = SurfaceChrome.ReadFile(_filePath);
 
         // AC-837: no fixed size and no ScrollViewer. Avalonia.Svg.Skia.Svg's own measure gives a placeholder size
         // before its picture is ready, so `_RenderInto` reads the real size off the Skia picture instead, and
@@ -131,7 +129,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
-        _activityStrip = new ActivityStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
+        _activityStrip = new ActivityStrip(host, _surfaceId, new DiagramActivityJournal(_registry), key => _ = _FlashObjectAsync(key));
         _pinStrip = new PinStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
         _presence = new PresenceIndicators(host, _surfaceId, whiteboard: false);
 
@@ -149,12 +147,13 @@ internal sealed class DiagramWorkspaceBody : UserControl
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
 
         // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
-        // session is gone — lands on DetachedSessionBinding, which is the "no agent on this diagram" state. Bound
-        // before the first _RenderInto (AC-849): its _RefreshHandEditBar reads _binding.IsLive for the pin button.
-        _binding = _Bind(sessionPaneId);
+        // session is gone — lands on a not-live binding, which is the "no agent on this diagram" state. Bound
+        // before the first _RenderInto (AC-849): its _RefreshHandEditBar reads _sessionBinding.IsLive for the pin
+        // button, and the same callback that refreshes the coupling bar on a change refreshes that button too.
+        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshHandEditBar(); });
         _RenderInto(document.MermaidText);
-        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
-        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
+        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
 
         if (_registry is not null)
         {
@@ -167,9 +166,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry.SurfaceOpened(_surfaceId, document.Title, document.MermaidText);
 
             // A plain Couple — zero capabilities. read_diagram/edit_diagram still ask their own consent (AC-810).
-            if (_binding.IsLive)
+            if (_sessionBinding.IsLive)
             {
-                _registry.Couple(_binding.PaneId, _surfaceId);
+                _registry.Couple(_sessionBinding.PaneId, _surfaceId);
             }
         }
 
@@ -180,7 +179,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         DetachedFromVisualTree += (_, _) =>
         {
-            _binding.Dispose();
+            _sessionBinding.Dispose();
             if (_registry is null)
             {
                 return;
@@ -199,47 +198,19 @@ internal sealed class DiagramWorkspaceBody : UserControl
         };
     }
 
-    // The name is read here and kept, not read on demand: by the time the session ends it is gone from the
-    // cockpit, and "session … has ended" with no name in it is the one moment the operator needs one.
-    private IPluginSessionBinding _Bind(string? paneId)
-    {
-        var binding = _host.BindToSession(paneId ?? "");
-        _boundSessionName = binding.SessionName ?? (binding.IsLive ? binding.PaneId : null);
-        binding.Ended += _OnSessionEnded;
-        return binding;
-    }
-
-    // The session behind this window ended. Nothing here closes the window, and nothing here drops the coupling
-    // either — the host releases it (AC-834, CockpitViewModel's driver-side teardown) and the registry's own
-    // CouplingChanged brings that back. This only supplies the name that is gone by then.
-    private void _OnSessionEnded(object? sender, EventArgs e) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-    {
-        _endedSessionName = _boundSessionName;
-        _RefreshCouplingBar();
-        _RefreshHandEditBar();
-    });
-
     // Couples this diagram to another running session — the way out of "window open, no agent", after the bound
     // session ended or the operator disconnected. Exclusivity is the registry's (IsCoupledByAnother): a surface a
     // different agent already holds refuses, and the operator is told rather than shown an exception.
     private void _Recouple(string paneId)
     {
-        try
+        if (_sessionBinding.Recouple(paneId, p => _registry?.Couple(p, _surfaceId)) is { } reason)
         {
-            _registry?.Couple(paneId, _surfaceId);
-        }
-        catch (InvalidOperationException exception)
-        {
-            _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+            _host.ShowToast(reason, PluginToastSeverity.Error);
             return;
         }
 
-        _binding.Ended -= _OnSessionEnded;
-        _binding.Dispose();
-        _binding = _Bind(paneId);
-        _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
-        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
-        _endedSessionName = null;
+        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _RefreshCouplingBar();
         _RefreshHandEditBar();
     }
@@ -731,7 +702,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // is landing as a chat message, not living only on this surface.
     private void _AddPin(Control anchor)
     {
-        if (_registry is null || _selected is not { } target || !_binding.IsLive)
+        if (_registry is null || _selected is not { } target || !_sessionBinding.IsLive)
         {
             return;
         }
@@ -754,7 +725,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             flyout.Hide();
             _registry.AddPin(_surfaceId, target.HoldKey, text);
             var index = _registry.Pins(_surfaceId).Count;
-            _ = _binding.SendAsync(PinMessage.Compose(_documentTitle, index, target.Label, text));
+            _ = _sessionBinding.SendAsync(PinMessage.Compose(_documentTitle, index, target.Label, text));
         }
 
         confirm.Click += (_, _) => Plant();
@@ -829,7 +800,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         Canvas.SetLeft(outline, bounds.X);
         Canvas.SetTop(outline, bounds.Y);
 
-        var name = _binding.SessionName ?? _boundSessionName ?? "agent";
+        var name = _sessionBinding.DisplayName ?? "agent";
         // "Vers geland" (glowing, filled) reads differently from "settled" (outline-only, muted) — the fade has to
         // be an observable change, not two pixel-identical states.
         var tag = _glowActive
@@ -904,10 +875,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // AC-849: prikken needs both an object under the operator's hand and a live session to send the reference
         // to — the coupling bar's "Geen agent gekoppeld" already explains the second half, this button explains it
         // again at the point of use rather than failing silently when pressed.
-        _pinButton.IsEnabled = editable && _selected is not null && _binding.IsLive;
+        _pinButton.IsEnabled = editable && _selected is not null && _sessionBinding.IsLive;
         ToolTip.SetTip(
             _pinButton,
-            !_binding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
+            !_sessionBinding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
             : _selected is null ? "Selecteer eerst een object om te prikken."
             : "Prik een vraag op dit object.");
 
@@ -1090,7 +1061,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
-        var homes = DiagramCatalog.WritableHomes(await _host.GetProjectMemoryRowsAsync(_binding.IsLive ? _binding.PaneId : null));
+        var homes = DiagramCatalog.WritableHomes(await _host.GetProjectMemoryRowsAsync(_sessionBinding.LivePaneId));
         if (homes.Count == 0)
         {
             _host.ShowToast(
@@ -1133,22 +1104,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         _savedText = text;
-        _fileAsLastSeen = _ReadFile(_filePath);
+        _fileAsLastSeen = SurfaceChrome.ReadFile(_filePath);
         _RefreshSaveBar();
-    }
-
-    // Null (unreadable, or no file yet) means the next save skips the changed-underneath check rather than
-    // refusing on a baseline it never had.
-    private static string? _ReadFile(string? filePath)
-    {
-        try
-        {
-            return filePath is not null && File.Exists(filePath) ? File.ReadAllText(filePath) : null;
-        }
-        catch (IOException)
-        {
-            return null;
-        }
     }
 
     private void _RefreshSaveBar()
@@ -1272,74 +1229,16 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // or after Disconnect — and a bar that hides itself leaves the operator no way back to a coupled one.
     private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip, Button Couple, Button Disconnect) _BuildCouplingBar()
     {
-        // AC-840: the snelstart name (AC-816), shown here too — not just in the venstertitel — so it stays
-        // visible once the window is one of several open diagrams.
-        var titleLabel = new TextBlock { Text = _documentTitle, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-        var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Foreground = _Brush("CockpitAccentBrush") };
-        var readChip = _Chip();
-        var editChip = _Chip();
-        var disconnect = new Button { Content = "Disconnect", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
-        disconnect.Click += (_, _) => _registry?.Disconnect(_surfaceId);
+        var parts = CouplingBarFactory.Build(_documentTitle, extraActions: []);
+        // AC-810's pip is a fixed accent colour here — unlike the whiteboard's, this surface never dims it.
+        parts.Pip.Foreground = SurfaceChrome.Brush("CockpitAccentBrush");
+        parts.Disconnect.Click += (_, _) => _registry?.Disconnect(_surfaceId);
+        parts.Couple.Click += (_, _) => _ShowSessionPicker(parts.Couple);
 
-        var couple = new Button { Content = "Koppelen…", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
-        couple.Click += (_, _) => _ShowSessionPicker(couple);
-
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { couple, disconnect } };
-
-        var bar = new Border
-        {
-            Margin = new Thickness(0, 0, 0, 6),
-            Padding = new Thickness(8, 4),
-            Background = _Brush("CockpitSecondaryBgBrush"),
-            BorderBrush = _Brush("CockpitAccentBrush"),
-            BorderThickness = new Thickness(1),
-            Child = new DockPanel
-            {
-                Children =
-                {
-                    actions,
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 6,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Children =
-                        {
-                            titleLabel,
-                            new MaterialIcon { Kind = MaterialIconKind.RobotOutline, Width = 15, Height = 15, Foreground = _Brush("CockpitAccentBrush") },
-                            label,
-                            readChip,
-                            editChip,
-                        },
-                    },
-                },
-            },
-        };
-        DockPanel.SetDock(actions, Dock.Right);
-
-        return (bar, label, readChip, editChip, couple, disconnect);
+        return (parts.Bar, parts.Label, parts.ReadChip, parts.EditChip, parts.Couple, parts.Disconnect);
     }
 
-    // The open sessions by name (AC-833), so recoupling names a session instead of guessing one. No running
-    // session is a state worth reading, not an empty menu.
-    private void _ShowSessionPicker(Control anchor)
-    {
-        var open = _host.Sessions.OpenSessions;
-        var flyout = new MenuFlyout();
-        if (open.Count == 0)
-        {
-            flyout.Items.Add(new MenuItem { Header = "Geen open sessies", IsEnabled = false });
-        }
-
-        foreach (var session in open)
-        {
-            var item = new MenuItem { Header = session.Name };
-            item.Click += (_, _) => _Recouple(session.PaneId);
-            flyout.Items.Add(item);
-        }
-
-        flyout.ShowAt(anchor);
-    }
+    private void _ShowSessionPicker(Control anchor) => _sessionBinding.ShowSessionPicker(anchor, _Recouple);
 
     private void _RefreshCouplingBar()
     {
@@ -1351,14 +1250,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         if (_current is not { } coupling)
         {
-            _couplingLabel.Text = _endedSessionName is { } ended
+            _couplingLabel.Text = _sessionBinding.EndedSessionName is { } ended
                 ? $"Sessie {ended} is afgelopen — dit venster blijft open."
                 : "Geen agent gekoppeld.";
             _couplingLabel.Foreground = _Brush("CockpitTextSecondaryBrush");
             return;
         }
 
-        var name = _binding.SessionName ?? _boundSessionName ?? coupling.SessionId;
+        var name = _sessionBinding.DisplayName ?? coupling.SessionId;
 
         // AC-841: allebei tegelijk in hetzelfde diagram — zodra de operator iets vasthoudt terwijl de agent mag
         // bewerken, zegt de regel dat ook, in plaats van alleen wie er gekoppeld is.
@@ -1369,21 +1268,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _ => $"Agent connected — session {name} (no capabilities granted yet)",
         };
         _couplingLabel.Foreground = _Brush("CockpitAccentBrush");
-        _SetChip(_readChip, "read_diagram", coupling.CanRead);
-        _SetChip(_editChip, "edit_diagram", coupling.CanEdit);
-    }
-
-    private static TextBlock _Chip() => new()
-    {
-        Margin = new Thickness(6, 0, 0, 0),
-        Padding = new Thickness(6, 1),
-        FontSize = 10,
-    };
-
-    private static void _SetChip(TextBlock chip, string name, bool granted)
-    {
-        chip.Text = granted ? $"{name} allowed" : $"{name} not granted";
-        chip.Foreground = granted ? _Brush("CockpitAccentBrush") : _Brush("CockpitTextSecondaryBrush");
+        SurfaceChrome.SetChip(_readChip, "read_diagram", coupling.CanRead);
+        SurfaceChrome.SetChip(_editChip, "edit_diagram", coupling.CanEdit);
     }
 
     // The diff-poort (AC-825): a proposal sits here, block by block, until the operator resolves it — Toepassen
@@ -1499,6 +1385,5 @@ internal sealed class DiagramWorkspaceBody : UserControl
         };
     }
 
-    private static IBrush? _Brush(string resourceKey) =>
-        Application.Current?.FindResource(resourceKey) as IBrush;
+    private static IBrush? _Brush(string resourceKey) => SurfaceChrome.Brush(resourceKey);
 }
