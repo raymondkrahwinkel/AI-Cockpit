@@ -15,10 +15,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.ViewTests;
 
-// AC-883: on macOS the OS can stop the render clock without touching WindowState — screen lock, display sleep, a
-// Space switch, full occlusion — so minimising is not the coverage there that it is on Windows and X11. The
-// diagnostics probe from AC-882 is the signal; these pin that it reaches a pane, that it never fires on a machine
-// that is merely busy, and that lifting it does not lift a minimise that is still standing.
+// AC-883: on macOS the OS can stop the render clock without touching WindowState, so minimising is not the
+// coverage there that it is on Windows and X11. These pin that AC-882's probe reaches a pane, never fires on a
+// merely busy machine, and does not lift a minimise that is still standing.
 [Collection("avalonia")]
 public sealed class RenderClockStallPauseTests
 {
@@ -30,12 +29,9 @@ public sealed class RenderClockStallPauseTests
     [Fact]
     public async Task ABusyButLiveMachine_KeepsGettingItsCommitsProcessed()
     {
-        // The measured half of the false-positive guard: RenderClockHeartbeatTests pins the thresholds, this shows
-        // what a genuinely loaded machine does to a forced commit. Measured here, not assumed: with ~2s of work
-        // still queued, the commit came back in tens of milliseconds — because RequestCommitAsync posts its trigger
-        // at DispatcherPriority.Send, which overtakes the whole backlog. Queue depth therefore cannot produce a
-        // slow round trip at all, which is what makes an unprocessed commit evidence of a stopped clock and not of
-        // a busy one. The first draft of this test asserted the opposite and failed, which is how that was found.
+        // Measured, not assumed (AC-883): with ~2s still queued the commit came back in tens of milliseconds,
+        // because RequestCommitAsync posts its trigger at DispatcherPriority.Send and overtakes the backlog.
+        // Queue depth cannot slow it, which is what makes an unprocessed commit a stopped clock and not a busy one.
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var window = new Window { Width = 400, Height = 300 };
@@ -178,11 +174,9 @@ public sealed class RenderClockStallPauseTests
     [Fact]
     public void OnWindowsAndLinux_APaneDoesNotEvenSubscribe()
     {
-        // The hard requirement from AC-882: their behaviour after af2fe273/cc85ca1e must not change at all. Gating
-        // only the decision would still leave every pane holding a delegate on a process-lifetime singleton — an
-        // inert leak surface on platforms with no problem to solve. So the resolve itself is gated, and this says so.
-        // The container is populated on purpose: with Program.Services left null, "resolved nothing" and "was never
-        // allowed to resolve" are indistinguishable, and the first draft of this test passed on that emptiness.
+        // AC-882's hard requirement: Windows and X11 must not change at all, so the resolve itself is gated and
+        // not just the decision. The container is populated on purpose — with Program.Services null, "resolved
+        // nothing" and "was never allowed to resolve" are indistinguishable and this test proves nothing.
         var previous = Program.Services;
         var container = new ServiceCollection()
             .AddSingleton<DiagnosticsBackgroundService>()

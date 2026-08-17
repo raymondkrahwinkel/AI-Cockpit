@@ -230,10 +230,9 @@ public partial class SessionView : UserControl
         _ApplyRendererPause();
     }
 
-    // Paused: collapse the transcript's scroll owner so the virtualising panel dematerialises its realised rows
-    // (that runs on layout, which neither reason pauses) and stops building new ones — no churn the paused renderer
-    // can never clean up. Restored once every reason has lifted, landing back on the newest row if we were
-    // following it. Targets the scroll owner, not TranscriptItems (whose IsVisible is already bound to HasTranscript).
+    // Paused: collapse the scroll owner so the virtualising panel dematerialises its rows and stops building new
+    // ones — no churn the paused renderer can never clean up. Restored once every reason has lifted (AC-883).
+    // The scroll owner, not TranscriptItems, whose IsVisible is already bound to HasTranscript.
     private void _ApplyRendererPause()
     {
         var paused = _windowMinimised || _renderClockPaused;
