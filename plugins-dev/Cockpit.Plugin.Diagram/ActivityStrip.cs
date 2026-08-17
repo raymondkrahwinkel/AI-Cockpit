@@ -3,41 +3,36 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Cockpit.Core.Abstractions.Diagrams;
-using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram;
 
-// Read-only-turned-actionable log of what happened on one diagram or whiteboard surface (AC-848), now sourced from
-// the surface registry's own journal rather than reconstructed from agent tool calls — that journal is what makes
-// "Terugdraaien" real (AC-853): it holds both origins (operator and agent), not agent activity alone.
+// Read-only-turned-actionable log of what happened on one collab surface (AC-848), sourced from the surface's own
+// journal — that is what makes "Terugdraaien" real (AC-853). AC-870: the journal is picked by the caller (an
+// ISurfaceActivityJournal) rather than a `bool whiteboard` this class branched on, so a third surface can supply its own.
 internal sealed class ActivityStrip : Border
 {
     private readonly ICockpitHost _host;
     private readonly string _surfaceId;
-    private readonly bool _whiteboard;
-    private readonly IDiagramAccessRegistry? _diagramRegistry;
-    private readonly IWhiteboardAccessRegistry? _whiteboardRegistry;
+    private readonly ISurfaceActivityJournal _journal;
     private readonly Action<string>? _onJumpToObject;
     private readonly StackPanel _rows = new() { Spacing = 2 };
     private readonly TextBlock _emptyLabel;
     private string? _paneId;
     private string? _origin;
 
-    public ActivityStrip(ICockpitHost host, string surfaceId, bool whiteboard, Action<string>? onJumpToObject)
+    public ActivityStrip(ICockpitHost host, string surfaceId, ISurfaceActivityJournal journal, Action<string>? onJumpToObject)
     {
         _host = host;
         _surfaceId = surfaceId;
-        _whiteboard = whiteboard;
+        _journal = journal;
         _onJumpToObject = onJumpToObject;
-        _diagramRegistry = whiteboard ? null : host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
-        _whiteboardRegistry = whiteboard ? host.Services.GetService(typeof(IWhiteboardAccessRegistry)) as IWhiteboardAccessRegistry : null;
 
         Height = 130;
-        Background = _Brush("CockpitSecondaryBgBrush");
-        BorderBrush = _Brush("CockpitHairlineBrush");
+        Background = SurfaceChrome.Brush("CockpitSecondaryBgBrush");
+        BorderBrush = SurfaceChrome.Brush("CockpitHairlineBrush");
         BorderThickness = new Thickness(0, 1, 0, 0);
 
         // Never blank: since AC-852/AC-854 dropped the diff-gate for these tools, this strip is the only place
@@ -62,34 +57,14 @@ internal sealed class ActivityStrip : Border
             },
         };
 
-        if (_diagramRegistry is not null)
-        {
-            _diagramRegistry.HistoryChanged += _OnHistoryChanged;
-        }
-
-        if (_whiteboardRegistry is not null)
-        {
-            _whiteboardRegistry.HistoryChanged += _OnHistoryChanged;
-        }
-
-        DetachedFromVisualTree += (_, _) =>
-        {
-            if (_diagramRegistry is not null)
-            {
-                _diagramRegistry.HistoryChanged -= _OnHistoryChanged;
-            }
-
-            if (_whiteboardRegistry is not null)
-            {
-                _whiteboardRegistry.HistoryChanged -= _OnHistoryChanged;
-            }
-        };
+        _journal.HistoryChanged += _OnHistoryChanged;
+        DetachedFromVisualTree += (_, _) => _journal.HistoryChanged -= _OnHistoryChanged;
 
         _Refresh();
     }
 
-    // The surface always knows which pane it is coupled to (DiagramWorkspaceBody/WhiteboardWorkspaceBody's own
-    // _binding) — kept in step so an agent-authored row can show that session's name instead of a raw pane id.
+    // The surface always knows which pane it is coupled to (its own SurfaceSessionBinding) — kept in step so an
+    // agent-authored row can show that session's name instead of a raw pane id.
     public void SetSession(string? paneId, string? name)
     {
         _paneId = paneId;
@@ -109,9 +84,7 @@ internal sealed class ActivityStrip : Border
 
     private void _Refresh()
     {
-        var rows = _whiteboard
-            ? (_whiteboardRegistry?.History(_surfaceId) ?? []).Select(_WhiteboardRow).ToList()
-            : (_diagramRegistry?.History(_surfaceId) ?? []).Select(_DiagramRow).ToList();
+        var rows = _journal.History(_surfaceId).Select(_EntryRow).ToList();
 
         _emptyLabel.IsVisible = rows.Count == 0;
         _rows.IsVisible = rows.Count > 0;
@@ -122,25 +95,15 @@ internal sealed class ActivityStrip : Border
         }
     }
 
-    private Control _DiagramRow(DiagramHistoryEntry entry) =>
+    private Control _EntryRow(SurfaceActivityEntry entry) =>
         _Row(
             entry.When,
             entry.Origin == "operator" ? "operator" : _origin ?? "agent",
             entry.Summary,
             entry.ObjectKey,
             entry.Reverted,
-            canRevert: true,
-            () => _diagramRegistry?.Revert(_surfaceId, entry.Id));
-
-    private Control _WhiteboardRow(WhiteboardHistoryEntry entry) =>
-        _Row(
-            entry.When,
-            entry.Origin == "operator" ? "operator" : _origin ?? "agent",
-            entry.Summary,
-            entry.ObjectId,
-            entry.Reverted,
-            canRevert: entry.Kind == WhiteboardHistoryKind.Place,
-            () => _whiteboardRegistry?.Revert(_surfaceId, entry.Id));
+            entry.CanRevert,
+            () => _journal.Revert(_surfaceId, entry.Id));
 
     // One row, diagram or whiteboard alike, now that both sides feed the same shape of entry (AC-853): a "Terugdraaien"
     // that actually calls the registry, disabled once reverted or when this kind cannot be (yet) — see
@@ -201,7 +164,4 @@ internal sealed class ActivityStrip : Border
 
         return border;
     }
-
-    private static IBrush? _Brush(string resourceKey) =>
-        Application.Current?.FindResource(resourceKey) as IBrush;
 }
