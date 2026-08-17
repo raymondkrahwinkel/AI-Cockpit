@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a stroke or object drawn over a pasted image on the whiteboard now sticks to that image — move or resize
+  the picture and the annotations move and scale with it, staying on the same spot. An annotation that hangs partly
+  off the edge is never clipped. Deleting an image that has annotations on it now asks whether to remove them too
+  or leave them behind on the board, instead of silently dragging them along or orphaning them.
+
 - added: the diagnostics log now reports whether the cockpit's render clock is still alive. It stops on its own
   whenever nothing needs drawing, and normally wakes again by itself; if it ever stops and stays stopped — the
   shape a display that has gone to sleep can take — the log now says so, and says when it came back. The
