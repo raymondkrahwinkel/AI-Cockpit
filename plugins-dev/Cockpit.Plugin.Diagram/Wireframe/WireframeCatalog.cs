@@ -8,10 +8,9 @@ namespace Cockpit.Plugin.Diagram.Wireframe;
 // DiagramEntry, one folder over.
 internal readonly record struct WireframeEntry(string Title, string FilePath, string HomeLabel, string WireframeText);
 
-// AC-874/WF-4: lists AC-812's <memory>/Wireframes/<slug>.md files across every Memory row AC-827's read seam
-// reports — DiagramCatalog's counterpart, Markdown rather than JSON since a wireframe's source is text, like a
-// diagram's, not objects like a whiteboard's. Depot-scheme rows have no plugin-facing content-read seam yet, so
-// only folder rows are browsable — ponytail: known ceiling, same one DiagramCatalog already names.
+// AC-874/WF-4: lists AC-812's <memory>/Wireframes/<slug>.md files across every Memory row — DiagramCatalog's
+// counterpart, Markdown since a wireframe's source is text, like a diagram's. Depot-scheme rows stay unbrowsable,
+// same known ceiling DiagramCatalog already names.
 internal static class WireframeCatalog
 {
     public static IReadOnlyList<WireframeEntry> List(IReadOnlyList<ProjectMemoryRow> rows)

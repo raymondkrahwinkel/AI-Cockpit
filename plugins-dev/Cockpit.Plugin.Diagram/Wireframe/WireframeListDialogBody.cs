@@ -7,10 +7,8 @@ using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
 
-// AC-874/WF-4: the wireframes-per-project overview, DiagramListDialogBody's counterpart, another folder over.
-// Reads AC-812's <memory>/Wireframes/<slug>.md convention across every Memory row AC-827's read seam reports;
-// "Open" opens the picked wireframe directly in its own window, coupled to the session already active when the
-// dialog was opened.
+// AC-874/WF-4: the wireframes-per-project overview, DiagramListDialogBody's counterpart. "Open" opens the picked
+// wireframe directly in its own window, coupled to the session already active when the dialog was opened.
 internal sealed class WireframeListDialogBody : UserControl
 {
     private readonly ICockpitHost _host;
