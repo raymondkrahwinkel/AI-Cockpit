@@ -62,6 +62,11 @@ public sealed record DiagramOpenRequest(string SurfaceId, string Name, string Te
 // surface as it stands *now*. `ObjectKey` is the node id, or "from->to" for a connection (the strip's jump-to convention).
 public sealed record DiagramHistoryEntry(string Id, string Origin, DiagramHandEditKind Kind, string ObjectKey, string Summary, DateTime When, bool Reverted);
 
+// AC-849: a question the operator planted on one object, landed as a "📍 pin N" reference in the coupled session
+// over ICockpitHost.SendToSessionAsync. `ObjectKey` is the same HoldKey a history entry uses, so a pin keeps
+// pointing at its object across a Mermaid relayout the way the operator's hold and the activity strip already do.
+public sealed record DiagramPin(string Id, string ObjectKey, string Question, DateTime When, bool Closed);
+
 /// <summary>
 /// The source of truth for diagram-surface access (AC-810) — the diagram counterpart to
 /// <c>ITerminalAccessRegistry</c> (AC-34); read that one first. Deviations: a diagram is a state, not a stream, so
@@ -192,4 +197,18 @@ public interface IDiagramAccessRegistry
 
     /// <summary>Discards the surface's pending proposal without writing anything — the whole thing, or whatever of it was still undecided.</summary>
     bool DiscardProposal(string surfaceId);
+
+    // ---- Pins (AC-849): the operator's question about one object, landed as a reference in the coupled session ----
+
+    /// <summary>This surface's pins, oldest first — a pin's 1-based position in this list is the "N" in its "📍 pin N" reference.</summary>
+    IReadOnlyList<DiagramPin> Pins(string surfaceId);
+
+    /// <summary>Raised whenever a surface's pins change: a new one planted, or one closed.</summary>
+    event Action<string>? PinsChanged;
+
+    /// <summary>Plants a pin on `objectKey` and returns its id, so the caller can compose and send the "📍 pin N" reference itself.</summary>
+    string AddPin(string surfaceId, string objectKey, string question);
+
+    /// <summary>Marks a pin closed — the operator's own call that it has been answered, not a system-detected one. Idempotent.</summary>
+    void ClosePin(string surfaceId, string pinId);
 }

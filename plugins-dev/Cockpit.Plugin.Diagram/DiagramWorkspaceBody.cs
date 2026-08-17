@@ -56,6 +56,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
     private readonly ActivityStrip _activityStrip;
+    private readonly PinStrip _pinStrip;
     private readonly PresenceIndicators _presence;
     private readonly ToggleButton _followToggle;
     private readonly Button _saveButton;
@@ -76,6 +77,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly Button _connectButton;
     private readonly Button _renameButton;
     private readonly Button _deleteButton;
+    private readonly Button _pinButton;
     private readonly TextBlock _handHint;
     private IReadOnlyList<DiagramObjectAt> _objects = [];
     private DiagramObjectAt? _selected;
@@ -128,13 +130,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _handHint, _followToggle) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
         _activityStrip = new ActivityStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
+        _pinStrip = new PinStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
         _presence = new PresenceIndicators(host, _surfaceId, whiteboard: false);
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _presence, _proposalPanel, _sourceToggle, _sourceBox, _activityStrip, _viewport },
+            Children = { toolbar, _couplingBar, _presence, _proposalPanel, _sourceToggle, _sourceBox, _pinStrip, _activityStrip, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
@@ -142,13 +145,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
         DockPanel.SetDock(_proposalPanel, Dock.Top);
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
+        DockPanel.SetDock(_pinStrip, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
 
-        _RenderInto(document.MermaidText);
-
         // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
-        // session is gone — lands on DetachedSessionBinding, which is the "no agent on this diagram" state.
+        // session is gone — lands on DetachedSessionBinding, which is the "no agent on this diagram" state. Bound
+        // before the first _RenderInto (AC-849): its _RefreshHandEditBar reads _binding.IsLive for the pin button.
         _binding = _Bind(sessionPaneId);
+        _RenderInto(document.MermaidText);
         _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
         _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
 
@@ -212,6 +216,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     {
         _endedSessionName = _boundSessionName;
         _RefreshCouplingBar();
+        _RefreshHandEditBar();
     });
 
     // Couples this diagram to another running session — the way out of "window open, no agent", after the bound
@@ -236,6 +241,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
         _endedSessionName = null;
         _RefreshCouplingBar();
+        _RefreshHandEditBar();
     }
 
     // ListSurfaces/CouplingOf are session-scoped (AC-89: an agent only sees its own coupling) — this panel is not
@@ -720,6 +726,51 @@ internal sealed class DiagramWorkspaceBody : UserControl
             : new DiagramHandEdit(DiagramHandEditKind.RemoveNode, target.Id));
     }
 
+    // AC-849: plants a pin on the selected object and sends its "📍 pin N" reference to the coupled session right
+    // away — the same fire-and-forget SendAsync WhiteboardWorkspaceBody._Ask already uses, since a pin's whole point
+    // is landing as a chat message, not living only on this surface.
+    private void _AddPin(Control anchor)
+    {
+        if (_registry is null || _selected is not { } target || !_binding.IsLive)
+        {
+            return;
+        }
+
+        var question = new TextBox { Width = 260, PlaceholderText = "Waar twijfel je over?" };
+        var confirm = new Button { Content = "Prikken", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var flyout = new Flyout
+        {
+            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { question, confirm } },
+        };
+
+        void Plant()
+        {
+            var text = question.Text?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            flyout.Hide();
+            _registry.AddPin(_surfaceId, target.HoldKey, text);
+            var index = _registry.Pins(_surfaceId).Count;
+            _ = _binding.SendAsync(PinMessage.Compose(_documentTitle, index, target.Label, text));
+        }
+
+        confirm.Click += (_, _) => Plant();
+        question.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                Plant();
+            }
+        };
+
+        flyout.ShowAt(anchor);
+        question.Focus();
+    }
+
     // One handling is one change towards the registry (AC-838's write path, under the same lock as the agent's), and
     // the re-render comes back through TextChanged — never a half state written here and repaired afterwards.
     private void _Apply(DiagramHandEdit edit)
@@ -850,6 +901,16 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _deleteButton.IsEnabled = editable && _selected is not null;
         _connectButton.Content = _isConnecting ? "Verbinden…" : "Verbinden";
 
+        // AC-849: prikken needs both an object under the operator's hand and a live session to send the reference
+        // to — the coupling bar's "Geen agent gekoppeld" already explains the second half, this button explains it
+        // again at the point of use rather than failing silently when pressed.
+        _pinButton.IsEnabled = editable && _selected is not null && _binding.IsLive;
+        ToolTip.SetTip(
+            _pinButton,
+            !_binding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
+            : _selected is null ? "Selecteer eerst een object om te prikken."
+            : "Prik een vraag op dit object.");
+
         _handHint.Text = _isConnecting
             ? _connectFrom is null ? "Klik de node waar de verbinding begint." : $"Klik de node waar {_connectFrom} naartoe wijst."
             : _selected switch
@@ -913,7 +974,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus,
-        Button Connect, Button Rename, Button Delete, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
+        Button Connect, Button Rename, Button Delete, Button Pin, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
     {
         var export = new Button
         {
@@ -976,6 +1037,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
         rename.Click += (_, _) => _StartRename(_selected);
         var delete = new Button { Content = "Verwijderen", Classes = { "Compact" } };
         delete.Click += (_, _) => _DeleteSelected();
+        // AC-849: the operator's question about the selected object, sent to the coupled session as a "📍 pin N"
+        // reference the moment it is planted — see _AddPin.
+        var pin = new Button { Content = "Prikken", Classes = { "Compact" } };
+        pin.Click += (_, _) => _AddPin(pin);
         var hint = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -1001,14 +1066,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertSample, addNode, connect, rename, delete, save, saveStatus, hint },
+            Children = { insertSample, addNode, connect, rename, delete, pin, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
         DockPanel.SetDock(export, Dock.Right);
         DockPanel.SetDock(handEditControls, Dock.Left);
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, connect, rename, delete, hint, follow);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, connect, rename, delete, pin, hint, follow);
     }
 
     // Eén opslagweg voor beide herkomsten (AC-839): een hand-bewerking en een aangenomen agent-voorstel komen

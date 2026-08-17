@@ -14,6 +14,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     private readonly Dictionary<string, DiagramProposal> _proposals = new(StringComparer.Ordinal); // surfaceId -> pending proposal
     private readonly Dictionary<string, string> _awaitingCoupling = new(StringComparer.Ordinal); // surfaceId -> session that asked for it (AC-835)
     private readonly Dictionary<string, List<HistoryEntry>> _history = new(StringComparer.Ordinal); // surfaceId -> its edits, oldest first
+    private readonly Dictionary<string, List<PinEntry>> _pins = new(StringComparer.Ordinal); // surfaceId -> its pins, oldest first
 
     public event Action<string, string>? TextChanged;
 
@@ -26,6 +27,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     public event Action<DiagramOpenRequest>? OpenRequested;
 
     public event Action<string>? HistoryChanged;
+
+    public event Action<string>? PinsChanged;
 
     public void SurfaceOpened(string surfaceId, string name, string initialText)
     {
@@ -79,6 +82,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             wasCoupled = _couplings.Remove(surfaceId);
             hadProposal = _proposals.Remove(surfaceId);
             _history.Remove(surfaceId);
+            _pins.Remove(surfaceId);
         }
 
         if (wasCoupled)
@@ -487,6 +491,46 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         }
     }
 
+    // ---- Pins (AC-849) ----
+
+    public IReadOnlyList<DiagramPin> Pins(string surfaceId)
+    {
+        lock (_lock)
+        {
+            return _pins.TryGetValue(surfaceId, out var entries)
+                ? entries.Select(entry => new DiagramPin(entry.Id, entry.ObjectKey, entry.Question, entry.When, entry.Closed)).ToList()
+                : [];
+        }
+    }
+
+    public string AddPin(string surfaceId, string objectKey, string question)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        lock (_lock)
+        {
+            var entries = _pins.TryGetValue(surfaceId, out var list) ? list : _pins[surfaceId] = [];
+            entries.Add(new PinEntry(id, objectKey, question, DateTime.Now));
+        }
+
+        PinsChanged?.Invoke(surfaceId);
+        return id;
+    }
+
+    public void ClosePin(string surfaceId, string pinId)
+    {
+        lock (_lock)
+        {
+            if (!_pins.TryGetValue(surfaceId, out var entries) || entries.Find(entry => entry.Id == pinId) is not { } pin)
+            {
+                return;
+            }
+
+            pin.Closed = true;
+        }
+
+        PinsChanged?.Invoke(surfaceId);
+    }
+
     public void HoldObject(string surfaceId, string objectId)
     {
         lock (_lock)
@@ -660,5 +704,20 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         public bool Reverted { get; set; }
 
         public List<string> RemovedLines { get; } = removedLines;
+    }
+
+    // AC-849's pin row: Closed is the operator's own call, never system-detected — there is no correlation between
+    // a pin and whatever the agent later says in the session.
+    private sealed class PinEntry(string id, string objectKey, string question, DateTime when)
+    {
+        public string Id { get; } = id;
+
+        public string ObjectKey { get; } = objectKey;
+
+        public string Question { get; } = question;
+
+        public DateTime When { get; } = when;
+
+        public bool Closed { get; set; }
     }
 }

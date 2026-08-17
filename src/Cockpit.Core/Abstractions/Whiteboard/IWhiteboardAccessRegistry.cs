@@ -45,6 +45,10 @@ public enum WhiteboardHistoryKind
 
 public sealed record WhiteboardHistoryEntry(string Id, string Origin, WhiteboardHistoryKind Kind, string ObjectId, string Summary, DateTime When, bool Reverted);
 
+// AC-849: a question the operator planted on one object, landed as a "📍 pin N" reference in the coupled session —
+// the whiteboard counterpart to DiagramPin. `ObjectId` is the PlacedObject's own Guid, string-formatted.
+public sealed record WhiteboardPin(string Id, string ObjectId, string Question, DateTime When, bool Closed);
+
 /// <summary>
 /// The source of truth for whiteboard-surface access (AC-823) — the whiteboard counterpart to
 /// <c>IDiagramAccessRegistry</c> (AC-810); read that one first. Deviations: what a surface holds is a rendered PNG
@@ -139,4 +143,18 @@ public interface IWhiteboardAccessRegistry
     /// the refusal reason: unknown entry, already reverted, gone already, or an <see cref="WhiteboardHistoryKind.Erase"/> (AC-853).
     /// </summary>
     string? Revert(string surfaceId, string entryId);
+
+    // ---- Pins (AC-849): the operator's question about one object, landed as a reference in the coupled session ----
+
+    /// <summary>This surface's pins, oldest first — a pin's 1-based position in this list is the "N" in its "📍 pin N" reference.</summary>
+    IReadOnlyList<WhiteboardPin> Pins(string surfaceId);
+
+    /// <summary>Raised whenever a surface's pins change: a new one planted, or one closed.</summary>
+    event Action<string>? PinsChanged;
+
+    /// <summary>Plants a pin on `objectId` and returns its id, so the caller can compose and send the "📍 pin N" reference itself.</summary>
+    string AddPin(string surfaceId, string objectId, string question);
+
+    /// <summary>Marks a pin closed — the operator's own call that it has been answered, not a system-detected one. Idempotent.</summary>
+    void ClosePin(string surfaceId, string pinId);
 }
