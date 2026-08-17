@@ -50,14 +50,44 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // Last completed probe's round trip; -1 until one completes. Reported on the snapshot line as rclock=.
     private long _probeRoundTripTicks = -1;
 
+    // AC-883: set on this thread, read by views on the UI thread — volatile so a subscriber that reads it on
+    // subscribe rather than waiting for the next edge sees the current answer.
+    private volatile bool _renderersShouldPause;
+
     public DiagnosticsBackgroundService(ILogger<DiagnosticsBackgroundService> logger)
     {
         _logger = logger;
     }
 
+    /// <summary>
+    /// Raised on the UI thread when the render clock starts or stops being able to process commits (AC-883).
+    /// </summary>
+    /// <remarks>
+    /// Panes subscribe to suspend their transcripts; nothing else in the process can tell them the clock is gone.
+    /// </remarks>
+    public event EventHandler<bool>? RenderersShouldPauseChanged;
+
+    /// <summary>
+    /// The current answer, for a subscriber that attaches between two edges.
+    /// </summary>
+    public bool RenderersShouldPause => _renderersShouldPause;
+
     // Flips the periodic-snapshot half on or off live — called by CockpitViewModel from the Options checkbox and
     // at startup load. The heartbeat half is not gated by this; it always runs.
     public void SetSnapshotsEnabled(bool enabled) => _snapshotsEnabled = enabled;
+
+    // Internal so a view test can drive the edge without a compositor that really stalls. Posts rather than raising
+    // inline: the caller is this background thread and every subscriber touches visuals.
+    internal void SetRenderersShouldPause(bool shouldPause)
+    {
+        if (shouldPause == _renderersShouldPause)
+        {
+            return;
+        }
+
+        _renderersShouldPause = shouldPause;
+        Dispatcher.UIThread.Post(() => RenderersShouldPauseChanged?.Invoke(this, shouldPause));
+    }
 
     // AC-718: not an IHostedService — those start via Program.StartHostedServices, before Avalonia's Setup()
     // binds Dispatcher.UIThread, and touching it that early crashed the app on launch (races Setup() for
@@ -121,7 +151,13 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                     Dispatcher.UIThread.Post(_StartRenderClockProbe, DispatcherPriority.Background);
                 }
 
-                var renderDecision = RenderClockHeartbeat.Decide(_ProbeInFlightFor(now), renderClockWarned);
+                var probeInFlightFor = _ProbeInFlightFor(now);
+
+                // AC-883: the pause has its own, much higher threshold — see RenderClockHeartbeat.PauseAfter.
+                SetRenderersShouldPause(
+                    RenderClockHeartbeat.ShouldPauseRenderers(probeInFlightFor, OperatingSystem.IsMacOS()));
+
+                var renderDecision = RenderClockHeartbeat.Decide(probeInFlightFor, renderClockWarned);
                 if (renderDecision.Stalled)
                 {
                     renderStallStartedAt = now;

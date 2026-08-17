@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
 
@@ -39,6 +40,20 @@ public partial class SessionView : UserControl
     // sessions" growth: the operator minimises Cockpit while an agent streams. Suspend realisation while minimised
     // (see _ApplyRendererPause) — the same thing an inactive tab already does, so its transcript stays at zero.
     private Window? _hostWindow;
+
+    // The two independent reasons a renderer can be paused, kept apart so lifting one never lifts the other.
+    // _windowMinimised is read from the change notification rather than from _hostWindow, so this never rests on
+    // when Avalonia writes the property relative to raising the event.
+    private bool _windowMinimised;
+
+    // AC-883: on macOS the OS can take the render clock away — screen lock, display sleep, a Space switch, full
+    // occlusion — and WindowState stays Normal throughout, so minimising is not the coverage there that it is on
+    // Windows and X11. DiagnosticsBackgroundService's probe is the one thing in the process that sees it.
+    private bool _renderClockPaused;
+
+    // Set by a test before this is attached; otherwise resolved from the container on attach, the same lazy
+    // service lookup TtyView does. Null in any host that has no diagnostics service — then only minimising pauses.
+    internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
     // Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
     // instead of freezing at whatever it read on first render — and, since AC-531, the background-work
@@ -132,7 +147,16 @@ public partial class SessionView : UserControl
         {
             _hostWindow = window;
             window.PropertyChanged += _OnHostWindowPropertyChanged;
-            _ApplyRendererPause(window.WindowState);
+            _windowMinimised = window.WindowState == WindowState.Minimized;
+
+            Diagnostics ??= Program.Services?.GetService<DiagnosticsBackgroundService>();
+            if (Diagnostics is { } diagnostics)
+            {
+                diagnostics.RenderersShouldPauseChanged += _OnRenderersShouldPauseChanged;
+                _renderClockPaused = diagnostics.RenderersShouldPause;
+            }
+
+            _ApplyRendererPause();
         }
     }
 
@@ -151,6 +175,13 @@ public partial class SessionView : UserControl
         {
             hostWindow.PropertyChanged -= _OnHostWindowPropertyChanged;
             _hostWindow = null;
+        }
+
+        // The service outlives every pane, so a missed unsubscribe here keeps this whole view tree alive — the
+        // exact class of leak this file already exists to fix.
+        if (Diagnostics is { } diagnostics)
+        {
+            diagnostics.RenderersShouldPauseChanged -= _OnRenderersShouldPauseChanged;
         }
 
         base.OnDetachedFromVisualTree(e);
@@ -174,20 +205,30 @@ public partial class SessionView : UserControl
     {
         if (e.Property == Window.WindowStateProperty)
         {
-            _ApplyRendererPause(e.GetNewValue<WindowState>());
+            _windowMinimised = e.GetNewValue<WindowState>() == WindowState.Minimized;
+            _ApplyRendererPause();
         }
     }
 
-    // Minimised: collapse the transcript's scroll owner so the virtualising panel dematerialises its realised rows
-    // (that runs on layout, which a minimise does not pause) and stops building new ones — no churn the paused
-    // renderer can never clean up. Restored on un-minimise, landing back on the newest row if we were following it.
-    // Targets the scroll owner, not TranscriptItems (whose IsVisible is already bound to HasTranscript).
-    private void _ApplyRendererPause(WindowState state)
-    {
-        var minimised = state == WindowState.Minimized;
-        TranscriptScroll.IsVisible = !minimised;
+    private void _OnRenderersShouldPauseChanged(object? sender, bool paused) => SetRenderClockPaused(paused);
 
-        if (!minimised && _stickToBottom)
+    // Internal so a view test can drive the edge; production reaches it through the event above.
+    internal void SetRenderClockPaused(bool paused)
+    {
+        _renderClockPaused = paused;
+        _ApplyRendererPause();
+    }
+
+    // Paused: collapse the transcript's scroll owner so the virtualising panel dematerialises its realised rows
+    // (that runs on layout, which neither reason pauses) and stops building new ones — no churn the paused renderer
+    // can never clean up. Restored once every reason has lifted, landing back on the newest row if we were
+    // following it. Targets the scroll owner, not TranscriptItems (whose IsVisible is already bound to HasTranscript).
+    private void _ApplyRendererPause()
+    {
+        var paused = _windowMinimised || _renderClockPaused;
+        TranscriptScroll.IsVisible = !paused;
+
+        if (!paused && _stickToBottom)
         {
             Dispatcher.UIThread.Post(_FollowNewest);
         }

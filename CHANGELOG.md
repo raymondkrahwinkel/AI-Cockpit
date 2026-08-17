@@ -30,6 +30,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed: on macOS the cockpit now notices when the system has stopped drawing it — locking the screen, letting the
+  display sleep, switching to another Space or fully covering the window — and suspends its transcripts for as long
+  as that lasts, instead of only doing so when the window is actually minimised. Minimising is the rare case on a
+  Mac, so an agent streaming behind a locked screen used to pile up work nothing could clear, which is what made
+  the cockpit grow to several gigabytes overnight. To be sure a merely overloaded machine is never mistaken for a
+  stopped one, this waits for a full minute of no drawing at all, four times longer than the point at which the
+  diagnostics log first mentions it. Windows and Linux are untouched: their drawing clock cannot be taken away by
+  the system, so minimising already covers them.
+
 ### Added
 
 - added: a stroke or object drawn over a pasted image on the whiteboard now sticks to that image — move or resize
