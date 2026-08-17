@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
@@ -197,6 +199,115 @@ public class DiagramCollabWindowTests
         var window = _Show(opened.Content);
         Assert.Contains("Agent connected", _CouplingText(opened.Content), StringComparison.Ordinal);
 
+        window.Close();
+        plugin.Dispose();
+    });
+
+    // AC-847: a non-operator, non-reverted HistoryChanged entry marks the object it named as the agent's cursor —
+    // glowing while fresh, settling into a quieter outline once the 3s window passes. Real-time wait, same pattern
+    // SessionBackgroundTaskPopoutTests already uses for its own timer-driven fade.
+    [Fact]
+    public Task AFreshNonOperatorEdit_ShowsAGlowingAgentCursor_ThatSettlesAfterTheGlowWindow() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+
+        host.Registry.Grant("pane-a", surfaceId, DiagramCapability.Edit);
+        host.Registry.EditCoupled("pane-a", surfaceId, DiagramHandEditKind.RenameNode, "A", current =>
+        {
+            var edit = DiagramObjectEdit.RenameNode(current, "A", "Hernoemd");
+            return (edit.Text, edit.Summary);
+        });
+        Dispatcher.UIThread.RunJobs();
+
+        // Fresh: the tag carrying the session's name is filled — the glow.
+        var tag = content.GetVisualDescendants().OfType<Border>().Single(b => b.Child is TextBlock t && t.Text == "Werksessie");
+        Assert.NotNull(tag.Background);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(3300));
+        Dispatcher.UIThread.RunJobs();
+
+        // Settled: same tag, no longer filled — an observably different mark, not a silent no-op.
+        var settled = content.GetVisualDescendants().OfType<Border>().Single(b => b.Child is TextBlock t && t.Text == "Werksessie");
+        Assert.Null(settled.Background);
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public void FollowToggle_PansWithoutChangingZoom_WhenTheAgentEditsAwayFromCentre() => HeadlessAvalonia.Run(() =>
+    {
+        var (plugin, host) = _StartPlugin();
+        host.InvokeQuickStart();
+        var content = host.Windows[0].Content;
+        var window = _Show(content);
+        var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
+
+        host.Registry.UpdateText(surfaceId, "flowchart LR\n    A[\"Begin\"] --> B[\"Ver weg\"]");
+        Dispatcher.UIThread.RunJobs();
+
+        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Volgen"));
+        follow.IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+
+        var surfacePanel = content.GetVisualDescendants().OfType<Panel>().Single(p => p.RenderTransform is MatrixTransform);
+        var before = ((MatrixTransform)surfacePanel.RenderTransform!).Matrix;
+
+        host.Registry.Grant("pane-a", surfaceId, DiagramCapability.Edit);
+        host.Registry.EditCoupled("pane-a", surfaceId, DiagramHandEditKind.RenameNode, "B", current =>
+        {
+            var edit = DiagramObjectEdit.RenameNode(current, "B", "Doel");
+            return (edit.Text, edit.Summary);
+        });
+        Dispatcher.UIThread.RunJobs();
+
+        var after = ((MatrixTransform)surfacePanel.RenderTransform!).Matrix;
+
+        Assert.Equal(before.M11, after.M11, precision: 6); // the zoom level is untouched by Volgen
+        Assert.False(before.M31 == after.M31 && before.M32 == after.M32); // but it did pan somewhere new
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    // AC-847/AC-621's precedent: Volgen switches itself off the instant the operator's own gesture reaches the
+    // viewport — a wheel or a manual pan — since both handlers are only ever driven by real pointer/wheel input.
+    [Fact]
+    public void FollowToggle_TurnsOffTheMomentTheOperatorZoomsByHand() => HeadlessAvalonia.Run(() =>
+    {
+        var (plugin, host, content, window, _) = _OpenOnOneNode();
+
+        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Volgen"));
+        follow.IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(follow.IsChecked);
+
+        window.MouseWheel(_ViewportCentre(content, window), new Vector(0, 1));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(follow.IsChecked);
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public void FollowToggle_TurnsOffTheMomentTheOperatorPansByHand() => HeadlessAvalonia.Run(() =>
+    {
+        var (plugin, host, content, window, _) = _OpenOnOneNode();
+
+        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Volgen"));
+        follow.IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+
+        var start = _ViewportCentre(content, window);
+        window.MouseDown(start, MouseButton.Left);
+        window.MouseMove(start + new Vector(30, 30), RawInputModifiers.LeftMouseButton);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(follow.IsChecked);
+
+        window.MouseUp(start + new Vector(30, 30), MouseButton.Left);
         window.Close();
         plugin.Dispose();
     });

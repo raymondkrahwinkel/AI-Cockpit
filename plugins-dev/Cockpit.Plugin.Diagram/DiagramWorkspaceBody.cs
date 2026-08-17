@@ -56,6 +56,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
     private readonly ActivityStrip _activityStrip;
+    private readonly PresenceIndicators _presence;
+    private readonly ToggleButton _followToggle;
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
     private string? _filePath;
@@ -85,6 +87,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private IPluginSessionBinding _binding;
     private string? _boundSessionName;
     private string? _endedSessionName;
+    private string? _agentCursorKey;
+    private bool _glowActive;
+    private int _glowGeneration;
+    private bool _following;
 
     public DiagramWorkspaceBody(ICockpitHost host, DiagramDocument document, string? sessionPaneId)
     {
@@ -122,15 +128,17 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _handHint) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _handHint, _followToggle) = _BuildToolbar();
         _activityStrip = new ActivityStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
+        _presence = new PresenceIndicators(host, _surfaceId, whiteboard: false);
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _proposalPanel, _sourceToggle, _sourceBox, _activityStrip, _viewport },
+            Children = { toolbar, _couplingBar, _presence, _proposalPanel, _sourceToggle, _sourceBox, _activityStrip, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
+        DockPanel.SetDock(_presence, Dock.Top);
         DockPanel.SetDock(_proposalPanel, Dock.Top);
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
@@ -142,6 +150,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // session is gone — lands on DetachedSessionBinding, which is the "no agent on this diagram" state.
         _binding = _Bind(sessionPaneId);
         _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
+        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
 
         if (_registry is not null)
         {
@@ -150,6 +159,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.TextChanged += _OnTextChanged;
             _registry.ProposalChanged += _OnProposalChanged;
+            _registry.HistoryChanged += _OnHistoryChanged;
             _registry.SurfaceOpened(_surfaceId, document.Title, document.MermaidText);
 
             // A plain Couple — zero capabilities. read_diagram/edit_diagram still ask their own consent (AC-810).
@@ -180,6 +190,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry.CouplingChanged -= _OnCouplingChanged;
             _registry.TextChanged -= _OnTextChanged;
             _registry.ProposalChanged -= _OnProposalChanged;
+            _registry.HistoryChanged -= _OnHistoryChanged;
             _registry.SurfaceClosed(_surfaceId);
         };
     }
@@ -222,6 +233,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _binding.Dispose();
         _binding = _Bind(paneId);
         _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
+        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
         _endedSessionName = null;
         _RefreshCouplingBar();
     }
@@ -238,7 +250,81 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         _current = change.Coupling;
-        Avalonia.Threading.Dispatcher.UIThread.Post(_RefreshCouplingBar);
+        if (_current is null)
+        {
+            // Same "absent, not empty-but-present" rule as the coupling bar: no coupling means no agent cursor
+            // either, whatever it was pointing at.
+            _agentCursorKey = null;
+            _glowActive = false;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _RefreshCouplingBar();
+            _RefreshOverlay();
+        });
+    }
+
+    // AC-847: the agent's cursor on the surface — the last non-operator, non-reverted edit's object, marked and
+    // briefly glowing while it is fresh (see _PulseGlowAsync), then settling into a quieter persistent outline.
+    private void _OnHistoryChanged(string surfaceId)
+    {
+        if (surfaceId != _surfaceId)
+        {
+            return;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var last = _registry?.History(_surfaceId).LastOrDefault();
+            if (last is not { Origin: not "operator", Reverted: false } entry)
+            {
+                return;
+            }
+
+            _agentCursorKey = entry.ObjectKey;
+            _RefreshOverlay();
+            _ = _PulseGlowAsync();
+
+            if (_following)
+            {
+                _FollowTo(entry.ObjectKey);
+            }
+        });
+    }
+
+    // Restarts on every fresh edit via a generation counter (mirrors _FlashObjectAsync's fire-and-forget shape) so
+    // an older timer landing late can never clear a glow a newer edit just started.
+    private async Task _PulseGlowAsync()
+    {
+        var myGeneration = ++_glowGeneration;
+        _glowActive = true;
+        _RefreshOverlay();
+        await Task.Delay(3000);
+        if (_glowGeneration == myGeneration)
+        {
+            _glowActive = false;
+            _RefreshOverlay();
+        }
+    }
+
+    // AC-847's Volgen: pan (never zoom) so the agent's just-edited object lands in the viewport's own centre, using
+    // whatever zoom level is already set. Cancelled the moment the operator pans or zooms by hand — see
+    // _OnViewportWheel/_OnViewportPointerMoved.
+    private void _FollowTo(string objectKey)
+    {
+        var target = _objects.FirstOrDefault(o => o.HoldKey == objectKey);
+        if (target is null)
+        {
+            return;
+        }
+
+        var center = new Point(
+            (target.Bounds.X + target.Bounds.Width / 2) * _svgScale,
+            (target.Bounds.Y + target.Bounds.Height / 2) * _svgScale);
+        var viewportCenter = _viewport.Bounds.Size;
+        _panOffset = new Vector(viewportCenter.Width / 2, viewportCenter.Height / 2) - new Vector(center.X, center.Y) * _zoom;
+        _ApplyTransform();
     }
 
     private void _OnTextChanged(string surfaceId, string text)
@@ -358,8 +444,18 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
     private void _OnViewportWheel(object? sender, PointerWheelEventArgs e)
     {
+        _CancelFollow();
         e.Handled = true;
         _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y));
+    }
+
+    // Only real Avalonia pointer/wheel input reaches these two handlers — _FollowTo never raises them itself — so
+    // this can cancel unconditionally with no "was this self-triggered" flag (AC-621's precedent needed one because
+    // it had to tell apart two different causes of the same event; there is no such ambiguity here).
+    private void _CancelFollow()
+    {
+        _following = false;
+        _followToggle.IsChecked = false;
     }
 
     // AC-837's input convention stands: plain left-drag pans. AC-841 adds no gesture of its own — a press that never
@@ -387,6 +483,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
+        // Cancelled here, not on every pointer move over the viewport — hovering the mouse is not a gesture, an
+        // actual drag-pan is.
+        _CancelFollow();
         Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
         _panOffset = _panOffsetStart + travelled;
         _isFitMode = false;
@@ -477,6 +576,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry?.HoldObject(_surfaceId, hit.HoldKey);
         }
 
+        _presence.SetOperatorWriting(_selected is not null);
         _RefreshOverlay();
         _RefreshHandEditBar();
         _RefreshCouplingBar();
@@ -635,14 +735,80 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
     }
 
+    // AC-847: composed in layers, later on top, rather than clearing-and-drawing-one — the agent's cursor and the
+    // operator's own "jij bewerkt" mark can both be on screen at once, on different objects or even the same one.
     private void _RefreshOverlay()
     {
         _overlay.Children.Clear();
-        if (_selected is not { } selected || selected.Bounds.Width <= 0 && selected.Bounds.Height <= 0)
+
+        // Layer 1: the agent's cursor — absent the moment there is no coupling or nothing to point at, same rule
+        // as PresenceIndicators; never drawn for an object that no longer resolves (renamed away, removed).
+        if (_current is not null && _agentCursorKey is { } cursorKey
+            && _objects.FirstOrDefault(o => o.HoldKey == cursorKey) is { } agentTarget)
         {
-            return;
+            _DrawAgentCursor(agentTarget);
         }
 
+        // Layer 2: the operator's own hold, drawn last so it wins if it ever lands on the same object.
+        if (_selected is { } selected && !(selected.Bounds.Width <= 0 && selected.Bounds.Height <= 0))
+        {
+            _DrawOperatorMark(selected);
+        }
+    }
+
+    private void _DrawAgentCursor(DiagramObjectAt target)
+    {
+        var bounds = new Rect(
+            target.Bounds.X * _svgScale,
+            target.Bounds.Y * _svgScale,
+            target.Bounds.Width * _svgScale,
+            target.Bounds.Height * _svgScale).Inflate(4);
+
+        var outline = new Border
+        {
+            Width = bounds.Width,
+            Height = bounds.Height,
+            // Thinner than the operator's hold outline (Thickness(2) below) — the two have to read as different
+            // things at a glance, not as the same mark in a different colour.
+            BorderThickness = new Thickness(1),
+            BorderBrush = _Brush("CockpitAccentBrush"),
+            CornerRadius = new CornerRadius(6),
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(outline, bounds.X);
+        Canvas.SetTop(outline, bounds.Y);
+
+        var name = _binding.SessionName ?? _boundSessionName ?? "agent";
+        // "Vers geland" (glowing, filled) reads differently from "settled" (outline-only, muted) — the fade has to
+        // be an observable change, not two pixel-identical states.
+        var tag = _glowActive
+            ? new Border
+            {
+                Background = _Brush("CockpitAccentBrush"),
+                Padding = new Thickness(5, 1),
+                CornerRadius = new CornerRadius(4),
+                IsHitTestVisible = false,
+                Child = new TextBlock { Text = name, FontSize = 10, Foreground = Brushes.White },
+            }
+            : new Border
+            {
+                BorderBrush = _Brush("CockpitStatusBusyBrush"),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(5, 1),
+                CornerRadius = new CornerRadius(4),
+                IsHitTestVisible = false,
+                Opacity = 0.75,
+                Child = new TextBlock { Text = name, FontSize = 10, Foreground = _Brush("CockpitStatusBusyBrush") },
+            };
+        Canvas.SetLeft(tag, bounds.X);
+        Canvas.SetTop(tag, bounds.Y - 18);
+
+        _overlay.Children.Add(outline);
+        _overlay.Children.Add(tag);
+    }
+
+    private void _DrawOperatorMark(DiagramObjectAt selected)
+    {
         var bounds = new Rect(
             selected.Bounds.X * _svgScale,
             selected.Bounds.Y * _svgScale,
@@ -747,7 +913,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus,
-        Button Connect, Button Rename, Button Delete, TextBlock Hint) _BuildToolbar()
+        Button Connect, Button Rename, Button Delete, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
     {
         var export = new Button
         {
@@ -780,12 +946,19 @@ internal sealed class DiagramWorkspaceBody : UserControl
         zoomIn.Click += (_, _) => _ZoomByButton(ButtonZoomStep);
         var fit = new Button { Content = "Fit", Classes = { "Compact" } };
         fit.Click += (_, _) => _ApplyFit();
+
+        // AC-847: pans (never zooms) to whatever the agent just touched, as long as this stays checked — and it is
+        // unchecked itself the moment the operator pans or zooms by hand (_CancelFollow).
+        var follow = new ToggleButton { Content = "Volgen", Classes = { "Compact" } };
+        ToolTip.SetTip(follow, "Volg de agent naar wat die nu bewerkt.");
+        follow.IsCheckedChanged += (_, _) => _following = follow.IsChecked == true;
+
         var zoomControls = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { zoomOut, zoomLabel, zoomIn, fit },
+            Children = { zoomOut, zoomLabel, zoomIn, fit, follow },
         };
 
         // AC-840: leeg is een beginpunt, niet een doodlopende weg — the AC-809 sample is reachable as an explicit
@@ -835,7 +1008,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         DockPanel.SetDock(export, Dock.Right);
         DockPanel.SetDock(handEditControls, Dock.Left);
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, connect, rename, delete, hint);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, connect, rename, delete, hint, follow);
     }
 
     // Eén opslagweg voor beide herkomsten (AC-839): een hand-bewerking en een aangenomen agent-voorstel komen
