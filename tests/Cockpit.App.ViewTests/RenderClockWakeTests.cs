@@ -4,19 +4,9 @@ using Avalonia.Rendering.Composition;
 
 namespace Cockpit.App.ViewTests;
 
-// AC-882 pins the contract the whole transcript-teardown fix rests on: a forced compositor commit is still
-// processed after the app has been idle long enough for the render loop to park its clock.
-//
-// Avalonia 12 parks the render clock on every platform once no IRenderLoopTask wants another tick
-// (DefaultRenderLoop owns that sleep/wake state machine; ServerCompositor.RenderCore returns false to ask for it,
-// and SleepLoopRenderTimer parks on an event). What brings it back is the commit itself:
-// ServerCompositor.EnqueueBatch calls IRenderLoop.Wakeup. Lose that edge — an Avalonia change, a downgrade to the
-// pre-12 architecture AC-882 was written against — and SessionView.OnDetachedFromVisualTree's RequestCommitAsync
-// becomes a no-op on a pipeline that never processes the batch, which is the permanent half of the leak.
-//
-// The parked state itself is only reachable by reflection (DefaultRenderLoop.Timer is internal), and asserting it
-// is what makes this decisive rather than merely green: without it a commit that completes proves nothing, since
-// a clock that never parked would satisfy it too.
+// AC-882: a forced compositor commit must still be processed once the render loop has parked its clock — the
+// contract SessionView.OnDetachedFromVisualTree's teardown commit rests on. Asserting the parked state is what
+// gives this teeth; without it a commit that completes proves nothing.
 [Collection("avalonia")]
 public sealed class RenderClockWakeTests
 {

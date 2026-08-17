@@ -1,11 +1,7 @@
 namespace Cockpit.Core.Diagnostics;
 
-// AC-882: hysteresis for the render-clock probe, same warn-once/calm-later shape as UiThreadHeartbeat — a pure
-// function so it is testable without a render loop. Avalonia 12 parks the render clock on every platform once no
-// render-loop task wants another tick, and a commit is what wakes it again (ServerCompositor.EnqueueBatch calls
-// IRenderLoop.Wakeup). A probe commit that never reports Processed therefore means the clock stopped and did not
-// come back — the shape a stalled macOS display link takes. Posting the probe is the caller's job; see
-// DiagnosticsBackgroundService._StartRenderClockProbe.
+// AC-882: hysteresis for the render-clock probe, same warn-once/calm-later shape as UiThreadHeartbeat. A probe
+// commit that never reports Processed means the render clock stopped and did not come back.
 public static class RenderClockHeartbeat
 {
     // A probe on a healthy pipeline completes within a frame or two. Three orders of magnitude of headroom, so a
