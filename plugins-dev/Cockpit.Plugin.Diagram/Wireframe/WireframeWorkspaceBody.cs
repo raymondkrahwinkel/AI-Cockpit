@@ -51,6 +51,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly TextBox _sourceBox;
     private readonly ActivityStrip _activityStrip;
     private readonly PresenceIndicators _presence;
+    private readonly Button _saveButton;
+    private readonly TextBlock _saveStatus;
     private double _zoom = 1.0;
     private Vector _panOffset;
     private bool _isFitMode = true;
@@ -59,6 +61,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private Vector _panOffsetStart;
     private WireframeCoupling? _current;
     private SurfaceSessionBinding _sessionBinding;
+    private string? _filePath;
+    private string _savedText;
+    private string? _fileAsLastSeen;
 
     public WireframeWorkspaceBody(ICockpitHost host, WireframeDocument document, string? sessionPaneId)
     {
@@ -66,6 +71,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _registry = host.Services.GetService(typeof(IWireframeAccessRegistry)) as IWireframeAccessRegistry;
         _surfaceId = document.Id;
         _documentTitle = document.Title;
+        _filePath = document.FilePath;
+        _savedText = document.Text;
+        _fileAsLastSeen = SurfaceChrome.ReadFile(_filePath);
 
         // No fixed control size beyond the design canvas below: `_viewport` positions/scales `_surface` itself via
         // RenderTransform for zoom and pan, same as DiagramWorkspaceBody's `_surface`.
@@ -81,7 +89,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
@@ -191,6 +199,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         {
             _ApplyTransform();
         }
+
+        _RefreshSaveBar();
     }
 
     private static Control _BuildErrorPanel(IReadOnlyList<WireframeParseError> errors)
@@ -338,7 +348,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return (toggle, box);
     }
 
-    private (Border Toolbar, TextBlock ZoomLabel) _BuildToolbar()
+    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -357,9 +367,100 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Children = { zoomOut, zoomLabel, zoomIn, fit },
         };
 
-        var bar = new DockPanel { Children = { zoomControls } };
+        // AC-874/WF-4: waar dit wireframe woont, naast de knop die het daar zet — DiagramWorkspaceBody's Opslaan,
+        // one folder over. "Nog geen bestand" is een toestand die het venster net zo goed toont als een pad.
+        var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
+        save.Click += (_, _) => _ = _SaveAsync();
+        var saveStatus = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            MaxWidth = 320,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+        var saveControls = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { save, saveStatus },
+        };
+
+        var bar = new DockPanel { Children = { saveControls, zoomControls } };
+        DockPanel.SetDock(saveControls, Dock.Left);
         DockPanel.SetDock(zoomControls, Dock.Right);
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus);
+    }
+
+    // Eén opslagweg (AC-839's precedent, one folder over): the source box always mirrors the surface's current
+    // text — an agent's edit_wireframe today, a hand-edit once WF-5 lands — so "onbewaarde wijzigingen" is the
+    // same comparison for both.
+    private async Task _SaveAsync()
+    {
+        if (_filePath is { } existing)
+        {
+            _Persist(text =>
+            {
+                WireframeCatalog.Write(existing, _documentTitle, text, _fileAsLastSeen);
+                return existing;
+            });
+            return;
+        }
+
+        var homes = WireframeCatalog.WritableHomes(await _host.GetProjectMemoryRowsAsync(_sessionBinding.LivePaneId));
+        if (homes.Count == 0)
+        {
+            _host.ShowToast(
+                "Dit project heeft geen geheugenpad — voeg er een toe in de projecteditor voordat je een wireframe opslaat.",
+                PluginToastSeverity.Warning);
+            return;
+        }
+
+        if (homes.Count == 1)
+        {
+            _Persist(text => WireframeCatalog.Create(homes[0].Reference, _documentTitle, text));
+            return;
+        }
+
+        // Meer dan één geheugenpad: vragen, niet kiezen (AC-812). Het antwoord blijft bij dit wireframe.
+        var flyout = new MenuFlyout();
+        foreach (var home in homes)
+        {
+            var item = new MenuItem { Header = home.Label ?? home.Reference };
+            item.Click += (_, _) => _Persist(text => WireframeCatalog.Create(home.Reference, _documentTitle, text));
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(_saveButton);
+    }
+
+    // The writer only says where it landed; the bookkeeping and the one error path live here.
+    private void _Persist(Func<string, string> write)
+    {
+        var text = _sourceBox.Text ?? "";
+        try
+        {
+            _filePath = write(text);
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Opslaan is niet gelukt: {exception.Message}", PluginToastSeverity.Error);
+            return;
+        }
+
+        _savedText = text;
+        _fileAsLastSeen = SurfaceChrome.ReadFile(_filePath);
+        _RefreshSaveBar();
+    }
+
+    private void _RefreshSaveBar()
+    {
+        var dirty = (_sourceBox.Text ?? "") != _savedText;
+        var where = _filePath ?? "Nog geen bestand";
+        _saveStatus.Text = dirty ? $"{where} · onbewaarde wijzigingen" : where;
+        ToolTip.SetTip(_saveStatus, _filePath);
+        _saveButton.IsEnabled = dirty || _filePath is null;
     }
 
     // The "agent connected" bar (AC-810/AC-834's precedent), always on screen: "no agent on this wireframe" is a

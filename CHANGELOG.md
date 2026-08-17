@@ -36,6 +36,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   "Nieuw wireframe" starts one bound to whatever session you already have running, the same coupling bar, activity
   strip and "agent connected" state the other two surfaces use, with zoom/pan for a wide screen layout and a
   collapsed, read-only box showing the wireframe's source text.
+- added: wireframes can now be saved, renamed and reopened, the same way diagrams and whiteboards already were — an
+  "Opslaan" button that shows where the file lives and flags unsaved changes, and a "Wireframes" list across every
+  memory location that opens a saved one straight back into its own window.
 
 ### Fixed
 
