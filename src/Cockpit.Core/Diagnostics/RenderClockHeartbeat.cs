@@ -30,15 +30,9 @@ public static class RenderClockHeartbeat
         return new RenderClockHeartbeatDecision(Stalled: false, Resumed: false, Warned: warned);
     }
 
-    /// <summary>
-    /// Whether panes should stop producing composition churn because the render clock is no longer processing it.
-    /// </summary>
-    /// <param name="probeInFlightFor">
-    /// How long the outstanding forced commit has gone unprocessed, or null when none is outstanding.
-    /// </param>
-    /// <param name="isMacOs">
-    /// Passed in rather than read here so both branches are testable; only macOS can lose its render clock to the OS.
-    /// </param>
+    // Whether panes should stop producing composition churn because the render clock is no longer processing it.
+    // probeInFlightFor is how long the outstanding forced commit has gone unprocessed, null when none is out.
+    // isMacOs is passed in rather than read here so both branches are testable.
     public static bool ShouldPauseRenderers(TimeSpan? probeInFlightFor, bool isMacOs) =>
         // Windows and X11 drive the clock from a software sleep loop the OS cannot take away, and WindowState.
         // Minimized is full coverage of pausing there — so their existing, working behaviour stays untouched.

@@ -59,17 +59,11 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         _logger = logger;
     }
 
-    /// <summary>
-    /// Raised on the UI thread when the render clock starts or stops being able to process commits (AC-883).
-    /// </summary>
-    /// <remarks>
-    /// Panes subscribe to suspend their transcripts; nothing else in the process can tell them the clock is gone.
-    /// </remarks>
+    // AC-883: raised on the UI thread when the render clock starts or stops being able to process commits. Panes
+    // subscribe to suspend their transcripts; nothing else in the process can tell them the clock is gone.
     public event EventHandler<bool>? RenderersShouldPauseChanged;
 
-    /// <summary>
-    /// The current answer, for a subscriber that attaches between two edges.
-    /// </summary>
+    // The current answer, for a subscriber that attaches between two edges.
     public bool RenderersShouldPause => _renderersShouldPause;
 
     // Flips the periodic-snapshot half on or off live — called by CockpitViewModel from the Options checkbox and
