@@ -30,6 +30,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Added
+
+- added: the Diagram plugin opens wireframe sketches in their own window now, alongside diagrams and whiteboards —
+  "Nieuw wireframe" starts one bound to whatever session you already have running, the same coupling bar, activity
+  strip and "agent connected" state the other two surfaces use, with zoom/pan for a wide screen layout and a
+  collapsed, read-only box showing the wireframe's source text.
+
 ### Fixed
 
 - fixed: on macOS the cockpit now notices when the system has stopped drawing it — locking the screen, letting the
