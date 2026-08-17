@@ -36,6 +36,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
     private readonly ActivityStrip _activityStrip;
+    private readonly PresenceIndicators _presence;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
     private readonly TextBlock _readChip;
@@ -84,16 +85,19 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
                 _control.Canvas.SelectObject(id);
             }
         });
+        _presence = new PresenceIndicators(host, _surfaceId, whiteboard: true);
 
-        Content = new DockPanel { Children = { _saveBar, _couplingBar, _activityStrip, convertBar, _control } };
+        Content = new DockPanel { Children = { _saveBar, _couplingBar, _presence, _activityStrip, convertBar, _control } };
         DockPanel.SetDock(_saveBar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
+        DockPanel.SetDock(_presence, Dock.Top);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
         DockPanel.SetDock(convertBar, Dock.Bottom);
         _RefreshSaveBar();
 
         _binding = _Bind(sessionPaneId);
         _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
+        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
 
         if (_registry is not null)
         {
@@ -102,6 +106,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _registry.CouplingChanged += _OnCouplingChanged;
             _registry.ObjectPlaced += _OnObjectPlaced;
             _registry.ObjectErased += _OnObjectErased;
+            _registry.HistoryChanged += _OnHistoryChanged;
             _registry.SurfaceOpened(_surfaceId, _documentTitle, _Snapshot());
 
             // A plain Couple — zero capabilities. The invite button (and read_whiteboard) still ask their own Grant.
@@ -138,6 +143,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _registry.CouplingChanged -= _OnCouplingChanged;
             _registry.ObjectPlaced -= _OnObjectPlaced;
             _registry.ObjectErased -= _OnObjectErased;
+            _registry.HistoryChanged -= _OnHistoryChanged;
             _registry.SurfaceClosed(_surfaceId);
         };
     }
@@ -175,6 +181,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _binding.Dispose();
         _binding = _Bind(paneId);
         _activityStrip.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
+        _presence.SetSession(_binding.IsLive ? _binding.PaneId : null, _boundSessionName);
         _endedSessionName = null;
         _RefreshCouplingBar();
     }
@@ -458,6 +465,26 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             {
                 _registry?.UpdateSnapshot(_surfaceId, _Snapshot());
                 _RefreshSaveBar();
+            }
+        });
+    }
+
+    // AC-847: no zoom/pan and no per-object bounds map here, so the diagram's cursor/glow/follow collapse into one
+    // call — selecting the object is itself the highlight (WhiteboardCanvasControl.SelectObject), and there is no
+    // camera to move so "bring the operator to it" needs nothing more than that.
+    private void _OnHistoryChanged(string surfaceId)
+    {
+        if (surfaceId != _surfaceId)
+        {
+            return;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var last = _registry?.History(_surfaceId).LastOrDefault();
+            if (last is { Origin: not "operator", Reverted: false } entry && Guid.TryParse(entry.ObjectId, out var id))
+            {
+                _control.Canvas.SelectObject(id);
             }
         });
     }

@@ -32,6 +32,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a diagram or whiteboard window now shows presence at a glance the moment an agent is coupled to it — a pip
+  for the agent and one for you, coloured by what each of you is doing right now (idle, reading along, or actively
+  writing), a one-line summary of what's happening, and a running count of changes made since you opened the window.
+  With no agent coupled this whole strip is gone rather than sitting there empty.
+
+- added: on a diagram, a fresh edit from the agent now gets its own cursor mark on the object it touched — glowing
+  for a few seconds while it's fresh, then settling into a quieter outline once it's not. A new "Volgen" toggle pans
+  the view to follow wherever the agent edits next, without changing your zoom level; it switches itself off the
+  moment you pan or zoom by hand, so it never fights your own navigation. On the whiteboard, a fresh agent action
+  highlights the object it touched the same way selecting it yourself would.
+
 - added: every hand-edit or agent edit on a diagram can now be undone from the activity strip — point at a line and
   "Terugdraaien" takes back exactly that one change, never "undo the last thing", so undoing an agent's edit from
   five minutes ago cannot discard what you did on a different node since. A reverted line stays in the strip, marked

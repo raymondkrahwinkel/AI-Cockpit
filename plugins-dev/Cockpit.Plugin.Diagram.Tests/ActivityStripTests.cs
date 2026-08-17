@@ -13,8 +13,9 @@ namespace Cockpit.Plugin.Diagram.Tests;
 public class ActivityStripTests
 {
     // Only the members ActivityStrip actually calls (History/HistoryChanged/Revert) do anything; everything else
-    // on the interface is a no-op stand-in, the same shape FakeHost below takes for ICockpitHost.
-    private sealed class FakeDiagramRegistry : IDiagramAccessRegistry
+    // on the interface is a no-op stand-in, the same shape FakeHost below takes for ICockpitHost. Internal, not
+    // private: PresenceIndicatorsTests (AC-847) reuses this rather than writing a second fake for the same interface.
+    internal sealed class FakeDiagramRegistry : IDiagramAccessRegistry
     {
         private readonly Dictionary<string, List<DiagramHistoryEntry>> _history = new();
 
@@ -24,7 +25,9 @@ public class ActivityStripTests
 
         public event Action<string, string>? TextChanged { add { } remove { } }
 
-        public event Action<DiagramCouplingChange>? CouplingChanged { add { } remove { } }
+        // PresenceIndicators (AC-847) needs a real CouplingChanged, unlike ActivityStrip which never subscribes to
+        // it — a no-op stand-in here would mean its tests could never see a coupling appear or drop.
+        public event Action<DiagramCouplingChange>? CouplingChanged;
 
         public event Action<string, DiagramProposal?>? ProposalChanged { add { } remove { } }
 
@@ -36,6 +39,9 @@ public class ActivityStripTests
             (_history.TryGetValue(surfaceId, out var list) ? list : _history[surfaceId] = []).Add(entry);
 
         public void Raise(string surfaceId) => HistoryChanged?.Invoke(surfaceId);
+
+        public void SetCoupling(string surfaceId, DiagramCoupling? coupling) =>
+            CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, coupling));
 
         public IReadOnlyList<DiagramHistoryEntry> History(string surfaceId) =>
             _history.TryGetValue(surfaceId, out var list) ? list : [];
@@ -124,7 +130,7 @@ public class ActivityStripTests
         public bool RequestOpen(DiagramOpenRequest request) => false;
     }
 
-    private sealed class FakeWhiteboardRegistry : IWhiteboardAccessRegistry
+    internal sealed class FakeWhiteboardRegistry : IWhiteboardAccessRegistry
     {
         private readonly Dictionary<string, List<WhiteboardHistoryEntry>> _history = new();
 
@@ -132,16 +138,22 @@ public class ActivityStripTests
 
         public event Action<string, byte[]>? SnapshotChanged { add { } remove { } }
 
-        public event Action<WhiteboardCouplingChange>? CouplingChanged { add { } remove { } }
+        // Same reason as FakeDiagramRegistry's CouplingChanged above: PresenceIndicators actually subscribes.
+        public event Action<WhiteboardCouplingChange>? CouplingChanged;
 
         public event Action<string, string, WhiteboardPlacement>? ObjectPlaced { add { } remove { } }
 
         public event Action<string, string>? ObjectErased { add { } remove { } }
 
-        public event Action<string>? HistoryChanged { add { } remove { } }
+        public event Action<string>? HistoryChanged;
 
         public void Seed(string surfaceId, WhiteboardHistoryEntry entry) =>
             (_history.TryGetValue(surfaceId, out var list) ? list : _history[surfaceId] = []).Add(entry);
+
+        public void Raise(string surfaceId) => HistoryChanged?.Invoke(surfaceId);
+
+        public void SetCoupling(string surfaceId, WhiteboardCoupling? coupling) =>
+            CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, coupling));
 
         public IReadOnlyList<WhiteboardHistoryEntry> History(string surfaceId) =>
             _history.TryGetValue(surfaceId, out var list) ? list : [];
@@ -205,7 +217,7 @@ public class ActivityStripTests
         public bool RequestOpen(WhiteboardOpenRequest request) => false;
     }
 
-    private sealed class FakeHost : ICockpitHost
+    internal sealed class FakeHost : ICockpitHost
     {
         public FakeHost(FakeDiagramRegistry? diagram = null, FakeWhiteboardRegistry? whiteboard = null)
         {
