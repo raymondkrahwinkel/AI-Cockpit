@@ -1,6 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
-using Cockpit.Plugin.Diagram.Wireframe.Model;
+using Cockpit.Core.Wireframe.Model;
 
 namespace Cockpit.Plugin.Diagram.Wireframe.Rendering;
 

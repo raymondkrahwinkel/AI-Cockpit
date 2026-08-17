@@ -4,8 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
-using Cockpit.Plugin.Diagram.Wireframe;
-using Cockpit.Plugin.Diagram.Wireframe.Model;
+using Cockpit.Core.Wireframe;
+using Cockpit.Core.Wireframe.Model;
 using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;

@@ -60,7 +60,7 @@ public class DiagramDiffTests
     [Fact]
     public void Compute_ReorderedLines_AreNotDescribedAsAWholesaleRewrite()
     {
-        // Same requirement as DiagramChangeSummary: a change must never look bigger than it is.
+        // Same requirement as SourceChangeSummary: a change must never look bigger than it is.
         var blocks = DiagramDiff.Compute("A\nB\nC", "B\nA\nC");
 
         Assert.Contains(blocks, b => !b.IsChange && b.ContextLines.Any(l => l.Text == "C"));

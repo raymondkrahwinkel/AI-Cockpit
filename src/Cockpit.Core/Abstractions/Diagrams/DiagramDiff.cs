@@ -16,7 +16,7 @@ public sealed record DiagramDiffBlock(bool IsChange, IReadOnlyList<DiagramDiffLi
 }
 
 // Turns two Mermaid sources into an ordered list of diff blocks, and back into text given a per-block accept
-// decision — the diff-poort's whole algorithm (AC-825). Same LCS approach as DiagramChangeSummary, so a change
+// decision — the diff-poort's whole algorithm (AC-825). Same LCS approach as SourceChangeSummary, so a change
 // is never described as bigger than it is: two lines a diagram author reordered still line up as unchanged.
 public static class DiagramDiff
 {

@@ -1,8 +1,8 @@
-namespace Cockpit.Plugin.Diagram.Wireframe.Model;
+namespace Cockpit.Core.Wireframe.Model;
 
 // One component, one source line. A class rather than a record on purpose: the tree is mutable (WF-5 edits it in
 // place) and identity is what the rendered control points back at, so value equality would be a lie.
-internal sealed class WireframeNode(WireframeNodeKind kind, int line, string? text = null)
+public sealed class WireframeNode(WireframeNodeKind kind, int line, string? text = null)
 {
     public WireframeNodeKind Kind { get; } = kind;
 

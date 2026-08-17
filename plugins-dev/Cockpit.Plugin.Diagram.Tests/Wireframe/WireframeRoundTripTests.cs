@@ -1,4 +1,4 @@
-using Cockpit.Plugin.Diagram.Wireframe;
+using Cockpit.Core.Wireframe;
 using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;

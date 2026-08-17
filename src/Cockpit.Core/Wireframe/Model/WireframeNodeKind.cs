@@ -1,8 +1,8 @@
-namespace Cockpit.Plugin.Diagram.Wireframe.Model;
+namespace Cockpit.Core.Wireframe.Model;
 
 // Every member's lowercase name is its keyword in the source text (AC-871), so the parser and the writer share one
 // vocabulary instead of a keyword table that can drift from the enum.
-internal enum WireframeNodeKind
+public enum WireframeNodeKind
 {
     Screen,
     Row,

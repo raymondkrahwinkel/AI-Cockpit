@@ -595,7 +595,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
         var rebased = proposal with
         {
-            ChangeSummary = DiagramChangeSummary.Describe(text, proposal.ProposedText),
+            ChangeSummary = SourceChangeSummary.Describe(text, proposal.ProposedText),
             Blocks = DiagramDiff.Compute(text, proposal.ProposedText),
         };
         _proposals[surfaceId] = rebased;
