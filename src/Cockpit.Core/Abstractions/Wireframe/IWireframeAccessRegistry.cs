@@ -203,6 +203,14 @@ public interface IWireframeAccessRegistry
     event Action<string, string>? ComponentEdited;
 
     /// <summary>
+    /// Applies one hand-edit the operator made on the surface itself (AC-875), through the same lock and the same
+    /// per-component grammar as <see cref="EditCoupled"/>: one change, never a series of half states, so an agent
+    /// reading in between never sees half a handling. No hold check — the hold being checked is the operator's own.
+    /// Null when it landed, else the reason it was refused.
+    /// </summary>
+    string? ApplyHandEdit(string surfaceId, WireframeComponentEdit edit);
+
+    /// <summary>
     /// Breaks every coupling this agent session held (its session ended or crashed).
     /// </summary>
     void SessionEnded(string sessionId);
