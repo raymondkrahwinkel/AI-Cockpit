@@ -1,9 +1,12 @@
+using System.Text.RegularExpressions;
+using Cockpit.Core.Abstractions.Diagrams;
+
 namespace Cockpit.Infrastructure.Diagrams;
 
 // The per-object grammar for flowchart/graph sources (AC-852), reached through DiagramObjectEdit once the header
 // keyword says this is the dialect. A node is one line, so every call here is single-line surgery.
 // ponytail: a chain ('A --> B --> C') is refused rather than split — edit_diagram does that.
-internal static class FlowchartObjectEdit
+internal static partial class FlowchartObjectEdit
 {
     private const string DefaultHeader = "flowchart TD";
     private const string Openers = "([{>";
@@ -152,6 +155,155 @@ internal static class FlowchartObjectEdit
             : DiagramEdit.Change(string.Join("\n", kept), $"disconnected {from} -> {to}");
     }
 
+    // Rewrites the label on an existing connection, keeping its connector style ('-->', '-.->', '==>' …) exactly as
+    // written. Ids never contain '-', '.' or '=' (InvalidId), so the leftmost connector run in the line is always
+    // the real one, never something inside a label.
+    public static DiagramEdit RelabelConnection(string source, string from, string to, string? label)
+    {
+        if ((DiagramObjectEdit.InvalidId(from, "node") ?? DiagramObjectEdit.InvalidId(to, "node")) is { } refusal)
+        {
+            return DiagramEdit.Refuse(refusal);
+        }
+
+        var lines = DiagramObjectEdit.Lines(source);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (FidelityCheck.ReadConnection(line) is not { } connection || connection.From != from || connection.To != to)
+            {
+                continue;
+            }
+
+            if (connection.Connectors > 1)
+            {
+                return DiagramEdit.Refuse(Chain(line));
+            }
+
+            var connector = ConnectorCore().Match(line);
+            if (!connector.Success)
+            {
+                return DiagramEdit.Refuse($"\"{line.Trim()}\" does not have a connector this can relabel — use edit_diagram for this one.");
+            }
+
+            var after = connector.Index + connector.Length;
+            var tail = line[after..];
+            var existing = EdgeLabelPipe().Match(tail);
+            var rest = existing.Success ? tail[existing.Length..] : tail;
+            var text = string.IsNullOrWhiteSpace(label) ? null : DiagramObjectEdit.Clean(label);
+            var newTail = text is null ? rest : $"|\"{text}\"|{rest}";
+            var summary = text is null
+                ? $"cleared the label on connection {from} -> {to}"
+                : $"labeled connection {from} -> {to} \"{text}\"";
+            lines[i] = line[..after] + newTail;
+            return DiagramEdit.Change(string.Join("\n", lines), summary);
+        }
+
+        return DiagramEdit.Refuse($"There is no {from} -> {to} connection in this diagram.");
+    }
+
+    public static DiagramEdit SetNodeShape(string source, string id, DiagramNodeShape shape)
+    {
+        if (DiagramObjectEdit.InvalidId(id, "node") is { } refusal)
+        {
+            return DiagramEdit.Refuse(refusal);
+        }
+
+        var (open, close) = Delimiters(shape);
+        return Reshape(source, id, open, close, $"changed the shape of node {id} to {ShapeName(shape)}");
+    }
+
+    // SetNodeShape's own inverse (AC-853): restores the exact delimiters an earlier line had, whatever they were —
+    // not limited to the five named shapes, so a hand-written shape survives too. Keeps whatever label is on the
+    // line now, symmetric with RenameNode's inverse keeping whatever shape is on the line now.
+    public static DiagramEdit RestoreNodeShape(string source, string id, string oldLine)
+    {
+        if (DiagramObjectEdit.InvalidId(id, "node") is { } refusal)
+        {
+            return DiagramEdit.Refuse(refusal);
+        }
+
+        var (open, close) = ShapeDelimitersAt(oldLine, id) ?? ("", "");
+        return Reshape(source, id, open, close, "restored shape");
+    }
+
+    private static (string Open, string Close) Delimiters(DiagramNodeShape shape) => shape switch
+    {
+        DiagramNodeShape.Rectangle => ("[", "]"),
+        DiagramNodeShape.Rounded => ("(", ")"),
+        DiagramNodeShape.Diamond => ("{", "}"),
+        DiagramNodeShape.Stadium => ("([", "])"),
+        DiagramNodeShape.Subroutine => ("[[", "]]"),
+        _ => ("[", "]"),
+    };
+
+    private static string ShapeName(DiagramNodeShape shape) => shape switch
+    {
+        DiagramNodeShape.Rectangle => "rectangle",
+        DiagramNodeShape.Rounded => "rounded",
+        DiagramNodeShape.Diamond => "diamond",
+        DiagramNodeShape.Stadium => "stadium",
+        DiagramNodeShape.Subroutine => "subroutine",
+        _ => "rectangle",
+    };
+
+    // Replaces whatever shape delimiters sit at `id` (or nothing, for an implicit node) with `open`/`close`,
+    // keeping the current label — or, when `open` is empty, drops the shape entirely and leaves the bare id, which
+    // is how RestoreNodeShape undoes a materialization SetNodeShape made on an implicit node.
+    private static DiagramEdit Reshape(string source, string id, string open, string close, string summary)
+    {
+        var lines = DiagramObjectEdit.Lines(source);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (Occurrence(line, id) is not { } at)
+            {
+                continue;
+            }
+
+            var afterId = at + id.Length;
+            var end = ShapeEnd(line, afterId);
+            var label = end is { } shapeEnd ? LabelBetween(line, afterId, shapeEnd) : id;
+            var block = open.Length == 0 ? "" : $"{open}\"{label}\"{close}";
+            var tailStart = end ?? afterId;
+            lines[i] = string.Concat(line[..afterId], block, line[tailStart..]);
+            return DiagramEdit.Change(string.Join("\n", lines), summary);
+        }
+
+        return DiagramEdit.Refuse(NoSuchNode(id));
+    }
+
+    // The literal open/close delimiters `id` was drawn with on `line`, or null for an implicit node (bare id, no
+    // shape block at all) — as opposed to Delimiters(shape), which only knows the five named shapes.
+    private static (string Open, string Close)? ShapeDelimitersAt(string line, string id)
+    {
+        if (Occurrence(line, id) is not { } at)
+        {
+            return null;
+        }
+
+        var afterId = at + id.Length;
+        if (ShapeEnd(line, afterId) is not { } end)
+        {
+            return null;
+        }
+
+        var block = line[afterId..end];
+        var open = new string(block.TakeWhile(c => Openers.Contains(c)).ToArray());
+        var close = new string(block.Reverse().TakeWhile(c => Closers.Contains(c)).Reverse().ToArray());
+        return (open, close);
+    }
+
+    // The label text inside a shape block, quotes stripped — mirrors Relabel's own open/close trim so both read
+    // the same block the same way.
+    private static string LabelBetween(string line, int afterId, int end)
+    {
+        var block = line[afterId..end];
+        var openLength = block.TakeWhile(c => Openers.Contains(c)).Count();
+        var closeLength = block.Reverse().TakeWhile(c => Closers.Contains(c)).Count();
+        var inner = block[openLength..^closeLength];
+        return inner.Length >= 2 && inner[0] == '"' && inner[^1] == '"' ? inner[1..^1] : inner;
+    }
+
     private static string NoSuchNode(string id) =>
         $"There is no node \"{id}\" in this diagram — read_diagram shows what is there.";
 
@@ -289,4 +441,12 @@ internal static class FlowchartObjectEdit
 
         return null;
     }
+
+    // A connector's core run, with at most one arrowhead on either side — '-->', '<-->', '-.->', '==>', '--x' …
+    [GeneratedRegex(@"[<ox]?[-.=]{2,}[>ox]?")]
+    private static partial Regex ConnectorCore();
+
+    // An edge label immediately after the connector, '|"text"|' — same shape Connect() writes.
+    [GeneratedRegex(@"^\|[^|]*\|")]
+    private static partial Regex EdgeLabelPipe();
 }

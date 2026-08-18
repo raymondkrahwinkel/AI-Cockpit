@@ -296,6 +296,47 @@ public class DiagramMcpToolsTests
     }
 
     [Fact]
+    public async Task RelabelConnection_ChangesTheLabel_UnderTheSameEditConsent()
+    {
+        // AC-909: the agent side of the symmetry gap — connect_nodes could already carry a label, relabel_connection
+        // is what lets it change one afterwards, the way the operator's own relabel box does.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]\n    B[\"Stop\"]\n    A --> B");
+
+        var json = JsonNode.Parse(await tools.RelabelConnection(Session, "Onboarding flow", "A", "B", "go"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("A -->|\"go\"| B", registry.PeekText("diagram-1"));
+    }
+
+    [Fact]
+    public async Task SetNodeShape_ChangesTheShape_KeepingTheLabel()
+    {
+        // AC-909: the agent side of the shape symmetry gap — add_node always wrote a rectangle, set_node_shape is
+        // what lets it (or the operator's own pick) change afterwards.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]");
+
+        var json = JsonNode.Parse(await tools.SetNodeShape(Session, "Onboarding flow", "A", "diamond"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("A{\"Start\"}", registry.PeekText("diagram-1"));
+    }
+
+    [Fact]
+    public async Task SetNodeShape_WithAnUnknownShapeName_IsRefused_WithoutAsking()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]");
+
+        var json = JsonNode.Parse(await tools.SetNodeShape(Session, "Onboarding flow", "A", "hexagon"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Empty(asked);
+        Assert.Equal("flowchart LR\n    A[\"Start\"]", registry.PeekText("diagram-1"));
+    }
+
+    [Fact]
     public async Task PerObjectEdit_KeepsWhatTheOperatorChangedInTheMeantime_InsteadOfOverwritingTheWholeDiagram()
     {
         // The lost-update AC-852 exists to end: the agent never re-sends a whole source, so a hand edit that

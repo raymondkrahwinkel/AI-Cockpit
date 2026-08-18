@@ -212,6 +212,34 @@ internal sealed class DiagramMcpTools
         _ApplyObjectEditAsync(session, diagram, $"disconnect {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.Disconnect, $"{from}->{to}", [from, to, $"{from}->{to}"],
             source => DiagramObjectEdit.Disconnect(source, from, to));
 
+    [McpServerTool(Name = "relabel_connection")]
+    [Description("Changes, sets or clears the label drawn on one existing connection between two nodes on a flowchart/graph surface, applied straight away and leaving the rest of the diagram alone. Leave `label` out (or empty) to remove the label entirely. Refused with a reason if there is no such connection, or if the operator is editing either end (or the connection itself) right now.")]
+    public Task<string> RelabelConnection(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
+        [Description("The id of the node the connection starts at.")] string from,
+        [Description("The id of the node the connection ends at.")] string to,
+        [Description("The new label text, or leave it out to remove the label.")] string? label = null) =>
+        _ApplyObjectEditAsync(session, diagram, $"relabel {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.RelabelConnection, $"{from}->{to}", [from, to, $"{from}->{to}"],
+            source => DiagramObjectEdit.RelabelConnection(source, from, to, label));
+
+    [McpServerTool(Name = "set_node_shape")]
+    [Description("Changes one node's shape on a flowchart/graph surface, applied straight away and leaving its label and every other line alone. Refused with a reason if there is no such node, the shape name is not recognized, or the operator is editing that node right now.")]
+    public Task<string> SetNodeShape(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
+        [Description("The id of the node to reshape.")] string id,
+        [Description("The new shape: rectangle, rounded, diamond, stadium or subroutine.")] string shape)
+    {
+        if (_Shape(shape) is not { } value)
+        {
+            return Task.FromResult(_Serialize(new { ok = false, error = "A shape must be one of: rectangle, rounded, diamond, stadium, subroutine." }));
+        }
+
+        return _ApplyObjectEditAsync(session, diagram, $"change node {_SingleLine(id)} shape to {shape}", DiagramHandEditKind.SetNodeShape, id, [id],
+            source => DiagramObjectEdit.SetNodeShape(source, id, value));
+    }
+
     [McpServerTool(Name = "add_entity")]
     [Description("Adds one entity to an erDiagram surface and applies it straight away, leaving the rest of the diagram alone — this is the ER counterpart of add_node, and the two are not interchangeable: an entity has no label of its own, its name is what is drawn in it. The entity arrives with an empty attribute block; set_attribute fills it. Refused with a reason if the diagram is not an erDiagram, if that entity is already there, or if the operator is editing it right now.")]
     public Task<string> AddEntity(
@@ -301,10 +329,19 @@ internal sealed class DiagramMcpTools
         _ => null,
     };
 
-    // The one path every per-object tool takes (AC-852). Same Edit consent as edit_diagram, then the edit itself
-    // runs inside the registry's lock: the hold check, the line surgery and the "is this still valid Mermaid"
-    // render all see one text, and nothing is written unless all three pass. `kind`/`objectKey` describe the same
-    // edit structurally so the registry can journal it for a later targeted undo (AC-853).
+    private static DiagramNodeShape? _Shape(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "rectangle" => DiagramNodeShape.Rectangle,
+        "rounded" => DiagramNodeShape.Rounded,
+        "diamond" => DiagramNodeShape.Diamond,
+        "stadium" => DiagramNodeShape.Stadium,
+        "subroutine" => DiagramNodeShape.Subroutine,
+        _ => null,
+    };
+
+    // The one path every per-object tool takes (AC-852). Same Edit consent as edit_diagram, then the edit runs
+    // inside the registry's lock: the hold check, the line surgery and the render all see one text, and nothing is
+    // written unless all three pass. `kind`/`objectKey` journal it for a later targeted undo (AC-853).
     private async Task<string> _ApplyObjectEditAsync(
         string session,
         string diagram,

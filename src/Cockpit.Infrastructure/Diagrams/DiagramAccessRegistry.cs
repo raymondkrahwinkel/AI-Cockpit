@@ -386,6 +386,10 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 DiagramHandEditKind.AddNode => DiagramObjectEdit.RemoveNode(surface.Text, entry.ObjectKey),
                 DiagramHandEditKind.Connect => _DisconnectByKey(surface.Text, entry.ObjectKey),
                 DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines) ?? entry.ObjectKey),
+                DiagramHandEditKind.RelabelConnection => _RelabelByKey(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines)),
+                DiagramHandEditKind.SetNodeShape => entry.RemovedLines.Count == 0
+                    ? DiagramEdit.Refuse("Er is niets vastgelegd om terug te zetten.")
+                    : DiagramObjectEdit.RestoreNodeShape(surface.Text, entry.ObjectKey, entry.RemovedLines[0]),
                 DiagramHandEditKind.AddEntity or DiagramHandEditKind.RenameEntity or DiagramHandEditKind.SetAttribute
                     or DiagramHandEditKind.RemoveAttribute or DiagramHandEditKind.Relate
                     => DiagramObjectEdit.InvertEr(surface.Text, entry.Kind, entry.ObjectKey, entry.RemovedLines),
@@ -417,7 +421,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     // from, an attribute the entity it sits in — so the journal key carries both halves.
     private static string _KeyOf(DiagramHandEdit edit) => edit.Kind switch
     {
-        DiagramHandEditKind.Connect or DiagramHandEditKind.Disconnect
+        DiagramHandEditKind.Connect or DiagramHandEditKind.Disconnect or DiagramHandEditKind.RelabelConnection
             or DiagramHandEditKind.Relate or DiagramHandEditKind.Unrelate => $"{edit.Id}->{edit.To}",
         DiagramHandEditKind.SetAttribute or DiagramHandEditKind.RemoveAttribute => $"{edit.Id}.{edit.Attribute}",
         DiagramHandEditKind.RenameEntity => $"{edit.Id}>{edit.Label}",
@@ -456,6 +460,11 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             ? DiagramObjectEdit.Disconnect(source, from, to)
             : DiagramEdit.Refuse("Deze verbinding is niet meer te herkennen.");
 
+    private static DiagramEdit _RelabelByKey(string source, string objectKey, string? label) =>
+        objectKey.Split("->", 2) is [var from, var to]
+            ? DiagramObjectEdit.RelabelConnection(source, from, to, label)
+            : DiagramEdit.Refuse("Deze verbinding is niet meer te herkennen.");
+
     private static DiagramEdit _Restore(string source, IReadOnlyList<string> removedLines) =>
         removedLines.Count == 0
             ? DiagramEdit.Refuse("Er is niets vastgelegd om terug te zetten.")
@@ -477,9 +486,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     }
 
     // Multiset subtraction, order preserved: every line `after` still has removes one matching occurrence from
-    // `before`, so what is left is exactly what this edit took out — one node's definition and its connection
-    // lines for RemoveNode, an entity's whole block and its relationships for RemoveEntity (AC-899), the one line
-    // for Disconnect or RenameNode's old wording, nothing for AddNode/Connect.
+    // `before`, so what is left is exactly what this edit took out — a node's definition and its connections for
+    // RemoveNode, an entity's block and relationships for RemoveEntity, nothing for AddNode/Connect.
     private static List<string> _Removed(string before, string after)
     {
         var remaining = new List<string>(_Lines(before));
@@ -616,9 +624,9 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         return true;
     }
 
-    // AC-845: sinds AC-841/AC-852 kan de bron veranderen terwijl een voorstel in de poort wacht — met de hand of
-    // door de agent. Toepassen zou dan blokken schrijven die tegen de oude tekst zijn berekend en dat werk
-    // stilzwijgend overschrijven, dus wordt het voorstel herrekend tegen de tekst zoals die nu is. Onder _lock.
+    // AC-845: since AC-841/AC-852 the source can change while a proposal waits in the gate — by hand or by the
+    // agent. Applying it would then write blocks computed against the old text and silently overwrite that work,
+    // so the proposal is recomputed against the text as it stands now. Under _lock.
     private DiagramProposal? _Rebase(string surfaceId, string text)
     {
         if (!_proposals.TryGetValue(surfaceId, out var proposal))

@@ -37,7 +37,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the original. Repeated pasting keeps fanning copies out instead of stacking them on the exact same spot. Pasting a
   screenshot from outside the app still works exactly as before — it only takes over Ctrl+V while the board's own
   clipboard is empty.
-
+- added: a diagram connection can now carry a label from the operator's own Verbinden gesture (a box appears on the
+  connection after the second click), an existing connection's label can be changed or removed afterwards
+  (double-click it, or select it and choose Hernoemen), and a node's shape — rectangle, rounded, diamond, stadium or
+  subroutine — can be picked when adding it or changed afterwards from the toolbar's new Vorm… action, with a grid of
+  preview shapes rather than a syntax name to look up.
 - added: a wireframe can now sketch a whole web or app screen, not only a settings form — cards, a modal dialog, a
   dropdown menu, a toggle, a slider, a multi-line field, a search box, an avatar, an icon, a badge, a progress bar, a
   breadcrumb trail, pagination and a numbered stepper, plus header, footer, sidebar and main as regions that say what
