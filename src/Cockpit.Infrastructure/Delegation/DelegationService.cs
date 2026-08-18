@@ -43,11 +43,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // a follow-up within the window puts it back to work and starts the clock again.
     private static readonly TimeSpan IdleSessionWindow = TimeSpan.FromMinutes(5);
 
-    // How long a finished task's entry — including its full `Result` text — is kept in `_tasks` after it
-    // finished, before it is swept away (AC-880). `_tasks` only ever grows otherwise, since nothing else removes
-    // an entry. An hour is well past `IdleSessionWindow` and any reasonable poll interval, so `get_task_result`
-    // keeps working for the case it exists for — a caller that has not collected its answer yet — without this
-    // becoming a second, longer-lived cache of its own.
+    // How long a finished task's entry — including its full `Result` text — is kept in `_tasks` (AC-880): an
+    // hour, well past `IdleSessionWindow` and any reasonable poll interval, so `get_task_result` keeps working
+    // without this becoming a second, longer-lived cache of its own.
     private static readonly TimeSpan TaskRetention = TimeSpan.FromHours(1);
 
     private readonly ISessionProfileStore _profileStore;
