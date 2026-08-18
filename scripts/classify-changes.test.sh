@@ -37,9 +37,77 @@ git config user.name Test
 git config commit.gpgsign false
 git config core.autocrlf false
 
-mkdir -p src/Cockpit.Core plugins-dev/Cockpit.Plugin.Foo docs scripts .github/workflows
+# A minimal stand-in for the real Cockpit.Core / Cockpit.Infrastructure / Cockpit.App / *.Tests layout,
+# with the same layering: Infrastructure -> Core, App -> Core + Infrastructure, Core.Tests -> Core +
+# App (mirroring the real repo's own back-reference), Infrastructure.Tests -> Core + Infrastructure only,
+# App.ViewTests -> App only. Cockpit.Plugin.Foo is referenced by nobody, Cockpit.Plugin.Bar by App.
+mkdir -p src/Cockpit.Core src/Cockpit.Infrastructure src/Cockpit.App src/Cockpit.Unknown \
+         plugins-dev/Cockpit.Plugin.Foo plugins-dev/Cockpit.Plugin.Bar \
+         tests/Cockpit.Core.Tests tests/Cockpit.Infrastructure.Tests tests/Cockpit.App.ViewTests \
+         docs scripts .github/workflows
+
+# Cockpit.Unknown deliberately has no csproj -- it stands in for a project the graph can't resolve.
+
 printf 'seed\n' >src/Cockpit.Core/Seed.cs
+cat >src/Cockpit.Core/Cockpit.Core.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk"></Project>
+EOF
+
+printf 'seed\n' >src/Cockpit.Infrastructure/Seed.cs
+cat >src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
+  </ItemGroup>
+</Project>
+EOF
+
+printf 'seed\n' >src/Cockpit.App/Seed.cs
+cat >src/Cockpit.App/Cockpit.App.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
+    <ProjectReference Include="..\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Bar\Cockpit.Plugin.Bar.csproj" />
+  </ItemGroup>
+</Project>
+EOF
+
 printf 'seed\n' >plugins-dev/Cockpit.Plugin.Foo/Seed.cs
+printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' >plugins-dev/Cockpit.Plugin.Foo/Cockpit.Plugin.Foo.csproj
+
+printf 'seed\n' >plugins-dev/Cockpit.Plugin.Bar/Seed.cs
+printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' >plugins-dev/Cockpit.Plugin.Bar/Cockpit.Plugin.Bar.csproj
+
+printf 'seed\n' >tests/Cockpit.Core.Tests/Seed.cs
+cat >tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Cockpit.Core/Cockpit.Core.csproj" />
+    <ProjectReference Include="../../src/Cockpit.App/Cockpit.App.csproj" />
+  </ItemGroup>
+</Project>
+EOF
+
+printf 'seed\n' >tests/Cockpit.Infrastructure.Tests/Seed.cs
+cat >tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Cockpit.Core/Cockpit.Core.csproj" />
+    <ProjectReference Include="../../src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
+EOF
+
+printf 'seed\n' >tests/Cockpit.App.ViewTests/Seed.cs
+cat >tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Cockpit.App/Cockpit.App.csproj" />
+  </ItemGroup>
+</Project>
+EOF
+
 printf '# seed\n' >docs/seed.md
 printf 'seed\n' >README.md
 printf 'seed\n' >CHANGELOG.md
@@ -48,34 +116,67 @@ git add -A
 git commit --quiet -m base
 base="$(git rev-parse HEAD)"
 
-# run <name> <expected src> <expected plugins_dev> <expected other> <path>...
+# run <name> <expected src> <expected plugins_dev> <expected other> <expected core> <expected infra> <expected view> <path>...
 run() {
   local name="$1" want_src="$2" want_plugins_dev="$3" want_other="$4"
-  shift 4
+  local want_core="$5" want_infra="$6" want_view="$7"
+  shift 7
   git checkout --quiet "$base"
   for path in "$@"; do printf 'changed\n' >>"$path"; done
   git add -A
   git commit --quiet -m "$name"
 
-  local out src plugins_dev other
+  local out src plugins_dev other core infra view
   out="$("$guard" "$base" HEAD)"
   src="$(printf '%s\n' "$out" | grep '^src=' | cut -d= -f2)"
   plugins_dev="$(printf '%s\n' "$out" | grep '^plugins_dev=' | cut -d= -f2)"
   other="$(printf '%s\n' "$out" | grep '^other=' | cut -d= -f2)"
+  core="$(printf '%s\n' "$out" | grep '^run_core_tests=' | cut -d= -f2)"
+  infra="$(printf '%s\n' "$out" | grep '^run_infrastructure_tests=' | cut -d= -f2)"
+  view="$(printf '%s\n' "$out" | grep '^run_view_tests=' | cut -d= -f2)"
 
   assert_equals "$name: src" "$want_src" "$src"
   assert_equals "$name: plugins_dev" "$want_plugins_dev" "$plugins_dev"
   assert_equals "$name: other" "$want_other" "$other"
+  assert_equals "$name: run_core_tests" "$want_core" "$core"
+  assert_equals "$name: run_infrastructure_tests" "$want_infra" "$infra"
+  assert_equals "$name: run_view_tests" "$want_view" "$view"
 }
 
-run "docs-only (md)"          false false false README.md
-run "docs-only (docs/)"       false false false docs/seed.md
-run "docs-only (changelog)"   false false false CHANGELOG.md
-run "plugins-dev-only"        false true  false plugins-dev/Cockpit.Plugin.Foo/Seed.cs
-run "src change"              true  false false src/Cockpit.Core/Seed.cs
-run "src plus plugins-dev"    true  true  false src/Cockpit.Core/Seed.cs plugins-dev/Cockpit.Plugin.Foo/Seed.cs
-run "ambiguous script"        false false true  scripts/seed.sh
-run "ambiguous workflow file" false false true  .github/workflows/ci.yml
+#    name                        src    plugins_dev other  core   infra  view   paths
+run "docs-only (md)"             false  false       false  false  false  false  README.md
+run "docs-only (docs/)"          false  false       false  false  false  false  docs/seed.md
+run "docs-only (changelog)"      false  false       false  false  false  false  CHANGELOG.md
+run "plugins-dev-only, unused"   false  true        false  false  false  false  plugins-dev/Cockpit.Plugin.Foo/Seed.cs
+
+# Bar is only reachable through App, so it pulls in every suite that reaches App -- Core.Tests and
+# App.ViewTests, not Infrastructure.Tests (which never references App at all in this layering).
+run "plugins-dev-only, App-used" false  true        false  true   false  true   plugins-dev/Cockpit.Plugin.Bar/Seed.cs
+
+# Core is the leaf every suite transitively depends on -- touching it must run all three.
+run "Core change"                true   false       false  true   true   true   src/Cockpit.Core/Seed.cs
+
+# App references Infrastructure directly, and both Core.Tests and App.ViewTests reference App -- so an
+# Infrastructure change reaches every suite here too, same as a Core change. There is no test suite in
+# this repo's layering an Infrastructure change can safely skip.
+run "Infrastructure change"      true   false       false  true   true   true   src/Cockpit.Infrastructure/Seed.cs
+
+# The scenario the ticket calls out by name: App-only must not still run Infrastructure.Tests, but
+# Core.Tests still must -- its own csproj references App directly, so skipping it here would be exactly
+# the silent, wrongly-skipped test AC-863 is written against.
+run "App-only"                   true   false       false  true   false  true   src/Cockpit.App/Seed.cs
+
+run "src plus plugins-dev"       true   true        false  true   true   true   src/Cockpit.Core/Seed.cs plugins-dev/Cockpit.Plugin.Foo/Seed.cs
+
+# A suite's own test file changing (no source change) must only require that suite.
+run "Infrastructure.Tests-only"  false  false       true   false  true   false  tests/Cockpit.Infrastructure.Tests/Seed.cs
+
+# The safe-side fallback AC-863 requires: an unrecognized path (here, a project directory the graph
+# doesn't know) can't be resolved to a project, so every suite must run rather than silently skip one.
+run "unresolved project"         true   false       false  true   true   true   src/Cockpit.Unknown/Seed.cs
+
+run "ambiguous script"           false  false       true   true   true   true   scripts/seed.sh
+run "ambiguous workflow file"    false  false       true   true   true   true   .github/workflows/ci.yml
 
 if [ "$failures" -ne 0 ]; then
   printf '\n%d test(s) failed\n' "$failures" >&2
