@@ -1238,7 +1238,8 @@ internal static class Screenshotter
             cockpit.NewSessionForProjectCommand,
             cockpit.EditProjectCommand,
             cockpit.OpenProjectFolderCommand,
-            cockpit.ShareProjectCommand);
+            cockpit.ShareProjectCommand,
+            cockpit.SyncProjectNowCommand);
         cockpit.Projects.StageDesignSample();
         cockpit.Projects.StageDesignSharedProjects();
         cockpit.Projects.LayoutMode = layout;

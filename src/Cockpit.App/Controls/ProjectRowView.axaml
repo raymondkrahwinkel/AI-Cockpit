@@ -32,6 +32,12 @@
                             VerticalAlignment="Center" MaxWidth="140">
                         <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
                     </Border>
+                    <!-- AC-894: DepotSyncWatcher found a checksum that moved since this project was last checked —
+                         a nudge to look, never an automatic overwrite of an unsaved local edit. -->
+                    <materialIcons:MaterialIcon Kind="CloudSync" Width="14" Height="14" VerticalAlignment="Center"
+                                                 Foreground="{StaticResource CockpitAccentBrush}"
+                                                 IsVisible="{Binding HasRemoteChanges}"
+                                                 ToolTip.Tip="Changed on Depot since it was last checked here"/>
                 </StackPanel>
                 <!-- Description and "last opened" on one line: a row has the width for it, and stacking them would
                      make every row two lines taller for no reading gain. Three TextBlocks rather than one with Runs
@@ -101,6 +107,14 @@
                                         Content="Start, but change something first…"
                                         IsVisible="{Binding CanStart}"
                                         Command="{Binding Actions.StartWithOptions}"
+                                        CommandParameter="{Binding Project}"/>
+                                <!-- AC-894: only for a project genuinely bound to a Depot source — a local one has
+                                     nothing to check. -->
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Sync now"
+                                        IsVisible="{Binding IsShared}"
+                                        Command="{Binding Actions.SyncNow}"
                                         CommandParameter="{Binding Project}"/>
                                 <controls:ProjectInfoList Margin="8,6,8,0"
                                                           Fields="{Binding Project.AdditionalInfo}"

@@ -430,6 +430,16 @@ public partial class App : Application
             worktreeReconciler.Start();
         }
 
+        // AC-894: poll every Depot-bound project's checksum for a change made elsewhere, and let "Sync now" force
+        // the same check for one project outside the timer.
+        if (Program.Services.GetService<Services.DepotSyncWatcher>() is { } depotSyncWatcher)
+        {
+            depotSyncWatcher.BoundProjects = () => cockpitViewModel.Projects.DepotBoundProjects();
+            depotSyncWatcher.OnChecked = (projectId, changed) => cockpitViewModel.Projects.SetRemoteChangeState(projectId, changed);
+            cockpitViewModel.Projects.SyncNow = project => depotSyncWatcher.SyncNowAsync(project.Id);
+            depotSyncWatcher.Start();
+        }
+
         // AC-644: the same crash net one layer up, for the claims a session that never closed left standing.
         if (Program.Services.GetService<Services.StaleClaimReaper>() is { } claimReaper)
         {

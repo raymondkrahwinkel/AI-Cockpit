@@ -10,4 +10,5 @@ public sealed record ProjectCardActions(
     ICommand StartWithOptions,
     ICommand Edit,
     ICommand OpenFolder,
-    ICommand ToggleSharing);
+    ICommand ToggleSharing,
+    ICommand SyncNow);

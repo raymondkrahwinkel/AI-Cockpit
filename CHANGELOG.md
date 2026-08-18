@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Depot-linked project's list row and card now show a small cloud icon when something changed on the
+  Depot side since it was last checked here — a background check runs every 15 minutes, and a "Sync now" entry in
+  the ⋯ menu forces an immediate recheck for that one project. Nothing is ever overwritten automatically; an
+  unsaved local edit is always the operator's own call to resolve, the same as it already was on Save.
 - added: a profile on the OpenRouter provider can now fetch its model list instead of you typing a vendor/model id
   from memory — a Fetch button next to the Model field asks the base URL you filled in which models it serves, the
   same behaviour the Gemini/OpenAI provider already has. When that endpoint serves no model list, or rejects the
