@@ -1690,7 +1690,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // The driver settles its capabilities after start, and whether it can see images is one of them — so the
     // button follows from the capability itself rather than from the one call site that happens to set it. A
     // second setter added later would otherwise leave a button that stays clickable and silently refuses.
-    partial void OnCapabilitiesChanged(SessionCapabilities value) => _NotifyScreenshotAvailabilityChanged();
+    // Also rebuilds the warning bar (AC-893): a session that starts already over its context threshold (a daily
+    // resume, say) calls `_RefreshLimits` before `Capabilities` is set, so the bar's first `ShowCompact` is built
+    // against the pre-start default. Covers every ordering, not just that one call site.
+    partial void OnCapabilitiesChanged(SessionCapabilities value)
+    {
+        _NotifyScreenshotAvailabilityChanged();
+        _RebuildWarnings();
+    }
 
     private void _NotifyScreenshotAvailabilityChanged()
     {

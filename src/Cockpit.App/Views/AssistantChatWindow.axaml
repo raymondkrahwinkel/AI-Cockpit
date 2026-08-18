@@ -360,23 +360,20 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:SessionWarningItem">
-                        <!-- Text on its own row, buttons in a WrapPanel below rather than docked right (T2's
-                             narrow-window layout, 340px MinWidth): a right-docked action row is what the wider
-                             session pane can afford, but here it would push the sentence into a sliver or clip
-                             the buttons outright. -->
+                        <!-- Buttons docked right, sentence filling the rest (AC-893) — the same DockPanel shape
+                             SessionView.axaml's warning row uses, so the two share one row whenever T2's window
+                             (340px MinWidth) is wide enough, and only the sentence grows taller as it narrows.
+                             The sentence sits in a Grid rather than SessionView's horizontal StackPanel: a
+                             StackPanel measures its stacked child with unbounded width, so TextWrapping never
+                             fires there, while a Grid's `*` column is bounded to whatever space the buttons
+                             leave, so a long warning wraps instead of running under the buttons or off the
+                             window edge. -->
                         <Border Padding="8,4"
                                 Background="{StaticResource CockpitSecondaryBgBrush}"
                                 BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
                                 CornerRadius="{StaticResource CockpitControlRadius}">
-                            <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="GaugeFull" Width="13" Height="13"
-                                                                VerticalAlignment="Top" Margin="0,1,0,0"
-                                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
-                                    <TextBlock Text="{Binding Text}" FontSize="11.5" TextWrapping="Wrap"
-                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
-                                </StackPanel>
-                                <WrapPanel>
+                            <DockPanel>
+                                <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Top">
                                     <TextBox Text="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.ResumePrompt}"
                                              Width="150" FontSize="11" Padding="6,0" Margin="0,0,6,4"
                                              IsVisible="{Binding ShowResumeOffer}"
@@ -411,7 +408,14 @@
                                             CommandParameter="{Binding Key}"
                                             ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
                                 </WrapPanel>
-                            </StackPanel>
+                                <Grid ColumnDefinitions="Auto,*" Margin="0,0,10,0">
+                                    <materialIcons:MaterialIcon Grid.Column="0" Kind="GaugeFull" Width="13" Height="13"
+                                                                Margin="0,0,6,0" VerticalAlignment="Top"
+                                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="11.5" TextWrapping="Wrap"
+                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                </Grid>
+                            </DockPanel>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>

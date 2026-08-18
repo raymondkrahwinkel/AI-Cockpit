@@ -50,7 +50,11 @@
         <!-- AC-230/AC-683: the usage warning bar — one line per signal that has passed the point its provider
              called worth mentioning, each dismissible on its own, blocking subjects first (AC-683 criterion 9).
              Same shape as the agent bar below it, in the amber the pill uses at the same threshold, so one
-             language says "watch this" wherever it appears. -->
+             language says "watch this" wherever it appears.
+             No Compact button here by design (AC-893): a TTY pane hosts the real TUI, and `/compact` is one
+             keystroke away inside it — a button (or an explanation of its absence) would be UI for a
+             non-problem. Wire `CompactContextAsync` on the TTY driver plus a `CompactCommand` on
+             `TtyViewModel` if that ever needs to change; that is a separate ticket, not a flag to flip here. -->
         <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Warnings}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>

@@ -2045,7 +2045,13 @@ internal static class Screenshotter
     private static AssistantChatWindow _AssistantChatWithWarnings()
     {
         const long Cap = 512L * 1024 * 1024;
-        var session = new ViewModels.SessionViewModel { MemoryCapBytes = Cap };
+        // AC-893: without a capability that declares compaction, the Compact button never rendered in this
+        // scene — the exact blind spot that let the missing wiring on the real surfaces go unnoticed.
+        var session = new ViewModels.SessionViewModel
+        {
+            MemoryCapBytes = Cap,
+            Capabilities = SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true },
+        };
         session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Running the build." });
         session.ApplyUsage(
             [
