@@ -22,4 +22,7 @@ public enum PluginSessionActivity
 
     /// <summary>The turn finished (a terminal stop) and nothing is running — the session is done.</summary>
     TurnComplete,
+
+    /// <summary>The agent asked the operator a question it cannot proceed without an answer to — the session is blocked on a human, not on itself.</summary>
+    AwaitingOperator,
 }

@@ -115,6 +115,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a terminal session sitting at an in-CLI question prompt (a commit confirmation, say) now shows as needing
+  your attention instead of reading as busy or, after a couple of minutes, as done — the sidebar badge, the
+  notification and the assistant's own session list all pick it up the same way they already do for a pending
+  permission.
 - fixed: the diagram, whiteboard and wireframe windows now speak English throughout — button labels, tooltips,
   toasts, placeholders and error messages that had been left in Dutch are translated, and the error text that
   reaches an agent through the wireframe editing tools no longer switches language mid-conversation.

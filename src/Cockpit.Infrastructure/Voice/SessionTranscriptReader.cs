@@ -70,6 +70,7 @@ internal sealed class SessionTranscriptReader(
                 PluginSessionActivity.Busy => SessionActivity.Busy,
                 PluginSessionActivity.BackgroundBusy => SessionActivity.BackgroundBusy,
                 PluginSessionActivity.TurnComplete => SessionActivity.TurnComplete,
+                PluginSessionActivity.AwaitingOperator => SessionActivity.AwaitingOperator,
                 _ => SessionActivity.None,
             };
             yield return new SessionTranscriptActivity(activity, reading.RawLine, _MapUsage(reading.Usage), reading.OutstandingShells);

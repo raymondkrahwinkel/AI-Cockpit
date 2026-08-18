@@ -14,8 +14,9 @@ namespace Cockpit.App.ViewModels;
 // turn goes silent far past it (an end-of-turn we somehow never saw, or a stalled/killed CLI), it falls back to
 // Done rather than showing a stuck spinner forever; a live sub-agent keeps emitting BackgroundBusy keep-alives,
 // so a long background run never trips that timeout. Pure and clock-injected so the transitions are unit-testable
-// without a live pty. Permission/needs-action cannot be seen in the transcript, so this never reports
-// `SessionStatus.NeedsAttention` — that stays an SDK-only signal.
+// without a live pty. A general tool-use permission cannot be told apart from a running tool in the transcript,
+// but `SessionActivity.AwaitingOperator` (AC-920: an `AskUserQuestion` call, which has no non-interactive path)
+// can, and reads as `SessionStatus.NeedsAttention`, exempt from the safety timeout.
 //
 // `busySafetyTimeout`: How long a busy turn may go completely silent before falling back to Done.
 // `turnSettleDelay`:
@@ -86,6 +87,13 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpa
             return _lastSignalAt is { } completedAt && now - completedAt < turnSettleDelay
                 ? SessionStatus.Busy
                 : SessionStatus.Done;
+        }
+
+        // AC-920: the operator, not the model, owes the next move — exempt from the safety timeout, since a
+        // prompt that sits unanswered for ten minutes is still a prompt, not a stalled CLI.
+        if (_lastActivity == SessionActivity.AwaitingOperator)
+        {
+            return SessionStatus.NeedsAttention;
         }
 
         // Busy or BackgroundBusy — but a turn that went silent far past the safety timeout falls back to Done.

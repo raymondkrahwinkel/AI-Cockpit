@@ -211,6 +211,45 @@ public class TtyActivityStatusTrackerTests
         Assert.Equal(SessionStatus.WorkingBackground, afterCorrection);
     }
 
+    // AC-920: an `AskUserQuestion` prompt blocks on the operator, not on the model, so it reads NeedsAttention
+    // and must survive well past the safety timeout that would otherwise decay a silent Busy turn to Done.
+    [Fact]
+    public void OnActivity_AwaitingOperator_IsNeedsAttention()
+    {
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+
+        Assert.Equal(SessionStatus.NeedsAttention, tracker.OnActivity(SessionActivity.AwaitingOperator, T0));
+    }
+
+    [Fact]
+    public void Poll_AwaitingOperator_SurvivesWellPastTheSafetyTimeout()
+    {
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        tracker.OnActivity(SessionActivity.AwaitingOperator, T0);
+
+        Assert.Equal(SessionStatus.NeedsAttention, tracker.Poll(T0 + SafetyTimeout + TimeSpan.FromMinutes(10)));
+    }
+
+    [Fact]
+    public void OnActivity_TheAnswerArrivingAsBusy_ClearsNeedsAttention()
+    {
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        tracker.OnActivity(SessionActivity.AwaitingOperator, T0);
+
+        Assert.Equal(SessionStatus.Busy, tracker.OnActivity(SessionActivity.Busy, T0 + TimeSpan.FromSeconds(93)));
+    }
+
+    // AC-920 AC4: a redrawing prompt box (↑/↓ navigation) is pty output, so `OnAlive` fires while the question is
+    // still open — it must not push the state off NeedsAttention.
+    [Fact]
+    public void OnAlive_DuringAnOpenAskUserQuestion_DoesNotClearNeedsAttention()
+    {
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        tracker.OnActivity(SessionActivity.AwaitingOperator, T0);
+
+        Assert.Equal(SessionStatus.NeedsAttention, tracker.OnAlive(T0 + TimeSpan.FromSeconds(30)));
+    }
+
     [Fact]
     public void TheSettleDelay_DoesNotDelayABusyReading()
     {
