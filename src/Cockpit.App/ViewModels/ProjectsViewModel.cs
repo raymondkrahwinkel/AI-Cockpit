@@ -43,6 +43,14 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // where a card is data to inspect rather than a thing to start.
     internal ProjectCardActions? CardActions { get; set; }
 
+    // AC-894: forces an immediate `DepotSyncWatcher` check for one project, outside its own 15-minute timer. Set by
+    // the cockpit once the watcher exists; null under the previewer and in tests, where "Sync now" is simply inert.
+    internal Func<Project, Task>? SyncNow { get; set; }
+
+    // Local projects `DepotSyncWatcher` most recently reported a moved checksum for (AC-894) — cleared once "Sync
+    // now" or the next tick reports the checksum unchanged again. Read by `_ToCard` so the badge reflects it.
+    private readonly HashSet<string> _remoteChangedProjectIds = new(StringComparer.Ordinal);
+
     // Cancels a still-running `LoadSharedProjectsAsync` when a newer one starts (the workspace reopened, say), so a slow connection cannot overwrite a fresher answer with a stale one.
     private CancellationTokenSource? _sharedProjectsLoadCts;
 
@@ -808,7 +816,50 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     }
 
     private ProjectCardViewModel _ToCard(Project project) =>
-        new(project, _OriginBadge(project), CardActions) { IsSelected = project.Id == SelectedProject?.Id };
+        new(project, _OriginBadge(project), CardActions, _remoteChangedProjectIds.Contains(project.Id))
+        {
+            IsSelected = project.Id == SelectedProject?.Id,
+        };
+
+    // AC-894: every local project genuinely bound to a Depot source right now, and the id `DepotSyncWatcher` should
+    // ask that source about — the same "genuinely bound" test `_ResolveSharedSource` already applies for the editor,
+    // reused here rather than a second copy of it.
+    internal IReadOnlyList<Services.DepotBoundProject> DepotBoundProjects()
+    {
+        if (_sharedSources is null)
+        {
+            return [];
+        }
+
+        var bound = new List<Services.DepotBoundProject>();
+        foreach (var project in _settings.Projects)
+        {
+            var sharedId = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
+            if (sharedId is not { Length: > 0 })
+            {
+                continue;
+            }
+
+            if (_ResolveSharedSource(project) is { } source)
+            {
+                bound.Add(new Services.DepotBoundProject(project.Id, source, sharedId));
+            }
+        }
+
+        return bound;
+    }
+
+    // AC-894: `DepotSyncWatcher`'s own report for one project, from either its timer tick or "Sync now" — a
+    // republish only when the flag actually moved, so a project checked every 15 minutes without ever changing
+    // does not rebuild every card in the workspace on every tick.
+    internal void SetRemoteChangeState(string projectId, bool hasRemoteChange)
+    {
+        var moved = hasRemoteChange ? _remoteChangedProjectIds.Add(projectId) : _remoteChangedProjectIds.Remove(projectId);
+        if (moved)
+        {
+            _RepublishCategoryGroups();
+        }
+    }
 
     // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on `project` (AC-604, claimed by
     // `_ReconcileSharedSourceClaims`) — falls back to `SharedSourceName` (AC-762) so a genuinely shared project

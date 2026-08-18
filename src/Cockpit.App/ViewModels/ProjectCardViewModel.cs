@@ -8,13 +8,21 @@ namespace Cockpit.App.ViewModels;
 // every bound project. See `ProjectsViewModel`'s own remarks on where `OriginBadge` comes
 // from. An ObservableObject rather than a record (AC-709): `IsSelected` needs to change in place and notify the
 // card's own Border, the same reason `SessionPanelViewModel.IsSelected` isn't a plain field either.
-public sealed partial class ProjectCardViewModel(Project project, string originBadge, ProjectCardActions? actions = null) : ObservableObject
+public sealed partial class ProjectCardViewModel(
+    Project project,
+    string originBadge,
+    ProjectCardActions? actions = null,
+    bool hasRemoteChanges = false) : ObservableObject
 {
     public Project Project { get; } = project;
 
     public string OriginBadge { get; } = originBadge;
 
     public ProjectCardActions? Actions { get; } = actions;
+
+    // AC-894: `DepotSyncWatcher` most recently found a checksum on the Depot side that moved since this project was
+    // last checked — a visible nudge only, never an automatic overwrite of an unsaved local edit.
+    public bool HasRemoteChanges { get; } = hasRemoteChanges;
 
     // AC-620: whether the launcher's own pill badge should show at all — never for "● This machine" (a local
     // project says nothing a launcher card needs to add), only for a bound one.

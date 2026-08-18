@@ -34,10 +34,18 @@
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                     <!-- Dropped when this card was extracted into its own control (AC-772) — ProjectRowView kept
                          it, ProjectCardView didn't. Same class, same binding, mirrored here. -->
-                    <Border Grid.Column="1" Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
-                            Margin="8,0,0,0" VerticalAlignment="Center" MaxWidth="100">
-                        <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
-                    </Border>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                Margin="8,0,0,0" VerticalAlignment="Center">
+                        <Border Classes="sharedProjectBadge" IsVisible="{Binding IsShared}" MaxWidth="100">
+                            <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
+                        </Border>
+                        <!-- AC-894: DepotSyncWatcher found a checksum that moved since this project was last
+                             checked — a nudge to look, never an automatic overwrite of an unsaved local edit. -->
+                        <materialIcons:MaterialIcon Kind="CloudSync" Width="14" Height="14" VerticalAlignment="Center"
+                                                     Foreground="{StaticResource CockpitAccentBrush}"
+                                                     IsVisible="{Binding HasRemoteChanges}"
+                                                     ToolTip.Tip="Changed on Depot since it was last checked here"/>
+                    </StackPanel>
                 </Grid>
                 <Button Grid.Column="2" Classes="Subtle" Padding="6,2" VerticalAlignment="Center"
                         ToolTip.Tip="More for this project"
@@ -71,6 +79,14 @@
                                         Content="Start, but change something first…"
                                         IsVisible="{Binding CanStart}"
                                         Command="{Binding Actions.StartWithOptions}"
+                                        CommandParameter="{Binding Project}"/>
+                                <!-- AC-894: only for a project genuinely bound to a Depot source — a local one has
+                                     nothing to check. -->
+                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                        Content="Sync now"
+                                        IsVisible="{Binding IsShared}"
+                                        Command="{Binding Actions.SyncNow}"
                                         CommandParameter="{Binding Project}"/>
                                 <!-- Whatever else the operator keeps with this project (AC-295) — a repository, a
                                      website, a contact. Still one click away rather than behind the editor, which is
