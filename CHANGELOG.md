@@ -55,6 +55,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   finishes. A long-running cockpit session that delegated many tasks would otherwise grow that list without
   bound; finished tasks are now cleared out an hour after they finished, well after any caller has had the
   chance to collect the answer.
+- fixed: `cockpit.log` no longer grows without bound on a long-running session — it now rolls over to
+  `cockpit.log.1` at 8 MB, keeping one prior generation instead of growing forever (most noticeable with
+  diagnostic snapshots left on for days).
 - fixed: on macOS the cockpit now notices when the system has stopped drawing it — locking the screen, letting the
   display sleep, switching to another Space or fully covering the window — and suspends its transcripts for as long
   as that lasts, instead of only doing so when the window is actually minimised. Minimising is the rare case on a
