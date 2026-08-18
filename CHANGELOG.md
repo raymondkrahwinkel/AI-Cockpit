@@ -46,6 +46,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   its own. While you have a component under your hand the agent is refused on that one and told why, and keeps
   working on the rest of the wireframe. Dragging still pans the view: a wireframe places itself, so there is nothing
   to drop anywhere — free placement is what the whiteboard is for.
+- added: a Send button next to the assistant chat window's message box, for anyone who would rather click than
+  press Enter. Enter still works exactly as before.
 
 ### Fixed
 

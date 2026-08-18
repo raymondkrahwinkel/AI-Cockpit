@@ -614,6 +614,11 @@
                     </ItemsControl>
 
                     <DockPanel>
+                        <!-- AC-855: a clickable send button next to Enter, same convention as SessionView.axaml. -->
+                        <Button x:Name="SendButton" DockPanel.Dock="Right" Command="{Binding SendCommand}"
+                                IsEnabled="{Binding CanSend}"
+                                Classes="Accent composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0"
+                                Content="Send"/>
                         <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
                              its marking tools, landing as an attachment on the composer rather than a message of its
                              own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
