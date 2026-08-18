@@ -975,6 +975,7 @@ public sealed class WhiteboardCanvasControl : Border
 
         _ClearHandles();
         _selectedId = null;
+        _ApplySelectedHighlight(null);
         _freehandLayer.SelectedId = null;
         _freehandLayer.InvalidateVisual();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
@@ -1113,6 +1114,7 @@ public sealed class WhiteboardCanvasControl : Border
     private void _Select(Guid? id)
     {
         _selectedId = id;
+        _ApplySelectedHighlight(id);
 
         var isFreehand = id is { } selected && Document.Find(selected) is FreehandStroke;
         _freehandLayer.SelectedId = isFreehand ? id : null;
@@ -1125,6 +1127,16 @@ public sealed class WhiteboardCanvasControl : Border
         }
 
         SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // AC-918: the badge only shows while an object is selected or hovered — keep every control's flag in sync
+    // with the one id the board considers selected, rather than trusting each call site to clear the last one.
+    private void _ApplySelectedHighlight(Guid? id)
+    {
+        foreach (var (key, control) in _placedControls)
+        {
+            control.IsSelected = key == id;
+        }
     }
 
     private void _SetTool(WhiteboardTool tool)

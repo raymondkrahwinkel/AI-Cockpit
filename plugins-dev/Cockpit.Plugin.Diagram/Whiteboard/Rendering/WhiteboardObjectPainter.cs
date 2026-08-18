@@ -8,6 +8,10 @@ namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 // One fixed visual language, shared by the live canvas and the raster snapshot: freehand is always yellow, a
 // placed object (template or paste) is always this crisp blue. The distinction lives in WhiteboardObjectKind
 // already; this is only how that distinction is drawn.
+// The compact icon a placed object shows for its badge: a one-letter glyph on the object, the full text in the
+// tooltip the control attaches (see PlacedObjectControl) — no text pill, so it never outgrows a small object.
+internal readonly record struct PlacedBadge(string Glyph, string Tooltip);
+
 internal static class WhiteboardObjectPainter
 {
     public static readonly Color FreehandColor = Color.Parse("#F2C230");
@@ -28,11 +32,12 @@ internal static class WhiteboardObjectPainter
     private static readonly IBrush StickyNoteTextBrush = new SolidColorBrush(Color.Parse("#3F3618"));
     private static readonly IBrush BadgeBackground = new SolidColorBrush(Color.Parse("#1F2937"), 0.85);
 
-    // The badge every renderer of a placed object pins on it: whose mark it is (AC-854) or where a picture came from.
-    public static string? BadgeFor(PlacedObject placed) => placed switch
+    // The badge every renderer of a placed object can pin on it: whose mark it is (AC-854) or where a picture came
+    // from. Only drawn on hover/selection (AC-918) — the glyph is what's on the object, the tooltip is the full text.
+    public static PlacedBadge? BadgeFor(PlacedObject placed) => placed switch
     {
-        { PlacedByAgent: true } => "neergezet · agent",
-        { IsPastedScreenshot: true } => "geplakt · screenshot",
+        { PlacedByAgent: true } => new PlacedBadge("A", "Placed by agent"),
+        { IsPastedScreenshot: true } => new PlacedBadge("S", "Pasted from screenshot"),
         _ => null,
     };
 
@@ -60,7 +65,7 @@ internal static class WhiteboardObjectPainter
         context.DrawGeometry(null, pen, geometry);
     }
 
-    public static void PaintPlaced(DrawingContext context, PlacedShapeKind kind, Rect rect, string? text, Bitmap? image, string? badge = null)
+    public static void PaintPlaced(DrawingContext context, PlacedShapeKind kind, Rect rect, string? text, Bitmap? image, PlacedBadge? badge = null, bool showBadge = false)
     {
         var textBrush = PlacedBrush;
 
@@ -107,9 +112,9 @@ internal static class WhiteboardObjectPainter
             _PaintText(context, rect, text, textBrush);
         }
 
-        if (!string.IsNullOrEmpty(badge))
+        if (showBadge && badge is { } b)
         {
-            _PaintBadge(context, rect, badge);
+            _PaintBadge(context, rect, b);
         }
     }
 
@@ -130,20 +135,30 @@ internal static class WhiteboardObjectPainter
         context.DrawText(formatted, rect.TopLeft + new Point(4, 4));
     }
 
-    // A small pill pinned to the bottom-left corner — used today for "geplakt · screenshot" on a clipboard paste.
-    private static void _PaintBadge(DrawingContext context, Rect rect, string badge)
+    private const double _BadgeDiameter = 16;
+    private const double _BadgeMargin = 3;
+
+    // A small fixed-size glyph disc, not a text pill — its size never depends on the badge text, so it fits a
+    // 40x40 object. Pinned inside the bottom-right corner when the object has room, or drawn just above the
+    // object (same idea as DiagramWorkspaceBody's _DrawAgentCursor tag) when it doesn't, so it never covers it.
+    private static void _PaintBadge(DrawingContext context, Rect rect, PlacedBadge badge)
     {
+        var fitsInside = rect.Width >= _BadgeDiameter + (_BadgeMargin * 2) && rect.Height >= _BadgeDiameter + (_BadgeMargin * 2);
+        var origin = fitsInside
+            ? new Point(rect.Right - _BadgeDiameter - _BadgeMargin, rect.Bottom - _BadgeDiameter - _BadgeMargin)
+            : new Point(rect.Left, rect.Top - _BadgeDiameter - 2);
+
+        var circleRect = new Rect(origin, new Size(_BadgeDiameter, _BadgeDiameter));
+        context.DrawEllipse(BadgeBackground, null, circleRect);
+
         var formatted = new FormattedText(
-            badge,
+            badge.Glyph,
             System.Globalization.CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
             Typeface.Default,
-            10,
+            9,
             Brushes.White);
-
-        var pillRect = new Rect(rect.Left + 4, rect.Bottom - formatted.Height - 8, formatted.Width + 12, formatted.Height + 6);
-        context.DrawRectangle(BadgeBackground, null, pillRect, 4, 4);
-        context.DrawText(formatted, pillRect.TopLeft + new Point(6, 3));
+        context.DrawText(formatted, origin + new Point((_BadgeDiameter - formatted.Width) / 2, (_BadgeDiameter - formatted.Height) / 2));
     }
 
     private static void _PaintArrow(DrawingContext context, Rect rect)
