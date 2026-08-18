@@ -111,6 +111,10 @@ public class ActivityStripTests
 
         public string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit) => null;
 
+        public DiagramEditSupport EditSupport(string surfaceId) => new(DiagramEditDialect.Flowchart, null);
+
+        public IReadOnlyList<DiagramErAttribute> EntityAttributes(string surfaceId, string entity) => [];
+
         public void HoldObject(string surfaceId, string objectId)
         {
         }

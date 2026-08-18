@@ -48,9 +48,23 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   to drop anywhere — free placement is what the whiteboard is for.
 - added: a Send button next to the assistant chat window's message box, for anyone who would rather click than
   press Enter. Enter still works exactly as before.
+- added: you can now change an ER diagram by hand, not only by asking the agent. On an `erDiagram` the toolbar
+  offers entities instead of nodes: add one, rename it, remove it (which takes its attributes and its relationships
+  with it), manage its attributes — type, name and an optional PK/FK/UK marker — from the entity itself, and draw a
+  relationship by clicking two entities and choosing how many of each take part plus the verb the line reads by.
+  Every handling lands in the activity strip and can be undone on its own, and while you have an entity under your
+  hand the agent is refused on that one and keeps working on the rest.
+- added: an agent can make the same per-object changes to an ER diagram, through tools of its own rather than the
+  flowchart ones — an entity has no separate label, and a relationship cannot be drawn without two cardinalities
+  and a label, so reusing the node tools would have meant parameters that mean nothing on half the diagram types.
+  Calling a flowchart tool on an ER diagram (or the other way round) is refused with the names of the ones that
+  do work there.
 
 ### Fixed
 
+- fixed: on a diagram type that cannot be edited object by object — a sequence, class or state diagram — the
+  hand-edit buttons are now switched off and say why in their tooltip, naming the diagram's own type and pointing
+  at the agent. They used to look available and only refuse once pressed.
 - fixed: drawing on a whiteboard now shows the stroke as you draw it, not only after you let go of the mouse —
   a pencil or marker line and a dragged-out shape are both visible mid-gesture. The shape tool no longer drops
   a half-drawn shape into the document while it is still being sized either, so an agent reading the board

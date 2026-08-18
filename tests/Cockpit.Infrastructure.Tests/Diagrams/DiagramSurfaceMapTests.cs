@@ -30,6 +30,27 @@ public class DiagramSurfaceMapTests
     }
 
     [Fact]
+    public void ClickInsideAnErEntity_NamesTheEntity_BecauseItIsDrawnUnderItsOwnMarkers()
+    {
+        // AC-899: Mermaider tags an ER box class="entity" and an ER line class="er-relationship" with
+        // data-entity1/2 — different markers for the same two roles, so the map has to know both spellings.
+        const string source = """
+            erDiagram
+                CUSTOMER ||--o{ ORDER : "places"
+                CUSTOMER {
+                    string name
+                }
+            """;
+
+        var objects = DiagramSurfaceMap.Read(_Render(source));
+
+        var entity = objects.Single(o => o.Kind == DiagramObjectAt.Node && o.Id == "CUSTOMER");
+        Assert.Equal(entity, DiagramSurfaceMap.At(objects, entity.Bounds.Center));
+        var relationship = objects.Single(o => o.Kind == DiagramObjectAt.Edge);
+        Assert.Equal("CUSTOMER->ORDER", relationship.HoldKey);
+    }
+
+    [Fact]
     public void ClickOnAConnection_NamesBothItsEnds()
     {
         var objects = DiagramSurfaceMap.Read(_Render(Source));

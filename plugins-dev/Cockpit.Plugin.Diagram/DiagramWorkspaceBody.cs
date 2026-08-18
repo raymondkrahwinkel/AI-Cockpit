@@ -74,11 +74,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private Vector _panOffsetStart;
     private DiagramProposal? _pendingProposal;
     private readonly HashSet<int> _acceptedBlocks = [];
+    private readonly Button _addButton;
     private readonly Button _connectButton;
     private readonly Button _renameButton;
     private readonly Button _deleteButton;
+    private readonly Button _attributesButton;
     private readonly Button _pinButton;
     private readonly TextBlock _handHint;
+    private DiagramEditSupport _support = new(DiagramEditDialect.Flowchart, null);
     private IReadOnlyList<DiagramObjectAt> _objects = [];
     private DiagramObjectAt? _selected;
     private string? _connectFrom;
@@ -128,7 +131,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _connectButton, _renameButton, _deleteButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
         var diagramJournal = new DiagramActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, diagramJournal, key => _ = _FlashObjectAsync(key));
         _pinStrip = new PinStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
@@ -165,6 +168,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry.ProposalChanged += _OnProposalChanged;
             _registry.HistoryChanged += _OnHistoryChanged;
             _registry.SurfaceOpened(_surfaceId, document.Title, document.MermaidText);
+
+            // AC-899: which hand-edit controls belong on this diagram is the registry's answer about the surface,
+            // so it can only be asked once the surface is registered — the first _RenderInto ran before that.
+            _RefreshEditSupport();
 
             // A plain Couple — zero capabilities. read_diagram/edit_diagram still ask their own consent (AC-810).
             if (_sessionBinding.IsLive)
@@ -291,7 +298,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // _OnViewportWheel/_OnViewportPointerMoved.
     private void _FollowTo(string objectKey)
     {
-        var target = _objects.FirstOrDefault(o => o.HoldKey == objectKey);
+        var target = _Locate(objectKey);
         if (target is null)
         {
             return;
@@ -378,7 +385,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         _RefreshOverlay();
-        _RefreshHandEditBar();
+        _RefreshEditSupport();
 
         if (_isFitMode)
         {
@@ -536,6 +543,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         var from = _connectFrom;
         _SetConnecting(false);
+        if (_support.Dialect == DiagramEditDialect.Er)
+        {
+            _AskRelationship(from, node.Id);
+            return;
+        }
+
         _Apply(new DiagramHandEdit(DiagramHandEditKind.Connect, from, node.Id));
     }
 
@@ -565,7 +578,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // history has no business acquiring.
     private async Task _FlashObjectAsync(string holdKey)
     {
-        var target = _objects.FirstOrDefault(o => o.HoldKey == holdKey);
+        var target = _Locate(holdKey);
         if (target is null)
         {
             _host.ShowToast("Dat object staat niet meer op dit diagram.", PluginToastSeverity.Information);
@@ -594,6 +607,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
         await Task.Delay(1200);
         _RefreshOverlay();
     }
+
+    // AC-899: an ER journal key names its object plus what changed about it — "OLD>NEW" for a rename, "ENTITY.attr"
+    // for an attribute — so a jump lands on the entity that is actually on the surface rather than on nothing.
+    private DiagramObjectAt? _Locate(string key) =>
+        _objects.FirstOrDefault(o => o.HoldKey == key)
+        ?? _objects.FirstOrDefault(o => key.Split('>', '.').Contains(o.Id, StringComparer.Ordinal));
 
     private void _SetConnecting(bool on)
     {
@@ -630,7 +649,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
             {
                 key.Handled = true;
                 _overlay.Children.Remove(box);
-                _Apply(new DiagramHandEdit(DiagramHandEditKind.RenameNode, node.Id, Label: box.Text ?? node.Label));
+                _Apply(_support.Dialect == DiagramEditDialect.Er
+                    ? new DiagramHandEdit(DiagramHandEditKind.RenameEntity, node.Id, Label: box.Text ?? node.Id)
+                    : new DiagramHandEdit(DiagramHandEditKind.RenameNode, node.Id, Label: box.Text ?? node.Label));
             }
             else if (key.Key == Key.Escape)
             {
@@ -642,10 +663,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
     }
 
     // A new node is named as it is made, and gets an id of its own: the label carries the wording, the id is what the
-    // connections are written in terms of.
-    private void _AddNode(Control anchor)
+    // connections are written in terms of. An ER entity has no such split — its name is what is drawn (AC-899).
+    private void _AddObject(Control anchor)
     {
-        var name = new TextBox { Width = 200, PlaceholderText = "Naam van de node" };
+        var isEntity = _support.Dialect == DiagramEditDialect.Er;
+        var name = new TextBox { Width = 200, PlaceholderText = isEntity ? "Naam van de entiteit" : "Naam van de node" };
         var confirm = new Button { Content = "Toevoegen", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
@@ -655,8 +677,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
         void Add()
         {
             flyout.Hide();
-            var label = string.IsNullOrWhiteSpace(name.Text) ? "Nieuwe node" : name.Text!.Trim();
-            _Apply(new DiagramHandEdit(DiagramHandEditKind.AddNode, _NextNodeId(), Label: label));
+            var typed = name.Text?.Trim();
+            _Apply(isEntity
+                ? new DiagramHandEdit(DiagramHandEditKind.AddEntity, string.IsNullOrEmpty(typed) ? _NextEntityId() : typed)
+                : new DiagramHandEdit(DiagramHandEditKind.AddNode, _NextNodeId(), Label: string.IsNullOrEmpty(typed) ? "Nieuwe node" : typed));
         }
 
         confirm.Click += (_, _) => Add();
@@ -671,6 +695,159 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         flyout.ShowAt(anchor);
         name.Focus();
+    }
+
+    // AC-899: an entity's attributes, listed as they stand with a way to take one out, and one row of inputs to put
+    // one in — the same call covers adding and changing, so typing an existing name overwrites that attribute.
+    private void _EditAttributes(Control anchor)
+    {
+        if (_registry is null || _selected is not { Kind: DiagramObjectAt.Node } entity)
+        {
+            return;
+        }
+
+        var body = new StackPanel { Spacing = 8, Margin = new Thickness(12), MinWidth = 300 };
+        var flyout = new Flyout { Content = body };
+
+        void Rebuild()
+        {
+            body.Children.Clear();
+            body.Children.Add(new TextBlock { Text = $"Attributen van {entity.Id}", FontWeight = FontWeight.SemiBold });
+            foreach (var attribute in _registry.EntityAttributes(_surfaceId, entity.Id))
+            {
+                var remove = new Button { Content = "×", Classes = { "Compact" }, MinWidth = 24 };
+                remove.Click += (_, _) =>
+                {
+                    _Apply(new DiagramHandEdit(DiagramHandEditKind.RemoveAttribute, entity.Id) { Attribute = attribute.Name });
+                    Rebuild();
+                };
+                body.Children.Add(new DockPanel
+                {
+                    LastChildFill = true,
+                    Children =
+                    {
+                        remove,
+                        new TextBlock
+                        {
+                            Text = string.Join(" ", new[] { attribute.Type, attribute.Name, attribute.Key }.Where(part => !string.IsNullOrEmpty(part))),
+                            VerticalAlignment = VerticalAlignment.Center,
+                            FontFamily = new FontFamily("Consolas,Menlo,monospace"),
+                            FontSize = 12,
+                        },
+                    },
+                });
+                DockPanel.SetDock(remove, Dock.Right);
+            }
+
+            var type = new TextBox { Width = 90, PlaceholderText = "type" };
+            var attributeName = new TextBox { Width = 110, PlaceholderText = "naam" };
+            string?[] markers = [null, "PK", "FK", "UK"];
+            var key = new ComboBox { ItemsSource = new[] { "—", "PK", "FK", "UK" }, SelectedIndex = 0, MinWidth = 64 };
+            var add = new Button { Content = "Toevoegen", Classes = { "Compact" } };
+            add.Click += (_, _) =>
+            {
+                if (string.IsNullOrWhiteSpace(attributeName.Text))
+                {
+                    return;
+                }
+
+                _Apply(new DiagramHandEdit(DiagramHandEditKind.SetAttribute, entity.Id)
+                {
+                    Attribute = attributeName.Text!.Trim(),
+                    AttributeType = string.IsNullOrWhiteSpace(type.Text) ? "string" : type.Text!.Trim(),
+                    AttributeKey = markers[Math.Clamp(key.SelectedIndex, 0, markers.Length - 1)],
+                });
+                Rebuild();
+            };
+
+            body.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children = { type, attributeName, key, add },
+            });
+        }
+
+        Rebuild();
+        flyout.ShowAt(anchor);
+    }
+
+    // AC-899: a relationship is not drawn until the operator has said how many of each entity take part and what the
+    // line reads as — Mermaid draws all three, and there is no sensible default for any of them.
+    private void _AskRelationship(string from, string to)
+    {
+        var fromCardinality = _CardinalityBox();
+        var toCardinality = _CardinalityBox();
+        var label = new TextBox { Width = 200, PlaceholderText = "leest als… (bv. plaatst)" };
+        var confirm = new Button { Content = "Verbinden", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var flyout = new Flyout
+        {
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Margin = new Thickness(12),
+                Children =
+                {
+                    new TextBlock { Text = $"{from} → {to}", FontWeight = FontWeight.SemiBold },
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new TextBlock { Text = from, VerticalAlignment = VerticalAlignment.Center, MinWidth = 80 }, fromCardinality } },
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new TextBlock { Text = to, VerticalAlignment = VerticalAlignment.Center, MinWidth = 80 }, toCardinality } },
+                    label,
+                    confirm,
+                },
+            },
+        };
+
+        void Relate()
+        {
+            if (string.IsNullOrWhiteSpace(label.Text))
+            {
+                return;
+            }
+
+            flyout.Hide();
+            _Apply(new DiagramHandEdit(DiagramHandEditKind.Relate, from, to, label.Text!.Trim())
+            {
+                FromCardinality = _CardinalityAt(fromCardinality.SelectedIndex),
+                ToCardinality = _CardinalityAt(toCardinality.SelectedIndex),
+            });
+        }
+
+        confirm.Click += (_, _) => Relate();
+        label.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                Relate();
+            }
+        };
+
+        flyout.ShowAt(_connectButton);
+        label.Focus();
+    }
+
+    private static ComboBox _CardinalityBox() =>
+        new() { ItemsSource = new[] { "precies één", "nul of één", "één of meer", "nul of meer" }, SelectedIndex = 0, MinWidth = 130 };
+
+    private static DiagramErCardinality _CardinalityAt(int index) => index switch
+    {
+        1 => DiagramErCardinality.ZeroOrOne,
+        2 => DiagramErCardinality.OneOrMore,
+        3 => DiagramErCardinality.ZeroOrMore,
+        _ => DiagramErCardinality.One,
+    };
+
+    // E1, E2, … past whatever E-numbers the source already carries, the entity counterpart of _NextNodeId — only
+    // reached when the operator confirmed the flyout without typing a name.
+    private string _NextEntityId()
+    {
+        var used = _objects.Where(o => o.Kind == DiagramObjectAt.Node)
+            .Select(o => o.Id)
+            .Where(id => id.Length > 1 && id[0] == 'E' && id[1..].All(char.IsDigit))
+            .Select(id => int.Parse(id[1..]))
+            .DefaultIfEmpty(0)
+            .Max();
+        return $"E{used + 1}";
     }
 
     // N1, N2, … past whatever N-numbers the source already carries, so a hand-added node never collides with one the
@@ -693,9 +870,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
+        var er = _support.Dialect == DiagramEditDialect.Er;
         _Apply(target.To is { } head
-            ? new DiagramHandEdit(DiagramHandEditKind.Disconnect, target.Id, head)
-            : new DiagramHandEdit(DiagramHandEditKind.RemoveNode, target.Id));
+            ? new DiagramHandEdit(er ? DiagramHandEditKind.Unrelate : DiagramHandEditKind.Disconnect, target.Id, head)
+            : new DiagramHandEdit(er ? DiagramHandEditKind.RemoveEntity : DiagramHandEditKind.RemoveNode, target.Id));
     }
 
     // AC-849: plants a pin on the selected object and sends its "📍 pin N" reference to the coupled session right
@@ -766,8 +944,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         // Layer 1: the agent's cursor — absent the moment there is no coupling or nothing to point at, same rule
         // as PresenceIndicators; never drawn for an object that no longer resolves (renamed away, removed).
-        if (_current is not null && _agentCursorKey is { } cursorKey
-            && _objects.FirstOrDefault(o => o.HoldKey == cursorKey) is { } agentTarget)
+        if (_current is not null && _agentCursorKey is { } cursorKey && _Locate(cursorKey) is { } agentTarget)
         {
             _DrawAgentCursor(agentTarget);
         }
@@ -865,13 +1042,37 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _overlay.Children.Add(mark);
     }
 
+    // AC-899: the surface decides which dialect's controls stand here, so the bar is refreshed with every render
+    // rather than once at construction — an agent's edit_diagram can replace a flowchart with an ER diagram.
+    private void _RefreshEditSupport()
+    {
+        _support = _registry?.EditSupport(_surfaceId) ?? new DiagramEditSupport(DiagramEditDialect.Flowchart, null);
+        _RefreshHandEditBar();
+    }
+
     private void _RefreshHandEditBar()
     {
-        var editable = _registry is not null;
+        // Without a registry (an older host) there is nothing to write a hand-edit into, and on a diagram type with
+        // no per-object grammar there is nothing to write — both say so by being off, with the reason in the tooltip.
+        var er = _support.Dialect == DiagramEditDialect.Er;
+        var editable = _registry is not null && _support.Dialect != DiagramEditDialect.Unsupported;
+        var reason = _registry is null ? "Deze host kent nog geen diagram-bewerkingen." : _support.Reason;
+
+        _addButton.Content = er ? "+ Entiteit" : "+ Node";
+        _addButton.IsEnabled = editable;
         _connectButton.IsEnabled = editable;
         _renameButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
         _deleteButton.IsEnabled = editable && _selected is not null;
+        _attributesButton.IsVisible = er;
+        _attributesButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
         _connectButton.Content = _isConnecting ? "Verbinden…" : "Verbinden";
+
+        var box = er ? "entiteit" : "node";
+        ToolTip.SetTip(_addButton, reason ?? $"Zet een {box} op dit diagram.");
+        ToolTip.SetTip(_connectButton, reason ?? $"Klik daarna twee {box}s om ze te verbinden.");
+        ToolTip.SetTip(_renameButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? $"Hernoem de geselecteerde {box}." : $"Selecteer eerst een {box} om te hernoemen."));
+        ToolTip.SetTip(_deleteButton, reason ?? (_selected is null ? "Selecteer eerst wat je wilt verwijderen." : "Verwijder het geselecteerde object."));
+        ToolTip.SetTip(_attributesButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Beheer de attributen van deze entiteit." : "Selecteer eerst een entiteit."));
 
         // AC-849: prikken needs both an object under the operator's hand and a live session to send the reference
         // to — the coupling bar's "Geen agent gekoppeld" already explains the second half, this button explains it
@@ -884,10 +1085,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
             : "Prik een vraag op dit object.");
 
         _handHint.Text = _isConnecting
-            ? _connectFrom is null ? "Klik de node waar de verbinding begint." : $"Klik de node waar {_connectFrom} naartoe wijst."
+            ? _connectFrom is null ? $"Klik de {box} waar de verbinding begint." : $"Klik de {box} waar {_connectFrom} naartoe wijst."
             : _selected switch
             {
-                { Kind: DiagramObjectAt.Node } node => $"Node {node.Id} geselecteerd — dubbelklik om te hernoemen.",
+                { Kind: DiagramObjectAt.Node } node => $"{char.ToUpperInvariant(box[0])}{box[1..]} {node.Id} geselecteerd — dubbelklik om te hernoemen.",
                 { To: { } head } edge => $"Verbinding {edge.Id} → {head} geselecteerd.",
                 _ => "",
             };
@@ -945,8 +1146,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // AC-813: PNG and SVG only — no PDF (host-dependency decision, see AC-813), no JPG (lossy artifacts on
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
-    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus,
-        Button Connect, Button Rename, Button Delete, Button Pin, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
+    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add,
+        Button Connect, Button Rename, Button Delete, Button Attributes, Button Pin, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
     {
         var export = new Button
         {
@@ -1002,13 +1203,17 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // Without a registry (an older host) there is nothing to write a hand-edit into, so the buttons say so by
         // being off rather than failing silently when pressed.
         var addNode = new Button { Content = "+ Node", Classes = { "Compact" }, IsEnabled = _registry is not null };
-        addNode.Click += (_, _) => _AddNode(addNode);
+        addNode.Click += (_, _) => _AddObject(addNode);
         var connect = new Button { Content = "Verbinden", Classes = { "Compact" } };
         connect.Click += (_, _) => _SetConnecting(!_isConnecting);
         var rename = new Button { Content = "Hernoemen", Classes = { "Compact" } };
         rename.Click += (_, _) => _StartRename(_selected);
         var delete = new Button { Content = "Verwijderen", Classes = { "Compact" } };
         delete.Click += (_, _) => _DeleteSelected();
+        // AC-899: an ER entity carries its own attributes, which no flowchart node has — so this one control is
+        // shown for that dialect only rather than standing there meaningless on a flowchart.
+        var attributes = new Button { Content = "Attributen…", Classes = { "Compact" }, IsVisible = false };
+        attributes.Click += (_, _) => _EditAttributes(attributes);
         // AC-849: the operator's question about the selected object, sent to the coupled session as a "📍 pin N"
         // reference the moment it is planted — see _AddPin.
         var pin = new Button { Content = "Prikken", Classes = { "Compact" } };
@@ -1038,14 +1243,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertSample, addNode, connect, rename, delete, pin, save, saveStatus, hint },
+            Children = { insertSample, addNode, connect, rename, delete, attributes, pin, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
         DockPanel.SetDock(export, Dock.Right);
         DockPanel.SetDock(handEditControls, Dock.Left);
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, connect, rename, delete, pin, hint, follow);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, pin, hint, follow);
     }
 
     // Eén opslagweg voor beide herkomsten (AC-839): een hand-bewerking en een aangenomen agent-voorstel komen
