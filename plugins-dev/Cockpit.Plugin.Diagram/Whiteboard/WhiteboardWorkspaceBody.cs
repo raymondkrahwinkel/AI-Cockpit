@@ -74,10 +74,14 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _RefreshSaveBar();
         };
 
+        // AC-912: Ctrl+Z refusing is a thing the operator has to be told about — a silently ignored key reads as
+        // "undo is broken here", which is the very complaint this ticket came from.
+        _control.Canvas.UndoRefused += reason => _host.ShowToast(reason, PluginToastSeverity.Warning);
+
         (_saveBar, _saveButton, _saveStatus, _pinButton) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
         (var convertBar, _convertButton, _convertStatus) = _BuildConvertBar();
-        var whiteboardJournal = new WhiteboardActivityJournal(_registry);
+        var whiteboardJournal = new WhiteboardActivityJournal(_registry, _control.Canvas.Edits);
         _activityStrip = new ActivityStrip(host, _surfaceId, whiteboardJournal, key =>
         {
             if (Guid.TryParse(key, out var id))

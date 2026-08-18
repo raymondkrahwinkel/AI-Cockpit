@@ -45,13 +45,17 @@ public sealed class WhiteboardCanvasControl : Border
     private Point _dragOffset;
     private Point? _pointerDownPoint;
     private bool _clickCandidateForEdit;
+    private Rect _dragStartBounds;
+    private IReadOnlyList<Guid> _dragCarried = [];
 
     private (HandleCorner Corner, PlacedObjectControl Control)? _resizing;
     private Rect _resizeStartBounds;
     private Point _resizeStartPointer;
+    private IReadOnlyList<Guid> _resizeCarried = [];
 
     private TextBox? _activeEditor;
     private PlacedObjectControl? _editingControl;
+    private string? _textBeforeEdit;
 
     private Border? _deleteImagePrompt;
 
@@ -61,6 +65,7 @@ public sealed class WhiteboardCanvasControl : Border
     public WhiteboardCanvasControl(WhiteboardDocument document)
     {
         Document = document;
+        Edits = new WhiteboardEditJournal(document.Id);
         Background = Brushes.White;
         ClipToBounds = true;
         Focusable = true;
@@ -111,12 +116,24 @@ public sealed class WhiteboardCanvasControl : Border
 
     public WhiteboardDocument Document { get; }
 
+    // AC-912: the operator's own handlings, so Ctrl+Z here and the activity strip's "Terugdraaien" reach the same
+    // inverses — the agent's half of that journal stays in IWhiteboardAccessRegistry.
+    internal WhiteboardEditJournal Edits { get; }
+
     public WhiteboardTool Tool { get; private set; } = WhiteboardTool.Select;
 
     public Guid? SelectedId => _selectedId;
 
+    // A gesture that has not ended has nothing journaled yet, so Ctrl+Z would have to reach back past it (AC-912 §7).
+    private bool _GestureInProgress =>
+        _activeStroke is not null || _shapeInProgress is not null || _draggingPlaced is not null || _resizing is not null || _activeEditor is not null;
+
     // Raised whenever the document changed (a stroke drawn, an object moved/resized/deleted, a paste) — the cue to save.
     public event EventHandler? Changed;
+
+    // AC-912: why an undo or redo did nothing — the board refuses rather than silently touching work that landed
+    // since, and the window this canvas sits in turns the reason into a toast.
+    public event Action<string>? UndoRefused;
 
     public event EventHandler? SelectionChanged;
 
@@ -225,6 +242,8 @@ public sealed class WhiteboardCanvasControl : Border
 
             _Select(control.Model.Id);
             _draggingPlaced = control;
+            _dragStartBounds = _BoundsOf(control.Model);
+            _dragCarried = _CarriedChildren(control.Model);
             _dragOffset = point - new Point(control.Model.X, control.Model.Y);
             e.Pointer.Capture(this);
             e.Handled = true;
@@ -313,13 +332,15 @@ public sealed class WhiteboardCanvasControl : Border
             {
                 var isMarker = _activeStrokeIsMarker;
                 var (centerX, centerY) = _BoundsCenter(stroke);
-                Document.Add(new FreehandStroke
+                var drawn = new FreehandStroke
                 {
                     Points = stroke,
                     IsMarker = isMarker,
                     Thickness = isMarker ? MarkerThickness : PencilThickness,
                     ParentImageId = WhiteboardBinding.FindParentImage(Document, centerX, centerY)?.Id,
-                });
+                };
+                Document.Add(drawn);
+                _JournalAdd(drawn, isMarker ? "drew a marker stroke" : "drew a pencil stroke");
                 Changed?.Invoke(this, EventArgs.Empty);
             }
 
@@ -350,6 +371,7 @@ public sealed class WhiteboardCanvasControl : Border
             Document.Add(shape.Model);
             _Select(shape.Model.Id);
             UseSelectTool();
+            _JournalAdd(shape.Model, $"placed a {shape.Model.ShapeKind}");
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -364,14 +386,23 @@ public sealed class WhiteboardCanvasControl : Border
             {
                 _BeginTextEdit(dragging);
             }
+            else if (moved)
+            {
+                _JournalBounds(dragging.Model, _dragStartBounds, _dragCarried, "moved");
+            }
 
             _clickCandidateForEdit = false;
             Changed?.Invoke(this, EventArgs.Empty);
         }
 
-        if (_resizing is not null)
+        if (_resizing is { } finished)
         {
             _resizing = null;
+            if (_BoundsOf(finished.Control.Model) != _resizeStartBounds)
+            {
+                _JournalBounds(finished.Control.Model, _resizeStartBounds, _resizeCarried, "resized");
+            }
+
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -405,6 +436,25 @@ public sealed class WhiteboardCanvasControl : Border
         if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             _ = _PasteAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key is Key.Z or Key.Y && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            // AC-912 §7: mid-gesture nothing is journaled yet, so undo would have to reach back past the gesture and
+            // leave it half-applied. The key does nothing instead; the gesture ends as the operator meant it to.
+            if (_GestureInProgress)
+            {
+                return;
+            }
+
+            var redo = e.Key == Key.Y || e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            if ((redo ? Edits.RedoLast() : Edits.UndoLast()) is { } refusal)
+            {
+                UndoRefused?.Invoke(refusal);
+            }
+
             e.Handled = true;
             return;
         }
@@ -461,12 +511,14 @@ public sealed class WhiteboardCanvasControl : Border
         Document.Add(placed);
         _CreatePlacedControl(placed);
         _Select(placed.Id);
+        _JournalAdd(placed, isPastedScreenshot ? "pasted a screenshot" : "inserted an image");
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void _BeginTextEdit(PlacedObjectControl control)
     {
         _EndTextEdit(commit: true);
+        _textBeforeEdit = control.Model.Text;
 
         var editor = new TextBox
         {
@@ -501,12 +553,23 @@ public sealed class WhiteboardCanvasControl : Border
         _editingControl = null;
         _surface.Children.Remove(editor);
 
-        if (commit)
+        if (!commit)
         {
-            control.Model.Text = string.IsNullOrEmpty(editor.Text) ? null : editor.Text;
-            control.Refresh();
-            Changed?.Invoke(this, EventArgs.Empty);
+            return;
         }
+
+        var before = _textBeforeEdit;
+        var after = string.IsNullOrEmpty(editor.Text) ? null : editor.Text;
+        control.Model.Text = after;
+        control.Refresh();
+
+        if (after != before)
+        {
+            var id = control.Model.Id;
+            Edits.Record($"changed the text of a {control.Model.ShapeKind}", id, () => _ApplyText(id, before), () => _ApplyText(id, after));
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void _UpdateEmptyState()
@@ -586,7 +649,7 @@ public sealed class WhiteboardCanvasControl : Border
             return;
         }
 
-        _RemoveObject(id);
+        _DeleteJournaled(id, alsoRemoved: [], unbound: []);
     }
 
     // An inline panel dropped straight onto the surface — the same "no popup" approach _BeginTextEdit already uses
@@ -598,25 +661,15 @@ public sealed class WhiteboardCanvasControl : Border
         var both = new Button { Content = $"Afbeelding en {children.Count} aantekening(en) verwijderen", Classes = { "Compact" } };
         both.Click += (_, _) =>
         {
-            foreach (var child in children)
-            {
-                Document.Remove(child.Id);
-            }
-
             _DismissDeleteImagePrompt();
-            _RemoveObject(imageId);
+            _DeleteJournaled(imageId, alsoRemoved: children, unbound: []);
         };
 
         var detach = new Button { Content = "Alleen de afbeelding — aantekeningen loskoppelen", Classes = { "Compact" } };
         detach.Click += (_, _) =>
         {
-            foreach (var child in children)
-            {
-                child.ParentImageId = null;
-            }
-
             _DismissDeleteImagePrompt();
-            _RemoveObject(imageId);
+            _DeleteJournaled(imageId, alsoRemoved: [], unbound: children);
         };
 
         var cancel = new Button { Content = "Annuleren", Classes = { "Compact" } };
@@ -681,16 +734,154 @@ public sealed class WhiteboardCanvasControl : Border
         return ((minX + maxX) / 2, (minY + maxY) / 2);
     }
 
-    private void _RemoveObject(Guid id)
+    // AC-912: what one delete took off the board — the removed objects with the spot each sat in, plus the children
+    // whose binding to `FocusId` was cut rather than deleted along ("Alleen de afbeelding").
+    private sealed record Removal(IReadOnlyList<(WhiteboardObject Item, int Index)> Removed, IReadOnlyList<WhiteboardObject> Unbound, Guid FocusId);
+
+    // The instances themselves are journaled, not a copy of the board: restoring one puts back the very object that
+    // left, so it keeps the id AC-851's ParentImageId bindings point at.
+    private void _DeleteJournaled(Guid id, IReadOnlyList<WhiteboardObject> alsoRemoved, IReadOnlyList<WhiteboardObject> unbound)
     {
-        Document.Remove(id);
+        if (Document.Find(id) is not { } focus)
+        {
+            return;
+        }
+
+        var removal = new Removal(
+            [.. alsoRemoved.Append(focus).Select(item => (Item: item, Index: Document.Objects.IndexOf(item)))],
+            unbound,
+            id);
+
+        Edits.Record(
+            focus is PlacedObject placed ? $"deleted a {placed.ShapeKind}" : "erased a stroke",
+            id,
+            () => _Restore(removal),
+            () => _Drop(removal));
+        _Drop(removal);
+    }
+
+    private string? _Drop(Removal removal)
+    {
+        foreach (var child in removal.Unbound)
+        {
+            child.ParentImageId = null;
+        }
+
+        foreach (var (item, _) in removal.Removed)
+        {
+            Document.Remove(item.Id);
+        }
+
         _ClearHandles();
         _selectedId = null;
         _freehandLayer.SelectedId = null;
         _freehandLayer.InvalidateVisual();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
+        return null;
     }
+
+    // Back at its own index rather than on top of the stack: the document's order is what the PNG snapshot draws, so
+    // an image restored at the end would cover the annotations that were made on it.
+    private string? _Restore(Removal removal)
+    {
+        foreach (var (item, index) in removal.Removed.OrderBy(entry => entry.Index))
+        {
+            if (Document.Find(item.Id) is null)
+            {
+                Document.Objects.Insert(Math.Min(index, Document.Objects.Count), item);
+            }
+        }
+
+        foreach (var child in removal.Unbound.Where(child => Document.Find(child.Id) is not null))
+        {
+            child.ParentImageId = removal.FocusId;
+        }
+
+        _freehandLayer.InvalidateVisual();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return null;
+    }
+
+    private void _JournalAdd(WhiteboardObject added, string summary)
+    {
+        var removal = new Removal([(added, Document.Objects.IndexOf(added))], [], added.Id);
+        Edits.Record(summary, added.Id, () => _UndoAdd(removal), () => _Restore(removal));
+    }
+
+    // Refuses while something is anchored to the object: taking it away would drag along or unbind work that landed
+    // on it since — the agent's included — and AC-912 asks for a refusal there, not a silent side effect.
+    private string? _UndoAdd(Removal removal)
+    {
+        if (Document.Find(removal.FocusId) is null)
+        {
+            return "Dit object staat niet meer op het bord.";
+        }
+
+        return WhiteboardBinding.ChildrenOf(Document, removal.FocusId).Count > 0
+            ? "Er ligt werk op dit object — verwijder dat eerst."
+            : _Drop(removal);
+    }
+
+    private void _JournalBounds(PlacedObject placed, Rect before, IReadOnlyList<Guid> carried, string verb)
+    {
+        var after = _BoundsOf(placed);
+        var id = placed.Id;
+        Edits.Record($"{verb} a {placed.ShapeKind}", id, () => _ApplyBounds(id, before, carried), () => _ApplyBounds(id, after, carried));
+    }
+
+    // Carries only the children the gesture itself carried, so an annotation that landed on the image afterwards —
+    // the agent's or the operator's — stays exactly where it is (AC-912's fifth criterion).
+    private string? _ApplyBounds(Guid id, Rect bounds, IReadOnlyList<Guid> carried)
+    {
+        if (Document.Find(id) is not PlacedObject placed || !_placedControls.TryGetValue(id, out var control))
+        {
+            return "Dit object staat niet meer op het bord.";
+        }
+
+        if (carried.Count > 0)
+        {
+            WhiteboardBinding.CarryChildren(
+                Document, id,
+                placed.X, placed.Y, placed.Width, placed.Height,
+                bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                carried);
+            _RefreshChildControls(id);
+        }
+
+        placed.X = bounds.X;
+        placed.Y = bounds.Y;
+        placed.Width = bounds.Width;
+        placed.Height = bounds.Height;
+        _PositionPlaced(control);
+        control.Refresh();
+
+        if (_selectedId == id)
+        {
+            _PositionHandlesFor(control);
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return null;
+    }
+
+    private string? _ApplyText(Guid id, string? text)
+    {
+        if (Document.Find(id) is not PlacedObject placed || !_placedControls.TryGetValue(id, out var control))
+        {
+            return "Dit object staat niet meer op het bord.";
+        }
+
+        placed.Text = text;
+        control.Refresh();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return null;
+    }
+
+    private static Rect _BoundsOf(PlacedObject placed) => new(placed.X, placed.Y, placed.Width, placed.Height);
+
+    private IReadOnlyList<Guid> _CarriedChildren(PlacedObject placed) =>
+        placed.ShapeKind == PlacedShapeKind.Image ? [.. WhiteboardBinding.ChildrenOf(Document, placed.Id).Select(child => child.Id)] : [];
 
     private void _Select(Guid? id)
     {
@@ -723,7 +914,8 @@ public sealed class WhiteboardCanvasControl : Border
             handle.Pressed += (_, e) =>
             {
                 _resizing = (corner, control);
-                _resizeStartBounds = new Rect(control.Model.X, control.Model.Y, control.Model.Width, control.Model.Height);
+                _resizeStartBounds = _BoundsOf(control.Model);
+                _resizeCarried = _CarriedChildren(control.Model);
                 _resizeStartPointer = e.GetPosition(_surface);
                 e.Pointer.Capture(this);
             };
