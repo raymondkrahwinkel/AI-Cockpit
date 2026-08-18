@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
@@ -387,6 +388,25 @@ public partial class AssistantChatWindow : Window
         if (e.Source is not Button and not ToggleButton)
         {
             BeginMoveDrag(e);
+        }
+    }
+
+    // AC-895: a session badge click focuses that session and brings the main window forward — same shape as the
+    // main window's own OnWidgetHeaderPressed (CockpitView.axaml.cs), reused because a Button here would need
+    // transparent chrome to keep today's look.
+    private void _OnSessionSegmentPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { DataContext: SessionPanelViewModel session } || DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        vm.SelectSessionCommand.Execute(session);
+
+        if (Application.Current?.ApplicationLifetime
+            is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+        {
+            WindowActivation.BringToFront(main);
         }
     }
 
