@@ -30,21 +30,33 @@ public static class ProjectDirectoryMatch
 
         foreach (var project in projects)
         {
-            if (DirectoryPath.Normalize(project.SourceDirectory) is not { } source || !DirectoryPath.IsWithin(target, source))
+            // Every declared repository gets a claim, not only item 0 — a spread-out project (repositories not
+            // nested in each other) needs a run in either one to match. Two of this project's own folders claiming
+            // the target isn't cross-project ambiguity, so only the best claim per project feeds that check below.
+            var bestOwn = -1;
+            foreach (var repository in project.SourceDirectories)
+            {
+                if (DirectoryPath.Normalize(repository.Path) is { } source && DirectoryPath.IsWithin(target, source) && source.Length > bestOwn)
+                {
+                    bestOwn = source.Length;
+                }
+            }
+
+            if (bestOwn < 0)
             {
                 continue;
             }
 
-            if (source.Length > bestLength)
+            if (bestOwn > bestLength)
             {
                 best = project;
-                bestLength = source.Length;
+                bestLength = bestOwn;
                 ambiguous = false;
             }
-            else if (source.Length == bestLength)
+            else if (bestOwn == bestLength)
             {
-                // The same folder claimed twice: no answer beats an arbitrary one (see the remarks above). Keep
-                // walking — a more specific claim further down the list still wins over both.
+                // The same folder claimed twice by two different projects: no answer beats an arbitrary one (see
+                // the remarks above). Keep walking — a more specific claim further down the list still wins over both.
                 ambiguous = true;
             }
         }

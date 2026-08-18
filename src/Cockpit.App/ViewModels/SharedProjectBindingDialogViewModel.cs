@@ -226,7 +226,10 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         return new Project(Guid.NewGuid().ToString("n"), ProjectName)
         {
             Description = Description,
-            SourceDirectory = _NullIfBlank(SourceDirectory),
+            // Single-repository only (AC-938 non-goal): a shared project definition never carries more than the
+            // one machine-local folder this dialog offers — see this class's own remarks on why SourceDirectory
+            // travels with a bound project at all.
+            SourceDirectories = _NullIfBlank(SourceDirectory) is { } folder ? [new(folder)] : [],
             GitUrl = GitUrl,
             DefaultProfileLabel = SelectedProfileLabel,
             BehaviorPrompt = _behaviorPrompt,

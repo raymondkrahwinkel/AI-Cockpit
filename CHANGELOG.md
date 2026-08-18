@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a project can now declare more than one repository — a web repo and an android repo, say, kept as one
+  project even though they are separate git checkouts. The project editor's "Other repositories" section lets you
+  add, label and remove them below the existing folder; a session starting on such a project picks which one to
+  run in from the same folder quick-pick it already had. The assistant and its agents are told which repositories
+  a project has, with their labels, so they never have to discover a second repository the hard way.
 - added: a Depot-linked project's list row and card now show a small cloud icon when something changed on the
   Depot side since it was last checked here — a background check runs every 15 minutes, and a "Sync now" entry in
   the ⋯ menu forces an immediate recheck for that one project. Nothing is ever overwritten automatically; an
@@ -123,6 +128,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: starting a session with worktree isolation switched on, on a project whose folder turns out not to be a
+  git repository (or has no folder set at all), no longer silently falls back to running unisolated. It now asks
+  whether to run in that folder instead, the same as an isolation failure already did — closing the gap that let
+  two sessions on the same project share one real checkout without either of you noticing.
 - fixed: a terminal session sitting at an in-CLI question prompt (a commit confirmation, say) now shows as needing
   your attention instead of reading as busy or, after a couple of minutes, as done — the sidebar badge, the
   notification and the assistant's own session list all pick it up the same way they already do for a pending

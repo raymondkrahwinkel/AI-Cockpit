@@ -19,9 +19,15 @@ public sealed record Project(string Id, string Name)
     // Free-text note on what this project is, shown under its name in the launcher and the manager.
     public string? Description { get; init; }
 
-    // The folder its sessions start in. Null/blank for a project with no source of its own — an administrative
-    // project is a perfectly good project, and this model is not only for repositories.
-    public string? SourceDirectory { get; init; }
+    // The repositories a project's sessions can start in, in the order the operator added them. Item 0 is what
+    // SourceDirectory below has always been; anything after it covers a Waymark-shaped project (a web repo and an
+    // android repo, neither nested in the other). Empty for a project with no source of its own.
+    public IReadOnlyList<ProjectRepository> SourceDirectories { get; init; } = [];
+
+    // The folder its sessions start in by default — item 0 of SourceDirectories, read-only, so every existing
+    // reader keeps working unchanged for a single-repository project. A session on a different declared repository
+    // picks it explicitly; this property never claims to know which one that will be.
+    public string? SourceDirectory => SourceDirectories.Count > 0 ? SourceDirectories[0].Path : null;
 
     // The Git URL `SourceDirectory` was cloned from (AC-90), so the manager can show where it came from. Null when the folder was picked rather than cloned.
     public string? GitUrl { get; init; }

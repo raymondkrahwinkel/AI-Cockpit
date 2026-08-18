@@ -347,7 +347,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             // resolved against the ownership registry.
             fieldOwnership: project is not null ? _projectOwnership.Resolve(project.Id) : null,
             knownCategories: knownCategories,
-            sharedWriteBack: sharedWriteBack);
+            sharedWriteBack: sharedWriteBack,
+            worktreeManager: _worktreeManager);
 
         // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
         // window's own X both leave this null, which is the same answer.

@@ -36,7 +36,11 @@ public class ProjectStoreTests : IDisposable
         {
             Description = "The cockpit itself",
             Category = "Werk",
-            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            SourceDirectories =
+            [
+                new("/home/raymond/RiderProjects/AI-Cockpit"),
+                new("/home/raymond/RiderProjects/AI-Cockpit-Docs") { Label = "docs" },
+            ],
             GitUrl = "https://github.com/example/ai-cockpit.git",
             DefaultProfileLabel = "personal",
             BehaviorPrompt = "Follow the project conventions. Test before opening a PR.",
@@ -142,6 +146,47 @@ public class ProjectStoreTests : IDisposable
         var project = Assert.Single(loaded.Projects);
         Assert.Equal("kept", project.Id);
         Assert.Equal("Repository", Assert.Single(project.AdditionalInfo).Label);
+    }
+
+    // AC-938: a cockpit.json from before this ticket only ever wrote the singular SourceDirectory field —
+    // loading it must produce exactly the one-repository project it always described, and saving must keep
+    // writing that same legacy field so an older build can still read the file back.
+
+    [Fact]
+    public async Task LoadAsync_LegacySourceDirectoryOnly_LoadsAsItsOneRepository()
+    {
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """{"Projects":[{"Id":"legacy","Name":"Cockpit","SourceDirectory":"/home/raymond/legacy"}]}""");
+
+        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
+
+        var project = Assert.Single(loaded.Projects);
+        Assert.Equal("/home/raymond/legacy", project.SourceDirectory);
+        var repository = Assert.Single(project.SourceDirectories);
+        Assert.Equal("/home/raymond/legacy", repository.Path);
+        Assert.Null(repository.Label);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ProjectWithMultipleRepositories_StillMirrorsTheFirstIntoTheLegacyField()
+    {
+        var store = new ProjectStore(_configFilePath);
+        var project = Project.Create("Waymark") with
+        {
+            SourceDirectories = [new("/home/raymond/waymark-web"), new("/home/raymond/waymark-android") { Label = "android" }],
+        };
+
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
+
+        var written = await File.ReadAllTextAsync(_configFilePath);
+        Assert.Contains("\"SourceDirectory\"", written, StringComparison.Ordinal);
+        Assert.Contains("/home/raymond/waymark-web", written, StringComparison.Ordinal);
+
+        var loaded = await store.LoadAsync();
+        var reloaded = Assert.Single(loaded.Projects);
+        Assert.Equal(2, reloaded.SourceDirectories.Count);
+        Assert.Equal("android", reloaded.SourceDirectories[1].Label);
     }
 
     /// <summary>A section written by hand, or by a newer build, should cost the operator the bad entry rather than the whole list.</summary>

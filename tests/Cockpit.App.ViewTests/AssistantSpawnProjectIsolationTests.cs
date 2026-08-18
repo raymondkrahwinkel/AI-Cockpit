@@ -50,7 +50,7 @@ public class AssistantSpawnProjectIsolationTests
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude")) { SystemPrompt = "You are Olaf." };
         var project = Project.Create("Cockpit") with
         {
-            SourceDirectory = Repository,
+            SourceDirectories = [new(Repository)],
             IsolateInWorktreeByDefault = true,
             BehaviorPrompt = "Work ticket by ticket.",
         };
@@ -71,7 +71,7 @@ public class AssistantSpawnProjectIsolationTests
     public async Task IsolationOmitted_WithAProjectThatAsksForNone_StartsUnisolated()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = false };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = false };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
         var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -88,7 +88,7 @@ public class AssistantSpawnProjectIsolationTests
     public async Task IsolateTrue_OverridesAProjectThatAsksForNone()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = false };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = false };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
         var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -104,7 +104,7 @@ public class AssistantSpawnProjectIsolationTests
     public async Task IsolateFalse_IsRefusedOutright_BeforeAnySessionOrWorktreeIsTouched()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = true };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = true };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
         var (gateway, cockpit, trail, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -126,7 +126,7 @@ public class AssistantSpawnProjectIsolationTests
         // see, on a desk the operator may not be looking at. This is the one that used to be reachable only through
         // the operator's own New-session dialog; ronde A is what makes it reachable from a spawn at all.
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = true };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = true };
         var worktrees = Substitute.For<IWorktreeManager>();
         worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<WorktreeRecord>());
         worktrees.DetectRepositoryAsync(Repository, Arg.Any<CancellationToken>())
@@ -152,7 +152,7 @@ public class AssistantSpawnProjectIsolationTests
         // The reattach guard in _ResolveIsolatedWorkingDirectoryAsync predates this ticket, but ronde A is what
         // first makes it reachable from a non-interactive assistant spawn — this pins that it still holds there.
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = true };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = true };
 
         var worktrees = Substitute.For<IWorktreeManager>();
         var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -184,7 +184,7 @@ public class AssistantSpawnProjectIsolationTests
         // or it stays stuck on the assistant forever (always "live" by construction). A real LiveSessionRegistry
         // is wired here, not the Sessions fallback the other tests rely on, so that rule is actually exercised.
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, IsolateInWorktreeByDefault = true };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = true };
 
         const string AssistantMadeWorktree = "/repo-wt";
         var worktrees = Substitute.For<IWorktreeManager>();
@@ -215,7 +215,7 @@ public class AssistantSpawnProjectIsolationTests
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
         var project = Project.Create("Cockpit") with
         {
-            SourceDirectory = Repository,
+            SourceDirectories = [new(Repository)],
             DefaultProfileLabel = "work",
             IsolateInWorktreeByDefault = true,
             BehaviorPrompt = "Work ticket by ticket.",
@@ -247,7 +247,7 @@ public class AssistantSpawnProjectIsolationTests
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
         var project = Project.Create("Cockpit") with
         {
-            SourceDirectory = Repository,
+            SourceDirectories = [new(Repository)],
             DefaultProfileLabel = "work",
             IsolateInWorktreeByDefault = true,
         };
@@ -272,7 +272,7 @@ public class AssistantSpawnProjectIsolationTests
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
         // Names a profile that does not exist: if the explicit label did not win outright, resolution would fall
         // back to it and this spawn would be refused with "no profile called 'slow'" instead of succeeding.
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = "slow" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], DefaultProfileLabel = "slow" };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
         var (gateway, _, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -288,7 +288,7 @@ public class AssistantSpawnProjectIsolationTests
     public async Task SpawnWithAnUnknownProjectId_IsRefused_AndNeverFallsBackToTheFolder()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = "work" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], DefaultProfileLabel = "work" };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
         var (gateway, cockpit, trail, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -307,7 +307,7 @@ public class AssistantSpawnProjectIsolationTests
     public async Task SpawnWithNoProjectIdAndNoProfile_IsRefused_JustLikeMissingProfileAlwaysWas()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = "work" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], DefaultProfileLabel = "work" };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
         var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -323,7 +323,7 @@ public class AssistantSpawnProjectIsolationTests
     public async Task SpawnWithProjectId_WhoseProjectHasNoDefaultProfile_AndNoExplicitProfile_IsRefused()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
-        var project = Project.Create("Cockpit") with { SourceDirectory = Repository, DefaultProfileLabel = null };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], DefaultProfileLabel = null };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
         var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
@@ -345,7 +345,7 @@ public class AssistantSpawnProjectIsolationTests
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
         var project = Project.Create("Admin") with
         {
-            SourceDirectory = null,
+            SourceDirectories = [],
             DefaultProfileLabel = "work",
             BehaviorPrompt = "Keep the changelog tidy.",
         };

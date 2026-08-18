@@ -26,7 +26,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             Description = "Loonverwerking — DDD-template, MSSQL.",
             GitUrl = "git@github.com:synvolution/payroll-processor.git",
             BehaviorPrompt = "Werk volgens de DDD-template.",
-            SourceDirectory = "/home/raymond/RiderProjects/payroll",
+            SourceDirectories = [new("/home/raymond/RiderProjects/payroll")],
             DefaultProfileLabel = "Claude — Opus 5",
             McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["Depot: Work", "YouTrack"] },
             Category = "Synvolution",

@@ -7,23 +7,9 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.Services;
 
-// The app-level half of `IAssistantReadGateway` (AC-544): the running session panels, read across
-// every workspace at once.
-// Deliberately close in shape to `WorkspaceAgentGateway` and deliberately not the same class. That one
-// answers "who shares this caller's desk" and derives the desk from the caller; this one answers "what is running
-// anywhere" and has no caller to derive anything from — the assistant sits on no desk. Folding the second question
-// into the first would have meant giving that gateway a mode in which it does not scope, and a scoping rule with
-// an off switch is the thing AC-544 exists to avoid handing out.
-//
-// The UI-thread marshalling is the same and for the same reason: `CockpitViewModel.Sessions` only ever mutates
-// on the UI thread and an MCP tool call arrives on a Kestrel request thread. Inline when already there, so a unit
-// test on the UI thread pays for no redundant dispatch, and the awaitable is handed back rather than blocked on.
-//
-// *Every session, including the ones the grid does not show.* `CockpitViewModel.AllSessions` holds
-// embedded panes (an Autopilot step, a plugin run) as well as the ones in the layout — they are full agent sessions
-// with their own MCP tokens, and a status question that skipped them would be answered confidently and wrongly.
-// Plain terminal panes are left out: they carry a pane id but there is no agent on the other end to have a status.
-// The assistant's own session is left out too — it is the one asking.
+// The app-level half of `IAssistantReadGateway` (AC-544): every session panel across every workspace, unlike
+// `WorkspaceAgentGateway`'s caller-scoped desk — the assistant sits on no desk. UI-thread marshalling matches
+// `CockpitViewModel.Sessions`; embedded panes count as sessions, plain terminals and the assistant's own do not.
 internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProjectSourceRegistry sharedProjectSources)
     : IAssistantReadGateway, ISingletonService
 {
@@ -98,20 +84,9 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
     // a file to be read off this thread; or neither, for a plain terminal or a pane id that names nothing.
     private readonly record struct FoundTranscript(AssistantTranscript? Transcript, TtyViewModel? Tty);
 
-    // The last `count` rows of a session's transcript, or nothing when that pane is not an AI session.
-    // *The type test is the lookup.* `CockpitViewModel.FindSession` answers in `SessionPanelViewModel`, the shared
-    // base of an SDK session, a TTY session and a plain terminal. Both session kinds are real AI sessions with a
-    // real transcript and both are answered here; only a terminal falls out as "no AI session", which is true of it
-    // rather than a convenient approximation. It used to be the TTY panes that fell out too — and since TTY is how
-    // most of this cockpit's sessions run, the answer contradicted `list_sessions`, which had just reported the same
-    // pane as a live session with a current statusline (AC-609). Embedded panes are reachable for the same reason
-    // `FindSession` exists: an Autopilot step is a full session with a real transcript, and a reader that only
-    // walked the grid would answer confidently and wrongly about it.
-    //
-    // The SDK slice is taken here, on the UI thread, so a session with ten thousand rows costs a `Skip` rather than
-    // a copy. Nothing is filtered on the way out — a thinking row and a folded tool call are in the transcript and
-    // are therefore in the answer, whether or not the operator's current reading level draws them. What the
-    // assistant is being asked is what the session *did*, not what a particular panel is showing.
+    // The last `count` rows of a session's transcript, or nothing when that pane names no AI session — an SDK or
+    // TTY session, never a plain terminal or the assistant's own. Sliced here, on the UI thread, so a session
+    // with ten thousand rows costs a `Skip` rather than a copy; nothing is filtered out of what remains.
     private FoundTranscript _ReadTranscript(string paneId, int count)
     {
         switch (cockpit.FindSession(paneId))
@@ -167,7 +142,8 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
             project.SourceDirectory,
             project.DefaultProfileLabel,
             project.PluginFields,
-            project.GitUrl)),
+            project.GitUrl,
+            [.. project.SourceDirectories.Select(repository => new AssistantProjectRepositoryRow(repository.Path, repository.Label))])),
     ];
 
     private IReadOnlyList<AssistantSessionRow> _ListSessions()

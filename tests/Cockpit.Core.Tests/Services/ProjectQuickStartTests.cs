@@ -72,7 +72,7 @@ public class ProjectQuickStartTests
         var project = Project.Create("Cockpit") with
         {
             DefaultProfileLabel = "work",
-            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
             IsolateInWorktreeByDefault = true,
             BehaviorPrompt = "Work ticket by ticket.",
         };
@@ -227,7 +227,7 @@ public class ProjectQuickStartTests
         var quickStart = Build([ClaudeProfile]);
         var project = Project.Create("Cockpit") with
         {
-            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
             IsolateInWorktreeByDefault = true,
             BehaviorPrompt = "Work ticket by ticket.",
         };

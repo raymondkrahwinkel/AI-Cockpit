@@ -107,6 +107,12 @@ public sealed record SessionStartDefaults(
         // on top of the ceiling once they are done — the ceiling must not tolerate a larger worst case than before.
         var remaining = Math.Max(0, ProjectContributionBudget - _ReservedLength(ProjectAttributionHeading));
 
+        // AC-938: reserved first, ahead of every AC-484 block — which repositories this project has is more
+        // foundational than what a session should do with them, and shares the same ceiling rather than growing it
+        // (see ProjectContributionBudget's own remarks on why nothing here may raise the worst case).
+        var repositoriesNote = _RepositoriesNote(project, remaining);
+        remaining = Math.Max(0, remaining - _ReservedLength(repositoriesNote));
+
         var memoryNote = _MemoryNote(memoryRows, memorySources, unresolvedReferences, remaining);
         remaining = Math.Max(0, remaining - _ReservedLength(memoryNote));
 
@@ -126,7 +132,7 @@ public sealed record SessionStartDefaults(
 
         // AC-714: the attribution heading precedes the project block only when it actually has content — see
         // `ProjectAttributionHeading`'s own remarks for why it is bounded to this block alone.
-        var projectBlock = _JoinPrompts(project?.BehaviorPrompt, instructionsNote, memoryNote, referenceNote, informationNote);
+        var projectBlock = _JoinPrompts(repositoriesNote, project?.BehaviorPrompt, instructionsNote, memoryNote, referenceNote, informationNote);
         var attributedProjectBlock = string.IsNullOrEmpty(projectBlock)
             ? null
             : $"{ProjectAttributionHeading}\n\n{projectBlock}";
@@ -345,6 +351,35 @@ public sealed record SessionStartDefaults(
     // it no better off than the bare reference"). Added only when the whole of it still fits the budget, and left
     // out whole rather than sliced when it does not — the same rule `_FitRowsToBudget` already applies
     // to a row that does not fit on its own.
+    // Tells a session up front that its project has more than one repository, instead of it finding out via a
+    // failed worktree isolation. Null for zero/one repository, costing the shared budget nothing. Silent on which
+    // repo *this* session runs in — that is decided later, and the session's own cwd already answers it.
+    private static string? _RepositoriesNote(Project? project, int budget)
+    {
+        var repositories = project?.SourceDirectories ?? [];
+        if (repositories.Count <= 1)
+        {
+            return null;
+        }
+
+        var sentence =
+            $"This project consists of multiple repositories: {string.Join(", ", repositories.Select(_RepositoryDisplayName))}. " +
+            "Your session runs in one of them; the others are separate checkouts and are not necessarily next to your working folder.";
+
+        return sentence.Length <= Math.Max(0, budget) ? sentence : null;
+    }
+
+    // A repository's own label when the operator gave one, its folder's own name otherwise — same reasoning as
+    // ProjectResource.Label. Capped through _CappedSentence like every other operator-typed value entering this
+    // budget, since a Label is free text with no upstream length limit.
+    private static string _RepositoryDisplayName(ProjectRepository repository)
+    {
+        var name = string.IsNullOrWhiteSpace(repository.Label)
+            ? Path.GetFileName(repository.Path.TrimEnd('/', '\\'))
+            : repository.Label.Trim();
+        return _CappedSentence(string.Empty, $"{ProjectPromptText.OneLine(name)} ({ProjectPromptText.OneLine(repository.Path.Trim())})", string.Empty);
+    }
+
     private static string? _MemoryNote(
         IReadOnlyList<ProjectResource> memoryRows,
         IReadOnlyList<ProjectMemorySource>? memorySources,

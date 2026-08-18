@@ -162,8 +162,8 @@ public class AssistantCreateProjectTests : IDisposable
         var projects = new ProjectsViewModel(store, dialogs: null);
         await Dispatcher.UIThread.InvokeAsync(() => projects.LoadAsync());
 
-        var assistantProject = Project.Create("Assistant project") with { SourceDirectory = _folder };
-        var dialogProject = Project.Create("Dialog project") with { SourceDirectory = _folder };
+        var assistantProject = Project.Create("Assistant project") with { SourceDirectories = [new(_folder)] };
+        var dialogProject = Project.Create("Dialog project") with { SourceDirectories = [new(_folder)] };
 
         var assistantTask = Dispatcher.UIThread.InvokeAsync(() => projects.AddNewProjectAsync(assistantProject));
         var dialogTask = Dispatcher.UIThread.InvokeAsync(() => projects.AddNewProjectAsync(dialogProject));
@@ -223,7 +223,7 @@ public class AssistantCreateProjectTests : IDisposable
         // Unchanged behaviour (`Project.Name`'s own doc comment: "free to collide with another project's name") —
         // this tool only guards against duplicating what a connection shares, not against two local projects
         // sharing a name, which was always permitted.
-        var existing = Project.Create("Invoices") with { SourceDirectory = _folder };
+        var existing = Project.Create("Invoices") with { SourceDirectories = [new(_folder)] };
         var (gateway, projects, _) = _Build(settings: ProjectSettings.Empty with { Projects = [existing] });
 
         var result = await gateway.CreateProjectAsync("Invoices");

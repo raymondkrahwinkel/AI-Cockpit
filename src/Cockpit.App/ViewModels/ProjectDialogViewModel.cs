@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Projects;
@@ -33,11 +34,20 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // source claims, or one whose fresh checksum read failed at open time — see CreateAsync's own remarks.
     private ProjectSharedWriteBackContext? _writeBack;
 
+    // What SaveAsync asks whether an extra repository row actually is a git repository. Null for a caller that
+    // does not wire one (existing test call sites, design-time/previewer) — the same "no manager, no gate" the
+    // New-session dialog already tolerates.
+    private readonly IWorktreeManager? _worktreeManager;
+
     // Raised when the dialog is done: the saved project, or null when the operator cancelled.
     public event Action<Project?>? CloseRequested;
 
     // Raised when the operator picks "Choose…"; the view opens the folder picker and assigns `SourceDirectory`.
     public event Action? BrowseRequested;
+
+    // Raised when the operator picks "Choose…" on an extra repository row (AC-938); the view opens a folder
+    // picker and assigns the result back onto that row's own `ProjectRepositoryRowViewModel.Path`.
+    public event Action<ProjectRepositoryRowViewModel>? BrowseRepositoryRequested;
 
     // Raised when the operator picks "Clone…" (AC-90); the host clones and assigns `SourceDirectory`.
     public event Action? CloneRequested;
@@ -69,10 +79,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
         AdditionalInfo.Add(new ProjectInfoFieldViewModel("Customer", "Acme BV — ask for their project lead"));
     }
 
-    private ProjectDialogViewModel(Project? project)
+    private ProjectDialogViewModel(Project? project, IWorktreeManager? worktreeManager)
     {
         _projectId = project?.Id;
         _originalProject = project;
+        _worktreeManager = worktreeManager;
         IsEditing = project is not null;
 
         if (project is null)
@@ -85,6 +96,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Description = project.Description ?? string.Empty;
         SourceDirectory = project.SourceDirectory ?? string.Empty;
         GitUrl = project.GitUrl;
+
+        // Item 0 is the Folder row above (SourceDirectory); everything after it is an extra repository row.
+        foreach (var repository in project.SourceDirectories.Skip(1))
+        {
+            RepositoryRows.Add(new ProjectRepositoryRowViewModel(repository.Path, repository.Label));
+        }
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
         LogoSource = project.LogoPath ?? string.Empty;
         _originalLogoSource = LogoSource;
@@ -119,9 +136,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
         // never reaches ToProject; see _Carry). Set only by the caller that already resolved the right
         // ISharedProjectSource for this project and read a checksum to defend a write against.
         ProjectSharedWriteBackContext? sharedWriteBack = null,
+        // AC-938: the same repository probe the New-session dialog already uses to grey its isolate checkbox — null
+        // for a caller that does not wire one, in which case SaveAsync's own repository-is-a-git-repo check is
+        // simply skipped, never a hard requirement this dialog did not have before.
+        IWorktreeManager? worktreeManager = null,
         CancellationToken cancellationToken = default)
     {
-        var viewModel = new ProjectDialogViewModel(project)
+        var viewModel = new ProjectDialogViewModel(project, worktreeManager)
         {
             HasFieldOwnership = fieldOwnership is not null,
             _writeBack = sharedWriteBack,
@@ -445,6 +466,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // A row the operator adds and leaves alone costs them nothing: `ToProject` drops it.
     public ObservableCollection<ProjectResourceRowViewModel> ResourceRows { get; } = [];
 
+    // Repository #2 and on (AC-938) — the Folder row above stays repo #1 (SourceDirectory). A row the operator
+    // adds and leaves blank is refused at save (see SaveAsync), not silently dropped: a gap in this list is not
+    // this project's repositories, it is a mistake.
+    public ObservableCollection<ProjectRepositoryRowViewModel> RepositoryRows { get; } = [];
+
     // The fields plugins contributed (AC-317), in registration order — what this project is called in a tracker or
     // on a forge. Empty when no plugin that links projects is installed, and the section stays out of the dialog.
     public ObservableCollection<ProjectPluginFieldViewModel> PluginFields { get; } = [];
@@ -508,7 +534,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
         {
             Category = _NullIfBlank(Category),
             Description = _Carry(DescriptionOrigin, _NullIfBlank(Description), p => p.Description),
-            SourceDirectory = _NullIfBlank(SourceDirectory),
+            // Item 0 is this dialog's own SourceDirectory box, exactly as it always was — a project with no folder
+            // and no repository rows saves an empty list, same as an empty SourceDirectory used to save null.
+            SourceDirectories = _NullIfBlank(SourceDirectory) is { } folder
+                ? [new(folder), .. RepositoryRows.Select(row => row.ToDomain())]
+                : [],
             GitUrl = GitUrl,
             DefaultProfileLabel = SelectedProfileLabel,
             BehaviorPrompt = _Carry(BehaviorOrigin, _NullIfBlank(BehaviorPrompt), p => p.BehaviorPrompt),
@@ -618,6 +648,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void PickResource(ProjectResourceRowViewModel row) => PickResourceRequested?.Invoke(row);
 
+    // Appends a blank extra repository row (AC-938), the same shape AddResourceRow already has.
+    [RelayCommand]
+    private void AddRepositoryRow() => RepositoryRows.Add(new ProjectRepositoryRowViewModel());
+
+    [RelayCommand]
+    private void RemoveRepositoryRow(ProjectRepositoryRowViewModel row) => RepositoryRows.Remove(row);
+
+    [RelayCommand]
+    private void BrowseRepository(ProjectRepositoryRowViewModel row) => BrowseRepositoryRequested?.Invoke(row);
+
     // "Servers…" on a Memory row's server row (AC-499): opens wherever the picked family's own instances are
     // configured. A no-op when the picked choice offers none — the button that would call this is not shown at all
     // in that case (`ProjectResourceRowViewModel.CanConfigureMemorySource`), but a command guards the
@@ -682,6 +722,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
+        SaveError = null;
+
+        if (await _ValidateRepositoryRowsAsync().ConfigureAwait(true) is { } repositoryError)
+        {
+            SaveError = repositoryError;
+            return;
+        }
+
         if (_writeBack is not { } writeBack)
         {
             CloseRequested?.Invoke(ToProject());
@@ -785,6 +833,44 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
+
+    // AC-938 acceptance criterion 3: refused before ToProject ever builds SourceDirectories, not silently dropped
+    // or silently saved with a gap — the same "fail closed, tell the operator why" SaveError already gives a
+    // write-back conflict. Returns the refusal reason, or null when every row is fine to save.
+    private async Task<string?> _ValidateRepositoryRowsAsync()
+    {
+        var extraRepositories = RepositoryRows.Select(row => row.Path.Trim()).ToList();
+
+        if (extraRepositories.Any(path => path.Length == 0))
+        {
+            return "Every repository row needs a folder — remove an empty row instead of leaving it blank.";
+        }
+
+        if (extraRepositories.Count == 0)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(SourceDirectory))
+        {
+            return "Choose the project's own folder before adding another repository.";
+        }
+
+        if (_worktreeManager is null)
+        {
+            return null;
+        }
+
+        foreach (var path in extraRepositories)
+        {
+            if (await _worktreeManager.DetectRepositoryAsync(path).ConfigureAwait(true) is null)
+            {
+                return $"'{path}' is not a git repository.";
+            }
+        }
+
+        return null;
+    }
 
     // What the operator typed for the six write-back-eligible fields (AC-247/AC-763).
     private async Task<SharedProjectDefinitionEdit> _BuildEditAsync() => new(

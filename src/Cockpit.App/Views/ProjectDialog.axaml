@@ -347,6 +347,37 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- AC-938: the folder above is repository #1; a Waymark-shaped project (a web repo and an android
+                     repo, neither nested in the other) needs more than one. Same ItemsControl + Add-command
+                     idiom as the resource rows below, not a new field type — a project with no extra row here
+                     looks exactly as it always has. -->
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="FieldLabel" Text="Other repositories"/>
+                    <TextBlock Classes="FieldHint" Text="This project's sessions start in the folder above. Add another repository here for a project that spans more than one — a session picks which one to run in when it starts."/>
+                    <ItemsControl ItemsSource="{Binding RepositoryRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectRepositoryRowViewModel">
+                                <Grid ColumnDefinitions="*,120,Auto,Auto" ColumnSpacing="6" Margin="0,0,0,6">
+                                    <TextBox Grid.Column="0" Text="{Binding Path}" PlaceholderText="Folder"/>
+                                    <TextBox Grid.Column="1" Text="{Binding Label}" PlaceholderText="Label (optional)"/>
+                                    <Button Grid.Column="2" Content="Choose…"
+                                            Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).BrowseRepositoryCommand}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Grid.Column="3" Classes="Subtle" VerticalAlignment="Center"
+                                            ToolTip.Tip="Remove this repository"
+                                            Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).RemoveRepositoryRowCommand}"
+                                            CommandParameter="{Binding}">
+                                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="+ Add repository" Classes="Subtle" HorizontalAlignment="Left"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Command="{Binding AddRepositoryRowCommand}"/>
+                </StackPanel>
+
                 <!-- What a session reads besides the folder (AC-483/485): a memory location it can write back to, an
                      instructions file it follows, or material it only looks up when it needs it — see
                      ProjectResourceRole. The old standalone "Memory" row above is now just one row here with that

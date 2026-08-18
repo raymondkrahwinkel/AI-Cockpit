@@ -19,7 +19,15 @@ internal sealed class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Category { get; set; }
 
+    // Legacy on-disk shape: the project's one and only repository, before a project could keep more than one.
+    // `ToDomain` falls back to it as a single-item SourceDirectories when that list is absent; `FromDomain`
+    // still writes it too, mirroring SourceDirectories[0].Path, for the same rollback-safety reason MemoryRef is.
     public string? SourceDirectory { get; set; }
+
+    // Absent for a project with no repository of its own, or exactly one (most projects, still) — see
+    // `SourceDirectory` above for why that single-repository shape keeps writing its own legacy field too.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectRepositoryEntry>? SourceDirectories { get; set; }
 
     public string? GitUrl { get; set; }
 
@@ -89,6 +97,9 @@ internal sealed class ProjectEntry
         Description = project.Description,
         Category = project.Category,
         SourceDirectory = project.SourceDirectory,
+        SourceDirectories = project.SourceDirectories.Count == 0
+            ? null
+            : [.. project.SourceDirectories.Select(ProjectRepositoryEntry.FromDomain)],
         GitUrl = project.GitUrl,
         DefaultProfileLabel = project.DefaultProfileLabel,
         BehaviorPrompt = project.BehaviorPrompt,
@@ -118,7 +129,14 @@ internal sealed class ProjectEntry
     {
         Description = Description,
         Category = Category,
-        SourceDirectory = SourceDirectory,
+        // Migration: an old cockpit.json only has the flat SourceDirectory field — read as its single repository,
+        // same fallback ToDomain applies to MemoryRef above. Present-but-empty ([]) is not absent, so it must not
+        // fall back to SourceDirectory — that means a newer build already saved this project with no repository.
+        SourceDirectories = SourceDirectories is not null
+            ? [.. SourceDirectories.Select(entry => entry.ToDomain())]
+            : !string.IsNullOrWhiteSpace(SourceDirectory)
+                ? [new ProjectRepository(SourceDirectory)]
+                : [],
         GitUrl = GitUrl,
         DefaultProfileLabel = DefaultProfileLabel,
         BehaviorPrompt = BehaviorPrompt,

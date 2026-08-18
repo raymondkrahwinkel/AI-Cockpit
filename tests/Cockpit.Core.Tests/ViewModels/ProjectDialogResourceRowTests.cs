@@ -293,7 +293,7 @@ public class ProjectDialogResourceRowTests
         {
             // SourceDirectory must actually be set: SuggestRepoRelativeFix returns early (no Path.GetFullPath call
             // at all) when it is blank, which would leave this test green even without the guard it means to pin.
-            SourceDirectory = _Root(),
+            SourceDirectories = [new(_Root())],
             Resources = [new ProjectResource(_Root("bad\0name.md"), ProjectResourceRole.Reference)],
         };
 
@@ -385,7 +385,7 @@ public class ProjectDialogResourceRowTests
     {
         var project = Project.Create("Cockpit") with
         {
-            SourceDirectory = _Root(),
+            SourceDirectories = [new(_Root())],
             Resources = [new ProjectResource(_Root("..", "Elsewhere", "handbook.md"), ProjectResourceRole.Reference)],
         };
 
@@ -409,7 +409,7 @@ public class ProjectDialogResourceRowTests
     {
         var project = Project.Create("Cockpit") with
         {
-            SourceDirectory = _Root(),
+            SourceDirectories = [new(_Root())],
             Resources = [new ProjectResource(_Root("docs", "handbook.md"), ProjectResourceRole.Reference)],
         };
 
@@ -425,7 +425,7 @@ public class ProjectDialogResourceRowTests
     {
         var project = Project.Create("Cockpit") with
         {
-            SourceDirectory = _Root(),
+            SourceDirectories = [new(_Root())],
             Resources = [new ProjectResource(Path.Combine("docs", "handbook.md"), ProjectResourceRole.Reference)],
         };
 
