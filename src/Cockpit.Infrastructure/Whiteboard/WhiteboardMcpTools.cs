@@ -84,7 +84,7 @@ internal sealed class WhiteboardMcpTools
     }
 
     [McpServerTool(Name = "read_whiteboard")]
-    [Description("Returns a screenshot of a whiteboard surface — you name it by the id or name from list_whiteboards. This shares an IMAGE of the board exactly as it looks right now — literally what is on the operator's screen — not its shapes or strokes as data. The first time you read a surface the operator gets an Approve/Deny prompt naming which whiteboard and that a screenshot is being shared. Reading does not let you put anything on the board — place_on_whiteboard asks for that separately.")]
+    [Description("Returns a screenshot of a whiteboard surface — you name it by the id or name from list_whiteboards. This shares an IMAGE of the WHOLE board, scaled to fit — a render of what is drawn and placed on it, not a crop of whatever the operator happens to have in view, and not its shapes or strokes as data. The first time you read a surface the operator gets an Approve/Deny prompt naming which whiteboard and that a screenshot is being shared. Reading does not let you put anything on the board — place_on_whiteboard asks for that separately.")]
     public async Task<string> ReadWhiteboard(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The whiteboard to read, by its id or name from list_whiteboards.")] string whiteboard)
@@ -119,7 +119,7 @@ internal sealed class WhiteboardMcpTools
         [Description("The whiteboard to put something on, by its id or name from list_whiteboards.")] string whiteboard,
         [Description("The shape to place: rectangle, roundedrectangle, ellipse, diamond, arrow, column, callout, text (a bare label) or stickynote.")] string shape,
         [Description("The text drawn in it; leave empty for an unlabelled shape.")] string? label = null,
-        [Description("Left edge in board pixels, from the top-left corner (the board is 800x600).")] double x = 40,
+        [Description("Left edge in board pixels, from the top-left corner (the board is 2400x1800 — the operator can pan/zoom to reach any of it, so this is not limited to what they currently have in view).")] double x = 40,
         [Description("Top edge in board pixels, from the top-left corner.")] double y = 40,
         [Description("Width in board pixels; omit for a sensible default.")] double width = 0,
         [Description("Height in board pixels; omit for a sensible default.")] double height = 0)
@@ -236,14 +236,14 @@ internal sealed class WhiteboardMcpTools
         return null;
     }
 
-    // Read names a screenshot being shared, not a diagram source (AC-823's deviation) — the payload is literally
-    // what is on the operator's screen. Write's prompt (AC-854) says what is about to be put down, built from the
-    // shape and label the call actually carries rather than from prose the agent wrote.
+    // Read names a screenshot being shared, not a diagram source (AC-823's deviation) — a render of the whole
+    // board (AC-913), never a crop of whatever the operator has scrolled into view. Write's prompt (AC-854) says
+    // what is about to be put down, built from the shape/label the call carries, not from the agent's own prose.
     private static ConsentRequest _PromptFor(WhiteboardSurface surface, WhiteboardCapability needed, bool widening, string? ask) =>
         needed == WhiteboardCapability.Read
             ? new ConsentRequest(
                 "An agent wants to read a whiteboard",
-                $"Let this agent see a screenshot of whiteboard \"{_SingleLine(surface.Name)}\" exactly as it looks right now — this shares an image of the board, not just its shapes or text as data. It cannot put anything on the board: that is a separate question, asked separately.",
+                $"Let this agent see a screenshot of the whole whiteboard \"{_SingleLine(surface.Name)}\", scaled to fit — not just the part of it the operator currently has in view — this shares an image of the board, not just its shapes or text as data. It cannot put anything on the board: that is a separate question, asked separately.",
                 new ConsentSource(surface.SurfaceId, null, ConsentSourceCatalog.WhiteboardMcp),
                 "whiteboard.read",
                 ConsentRisk.Dangerous)

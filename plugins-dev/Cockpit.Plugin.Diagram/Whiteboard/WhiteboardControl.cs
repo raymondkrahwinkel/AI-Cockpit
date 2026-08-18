@@ -49,11 +49,32 @@ public sealed class WhiteboardControl : UserControl
         var imageButton = _IconButton(MaterialIconKind.ImagePlusOutline, "Afbeelding invoegen", () => _ = Canvas.InsertImageAsync());
         var pasteButton = _IconButton(MaterialIconKind.ContentPaste, "Screenshot plakken", () => _ = Canvas.PasteScreenshotAsync());
 
+        // AC-913: same zoom/Fit shape as the diagram and wireframe toolbars — the wheel and the middle-button drag
+        // do the same job, this is just where the current level is always visible.
+        var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
+        zoomOut.Click += (_, _) => Canvas.ZoomOut();
+        var zoomLabel = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = 40,
+            TextAlignment = TextAlignment.Center,
+            FontSize = 12,
+            Text = $"{Canvas.Zoom * 100:0}%",
+        };
+        Canvas.ZoomChanged += (_, _) => zoomLabel.Text = $"{Canvas.Zoom * 100:0}%";
+        var zoomIn = new Button { Content = "+", Classes = { "Compact" }, MinWidth = 28 };
+        zoomIn.Click += (_, _) => Canvas.ZoomIn();
+        var fitButton = new Button { Content = "Fit", Classes = { "Compact" } };
+        fitButton.Click += (_, _) => Canvas.ApplyFit();
+        ToolTip.SetTip(zoomOut, "Uitzoomen");
+        ToolTip.SetTip(zoomIn, "Inzoomen");
+        ToolTip.SetTip(fitButton, "Alles in beeld — middelste knop sleept, wiel zoomt.");
+
         var toolbar = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
-            Children = { _selectButton, _pencilButton, _markerButton, shapeButton, stickyButton, imageButton, pasteButton },
+            Children = { _selectButton, _pencilButton, _markerButton, shapeButton, stickyButton, imageButton, pasteButton, zoomOut, zoomLabel, zoomIn, fitButton },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
 

@@ -9,6 +9,10 @@ namespace Cockpit.Plugin.Diagram.Tests.Whiteboard.Rendering;
 
 // The one guarantee AC-822 and AC-823 both build on: a document renders to a raster image with freehand yellow
 // and placed objects blue-strict, at any moment, with no window required.
+
+// AC-913: the renderer fits the document's content bounding box into whatever pixel size is asked for — the
+// whole board, never a crop. Most tests below request that bounding box's own size, which turns the fit into a
+// plain shift rather than a rescale, so pixel assertions stay simple while still exercising the real fit path.
 [Collection("avalonia")]
 public class WhiteboardSnapshotRendererTests
 {
@@ -18,9 +22,9 @@ public class WhiteboardSnapshotRendererTests
         var document = new WhiteboardDocument();
         document.Add(new FreehandStroke { Points = [new WhiteboardPoint(10, 50), new WhiteboardPoint(90, 50)] });
 
-        var image = _Render(document);
+        var image = _Render(document, new PixelSize(160, 80));
 
-        var pixel = _PixelAt(image, 50, 50);
+        var pixel = _PixelAt(image, 80, 40);
         Assert.True(_CloseTo(pixel, Color.Parse("#F2C230")), $"expected yellow at the stroke, got {pixel}");
     }
 
@@ -30,16 +34,16 @@ public class WhiteboardSnapshotRendererTests
         var document = new WhiteboardDocument();
         document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 20, Y = 20, Width = 60, Height = 40 });
 
-        var image = _Render(document);
+        var image = _Render(document, new PixelSize(140, 120));
 
-        var pixel = _PixelAt(image, 20, 40);
+        var pixel = _PixelAt(image, 40, 60);
         Assert.True(_CloseTo(pixel, Color.Parse("#2563EB")), $"expected placed blue on the rectangle's edge, got {pixel}");
     }
 
     [Fact]
     public void EmptyDocument_RendersAsPlainWhite()
     {
-        var image = _Render(new WhiteboardDocument());
+        var image = _Render(new WhiteboardDocument(), new PixelSize(100, 100));
 
         Assert.Equal(Colors.White, _PixelAt(image, 5, 5));
     }
@@ -58,8 +62,9 @@ public class WhiteboardSnapshotRendererTests
             IsMarker = true,
         });
 
-        var pencilPixel = _PixelAt(_Render(pencilDocument), 50, 50);
-        var markerPixel = _PixelAt(_Render(markerDocument), 50, 50);
+        var size = new PixelSize(160, 80);
+        var pencilPixel = _PixelAt(_Render(pencilDocument, size), 80, 40);
+        var markerPixel = _PixelAt(_Render(markerDocument, size), 80, 40);
 
         Assert.NotEqual(pencilPixel, markerPixel);
         Assert.False(_CloseTo(markerPixel, WhiteboardObjectPainter.MarkerColor, tolerance: 10), $"expected a translucent blend, got opaque marker colour {markerPixel}");
@@ -71,7 +76,7 @@ public class WhiteboardSnapshotRendererTests
         var document = new WhiteboardDocument();
         document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.StickyNote, X = 10, Y = 10, Width = 60, Height = 60, Text = "Idee" });
 
-        var pixel = _PixelAt(_Render(document), 40, 40);
+        var pixel = _PixelAt(_Render(document, new PixelSize(140, 140)), 70, 70);
 
         Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected sticky-note yellow, got {pixel}");
     }
@@ -105,8 +110,9 @@ public class WhiteboardSnapshotRendererTests
             IsPastedScreenshot = false,
         });
 
-        var badgePixel = _PixelAt(_Render(pastedDocument), 10, 55);
-        var plainPixel = _PixelAt(_Render(insertedDocument), 10, 55);
+        var size = new PixelSize(180, 140);
+        var badgePixel = _PixelAt(_Render(pastedDocument, size), 50, 95);
+        var plainPixel = _PixelAt(_Render(insertedDocument, size), 50, 95);
 
         Assert.Equal(plainPixel, badgePixel);
     }
@@ -122,12 +128,26 @@ public class WhiteboardSnapshotRendererTests
         var operatorDocument = new WhiteboardDocument();
         operatorDocument.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 0, Y = 0, Width = 100, Height = 60 });
 
-        var badgePixel = _PixelAt(_Render(agentDocument), 10, 55);
-        var plainPixel = _PixelAt(_Render(operatorDocument), 10, 55);
+        var size = new PixelSize(180, 140);
+        var badgePixel = _PixelAt(_Render(agentDocument, size), 50, 95);
+        var plainPixel = _PixelAt(_Render(operatorDocument, size), 50, 95);
 
         Assert.Equal(plainPixel, badgePixel);
         Assert.Equal("Placed by agent", WhiteboardObjectPainter.BadgeFor(agentDocument.Objects.OfType<PlacedObject>().Single())?.Tooltip);
         Assert.Null(WhiteboardObjectPainter.BadgeFor(operatorDocument.Objects.OfType<PlacedObject>().Single()));
+    }
+
+    // AC-913: a document bigger than the requested pixel size is scaled down to fit, not cropped — a shape placed
+    // well outside a small target still shows up in the render, just smaller.
+    [Fact]
+    public void ContentBiggerThanTheRequestedSize_IsScaledToFit_NotCropped()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.StickyNote, X = 2000, Y = 1500, Width = 60, Height = 60 });
+
+        var pixel = _PixelAt(_Render(document, new PixelSize(50, 50)), 25, 25);
+
+        Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected the sticky note scaled into view, got {pixel}");
     }
 
     private static byte[] _TinyPngBytes()
@@ -143,10 +163,10 @@ public class WhiteboardSnapshotRendererTests
         && Math.Abs(actual.G - expected.G) <= tolerance
         && Math.Abs(actual.B - expected.B) <= tolerance;
 
-    private static WriteableBitmap _Render(WhiteboardDocument document)
+    private static WriteableBitmap _Render(WhiteboardDocument document, PixelSize size)
     {
         var renderer = new WhiteboardSnapshotRenderer();
-        using var target = renderer.Render(document, new PixelSize(100, 100));
+        using var target = renderer.Render(document, size);
 
         using var stream = new MemoryStream();
         target.Save(stream, PngBitmapEncoderOptions.Default);

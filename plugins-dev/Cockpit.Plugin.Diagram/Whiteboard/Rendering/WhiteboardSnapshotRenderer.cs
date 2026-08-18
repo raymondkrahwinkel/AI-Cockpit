@@ -13,19 +13,23 @@ public interface IWhiteboardSnapshotRenderer
 
 public sealed class WhiteboardSnapshotRenderer : IWhiteboardSnapshotRenderer
 {
+    // AC-913: the whole board, scaled to fit `size` — never a crop of the currently visible viewport, which would
+    // make the snapshot depend on whatever window happened to render it (AC6).
     public Bitmap Render(WhiteboardDocument document, PixelSize size)
     {
-        var visual = new WhiteboardSnapshotVisual(document)
+        var target = new Size(size.Width, size.Height);
+        var transform = WhiteboardGeometry.FitTransform(WhiteboardGeometry.ContentBounds(document), target);
+        var visual = new WhiteboardSnapshotVisual(document, transform)
         {
             Width = size.Width,
             Height = size.Height,
         };
 
-        visual.Measure(new Size(size.Width, size.Height));
-        visual.Arrange(new Rect(0, 0, size.Width, size.Height));
+        visual.Measure(target);
+        visual.Arrange(new Rect(target));
 
-        var target = new RenderTargetBitmap(size);
-        target.Render(visual);
-        return target;
+        var bitmap = new RenderTargetBitmap(size);
+        bitmap.Render(visual);
+        return bitmap;
     }
 }

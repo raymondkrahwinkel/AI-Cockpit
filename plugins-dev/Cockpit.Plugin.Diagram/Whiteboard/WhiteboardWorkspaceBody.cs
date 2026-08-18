@@ -207,16 +207,18 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     }
 
     // Names what is really shared, the same rule WhiteboardMcpTools._PromptFor follows for the agent-initiated ask.
+    // AC-913: the board can be bigger than this window — the snapshot is always the whole board, scaled to fit,
+    // never a crop of whatever happens to be in view, so the wording says "whole board", not "as it looks now".
     private ConsentRequest _InvitePrompt() =>
         new(
             "Let the agent look along on this whiteboard",
-            $"Share a screenshot of this whiteboard ({SnapshotSize.Width}×{SnapshotSize.Height}) with the session's agent, exactly as it looks right now — an image of the board, not its shapes or text as data. It cannot put anything on the board with this: drawing along is a separate question the agent has to ask for itself.",
+            $"Share a screenshot of the whole whiteboard ({SnapshotSize.Width}×{SnapshotSize.Height}, scaled to fit — not just the part of it visible in this window right now) with the session's agent — an image of the board, not its shapes or text as data. It cannot put anything on the board with this: drawing along is a separate question the agent has to ask for itself.",
             new ConsentSource(_surfaceId, null, ConsentSourceCatalog.WhiteboardInvite),
             "whiteboard.read",
             ConsentRisk.Dangerous);
 
-    // W-4/AC-845: onder het bord, met zijn eigen statusregel — de knop staat er ook als hij uit is, want "waarom
-    // kan dit niet" is precies wat de operator hier moet kunnen lezen.
+    // W-4/AC-845: below the board, with its own status line — the button stays there even while disabled, since
+    // "why can't I" is exactly what the operator needs to be able to read here.
     private (Border Bar, Button Convert, TextBlock Status) _BuildConvertBar()
     {
         var convert = new Button { Content = "Naar diagram omzetten", Classes = { "Compact" } };
@@ -238,8 +240,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         return (bar, convert, status);
     }
 
-    // Twee antwoorden (AC-845): omzetten — naar een diagram dat al openstaat, of naar een nieuw venster — of alleen
-    // opschrijven. Waar het heen gaat wordt gevraagd, niet geraden (AC-812's regel).
+    // Two answers (AC-845): convert — to a diagram that is already open, or to a new window — or just write it
+    // down. Where it goes is asked, never guessed (AC-812's rule).
     private void _ShowConvertMenu(Control anchor)
     {
         var flyout = new MenuFlyout();
@@ -247,7 +249,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         fresh.Click += (_, _) => _ConvertToNew();
         flyout.Items.Add(fresh);
 
-        // Een diagram dat een andere agent vasthoudt zou een doodlopende keuze zijn: edit_diagram weigert daar.
+        // A diagram another agent is already holding would be a dead-end choice: edit_diagram refuses there.
         foreach (var surface in _diagrams?.ListSurfaces(_sessionBinding.PaneId).Where(s => !_diagrams.IsCoupledByAnother(_sessionBinding.PaneId, s.SurfaceId)) ?? [])
         {
             var item = new MenuItem { Header = $"Omzetten naar \"{surface.Name}\"" };
@@ -262,8 +264,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         flyout.ShowAt(anchor);
     }
 
-    // Een omzetting zonder doel opent er zelf een: leeg, zodat ook dit pad door de diff-poort gaat in plaats van
-    // met een klaar diagram binnen te komen.
+    // A conversion with no target opens one itself: empty, so this path also goes through the diff gate rather
+    // than arriving with a finished diagram.
     private void _ConvertToNew()
     {
         var document = DiagramDocument.New($"{_documentTitle} — diagram");
@@ -283,8 +285,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _ = _sessionBinding.SendAsync(prompt);
     }
 
-    // Alleen een voorstel op hét diagram waar deze omzetting heen ging telt: elk ander voorstel gaat over werk dat
-    // niets met dit bord te maken heeft.
+    // Only a proposal on the diagram this conversion actually went to counts — any other proposal is about work
+    // that has nothing to do with this board.
     private void _OnProposalChanged(string surfaceId, DiagramProposal? proposal)
     {
         if (surfaceId != _convertTarget || proposal is null)
@@ -399,8 +401,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         question.Focus();
     }
 
-    // Eén opslagweg (AC-839's precedent): een hand-tekening, een neergezette vorm, een plakte afbeelding en een
-    // agent-plaatsing (AC-854) komen allemaal via Document.Objects binnen, dus dit is voor alle vier dezelfde save.
+    // One save path (AC-839's precedent): a hand-drawn stroke, a placed shape, a pasted image and an agent
+    // placement (AC-854) all arrive through Document.Objects, so this is the same save for all four.
     private async Task _SaveAsync()
     {
         if (_filePath is { } existing)
@@ -428,7 +430,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             return;
         }
 
-        // Meer dan één geheugenpad: vragen, niet kiezen (AC-812). Het antwoord blijft bij dít bord.
+        // More than one memory path: ask, don't guess (AC-812). The answer stays with this board.
         var flyout = new MenuFlyout();
         foreach (var home in homes)
         {
