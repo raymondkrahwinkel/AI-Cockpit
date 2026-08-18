@@ -71,6 +71,20 @@ public static class WireframeHandEdit
             .ToList();
     }
 
+    // The container a component sits in, or null for a screen line — Placement's twin for a component the surface
+    // has under the pointer (AC-904) rather than one already named by its id.
+    public static WireframeNode? ParentOf(IReadOnlyList<WireframeNode> screens, WireframeNode node) =>
+        screens.SelectMany(Containers).FirstOrDefault(parent => parent.Children.Contains(node));
+
+    // Whether `into` could take the component named by `id` as a child (AC-904). Unlike Destinations this says
+    // nothing about where inside, so the container it already sits in counts: a drag lands it at another index there.
+    public static bool CanMoveInto(IReadOnlyList<WireframeNode> screens, string id, WireframeNode into) =>
+        into.IsContainer
+        && into.Id is not null
+        && Find(screens, id) is { } node
+        && !screens.Contains(node)
+        && Find(node, into.Line) is null;
+
     // The component named by `id`, or null when no component in this tree carries it.
     public static WireframeNode? Find(WireframeNode node, string id) =>
         node.Id == id ? node : node.Children.Select(child => Find(child, id)).FirstOrDefault(found => found is not null);
