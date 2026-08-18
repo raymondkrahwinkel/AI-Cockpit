@@ -1233,7 +1233,7 @@ public sealed class WorktreeManagerTests : IDisposable
         // The start is abandoned while the merge runs, so it never returns the record the notice used to travel on —
         // and by then the operator's own branch has already moved. Hearing about that cannot depend on a caller who
         // is no longer listening: a branch that moved without a word is the thing this whole feature is against.
-        await Assert.ThrowsAsync<OperationCanceledException>(create);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(create);
         Assert.Equal(moved, _Git(_repo, "rev-parse", "HEAD"));
         var refresh = Assert.Single(announced);
         Assert.True(refresh.Outcome == WorktreeSourceOutcome.FastForwarded && refresh.Notice != null);
@@ -1269,7 +1269,7 @@ public sealed class WorktreeManagerTests : IDisposable
         // and nobody would hear about. Nothing enforces that on purpose: it holds because every step from detecting
         // the repository onwards runs on the caller's token, so an abandoned start stops while it is still reading.
         // Pinned here because that is a property of the whole path rather than of any one line in it.
-        await Assert.ThrowsAsync<OperationCanceledException>(create);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(create);
         Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
     }
 
