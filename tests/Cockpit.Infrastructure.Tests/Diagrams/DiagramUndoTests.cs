@@ -4,7 +4,7 @@ using Cockpit.Infrastructure.Diagrams;
 namespace Cockpit.Infrastructure.Tests.Diagrams;
 
 /// <summary>
-/// AC-853: the vangnet that replaces the diff-poort for the per-object tools (AC-852) and the operator's own
+/// AC-853: the safety net that replaces the diff gate for the per-object tools (AC-852) and the operator's own
 /// hand-edits (AC-841) — a targeted revert per journaled entry, never "undo the last change", because there are two
 /// writers and one's undo must not discard the other's later work.
 /// </summary>
@@ -41,7 +41,7 @@ public class DiagramUndoTests
     [Fact]
     public void Revert_IsMarkedOnTheEntry_NotErasedFromHistory()
     {
-        // "Verdwijnt niet uit de geschiedenis alsof het nooit gebeurd is" — the row stays, flagged.
+        // Does not vanish from the history as if it never happened — the row stays, flagged.
         var registry = new DiagramAccessRegistry();
         registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD");
         registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.AddNode, "A", Label: "Start"));

@@ -339,10 +339,9 @@ internal sealed class DiagramMcpTools
         _ => null,
     };
 
-    // The one path every per-object tool takes (AC-852). Same Edit consent as edit_diagram, then the edit itself
-    // runs inside the registry's lock: the hold check, the line surgery and the "is this still valid Mermaid"
-    // render all see one text, and nothing is written unless all three pass. `kind`/`objectKey` describe the same
-    // edit structurally so the registry can journal it for a later targeted undo (AC-853).
+    // The one path every per-object tool takes (AC-852). Same Edit consent as edit_diagram, then the edit runs
+    // inside the registry's lock: the hold check, the line surgery and the render all see one text, and nothing is
+    // written unless all three pass. `kind`/`objectKey` journal it for a later targeted undo (AC-853).
     private async Task<string> _ApplyObjectEditAsync(
         string session,
         string diagram,

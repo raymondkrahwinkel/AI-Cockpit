@@ -151,10 +151,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
         DockPanel.SetDock(_pinStrip, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
 
-        // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
-        // session is gone — lands on a not-live binding, which is the "no agent on this diagram" state. Bound
-        // before the first _RenderInto (AC-849): its _RefreshHandEditBar reads _sessionBinding.IsLive for the pin
-        // button, and the same callback that refreshes the coupling bar on a change refreshes that button too.
+        // AC-834: the session is named by whoever opened this window, never guessed — a not-live binding is the
+        // "no agent on this diagram" state. Bound before the first _RenderInto (AC-849): its _RefreshHandEditBar
+        // reads _sessionBinding.IsLive for the pin button, refreshed by the same coupling-change callback.
         _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshHandEditBar(); });
         _RenderInto(document.MermaidText);
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
@@ -559,10 +558,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _Apply(new DiagramHandEdit(DiagramHandEditKind.Connect, from, node.Id));
     }
 
-    // AC-909: the label the agent's connect_nodes could always carry, now offered on the operator's own two-click
-    // Verbinden gesture too — a box over the connection's own midpoint, same shape as _StartRename's box over a
-    // node. The connection is already decided by the two clicks that got here, so Escape does not cancel it; it
-    // only leaves the label empty, exactly what connecting without typing anything already did.
+    // AC-909: the label connect_nodes could always carry, now offered on the operator's own Verbinden gesture too
+    // — a box over the connection's midpoint. The connection is already decided by the two clicks that got here,
+    // so Escape does not cancel it; it only leaves the label empty, same as connecting without typing anything.
     private void _StartConnectLabel(DiagramObjectAt from, DiagramObjectAt to)
     {
         var mid = new Point(
@@ -766,11 +764,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
         };
     }
 
-    // A new node is named as it is made, and gets an id of its own: the label carries the wording, the id is what the
-    // connections are written in terms of. An ER entity has no such split — its name is what is drawn (AC-899).
-    // AC-909: a shape picker sits beside the name field for a flowchart node — a grid of preview shapes (same
-    // pattern as WhiteboardControl._BuildShapeFlyout), never a combobox with Mermaid syntax. A non-rectangle pick
-    // lands as its own SetNodeShape edit right after AddNode, so each stays its own journal line (AC-853).
+    // A new node is named as it is made, and gets an id of its own — the label carries the wording, the id is what
+    // connections are written in terms of (an ER entity has no such split, AC-899). AC-909: a flowchart node also
+    // gets a shape picker beside the name field, landing as its own SetNodeShape edit right after AddNode.
     private void _AddObject(Control anchor)
     {
         var isEntity = _support.Dialect == DiagramEditDialect.Er;
@@ -1446,7 +1442,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Children = { zoomOut, zoomLabel, zoomIn, fit, follow },
         };
 
-        // AC-840: leeg is een beginpunt, niet een doodlopende weg — the AC-809 sample is reachable as an explicit
+        // AC-840: empty is a starting point, not a dead end — the AC-809 sample is reachable as an explicit
         // insert rather than a silent default. AC-841 adds the rest of the hand-editing beside it: what the operator
         // clicked on the render decides what these act on.
         var insertSample = new Button { Content = "Voorbeeld invoegen", Classes = { "Compact" } };
@@ -1479,8 +1475,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
 
-        // AC-839: waar dit diagram woont, naast de knop die het daar zet — "Nog geen bestand" is een toestand die
-        // het venster net zo goed toont als een pad.
+        // AC-839: where this diagram lives, next to the button that puts it there — "Nog geen bestand" is a state
+        // the window shows just as well as a path.
         var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
         var saveStatus = new TextBlock
@@ -1507,8 +1503,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, shape, pin, hint, follow);
     }
 
-    // Eén opslagweg voor beide herkomsten (AC-839): een hand-bewerking en een aangenomen agent-voorstel komen
-    // allebei via _RenderInto binnen, dus "onbewaarde wijzigingen" is voor allebei dezelfde vergelijking.
+    // One save path for both origins (AC-839): a hand-edit and an accepted agent proposal both arrive through
+    // _RenderInto, so "unsaved changes" is the same comparison for either.
     private async Task _SaveAsync()
     {
         if (_filePath is { } existing)
@@ -1536,8 +1532,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
-        // Meer dan één geheugenpad: vragen, niet kiezen (AC-812). Het antwoord blijft bij dít diagram — het
-        // verandert niets aan de projectinstellingen.
+        // More than one memory path: ask, don't pick (AC-812). The answer stays with this diagram — it changes
+        // nothing about the project settings.
         var flyout = new MenuFlyout();
         foreach (var home in homes)
         {
@@ -1719,8 +1715,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         var name = _sessionBinding.DisplayName ?? coupling.SessionId;
 
-        // AC-841: allebei tegelijk in hetzelfde diagram — zodra de operator iets vasthoudt terwijl de agent mag
-        // bewerken, zegt de regel dat ook, in plaats van alleen wie er gekoppeld is.
+        // AC-841: both working on the same diagram at once — the moment the operator holds something while the
+        // agent may edit, the bar says so too, rather than only naming who is coupled.
         _couplingLabel.Text = (coupling.HasAnyCapability, coupling.CanEdit && _selected is not null) switch
         {
             (_, true) => $"2 tegelijk aan het werk — jij en sessie {name}",
@@ -1732,7 +1728,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         SurfaceChrome.SetChip(_editChip, "edit_diagram", coupling.CanEdit);
     }
 
-    // The diff-poort (AC-825): a proposal sits here, block by block, until the operator resolves it — Toepassen
+    // The diff gate (AC-825): a proposal sits here, block by block, until the operator resolves it — Toepassen
     // writes only the accepted blocks' new lines, everything else keeps what was already on the surface.
     private static Border _BuildProposalPanel() => new()
     {
@@ -1762,7 +1758,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Foreground = _Brush("CockpitAccentBrush"),
         });
 
-        // AC-808's trouwrapport, on the proposal itself — before acceptance, not only on the result afterwards.
+        // AC-808's fidelity report, on the proposal itself — before acceptance, not only on the result afterwards.
         if (proposal.FidelityFindings.Count > 0)
         {
             var fidelity = new StackPanel { Spacing = 2, Margin = new Thickness(0, 0, 0, 4) };

@@ -29,7 +29,7 @@ public sealed record DiagramSurfaceView(string SurfaceId, string Name, DiagramCo
 public sealed record DiagramCouplingChange(string SurfaceId, DiagramCoupling? Coupling);
 
 // An edit an agent delivered via `edit_diagram` (AC-825), awaiting the operator's per-block accept/reject before
-// any of it reaches the surface's stored source — the diff-poort itself. `FidelityFindings` is AC-808's report on
+// any of it reaches the surface's stored source — the diff gate itself. `FidelityFindings` is AC-808's report on
 // `ProposedText`, carried on the proposal so it is visible before acceptance, not only on the result afterwards.
 public sealed record DiagramProposal(
     string SurfaceId,
@@ -220,10 +220,10 @@ public interface IDiagramAccessRegistry
     /// <summary>
     /// Applies a per-object edit (AC-852) under the registry's own lock: <paramref name="edit"/> gets the text as it
     /// stands then and returns the new text plus a readable summary, or a null text to change nothing — so two edits
-    /// naming different objects both land, neither overwriting the whole of the other. <paramref name="kind"/> and
-    /// <paramref name="objectKey"/> describe the same edit structurally, so it can be journaled for a later targeted
-    /// <see cref="Revert"/> (AC-853). Raises <see cref="TextChanged"/>, <see cref="ObjectEdited"/> and
-    /// <see cref="HistoryChanged"/>; false without <see cref="DiagramCapability.Edit"/> or when nothing changed.
+    /// naming different objects both land, neither overwriting the whole of the other, and <paramref name="kind"/>/
+    /// <paramref name="objectKey"/> journal it for a later targeted <see cref="Revert"/> (AC-853).
+    /// Raises <see cref="TextChanged"/>, <see cref="ObjectEdited"/> and <see cref="HistoryChanged"/>; false without
+    /// <see cref="DiagramCapability.Edit"/> or when nothing changed.
     /// </summary>
     bool EditCoupled(string sessionId, string surfaceId, DiagramHandEditKind kind, string objectKey, Func<string, (string? Text, string Summary)> edit);
 
@@ -252,7 +252,7 @@ public interface IDiagramAccessRegistry
     /// </summary>
     IReadOnlyList<DiagramErAttribute> EntityAttributes(string surfaceId, string entity);
 
-    // ---- Undo (AC-853): the vangnet that replaces the diff-poort for the tools that write straight through ----
+    // ---- Undo (AC-853): the safety net that replaces the diff gate for the tools that write straight through ----
 
     /// <summary>
     /// This surface's journaled per-object edits, oldest first — both origins, so the activity strip (AC-848) can offer a targeted revert per line.
@@ -305,7 +305,7 @@ public interface IDiagramAccessRegistry
     /// </summary>
     bool RequestOpen(DiagramOpenRequest request);
 
-    // ---- The diff-poort (AC-825): a proposal sits between "delivered" and "applied" ----
+    // ---- The diff gate (AC-825): a proposal sits between "delivered" and "applied" ----
 
     /// <summary>
     /// Raised when a surface's pending proposal changes — set on a fresh <see cref="Propose"/>, re-raised with recomputed blocks when the surface's text moved under it, null once resolved, discarded, or the surface/session that made it goes away.

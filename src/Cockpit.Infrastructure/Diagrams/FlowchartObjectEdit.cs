@@ -213,9 +213,8 @@ internal static partial class FlowchartObjectEdit
     }
 
     // SetNodeShape's own inverse (AC-853): restores the exact delimiters an earlier line had, whatever they were —
-    // not limited to the five named shapes, so a hand-written shape this app never offers survives too (AC-909's
-    // "no regression on existing Relabel behaviour" extends to this sibling). Keeps whatever label is on the line
-    // now, symmetric with RenameNode's inverse keeping whatever shape is on the line now.
+    // not limited to the five named shapes, so a hand-written shape survives too. Keeps whatever label is on the
+    // line now, symmetric with RenameNode's inverse keeping whatever shape is on the line now.
     public static DiagramEdit RestoreNodeShape(string source, string id, string oldLine)
     {
         if (DiagramObjectEdit.InvalidId(id, "node") is { } refusal)
