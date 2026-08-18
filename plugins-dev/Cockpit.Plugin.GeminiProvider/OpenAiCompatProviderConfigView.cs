@@ -5,10 +5,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GeminiProvider;
 
-// The "add/edit profile" config panel for this plugin's Gemini/OpenAI providers (#45): an API-key field
-// (with a "?" tooltip pointing at where to get one), a model id, and the base URL (pre-filled with the
-// provider's default, editable for a custom OpenAI-compatible gateway). Built in code, mirroring the other
-// example plugins' settings views (e.g. `Cockpit.Plugin.YouTrack.YouTrackSettingsControl`).
+// The "add/edit profile" config panel for this plugin's Gemini/OpenAI providers (#45): an API key, a model
+// id and the base URL (pre-filled with the provider's default, editable for a custom OpenAI-compatible
+// gateway). Built in code, mirroring the other example plugins' settings views.
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _apiKey;
