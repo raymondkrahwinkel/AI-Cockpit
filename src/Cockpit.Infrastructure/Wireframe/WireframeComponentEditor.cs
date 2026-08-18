@@ -220,10 +220,9 @@ internal static class WireframeComponentEditor
             new WireframePatch(to, _AnchorAbove(lines, to), [], moved));
     }
 
-    // AC-905: the operator's properties panel and the agent's set_component_modifier both land here — a flag
-    // (Toggle) or a value-bearing modifier (Set) replaced in place if it was already on the line, appended if it
-    // was not, or dropped when the caller is clearing it. Semantics come from WireframeModifierRules rather than a
-    // second copy of the table, so the panel, this refusal and docs/wireframe-format.md cannot drift apart.
+    // AC-905: the properties panel and set_component_modifier both land here — a flag or a value-bearing modifier
+    // replaced in place if already on the line, appended if not, or dropped when the caller clears it. Applicability
+    // comes from WireframeModifierRules, not a second copy of it.
     private static WireframeEdit _SetModifier(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
     {
         if (_Find(root, edit.Component) is not { } node)
