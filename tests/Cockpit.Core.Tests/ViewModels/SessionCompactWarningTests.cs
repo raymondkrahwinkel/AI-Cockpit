@@ -70,10 +70,8 @@ public class SessionCompactWarningTests
     [Fact]
     public async Task AResumedSessionStartingAboveThreshold_ShowsCompactAssoonAsItStarts()
     {
-        // AC-893 criterion 4: the real start path (SessionViewModel.StartWithProfileAsync), not just the VM flag
-        // on a hand-built TtyViewModel — a driver that already reports usage over threshold at start (a daily
-        // resume, like the Assistant) and declares SupportsContextCompaction must not need a second turn before
-        // the Compact button appears.
+        // AC-893 criterion 4: the real start path, not just the VM flag on a hand-built TtyViewModel — a driver
+        // already over threshold at start (a daily resume) must not need a second turn before Compact appears.
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyEvents());
         driver.CurrentStatus.Returns(new SessionStatusFeed(60, []));

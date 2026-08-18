@@ -360,14 +360,9 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:SessionWarningItem">
-                        <!-- Buttons docked right, sentence filling the rest (AC-893) — the same DockPanel shape
-                             SessionView.axaml's warning row uses, so the two share one row whenever T2's window
-                             (340px MinWidth) is wide enough, and only the sentence grows taller as it narrows.
-                             The sentence sits in a Grid rather than SessionView's horizontal StackPanel: a
-                             StackPanel measures its stacked child with unbounded width, so TextWrapping never
-                             fires there, while a Grid's `*` column is bounded to whatever space the buttons
-                             leave, so a long warning wraps instead of running under the buttons or off the
-                             window edge. -->
+                        <!-- Buttons docked right, sentence filling the rest (AC-893), same DockPanel shape as
+                             SessionView.axaml. The sentence is a Grid, not a StackPanel: a StackPanel measures
+                             its stacked child with unbounded width, so TextWrapping never fires there. -->
                         <Border Padding="8,4"
                                 Background="{StaticResource CockpitSecondaryBgBrush}"
                                 BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"

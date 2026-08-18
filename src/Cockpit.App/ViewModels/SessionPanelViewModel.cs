@@ -1687,12 +1687,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Re-evaluates the button once the cockpit has handed this panel its capture — a plain setter, so nothing notifies on its own.
     internal void NotifyScreenshotWiringChanged() => _NotifyScreenshotAvailabilityChanged();
 
-    // The driver settles its capabilities after start, and whether it can see images is one of them — so the
-    // button follows from the capability itself rather than from the one call site that happens to set it. A
-    // second setter added later would otherwise leave a button that stays clickable and silently refuses.
-    // Also rebuilds the warning bar (AC-893): a session that starts already over its context threshold (a daily
-    // resume, say) calls `_RefreshLimits` before `Capabilities` is set, so the bar's first `ShowCompact` is built
-    // against the pre-start default. Covers every ordering, not just that one call site.
+    // The driver settles its capabilities after start (screenshot availability, AC-893's Compact button), so both
+    // follow from the capability itself rather than from whichever call site happens to set it first — covers
+    // every ordering, including a session that starts already over threshold.
     partial void OnCapabilitiesChanged(SessionCapabilities value)
     {
         _NotifyScreenshotAvailabilityChanged();
