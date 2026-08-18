@@ -286,6 +286,24 @@ internal sealed class CockpitHost(
         return projects.Find(projectId)?.LinkedAs(key);
     }
 
+    public async Task<IReadOnlyList<string>> GetProjectFieldValuesAsync(string key, string? paneId, CancellationToken cancellationToken)
+    {
+        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrEmpty(pane))
+        {
+            return [];
+        }
+
+        var projectId = await services.GetRequiredService<ISessionProjectResolver>().ProjectIdOfAsync(pane, cancellationToken);
+        if (string.IsNullOrEmpty(projectId))
+        {
+            return [];
+        }
+
+        var projects = await services.GetRequiredService<IProjectStore>().LoadAsync(cancellationToken);
+        return projects.Find(projectId)?.LinkedAsAll(key) ?? [];
+    }
+
     public async Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId, CancellationToken cancellationToken)
     {
         var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;

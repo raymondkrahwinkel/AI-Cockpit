@@ -70,4 +70,20 @@ public class ProjectLinkMatchTests
     [Fact]
     public void For_NoProjectsAtAll_IsNoProject() =>
         Assert.Null(ProjectLinkMatch.For([], Tracker, "AC"));
+
+    [Fact]
+    public void For_AProjectLinkedToSeveralPrefixes_MatchesAnyOfThem()
+    {
+        var project = _Linked("EVE Workbench", Tracker, "EWB, AT, EJ, AUTH");
+
+        Assert.Equal("EVE Workbench", ProjectLinkMatch.For([project], Tracker, "AT")?.Name);
+        Assert.Equal("EVE Workbench", ProjectLinkMatch.For([project], Tracker, "EWB")?.Name);
+    }
+
+    [Fact]
+    public void For_TwoProjectsWhoseListsShareOnePrefix_IsNoProject() =>
+        Assert.Null(ProjectLinkMatch.For(
+            [_Linked("EVE Workbench", Tracker, "EWB, AT, EJ"), _Linked("Auth service", Tracker, "AT, AUTH")],
+            Tracker,
+            "AT"));
 }

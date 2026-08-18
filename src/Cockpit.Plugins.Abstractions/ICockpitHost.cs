@@ -840,6 +840,14 @@ public interface ICockpitHost
         Task.FromResult<string?>(null);
 
     /// <summary>
+    /// Every value the operator picked for <paramref name="key"/> on the project a session belongs to (AC-884) —
+    /// the plural of <see cref="GetProjectFieldValueAsync"/>, empty under the same conditions that answers null for.
+    /// Default empty so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetProjectFieldValuesAsync(string key, string? paneId = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+
+    /// <summary>
     /// The project's own Memory rows (AC-483/AC-827) — 0, 1 or several, read-only. The missing read half of
     /// <see cref="AddProjectMemorySource"/>/<see cref="ProjectMemorySources"/>, which register where a scheme
     /// resolves rather than what a project stored. Resolved like <see cref="GetProjectFieldValueAsync"/>: null/blank

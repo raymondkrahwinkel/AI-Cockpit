@@ -67,7 +67,8 @@ public interface IAssistantReadGateway
 // `DefaultProfileLabel`: The profile its sessions default to, by label, or null when it names none.
 // `Links`:
 // What this project is called elsewhere, keyed by the plugin field that named it —
-// `Cockpit.Core.Projects.Project.PluginFields` verbatim, e.g. `{"youtrack.project": "AC"}`.
+// `Cockpit.Core.Projects.Project.PluginFields` verbatim, e.g. `{"youtrack.project": "AC"}` — or several,
+// comma-separated (AC-884, e.g. `"EWB, AT, EJ"`); match against every one, not just the first.
 // Empty for a project no plugin has linked. This is what turns
 // "pick up AC-555" into a lookup rather than a guess: match the ticket's prefix against a project's
 // `youtrack.project` value here before ever calling into YouTrack for the issue itself.

@@ -9,13 +9,9 @@ namespace Cockpit.Core.Projects;
 // does know the ticket it is acting on, and that ticket names a tracker project the operator already linked.
 public static class ProjectLinkMatch
 {
-    // The project linked as `value` under `fieldKey`, or `null` when
-    // none is — or when more than one is.
-    // Two projects carrying the same link match neither, for the reason `ProjectDirectoryMatch.For`
-    // refuses a folder two projects claim: choosing one of them decides by storage order, and a preselection the
-    // operator trusts is worse when it is wrong than no preselection at all. Values compare case-insensitively —
-    // a tracker short name and an owner/repo are not case-sensitive identifiers, so two projects linked to
-    // `AC` and `ac` are the same link twice and count as the ambiguity they are.
+    // The project linked as `value` under `fieldKey` — checked against every value the field names (AC-884, e.g.
+    // `EWB, AT, EJ`) — or `null` when none matches, or when two projects' value sets overlap (ambiguous, same
+    // reason `ProjectDirectoryMatch.For` refuses a shared folder). Comparison is case-insensitive throughout.
     public static Project? For(IEnumerable<Project> projects, string fieldKey, string? value)
     {
         if (string.IsNullOrWhiteSpace(fieldKey) || string.IsNullOrWhiteSpace(value))
@@ -26,7 +22,7 @@ public static class ProjectLinkMatch
         Project? match = null;
         foreach (var project in projects)
         {
-            if (!string.Equals(project.LinkedAs(fieldKey), value, StringComparison.OrdinalIgnoreCase))
+            if (!project.LinkedAsAll(fieldKey).Contains(value, StringComparer.OrdinalIgnoreCase))
             {
                 continue;
             }

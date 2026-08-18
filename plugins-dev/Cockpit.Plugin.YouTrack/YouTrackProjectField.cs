@@ -12,12 +12,21 @@ internal static class YouTrackProjectField
     public const string Key = "youtrack.project";
 
     // AC-317's rule, in the one place both surfaces that need "which project" call: the session's own linked
-    // project wins over the instance-wide default (AC-548 — the issues dialog and the session picker used to
-    // answer this differently because the picker never asked the project field at all). Null when neither the
-    // session's project nor the instance carries a tag.
+    // project wins over the instance-wide default (AC-548). Null when neither carries a tag; only ever the
+    // first when the link names several (AC-884) — see ResolvePreferredTagsAsync for the rest.
     public static async Task<string?> ResolvePreferredTagAsync(
         ICockpitHost host, string? paneId, string? defaultProjectTag, CancellationToken cancellationToken) =>
         await host.GetProjectFieldValueAsync(Key, paneId, cancellationToken) ?? defaultProjectTag;
+
+    // The plural of ResolvePreferredTagAsync (AC-884): every prefix the session's project is linked to, so a
+    // consumer acting on more than one at once does not silently drop all but the first. The instance-wide
+    // default only stands in when the session carries no link at all.
+    public static async Task<IReadOnlyList<string>> ResolvePreferredTagsAsync(
+        ICockpitHost host, string? paneId, string? defaultProjectTag, CancellationToken cancellationToken)
+    {
+        var linked = await host.GetProjectFieldValuesAsync(Key, paneId, cancellationToken);
+        return linked.Count > 0 ? linked : string.IsNullOrWhiteSpace(defaultProjectTag) ? [] : [defaultProjectTag];
+    }
 
     public static ProjectFieldRegistration Registration(YouTrackSettings settings, YouTrackClient client) =>
         new(
@@ -28,8 +37,9 @@ internal static class YouTrackProjectField
                 (instance, token) => client.GetProjectsAsync(instance.InstanceUrl, instance.Token, token),
                 cancellationToken))
         {
-            Hint = "Which project in YouTrack this one is tracked in. The issues dialog then opens on it instead of on everything.",
+            Hint = "Which project(s) in YouTrack this one is tracked in. Several prefixes on one project (say EVE Workbench spans EWB, AT and EJ) — add a row per prefix. The issues dialog then opens on those instead of on everything.",
             Placeholder = "AC",
+            AllowsMultiple = true,
         };
 
     // Every project on every configured instance. Prefixed with the instance label only when there is more than one

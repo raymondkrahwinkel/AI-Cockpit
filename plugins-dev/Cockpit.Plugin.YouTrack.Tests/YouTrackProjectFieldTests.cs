@@ -139,4 +139,36 @@ public class YouTrackProjectFieldTests
 
         Assert.Null(tag);
     }
+
+    // AC-884: the plural of the three tests above, for a session's project linked to several prefixes at once.
+    [Fact]
+    public async Task ResolvePreferredTags_TheSessionsOwnLinkedProject_WinsOverTheInstanceDefault()
+    {
+        var host = new FakeCockpitHost();
+        host.ProjectFieldValues[YouTrackProjectField.Key] = "EWB, AT, EJ";
+
+        var tags = await YouTrackProjectField.ResolvePreferredTagsAsync(host, "pane-1", defaultProjectTag: "KON", CancellationToken.None);
+
+        Assert.Equal(["EWB", "AT", "EJ"], tags);
+    }
+
+    [Fact]
+    public async Task ResolvePreferredTags_NoLinkedProject_FallsBackToTheInstanceDefault()
+    {
+        var host = new FakeCockpitHost();
+
+        var tags = await YouTrackProjectField.ResolvePreferredTagsAsync(host, "pane-1", defaultProjectTag: "KON", CancellationToken.None);
+
+        Assert.Equal(["KON"], tags);
+    }
+
+    [Fact]
+    public async Task ResolvePreferredTags_NeitherLinkedNorDefault_IsEmpty()
+    {
+        var host = new FakeCockpitHost();
+
+        var tags = await YouTrackProjectField.ResolvePreferredTagsAsync(host, "pane-1", defaultProjectTag: null, CancellationToken.None);
+
+        Assert.Empty(tags);
+    }
 }

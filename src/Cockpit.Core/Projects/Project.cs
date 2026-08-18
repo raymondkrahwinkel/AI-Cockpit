@@ -187,9 +187,17 @@ public sealed record Project(string Id, string Name)
     // untouched, so reinstalling the plugin finds the project still linked.
     public IReadOnlyDictionary<string, string> PluginFields { get; init; } = ReadOnlyDictionary<string, string>.Empty;
 
-    // What this project is called under `key`, or null when nothing linked it there. Keys match exactly, the way plugin ids and intent actions do.
+    // What this project is called under `key`, or null when nothing linked it there. Keys match exactly, the way
+    // plugin ids and intent actions do. A value may itself name several identifiers (AC-884) — this hands back
+    // only the first, unchanged for every existing caller; use `LinkedAsAll` for the rest.
     public string? LinkedAs(string key) =>
-        PluginFields.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
+        PluginFields.TryGetValue(key, out var value) ? ProjectLinkValues.Split(value).FirstOrDefault() : null;
+
+    // Every identifier this project is called under `key` (AC-884) — the plural of `LinkedAs`, for a plugin that
+    // can act on more than one at once (a YouTrack project field naming several prefixes). Empty under the same
+    // conditions `LinkedAs` answers null for.
+    public IReadOnlyList<string> LinkedAsAll(string key) =>
+        PluginFields.TryGetValue(key, out var value) ? ProjectLinkValues.Split(value) : [];
 
     // A new project with a generated id, mirroring `Workspace.Create`.
     public static Project Create(string name) => new(Guid.NewGuid().ToString("n"), name);

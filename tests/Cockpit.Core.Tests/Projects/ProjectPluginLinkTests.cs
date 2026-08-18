@@ -51,6 +51,24 @@ public class ProjectPluginLinkTests : IDisposable
     }
 
     [Fact]
+    public void LinkedAs_AMultiValueList_ReturnsOnlyTheFirst()
+    {
+        Assert.Equal("EWB", Linked(("youtrack.project", "EWB, AT, EJ")).LinkedAs("youtrack.project"));
+    }
+
+    [Fact]
+    public void LinkedAsAll_AMultiValueList_ReturnsEveryItem()
+    {
+        Assert.Equal(["EWB", "AT", "EJ"], Linked(("youtrack.project", "EWB, AT, EJ")).LinkedAsAll("youtrack.project"));
+    }
+
+    [Fact]
+    public void LinkedAsAll_AKeyNothingLinked_IsEmpty()
+    {
+        Assert.Empty(Linked(("youtrack.project", "AC")).LinkedAsAll("github.repository"));
+    }
+
+    [Fact]
     public void Normalized_DropsALinkThatNamesNothingAndTrimsTheRest()
     {
         var settings = new ProjectSettings
@@ -61,6 +79,19 @@ public class ProjectPluginLinkTests : IDisposable
         var links = settings.Normalized().Projects.Single().PluginFields;
 
         Assert.Equal(new KeyValuePair<string, string>("youtrack.project", "AC"), Assert.Single(links));
+    }
+
+    [Fact]
+    public void Normalized_TidiesEachItemInAMultiValueList()
+    {
+        var settings = new ProjectSettings
+        {
+            Projects = [Linked(("youtrack.project", "  EWB ,at,EWB, ,AT , EJ"))],
+        };
+
+        var links = settings.Normalized().Projects.Single().PluginFields;
+
+        Assert.Equal("EWB, at, EJ", Assert.Single(links).Value);
     }
 
     [Fact]

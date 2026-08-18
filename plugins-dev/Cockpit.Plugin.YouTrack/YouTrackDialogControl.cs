@@ -515,18 +515,17 @@ internal sealed class YouTrackDialogControl : UserControl
                 project.ShortName,
                 string.IsNullOrWhiteSpace(project.Name) ? project.ShortName : $"{project.ShortName} - {project.Name}")));
 
-        // AC-317/AC-548: routed through YouTrackProjectField.ResolvePreferredTagAsync — the one resolution this
-        // dialog and the session picker both call, so the two cannot answer "which project" differently. Null
-        // when there is no session, no project, or no link — then nothing changes.
-        var preferredTag = await YouTrackProjectField.ResolvePreferredTagAsync(
+        // AC-317/AC-548/AC-884: routed through YouTrackProjectField.ResolvePreferredTagsAsync, the one resolution
+        // this dialog and the session picker both call. This filter is a single ComboBox selection, so a project
+        // linked to more than one prefix preselects "All" rather than silently picking the first.
+        var preferredTags = await YouTrackProjectField.ResolvePreferredTagsAsync(
             _host, paneId: null, instance.DefaultProjectTag, CancellationToken.None);
 
         _isSyncingProjectFilter = true;
         _projectFilter.ItemsSource = options;
-        _projectFilter.SelectedItem = options.FirstOrDefault(option =>
-            !string.IsNullOrWhiteSpace(preferredTag)
-            && string.Equals(option.Tag, preferredTag, StringComparison.OrdinalIgnoreCase))
-            ?? AllProjectOption;
+        _projectFilter.SelectedItem = preferredTags is [var onlyTag]
+            ? options.FirstOrDefault(option => string.Equals(option.Tag, onlyTag, StringComparison.OrdinalIgnoreCase)) ?? AllProjectOption
+            : AllProjectOption;
         _isSyncingProjectFilter = false;
 
         await _ResolveStateFieldAsync((_projectFilter.SelectedItem as YouTrackProjectOption)?.Tag);
@@ -610,7 +609,7 @@ internal sealed class YouTrackDialogControl : UserControl
                 ? $"#Unresolved {_QuotedFieldName(fieldName)}: {{{selectedState}}}"
                 : null;
 
-            var fetched = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+            var fetched = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag is { } tag ? [tag] : null, extraFilter, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
             if (token != _loadToken)
             {
                 // Superseded while the fetch was in flight — applying this now would let a stale, older request
@@ -704,7 +703,7 @@ internal sealed class YouTrackDialogControl : UserControl
             var selectedState = _stateFilter.SelectedItem as string;
             var searchTerm = BuildSearchTerm(_stateFieldName, selectedState, query);
 
-            var results = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, searchTerm, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+            var results = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag is { } tag ? [tag] : null, searchTerm, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
 
             if (results.Count > 0)
             {

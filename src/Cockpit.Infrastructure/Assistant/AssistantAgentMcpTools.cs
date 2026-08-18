@@ -568,7 +568,7 @@ internal sealed class AssistantAgentMcpTools(
         [Description("Whether new sessions here isolate in their own git worktree by default — one of the four fields that decide how every session here runs. Left out, false: sessions run in the operator's real checkout unless told otherwise per spawn.")] bool isolateInWorktreeByDefault = false,
         [Description("Names of MCP servers this project's sessions start ticked — one of the four fields that decide how every session here runs. Left out, every offered server starts ticked, following the registry as it changes.")] string[]? enabledMcpServerNames = null,
         [Description("Which group this project sits under in the manager's list. Left out, it groups under \"Uncategorized\".")] string? category = null,
-        [Description("What this project is called elsewhere, keyed by the field a plugin registered — e.g. {\"youtrack.project\": \"AC\"}, the same shape list_projects reports. A key no installed plugin registered is refused.")] Dictionary<string, string>? pluginFields = null)
+        [Description("What this project is called elsewhere, keyed by the field a plugin registered — e.g. {\"youtrack.project\": \"AC\"}, the same shape list_projects reports. A value can name several identifiers as a comma-separated list, e.g. {\"youtrack.project\": \"EWB, AT, EJ\"} for a project tracked under several YouTrack prefixes at once. A key no installed plugin registered is refused.")] Dictionary<string, string>? pluginFields = null)
     {
         try
         {

@@ -125,6 +125,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   children, unless the new kind cannot hold what is already inside it, in which case it is refused and says why.
   The agent gets the matching `set_component_modifier` and `change_component_type` tools, going through the exact
   same edit as the panel does.
+- added: a project's YouTrack link can now name several project prefixes at once — say EVE Workbench spans EWB, AT
+  and EJ — add a row per prefix in the project editor, with its own "+ Add row"/remove controls. "Pick up AT-42"
+  and "pick up EWB-123" both find the right project, the issues dialog and picker fetch every linked prefix's
+  issues together instead of only the first, and two projects that would both claim the same prefix stay ambiguous
+  rather than one winning by save order.
 
 ### Fixed
 

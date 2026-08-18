@@ -40,4 +40,10 @@ public sealed record ProjectFieldRegistration(
 
     /// <summary>What the empty box suggests — a shape, not an instruction: <c>owner/repo</c>. Null for none.</summary>
     public string? Placeholder { get; init; }
+
+    /// <summary>
+    /// Whether the editor lets the operator link more than one identifier under this key (AC-884), each its own
+    /// row with an add/remove control. False by default: a single row, unchanged from before this existed.
+    /// </summary>
+    public bool AllowsMultiple { get; init; }
 }

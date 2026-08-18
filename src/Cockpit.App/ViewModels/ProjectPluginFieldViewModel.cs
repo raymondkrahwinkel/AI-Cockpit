@@ -1,16 +1,18 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
 // One field a plugin contributed to the project editor (AC-317): what this project is called in a tracker or on a
-// forge. The plugin described it and supplies the choices; this holds the row's state while the dialog is open —
-// what is stored, what is in the box, and whether the list is still coming.
+// forge. The plugin described it and supplies the choices; this holds the field's state while the dialog is open —
+// which rows are on screen, what they resolve to, and whether the list is still coming.
 //
-// `Value` and `Text` are separate because the operator picks by name and the plugin queries
-// by identifier: "AI-Cockpit — AC" is what is read, `AC` is what is kept. They only agree for a value typed by
-// hand, which is exactly what a repository nobody granted read access to needs.
+// One row per identifier rather than one box holding several comma-separated (AC-884) — see
+// `ProjectPluginFieldRowViewModel` for why: an `AutoCompleteBox` already owns its own text on a pick, and a
+// second, comma-aware meaning layered onto that same text corrupted it the moment typing continued past a pick.
 public partial class ProjectPluginFieldViewModel : ViewModelBase
 {
     private readonly ProjectFieldRegistration _registration;
@@ -18,12 +20,15 @@ public partial class ProjectPluginFieldViewModel : ViewModelBase
     public ProjectPluginFieldViewModel(ProjectFieldRegistration registration, string? value)
     {
         _registration = registration;
-        _value = value ?? string.Empty;
 
-        // Until the options arrive the identifier is all there is to show. A saved link must be visible the moment
-        // the editor opens — a box that is blank while a list loads reads as "not linked", and an operator who saves
-        // in that moment would make it true.
-        _text = _value;
+        var identifiers = ProjectLinkValues.Split(value);
+        foreach (var identifier in identifiers.Count > 0 ? identifiers : [string.Empty])
+        {
+            Rows.Add(new ProjectPluginFieldRowViewModel(this, identifier));
+        }
+
+        _value = ProjectLinkValues.Join(identifiers);
+        _RefreshCanRemove();
     }
 
     public string Key => _registration.Key;
@@ -34,15 +39,20 @@ public partial class ProjectPluginFieldViewModel : ViewModelBase
 
     public string? Placeholder => _registration.Placeholder;
 
-    // What gets stored on the project: the picked option's identifier, or whatever the operator typed.
+    // Whether this field's editor shows the add/remove row chrome. False for a field like GitHub's repository,
+    // which stays the single bare box it always was (AC-884 non-goal).
+    public bool AllowsMultiple => _registration.AllowsMultiple;
+
+    // What gets stored on the project: every row's resolved identifier, comma-joined (AC-884). Recomputed by a
+    // row whenever its own text changes, or by adding/removing a row — never written to directly.
     [ObservableProperty]
     private string _value;
 
-    // What is in the box — an option's display text once one is picked, the identifier itself otherwise.
-    [ObservableProperty]
-    private string _text;
+    // One `AutoCompleteBox` worth of state per identifier. Always at least one, even for a field with nothing
+    // linked yet, so the editor always has a row to type into.
+    public ObservableCollection<ProjectPluginFieldRowViewModel> Rows { get; } = [];
 
-    // The choices the plugin supplied, empty until they have loaded (or when it had none to offer).
+    // The choices the plugin supplied, shared by every row — empty until they have loaded (or when it had none to offer).
     public ObservableCollection<ProjectFieldOption> Options { get; } = [];
 
     // Whether the choices are still coming — the row stays usable while they are, so the dialog never waits on a network call.
@@ -53,8 +63,8 @@ public partial class ProjectPluginFieldViewModel : ViewModelBase
     [ObservableProperty]
     private string? _loadError;
 
-    // Fills `Options` from the plugin, and shows a saved value under its proper name once the list can
-    // say what that name is. Never throws: a tracker that is unreachable costs this row its list, not the editor.
+    // Fills `Options` from the plugin, and shows each row's saved identifier under its proper name once the list
+    // can say what that name is. Never throws: a tracker that is unreachable costs this field its list, not the editor.
     public async Task LoadOptionsAsync(CancellationToken cancellationToken = default)
     {
         IsLoadingOptions = true;
@@ -70,7 +80,10 @@ public partial class ProjectPluginFieldViewModel : ViewModelBase
                 Options.Add(option);
             }
 
-            _ShowValueUnderItsDisplayName();
+            foreach (var row in Rows)
+            {
+                row.ShowUnderItsDisplayName();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -88,24 +101,41 @@ public partial class ProjectPluginFieldViewModel : ViewModelBase
         }
     }
 
-    // The text is the only thing the box reports, so it is the only thing read: picking from the list puts that
-    // option's display name in it, and typing puts whatever was typed. A display name that matches an option is
-    // resolved back to that option's identifier — which is both how a pick is stored and why picking "AI-Cockpit —
-    // AC" and typing it out by hand cannot store two different things. Anything else is kept verbatim, which is what
-    // a repository the operator has no read access to needs.
-    //
-    // One rule and no re-entry guard, deliberately: _ShowValueUnderItsDisplayName writes a display name back into the
-    // box, which lands here and resolves to the very identifier it came from. A guard around that write would only be
-    // protecting the rule from agreeing with itself.
-    partial void OnTextChanged(string value) =>
-        Value = Options.FirstOrDefault(option => string.Equals(option.Display, value, StringComparison.Ordinal))?.Value
-            ?? value;
+    // Every row's resolved identifier, blanks dropped and rejoined (AC-884) — called by a row on every edit and
+    // by the add/remove commands below, so `Value` never lags what is actually on screen.
+    internal void RecomputeValue() =>
+        Value = ProjectLinkValues.Join(Rows.Select(row => row.Identifier).Where(identifier => identifier.Length > 0));
 
-    private void _ShowValueUnderItsDisplayName()
+    [RelayCommand]
+    private void AddRow()
     {
-        if (Options.FirstOrDefault(option => string.Equals(option.Value, Value, StringComparison.Ordinal)) is { } match)
+        Rows.Add(new ProjectPluginFieldRowViewModel(this, string.Empty));
+        _RefreshCanRemove();
+    }
+
+    // A no-op on the first row (Raymond, AC-884 review) — enforced here, not only via the button's disabled state,
+    // so nothing but blanking its text can ever leave a field with zero rows. That first row is how a single
+    // identifier reads as unlinked (AC-884 acceptance criterion 1), the same as it always was.
+    [RelayCommand]
+    private void RemoveRow(ProjectPluginFieldRowViewModel row)
+    {
+        if (Rows.IndexOf(row) == 0)
         {
-            Text = match.Display;
+            return;
+        }
+
+        Rows.Remove(row);
+        RecomputeValue();
+        _RefreshCanRemove();
+    }
+
+    // The first row never gets a remove control (Raymond, AC-884 review) — re-run after every add/remove, since
+    // removing row 2 makes row 3 the new second.
+    private void _RefreshCanRemove()
+    {
+        for (var i = 0; i < Rows.Count; i++)
+        {
+            Rows[i].CanRemove = i > 0;
         }
     }
 }
