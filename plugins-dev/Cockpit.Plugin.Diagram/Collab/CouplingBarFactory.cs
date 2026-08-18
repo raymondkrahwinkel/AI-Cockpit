@@ -21,7 +21,7 @@ internal static class CouplingBarFactory
         var editChip = SurfaceChrome.Chip();
 
         var disconnect = new Button { Content = "Disconnect", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
-        var couple = new Button { Content = "Koppelen…", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+        var couple = new Button { Content = "Couple…", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         actions.Children.Add(couple);

@@ -16,7 +16,7 @@ internal static class DiagramQuickStartDialog
     {
         DiagramQuickStart? result = null;
 
-        await host.ShowDialogAsync("Nieuw diagram", () =>
+        await host.ShowDialogAsync("New diagram", () =>
         {
             var nameBox = new TextBox { Text = defaultName };
             nameBox.AttachedToVisualTree += (_, _) =>
@@ -29,7 +29,7 @@ internal static class DiagramQuickStartDialog
             var sessionLabel = host.Sessions.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
             var coupleSession = new CheckBox
             {
-                Content = activePaneId is null ? "Geen actieve sessie om te koppelen" : $"Koppel aan sessie · {sessionLabel}",
+                Content = activePaneId is null ? "No active session to link" : $"Link to session · {sessionLabel}",
                 IsEnabled = activePaneId is not null,
             };
 
@@ -39,7 +39,7 @@ internal static class DiagramQuickStartDialog
                 result = new DiagramQuickStart(name, coupleSession.IsChecked == true ? activePaneId : null);
             }
 
-            var open = new Button { Content = "Openen", Classes = { "Accent" }, HorizontalAlignment = HorizontalAlignment.Right };
+            var open = new Button { Content = "Open", Classes = { "Accent" }, HorizontalAlignment = HorizontalAlignment.Right };
             open.Click += (sender, _) =>
             {
                 Confirm();
@@ -47,7 +47,7 @@ internal static class DiagramQuickStartDialog
             };
             var cancel = new Button
             {
-                Content = "Annuleren",
+                Content = "Cancel",
                 Classes = { "Ghost" },
                 Margin = new Thickness(0, 0, 8, 0),
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -80,7 +80,7 @@ internal static class DiagramQuickStartDialog
                 Spacing = 10,
                 Children =
                 {
-                    new TextBlock { Text = "Naam", FontSize = 11, Foreground = _Brush("CockpitTextSecondaryBrush") },
+                    new TextBlock { Text = "Name", FontSize = 11, Foreground = _Brush("CockpitTextSecondaryBrush") },
                     nameBox,
                     coupleSession,
                 },

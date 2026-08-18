@@ -260,7 +260,7 @@ public class WireframeHandEditTests
         var registry = _Open();
         registry.SurfaceClosed(SurfaceId);
 
-        Assert.Equal("Dit wireframe staat niet meer open.", registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.Row)));
+        Assert.Equal("This wireframe is no longer open.", registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.Row)));
     }
 
     // The hold exists to keep the agent off what the operator has under their hand, not to lock the operator out of

@@ -46,7 +46,7 @@ internal sealed class PresenceIndicators : Border
         _baselineCount = _journal.History(_surfaceId).Count;
 
         ToolTip.SetTip(_agentPip, "Agent");
-        ToolTip.SetTip(_operatorPip, "Jij");
+        ToolTip.SetTip(_operatorPip, "You");
 
         var pips = new StackPanel
         {
@@ -156,28 +156,28 @@ internal sealed class PresenceIndicators : Border
         _agentPip.Fill = _agentWriting ? _Brush("CockpitAccentBrush")
             : _agentHasCapability ? _Brush("CockpitStatusBusyBrush")
             : _Brush("CockpitTextSecondaryBrush");
-        ToolTip.SetTip(_agentPip, _agentWriting ? "Agent bewerkt" : _agentHasCapability ? "Agent leest mee" : "Agent gekoppeld, geen rechten");
+        ToolTip.SetTip(_agentPip, _agentWriting ? "Agent editing" : _agentHasCapability ? "Agent reading along" : "Agent coupled, no permissions");
 
         _operatorPip.Fill = _operatorWriting ? _Brush("CockpitAccentBrush") : _Brush("CockpitTextSecondaryBrush");
-        ToolTip.SetTip(_operatorPip, _operatorWriting ? "Jij bewerkt" : "Jij aanwezig");
+        ToolTip.SetTip(_operatorPip, _operatorWriting ? "You are editing" : "You are present");
 
         var name = _sessionName ?? "agent";
-        // The coupling bar already says "2 tegelijk aan het werk" when both hold something — this is an additional,
+        // The coupling bar already says "2 working at once" when both hold something — this is an additional,
         // distinctly worded line, not a duplicate of it.
-        var both = _operatorWriting && (_agentWriting || _agentHasCapability) ? " · jij bewerkt ook" : "";
+        var both = _operatorWriting && (_agentWriting || _agentHasCapability) ? " · you're editing too" : "";
         _liveLine.Text = !_agentHasCapability && !_agentWriting
-            ? $"{name} gekoppeld, nog niets gevraagd"
+            ? $"{name} coupled, nothing asked yet"
             : _agentWriting
                 ? $"{name}: {_lastSummary}{both}"
-                : $"{name} leest mee{both}";
+                : $"{name} is reading along{both}";
 
         var total = _journal.History(_surfaceId).Count;
         var delta = Math.Max(0, total - _baselineCount);
         _counterLine.Text = delta switch
         {
-            0 => "0 wijzigingen",
-            1 => "1 wijziging",
-            _ => $"{delta} wijzigingen",
+            0 => "0 changes",
+            1 => "1 change",
+            _ => $"{delta} changes",
         };
     }
 

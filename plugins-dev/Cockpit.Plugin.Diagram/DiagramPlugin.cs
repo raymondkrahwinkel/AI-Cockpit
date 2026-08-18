@@ -38,7 +38,7 @@ public sealed class DiagramPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — every ⋯ item now opens a
-        // window or a dialog instead of a workspace. AC-896: the "Nieuw ..." actions moved into their panel's
+        // window or a dialog instead of a workspace. AC-896: the "New ..." actions moved into their panel's
         // own header, next to Refresh — only the panel openers stay here.
         host.AddToolbarAction(new ToolbarAction("Diagrams", MaterialIconKind.FormatListBulleted,
             () => host.ShowDialogAsync("Diagrams", () => new DiagramListDialogBody(host), ListDialogKey, width: 520, height: 600)));

@@ -95,7 +95,7 @@ public class WhiteboardAccessIntegrationTests
         plugin.Initialize(host);
 
         // AC-850/AC-896: the whiteboard is no longer a workspace type — the "Whiteboards" toolbar action opens the
-        // list dialog, whose header's "Nieuw whiteboard" button opens the board as a window bound to the active
+        // list dialog, whose header's "New whiteboard" button opens the board as a window bound to the active
         // session, through W-2/AC-843's snelstart.
         var whiteboardAction = Assert.Single(host.ToolbarActions, action => action.Title == "Whiteboards");
         await whiteboardAction.OnInvoke();
@@ -107,7 +107,7 @@ public class WhiteboardAccessIntegrationTests
         var listWindow = new Window { Content = listContent };
         listWindow.Show();
         Dispatcher.UIThread.RunJobs();
-        listContent.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Nieuw whiteboard"))
+        listContent.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "New whiteboard"))
             .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         listWindow.Close();
         var dialogKey = Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
@@ -201,7 +201,7 @@ public class WhiteboardAccessIntegrationTests
             // operator would, so the board behind it actually opens.
             if (singleInstanceKey == "whiteboard.quickstart")
             {
-                LastDialogContent.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Openen"))
+                LastDialogContent.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Open"))
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             }
 

@@ -12,42 +12,42 @@ internal static class WhiteboardToDiagram
     {
         if (!hasDiagramSurfaces)
         {
-            return "Deze cockpit tekent geen diagrammen — omzetten kan hier niet.";
+            return "This cockpit does not draw diagrams — converting is not possible here.";
         }
 
         if (!sessionLive || coupling is null)
         {
-            return "Geen agent gekoppeld — koppel eerst een sessie, dan kan hij het bord omzetten.";
+            return "No agent coupled — couple a session first, then it can convert the board.";
         }
 
         return coupling.CanRead
             ? null
-            : "De agent mag dit bord niet lezen — laat hem eerst meekijken, anders heeft hij niets om om te zetten.";
+            : "The agent may not read this board — let it look along first, otherwise it has nothing to convert.";
     }
 
-    // De statusregel onder het bord: wat er gevraagd is, en wat er echt in de poort is geland.
+    // The status line below the board: what was asked, and what actually landed in the diff gate.
     public static string Status(bool asked, int proposals) => proposals switch
     {
         0 when !asked => "",
-        0 => "Omzetting gevraagd — wacht op een voorstel in de diff-poort.",
-        1 => "1 omzetting voorgesteld",
-        _ => $"{proposals} omzettingen voorgesteld",
+        0 => "Conversion requested — waiting for a proposal in the diff gate.",
+        1 => "1 conversion proposed",
+        _ => $"{proposals} conversions proposed",
     };
 
     // Names the target by id, not by name: two windows can carry the same title, and Resolve takes either.
     public static string ConvertPrompt(string boardName, string diagramId, string diagramName) =>
         $"""
-        Zet het whiteboard "{boardName}" om naar een diagram.
+        Convert the whiteboard "{boardName}" to a diagram.
 
-        Lees het bord met read_whiteboard en stel de omzetting daarna in één keer voor met edit_diagram op diagram-id {diagramId} ("{diagramName}"): de hele Mermaid-bron als één voorstel.
+        Read the board with read_whiteboard and then propose the conversion in one go with edit_diagram on diagram id {diagramId} ("{diagramName}"): the whole Mermaid source as one proposal.
 
-        Gebruik hiervoor niet add_node, rename_node, remove_node, connect_nodes of disconnect_nodes — die schrijven direct in het diagram. Een omzetting hoort als voorstel in de diff-poort te landen, zodat de operator hem blok voor blok kan aannemen of afwijzen en er niets stilzwijgend overschreven wordt. Verander zelf niets op het bord.
+        Do not use add_node, rename_node, remove_node, connect_nodes or disconnect_nodes for this — those write straight to the diagram. A conversion belongs in the diff gate as a proposal, so the operator can accept or reject it block by block and nothing gets silently overwritten. Do not change anything on the board yourself.
         """;
 
     public static string WriteDownPrompt(string boardName) =>
         $"""
-        Lees het whiteboard "{boardName}" met read_whiteboard en schrijf in dit gesprek op wat erop staat: de vormen, de teksten en hoe ze samenhangen.
+        Read the whiteboard "{boardName}" with read_whiteboard and write down in this conversation what is on it: the shapes, the texts and how they relate.
 
-        Zet het niet om naar een diagram en verander niets — niet op het bord en niet in een diagram.
+        Do not convert it to a diagram and do not change anything — not on the board and not in a diagram.
         """;
 }

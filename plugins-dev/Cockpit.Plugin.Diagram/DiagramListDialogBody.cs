@@ -23,8 +23,8 @@ internal sealed class DiagramListDialogBody : UserControl
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
         refresh.Click += (_, _) => _ = _LoadAsync();
 
-        // AC-896: "Nieuw diagram" moved here from the "..." menu, next to Refresh.
-        var newDiagram = new Button { Content = "Nieuw diagram", Classes = { "Compact" } };
+        // AC-896: "New diagram" moved here from the "..." menu, next to Refresh.
+        var newDiagram = new Button { Content = "New diagram", Classes = { "Compact" } };
         newDiagram.Click += (_, _) => _ = _QuickStartAsync();
 
         var header = new DockPanel
@@ -40,8 +40,8 @@ internal sealed class DiagramListDialogBody : UserControl
         var couplingNote = new TextBlock
         {
             Text = activePaneId is null
-                ? "Geen actieve sessie — open er een om een diagram te koppelen."
-                : $"Koppelt aan {sessionLabel} — de sessie hiernaast.",
+                ? "No active session — open one to link a diagram to it."
+                : $"Links to {sessionLabel} — the session alongside.",
             FontSize = 11,
             Margin = new Thickness(12, 6, 12, 0),
             Foreground = _Brush("CockpitTextSecondaryBrush"),
@@ -65,7 +65,7 @@ internal sealed class DiagramListDialogBody : UserControl
     // what a diagram window needs, so it opens one instead of a tab.
     private async Task _QuickStartAsync()
     {
-        if (await DiagramQuickStartDialog.ShowAsync(_host, "Nieuw diagram") is not { } quickStart)
+        if (await DiagramQuickStartDialog.ShowAsync(_host, "New diagram") is not { } quickStart)
         {
             return;
         }
@@ -116,7 +116,7 @@ internal sealed class DiagramListDialogBody : UserControl
         {
             if (_host.Sessions.ActivePaneId is not { } paneId)
             {
-                _host.ShowToast("Geen actieve sessie om dit diagram aan te koppelen.", PluginToastSeverity.Information);
+                _host.ShowToast("No active session to link this diagram to.", PluginToastSeverity.Information);
                 return;
             }
 

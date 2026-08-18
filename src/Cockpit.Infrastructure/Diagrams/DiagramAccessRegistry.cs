@@ -310,7 +310,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                return "Dit diagram staat niet meer open.";
+                return "This diagram is no longer open.";
             }
 
             var before = surface.Text;
@@ -322,7 +322,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             if (!_Renders(result.Text!))
             {
-                return "Deze bewerking zou geen geldige Mermaid overlaten, dus er is niets veranderd.";
+                return "This edit would leave invalid Mermaid, so nothing was changed.";
             }
 
             surface.Text = text = result.Text!;
@@ -368,17 +368,17 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                return "Dit diagram staat niet meer open.";
+                return "This diagram is no longer open.";
             }
 
             if (!_history.TryGetValue(surfaceId, out var entries) || entries.Find(candidate => candidate.Id == entryId) is not { } entry)
             {
-                return "Deze bewerking is niet gevonden.";
+                return "This edit was not found.";
             }
 
             if (entry.Reverted)
             {
-                return "Deze bewerking is al teruggedraaid.";
+                return "This edit has already been reverted.";
             }
 
             var result = entry.Kind switch
@@ -388,7 +388,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines) ?? entry.ObjectKey),
                 DiagramHandEditKind.RelabelConnection => _RelabelByKey(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines)),
                 DiagramHandEditKind.SetNodeShape => entry.RemovedLines.Count == 0
-                    ? DiagramEdit.Refuse("Er is niets vastgelegd om terug te zetten.")
+                    ? DiagramEdit.Refuse("Nothing was captured to restore.")
                     : DiagramObjectEdit.RestoreNodeShape(surface.Text, entry.ObjectKey, entry.RemovedLines[0]),
                 DiagramHandEditKind.AddEntity or DiagramHandEditKind.RenameEntity or DiagramHandEditKind.SetAttribute
                     or DiagramHandEditKind.RemoveAttribute or DiagramHandEditKind.Relate
@@ -403,7 +403,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             if (!_Renders(result.Text!))
             {
-                return "Terugdraaien zou geen geldige Mermaid overlaten, dus er is niets veranderd.";
+                return "Reverting this would leave invalid Mermaid, so nothing was changed.";
             }
 
             surface.Text = text = result.Text!;
@@ -435,7 +435,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                return new DiagramEditSupport(DiagramEditDialect.Unsupported, "Dit diagram staat niet meer open.");
+                return new DiagramEditSupport(DiagramEditDialect.Unsupported, "This diagram is no longer open.");
             }
 
             text = surface.Text;
@@ -443,7 +443,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
         var dialect = DiagramObjectEdit.DialectOf(text);
         return new DiagramEditSupport(dialect, dialect == DiagramEditDialect.Unsupported
-            ? $"Losse objecten bewerken kan op flowchart-, graph- en erDiagram-diagrammen; dit is een {DiagramObjectEdit.Keyword(text)}. Vraag de gekoppelde agent om dit diagram te wijzigen."
+            ? $"Editing loose objects only works on flowchart, graph and erDiagram diagrams; this is a {DiagramObjectEdit.Keyword(text)}. Ask the coupled agent to change this diagram."
             : null);
     }
 
@@ -458,16 +458,16 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     private static DiagramEdit _DisconnectByKey(string source, string objectKey) =>
         objectKey.Split("->", 2) is [var from, var to]
             ? DiagramObjectEdit.Disconnect(source, from, to)
-            : DiagramEdit.Refuse("Deze verbinding is niet meer te herkennen.");
+            : DiagramEdit.Refuse("This connection can no longer be recognized.");
 
     private static DiagramEdit _RelabelByKey(string source, string objectKey, string? label) =>
         objectKey.Split("->", 2) is [var from, var to]
             ? DiagramObjectEdit.RelabelConnection(source, from, to, label)
-            : DiagramEdit.Refuse("Deze verbinding is niet meer te herkennen.");
+            : DiagramEdit.Refuse("This connection can no longer be recognized.");
 
     private static DiagramEdit _Restore(string source, IReadOnlyList<string> removedLines) =>
         removedLines.Count == 0
-            ? DiagramEdit.Refuse("Er is niets vastgelegd om terug te zetten.")
+            ? DiagramEdit.Refuse("Nothing was captured to restore.")
             : DiagramEdit.Change(string.Join("\n", _Lines(source).Concat(removedLines)), "restored");
 
     // The label between the first and last quote of a captured node line — safe because a label is always written

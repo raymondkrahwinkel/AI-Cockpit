@@ -10,7 +10,7 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Diagram;
 
 // AC-849: the operator's open questions on this surface's objects, each already landed as a "📍 pin N" reference in
-// the coupled session — same shared-registry shape as ActivityStrip (read that one first), but "Sluiten" is the
+// the coupled session — same shared-registry shape as ActivityStrip (read that one first), but "Close" is the
 // operator's own call that a pin was answered, never a system-detected one (there is no reply-correlation channel).
 internal sealed class PinStrip : Border
 {
@@ -37,7 +37,7 @@ internal sealed class PinStrip : Border
 
         _emptyLabel = new TextBlock
         {
-            Text = "Nog geen pins.",
+            Text = "No pins yet.",
             FontSize = 11,
             Opacity = 0.6,
             Margin = new Thickness(12, 6),
@@ -112,12 +112,12 @@ internal sealed class PinStrip : Border
     private Control _WhiteboardRow(WhiteboardPin pin) =>
         _Row(pin.When, pin.Question, pin.ObjectId, pin.Closed, () => _whiteboardRegistry?.ClosePin(_surfaceId, pin.Id));
 
-    // One row, diagram or whiteboard alike: a "Sluiten" the operator presses once they judge the agent answered it —
-    // disabled once closed, same disabled-once-done shape as ActivityStrip's "Terugdraaien".
+    // One row, diagram or whiteboard alike: a "Close" the operator presses once they judge the agent answered it —
+    // disabled once closed, same disabled-once-done shape as ActivityStrip's "Revert".
     private Control _Row(DateTime when, string question, string objectKey, bool closed, Action close)
     {
-        var closeButton = new Button { Content = "Sluiten", Classes = { "Compact", "Subtle" }, FontSize = 10, IsEnabled = !closed };
-        ToolTip.SetTip(closeButton, closed ? "Deze pin is al gesloten." : "Sluit deze pin — de vraag is beantwoord.");
+        var closeButton = new Button { Content = "Close", Classes = { "Compact", "Subtle" }, FontSize = 10, IsEnabled = !closed };
+        ToolTip.SetTip(closeButton, closed ? "This pin is already closed." : "Close this pin — the question was answered.");
         closeButton.PointerPressed += (_, e) => e.Handled = true;
         closeButton.Click += (_, _) => close();
         DockPanel.SetDock(closeButton, Dock.Right);
@@ -127,7 +127,7 @@ internal sealed class PinStrip : Border
             Opacity = closed ? 0.55 : 1,
             Children =
             {
-                new TextBlock { Text = $"{when:HH:mm:ss}{(closed ? " · gesloten" : "")}", FontSize = 10, Opacity = 0.55 },
+                new TextBlock { Text = $"{when:HH:mm:ss}{(closed ? " · closed" : "")}", FontSize = 10, Opacity = 0.55 },
                 new TextBlock
                 {
                     Text = question,

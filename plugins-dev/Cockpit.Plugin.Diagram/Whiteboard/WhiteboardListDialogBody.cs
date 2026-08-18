@@ -23,8 +23,8 @@ internal sealed class WhiteboardListDialogBody : UserControl
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
         refresh.Click += (_, _) => _ = _LoadAsync();
 
-        // AC-896: "Nieuw whiteboard" moved here from the "..." menu, next to Refresh.
-        var newWhiteboard = new Button { Content = "Nieuw whiteboard", Classes = { "Compact" } };
+        // AC-896: "New whiteboard" moved here from the "..." menu, next to Refresh.
+        var newWhiteboard = new Button { Content = "New whiteboard", Classes = { "Compact" } };
         newWhiteboard.Click += (_, _) => _ = _QuickStartAsync();
 
         var header = new DockPanel
@@ -40,8 +40,8 @@ internal sealed class WhiteboardListDialogBody : UserControl
         var couplingNote = new TextBlock
         {
             Text = activePaneId is null
-                ? "Geen actieve sessie — open er een om een whiteboard te koppelen."
-                : $"Koppelt aan {sessionLabel} — de sessie hiernaast.",
+                ? "No active session — open one to link a whiteboard to it."
+                : $"Links to {sessionLabel} — the session alongside.",
             FontSize = 11,
             Margin = new Thickness(12, 6, 12, 0),
             Foreground = _Brush("CockpitTextSecondaryBrush"),
@@ -64,7 +64,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
     // named for what the operator asked for, and only ever gets a file once it is first saved (AC-812's rule).
     private async Task _QuickStartAsync()
     {
-        if (await WhiteboardQuickStartDialog.ShowAsync(_host, "Nieuw whiteboard") is not { } quickStart)
+        if (await WhiteboardQuickStartDialog.ShowAsync(_host, "New whiteboard") is not { } quickStart)
         {
             return;
         }
@@ -88,7 +88,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
         {
             _list.Children.Add(_EmptyState(
                 "No whiteboards yet.",
-                "Start one with \"Nieuw whiteboard\" — it appears here once you save it."));
+                "Start one with \"New whiteboard\" — it appears here once you save it."));
             return;
         }
 
@@ -113,7 +113,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
         {
             if (_host.Sessions.ActivePaneId is not { } paneId)
             {
-                _host.ShowToast("Geen actieve sessie om dit whiteboard aan te koppelen.", PluginToastSeverity.Information);
+                _host.ShowToast("No active session to link this whiteboard to.", PluginToastSeverity.Information);
                 return;
             }
 
@@ -124,7 +124,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
             }
             catch (Exception exception)
             {
-                _host.ShowToast($"Openen is niet gelukt: {exception.Message}", PluginToastSeverity.Error);
+                _host.ShowToast($"Opening failed: {exception.Message}", PluginToastSeverity.Error);
                 return;
             }
 

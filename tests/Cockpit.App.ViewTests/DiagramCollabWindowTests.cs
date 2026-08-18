@@ -88,10 +88,10 @@ public class DiagramCollabWindowTests
         Assert.Null(host.Registry.ListSurfaces("pane-a").Single().Coupling);
         Assert.True(window.IsVisible);
         Assert.Contains("Werksessie", _CouplingText(content));
-        Assert.Contains("afgelopen", _CouplingText(content), StringComparison.Ordinal);
+        Assert.Contains("has ended", _CouplingText(content), StringComparison.Ordinal);
 
         // The way back out: re-couple to another running session, named from the open-sessions list (AC-833).
-        Assert.Contains(content.GetVisualDescendants().OfType<Button>(), button => Equals(button.Content, "Koppelen…") && button.IsVisible);
+        Assert.Contains(content.GetVisualDescendants().OfType<Button>(), button => Equals(button.Content, "Couple…") && button.IsVisible);
 
         window.Close();
         plugin.Dispose();
@@ -119,9 +119,9 @@ public class DiagramCollabWindowTests
         // The click landed on the node the source calls A: it is now the operator's, and the agent's edit naming it
         // is refused while it is (AC-852's hold).
         Assert.True(host.Registry.IsHeldByOperator(surfaceId, "A"));
-        Assert.Contains("jij bewerkt", _CouplingText(content), StringComparison.Ordinal);
+        Assert.Contains("you're editing", _CouplingText(content), StringComparison.Ordinal);
 
-        var delete = content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Verwijderen"));
+        var delete = content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Delete"));
         Assert.True(delete.IsEnabled);
         delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
@@ -140,7 +140,7 @@ public class DiagramCollabWindowTests
         var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
 
         _ClickCentre(content, window);
-        _Button(content, "Hernoemen").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _Button(content, "Rename").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
 
         // The rename box sits on the node itself — the one editable text box on this window; the source box below is
@@ -165,7 +165,7 @@ public class DiagramCollabWindowTests
         _ClickCentre(content, window);
         Assert.DoesNotContain("-->", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
 
-        _Button(content, "Verbinden").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _Button(content, "Connect").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ClickCentre(content, window);
         _ClickCentre(content, window);
         Dispatcher.UIThread.RunJobs();
@@ -186,11 +186,11 @@ public class DiagramCollabWindowTests
     [Fact]
     public void ConnectingWithATypedLabel_WritesItOntoTheConnection() => HeadlessAvalonia.Run(() =>
     {
-        // AC-909's first acceptance criterion: the operator's own Verbinden gesture can carry a label, the way
+        // AC-909's first acceptance criterion: the operator's own Connect gesture can carry a label, the way
         // connect_nodes already could.
         var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
 
-        _Button(content, "Verbinden").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _Button(content, "Connect").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ClickCentre(content, window);
         _ClickCentre(content, window);
         Dispatcher.UIThread.RunJobs();
@@ -214,7 +214,7 @@ public class DiagramCollabWindowTests
         var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
 
         _ClickCentre(content, window);
-        var vorm = _Button(content, "Vorm…");
+        var vorm = _Button(content, "Shape…");
         Assert.True(vorm.IsEnabled);
         vorm.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
@@ -303,7 +303,7 @@ public class DiagramCollabWindowTests
         host.Registry.UpdateText(surfaceId, "flowchart LR\n    A[\"Begin\"] --> B[\"Ver weg\"]");
         Dispatcher.UIThread.RunJobs();
 
-        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Volgen"));
+        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
         Dispatcher.UIThread.RunJobs();
 
@@ -320,21 +320,21 @@ public class DiagramCollabWindowTests
 
         var after = ((MatrixTransform)surfacePanel.RenderTransform!).Matrix;
 
-        Assert.Equal(before.M11, after.M11, precision: 6); // the zoom level is untouched by Volgen
+        Assert.Equal(before.M11, after.M11, precision: 6); // the zoom level is untouched by Follow
         Assert.False(before.M31 == after.M31 && before.M32 == after.M32); // but it did pan somewhere new
 
         window.Close();
         plugin.Dispose();
     });
 
-    // AC-847/AC-621's precedent: Volgen switches itself off the instant the operator's own gesture reaches the
+    // AC-847/AC-621's precedent: Follow switches itself off the instant the operator's own gesture reaches the
     // viewport — a wheel or a manual pan — since both handlers are only ever driven by real pointer/wheel input.
     [Fact]
     public void FollowToggle_TurnsOffTheMomentTheOperatorZoomsByHand() => HeadlessAvalonia.Run(() =>
     {
         var (plugin, host, content, window, _) = _OpenOnOneNode();
 
-        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Volgen"));
+        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
         Dispatcher.UIThread.RunJobs();
         Assert.True(follow.IsChecked);
@@ -353,7 +353,7 @@ public class DiagramCollabWindowTests
     {
         var (plugin, host, content, window, _) = _OpenOnOneNode();
 
-        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Volgen"));
+        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
         Dispatcher.UIThread.RunJobs();
 
@@ -484,7 +484,7 @@ public class DiagramCollabWindowTests
 
         private Control? _listDialogContent;
 
-        // AC-896's two-stage path: "Diagrams" opens the list dialog, "Nieuw diagram" in its header opens the
+        // AC-896's two-stage path: "Diagrams" opens the list dialog, "New diagram" in its header opens the
         // quick-start — the one entry point that already names a session, standing in for an operator who ticks
         // "couple to this session" and hits Enter on the prefilled name.
         public void InvokeQuickStart()
@@ -496,7 +496,7 @@ public class DiagramCollabWindowTests
             var listWindow = new Window { Content = _listDialogContent };
             listWindow.Show();
             Dispatcher.UIThread.RunJobs();
-            _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Nieuw diagram"))
+            _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "New diagram"))
                 .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             listWindow.Close();
         }
@@ -544,7 +544,7 @@ public class DiagramCollabWindowTests
             {
                 // Standing in for an operator who ticks "couple to this session" and hits Enter on the prefilled name.
                 content.GetVisualDescendants().OfType<CheckBox>().Single().IsChecked = true;
-                content.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Openen"))
+                content.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Open"))
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
                 return Task.CompletedTask;
             }

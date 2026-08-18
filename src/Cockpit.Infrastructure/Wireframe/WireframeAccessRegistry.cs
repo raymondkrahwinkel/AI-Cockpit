@@ -326,7 +326,7 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                return "Dit wireframe staat niet meer open.";
+                return "This wireframe is no longer open.";
             }
 
             var result = WireframeComponentEditor.Apply(surface.Text, edit);
@@ -363,17 +363,17 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                return "Dit wireframe staat niet meer open.";
+                return "This wireframe is no longer open.";
             }
 
             if (!_history.TryGetValue(surfaceId, out var entries) || entries.Find(candidate => candidate.Id == entryId) is not { } entry)
             {
-                return "Deze bewerking is niet gevonden.";
+                return "This edit was not found.";
             }
 
             if (entry.Reverted)
             {
-                return "Deze bewerking is al teruggedraaid.";
+                return "This edit has already been reverted.";
             }
 
             if (WireframeComponentEditor.Revert(surface.Text, entry.Patches, out var reverted) is { } reason)

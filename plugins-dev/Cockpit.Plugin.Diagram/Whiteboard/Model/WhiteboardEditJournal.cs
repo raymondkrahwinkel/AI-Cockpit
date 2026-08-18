@@ -35,7 +35,7 @@ internal sealed class WhiteboardEditJournal(string surfaceId)
     {
         if (_entries.Find(candidate => candidate.Id == entryId) is not { } entry)
         {
-            return "Deze handeling is niet gevonden.";
+            return "This handling was not found.";
         }
 
         if (entry.Reverted)

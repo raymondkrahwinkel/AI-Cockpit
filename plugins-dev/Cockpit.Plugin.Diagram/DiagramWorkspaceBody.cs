@@ -116,7 +116,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Top,
         };
 
-        // AC-841: selection, the "jij bewerkt" marking and the rename box sit on their own canvas above the render, in
+        // AC-841: selection, the "you're editing" marking and the rename box sit on their own canvas above the render, in
         // the SVG's own coordinates — so zoom and pan move them with the picture rather than beside it. No background,
         // so only the rename box itself takes the pointer; the marks let a click through to the diagram under them.
         _overlay = new Canvas();
@@ -181,7 +181,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         // No registry (an older host) means coupling cannot be shown or offered at all, so the bar goes rather
-        // than standing there with a Koppelen… button that could do nothing.
+        // than standing there with a Couple… button that could do nothing.
         _couplingBar.IsVisible = _registry is not null;
         _RefreshCouplingBar();
 
@@ -293,7 +293,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
     }
 
-    // AC-847's Volgen: pan (never zoom) so the agent's just-edited object lands in the viewport's own centre, using
+    // AC-847's Follow: pan (never zoom) so the agent's just-edited object lands in the viewport's own centre, using
     // whatever zoom level is already set. Cancelled the moment the operator pans or zooms by hand — see
     // _OnViewportWheel/_OnViewportPointerMoved.
     private void _FollowTo(string objectKey)
@@ -482,7 +482,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         {
             _placementHintShown = true;
             _host.ShowToast(
-                "Een diagram plaatst zichzelf — vrij slepen doe je op het whiteboard. Hier bewerk je de structuur.",
+                "A diagram places itself — free dragging happens on the whiteboard. Here you edit the structure.",
                 PluginToastSeverity.Information);
         }
     }
@@ -558,7 +558,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _Apply(new DiagramHandEdit(DiagramHandEditKind.Connect, from, node.Id));
     }
 
-    // AC-909: the label connect_nodes could always carry, now offered on the operator's own Verbinden gesture too
+    // AC-909: the label connect_nodes could always carry, now offered on the operator's own Connect gesture too
     // — a box over the connection's midpoint. The connection is already decided by the two clicks that got here,
     // so Escape does not cancel it; it only leaves the label empty, same as connecting without typing anything.
     private void _StartConnectLabel(DiagramObjectAt from, DiagramObjectAt to)
@@ -628,7 +628,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         var target = _Locate(holdKey);
         if (target is null)
         {
-            _host.ShowToast("Dat object staat niet meer op dit diagram.", PluginToastSeverity.Information);
+            _host.ShowToast("That object is no longer on this diagram.", PluginToastSeverity.Information);
             return;
         }
 
@@ -770,11 +770,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private void _AddObject(Control anchor)
     {
         var isEntity = _support.Dialect == DiagramEditDialect.Er;
-        var name = new TextBox { Width = 200, PlaceholderText = isEntity ? "Naam van de entiteit" : "Naam van de node" };
+        var name = new TextBox { Width = 200, PlaceholderText = isEntity ? "Entity name" : "Node name" };
         var shape = DiagramNodeShape.Rectangle;
         var shapePreview = new NodeShapePreview { Kind = shape, Width = 28, Height = 20 };
         var shapeButton = new Button { Content = shapePreview, Classes = { "Compact" }, IsVisible = !isEntity };
-        ToolTip.SetTip(shapeButton, "Kies een vorm.");
+        ToolTip.SetTip(shapeButton, "Choose a shape.");
         shapeButton.Flyout = _BuildNodeShapeFlyout(picked =>
         {
             shape = picked;
@@ -782,7 +782,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             shapePreview.InvalidateVisual();
         });
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { name, shapeButton } };
-        var confirm = new Button { Content = "Toevoegen", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var confirm = new Button { Content = "Add", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
             Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { row, confirm } },
@@ -799,7 +799,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             }
 
             var id = _NextNodeId();
-            _Apply(new DiagramHandEdit(DiagramHandEditKind.AddNode, id, Label: string.IsNullOrEmpty(typed) ? "Nieuwe node" : typed));
+            _Apply(new DiagramHandEdit(DiagramHandEditKind.AddNode, id, Label: string.IsNullOrEmpty(typed) ? "New node" : typed));
             if (shape != DiagramNodeShape.Rectangle)
             {
                 _Apply(new DiagramHandEdit(DiagramHandEditKind.SetNodeShape, id) { Shape = shape });
@@ -835,7 +835,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         void Rebuild()
         {
             body.Children.Clear();
-            body.Children.Add(new TextBlock { Text = $"Attributen van {entity.Id}", FontWeight = FontWeight.SemiBold });
+            body.Children.Add(new TextBlock { Text = $"Attributes of {entity.Id}", FontWeight = FontWeight.SemiBold });
             foreach (var attribute in _registry.EntityAttributes(_surfaceId, entity.Id))
             {
                 var remove = new Button { Content = "×", Classes = { "Compact" }, MinWidth = 24 };
@@ -866,7 +866,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             var attributeName = new TextBox { Width = 110, PlaceholderText = "naam" };
             string?[] markers = [null, "PK", "FK", "UK"];
             var key = new ComboBox { ItemsSource = new[] { "—", "PK", "FK", "UK" }, SelectedIndex = 0, MinWidth = 64 };
-            var add = new Button { Content = "Toevoegen", Classes = { "Compact" } };
+            var add = new Button { Content = "Add", Classes = { "Compact" } };
             add.Click += (_, _) =>
             {
                 if (string.IsNullOrWhiteSpace(attributeName.Text))
@@ -902,7 +902,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         var fromCardinality = _CardinalityBox();
         var toCardinality = _CardinalityBox();
         var label = new TextBox { Width = 200, PlaceholderText = "leest als… (bv. plaatst)" };
-        var confirm = new Button { Content = "Verbinden", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var confirm = new Button { Content = "Connect", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
             Content = new StackPanel
@@ -950,7 +950,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     }
 
     private static ComboBox _CardinalityBox() =>
-        new() { ItemsSource = new[] { "precies één", "nul of één", "één of meer", "nul of meer" }, SelectedIndex = 0, MinWidth = 130 };
+        new() { ItemsSource = new[] { "exactly one", "zero or one", "one or more", "zero or more" }, SelectedIndex = 0, MinWidth = 130 };
 
     private static DiagramErCardinality _CardinalityAt(int index) => index switch
     {
@@ -969,7 +969,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (DiagramNodeShape.Subroutine, "Subroutine"),
     ];
 
-    // AC-909: "Vorm…" on a selected node — the same grid-of-previews flyout add-node uses, applied straight away
+    // AC-909: "Shape…" on a selected node — the same grid-of-previews flyout add-node uses, applied straight away
     // as its own SetNodeShape journal line rather than staged in a form.
     private void _PickNodeShape(Control anchor)
     {
@@ -1119,8 +1119,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
-        var question = new TextBox { Width = 260, PlaceholderText = "Waar twijfel je over?" };
-        var confirm = new Button { Content = "Prikken", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var question = new TextBox { Width = 260, PlaceholderText = "What are you unsure about?" };
+        var confirm = new Button { Content = "Pin", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
             Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { question, confirm } },
@@ -1170,7 +1170,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     }
 
     // AC-847: composed in layers, later on top, rather than clearing-and-drawing-one — the agent's cursor and the
-    // operator's own "jij bewerkt" mark can both be on screen at once, on different objects or even the same one.
+    // operator's own "you're editing" mark can both be on screen at once, on different objects or even the same one.
     private void _RefreshOverlay()
     {
         _overlay.Children.Clear();
@@ -1266,7 +1266,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Padding = new Thickness(5, 1),
             CornerRadius = new CornerRadius(4),
             IsHitTestVisible = false,
-            Child = new TextBlock { Text = "jij bewerkt", FontSize = 10, Foreground = Brushes.White },
+            Child = new TextBlock { Text = "you're editing", FontSize = 10, Foreground = Brushes.White },
         };
         Canvas.SetLeft(mark, bounds.X);
         Canvas.SetTop(mark, bounds.Y - 18);
@@ -1289,7 +1289,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // no per-object grammar there is nothing to write — both say so by being off, with the reason in the tooltip.
         var er = _support.Dialect == DiagramEditDialect.Er;
         var editable = _registry is not null && _support.Dialect != DiagramEditDialect.Unsupported;
-        var reason = _registry is null ? "Deze host kent nog geen diagram-bewerkingen." : _support.Reason;
+        var reason = _registry is null ? "This host doesn't know any diagram edits yet." : _support.Reason;
 
         // AC-909: a flowchart's edge can be relabeled the same way a node is renamed; an ER relationship cannot —
         // its label sits together with cardinality, which only _AskRelationship's flyout asks for.
@@ -1304,39 +1304,39 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _attributesButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
         _shapeButton.IsVisible = !er;
         _shapeButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
-        _connectButton.Content = _isConnecting ? "Verbinden…" : "Verbinden";
+        _connectButton.Content = _isConnecting ? "Connecting…" : "Connect";
 
-        var box = er ? "entiteit" : "node";
-        ToolTip.SetTip(_addButton, reason ?? $"Zet een {box} op dit diagram.");
-        ToolTip.SetTip(_connectButton, reason ?? $"Klik daarna twee {box}s om ze te verbinden.");
+        var box = er ? "entity" : "node";
+        ToolTip.SetTip(_addButton, reason ?? $"Place a {box} on this diagram.");
+        ToolTip.SetTip(_connectButton, reason ?? $"Then click two {box}s to connect them.");
         ToolTip.SetTip(_renameButton, reason ?? (_selected switch
         {
-            { Kind: DiagramObjectAt.Node } => $"Hernoem de geselecteerde {box}.",
-            { Kind: DiagramObjectAt.Edge } when relabelableEdge => "Wijzig het label van de geselecteerde verbinding.",
-            _ => $"Selecteer eerst een {box} om te hernoemen.",
+            { Kind: DiagramObjectAt.Node } => $"Rename the selected {box}.",
+            { Kind: DiagramObjectAt.Edge } when relabelableEdge => "Change the label of the selected connection.",
+            _ => $"Select a {box} first to rename it.",
         }));
-        ToolTip.SetTip(_deleteButton, reason ?? (_selected is null ? "Selecteer eerst wat je wilt verwijderen." : "Verwijder het geselecteerde object."));
-        ToolTip.SetTip(_attributesButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Beheer de attributen van deze entiteit." : "Selecteer eerst een entiteit."));
-        ToolTip.SetTip(_shapeButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Wijzig de vorm van de geselecteerde node." : "Selecteer eerst een node om de vorm te wijzigen."));
+        ToolTip.SetTip(_deleteButton, reason ?? (_selected is null ? "Select what you want to delete first." : "Delete the selected object."));
+        ToolTip.SetTip(_attributesButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Manage this entity's attributes." : "Select an entity first."));
+        ToolTip.SetTip(_shapeButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Change the shape of the selected node." : "Select a node first to change its shape."));
 
-        // AC-849: prikken needs both an object under the operator's hand and a live session to send the reference
-        // to — the coupling bar's "Geen agent gekoppeld" already explains the second half, this button explains it
+        // AC-849: pinning needs both an object under the operator's hand and a live session to send the reference
+        // to — the coupling bar's "No agent linked" already explains the second half, this button explains it
         // again at the point of use rather than failing silently when pressed.
         _pinButton.IsEnabled = editable && _selected is not null && _sessionBinding.IsLive;
         ToolTip.SetTip(
             _pinButton,
-            !_sessionBinding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
-            : _selected is null ? "Selecteer eerst een object om te prikken."
-            : "Prik een vraag op dit object.");
+            !_sessionBinding.IsLive ? "Link a conversation first to be able to pin."
+            : _selected is null ? "Select an object first to pin."
+            : "Pin a question on this object.");
 
         _handHint.Text = _isConnecting
-            ? _connectFrom is null ? $"Klik de {box} waar de verbinding begint." : $"Klik de {box} waar {_connectFrom} naartoe wijst."
+            ? _connectFrom is null ? $"Click the {box} where the connection starts." : $"Click the {box} that {_connectFrom} points to."
             : _selected switch
             {
-                { Kind: DiagramObjectAt.Node } node => $"{char.ToUpperInvariant(box[0])}{box[1..]} {node.Id} geselecteerd — dubbelklik om te hernoemen.",
+                { Kind: DiagramObjectAt.Node } node => $"{char.ToUpperInvariant(box[0])}{box[1..]} {node.Id} selected — double-click to rename.",
                 { To: { } head } edge => relabelableEdge
-                    ? $"Verbinding {edge.Id} → {head} geselecteerd — dubbelklik om het label te wijzigen."
-                    : $"Verbinding {edge.Id} → {head} geselecteerd.",
+                    ? $"Connection {edge.Id} → {head} selected — double-click to change the label."
+                    : $"Connection {edge.Id} → {head} selected.",
                 _ => "",
             };
     }
@@ -1385,7 +1385,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Margin = new Thickness(8, 0, 8, 8),
             IsVisible = false,
         };
-        var toggle = new ToggleButton { Content = "Toon bron", Classes = { "Compact" }, Margin = new Thickness(8, 4) };
+        var toggle = new ToggleButton { Content = "Show source", Classes = { "Compact" }, Margin = new Thickness(8, 4) };
         toggle.IsCheckedChanged += (_, _) => box.IsVisible = toggle.IsChecked == true;
         return (toggle, box);
     }
@@ -1430,8 +1430,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         // AC-847: pans (never zooms) to whatever the agent just touched, as long as this stays checked — and it is
         // unchecked itself the moment the operator pans or zooms by hand (_CancelFollow).
-        var follow = new ToggleButton { Content = "Volgen", Classes = { "Compact" } };
-        ToolTip.SetTip(follow, "Volg de agent naar wat die nu bewerkt.");
+        var follow = new ToggleButton { Content = "Follow", Classes = { "Compact" } };
+        ToolTip.SetTip(follow, "Follow the agent to whatever it's currently editing.");
         follow.IsCheckedChanged += (_, _) => _following = follow.IsChecked == true;
 
         var zoomControls = new StackPanel
@@ -1445,28 +1445,28 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // AC-840: empty is a starting point, not a dead end — the AC-809 sample is reachable as an explicit
         // insert rather than a silent default. AC-841 adds the rest of the hand-editing beside it: what the operator
         // clicked on the render decides what these act on.
-        var insertSample = new Button { Content = "Voorbeeld invoegen", Classes = { "Compact" } };
+        var insertSample = new Button { Content = "Insert sample", Classes = { "Compact" } };
         insertSample.Click += (_, _) => _InsertSample();
         // Without a registry (an older host) there is nothing to write a hand-edit into, so the buttons say so by
         // being off rather than failing silently when pressed.
         var addNode = new Button { Content = "+ Node", Classes = { "Compact" }, IsEnabled = _registry is not null };
         addNode.Click += (_, _) => _AddObject(addNode);
-        var connect = new Button { Content = "Verbinden", Classes = { "Compact" } };
+        var connect = new Button { Content = "Connect", Classes = { "Compact" } };
         connect.Click += (_, _) => _SetConnecting(!_isConnecting);
-        var rename = new Button { Content = "Hernoemen", Classes = { "Compact" } };
+        var rename = new Button { Content = "Rename", Classes = { "Compact" } };
         rename.Click += (_, _) => _StartRename(_selected);
-        var delete = new Button { Content = "Verwijderen", Classes = { "Compact" } };
+        var delete = new Button { Content = "Delete", Classes = { "Compact" } };
         delete.Click += (_, _) => _DeleteSelected();
         // AC-899: an ER entity carries its own attributes, which no flowchart node has — so this one control is
         // shown for that dialect only rather than standing there meaningless on a flowchart.
-        var attributes = new Button { Content = "Attributen…", Classes = { "Compact" }, IsVisible = false };
+        var attributes = new Button { Content = "Attributes…", Classes = { "Compact" }, IsVisible = false };
         attributes.Click += (_, _) => _EditAttributes(attributes);
-        // AC-909: the shape counterpart of Hernoemen — a flowchart node only, same reasoning as Attributen above.
-        var shape = new Button { Content = "Vorm…", Classes = { "Compact" }, IsVisible = false };
+        // AC-909: the shape counterpart of Rename — a flowchart node only, same reasoning as Attributes above.
+        var shape = new Button { Content = "Shape…", Classes = { "Compact" }, IsVisible = false };
         shape.Click += (_, _) => _PickNodeShape(shape);
         // AC-849: the operator's question about the selected object, sent to the coupled session as a "📍 pin N"
         // reference the moment it is planted — see _AddPin.
-        var pin = new Button { Content = "Prikken", Classes = { "Compact" } };
+        var pin = new Button { Content = "Pin", Classes = { "Compact" } };
         pin.Click += (_, _) => _AddPin(pin);
         var hint = new TextBlock
         {
@@ -1475,9 +1475,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
 
-        // AC-839: where this diagram lives, next to the button that puts it there — "Nog geen bestand" is a state
+        // AC-839: where this diagram lives, next to the button that puts it there — "No file yet" is a state
         // the window shows just as well as a path.
-        var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
+        var save = new Button { Content = "Save", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
         var saveStatus = new TextBlock
         {
@@ -1521,7 +1521,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         if (homes.Count == 0)
         {
             _host.ShowToast(
-                "Dit project heeft geen geheugenpad — voeg er een toe in de projecteditor voordat je een diagram opslaat.",
+                "This project has no memory path — add one in the project editor before saving a diagram.",
                 PluginToastSeverity.Warning);
             return;
         }
@@ -1555,7 +1555,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"Opslaan is niet gelukt: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"Saving failed: {exception.Message}", PluginToastSeverity.Error);
             return;
         }
 
@@ -1567,8 +1567,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private void _RefreshSaveBar()
     {
         var dirty = (_sourceBox.Text ?? "") != _savedText;
-        var where = _filePath ?? "Nog geen bestand";
-        _saveStatus.Text = dirty ? $"{where} · onbewaarde wijzigingen" : where;
+        var where = _filePath ?? "No file yet";
+        _saveStatus.Text = dirty ? $"{where} · unsaved changes" : where;
         ToolTip.SetTip(_saveStatus, _filePath);
         _saveButton.IsEnabled = dirty || _filePath is null;
     }
@@ -1707,8 +1707,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
         if (_current is not { } coupling)
         {
             _couplingLabel.Text = _sessionBinding.EndedSessionName is { } ended
-                ? $"Sessie {ended} is afgelopen — dit venster blijft open."
-                : "Geen agent gekoppeld.";
+                ? $"Session {ended} has ended — this window stays open."
+                : "No agent linked.";
             _couplingLabel.Foreground = _Brush("CockpitTextSecondaryBrush");
             return;
         }
@@ -1719,7 +1719,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // agent may edit, the bar says so too, rather than only naming who is coupled.
         _couplingLabel.Text = (coupling.HasAnyCapability, coupling.CanEdit && _selected is not null) switch
         {
-            (_, true) => $"2 tegelijk aan het werk — jij en sessie {name}",
+            (_, true) => $"2 working at once — you and session {name}",
             (true, _) => $"Agent connected — session {name}",
             _ => $"Agent connected — session {name} (no capabilities granted yet)",
         };
@@ -1728,7 +1728,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         SurfaceChrome.SetChip(_editChip, "edit_diagram", coupling.CanEdit);
     }
 
-    // The diff gate (AC-825): a proposal sits here, block by block, until the operator resolves it — Toepassen
+    // The diff gate (AC-825): a proposal sits here, block by block, until the operator resolves it — Apply
     // writes only the accepted blocks' new lines, everything else keeps what was already on the surface.
     private static Border _BuildProposalPanel() => new()
     {
@@ -1752,7 +1752,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         var body = new StackPanel { Spacing = 6 };
         body.Children.Add(new TextBlock
         {
-            Text = $"Voorstel van agent — {proposal.ChangeSummary}",
+            Text = $"Proposal from agent — {proposal.ChangeSummary}",
             FontWeight = FontWeight.Bold,
             TextWrapping = TextWrapping.Wrap,
             Foreground = _Brush("CockpitAccentBrush"),
@@ -1762,7 +1762,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         if (proposal.FidelityFindings.Count > 0)
         {
             var fidelity = new StackPanel { Spacing = 2, Margin = new Thickness(0, 0, 0, 4) };
-            fidelity.Children.Add(new TextBlock { Text = "De renderer liet dit vallen:", FontSize = 11, FontWeight = FontWeight.SemiBold });
+            fidelity.Children.Add(new TextBlock { Text = "The renderer dropped this:", FontSize = 11, FontWeight = FontWeight.SemiBold });
             foreach (var finding in proposal.FidelityFindings)
             {
                 fidelity.Children.Add(new TextBlock { Text = $"⚠ {finding}", FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Goldenrod });
@@ -1780,7 +1780,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
                 {
                     body.Children.Add(new TextBlock
                     {
-                        Text = $"⋯ {block.ContextLines.Count} ongewijzigde regels ⋯",
+                        Text = $"⋯ {block.ContextLines.Count} unchanged lines ⋯",
                         FontSize = 10,
                         Foreground = _Brush("CockpitTextSecondaryBrush"),
                     });
@@ -1793,9 +1793,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
-        var apply = new Button { Content = "Toepassen", Classes = { "Compact" } };
+        var apply = new Button { Content = "Apply", Classes = { "Compact" } };
         apply.Click += (_, _) => _registry?.ResolveProposal(_surfaceId, _acceptedBlocks);
-        var discard = new Button { Content = "Alles afwijzen", Classes = { "Compact" } };
+        var discard = new Button { Content = "Reject all", Classes = { "Compact" } };
         discard.Click += (_, _) => _registry?.DiscardProposal(_surfaceId);
         actions.Children.Add(apply);
         actions.Children.Add(discard);
@@ -1818,10 +1818,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
         }
 
         var accepted = _acceptedBlocks.Contains(index);
-        var status = new TextBlock { Text = accepted ? "Aangenomen" : "Afgewezen (standaard)", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextSecondaryBrush") };
-        var acceptButton = new Button { Content = "Aannemen", Classes = { "Compact" } };
+        var status = new TextBlock { Text = accepted ? "Accepted" : "Rejected (default)", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextSecondaryBrush") };
+        var acceptButton = new Button { Content = "Accept", Classes = { "Compact" } };
         acceptButton.Click += (_, _) => { _acceptedBlocks.Add(index); _RefreshProposalPanel(); };
-        var rejectButton = new Button { Content = "Afwijzen", Classes = { "Compact" } };
+        var rejectButton = new Button { Content = "Reject", Classes = { "Compact" } };
         rejectButton.Click += (_, _) => { _acceptedBlocks.Remove(index); _RefreshProposalPanel(); };
 
         return new Border

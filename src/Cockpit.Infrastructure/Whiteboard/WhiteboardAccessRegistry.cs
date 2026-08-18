@@ -278,27 +278,27 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         {
             if (!_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                return "Dit whiteboard staat niet meer open.";
+                return "This whiteboard is no longer open.";
             }
 
             if (!_history.TryGetValue(surfaceId, out var entries) || entries.Find(candidate => candidate.Id == entryId) is not { } entry)
             {
-                return "Deze bewerking is niet gevonden.";
+                return "This action was not found.";
             }
 
             if (entry.Kind != WhiteboardHistoryKind.Place)
             {
-                return "Het terughalen van een verwijderd object kan nog niet worden teruggedraaid.";
+                return "Restoring an erased object cannot be reverted yet.";
             }
 
             if (entry.Reverted)
             {
-                return "Deze bewerking is al teruggedraaid.";
+                return "This action has already been reverted.";
             }
 
             if (!surface.PlacedBy.ContainsKey(entry.ObjectId))
             {
-                return "Dit object staat niet meer op het bord.";
+                return "This object is no longer on the board.";
             }
 
             surface.PlacedBy.Remove(entry.ObjectId);

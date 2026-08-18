@@ -81,7 +81,7 @@ internal static class WireframeComponentEditor
             if (at < 0)
             {
                 reverted = source;
-                return "Deze bewerking is niet meer terug te vinden in het wireframe.";
+                return "This edit can no longer be found in the wireframe.";
             }
 
             lines.RemoveRange(at, patch.After.Count);
@@ -95,7 +95,7 @@ internal static class WireframeComponentEditor
         }
 
         reverted = source;
-        return "Terugdraaien zou geen leesbaar wireframe overlaten, dus er is niets veranderd.";
+        return "Reverting this would leave an unreadable wireframe, so nothing was changed.";
     }
 
     private static WireframeEdit _Add(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)

@@ -339,7 +339,7 @@ public class WhiteboardCanvasControlTests
         window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
 
         Assert.Equal(2, document.Objects.Count);
-        var prompt = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Alleen de afbeelding"));
+        var prompt = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Just the image"));
         Assert.NotNull(prompt);
 
         window.Close();
@@ -361,7 +361,7 @@ public class WhiteboardCanvasControlTests
         window.MouseUp(new Point(70, 60), MouseButton.Left);
         window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
 
-        var both = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Afbeelding en"));
+        var both = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Delete image and"));
         both.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
         Assert.Empty(document.Objects);
@@ -385,7 +385,7 @@ public class WhiteboardCanvasControlTests
         window.MouseUp(new Point(70, 60), MouseButton.Left);
         window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
 
-        var detach = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Alleen de afbeelding"));
+        var detach = canvas.GetVisualDescendants().OfType<Button>().First(b => ((string)b.Content!).StartsWith("Just the image"));
         detach.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
         Assert.Equal(label, Assert.Single(document.Objects));
@@ -408,7 +408,7 @@ public class WhiteboardCanvasControlTests
         window.KeyPressQwerty(PhysicalKey.Delete, RawInputModifiers.None);
 
         Assert.Empty(document.Objects);
-        Assert.DoesNotContain(canvas.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Wat moet er gebeuren met de aantekeningen op deze afbeelding?");
+        Assert.DoesNotContain(canvas.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "What should happen to the annotations on this image?");
 
         window.Close();
     }

@@ -14,19 +14,19 @@ public class WhiteboardToDiagramTests
     {
         Assert.Null(WhiteboardToDiagram.Blocker(true, true, Coupled(canRead: true)));
 
-        Assert.Contains("Geen agent gekoppeld", WhiteboardToDiagram.Blocker(true, true, null));
-        Assert.Contains("Geen agent gekoppeld", WhiteboardToDiagram.Blocker(true, false, Coupled(canRead: true)));
-        Assert.Contains("niet lezen", WhiteboardToDiagram.Blocker(true, true, Coupled(canRead: false)));
-        Assert.Contains("geen diagrammen", WhiteboardToDiagram.Blocker(false, true, Coupled(canRead: true)));
+        Assert.Contains("No agent coupled", WhiteboardToDiagram.Blocker(true, true, null));
+        Assert.Contains("No agent coupled", WhiteboardToDiagram.Blocker(true, false, Coupled(canRead: true)));
+        Assert.Contains("may not read", WhiteboardToDiagram.Blocker(true, true, Coupled(canRead: false)));
+        Assert.Contains("does not draw diagrams", WhiteboardToDiagram.Blocker(false, true, Coupled(canRead: true)));
     }
 
     [Fact]
     public void Status_ReportsWhatLandedInThePoort_NotWhatWasAsked()
     {
         Assert.Equal("", WhiteboardToDiagram.Status(asked: false, proposals: 0));
-        Assert.Contains("wacht", WhiteboardToDiagram.Status(asked: true, proposals: 0));
-        Assert.Equal("1 omzetting voorgesteld", WhiteboardToDiagram.Status(asked: true, proposals: 1));
-        Assert.Equal("2 omzettingen voorgesteld", WhiteboardToDiagram.Status(asked: true, proposals: 2));
+        Assert.Contains("waiting", WhiteboardToDiagram.Status(asked: true, proposals: 0));
+        Assert.Equal("1 conversion proposed", WhiteboardToDiagram.Status(asked: true, proposals: 1));
+        Assert.Equal("2 conversions proposed", WhiteboardToDiagram.Status(asked: true, proposals: 2));
     }
 
     [Fact]
@@ -37,11 +37,11 @@ public class WhiteboardToDiagramTests
         Assert.Contains("read_whiteboard", prompt);
         Assert.Contains("edit_diagram", prompt);
         Assert.Contains("abc123", prompt);
-        Assert.Contains("diff-poort", prompt);
+        Assert.Contains("diff gate", prompt);
 
-        // De per-object-tools schrijven direct (AC-852) — die mogen dit pad niet nemen.
-        Assert.Contains("Gebruik hiervoor niet add_node", prompt);
-        Assert.Contains("Verander zelf niets op het bord", prompt);
+        // The per-object tools write straight through (AC-852) — they must not take this path.
+        Assert.Contains("Do not use add_node", prompt);
+        Assert.Contains("Do not change anything on the board yourself", prompt);
     }
 
     [Fact]
@@ -51,6 +51,6 @@ public class WhiteboardToDiagramTests
 
         Assert.Contains("read_whiteboard", prompt);
         Assert.DoesNotContain("edit_diagram", prompt);
-        Assert.Contains("verander niets", prompt);
+        Assert.Contains("do not change anything", prompt);
     }
 }

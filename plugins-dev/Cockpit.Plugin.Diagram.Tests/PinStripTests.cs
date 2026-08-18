@@ -32,7 +32,7 @@ public class PinStripTests
         var strip = new PinStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
 
-        Assert.Contains("Nog geen pins.", _Texts(strip));
+        Assert.Contains("No pins yet.", _Texts(strip));
 
         window.Close();
     }
@@ -48,7 +48,7 @@ public class PinStripTests
 
         var texts = _Texts(strip);
         Assert.Contains("krijgt de agent te horen waaróm?", texts);
-        Assert.DoesNotContain("Nog geen pins.", texts);
+        Assert.DoesNotContain("No pins yet.", texts);
 
         window.Close();
     }
@@ -62,7 +62,7 @@ public class PinStripTests
         var strip = new PinStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
 
-        Assert.Contains("Nog geen pins.", _Texts(strip));
+        Assert.Contains("No pins yet.", _Texts(strip));
 
         window.Close();
     }
@@ -90,16 +90,16 @@ public class PinStripTests
         var strip = new PinStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
 
-        var close = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Sluiten"));
+        var close = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Close"));
         Assert.True(close.IsEnabled);
 
         _RaiseClick(close);
         Dispatcher.UIThread.RunJobs();
 
         Assert.Single(registry.Pins("surface-1"), pin => pin.Closed);
-        var reClose = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Sluiten"));
+        var reClose = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Close"));
         Assert.False(reClose.IsEnabled);
-        Assert.Contains(_Texts(strip), text => text is not null && text.Contains("gesloten", StringComparison.Ordinal));
+        Assert.Contains(_Texts(strip), text => text is not null && text.Contains("closed", StringComparison.Ordinal));
 
         window.Close();
     }
@@ -113,7 +113,7 @@ public class PinStripTests
         var strip = new PinStrip(host, "surface-1", whiteboard: false, null);
         var window = _Show(strip);
 
-        var close = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Sluiten"));
+        var close = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Close"));
         Assert.False(close.IsEnabled);
 
         window.Close();
