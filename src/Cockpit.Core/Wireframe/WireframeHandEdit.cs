@@ -35,13 +35,9 @@ public static class WireframeHandEdit
             ? WireframeComponentEdit.Add(parentId, type, text, modifiers: null, position: at.Index + 1)
             : null;
 
-    // One step up or down among its own siblings, or null when there is no such step — a screen line, or a
-    // component already at that end.
-    //
-    // A move's position names the sibling the component ends up in front of, counted in the source as it stands
-    // *before* the move. One step up is therefore the neighbour above (`Index - 1`), but one step down is the sibling
-    // *past* the neighbour below (`Index + 2`) — naming that neighbour itself would insert in front of it and change
-    // nothing.
+    // One step up or down among its own siblings, or null when there is no such step — a screen line, or a component
+    // already at that end. A position counts the source as it stands *before* the move, so up is the neighbour above
+    // (`Index - 1`) and down the sibling *past* the one below (`Index + 2`); naming that one would change nothing.
     public static WireframeComponentEdit? Reorder(IReadOnlyList<WireframeNode> screens, string id, int delta)
     {
         if (Placement(screens, id) is not { Parent.Id: { } parentId } at)

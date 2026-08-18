@@ -101,7 +101,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         // No fixed control size beyond the design canvas: `_viewport` positions/scales `_surface` itself via
         // RenderTransform for zoom and pan, same as DiagramWorkspaceBody's `_surface`. AC-901 makes that canvas one
         // screen when zoomed in and the bounding box of every board in the overview, so each render sets it.
-        //
+
         // AC-875: the selection mark and the inline text box sit on their own canvas above the render, inside the same
         // transform — so zoom and pan move them with the wireframe rather than beside it. The render lives in its own
         // panel so re-rendering it leaves the overlay alone.
@@ -1215,7 +1215,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return;
         }
 
-        // Meer dan één geheugenpad: vragen, niet kiezen (AC-812). Het antwoord blijft bij dit wireframe.
+        // More than one memory path: ask, never pick one (AC-812). The answer stays with this wireframe.
         var flyout = new MenuFlyout();
         foreach (var home in homes)
         {
