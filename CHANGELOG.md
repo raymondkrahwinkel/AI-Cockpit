@@ -64,6 +64,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   and a label, so reusing the node tools would have meant parameters that mean nothing on half the diagram types.
   Calling a flowchart tool on an ER diagram (or the other way round) is refused with the names of the ones that
   do work there.
+- added: a properties panel next to a selected wireframe component, so you can now set the same things the agent
+  always could — primary, selected, checked and disabled as checkboxes (only shown where they mean something on
+  that component), width and height as a 1-6 share-of-the-space choice with an explanation that it is a ratio and
+  not pixels, alignment as left/center/right, and a value field, all applying straight away. You can also change
+  what a component is — a label into a button, an input into a select — without losing its place, its text or its
+  children, unless the new kind cannot hold what is already inside it, in which case it is refused and says why.
+  The agent gets the matching `set_component_modifier` and `change_component_type` tools, going through the exact
+  same edit as the panel does.
 
 ### Fixed
 

@@ -38,7 +38,9 @@ internal static class WireframeComponentEditor
             WireframeEditKind.Add => _Add(root, lines, edit),
             WireframeEditKind.SetText => _SetText(root, lines, edit),
             WireframeEditKind.Remove => _Remove(root, lines, edit),
-            _ => _Move(root, lines, edit),
+            WireframeEditKind.Move => _Move(root, lines, edit),
+            WireframeEditKind.ChangeType => _ChangeType(root, lines, edit),
+            _ => _SetModifier(root, lines, edit),
         };
 
         if (result.Text is not { } text)
@@ -218,6 +220,95 @@ internal static class WireframeComponentEditor
             new WireframePatch(to, _AnchorAbove(lines, to), [], moved));
     }
 
+    // AC-905: the operator's properties panel and the agent's set_component_modifier both land here — a flag
+    // (Toggle) or a value-bearing modifier (Set) replaced in place if it was already on the line, appended if it
+    // was not, or dropped when the caller is clearing it. Semantics come from WireframeModifierRules rather than a
+    // second copy of the table, so the panel, this refusal and docs/wireframe-format.md cannot drift apart.
+    private static WireframeEdit _SetModifier(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    {
+        if (_Find(root, edit.Component) is not { } node)
+        {
+            return WireframeEdit.Refuse(_NoSuchComponent(edit.Component));
+        }
+
+        if (edit.ModifierName is not { } name)
+        {
+            return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value.");
+        }
+
+        var parentKind = _ParentOf(root, node)?.Kind;
+        if (!WireframeModifierRules.Applies(node.Kind, parentKind, name))
+        {
+            return WireframeEdit.Refuse($"{_Keyword(name)} has no meaning on a {_Keyword(node)} here, so nothing was changed.");
+        }
+
+        var at = node.Line - 1;
+        var before = lines[at];
+        var index = node.Modifiers.FindIndex(modifier => modifier.Name == name);
+        var setting = edit.Kind == WireframeEditKind.ToggleModifier ? edit.ModifierOn : !string.IsNullOrEmpty(edit.ModifierValue);
+
+        if (setting)
+        {
+            var modifier = new WireframeModifier(
+                name,
+                edit.Kind == WireframeEditKind.ToggleModifier ? null : _Clean(edit.ModifierValue!),
+                edit.ModifierQuoted);
+            if (index >= 0)
+            {
+                node.Modifiers[index] = modifier;
+            }
+            else
+            {
+                node.Modifiers.Add(modifier);
+            }
+        }
+        else if (index >= 0)
+        {
+            node.Modifiers.RemoveAt(index);
+        }
+
+        lines[at] = WireframeWriter.Line(node, _IndentOf(before));
+        var summary = setting
+            ? $"set {_Keyword(name)} on the {_Keyword(node)} on line {node.Line}"
+            : $"cleared {_Keyword(name)} on the {_Keyword(node)} on line {node.Line}";
+        return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(at, _AnchorAbove(lines, at), [before], [lines[at]]));
+    }
+
+    // AC-905: keeps the line's place, id, text and modifiers — only the keyword changes. Refused rather than
+    // silently dropping children a widget cannot carry; the operator moves or removes them first.
+    private static WireframeEdit _ChangeType(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    {
+        if (_Find(root, edit.Component) is not { } node)
+        {
+            return WireframeEdit.Refuse(_NoSuchComponent(edit.Component));
+        }
+
+        if (node == root)
+        {
+            return WireframeEdit.Refuse("The screen line is the wireframe itself, so its type cannot be changed.");
+        }
+
+        if (edit.Type is not { } written || !Enum.TryParse<WireframeNodeKind>(written.Trim(), ignoreCase: true, out var kind))
+        {
+            return WireframeEdit.Refuse($"\"{edit.Type}\" is not a component this format has — use one of: {_Keywords()}.");
+        }
+
+        if (!new WireframeNode(kind, 0).IsContainer && node.Children.Count > 0)
+        {
+            return WireframeEdit.Refuse(
+                $"A {_Keyword(kind)} carries no components of its own, but {_Keyword(node)}{_Quoted(node.Text)} has {node.Children.Count} inside it — move or remove them first.");
+        }
+
+        var at = node.Line - 1;
+        var before = lines[at];
+        var rewritten = new WireframeNode(kind, node.Line, node.Text) { Id = node.Id };
+        rewritten.Modifiers.AddRange(node.Modifiers);
+        lines[at] = WireframeWriter.Line(rewritten, _IndentOf(before));
+
+        var summary = $"changed the {_Keyword(node)}{_Quoted(node.Text)} on line {node.Line} to a {_Keyword(kind)}";
+        return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(at, _AnchorAbove(lines, at), [before], [lines[at]]));
+    }
+
     // Where a new child of `parent` starts, as a 0-based line index: before the child at `position`, or after
     // everything already inside the last one. A parent with no children yet takes it on the line straight below.
     private static int _ChildInsertionPoint(WireframeNode parent, int? position)
@@ -291,6 +382,10 @@ internal static class WireframeComponentEditor
     private static WireframeNode? _Find(WireframeNode node, string id) =>
         node.Id == id ? node : node.Children.Select(child => _Find(child, id)).FirstOrDefault(found => found is not null);
 
+    // AC-905: null for the root itself — the screen line has no parent, and `w:`/`h:` never apply to it either.
+    private static WireframeNode? _ParentOf(WireframeNode root, WireframeNode target) =>
+        root.Children.Contains(target) ? root : root.Children.Select(child => _ParentOf(child, target)).FirstOrDefault(found => found is not null);
+
     private static int _LastLine(WireframeNode node) =>
         node.Children.Count == 0 ? node.Line : Math.Max(node.Line, node.Children.Max(_LastLine));
 
@@ -299,6 +394,8 @@ internal static class WireframeComponentEditor
     private static string _Keyword(WireframeNodeKind kind) => kind.ToString().ToLowerInvariant();
 
     private static string _Keyword(WireframeNode node) => _Keyword(node.Kind);
+
+    private static string _Keyword(WireframeModifierName name) => name.ToString().ToLowerInvariant();
 
     private static string _Keywords() =>
         string.Join(", ", Enum.GetValues<WireframeNodeKind>().Select(_Keyword));

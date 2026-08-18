@@ -68,6 +68,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Button _downButton;
     private readonly Button _moveButton;
     private readonly TextBlock _handHint;
+    private readonly StackPanel _propertiesContent;
     private double _zoom = 1.0;
     private Vector _panOffset;
     private bool _isFitMode = true;
@@ -120,10 +121,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
+        var (propertiesPanel, propertiesContent) = _BuildPropertiesPanel();
+        _propertiesContent = propertiesContent;
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _presence, _sourceToggle, _sourceBox, _activityStrip, _viewport },
+            Children = { toolbar, _couplingBar, _presence, _sourceToggle, _sourceBox, _activityStrip, propertiesPanel, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
@@ -131,6 +134,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
+        DockPanel.SetDock(propertiesPanel, Dock.Right);
 
         // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
         // session is gone — lands on a not-live binding, which is the "no agent on this wireframe" state.
@@ -726,6 +730,177 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _handHint.Text = target is null
             ? "Klik een component om het te bewerken."
             : $"{_Describe(target)} op regel {target.Line} — dubbelklik om de tekst te wijzigen.";
+
+        _RefreshPropertiesPanel(target, placement?.Parent.Kind);
+    }
+
+    // ---- Properties panel (AC-905): the operator's way to set the same modifiers the agent could always set ----
+
+    // A fixed column rather than a flyout: it stays put across a run of selections instead of reopening every click,
+    // which is calmer with the toolbar/coupling bar/presence/activity strip already docked around the same window.
+    private static (Border Panel, StackPanel Content) _BuildPropertiesPanel()
+    {
+        var content = new StackPanel { Spacing = 10 };
+        var panel = new Border
+        {
+            Width = 240,
+            Padding = new Thickness(12),
+            BorderThickness = new Thickness(1, 0, 0, 0),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Child = new ScrollViewer { Content = content },
+        };
+        return (panel, content);
+    }
+
+    // AC-905 AC6: nothing at all with no selection — the toolbar's own hint already says to click a component — and
+    // for the screen line only what WireframeModifierRules says applies there (disabled + align, nothing else).
+    private void _RefreshPropertiesPanel(WireframeNode? node, Kind? parentKind)
+    {
+        _propertiesContent.Children.Clear();
+        if (node is null || _selectedId is not { } id)
+        {
+            return;
+        }
+
+        _propertiesContent.Children.Add(new TextBlock
+        {
+            Text = _Describe(node),
+            FontWeight = FontWeight.Bold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        foreach (var flag in FlagModifiers)
+        {
+            if (WireframeModifierRules.Applies(node.Kind, parentKind, flag))
+            {
+                _propertiesContent.Children.Add(_BuildFlagCheckbox(node, id, flag));
+            }
+        }
+
+        if (WireframeModifierRules.Applies(node.Kind, parentKind, WireframeModifierName.W))
+        {
+            _propertiesContent.Children.Add(_BuildWeightPicker(node, id, WireframeModifierName.W, "Width (w:)"));
+        }
+
+        if (WireframeModifierRules.Applies(node.Kind, parentKind, WireframeModifierName.H))
+        {
+            _propertiesContent.Children.Add(_BuildWeightPicker(node, id, WireframeModifierName.H, "Height (h:)"));
+        }
+
+        if (WireframeModifierRules.Applies(node.Kind, parentKind, WireframeModifierName.Align))
+        {
+            _propertiesContent.Children.Add(_BuildAlignPicker(node, id));
+        }
+
+        if (WireframeModifierRules.Applies(node.Kind, parentKind, WireframeModifierName.Value))
+        {
+            _propertiesContent.Children.Add(_BuildValueField(node, id));
+        }
+    }
+
+    private static readonly WireframeModifierName[] FlagModifiers =
+        [WireframeModifierName.Primary, WireframeModifierName.Selected, WireframeModifierName.Checked, WireframeModifierName.Disabled];
+
+    private static string _FlagLabel(WireframeModifierName name) => name switch
+    {
+        WireframeModifierName.Primary => "Primary",
+        WireframeModifierName.Selected => "Selected",
+        WireframeModifierName.Checked => "Checked",
+        _ => "Disabled",
+    };
+
+    private CheckBox _BuildFlagCheckbox(WireframeNode node, string id, WireframeModifierName name)
+    {
+        var box = new CheckBox { Content = _FlagLabel(name), IsChecked = node.Has(name) };
+        box.IsCheckedChanged += (_, _) => _Apply(WireframeComponentEdit.ToggleModifier(id, name, box.IsChecked == true));
+        return box;
+    }
+
+    // AC-905 AC3: `w:`/`h:` are a flex ratio, never pixels — said in words here rather than left for the operator to
+    // find out by seeing two boxes of very different sizes and guessing why.
+    private StackPanel _BuildWeightPicker(WireframeNode node, string id, WireframeModifierName name, string label)
+    {
+        var combo = new ComboBox { ItemsSource = WeightChoices, SelectedItem = node.WeightOf(name)?.ToString() ?? NoWeight, HorizontalAlignment = HorizontalAlignment.Stretch };
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = combo.SelectedItem as string;
+            _Apply(WireframeComponentEdit.SetModifier(id, name, chosen == NoWeight ? null : chosen));
+        };
+
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock { Text = label, FontSize = 11 },
+                combo,
+                new TextBlock
+                {
+                    Text = "A share of the space, not a size in pixels — w:2 beside w:1 takes twice as much.",
+                    FontSize = 10,
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            },
+        };
+    }
+
+    private const string NoWeight = "—";
+
+    private static readonly string[] WeightChoices = [NoWeight, "1", "2", "3", "4", "5", "6"];
+
+    private StackPanel _BuildAlignPicker(WireframeNode node, string id)
+    {
+        var combo = new ComboBox { ItemsSource = AlignChoices, SelectedItem = node.Alignment?.ToString().ToLowerInvariant() ?? NoAlign, HorizontalAlignment = HorizontalAlignment.Stretch };
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = combo.SelectedItem as string;
+            _Apply(WireframeComponentEdit.SetModifier(id, WireframeModifierName.Align, chosen == NoAlign ? null : chosen));
+        };
+
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children = { new TextBlock { Text = "Align", FontSize = 11 }, combo },
+        };
+    }
+
+    private const string NoAlign = "—";
+
+    private static readonly string[] AlignChoices = [NoAlign, "left", "center", "right"];
+
+    // AC-905 AC1: `value:` on a slider/progress/pagination is a 0-100 number the format reads back unquoted; every
+    // other component takes free text, quoted like the writer already quotes any other text on the line.
+    private StackPanel _BuildValueField(WireframeNode node, string id)
+    {
+        var numeric = WireframeModifierRules.ValueIsNumeric(node.Kind);
+        var box = new TextBox
+        {
+            Text = node.ValueOf(WireframeModifierName.Value) ?? "",
+            PlaceholderText = numeric ? "0-100" : "",
+        };
+
+        void Commit()
+        {
+            var value = box.Text ?? "";
+            _Apply(WireframeComponentEdit.SetModifier(id, WireframeModifierName.Value, value.Length == 0 ? null : value, quoted: !numeric));
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        box.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                Commit();
+            }
+        };
+
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children = { new TextBlock { Text = "Value", FontSize = 11 }, box },
+        };
     }
 
     // A component named the way the operator reads it: "input «E-mailadres»", or the bare keyword when it carries no

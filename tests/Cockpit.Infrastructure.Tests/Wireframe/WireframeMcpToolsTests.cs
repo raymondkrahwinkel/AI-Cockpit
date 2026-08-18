@@ -158,6 +158,91 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
+    public async Task SetComponentModifier_AFlag_TurnsItOnWithoutAValue()
+    {
+        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.AccountItem, "selected"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("selected #account", registry.PeekText(SurfaceId));
+        Assert.Contains("set selected on component", Assert.Single(asked).Action, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SetComponentModifier_AFlag_WithClear_TakesItOff()
+    {
+        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.GeneralItem, "selected", clear: true));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.DoesNotContain("selected", registry.PeekText(SurfaceId)!.Split('\n')[4]);
+    }
+
+    [Fact]
+    public async Task SetComponentModifier_AValue_SetsIt_AndClearRemovesIt()
+    {
+        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
+
+        var set = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.EmailField, "value", "raymond@example.com"));
+        Assert.True(set!["ok"]!.GetValue<bool>());
+        Assert.Contains("value:\"raymond@example.com\"", registry.PeekText(SurfaceId));
+
+        var cleared = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.EmailField, "value", clear: true));
+        Assert.True(cleared!["ok"]!.GetValue<bool>());
+        Assert.Equal("        input \"E-mailadres\" #email", registry.PeekText(SurfaceId)!.Split('\n')[9]);
+    }
+
+    [Fact]
+    public async Task SetComponentModifier_WithAKeywordTheFormatDoesNotHave_IsRefusedWithoutAsking()
+    {
+        var (tools, _, asked) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "bold"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("not a modifier this format has", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Empty(asked);
+    }
+
+    [Fact]
+    public async Task SetComponentModifier_WithNoMeaningOnThisComponent_IsRefused()
+    {
+        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.NameField, "primary"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("no meaning", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
+    }
+
+    [Fact]
+    public async Task ChangeComponentType_KeepsThePlaceTheTextAndTheChildren()
+    {
+        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.ChangeComponentType(Session, Name, WireframeScreens.NameField, "select"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("select \"Profielnaam\" value:\"Raymond\" #name", registry.PeekText(SurfaceId));
+        Assert.Contains("change component", Assert.Single(asked).Action, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChangeComponentType_WhenTheNewTypeCannotCarryItsChildren_IsRefused()
+    {
+        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.ChangeComponentType(Session, Name, WireframeScreens.Group, "label"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("carries no components of its own", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
+    }
+
+    [Fact]
     public async Task AComponentTheOperatorIsHolding_IsRefusedWithAReason()
     {
         var (tools, registry, _) = _Open(ConsentOutcome.Approved);

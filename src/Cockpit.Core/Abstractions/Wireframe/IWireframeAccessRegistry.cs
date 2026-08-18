@@ -1,3 +1,5 @@
+using Cockpit.Core.Wireframe.Model;
+
 namespace Cockpit.Core.Abstractions.Wireframe;
 
 // An open wireframe surface the agent could ask to read or edit: its stable id and the name the operator sees.
@@ -41,6 +43,9 @@ public enum WireframeEditKind
     SetText,
     Remove,
     Move,
+    SetModifier,
+    ToggleModifier,
+    ChangeType,
 }
 
 // One per-component edit (AC-852's shape), addressed by the component's stable id (AC-906): the id is what an agent
@@ -53,7 +58,11 @@ public sealed record WireframeComponentEdit(
     int? Position = null,
     string? Type = null,
     string? Text = null,
-    string? Modifiers = null)
+    string? Modifiers = null,
+    WireframeModifierName? ModifierName = null,
+    string? ModifierValue = null,
+    bool ModifierQuoted = false,
+    bool ModifierOn = false)
 {
     public static WireframeComponentEdit Add(string parent, string type, string? text, string? modifiers, int? position) =>
         new(WireframeEditKind.Add, Parent: parent, Position: position, Type: type, Text: text, Modifiers: modifiers);
@@ -66,6 +75,21 @@ public sealed record WireframeComponentEdit(
 
     public static WireframeComponentEdit Move(string component, string parent, int? position) =>
         new(WireframeEditKind.Move, component, parent, position);
+
+    // AC-905: a value-bearing modifier (w:/h:/align:/value:). A null or empty `value` clears it — that is how the
+    // operator's panel and the agent's tool both express "take this one off" without a separate remove operation.
+    public static WireframeComponentEdit SetModifier(string component, WireframeModifierName name, string? value, bool quoted = false) =>
+        new(WireframeEditKind.SetModifier, component, ModifierName: name, ModifierValue: value, ModifierQuoted: quoted);
+
+    // AC-905: a flag modifier (primary/selected/checked/disabled) — `on` false removes it, true adds it. Flags carry
+    // no value in the source, so there is nothing to clear it with.
+    public static WireframeComponentEdit ToggleModifier(string component, WireframeModifierName name, bool on) =>
+        new(WireframeEditKind.ToggleModifier, component, ModifierName: name, ModifierOn: on);
+
+    // AC-905: swaps a component's keyword in place — same line, same id, same modifiers, same children — refused by
+    // the editor when the new type cannot carry the children it already has.
+    public static WireframeComponentEdit ChangeType(string component, string type) =>
+        new(WireframeEditKind.ChangeType, component, Type: type);
 }
 
 // What an edit did: a one-line summary for the activity strip (AC-848), or the reason it was refused. `Summary` is

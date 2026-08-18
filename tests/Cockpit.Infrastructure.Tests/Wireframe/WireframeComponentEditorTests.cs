@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Wireframe;
+using Cockpit.Core.Wireframe.Model;
 using Cockpit.Infrastructure.Wireframe;
 
 namespace Cockpit.Infrastructure.Tests.Wireframe;
@@ -199,6 +200,144 @@ public class WireframeComponentEditorTests
 
         Assert.Null(result.Text);
         Assert.Contains("carries no components", result.Refusal);
+    }
+
+    [Fact]
+    public void ToggleModifier_On_AddsTheFlagAtTheEndOfTheLine()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.ToggleModifier(WireframeScreens.AccountItem, WireframeModifierName.Selected, on: true));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("        item \"Account\" selected #account", WireframeScreens.LineOf(result.Text!, 6));
+    }
+
+    [Fact]
+    public void ToggleModifier_Off_RemovesTheFlagAndLeavesTheRestOfTheLine()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.ToggleModifier(WireframeScreens.GeneralItem, WireframeModifierName.Selected, on: false));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("        item \"Algemeen\" #general", WireframeScreens.LineOf(result.Text!, 5));
+    }
+
+    [Fact]
+    public void ToggleModifier_WithNoMeaningOnThisComponent_IsRefused()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.ToggleModifier(WireframeScreens.NameField, WireframeModifierName.Primary, on: true));
+
+        Assert.Null(result.Text);
+        Assert.Contains("no meaning", result.Refusal);
+    }
+
+    [Fact]
+    public void SetModifier_UpdatesAnExistingValueInPlace_RatherThanMovingItToTheEnd()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Align, "left"));
+
+        // "Opslaan" already carries `primary` before the id — align is new here, so it lands at the end, but the
+        // existing modifier keeps its own place rather than being reordered around it.
+        Assert.Null(result.Refusal);
+        Assert.Equal("        button \"Opslaan\" primary align:left #save", WireframeScreens.LineOf(result.Text!, 13));
+    }
+
+    [Fact]
+    public void SetModifier_QuotesATextValue_ButNotANumber()
+    {
+        var quoted = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.EmailField, WireframeModifierName.Value, "raymond@example.com", quoted: true));
+        Assert.Contains("value:\"raymond@example.com\"", quoted.Text);
+
+        var numeric = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.NameField, WireframeModifierName.Value, "2", quoted: false));
+        Assert.Contains("value:2", numeric.Text);
+    }
+
+    [Fact]
+    public void SetModifier_WithAnEmptyValue_ClearsTheModifierInstead()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.NameField, WireframeModifierName.Value, null));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("        input \"Profielnaam\" #name", WireframeScreens.LineOf(result.Text!, 9));
+    }
+
+    [Fact]
+    public void SetModifier_WNotOnARowHeaderOrFooterChild_IsRefused()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.Group, WireframeModifierName.W, "2"));
+
+        Assert.Null(result.Text);
+        Assert.Contains("no meaning", result.Refusal);
+    }
+
+    [Fact]
+    public void SetModifier_UnderAnIdThatNamesNothing_IsRefused()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier("no-such-id", WireframeModifierName.Align, "left"));
+
+        Assert.Null(result.Text);
+        Assert.Contains("no component with id \"no-such-id\"", result.Refusal);
+    }
+
+    [Fact]
+    public void ChangeType_KeepsThePlaceTheIdTheTextAndTheModifiers()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.ChangeType(WireframeScreens.NameField, "select"));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("        select \"Profielnaam\" value:\"Raymond\" #name", WireframeScreens.LineOf(result.Text!, 9));
+        Assert.Equal(13, WireframeScreens.LinesOf(result.Text!).Length);
+    }
+
+    [Fact]
+    public void ChangeType_ToAWidget_WhenItStillHasChildren_IsRefused()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.ChangeType(WireframeScreens.Group, "label"));
+
+        Assert.Null(result.Text);
+        Assert.Contains("carries no components of its own", result.Refusal);
+    }
+
+    [Fact]
+    public void ChangeType_ToAKeywordTheFormatDoesNotHave_IsRefused()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.ChangeType(WireframeScreens.NameField, "textbox"));
+
+        Assert.Null(result.Text);
+        Assert.Contains("not a component this format has", result.Refusal);
+    }
+
+    [Fact]
+    public void ChangeType_OfTheScreenLine_IsRefused()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.ChangeType(WireframeScreens.Screen, "row"));
+
+        Assert.Null(result.Text);
+        Assert.Contains("the wireframe itself", result.Refusal);
     }
 
     [Fact]
