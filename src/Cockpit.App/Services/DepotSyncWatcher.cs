@@ -10,11 +10,9 @@ namespace Cockpit.App.Services;
 // `DepotSyncWatcher` needs to ask that source whether anything changed since the last look.
 public sealed record DepotBoundProject(string ProjectId, ISharedProjectSource Source, string SharedId);
 
-// AC-894: sync between Cockpit and Depot is otherwise purely action-driven (a Save, a Publish) — nothing notices a
-// change made elsewhere until the operator happens to reopen the editor. This ticks every bound project's own
-// `ISharedProjectSource.PrepareBindingAsync` and compares its `Checksum` against the last one seen, the same
-// optimistic-concurrency token `SaveAsync`'s own write-back already defends. A changed checksum is only ever a
-// signal — nothing here writes anything back or overwrites an unsaved local edit, which stays the only write path.
+// AC-894: sync was otherwise purely action-driven (Save, Publish) — this ticks every bound project's own
+// `PrepareBindingAsync` and compares its `Checksum` against the last one seen. A changed checksum is only ever a
+// signal; nothing here writes anything back or overwrites an unsaved local edit.
 public sealed class DepotSyncWatcher(
     ILogger<DepotSyncWatcher>? logger = null) : ISingletonService, IDisposable
 {
