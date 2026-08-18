@@ -20,6 +20,10 @@ internal sealed class FreehandLayer : Control
 
     public Guid? SelectedId { get; set; }
 
+    // AC-898: the stroke a hand is still drawing — not in _document, so a mid-gesture read_whiteboard/journal
+    // entry never sees it. Painted after the committed strokes with the same painter, then cleared on release.
+    public DraftStroke? ActiveStroke { get; set; }
+
     public override void Render(DrawingContext context)
     {
         foreach (var stroke in _document.Objects.OfType<FreehandStroke>())
@@ -32,7 +36,15 @@ internal sealed class FreehandLayer : Control
                 context.DrawRectangle(null, pen, _Bounds(stroke.Points).Inflate(4));
             }
         }
+
+        if (ActiveStroke is { } draft)
+        {
+            WhiteboardObjectPainter.PaintFreehand(context, draft.Points, draft.Thickness, draft.IsMarker);
+        }
     }
+
+    // A stroke's points, thickness and marker flag, held by `ActiveStroke` while it is being drawn.
+    public readonly record struct DraftStroke(IReadOnlyList<WhiteboardPoint> Points, double Thickness, bool IsMarker);
 
     private static Rect _Bounds(IReadOnlyList<WhiteboardPoint> points)
     {

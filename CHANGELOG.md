@@ -51,6 +51,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: drawing on a whiteboard now shows the stroke as you draw it, not only after you let go of the mouse —
+  a pencil or marker line and a dragged-out shape are both visible mid-gesture. The shape tool no longer drops
+  a half-drawn shape into the document while it is still being sized either, so an agent reading the board
+  mid-drag never sees a sliver that shouldn't exist yet.
 - fixed: a delegated task's record — including its full result text — is no longer kept forever once it
   finishes. A long-running cockpit session that delegated many tasks would otherwise grow that list without
   bound; finished tasks are now cleared out an hour after they finished, well after any caller has had the

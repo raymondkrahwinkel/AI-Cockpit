@@ -196,6 +196,8 @@ public sealed class WhiteboardCanvasControl : Border
         {
             _activeStroke = [new WhiteboardPoint(point.X, point.Y)];
             _activeStrokeIsMarker = Tool == WhiteboardTool.Marker;
+            _freehandLayer.ActiveStroke = new FreehandLayer.DraftStroke(
+                _activeStroke, _activeStrokeIsMarker ? MarkerThickness : PencilThickness, _activeStrokeIsMarker);
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -204,10 +206,10 @@ public sealed class WhiteboardCanvasControl : Border
         if (Tool == WhiteboardTool.PlaceShape)
         {
             // Created right here, not on the first PointerMoved — a click with no movement at all must still place
-            // something, per "neerzetten, niet tekenen" (#W2), rather than silently doing nothing.
+            // something, per "neerzetten, niet tekenen" (#W2), rather than silently doing nothing. Lives only on
+            // the surface until release — Document.Add happens there, so read_whiteboard never sees a mid-drag sliver.
             _shapeStartPoint = point;
             var placed = new PlacedObject { ShapeKind = _pendingShapeKind, X = point.X, Y = point.Y, Width = 1, Height = 1 };
-            Document.Add(placed);
             _shapeInProgress = _CreatePlacedControl(placed);
             e.Pointer.Capture(this);
             e.Handled = true;
@@ -294,11 +296,19 @@ public sealed class WhiteboardCanvasControl : Border
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+
+        // Releasing capture can synchronously raise OnPointerCaptureLost (Avalonia) — clear the draft state first
+        // so that re-entrant call sees it already gone and no-ops, instead of racing the logic below.
+        var stroke = _activeStroke;
+        var shape = _shapeInProgress;
+        _activeStroke = null;
+        _freehandLayer.ActiveStroke = null;
+        _shapeInProgress = null;
+        _shapeStartPoint = null;
         e.Pointer.Capture(null);
 
-        if (_activeStroke is { } stroke)
+        if (stroke is not null)
         {
-            _activeStroke = null;
             if (stroke.Count >= 2)
             {
                 var isMarker = _activeStrokeIsMarker;
@@ -310,14 +320,14 @@ public sealed class WhiteboardCanvasControl : Border
                     Thickness = isMarker ? MarkerThickness : PencilThickness,
                     ParentImageId = WhiteboardBinding.FindParentImage(Document, centerX, centerY)?.Id,
                 });
-                _freehandLayer.InvalidateVisual();
                 Changed?.Invoke(this, EventArgs.Empty);
             }
 
+            _freehandLayer.InvalidateVisual();
             return;
         }
 
-        if (_shapeInProgress is { } shape)
+        if (shape is not null)
         {
             // A click with no drag places the default size centred on the click, rather than a sliver nobody could
             // grab a handle on — a sticky note gets a note-sized square, everything else the usual 120x80.
@@ -337,8 +347,7 @@ public sealed class WhiteboardCanvasControl : Border
             shape.Model.ParentImageId = WhiteboardBinding.FindParentImage(
                 Document, shape.Model.X + (shape.Model.Width / 2), shape.Model.Y + (shape.Model.Height / 2))?.Id;
 
-            _shapeInProgress = null;
-            _shapeStartPoint = null;
+            Document.Add(shape.Model);
             _Select(shape.Model.Id);
             UseSelectTool();
             Changed?.Invoke(this, EventArgs.Empty);
@@ -364,6 +373,28 @@ public sealed class WhiteboardCanvasControl : Border
         {
             _resizing = null;
             Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // AC-898: window loses focus / alt-tab mid-gesture. Neither the draft stroke nor the shape being dragged out
+    // ever reached Document, so undoing them here is just dropping the draft state, not a Document.Remove.
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+
+        if (_activeStroke is not null)
+        {
+            _activeStroke = null;
+            _freehandLayer.ActiveStroke = null;
+            _freehandLayer.InvalidateVisual();
+        }
+
+        if (_shapeInProgress is { } shape)
+        {
+            _surface.Children.Remove(shape);
+            _placedControls.Remove(shape.Model.Id);
+            _shapeInProgress = null;
+            _shapeStartPoint = null;
         }
     }
 
