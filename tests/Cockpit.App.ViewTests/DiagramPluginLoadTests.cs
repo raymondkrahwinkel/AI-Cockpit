@@ -63,10 +63,10 @@ public class DiagramPluginLoadTests
         var listDialog = Assert.Single(host.Dialogs, d => d.Key == "diagram.list");
         Assert.IsAssignableFrom<Control>(listDialog.Content);
 
-        // AC-816/AC-834/AC-896: "Nieuw diagram" now lives in that list's own header, next to Refresh. Clicking it
-        // opens the quick-start dialog; RecordingHost.ShowDialogAsync builds it and clicks straight through with
-        // the prefilled name, the same "Enter is enough" default an operator gets. What it opens after that is a
-        // window of its own, not a workspace tab.
+        // AC-816/AC-834/AC-896: "Nieuw diagram" now lives in that list's own header. Clicking it opens the
+        // quick-start dialog; RecordingHost.ShowDialogAsync clicks straight through with the prefilled name, the
+        // same "Enter is enough" default an operator gets.
+
         // The list body is a UserControl — its Content only materialises into the visual tree once templated,
         // which showing it in a window forces.
         var diagramListWindow = new Window { Content = listDialog.Content };
@@ -83,10 +83,9 @@ public class DiagramPluginLoadTests
         // assertion — the plugin's panel simply would not fit the host's visual tree.
         Assert.IsAssignableFrom<Control>(diagramDialog.Content);
 
-        // AC-836/AC-842/AC-896: same two-stage path for the whiteboard surface, which builds from the same ALC —
-        // with no IWhiteboardAccessRegistry in this host's services, the "no host to fall through to" case the
-        // panel has to survive. The toolbar action opens the list, "Nieuw whiteboard" opens a window bound to the
-        // active session, not a workspace tab.
+        // AC-836/AC-842/AC-896: same two-stage path for the whiteboard surface — no IWhiteboardAccessRegistry in
+        // this host's services, the "no host to fall through to" case the panel has to survive. The toolbar action
+        // opens the list, "Nieuw whiteboard" opens a window bound to the active session.
         host.ToolbarActions[1].OnInvoke().GetAwaiter().GetResult();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
         var whiteboardListDialog = Assert.Single(host.Dialogs, d => d.Key == "whiteboard.list");
