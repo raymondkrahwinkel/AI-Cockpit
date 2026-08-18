@@ -1,8 +1,8 @@
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
 // The screens the format is measured against: a settings screen (nav + form + button row), a list-detail
-// screen, AC-903's product catalogue, an empty one, and one carrying the component ids of AC-906. Between them they
-// use every container, widget and modifier.
+// screen, AC-903's product catalogue, an empty one, one carrying the component ids of AC-906, and AC-901's document
+// of three screens. Between them they use every container, widget and modifier.
 internal static class WireframeScreens
 {
     public const string Settings = """
@@ -142,7 +142,37 @@ internal static class WireframeScreens
               button "Aanmelden" primary #submit
         """;
 
-    public static TheoryData<string> Names => new() { nameof(Settings), nameof(ListDetail), nameof(Catalogue), nameof(Empty), nameof(Identified) };
+    // AC-901: the three screens of one sign-in flow in one document — what a wireframe of a *site* looks like,
+    // rather than of a single page. One blank line between screens is the canonical form.
+    public const string SignInFlow = """
+        screen "Aanmelden"
+          column w:1
+            input "E-mailadres"
+            input "Wachtwoord"
+            row align:right
+              button "Wachtwoord vergeten"
+              button "Aanmelden" primary
+
+        screen "Wachtwoord vergeten"
+          column w:1
+            label "Vul je e-mailadres in, dan sturen we een herstelmail."
+            input "E-mailadres"
+            row align:right
+              button "Terug"
+              button "Verstuur" primary
+
+        screen "Overzicht"
+          header "Cockpit"
+            avatar "Raymond"
+          list "Sessies" h:1
+            item "AC-901 · meerdere schermen" selected
+            item "AC-903 · vocabulaire"
+        """;
+
+    public static TheoryData<string> Names => new()
+    {
+        nameof(Settings), nameof(ListDetail), nameof(Catalogue), nameof(Empty), nameof(Identified), nameof(SignInFlow),
+    };
 
     public static string Source(string name) => name switch
     {
@@ -150,6 +180,7 @@ internal static class WireframeScreens
         nameof(ListDetail) => ListDetail,
         nameof(Catalogue) => Catalogue,
         nameof(Identified) => Identified,
+        nameof(SignInFlow) => SignInFlow,
         _ => Empty,
     };
 }

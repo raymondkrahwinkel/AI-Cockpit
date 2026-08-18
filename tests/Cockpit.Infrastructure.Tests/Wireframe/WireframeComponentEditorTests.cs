@@ -148,12 +148,12 @@ public class WireframeComponentEditorTests
     }
 
     [Fact]
-    public void Remove_OfTheScreenLine_IsRefused_BecauseThatIsTheWireframeItself()
+    public void Remove_OfTheOnlyScreen_IsRefused_BecauseThatIsTheWireframeItself()
     {
         var result = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.Remove(WireframeScreens.Screen));
 
         Assert.Null(result.Text);
-        Assert.Contains("the wireframe itself", result.Refusal);
+        Assert.Contains("only screen", result.Refusal);
     }
 
     [Fact]
@@ -337,7 +337,7 @@ public class WireframeComponentEditorTests
             WireframeComponentEdit.ChangeType(WireframeScreens.Screen, "row"));
 
         Assert.Null(result.Text);
-        Assert.Contains("the wireframe itself", result.Refusal);
+        Assert.Contains("cannot be changed", result.Refusal);
     }
 
     [Fact]
@@ -349,5 +349,72 @@ public class WireframeComponentEditorTests
 
         Assert.Null(result.Text);
         Assert.Contains("exactly as it is", result.Refusal);
+    }
+
+    // ---- A document of several screens (AC-901) ----
+
+    [Fact]
+    public void AddScreen_PutsAScreenAtTheLeftMargin_AfterTheOnesAlreadyThere()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.AddScreen("Aanmelden", position: null));
+
+        Assert.Null(result.Refusal);
+        var lines = WireframeScreens.LinesOf(result.Text!);
+        Assert.Equal("", lines[^2]);
+        Assert.Equal("screen \"Aanmelden\"", lines[^1]);
+        Assert.Equal("added screen \"Aanmelden\"", result.Summary);
+    }
+
+    [Fact]
+    public void AddScreen_AtAPosition_PutsItBeforeThatScreen()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.TwoScreens, WireframeComponentEdit.AddScreen("Welkom", position: 0));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("screen \"Welkom\"", WireframeScreens.LineOf(result.Text!, 1));
+        Assert.Equal("screen \"Aanmelden\" #login", WireframeScreens.LineOf(result.Text!, 3));
+    }
+
+    [Fact]
+    public void AddScreen_WithoutATitle_IsRefused_BecauseThatIsWhatNamesItInTheOverview()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.AddScreen(" ", position: null));
+
+        Assert.Null(result.Text);
+        Assert.Contains("title", result.Refusal);
+    }
+
+    [Fact]
+    public void Remove_OfOneScreen_LeavesTheOtherScreenExactlyAsItWas()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.TwoScreens, WireframeComponentEdit.Remove(WireframeScreens.SignupScreen));
+
+        Assert.Null(result.Refusal);
+        Assert.Contains("screen \"Aanmelden\" #login", result.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Registreren", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Add_IntoTheSecondScreen_LeavesTheFirstOneUntouched()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.TwoScreens,
+            WireframeComponentEdit.Add(WireframeScreens.SignupScreen, "checkbox", "Voorwaarden", null, null));
+
+        Assert.Null(result.Refusal);
+        var lines = WireframeScreens.LinesOf(result.Text!);
+        Assert.Equal(WireframeScreens.LinesOf(WireframeScreens.TwoScreens)[..4], lines[..4]);
+        Assert.Equal("  checkbox \"Voorwaarden\"", lines[^1]);
+    }
+
+    [Fact]
+    public void Move_OfAScreen_IsRefused_BecauseAScreenStandsAtTheLeftMarginOfItsOwn()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.TwoScreens,
+            WireframeComponentEdit.Move(WireframeScreens.SignupScreen, WireframeScreens.LoginScreen, position: null));
+
+        Assert.Null(result.Text);
+        Assert.Contains("left margin", result.Refusal);
     }
 }

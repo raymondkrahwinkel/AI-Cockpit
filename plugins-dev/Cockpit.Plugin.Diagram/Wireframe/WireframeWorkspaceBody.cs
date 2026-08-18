@@ -32,10 +32,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // same slop as the diagram).
     private const double ClickSlopPx = 3;
 
-    // The design canvas a wireframe is measured against — wide enough that a desktop screen's whole layout needs
-    // zoom/pan to see at once, which is the point of AC-837 here (a diagram's SVG carries its own natural size;
-    // a wireframe's Grid star-sizing needs one handed to it instead).
-    private static readonly Size CanvasSize = new(960, 640);
+    // AC-901: the title a screen added by hand starts out with — renamed with «Tekst…» or a double click, the same
+    // way every other component's wording is changed.
+    private const string NewScreenTitle = "Nieuw scherm";
 
     private static readonly Cursor _PanCursor = new(StandardCursorType.Hand);
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
@@ -67,6 +66,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Button _upButton;
     private readonly Button _downButton;
     private readonly Button _moveButton;
+    private readonly Button _addScreenButton;
+    private readonly Button _overviewButton;
     private readonly TextBlock _handHint;
     private readonly StackPanel _propertiesContent;
     private double _zoom = 1.0;
@@ -75,7 +76,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private bool _isPanning;
     private Point _panPointerStart;
     private Vector _panOffsetStart;
-    private WireframeNode? _root;
+    private List<WireframeNode> _screens = [];
+    private int _zoomedIndex = -1;
+    private string? _zoomedId;
     private string? _selectedId;
     private WireframeNode? _pressedOn;
     private bool _placementHintShown;
@@ -95,9 +98,10 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _savedText = document.Text;
         _fileAsLastSeen = SurfaceChrome.ReadFile(_filePath);
 
-        // No fixed control size beyond the design canvas below: `_viewport` positions/scales `_surface` itself via
-        // RenderTransform for zoom and pan, same as DiagramWorkspaceBody's `_surface`.
-        //
+        // No fixed control size beyond the design canvas: `_viewport` positions/scales `_surface` itself via
+        // RenderTransform for zoom and pan, same as DiagramWorkspaceBody's `_surface`. AC-901 makes that canvas one
+        // screen when zoomed in and the bounding box of every board in the overview, so each render sets it.
+
         // AC-875: the selection mark and the inline text box sit on their own canvas above the render, inside the same
         // transform — so zoom and pan move them with the wireframe rather than beside it. The render lives in its own
         // panel so re-rendering it leaves the overlay alone.
@@ -105,8 +109,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _overlay = new Canvas();
         _surface = new Panel
         {
-            Width = CanvasSize.Width,
-            Height = CanvasSize.Height,
+            Width = WireframeRenderer.ScreenSize.Width,
+            Height = WireframeRenderer.ScreenSize.Height,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative),
@@ -116,8 +120,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus,
-            _addButton, _textButton, _deleteButton, _upButton, _downButton, _moveButton, _handHint) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
+            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _handHint) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
@@ -223,9 +227,18 @@ internal sealed class WireframeWorkspaceBody : UserControl
     {
         _sourceBox.Text = source;
         var parsed = WireframeParser.Parse(source);
-        _root = parsed.Root;
-        Control content = _root is { } root ? WireframeRenderer.Render(root) : _BuildErrorPanel(parsed.Errors);
+        _screens = parsed.Screens.ToList();
+        _ResolveZoomedScreen();
 
+        Control content = _screens.Count == 0
+            ? _BuildErrorPanel(parsed.Errors)
+            : _ZoomedScreen is { } screen
+                ? WireframeRenderer.Render(screen)
+                : WireframeRenderer.Overview(_screens);
+
+        var canvas = _CanvasSize;
+        _surface.Width = canvas.Width;
+        _surface.Height = canvas.Height;
         _render.Children.Clear();
         _render.Children.Add(content);
         _RefreshSelection();
@@ -260,7 +273,54 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // The selected component in the tree as it stands right now, or null when nothing is selected or what was
     // selected has been removed.
     private WireframeNode? _Selected =>
-        _root is { } root && _selectedId is { } id ? WireframeHandEdit.Find(root, id) : null;
+        _selectedId is { } id ? WireframeHandEdit.Find(_screens, id) : null;
+
+    // ---- The two views (AC-901): every screen side by side, or one of them filling the canvas ----
+
+    // The screen the surface is zoomed into, or null while it shows the overview.
+    private WireframeNode? _ZoomedScreen =>
+        _zoomedIndex >= 0 && _zoomedIndex < _screens.Count ? _screens[_zoomedIndex] : null;
+
+    private Size _CanvasSize =>
+        _ZoomedScreen is null && _screens.Count > 0
+            ? WireframeRenderer.OverviewSize(_screens.Count)
+            : WireframeRenderer.ScreenSize;
+
+    // Which screen is zoomed into survives a re-render by its id where it has one, and by its place in the document
+    // where it has none — a wireframe nobody has named yet carries no ids at all (AC-906). A document with one
+    // screen is always shown zoomed, so a wireframe that has only ever had one behaves exactly as it did before.
+    private void _ResolveZoomedScreen()
+    {
+        if (_screens.Count == 1)
+        {
+            _zoomedIndex = 0;
+        }
+        else if (_zoomedIndex >= 0)
+        {
+            var byId = _zoomedId is { } id ? _screens.FindIndex(screen => screen.Id == id) : -1;
+            _zoomedIndex = byId >= 0 ? byId : Math.Min(_zoomedIndex, _screens.Count - 1);
+        }
+
+        _zoomedId = _ZoomedScreen?.Id;
+    }
+
+    private void _ZoomInto(WireframeNode screen)
+    {
+        _zoomedIndex = _screens.IndexOf(screen);
+        _zoomedId = screen.Id;
+        _isFitMode = true;
+        _Redraw();
+    }
+
+    private void _ShowOverview()
+    {
+        _zoomedIndex = -1;
+        _zoomedId = null;
+        _isFitMode = true;
+        _Redraw();
+    }
+
+    private void _Redraw() => _RenderInto(_sourceBox.Text ?? "");
 
     private static Control _BuildErrorPanel(IReadOnlyList<WireframeParseError> errors)
     {
@@ -309,14 +369,30 @@ internal sealed class WireframeWorkspaceBody : UserControl
         viewport.PointerMoved += _OnViewportPointerMoved;
         viewport.PointerReleased += _OnViewportPointerReleased;
         viewport.PointerCaptureLost += (_, _) => _EndPan();
-        viewport.DoubleTapped += (_, e) => _StartTextEdit(_NodeUnder(e.Source));
+        viewport.DoubleTapped += (_, e) => _OnDoubleTapped(_NodeUnder(e.Source));
         return viewport;
+    }
+
+    // AC-901: in the overview a double click is how you step into a screen; inside one it stays what it was — the
+    // way to change a component's wording.
+    private void _OnDoubleTapped(WireframeNode? node)
+    {
+        if (_ZoomedScreen is not null)
+        {
+            _StartTextEdit(node);
+            return;
+        }
+
+        if (node is not null && WireframeHandEdit.ScreenOf(_screens, node) is { } screen)
+        {
+            _ZoomInto(screen);
+        }
     }
 
     private void _OnViewportWheel(object? sender, PointerWheelEventArgs e)
     {
         e.Handled = true;
-        _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y));
+        _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y), _NodeUnder(e.Source));
     }
 
     // AC-837's input convention stands unchanged on this surface too: plain left-drag pans, and a press that never
@@ -516,7 +592,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // the pointer was.
     private void _AddComponent(Control anchor)
     {
-        if (_Selected is not { } target || _selectedId is not { } id || _root is not { } root)
+        if (_Selected is not { } target || _selectedId is not { } id)
         {
             return;
         }
@@ -525,7 +601,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var palette = BuildPalette(kind => chosen = kind);
         var text = new TextBox { Width = 220, PlaceholderText = "Tekst (mag leeg)" };
         var asChild = new Button { Content = "In deze container", Classes = { "Compact" }, IsEnabled = target.IsContainer };
-        var asSibling = new Button { Content = "Hieronder", Classes = { "Compact" }, IsEnabled = target != root };
+        var asSibling = new Button { Content = "Hieronder", Classes = { "Compact" }, IsEnabled = !_IsScreen(target) };
         var flyout = new Flyout
         {
             Content = new StackPanel
@@ -548,7 +624,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             var wording = string.IsNullOrWhiteSpace(text.Text) ? null : text.Text!.Trim();
             var edit = child
                 ? WireframeHandEdit.AddChild(id, keyword, wording)
-                : WireframeHandEdit.AddSibling(root, id, keyword, wording);
+                : WireframeHandEdit.AddSibling(_screens, id, keyword, wording);
             if (edit is not null)
             {
                 _Apply(edit);
@@ -660,26 +736,39 @@ internal sealed class WireframeWorkspaceBody : UserControl
         }
     }
 
+    // AC-901: a screen of its own beside the ones already there, added straight after the one being looked at. The
+    // overview comes up with it, so the new board is where the operator can see it rather than off behind the one
+    // they were in.
+    private void _AddScreen()
+    {
+        var at = _ZoomedScreen is { } screen ? _screens.IndexOf(screen) + 1 : (int?)null;
+        if (_Apply(WireframeComponentEdit.AddScreen(NewScreenTitle, at)))
+        {
+            _ShowOverview();
+        }
+    }
+
     private void _Reorder(int delta)
     {
-        if (_selectedId is { } id && _root is { } root && WireframeHandEdit.Reorder(root, id, delta) is { } edit)
+        if (_selectedId is { } id && WireframeHandEdit.Reorder(_screens, id, delta) is { } edit)
         {
             _Apply(edit);
         }
     }
 
-    // Into another container: the ones it can go into, named and numbered, rather than a drop target to aim at.
+    // Into another container: the ones it can go into, named and numbered, rather than a drop target to aim at. With
+    // more than one screen the destination says which screen it is on, so a move across screens is never a silent one.
     private void _MoveInto(Control anchor)
     {
-        if (_selectedId is not { } id || _root is not { } root)
+        if (_selectedId is not { } id)
         {
             return;
         }
 
         var flyout = new MenuFlyout();
-        foreach (var destination in WireframeHandEdit.Destinations(root, id))
+        foreach (var destination in WireframeHandEdit.Destinations(_screens, id))
         {
-            var item = new MenuItem { Header = $"{_Describe(destination)} — regel {destination.Line}" };
+            var item = new MenuItem { Header = $"{_Describe(destination)} — regel {destination.Line}{_ScreenSuffix(destination)}" };
             var into = destination.Id!;
             item.Click += (_, _) => _Apply(WireframeComponentEdit.Move(id, into, position: null));
             flyout.Items.Add(item);
@@ -718,21 +807,45 @@ internal sealed class WireframeWorkspaceBody : UserControl
     {
         var editable = _registry is not null;
         var target = _Selected;
-        var placement = _selectedId is { } id && _root is { } root ? WireframeHandEdit.Placement(root, id) : null;
+        var isScreen = target is not null && _IsScreen(target);
+        var placement = _selectedId is { } id ? WireframeHandEdit.Placement(_screens, id) : null;
 
         _addButton.IsEnabled = editable && target is not null;
         _textButton.IsEnabled = editable && target is not null;
-        _deleteButton.IsEnabled = editable && target is not null && target != _root;
+        // AC-901: a screen goes the way any other component does, as long as it is not the last one left.
+        _deleteButton.IsEnabled = editable && target is not null && (!isScreen || _screens.Count > 1);
         _upButton.IsEnabled = editable && placement is { Index: > 0 };
         _downButton.IsEnabled = editable && placement is { } at && at.Index < at.Parent.Children.Count - 1;
-        _moveButton.IsEnabled = editable && target is not null && target != _root;
+        _moveButton.IsEnabled = editable && target is not null && !isScreen;
+        _addScreenButton.IsEnabled = editable;
+        _overviewButton.IsVisible = _screens.Count > 1 && _ZoomedScreen is not null;
 
-        _handHint.Text = target is null
-            ? "Klik een component om het te bewerken."
-            : $"{_Describe(target)} op regel {target.Line} — dubbelklik om de tekst te wijzigen.";
-
+        _handHint.Text = _HintFor(target);
         _RefreshPropertiesPanel(target, placement?.Parent.Kind);
     }
+
+    private string _HintFor(WireframeNode? target)
+    {
+        if (_ZoomedScreen is null)
+        {
+            return target is null
+                ? "Dubbelklik een scherm om erin te zoomen."
+                : $"{_Describe(target)} op regel {target.Line} — dubbelklik om in dit scherm te zoomen.";
+        }
+
+        return target is null
+            ? "Klik een component om het te bewerken."
+            : $"{_Describe(target)} op regel {target.Line} — dubbelklik om de tekst te wijzigen.";
+    }
+
+    private bool _IsScreen(WireframeNode node) => _screens.Contains(node);
+
+    // Which screen a destination is on, said out loud only when the document has more than one — with a single
+    // screen it is noise on every line of the menu.
+    private string _ScreenSuffix(WireframeNode node) =>
+        _screens.Count > 1 && WireframeHandEdit.ScreenOf(_screens, node) is { } screen
+            ? $" · scherm «{screen.Text}»"
+            : "";
 
     // ---- Properties panel (AC-905): the operator's way to set the same modifiers the agent could always set ----
 
@@ -909,13 +1022,45 @@ internal sealed class WireframeWorkspaceBody : UserControl
         string.IsNullOrEmpty(node.Text) ? WireframeHandEdit.Keyword(node.Kind) : $"{WireframeHandEdit.Keyword(node.Kind)} «{node.Text}»";
 
     private void _ZoomByButton(double factor) =>
-        _ZoomAround(new Point(_viewport.Bounds.Width / 2, _viewport.Bounds.Height / 2), _zoom * factor);
+        _ZoomAround(new Point(_viewport.Bounds.Width / 2, _viewport.Bounds.Height / 2), _zoom * factor, _Selected);
 
-    private void _ZoomAround(Point anchor, double requestedZoom)
+    private void _ZoomAround(Point anchor, double requestedZoom, WireframeNode? under)
     {
         (_zoom, _panOffset) = DiagramZoomMath.ZoomAround(anchor, _panOffset, _zoom, requestedZoom, MinZoom, MaxZoom);
         _isFitMode = false;
+        if (_SwitchedView(under))
+        {
+            return;
+        }
+
         _ApplyTransform();
+    }
+
+    // AC-901: the zoom level is the third way between the views. Past the level at which one board would fill the
+    // window you are inside that screen; back below the level at which the whole overview fits you see the set again.
+    // The overview canvas is always the larger of the two, so the thresholds cannot chase each other.
+    private bool _SwitchedView(WireframeNode? under)
+    {
+        if (_ZoomedScreen is null)
+        {
+            if (_zoom <= _FitZoomFor(WireframeRenderer.ScreenSize)
+                || under is null
+                || WireframeHandEdit.ScreenOf(_screens, under) is not { } screen)
+            {
+                return false;
+            }
+
+            _ZoomInto(screen);
+            return true;
+        }
+
+        if (_screens.Count < 2 || _zoom > _FitZoomFor(WireframeRenderer.OverviewSize(_screens.Count)))
+        {
+            return false;
+        }
+
+        _ShowOverview();
+        return true;
     }
 
     // "Passend maken": recomputed from the viewport's own SizeChanged (first layout, then every resize), so the
@@ -923,16 +1068,19 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private void _ApplyFit()
     {
         _isFitMode = true;
-        var fitZoom = DiagramZoomMath.FitZoom(_viewport.Bounds.Size, CanvasSize, MinZoom, MaxZoom);
+        var canvas = _CanvasSize;
+        var fitZoom = _FitZoomFor(canvas);
         if (fitZoom <= 0)
         {
             return;
         }
 
         _zoom = fitZoom;
-        _panOffset = DiagramZoomMath.CenteredPanOffset(_viewport.Bounds.Size, CanvasSize, _zoom);
+        _panOffset = DiagramZoomMath.CenteredPanOffset(_viewport.Bounds.Size, canvas, _zoom);
         _ApplyTransform();
     }
+
+    private double _FitZoomFor(Size canvas) => DiagramZoomMath.FitZoom(_viewport.Bounds.Size, canvas, MinZoom, MaxZoom);
 
     private void _ApplyTransform()
     {
@@ -959,8 +1107,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return (toggle, box);
     }
 
-    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus,
-        Button Add, Button Text, Button Delete, Button Up, Button Down, Button Move, TextBlock Hint) _BuildToolbar()
+    private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add, Button Text,
+        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, TextBlock Hint) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -1007,6 +1155,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
         down.Click += (_, _) => _Reorder(1);
         var move = new Button { Content = "Verplaats naar…", Classes = { "Compact" } };
         move.Click += (_, _) => _MoveInto(move);
+        // AC-901: a wireframe holds as many screens as the thing it sketches has, so adding one is a button rather
+        // than a second file, and the way back out of a screen stands beside it.
+        var addScreen = new Button { Content = "+ Scherm", Classes = { "Compact" } };
+        ToolTip.SetTip(addScreen, "Een scherm erbij, naast de schermen die er al zijn.");
+        addScreen.Click += (_, _) => _AddScreen();
+        var overview = new Button { Content = "← Overzicht", Classes = { "Compact" }, IsVisible = false };
+        ToolTip.SetTip(overview, "Alle schermen naast elkaar.");
+        overview.Click += (_, _) => _ShowOverview();
         var hint = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -1019,14 +1175,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { add, text, delete, up, down, move, save, saveStatus, hint },
+            Children = { overview, add, text, delete, up, down, move, addScreen, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { handEditControls, zoomControls } };
         DockPanel.SetDock(handEditControls, Dock.Left);
         DockPanel.SetDock(zoomControls, Dock.Right);
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
-            add, text, delete, up, down, move, hint);
+            add, text, delete, up, down, move, addScreen, overview, hint);
     }
 
     // Eén opslagweg (AC-839's precedent, one folder over): the source box always mirrors the surface's current
@@ -1059,7 +1215,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return;
         }
 
-        // Meer dan één geheugenpad: vragen, niet kiezen (AC-812). Het antwoord blijft bij dit wireframe.
+        // More than one memory path: ask, never pick one (AC-812). The answer stays with this wireframe.
         var flyout = new MenuFlyout();
         foreach (var home in homes)
         {

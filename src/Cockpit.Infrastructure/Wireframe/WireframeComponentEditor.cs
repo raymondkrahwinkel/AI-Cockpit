@@ -27,7 +27,8 @@ internal static class WireframeComponentEditor
     public static WireframeEdit Apply(string source, WireframeComponentEdit edit)
     {
         var parsed = WireframeParser.Parse(source);
-        if (parsed.Root is not { } root)
+        var screens = parsed.Screens;
+        if (screens.Count == 0 && edit.Kind != WireframeEditKind.AddScreen)
         {
             return WireframeEdit.Refuse("This wireframe has no screen line to hang a component on — write the whole source with edit_wireframe first.");
         }
@@ -35,12 +36,13 @@ internal static class WireframeComponentEditor
         var lines = source.ReplaceLineEndings("\n").Split('\n').ToList();
         var result = edit.Kind switch
         {
-            WireframeEditKind.Add => _Add(root, lines, edit),
-            WireframeEditKind.SetText => _SetText(root, lines, edit),
-            WireframeEditKind.Remove => _Remove(root, lines, edit),
-            WireframeEditKind.Move => _Move(root, lines, edit),
-            WireframeEditKind.ChangeType => _ChangeType(root, lines, edit),
-            _ => _SetModifier(root, lines, edit),
+            WireframeEditKind.Add => _Add(screens, lines, edit),
+            WireframeEditKind.AddScreen => _AddScreen(screens, lines, edit),
+            WireframeEditKind.SetText => _SetText(screens, lines, edit),
+            WireframeEditKind.Remove => _Remove(screens, lines, edit),
+            WireframeEditKind.Move => _Move(screens, lines, edit),
+            WireframeEditKind.ChangeType => _ChangeType(screens, lines, edit),
+            _ => _SetModifier(screens, lines, edit),
         };
 
         if (result.Text is not { } text)
@@ -56,7 +58,7 @@ internal static class WireframeComponentEditor
         // The one gate every operation passes through: a component keyword and a modifier the format does not have
         // both end here rather than in the operator's source box.
         var after = WireframeParser.Parse(text);
-        return after.Root is null || after.Errors.Count > parsed.Errors.Count
+        return !after.HasScreens || after.Errors.Count > parsed.Errors.Count
             ? WireframeEdit.Refuse("That change would leave a line this wireframe cannot read, so nothing was changed — check the component keyword and its modifiers against the wireframe format.")
             : result;
     }
@@ -87,7 +89,7 @@ internal static class WireframeComponentEditor
         }
 
         reverted = string.Join("\n", lines);
-        if (WireframeParser.Parse(reverted).Root is not null)
+        if (WireframeParser.Parse(reverted).HasScreens)
         {
             return null;
         }
@@ -96,9 +98,9 @@ internal static class WireframeComponentEditor
         return "Terugdraaien zou geen leesbaar wireframe overlaten, dus er is niets veranderd.";
     }
 
-    private static WireframeEdit _Add(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    private static WireframeEdit _Add(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
     {
-        if (_Find(root, edit.Parent) is not { } parent)
+        if (_Find(screens, edit.Parent) is not { } parent)
         {
             return WireframeEdit.Refuse(_NoSuchComponent(edit.Parent));
         }
@@ -125,11 +127,30 @@ internal static class WireframeComponentEditor
         return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(at, _AnchorAbove(lines, at), [], [line]));
     }
 
+    // AC-901: a whole screen beside the ones already there, at the left margin, with a blank line between it and its
+    // neighbour — the canonical form the writer produces, so a document stays as readable as one written by hand.
+    private static WireframeEdit _AddScreen(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
+    {
+        if (string.IsNullOrWhiteSpace(edit.Text))
+        {
+            return WireframeEdit.Refuse("Give the new screen a title — it is what names it in the overview.");
+        }
+
+        var line = $"screen {WireframeWriter.Quote(_Clean(edit.Text).Trim())}";
+        var index = Math.Clamp(edit.Position ?? screens.Count, 0, screens.Count);
+        var at = index == screens.Count ? lines.Count : screens[index].Line - 1;
+        var block = index == screens.Count ? new List<string> { "", line } : [line, ""];
+        lines.InsertRange(at, block);
+
+        var summary = $"added screen \"{edit.Text.Trim()}\"";
+        return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(at, _AnchorAbove(lines, at), [], block));
+    }
+
     // Re-emits the one line through the writer with its text swapped, so the component keeps every modifier it had,
     // in the order and the quoting the operator wrote them in.
-    private static WireframeEdit _SetText(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    private static WireframeEdit _SetText(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
     {
-        if (_Find(root, edit.Component) is not { } node)
+        if (_Find(screens, edit.Component) is not { } node)
         {
             return WireframeEdit.Refuse(_NoSuchComponent(edit.Component));
         }
@@ -143,16 +164,18 @@ internal static class WireframeComponentEditor
         return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(at, _AnchorAbove(lines, at), [before], [lines[at]]));
     }
 
-    private static WireframeEdit _Remove(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    private static WireframeEdit _Remove(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
     {
-        if (_Find(root, edit.Component) is not { } node)
+        if (_Find(screens, edit.Component) is not { } node)
         {
             return WireframeEdit.Refuse(_NoSuchComponent(edit.Component));
         }
 
-        if (node == root)
+        // AC-901: a screen goes the way any other component does, as long as it is not the only one left — a
+        // document without a screen is not a wireframe any more, and edit_wireframe is what replaces the whole thing.
+        if (screens.Contains(node) && screens.Count == 1)
         {
-            return WireframeEdit.Refuse("The screen line is the wireframe itself, so it cannot be removed — edit_wireframe replaces the whole thing.");
+            return WireframeEdit.Refuse("This is the wireframe's only screen, so it cannot be removed — add another screen first, or replace the whole source with edit_wireframe.");
         }
 
         var at = node.Line - 1;
@@ -169,21 +192,21 @@ internal static class WireframeComponentEditor
 
     // A move is a removal and an insertion, journaled as both, so undoing it takes the block out of where it went
     // before putting it back where it was — the order the two patches are replayed in.
-    private static WireframeEdit _Move(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    private static WireframeEdit _Move(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
     {
-        if (_Find(root, edit.Component) is not { } node)
+        if (_Find(screens, edit.Component) is not { } node)
         {
             return WireframeEdit.Refuse(_NoSuchComponent(edit.Component));
         }
 
-        if (_Find(root, edit.Parent) is not { } parent)
+        if (_Find(screens, edit.Parent) is not { } parent)
         {
             return WireframeEdit.Refuse(_NoSuchComponent(edit.Parent));
         }
 
-        if (node == root)
+        if (screens.Contains(node))
         {
-            return WireframeEdit.Refuse("The screen line is the wireframe itself, so there is nowhere to move it to.");
+            return WireframeEdit.Refuse("A screen stands at the left margin of its own, so it cannot be moved into a container — add_screen and remove_component are how screens come and go.");
         }
 
         if (!parent.IsContainer)
@@ -223,9 +246,9 @@ internal static class WireframeComponentEditor
     // AC-905: the properties panel and set_component_modifier both land here — a flag or a value-bearing modifier
     // replaced in place if already on the line, appended if not, or dropped when the caller clears it. Applicability
     // comes from WireframeModifierRules, not a second copy of it.
-    private static WireframeEdit _SetModifier(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    private static WireframeEdit _SetModifier(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
     {
-        if (_Find(root, edit.Component) is not { } node)
+        if (_Find(screens, edit.Component) is not { } node)
         {
             return WireframeEdit.Refuse(_NoSuchComponent(edit.Component));
         }
@@ -235,7 +258,7 @@ internal static class WireframeComponentEditor
             return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value.");
         }
 
-        var parentKind = _ParentOf(root, node)?.Kind;
+        var parentKind = _ParentOf(screens, node)?.Kind;
         if (!WireframeModifierRules.Applies(node.Kind, parentKind, name))
         {
             return WireframeEdit.Refuse($"{_Keyword(name)} has no meaning on a {_Keyword(node)} here, so nothing was changed.");
@@ -275,16 +298,16 @@ internal static class WireframeComponentEditor
 
     // AC-905: keeps the line's place, id, text and modifiers — only the keyword changes. Refused rather than
     // silently dropping children a widget cannot carry; the operator moves or removes them first.
-    private static WireframeEdit _ChangeType(WireframeNode root, List<string> lines, WireframeComponentEdit edit)
+    private static WireframeEdit _ChangeType(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
     {
-        if (_Find(root, edit.Component) is not { } node)
+        if (_Find(screens, edit.Component) is not { } node)
         {
             return WireframeEdit.Refuse(_NoSuchComponent(edit.Component));
         }
 
-        if (node == root)
+        if (screens.Contains(node))
         {
-            return WireframeEdit.Refuse("The screen line is the wireframe itself, so its type cannot be changed.");
+            return WireframeEdit.Refuse("A screen line is a screen of this wireframe, so its type cannot be changed — remove it instead, or add another screen beside it.");
         }
 
         if (edit.Type is not { } written || !Enum.TryParse<WireframeNodeKind>(written.Trim(), ignoreCase: true, out var kind))
@@ -378,12 +401,18 @@ internal static class WireframeComponentEditor
         return string.IsNullOrWhiteSpace(edit.Modifiers) ? line : $"{line} {_Clean(edit.Modifiers).Trim()}";
     }
 
+    private static WireframeNode? _Find(IReadOnlyList<WireframeNode> screens, string id) =>
+        screens.Select(screen => _Find(screen, id)).FirstOrDefault(found => found is not null);
+
     private static WireframeNode? _Find(WireframeNode node, string id) =>
         node.Id == id ? node : node.Children.Select(child => _Find(child, id)).FirstOrDefault(found => found is not null);
 
-    // AC-905: null for the root itself — the screen line has no parent, and `w:`/`h:` never apply to it either.
-    private static WireframeNode? _ParentOf(WireframeNode root, WireframeNode target) =>
-        root.Children.Contains(target) ? root : root.Children.Select(child => _ParentOf(child, target)).FirstOrDefault(found => found is not null);
+    // AC-905: null for a screen itself — a screen line has no parent, and `w:`/`h:` never apply to it either.
+    private static WireframeNode? _ParentOf(IReadOnlyList<WireframeNode> screens, WireframeNode target) =>
+        screens.Select(screen => _ParentOf(screen, target)).FirstOrDefault(found => found is not null);
+
+    private static WireframeNode? _ParentOf(WireframeNode node, WireframeNode target) =>
+        node.Children.Contains(target) ? node : node.Children.Select(child => _ParentOf(child, target)).FirstOrDefault(found => found is not null);
 
     private static int _LastLine(WireframeNode node) =>
         node.Children.Count == 0 ? node.Line : Math.Max(node.Line, node.Children.Max(_LastLine));

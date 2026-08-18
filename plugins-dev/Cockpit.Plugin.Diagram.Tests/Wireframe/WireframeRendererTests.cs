@@ -21,17 +21,20 @@ public class WireframeRendererTests
     [MemberData(nameof(Screens))]
     public void EveryNode_IsCarriedByExactlyOneControl(string screen)
     {
-        var root = WireframeParser.Parse(WireframeScreens.Source(screen)).Root;
-        Assert.NotNull(root);
+        var screens = WireframeParser.Parse(WireframeScreens.Source(screen)).Screens;
+        Assert.NotEmpty(screens);
 
-        var control = _Arrange(root);
-        var carried = _Controls(control)
-            .Select(WireframeSource.GetNode)
-            .Where(node => node is not null)
-            .ToList();
+        foreach (var root in screens)
+        {
+            var control = _Arrange(root);
+            var carried = _Controls(control)
+                .Select(WireframeSource.GetNode)
+                .Where(node => node is not null)
+                .ToList();
 
-        Assert.Equal(_Nodes(root).Count, carried.Count);
-        Assert.Equal(_Nodes(root).ToHashSet(), carried.ToHashSet()!);
+            Assert.Equal(_Nodes(root).Count, carried.Count);
+            Assert.Equal(_Nodes(root).ToHashSet(), carried.ToHashSet()!);
+        }
     }
 
     [Fact]
@@ -44,7 +47,7 @@ public class WireframeRendererTests
                   label "Een"
                 tab "Tweede" selected
                   label "Twee"
-            """).Root;
+            """).Screens.SingleOrDefault();
         Assert.NotNull(root);
 
         var control = _Arrange(root);
@@ -64,7 +67,7 @@ public class WireframeRendererTests
                 column w:1
                 column w:3
                 label "Vast"
-            """).Root;
+            """).Screens.SingleOrDefault();
         Assert.NotNull(root);
 
         var control = _Arrange(root);
@@ -82,7 +85,7 @@ public class WireframeRendererTests
             screen "X"
               button "Weg" disabled
               button "Opslaan" align:right
-            """).Root;
+            """).Screens.SingleOrDefault();
         Assert.NotNull(root);
 
         var control = _Arrange(root);
@@ -99,7 +102,7 @@ public class WireframeRendererTests
             screen "X"
               label
               label "Echte tekst"
-            """).Root;
+            """).Screens.SingleOrDefault();
         Assert.NotNull(root);
 
         var control = _Arrange(root);
@@ -113,7 +116,7 @@ public class WireframeRendererTests
     [Fact]
     public void Progress_SplitsItsTrackAtTheValue()
     {
-        var root = WireframeParser.Parse("screen \"X\"\n  progress value:60").Root;
+        var root = WireframeParser.Parse("screen \"X\"\n  progress value:60").Screens.SingleOrDefault();
         Assert.NotNull(root);
 
         var track = Assert.IsType<Grid>(_ControlFor(_Arrange(root), root.Children.Single()));
@@ -132,7 +135,7 @@ public class WireframeRendererTests
               label "Eronder"
               modal "Weet je het zeker?"
                 button "Ja"
-            """).Root;
+            """).Screens.SingleOrDefault();
         Assert.NotNull(root);
 
         var control = _Arrange(root);
@@ -148,21 +151,25 @@ public class WireframeRendererTests
     [MemberData(nameof(Screens))]
     public void EachScreen_ActuallyPaints(string screen)
     {
-        var root = WireframeParser.Parse(WireframeScreens.Source(screen)).Root;
-        Assert.NotNull(root);
+        var screens = WireframeParser.Parse(WireframeScreens.Source(screen)).Screens;
+        Assert.NotEmpty(screens);
 
-        var colours = _Paint(root, screen);
+        for (var index = 0; index < screens.Count; index++)
+        {
+            var colours = _Paint(screens[index], $"{screen}-{index + 1}");
 
-        Assert.True(colours.Count > 1, $"'{screen}' schilderde één vlakke kleur — er is niets getekend");
-        Assert.Contains(Colors.White, colours);
+            Assert.True(colours.Count > 1, $"'{screen}' scherm {index + 1} schilderde één vlakke kleur — er is niets getekend");
+            Assert.Contains(Colors.White, colours);
+        }
     }
 
     // Renders to a real raster so the drawing can be looked at, not only reasoned about (Iron Law #9). Set
     // COCKPIT_WIREFRAME_RENDERS to a directory and the PNGs land there.
-    private static HashSet<Color> _Paint(WireframeNode root, string name)
+    private static HashSet<Color> _Paint(WireframeNode root, string name) =>
+        _Paint(WireframeRenderer.Render(root), name, new PixelSize(900, 620));
+
+    private static HashSet<Color> _Paint(Control control, string name, PixelSize size)
     {
-        var size = new PixelSize(900, 620);
-        var control = WireframeRenderer.Render(root);
         control.Measure(new Size(size.Width, size.Height));
         control.Arrange(new Rect(0, 0, size.Width, size.Height));
 
@@ -194,6 +201,64 @@ public class WireframeRendererTests
         }
 
         return colours;
+    }
+
+    // ---- The overview of a document's screens (AC-901) ----
+
+    [Fact]
+    public void Overview_DrawsEveryScreenAsABoardOfItsOwn_WithItsNameBesideIt()
+    {
+        var screens = WireframeParser.Parse(WireframeScreens.SignInFlow).Screens;
+
+        var overview = WireframeRenderer.Overview(screens);
+        overview.Measure(Size.Infinity);
+        overview.Arrange(new Rect(0, 0, overview.DesiredSize.Width, overview.DesiredSize.Height));
+
+        foreach (var screen in screens)
+        {
+            // The board first, then the caption — the selection mark looks up the first control carrying the node.
+            var carrying = _Controls(overview).Where(control => ReferenceEquals(WireframeSource.GetNode(control), screen)).ToList();
+            Assert.Equal(2, carrying.Count);
+            Assert.IsNotType<TextBlock>(carrying[0]);
+            Assert.Equal(screen.Text, Assert.IsType<TextBlock>(carrying[1]).Text);
+        }
+    }
+
+    [Fact]
+    public void OverviewSize_GrowsWithTheNumberOfScreens_AndIsAlwaysBiggerThanOneScreen()
+    {
+        var one = WireframeRenderer.OverviewSize(1);
+        var four = WireframeRenderer.OverviewSize(4);
+
+        Assert.True(one.Width > WireframeRenderer.ScreenSize.Width, "een overzicht van één scherm is breder dan dat scherm zelf");
+        Assert.True(one.Height > WireframeRenderer.ScreenSize.Height, "een overzicht van één scherm is hoger dan dat scherm zelf");
+        Assert.Equal(2, WireframeRenderer.OverviewColumns(4));
+        Assert.True(four.Width > one.Width && four.Height > one.Height, "vier schermen beslaan meer dan één");
+    }
+
+    [Fact]
+    public void Overview_ActuallyPaints_WithEveryBoardOnIt()
+    {
+        var screens = WireframeParser.Parse(WireframeScreens.SignInFlow).Screens;
+        var size = WireframeRenderer.OverviewSize(screens.Count);
+
+        var colours = _Paint(WireframeRenderer.Overview(screens), "SignInFlow-overview", new PixelSize((int)size.Width, (int)size.Height));
+
+        Assert.True(colours.Count > 1, "het overzicht schilderde één vlakke kleur — er is niets getekend");
+        Assert.Contains(Colors.White, colours);
+    }
+
+    [Fact]
+    public void BoardBounds_LayTheScreensOutSideBySide_WithoutOverlapping()
+    {
+        var first = WireframeRenderer.BoardBounds(0, 4);
+        var second = WireframeRenderer.BoardBounds(1, 4);
+        var third = WireframeRenderer.BoardBounds(2, 4);
+
+        Assert.Equal(first.Y, second.Y);
+        Assert.True(second.X >= first.Right, "twee borden op dezelfde rij overlappen niet");
+        Assert.True(third.Y >= first.Bottom, "de volgende rij begint onder de vorige");
+        Assert.Equal(WireframeRenderer.ScreenSize, first.Size);
     }
 
     private static Control _Arrange(WireframeNode root)

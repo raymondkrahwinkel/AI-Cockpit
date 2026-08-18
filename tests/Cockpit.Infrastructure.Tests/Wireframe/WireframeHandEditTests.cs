@@ -24,8 +24,8 @@ public class WireframeHandEditTests
 
     private static string _TextOf(WireframeAccessRegistry registry) => registry.PeekText(SurfaceId)!;
 
-    private static WireframeNode _Tree(WireframeAccessRegistry registry) =>
-        WireframeParser.Parse(_TextOf(registry)).Root!;
+    private static IReadOnlyList<WireframeNode> _Tree(WireframeAccessRegistry registry) =>
+        WireframeParser.Parse(_TextOf(registry)).Screens;
 
     // The nav's item wordings, read off the tree rather than counted by hand.
     private static List<string?> _NavItems(WireframeAccessRegistry registry) =>
@@ -33,10 +33,10 @@ public class WireframeHandEditTests
 
     // Everything sitting in the same container as the component with this wording, itself included — the way to check
     // what a component left behind once it has moved elsewhere.
-    private static List<string?> _SiblingsOf(WireframeNode root, string text)
+    private static List<string?> _SiblingsOf(IReadOnlyList<WireframeNode> screens, string text)
     {
-        var node = _Walk(root).First(candidate => candidate.Text == text);
-        return WireframeHandEdit.Placement(root, node.Id!)!.Value.Parent.Children.Select(child => child.Text).ToList();
+        var node = screens.SelectMany(_Walk).First(candidate => candidate.Text == text);
+        return WireframeHandEdit.Placement(screens, node.Id!)!.Value.Parent.Children.Select(child => child.Text).ToList();
     }
 
     private static IEnumerable<WireframeNode> _Walk(WireframeNode node) =>
@@ -251,7 +251,7 @@ public class WireframeHandEditTests
             SurfaceId,
             WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Nav, position: null));
 
-        Assert.NotNull(WireframeParser.Parse(Assert.Single(seen)).Root);
+        Assert.NotNull(WireframeParser.Parse(Assert.Single(seen)).Screens.SingleOrDefault());
         Assert.Single(registry.History(SurfaceId));
     }
 }

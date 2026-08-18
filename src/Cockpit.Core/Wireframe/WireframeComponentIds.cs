@@ -11,12 +11,13 @@ public static class WireframeComponentIds
     // the operator chose survive it. A source with no readable screen comes back untouched — nothing to name yet.
     public static string Ensure(string source)
     {
-        if (WireframeParser.Parse(source).Root is not { } root)
+        var screens = WireframeParser.Parse(source).Screens;
+        if (screens.Count == 0)
         {
             return source;
         }
 
-        var components = _Flatten(root).ToList();
+        var components = screens.SelectMany(_Flatten).ToList();
         var missing = components.Where(component => component.Id is null).ToList();
         if (missing.Count == 0)
         {

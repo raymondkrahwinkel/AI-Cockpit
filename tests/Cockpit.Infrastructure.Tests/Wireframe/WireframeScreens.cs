@@ -37,6 +37,22 @@ internal static class WireframeScreens
                 button "Opslaan" primary
         """;
 
+    // AC-901: two screens in one document, with the blank line between them the writer puts there. What the
+    // per-component tools have to keep apart — and every id is still unique across the whole document.
+    public const string TwoScreens = """
+        screen "Aanmelden" #login
+          input "E-mailadres" #login-email
+          button "Aanmelden" primary #login-submit
+
+        screen "Registreren" #signup
+          input "E-mailadres" #signup-email
+          button "Registreren" primary #signup-submit
+        """;
+
+    public const string LoginScreen = "login";
+    public const string SignupScreen = "signup";
+    public const string SignupSubmit = "signup-submit";
+
     public const string Screen = "screen";
     public const string Row = "row";
     public const string LeftColumn = "left";

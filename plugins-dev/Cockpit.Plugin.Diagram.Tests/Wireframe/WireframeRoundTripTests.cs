@@ -1,10 +1,12 @@
 using Cockpit.Core.Wireframe;
+using Cockpit.Core.Wireframe.Model;
 using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
 // Source → tree → controls → source has to come back unchanged (AC-871): the source text is what the operator
-// sees in the read-only box, so a trip through the renderer may not quietly reword it.
+// sees in the read-only box, so a trip through the renderer may not quietly reword it. AC-901 adds the multi-screen
+// document to the same measure — one blank line between screens is the canonical form.
 [Collection("avalonia")]
 public class WireframeRoundTripTests
 {
@@ -18,8 +20,8 @@ public class WireframeRoundTripTests
         var result = WireframeParser.Parse(source);
 
         Assert.Empty(result.Errors);
-        Assert.NotNull(result.Root);
-        Assert.Equal(source, WireframeWriter.Write(result.Root));
+        Assert.NotEmpty(result.Screens);
+        Assert.Equal(source, WireframeWriter.Write(result.Screens));
     }
 
     [Theory]
@@ -27,12 +29,15 @@ public class WireframeRoundTripTests
     public void Source_SurvivesTheControlsUnchanged(string screen)
     {
         var source = WireframeScreens.Source(screen);
-        var root = WireframeParser.Parse(source).Root;
-        Assert.NotNull(root);
+        var carried = new List<WireframeNode>();
 
-        var carried = WireframeSource.GetNode(WireframeRenderer.Render(root));
+        foreach (var parsed in WireframeParser.Parse(source).Screens)
+        {
+            var node = WireframeSource.GetNode(WireframeRenderer.Render(parsed));
+            Assert.NotNull(node);
+            carried.Add(node);
+        }
 
-        Assert.NotNull(carried);
         Assert.Equal(source, WireframeWriter.Write(carried));
     }
 
@@ -45,7 +50,7 @@ public class WireframeRoundTripTests
               input "Naam" value:"Raymond"
             """;
 
-        var root = WireframeParser.Parse(source).Root;
+        var root = WireframeParser.Parse(source).Screens.SingleOrDefault();
 
         Assert.NotNull(root);
         Assert.Equal(source, WireframeWriter.Write(root));
