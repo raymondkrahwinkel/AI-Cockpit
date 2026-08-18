@@ -43,9 +43,7 @@ internal sealed class FreehandLayer : Control
         }
     }
 
-    /// <summary>
-    /// A stroke's points, thickness and marker flag, held by <see cref="ActiveStroke"/> while it is being drawn.
-    /// </summary>
+    // A stroke's points, thickness and marker flag, held by `ActiveStroke` while it is being drawn.
     public readonly record struct DraftStroke(IReadOnlyList<WhiteboardPoint> Points, double Thickness, bool IsMarker);
 
     private static Rect _Bounds(IReadOnlyList<WhiteboardPoint> points)
