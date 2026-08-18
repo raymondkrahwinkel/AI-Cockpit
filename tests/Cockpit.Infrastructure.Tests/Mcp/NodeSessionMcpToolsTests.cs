@@ -314,7 +314,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         {
             Calls.Add("ListProjectsAsync()");
             return Task.FromResult<IReadOnlyList<AssistantProjectRow>>(
-                [new AssistantProjectRow(AllowedProject, "Allowed", null, null, null, new Dictionary<string, string>(), null)]);
+                [new AssistantProjectRow(AllowedProject, "Allowed", null, null, null, new Dictionary<string, string>(), null, [])]);
         }
 
         public Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count) => throw new NotSupportedException();

@@ -231,6 +231,11 @@ public static class AssistantSystemPrompt
         "checkout, all three claimed, all three overwriting each other.\n" +
         "- Base branch: per repo, so look it up. One repo cuts from `dev`, the next from `main`. Wrong base = a " +
         "pull request carrying hundreds of files nobody touched.\n" +
+        "- Local checkout, when a project declares more than one repository (AC-938 — a web repo and an android " +
+        "repo, say, neither nested in the other): `list_projects` names each one, with its own path and label. " +
+        "Say which repo you mean as `workingDirectory` on `start_agent` rather than taking the default (the " +
+        "project's first declared repository) — a session isolates whichever folder it is actually pointed at, " +
+        "and the other declared repositories are separate checkouts, not necessarily next to it.\n" +
         "- Issue-tracker repo, when a project has more than one GitHub repo linked (AC-932): a project can pin " +
         "one as its `github.repository` field, which lands in every session on it as the `GH_REPO` environment " +
         "variable. Once pinned, that repo is where issues go — do not pass your own `--repo` to `gh issue " +

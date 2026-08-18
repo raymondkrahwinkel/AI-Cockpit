@@ -19,7 +19,18 @@ internal sealed class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Category { get; set; }
 
+    // Legacy on-disk shape (pre-AC-938): the project's one and only repository, before a project could keep more
+    // than one. Still read: `ToDomain` falls back to it as a single-item `SourceDirectories` when that
+    // list is absent — exactly the shape of an old `cockpit.json` nobody has re-saved since this field was
+    // the whole story. Still written by `FromDomain` too, mirroring `SourceDirectories[0].Path`, for the
+    // same rollback-safety reason `MemoryRef` is mirrored below: a build from before `SourceDirectories`
+    // existed reads no source folder at all from a project this build saved without this field.
     public string? SourceDirectory { get; set; }
+
+    // Absent for a project with no repository of its own, or exactly one (most projects, still) — see
+    // `SourceDirectory` above for why that single-repository shape keeps writing its own legacy field too.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectRepositoryEntry>? SourceDirectories { get; set; }
 
     public string? GitUrl { get; set; }
 
@@ -89,6 +100,9 @@ internal sealed class ProjectEntry
         Description = project.Description,
         Category = project.Category,
         SourceDirectory = project.SourceDirectory,
+        SourceDirectories = project.SourceDirectories.Count == 0
+            ? null
+            : [.. project.SourceDirectories.Select(ProjectRepositoryEntry.FromDomain)],
         GitUrl = project.GitUrl,
         DefaultProfileLabel = project.DefaultProfileLabel,
         BehaviorPrompt = project.BehaviorPrompt,
@@ -118,7 +132,17 @@ internal sealed class ProjectEntry
     {
         Description = Description,
         Category = Category,
-        SourceDirectory = SourceDirectory,
+        // The migration (AC-938): SourceDirectories is how every project saved from here on carries its
+        // repositories, but a cockpit.json nobody has re-saved since before this feature still only has the old
+        // flat SourceDirectory field — read as its single repository, the same fallback ToDomain already applies
+        // to MemoryRef above. Present-but-empty is not the same as absent: an explicit "SourceDirectories": []
+        // means a newer build already saved this project with no repository, and must not fall back to
+        // SourceDirectory instead.
+        SourceDirectories = SourceDirectories is not null
+            ? [.. SourceDirectories.Select(entry => entry.ToDomain())]
+            : !string.IsNullOrWhiteSpace(SourceDirectory)
+                ? [new ProjectRepository(SourceDirectory)]
+                : [],
         GitUrl = GitUrl,
         DefaultProfileLabel = DefaultProfileLabel,
         BehaviorPrompt = BehaviorPrompt,

@@ -53,7 +53,7 @@ public class EmbeddedSessionProjectTests
         Dispatcher.UIThread.Invoke(() =>
         {
             var cockpit = new CockpitViewModel();
-            cockpit.Projects.Projects.Add(new Project("cockpit", "Cockpit") { SourceDirectory = sourceDirectory });
+            cockpit.Projects.Projects.Add(new Project("cockpit", "Cockpit") { SourceDirectories = [new(sourceDirectory)] });
             return (cockpit, new SessionViewModel());
         });
 }

@@ -71,7 +71,7 @@ public class NewSessionProjectFirstTests
     [Fact]
     public async Task SelectingAProject_PrefillsItsFolder()
     {
-        var project = Project.Create("Cockpit") with { SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")] };
         var viewModel = Build([project]);
         await viewModel.LoadAsync();
 
@@ -149,7 +149,7 @@ public class NewSessionProjectFirstTests
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var project = Project.Create("Cockpit") with { SourceDirectory = "/home/raymond/project-dir" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new("/home/raymond/project-dir")] };
         var projectStore = Substitute.For<IProjectStore>();
         projectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [project] });
 
@@ -168,7 +168,7 @@ public class NewSessionProjectFirstTests
     [Fact]
     public async Task SwitchingProfileUnderAProject_KeepsTheProjectsFolder()
     {
-        var project = Project.Create("Cockpit") with { SourceDirectory = "/home/raymond/project-dir" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new("/home/raymond/project-dir")] };
         var viewModel = Build([project]);
         await viewModel.LoadAsync();
 
@@ -182,7 +182,7 @@ public class NewSessionProjectFirstTests
     [Fact]
     public async Task SelectingAProject_LeavesAFolderTheOperatorAlreadyTypedAlone()
     {
-        var project = Project.Create("Cockpit") with { SourceDirectory = "/home/raymond/project-dir" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new("/home/raymond/project-dir")] };
         var viewModel = Build([project]);
         await viewModel.LoadAsync();
 

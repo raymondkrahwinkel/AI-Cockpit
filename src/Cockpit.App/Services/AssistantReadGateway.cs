@@ -167,7 +167,8 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
             project.SourceDirectory,
             project.DefaultProfileLabel,
             project.PluginFields,
-            project.GitUrl)),
+            project.GitUrl,
+            [.. project.SourceDirectories.Select(repository => new AssistantProjectRepositoryRow(repository.Path, repository.Label))])),
     ];
 
     private IReadOnlyList<AssistantSessionRow> _ListSessions()

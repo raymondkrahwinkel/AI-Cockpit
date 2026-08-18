@@ -12,7 +12,7 @@ namespace Cockpit.Core.Tests.Sessions;
 public class EmbeddedSessionProjectTests
 {
     private static Project _At(string name, string source) =>
-        new(name.ToLowerInvariant(), name) { SourceDirectory = source };
+        new(name.ToLowerInvariant(), name) { SourceDirectories = [new(source)] };
 
     private static WorktreeRecord _Worktree(string path, string repository) =>
         new("pane", repository, path, "autopilot/run", "abc1234", DateTimeOffset.UnixEpoch);

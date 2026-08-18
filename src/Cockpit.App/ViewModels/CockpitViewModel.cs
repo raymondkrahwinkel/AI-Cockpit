@@ -5119,18 +5119,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Isolation is identical for both session kinds (Raymond 2026-07-19): both take a working directory, so both
     // isolate it the same way (AC-85). When asked and the folder is a git repository, a worktree is created for this
     // session on its own branch — keyed on the session's pane, so the same session identity is used whichever kind it
-    // is — and the session runs there instead of in the folder as given; the branch shows as a header chip. A
-    // non-repository folder (or no worktree manager) runs as given, never a silent pretend-isolation.
+    // is — and the session runs there instead of in the folder as given; the branch shows as a header chip. Asked and
+    // unable (no worktree manager, no working directory, or a non-repository folder) never runs unisolated silently —
+    // that is the exact contamination isolation exists to prevent (AC-938); see the catch below for what happens instead.
     private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(
         SessionPanelViewModel session, NewSessionResult result, bool interactive = true)
     {
-        if (!result.IsolateInWorktree || _worktreeManager is null || string.IsNullOrWhiteSpace(result.WorkingDirectory))
+        if (!result.IsolateInWorktree)
         {
             return result.WorkingDirectory;
         }
 
         try
         {
+            if (_worktreeManager is null)
+            {
+                throw new InvalidOperationException("worktree isolation is not available here (no worktree manager).");
+            }
+
+            if (string.IsNullOrWhiteSpace(result.WorkingDirectory))
+            {
+                throw new InvalidOperationException("no working directory is set, so no isolated worktree can be created.");
+            }
+
             // Reattach: the folder is already a worktree the cockpit created — re-own it for this session and run
             // there, rather than nesting a new worktree inside it. Only ever a worktree whose owning session is gone:
             // stealing a live one would put two sessions on one working tree, so a folder that matches a *live*
@@ -5159,7 +5170,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             if (await _worktreeManager.DetectRepositoryAsync(result.WorkingDirectory) is null)
             {
-                return result.WorkingDirectory;
+                throw new InvalidOperationException("the working directory is not a git repository, so no isolated worktree can be created.");
             }
 
             var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, result.Profile.Label, result.WorkingDirectory);

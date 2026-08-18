@@ -2,9 +2,11 @@ using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Worktrees;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -757,5 +759,111 @@ public class ProjectDialogViewModelTests
         viewModel.Description = "Edited locally";
 
         Assert.Equal("Edited locally", viewModel.ToProject().Description);
+    }
+
+    // AC-938: the extra repository rows below the Folder box — repo #2 and on.
+
+    [Fact]
+    public async Task CreateAsync_ProjectWithMultipleRepositories_PopulatesRowsAfterTheFolder()
+    {
+        var project = Project.Create("Waymark") with
+        {
+            SourceDirectories = [new(_Root("web")), new(_Root("android")) { Label = "android" }],
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog());
+
+        Assert.Equal(_Root("web"), viewModel.SourceDirectory);
+        var row = Assert.Single(viewModel.RepositoryRows);
+        Assert.Equal(_Root("android"), row.Path);
+        Assert.Equal("android", row.Label);
+    }
+
+    [Fact]
+    public async Task ToProject_WithAnExtraRepositoryRow_BuildsSourceDirectoriesInOrder()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore("personal"), Catalog());
+        viewModel.Name = "Waymark";
+        viewModel.SourceDirectory = _Root("web");
+        viewModel.RepositoryRows.Add(new ProjectRepositoryRowViewModel(_Root("android"), "android"));
+
+        var saved = viewModel.ToProject();
+
+        Assert.Equal(2, saved.SourceDirectories.Count);
+        Assert.Equal(_Root("web"), saved.SourceDirectories[0].Path);
+        Assert.Null(saved.SourceDirectories[0].Label);
+        Assert.Equal(_Root("android"), saved.SourceDirectories[1].Path);
+        Assert.Equal("android", saved.SourceDirectories[1].Label);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ARepositoryRowLeftBlank_IsRefusedRatherThanSavedWithAGap()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore("personal"), Catalog());
+        viewModel.Name = "Waymark";
+        viewModel.SourceDirectory = _Root("web");
+        viewModel.RepositoryRows.Add(new ProjectRepositoryRowViewModel(""));
+        Project? saved = null;
+        viewModel.CloseRequested += project => saved = project;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("blank", viewModel.SaveError, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(saved);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ARepositoryRowButNoFolderChosenYet_IsRefused()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore("personal"), Catalog());
+        viewModel.Name = "Waymark";
+        viewModel.RepositoryRows.Add(new ProjectRepositoryRowViewModel(_Root("android")));
+        Project? saved = null;
+        viewModel.CloseRequested += project => saved = project;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("Choose the project's own folder", viewModel.SaveError);
+        Assert.Null(saved);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ARepositoryRowThatIsNotAGitRepository_IsRefused()
+    {
+        var worktrees = Substitute.For<IWorktreeManager>();
+        worktrees.DetectRepositoryAsync(_Root("android"), Arg.Any<CancellationToken>()).Returns((GitRepositoryInfo?)null);
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore("personal"), Catalog(), worktreeManager: worktrees);
+        viewModel.Name = "Waymark";
+        viewModel.SourceDirectory = _Root("web");
+        viewModel.RepositoryRows.Add(new ProjectRepositoryRowViewModel(_Root("android")));
+        Project? saved = null;
+        viewModel.CloseRequested += project => saved = project;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("is not a git repository", viewModel.SaveError);
+        Assert.Null(saved);
+    }
+
+    [Fact]
+    public async Task SaveAsync_EveryRepositoryRowIsAGitRepository_Saves()
+    {
+        var worktrees = Substitute.For<IWorktreeManager>();
+        worktrees.DetectRepositoryAsync(_Root("android"), Arg.Any<CancellationToken>())
+            .Returns(new GitRepositoryInfo(_Root("android"), "abc123", "main"));
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore("personal"), Catalog(), worktreeManager: worktrees);
+        viewModel.Name = "Waymark";
+        viewModel.SourceDirectory = _Root("web");
+        viewModel.RepositoryRows.Add(new ProjectRepositoryRowViewModel(_Root("android")));
+        Project? saved = null;
+        viewModel.CloseRequested += project => saved = project;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.SaveError);
+        Assert.NotNull(saved);
+        Assert.Equal(2, saved!.SourceDirectories.Count);
     }
 }

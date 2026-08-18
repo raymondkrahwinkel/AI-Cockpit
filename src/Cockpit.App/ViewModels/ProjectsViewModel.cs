@@ -208,7 +208,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
         {
             Description = "The cockpit itself — the desktop app these sessions run in.",
-            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
             DefaultProfileLabel = "personal",
             LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
             AdditionalInfo =
@@ -264,23 +264,23 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         var cockpit = Project.Create("Cockpit") with
         {
             Description = "The cockpit itself — the desktop app these sessions run in.",
-            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
             Category = "Privé",
         };
         var eveWorkbench = Project.Create("EVE Workbench") with
         {
             Description = "Community platform for fits and market.",
-            SourceDirectory = "/home/raymond/RiderProjects/Eveworkbench",
+            SourceDirectories = [new("/home/raymond/RiderProjects/Eveworkbench")],
             Category = "Privé",
         };
         var onboarding = Project.Create("Onboarding flow") with
         {
             Description = "New-hire checklist and the tooling walkthrough.",
-            SourceDirectory = "/home/raymond/work/onboarding",
+            SourceDirectories = [new("/home/raymond/work/onboarding")],
             Category = "Werk",
             MemoryRef = "depot:onboarding",
         };
-        var scratch = Project.Create("Testproject") with { SourceDirectory = "/home/raymond/tmp/scratch" };
+        var scratch = Project.Create("Testproject") with { SourceDirectories = [new("/home/raymond/tmp/scratch")] };
 
         var ownership = new ProjectOwnershipRegistry();
         ownership.Register(new ProjectOwnershipRegistration(onboarding.Id, new ProjectFieldOwnership("Depot — Work")));

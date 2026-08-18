@@ -30,21 +30,36 @@ public static class ProjectDirectoryMatch
 
         foreach (var project in projects)
         {
-            if (DirectoryPath.Normalize(project.SourceDirectory) is not { } source || !DirectoryPath.IsWithin(target, source))
+            // AC-938: every declared repository gets a claim, not only item 0 — a Waymark-shaped project whose
+            // repositories are spread across the disk (`~/RiderProjects/waymark-web` next to
+            // `~/AndroidStudio/waymark-android`, neither nested in the other) needs a run in either one to match the
+            // same project. Two of *this* project's own folders claiming the same target is not the ambiguity the
+            // loop below guards against — it is still one project's answer — so only the best claim per project
+            // feeds the ambiguity check across projects.
+            var bestOwn = -1;
+            foreach (var repository in project.SourceDirectories)
+            {
+                if (DirectoryPath.Normalize(repository.Path) is { } source && DirectoryPath.IsWithin(target, source) && source.Length > bestOwn)
+                {
+                    bestOwn = source.Length;
+                }
+            }
+
+            if (bestOwn < 0)
             {
                 continue;
             }
 
-            if (source.Length > bestLength)
+            if (bestOwn > bestLength)
             {
                 best = project;
-                bestLength = source.Length;
+                bestLength = bestOwn;
                 ambiguous = false;
             }
-            else if (source.Length == bestLength)
+            else if (bestOwn == bestLength)
             {
-                // The same folder claimed twice: no answer beats an arbitrary one (see the remarks above). Keep
-                // walking — a more specific claim further down the list still wins over both.
+                // The same folder claimed twice by two different projects: no answer beats an arbitrary one (see
+                // the remarks above). Keep walking — a more specific claim further down the list still wins over both.
                 ambiguous = true;
             }
         }

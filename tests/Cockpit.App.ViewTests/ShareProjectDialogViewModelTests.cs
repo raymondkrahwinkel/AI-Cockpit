@@ -23,7 +23,7 @@ public class ShareProjectDialogViewModelTests
         {
             Description = "Loonverwerking",
             GitUrl = "git@github.com:example/payroll.git",
-            SourceDirectory = "/home/raymond/RiderProjects/payroll",
+            SourceDirectories = [new("/home/raymond/RiderProjects/payroll")],
             DefaultProfileLabel = "Zyra — Sonnet",
             Resources = resources ?? [],
             AdditionalInfo = additionalInfo ?? [],

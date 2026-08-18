@@ -39,7 +39,7 @@ public class SessionStartDefaultsTests
     public void Resolve_ProjectWithASourceDirectory_OverridesTheProfileDefault()
     {
         var profile = Profile() with { DefaultWorkingDirectory = "/home/raymond/profile-dir" };
-        var project = Project.Create("Cockpit") with { SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")] };
 
         Assert.Equal(
             "/home/raymond/RiderProjects/AI-Cockpit",
@@ -67,7 +67,7 @@ public class SessionStartDefaultsTests
     public void Resolve_BlankProjectFolder_CountsAsUnset()
     {
         var profile = Profile() with { DefaultWorkingDirectory = "/home/raymond/profile-dir" };
-        var project = Project.Create("Admin") with { SourceDirectory = "   " };
+        var project = Project.Create("Admin") with { SourceDirectories = [new("   ")] };
 
         Assert.Equal("/home/raymond/profile-dir", SessionStartDefaults.Resolve(project, profile).WorkingDirectory);
     }
@@ -183,7 +183,7 @@ public class SessionStartDefaultsTests
     [Fact]
     public void Resolve_NoProfile_LeavesEveryProfileBackedFieldAlone()
     {
-        var project = Project.Create("Cockpit") with { SourceDirectory = "/src" };
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new("/src")] };
 
         var defaults = SessionStartDefaults.Resolve(project, profile: null);
 
@@ -288,6 +288,66 @@ public class SessionStartDefaultsTests
         Assert.True(prompt!.Length <= 5500, "the shared ceiling is enforced, not merely intended");
         Assert.Contains("more that did not fit here", prompt, StringComparison.Ordinal);
         Assert.Contains("Row 0", prompt, StringComparison.Ordinal);
+    }
+
+    // AC-938: which repositories a project declares, told ahead of everything else in the project block — but only
+    // once there is more than one to name, and always sharing the same ceiling every other block already competes for.
+
+    [Fact]
+    public void Resolve_OneRepository_MentionsNoRepositoriesAtAll()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
+            BehaviorPrompt = "Work ticket by ticket.",
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude"))).SystemPrompt;
+
+        Assert.DoesNotContain("multiple repositories", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Resolve_MultipleRepositories_NamesEachWithItsLabelOrFolderName_AheadOfTheRestOfTheBlock()
+    {
+        var project = Project.Create("Waymark") with
+        {
+            SourceDirectories =
+            [
+                new("/home/raymond/waymark-web") { Label = "web" },
+                new("/home/raymond/waymark-android"),
+            ],
+            BehaviorPrompt = "Work ticket by ticket.",
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude"))).SystemPrompt;
+
+        Assert.NotNull(prompt);
+        Assert.Contains("This project consists of multiple repositories: web (/home/raymond/waymark-web), " +
+            "waymark-android (/home/raymond/waymark-android).", prompt, StringComparison.Ordinal);
+        Assert.True(
+            prompt!.IndexOf("multiple repositories", StringComparison.Ordinal) < prompt.IndexOf("Work ticket by ticket.", StringComparison.Ordinal),
+            "the repository line reads first, ahead of the behaviour prompt");
+    }
+
+    [Fact]
+    public void Resolve_MultipleRepositories_SharesTheCeilingWithInformationRows_RatherThanRaisingIt()
+    {
+        // Same pressure as Resolve_MoreSharedRowsThanFit_StopsAndSaysSo, plus a multi-repository project: the
+        // repository line must come out of the same 5500-character ceiling, not sit on top of it.
+        var project = Project.Create("Waymark") with
+        {
+            SourceDirectories = [new("/home/raymond/waymark-web") { Label = "web" }, new("/home/raymond/waymark-android") { Label = "android" }],
+            AdditionalInfo = [.. Enumerable.Range(0, 60).Select(index =>
+                new ProjectInfoField($"Row {index}", new string('x', 200)) { IsSharedWithSessions = true })],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude"))).SystemPrompt;
+
+        Assert.NotNull(prompt);
+        Assert.True(prompt!.Length <= 5500, "the shared ceiling is enforced, not raised for a multi-repository project");
+        Assert.Contains("multiple repositories", prompt, StringComparison.Ordinal);
+        Assert.Contains("more that did not fit here", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

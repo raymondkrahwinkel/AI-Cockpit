@@ -744,6 +744,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(SelectedProjectDescription));
 
+        // AC-938: the quick-pick's project-repository rows depend on which project is selected, so a project
+        // switch rebuilds it — a no-op (same Clone-from-URL entry, same history) for a project with zero or one
+        // declared repository, which is every project before this ticket.
+        _RefreshRememberedPaths();
+
         // A session started on a project opens under that project's name (Raymond, 2026-08-01) rather than
         // "<profile> - N" — typing the name the row you right-clicked already carries is the same answer twice.
         // Sticky like the folder below: switching projects keeps refilling it until the operator types their own,
@@ -910,6 +915,25 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // Always first, and independent of any history, so cloning a not-yet-local repository (AC-90) is one pick away
         // even on a fresh machine with no remembered folders.
         RememberedPaths.Add(new RememberedPathOption(CloneFromUrlLabel, IsFavorite: false, IsCloneAction: true));
+
+        // AC-938: the chosen project's own declared repositories, ahead of the folder history — a session on a
+        // multi-repo project (a web repo and an android repo, neither nested in the other) picks which one to run
+        // in right here, no path to type and no new control. Only for a project that actually declares more than
+        // one: a single-repository project already puts that one repository in WorkingDirectory by default
+        // (SessionStartDefaults), so a lone entry here would repeat it for nothing.
+        if (SelectedProject is { } project && project.SourceDirectories.Count > 1)
+        {
+            foreach (var repository in project.SourceDirectories)
+            {
+                var repositoryLabel = string.IsNullOrWhiteSpace(repository.Label)
+                    ? Path.GetFileName(repository.Path.TrimEnd('/', '\\'))
+                    : repository.Label;
+                RememberedPaths.Add(new RememberedPathOption(
+                    repository.Path, IsFavorite: false, RepositoryLabel: $"{project.Name} · {repositoryLabel}"));
+            }
+
+            RememberedPaths.Add(new RememberedPathOption(string.Empty, IsFavorite: false, IsSeparator: true));
+        }
 
         foreach (var path in _history.Favorites)
         {
@@ -1382,13 +1406,21 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 // "Clone from a Git URL…" entry (AC-90) rather than a folder — selecting it opens the clone flow instead of filling
 // the folder field. `IsSeparator` marks the non-selectable ruler between the favorites and the recents
 // (AC-131). A real folder row (neither action nor separator) carries a ✕ to forget it.
-public sealed record RememberedPathOption(string Path, bool IsFavorite, bool IsCloneAction = false, bool IsSeparator = false)
+//
+// `RepositoryLabel`:
+// "Waymark · android" — the chosen project's name and this repository's own label or folder name (AC-938), shown
+// only for a row built from `Project.SourceDirectories` rather than the folder history below. Null for every
+// ordinary favorite/recent row, which is every row this dialog has ever shown before this ticket.
+public sealed record RememberedPathOption(
+    string Path, bool IsFavorite, bool IsCloneAction = false, bool IsSeparator = false, string? RepositoryLabel = null)
 {
     // Whether picking this entry does something — a folder or the clone action. The separator is inert, so its container is disabled and it never fills the field.
     public bool IsSelectable => !IsSeparator;
 
-    // Whether this entry can be forgotten via the ✕ — a real remembered folder, not the clone action or the separator (AC-131).
-    public bool IsRemovable => !IsCloneAction && !IsSeparator;
+    // Whether this entry can be forgotten via the ✕ — a real remembered folder from history, not the clone action,
+    // the separator, or a project's own declared repository (AC-938: that list is not history, so there is
+    // nothing here for the ✕ to forget).
+    public bool IsRemovable => !IsCloneAction && !IsSeparator && RepositoryLabel is null;
 }
 
 // One start default a plugin TTY provider declared (`PluginTtyLaunchOption`) — `Key`/

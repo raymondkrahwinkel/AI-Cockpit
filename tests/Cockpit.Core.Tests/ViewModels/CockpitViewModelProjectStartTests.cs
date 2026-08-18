@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
@@ -20,6 +21,7 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Core.Worktrees;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
@@ -212,10 +214,71 @@ public class CockpitViewModelProjectStartTests
         SessionOptionCatalog.DefaultEffort,
         SessionName: null);
 
+    // AC-938: the interactive quick-start route (StartProjectSessionCommand → _LaunchSessionFromResultAsync →
+    // _StartSessionAsync's own interactive: true default) is the one that skips the New-session dialog's own
+    // isolate-checkbox graying (NewSessionDialogViewModel), so it is the door where the silent isolation
+    // degradation this ticket fixes actually showed up (ProjectQuickStart itself does not resolve isolation at
+    // all — see SessionStartDefaults/ProjectQuickStart's own remarks).
+    [Fact]
+    public async Task StartProjectSession_IsolateOnWithNoWorkingDirectory_AsksInsteadOfStartingUnisolatedSilently()
+    {
+        var (vm, dialogs, _) = _BuildIsolationTestVm();
+        var project = Project.Create("Admin") with { DefaultProfileLabel = "work", IsolateInWorktreeByDefault = true };
+
+        await vm.StartProjectSessionCommand.ExecuteAsync(project);
+
+        await dialogs.Received(1).ShowConfirmationDialogAsync(
+            "Could not isolate this session",
+            Arg.Is<string>(message => message.Contains("no working directory is set", StringComparison.Ordinal)),
+            "Run in folder");
+        // The stub below accepts "Run in folder" — the session still starts, just not isolated, exactly the
+        // outcome a decline should still leave available.
+        Assert.Single(vm.Sessions);
+    }
+
+    [Fact]
+    public async Task StartProjectSession_IsolateOnWithANonRepositoryFolder_AsksInsteadOfStartingUnisolatedSilently()
+    {
+        var (vm, dialogs, worktrees) = _BuildIsolationTestVm();
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<WorktreeRecord>());
+        // DetectRepositoryAsync is left unconfigured, which answers null — "not a git repository here", the
+        // exact condition CockpitViewModel.cs:5171 used to return the folder from silently instead of throwing.
+        var project = Project.Create("Cockpit") with
+        {
+            DefaultProfileLabel = "work",
+            SourceDirectories = [new("/not/a/repo")],
+            IsolateInWorktreeByDefault = true,
+        };
+
+        await vm.StartProjectSessionCommand.ExecuteAsync(project);
+
+        await dialogs.Received(1).ShowConfirmationDialogAsync(
+            "Could not isolate this session",
+            Arg.Is<string>(message => message.Contains("is not a git repository", StringComparison.Ordinal)),
+            "Run in folder");
+        Assert.Single(vm.Sessions);
+    }
+
+    private static (CockpitViewModel Vm, ISessionDialogService Dialogs, IWorktreeManager Worktrees) _BuildIsolationTestVm()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\fake\.claude"));
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
+        var quickStart = new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry());
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+
+        return (NewVm(dialogs, quickStart: quickStart, worktreeManager: worktrees), dialogs, worktrees);
+    }
+
     private static CockpitViewModel NewVm(
         ISessionDialogService dialogs,
         ProjectsViewModel? projects = null,
-        ProjectQuickStart? quickStart = null)
+        ProjectQuickStart? quickStart = null,
+        IWorktreeManager? worktreeManager = null)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -243,6 +306,7 @@ public class CockpitViewModelProjectStartTests
             layoutSettingsStore,
             voiceSettingsStore,
             terminalSettingsStore,
+            worktreeManager: worktreeManager,
             projects: projects,
             projectQuickStart: quickStart);
     }

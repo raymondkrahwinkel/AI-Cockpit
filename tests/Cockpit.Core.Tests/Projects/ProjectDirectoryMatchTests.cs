@@ -9,7 +9,7 @@ namespace Cockpit.Core.Tests.Projects;
 public class ProjectDirectoryMatchTests
 {
     private static Project _At(string name, string? source) =>
-        new(name.ToLowerInvariant(), name) { SourceDirectory = source };
+        new(name.ToLowerInvariant(), name) { SourceDirectories = source is null ? [] : [new(source)] };
 
     [Fact]
     public void For_TheProjectsOwnFolder_IsThatProject()
@@ -68,6 +68,40 @@ public class ProjectDirectoryMatchTests
 
         Assert.NotNull(match);
         Assert.Equal("Inner", match.Name);
+    }
+
+    // AC-938: a Waymark-shaped project (a web repo and an android repo, spread across the disk, neither nested in
+    // the other) needs a run in *either* declared repository to match the same project.
+
+    [Fact]
+    public void For_ASpreadOutSecondRepository_IsStillTheSameProject()
+    {
+        var waymark = new Project("waymark", "Waymark")
+        {
+            SourceDirectories = [new("/repos/waymark-web"), new("/home/dev/waymark-android")],
+        };
+
+        var match = ProjectDirectoryMatch.For([waymark], "/home/dev/waymark-android/src");
+
+        Assert.NotNull(match);
+        Assert.Equal("Waymark", match.Name);
+    }
+
+    [Fact]
+    public void For_TwoOfTheSameProjectsOwnRepositoriesClaimingTheSameFolder_IsStillThatProject()
+    {
+        // Not the ambiguity For_TwoProjectsOnOneFolder_AnswersNeither guards against — that is two *different*
+        // projects claiming the same folder. Two rows of the *same* project agreeing on an answer is not a
+        // conflict to refuse.
+        var project = new Project("dup", "Duplicated")
+        {
+            SourceDirectories = [new("/repos/one"), new("/repos/one")],
+        };
+
+        var match = ProjectDirectoryMatch.For([project], "/repos/one/src");
+
+        Assert.NotNull(match);
+        Assert.Equal("Duplicated", match.Name);
     }
 
     [Fact]

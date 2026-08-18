@@ -96,6 +96,12 @@ public interface IAssistantReadGateway
 // "pick up AC-555" into a lookup rather than a guess: match the ticket's prefix against a project's
 // `youtrack.project` value here before ever calling into YouTrack for the issue itself.
 // `GitUrl`: The repository `SourceDirectory` was cloned from, or null when the folder was picked rather than cloned.
+// `Repositories`:
+// Every repository this project declares (AC-938), in order — item 0's `Path` is `SourceDirectory` above,
+// verbatim. A project spanning more than one repository (a web repo and an android repo, say, neither nested in
+// the other) is not something an agent should have to discover by a failed worktree isolation: this is that
+// project's repositories, told up front. Never empty for a project with any source of its own — a null
+// `SourceDirectory` means an administrative project with none, in which case this is empty too.
 public sealed record AssistantProjectRow(
     string Id,
     string Name,
@@ -103,7 +109,14 @@ public sealed record AssistantProjectRow(
     string? SourceDirectory,
     string? DefaultProfileLabel,
     IReadOnlyDictionary<string, string> Links,
-    string? GitUrl);
+    string? GitUrl,
+    IReadOnlyList<AssistantProjectRepositoryRow> Repositories);
+
+// One repository a project declares (AC-938).
+//
+// `Path`: The repository's folder.
+// `Label`: What the operator called it ("web", "android"), or null when they never named it.
+public sealed record AssistantProjectRepositoryRow(string Path, string? Label);
 
 // One source's shared projects, or why it failed (AC-797) — a source is expected to report a whole-connection
 // failure through Error rather than throw, so one broken source never costs another's rows.

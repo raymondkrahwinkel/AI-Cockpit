@@ -40,6 +40,7 @@ public partial class ProjectDialog : Window
         viewModel.BrowseRequested += () => _ = _BrowseForFolderAsync(viewModel);
         viewModel.PickLogoRequested += () => _ = _PickLogoAsync(viewModel);
         viewModel.PickResourceRequested += row => _ = _PickResourceAsync(viewModel, row);
+        viewModel.BrowseRepositoryRequested += row => _ = _BrowseForRepositoryAsync(row);
     }
 
     // "Choose…" on a resource row (AC-485): a folder picker for a Memory row — memory is somewhere else by
@@ -150,6 +151,35 @@ public partial class ProjectDialog : Window
         {
             // No picker on this platform, or the operator's file manager refused. The field takes a path or a URL
             // typed by hand, so the flow is not lost.
+        }
+    }
+
+    // "Choose…" on an extra repository row (AC-938) — the same folder picker the Folder row's own Choose… uses,
+    // pre-seeded with whatever this row already holds so re-browsing opens where it already points.
+    private async Task _BrowseForRepositoryAsync(ProjectRepositoryRowViewModel row)
+    {
+        try
+        {
+            var start = string.IsNullOrWhiteSpace(row.Path)
+                ? null
+                : await StorageProvider.TryGetFolderFromPathAsync(row.Path);
+
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select this repository's folder",
+                AllowMultiple = false,
+                SuggestedStartLocation = start,
+            });
+
+            var path = folders.FirstOrDefault()?.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                row.Path = path;
+            }
+        }
+        catch
+        {
+            // Picker unavailable/failed — keep the current value.
         }
     }
 
