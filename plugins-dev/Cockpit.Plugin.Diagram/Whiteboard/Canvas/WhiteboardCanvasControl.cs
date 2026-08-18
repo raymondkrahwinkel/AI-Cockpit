@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
@@ -19,8 +20,8 @@ public enum WhiteboardTool
 }
 
 // The whiteboard's surface (AC-821): a pencil draws yellow freehand strokes straight onto one shared layer, a
-// shape tool drags out a blue-strict PlacedObject, and Select drags bodies or resize-handle corners. No pan/zoom
-// — nothing in the ticket asked for an infinite canvas. Ctrl+C/X/V/D (AC-917) run against an internal clipboard.
+// shape tool drags out a blue-strict PlacedObject, and Select drags bodies or resize-handle corners. Ctrl+C/X/V/D
+// (AC-917) run against an internal clipboard. AC-913's zoom/pan notes sit on `_surface` and `_ApplyTransform` below.
 public sealed class WhiteboardCanvasControl : Border
 {
     private const double MinPlacedSize = 20;
@@ -28,6 +29,14 @@ public sealed class WhiteboardCanvasControl : Border
     private const double ClickTolerance = 3;
     private const double PencilThickness = 2.5;
     private const double MarkerThickness = 14;
+
+    // AC-913: same range/feel as DiagramWorkspaceBody's (AC-837) — one shared convention across all three surfaces.
+    private const double MinZoom = 0.1;
+    private const double MaxZoom = 4.0;
+    private const double WheelZoomStepBase = 1.15;
+    private const double ButtonZoomStep = 1.25;
+
+    private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
     private readonly Avalonia.Controls.Canvas _surface = new() { Background = Brushes.Transparent };
     private readonly FreehandLayer _freehandLayer;
@@ -67,6 +76,14 @@ public sealed class WhiteboardCanvasControl : Border
     private List<WhiteboardObject>? _clipboard;
     private double _pasteOffset;
 
+    // AC-913: zoom/pan state, applied to `_surface` only — `_emptyState` sits outside it (see below) so a blank
+    // board's message stays centred in whatever the viewport shows, at any zoom or pan.
+    private double _zoom = 1.0;
+    private Vector _panOffset;
+    private bool _isPanning;
+    private Point _panPointerStart;
+    private Vector _panOffsetStart;
+
     public WhiteboardCanvasControl(WhiteboardDocument document)
     {
         Document = document;
@@ -75,24 +92,33 @@ public sealed class WhiteboardCanvasControl : Border
         ClipToBounds = true;
         Focusable = true;
 
-        _surface.Children.Add(_emptyState);
-        Avalonia.Controls.Canvas.SetLeft(_emptyState, 0);
-        Avalonia.Controls.Canvas.SetTop(_emptyState, 0);
+        // AC-913: fixed workspace size, not the window's — see WhiteboardGeometry for why. `_surface` is pinned to
+        // its own top-left corner so the RenderTransform below is the only thing that moves it.
+        _surface.Width = WhiteboardGeometry.WorkspaceSize.Width;
+        _surface.Height = WhiteboardGeometry.WorkspaceSize.Height;
+        _surface.HorizontalAlignment = HorizontalAlignment.Left;
+        _surface.VerticalAlignment = VerticalAlignment.Top;
+        _surface.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative);
 
-        _freehandLayer = new FreehandLayer(document);
+        _freehandLayer = new FreehandLayer(document)
+        {
+            Width = WhiteboardGeometry.WorkspaceSize.Width,
+            Height = WhiteboardGeometry.WorkspaceSize.Height,
+        };
         _surface.Children.Add(_freehandLayer);
         Avalonia.Controls.Canvas.SetLeft(_freehandLayer, 0);
         Avalonia.Controls.Canvas.SetTop(_freehandLayer, 0);
 
+        // The empty-state message tracks the viewport (this control's own bounds), not the workspace — a sibling
+        // of `_surface`, never a child of it, so it is never scaled or panned away (AC7).
         SizeChanged += (_, e) =>
         {
-            _freehandLayer.Width = e.NewSize.Width;
-            _freehandLayer.Height = e.NewSize.Height;
             _emptyState.Width = e.NewSize.Width;
             _emptyState.Height = e.NewSize.Height;
         };
 
-        Child = _surface;
+        Child = new Panel { Children = { _surface, _emptyState } };
+        _ApplyTransform();
 
         foreach (var placed in document.Objects.OfType<PlacedObject>())
         {
@@ -207,10 +233,73 @@ public sealed class WhiteboardCanvasControl : Border
         }
     }
 
+    // AC-913: current zoom (1.0 = actual size), and the event WhiteboardControl's toolbar listens to for its label.
+    public double Zoom => _zoom;
+
+    public event EventHandler? ZoomChanged;
+
+    public void ZoomIn() => _ZoomByButton(ButtonZoomStep);
+
+    public void ZoomOut() => _ZoomByButton(1 / ButtonZoomStep);
+
+    // "Passend maken": fits everything drawn or placed into the viewport, with a margin — or the whole (empty)
+    // workspace when there is nothing on the board yet, so it still centres nicely rather than zooming to nothing.
+    public void ApplyFit()
+    {
+        var content = WhiteboardGeometry.ContentBounds(Document);
+        var fitZoom = DiagramZoomMath.FitZoom(Bounds.Size, content.Size, MinZoom, MaxZoom);
+        if (fitZoom <= 0)
+        {
+            return;
+        }
+
+        _zoom = fitZoom;
+        var centered = DiagramZoomMath.CenteredPanOffset(Bounds.Size, content.Size, _zoom);
+        _panOffset = centered - (new Vector(content.X, content.Y) * _zoom);
+        _ApplyTransform();
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        e.Handled = true;
+        _ZoomAround(e.GetPosition(this), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y));
+    }
+
+    private void _ZoomByButton(double factor) => _ZoomAround(new Point(Bounds.Width / 2, Bounds.Height / 2), _zoom * factor);
+
+    private void _ZoomAround(Point anchor, double requestedZoom)
+    {
+        (_zoom, _panOffset) = DiagramZoomMath.ZoomAround(anchor, _panOffset, _zoom, requestedZoom, MinZoom, MaxZoom);
+        _ApplyTransform();
+    }
+
+    // Every hit test below asks for the pointer "relative to `_surface`" — Avalonia already resolves that through
+    // this RenderTransform, so none of that code needed to change for zoom/pan to work.
+    private void _ApplyTransform()
+    {
+        _surface.RenderTransform = new MatrixTransform(new Matrix(_zoom, 0, 0, _zoom, _panOffset.X, _panOffset.Y));
+        ZoomChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
         Focus();
+
+        // AC-913: the middle button always pans, whatever tool is active — left-drag already means draw/select/
+        // resize on this surface (unlike diagram/wireframe), so panning needs a gesture that can never be mistaken
+        // for one of those (AC3).
+        if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
+        {
+            _isPanning = true;
+            _panPointerStart = e.GetPosition(this);
+            _panOffsetStart = _panOffset;
+            e.Pointer.Capture(this);
+            Cursor = _PanningCursor;
+            e.Handled = true;
+            return;
+        }
 
         var point = e.GetPosition(_surface);
 
@@ -268,6 +357,14 @@ public sealed class WhiteboardCanvasControl : Border
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
+
+        if (_isPanning)
+        {
+            _panOffset = _panOffsetStart + (e.GetPosition(this) - _panPointerStart);
+            _ApplyTransform();
+            return;
+        }
+
         var point = e.GetPosition(_surface);
 
         if (_activeStroke is { } stroke)
@@ -320,6 +417,14 @@ public sealed class WhiteboardCanvasControl : Border
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+
+        if (_isPanning)
+        {
+            _isPanning = false;
+            Cursor = null;
+            e.Pointer.Capture(null);
+            return;
+        }
 
         // Releasing capture can synchronously raise OnPointerCaptureLost (Avalonia) — clear the draft state first
         // so that re-entrant call sees it already gone and no-ops, instead of racing the logic below.
@@ -417,6 +522,12 @@ public sealed class WhiteboardCanvasControl : Border
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
+
+        if (_isPanning)
+        {
+            _isPanning = false;
+            Cursor = null;
+        }
 
         if (_activeStroke is not null)
         {

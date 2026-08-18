@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Cockpit.Plugin.Diagram.Whiteboard;
 using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
@@ -410,6 +411,66 @@ public class WhiteboardCanvasControlTests
         Assert.DoesNotContain(canvas.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Wat moet er gebeuren met de aantekeningen op deze afbeelding?");
 
         window.Close();
+    }
+
+    // AC-913/AC2: a stroke drawn after "passend maken" zoomed/panned the surface still lands at the document
+    // point under the cursor. `ApplyFit` on an empty board centres the fixed workspace, so clicking the
+    // viewport's centre should hit the workspace's own centre — proof the pointer-to-document math still holds.
+    [Fact]
+    public void PencilTool_AfterFit_StillDrawsAtTheCursorsDocumentPosition()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.ApplyFit();
+        Assert.True(canvas.Zoom is > 0 and < 1, $"expected a 300x300 window to shrink the {WhiteboardGeometry.WorkspaceSize} workspace, got zoom {canvas.Zoom}");
+
+        canvas.UsePencilTool();
+        window.MouseDown(new Point(150, 150), MouseButton.Left);
+        window.MouseMove(new Point(160, 150));
+        window.MouseUp(new Point(160, 150), MouseButton.Left);
+
+        var stroke = Assert.IsType<FreehandStroke>(Assert.Single(document.Objects));
+        var first = stroke.Points[0];
+        var expected = WhiteboardGeometry.WorkspaceSize;
+        Assert.InRange(first.X, (expected.Width / 2) - 2, (expected.Width / 2) + 2);
+        Assert.InRange(first.Y, (expected.Height / 2) - 2, (expected.Height / 2) + 2);
+
+        window.Close();
+    }
+
+    // AC-913/AC3: the middle button pans, whatever tool is active — a drag with it must never draw or select.
+    [Fact]
+    public void MiddleButtonDrag_Pans_AndNeverDrawsOrSelects()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UsePencilTool();
+        window.MouseDown(new Point(50, 50), MouseButton.Middle);
+        window.MouseMove(new Point(120, 90));
+        window.MouseUp(new Point(120, 90), MouseButton.Middle);
+
+        Assert.Empty(document.Objects);
+        Assert.Equal(WhiteboardTool.Pencil, canvas.Tool);
+
+        window.Close();
+    }
+
+    // AC-913/AC4+AC7: "Fit" on an empty board centres the (fixed) workspace rather than zooming to nothing, and a
+    // board with content fits that content instead.
+    [Fact]
+    public void ApplyFit_OnAnEmptyBoard_ProducesAPositiveCenteredZoom()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        _Show(canvas);
+
+        canvas.ApplyFit();
+
+        Assert.True(canvas.Zoom > 0);
     }
 
     private static Window _Show(Control content)

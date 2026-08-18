@@ -207,10 +207,12 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     }
 
     // Names what is really shared, the same rule WhiteboardMcpTools._PromptFor follows for the agent-initiated ask.
+    // AC-913: the board can be bigger than this window — the snapshot is always the whole board, scaled to fit,
+    // never a crop of whatever happens to be in view, so the wording says "whole board", not "as it looks now".
     private ConsentRequest _InvitePrompt() =>
         new(
             "Let the agent look along on this whiteboard",
-            $"Share a screenshot of this whiteboard ({SnapshotSize.Width}×{SnapshotSize.Height}) with the session's agent, exactly as it looks right now — an image of the board, not its shapes or text as data. It cannot put anything on the board with this: drawing along is a separate question the agent has to ask for itself.",
+            $"Share a screenshot of the whole whiteboard ({SnapshotSize.Width}×{SnapshotSize.Height}, scaled to fit — not just the part of it visible in this window right now) with the session's agent — an image of the board, not its shapes or text as data. It cannot put anything on the board with this: drawing along is a separate question the agent has to ask for itself.",
             new ConsentSource(_surfaceId, null, ConsentSourceCatalog.WhiteboardInvite),
             "whiteboard.read",
             ConsentRisk.Dangerous);

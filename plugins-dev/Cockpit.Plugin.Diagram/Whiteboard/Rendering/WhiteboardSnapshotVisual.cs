@@ -11,16 +11,21 @@ namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 internal sealed class WhiteboardSnapshotVisual : Control
 {
     private readonly WhiteboardDocument _document;
+    private readonly Matrix _contentTransform;
 
-    public WhiteboardSnapshotVisual(WhiteboardDocument document)
+    // AC-913: `contentTransform` maps document coordinates onto this visual's pixels — the whole board fitted into
+    // whatever size was asked for, computed once by WhiteboardGeometry.FitTransform rather than here.
+    public WhiteboardSnapshotVisual(WhiteboardDocument document, Matrix contentTransform)
     {
         _document = document;
+        _contentTransform = contentTransform;
     }
 
     public override void Render(DrawingContext context)
     {
         context.FillRectangle(Brushes.White, new Rect(Bounds.Size));
 
+        using var _ = context.PushTransform(_contentTransform);
         foreach (var item in _document.Objects)
         {
             switch (item)

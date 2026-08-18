@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the whiteboard can now be zoomed and panned, the same way diagrams and wireframes already could — a mouse
+  wheel zooms, −/+/Fit buttons on the toolbar show the current level and fit everything on the board into view, and
+  the middle mouse button drags the view around (left-drag still draws, selects and resizes, so panning needed a
+  gesture of its own). The board itself is now a fixed 2400×1800 canvas rather than exactly the size of the window,
+  so there is finally room to work with more than a couple of screenshots side by side. The snapshot shared with the
+  agent still shows the whole board scaled to fit, never a crop of whatever happens to be on screen.
 - added: the whiteboard now has its own clipboard — Ctrl+C copies the selected shape, sticky note, text, image or
   stroke, Ctrl+X cuts it, Ctrl+V pastes it back offset from where it was, and Ctrl+D duplicates it in place beside
   the original. Repeated pasting keeps fanning copies out instead of stacking them on the exact same spot. Pasting a
