@@ -31,7 +31,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         _model = new AutoCompleteBox
         {
             Text = existing?.Model ?? string.Empty,
-            PlaceholderText = "Fetch the list, or type an id e.g. gemini-2.5-flash or gpt-5-mini",
+            PlaceholderText = "Fetch the list, or type a model id",
             FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
             MinimumPrefixLength = 0,
             IsTextCompletionEnabled = false,
