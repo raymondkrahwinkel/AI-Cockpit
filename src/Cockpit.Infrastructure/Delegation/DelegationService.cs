@@ -43,6 +43,13 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // a follow-up within the window puts it back to work and starts the clock again.
     private static readonly TimeSpan IdleSessionWindow = TimeSpan.FromMinutes(5);
 
+    // How long a finished task's entry — including its full `Result` text — is kept in `_tasks` after it
+    // finished, before it is swept away (AC-880). `_tasks` only ever grows otherwise, since nothing else removes
+    // an entry. An hour is well past `IdleSessionWindow` and any reasonable poll interval, so `get_task_result`
+    // keeps working for the case it exists for — a caller that has not collected its answer yet — without this
+    // becoming a second, longer-lived cache of its own.
+    private static readonly TimeSpan TaskRetention = TimeSpan.FromHours(1);
+
     private readonly ISessionProfileStore _profileStore;
     private readonly ISessionManager _sessionManager;
     private readonly IMcpServerStore _mcpServerStore;
@@ -63,6 +70,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
 
     private readonly Func<int, TimeSpan> _timeout;
     private readonly TimeSpan _idleWindow;
+    private readonly TimeSpan _taskRetention;
     private readonly List<DelegatedTaskEntry> _tasks = [];
     private readonly Lock _tasksLock = new();
 
@@ -80,8 +88,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     {
     }
 
-    // Test seam: lets a test express the profile's timeout in milliseconds, and the idle window in
-    // milliseconds, rather than waiting minutes for either.
+    // Test seam: lets a test express the profile's timeout, the idle window, and the task retention in
+    // milliseconds, rather than waiting minutes (or an hour) for any of them.
     internal DelegationService(
         ISessionProfileStore profileStore,
         ISessionManager sessionManager,
@@ -93,7 +101,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         ISessionProjectResolver? projects = null,
         IWorktreeManager? worktrees = null,
         TimeSpan? idleWindow = null,
-        IConsentBroker? consent = null)
+        IConsentBroker? consent = null,
+        TimeSpan? taskRetention = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -106,6 +115,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         _timeout = timeout;
         _idleWindow = idleWindow ?? IdleSessionWindow;
         _consent = consent;
+        _taskRetention = taskRetention ?? TaskRetention;
     }
 
     // The delegated tasks that still hold a session, as pane ids — a task's verified pane id is its task id
@@ -392,6 +402,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         var entry = new DelegatedTaskEntry(profile, request) { OwnerPaneId = callerPaneId, ProjectId = projectId };
         lock (_tasksLock)
         {
+            _tasks.RemoveAll(task => task.IsFinished && task.FinishedAt is { } finishedAt && DateTimeOffset.Now - finishedAt > _taskRetention);
+
             if (_tasks.Count(task => task.Status == DelegatedTaskStatus.Queued) >= MaxQueued)
             {
                 throw new DelegationRejectedException("Too many tasks are already waiting for a slot.");
