@@ -8,6 +8,7 @@ namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 // One fixed visual language, shared by the live canvas and the raster snapshot: freehand is always yellow, a
 // placed object (template or paste) is always this crisp blue. The distinction lives in WhiteboardObjectKind
 // already; this is only how that distinction is drawn.
+
 // The compact icon a placed object shows for its badge: a one-letter glyph on the object, the full text in the
 // tooltip the control attaches (see PlacedObjectControl) — no text pill, so it never outgrows a small object.
 internal readonly record struct PlacedBadge(string Glyph, string Tooltip);
