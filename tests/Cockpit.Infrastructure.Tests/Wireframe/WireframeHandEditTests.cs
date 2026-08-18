@@ -190,6 +190,58 @@ public class WireframeHandEditTests
         Assert.Contains(WireframeScreens.Nav, destinations);
     }
 
+    // AC-904: what a drag may aim at. Unlike Destinations this is about the container alone, since the drop carries a
+    // position of its own — so the container the component is already the last child of is a target again.
+    [Fact]
+    public void CanMoveInto_TakesTheContainerItIsAlreadyTheLastChildOf_WhichDestinationsLeavesOut()
+    {
+        var tree = _Tree(_Open());
+        var buttons = WireframeHandEdit.Find(tree, WireframeScreens.ButtonRow)!;
+
+        Assert.True(WireframeHandEdit.CanMoveInto(tree, WireframeScreens.SaveButton, buttons));
+    }
+
+    [Theory]
+    [InlineData(WireframeScreens.LeftColumn)]
+    [InlineData(WireframeScreens.Nav)]
+    public void CanMoveInto_RefusesTheComponentItselfAndWhatItAlreadyContains(string into)
+    {
+        var tree = _Tree(_Open());
+
+        Assert.False(WireframeHandEdit.CanMoveInto(tree, WireframeScreens.LeftColumn, WireframeHandEdit.Find(tree, into)!));
+    }
+
+    [Fact]
+    public void CanMoveInto_RefusesAComponentThatCarriesNothingOfItsOwn()
+    {
+        var tree = _Tree(_Open());
+        var email = WireframeHandEdit.Find(tree, WireframeScreens.EmailField)!;
+
+        Assert.False(WireframeHandEdit.CanMoveInto(tree, WireframeScreens.SaveButton, email));
+    }
+
+    // A screen stands at the left margin of its own, so no drag can put it inside anything — the editor refuses it
+    // too, but the surface has to know before the pointer is let go.
+    [Fact]
+    public void CanMoveInto_RefusesDraggingAScreenIntoAContainer()
+    {
+        var tree = _Tree(_Open());
+        var group = WireframeHandEdit.Find(tree, WireframeScreens.Group)!;
+
+        Assert.False(WireframeHandEdit.CanMoveInto(tree, WireframeScreens.Screen, group));
+    }
+
+    [Fact]
+    public void ParentOf_GivesTheContainerAComponentSitsIn_AndNothingForTheScreenLine()
+    {
+        var tree = _Tree(_Open());
+
+        Assert.Equal(
+            WireframeScreens.ButtonRow,
+            WireframeHandEdit.ParentOf(tree, WireframeHandEdit.Find(tree, WireframeScreens.SaveButton)!)?.Id);
+        Assert.Null(WireframeHandEdit.ParentOf(tree, WireframeHandEdit.Find(tree, WireframeScreens.Screen)!));
+    }
+
     [Fact]
     public void RemovingTheScreenLine_IsRefusedWithAReason_AndChangesNothing()
     {

@@ -39,6 +39,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private static readonly Cursor _PanCursor = new(StandardCursorType.Hand);
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
+    // AC-904: while a component is being dragged the pointer already says whether it may land where it is — a drop
+    // the editor would refuse reads as "cannot" here, rather than as a toast after the fact.
+    private static readonly Cursor _DropCursor = new(StandardCursorType.DragMove);
+    private static readonly Cursor _NoDropCursor = new(StandardCursorType.No);
+
     private readonly ICockpitHost _host;
     private readonly IWireframeAccessRegistry? _registry;
     private readonly string _surfaceId;
@@ -46,6 +51,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Panel _surface;
     private readonly Panel _render;
     private readonly Canvas _overlay;
+    private readonly Canvas _draft;
     private readonly Border _viewport;
     private readonly TextBlock _zoomLabel;
     private readonly Border _couplingBar;
@@ -81,6 +87,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private string? _zoomedId;
     private string? _selectedId;
     private WireframeNode? _pressedOn;
+    private Dictionary<WireframeNode, Control>? _controls;
+    private WireframeDrag? _drag;
     private bool _placementHintShown;
     private WireframeCoupling? _current;
     private SurfaceSessionBinding _sessionBinding;
@@ -107,6 +115,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
         // panel so re-rendering it leaves the overlay alone.
         _render = new Panel();
         _overlay = new Canvas();
+
+        // AC-904: the gesture in flight gets a layer of its own — ghost and drop indicator, thrown away on release
+        // (AC-898's draft layer), so nothing halfway between two places reaches the source, the journal or a reading
+        // agent. Never hit-tested, so it cannot shadow the render the drop target is resolved against.
+        _draft = new Canvas { IsHitTestVisible = false };
         _surface = new Panel
         {
             Width = WireframeRenderer.ScreenSize.Width,
@@ -114,7 +127,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative),
-            Children = { _render, _overlay },
+            Children = { _render, _overlay, _draft },
         };
         _viewport = _BuildViewport();
 
@@ -139,6 +152,10 @@ internal sealed class WireframeWorkspaceBody : UserControl
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
         DockPanel.SetDock(propertiesPanel, Dock.Right);
+
+        // AC-904 AC6: Escape gives up a drag where it stands, from wherever the focus happens to be inside this
+        // window — tunnelled, so it is seen before the focused control gets its own say.
+        AddHandler(KeyDownEvent, _OnKeyDown, RoutingStrategies.Tunnel);
 
         // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
         // session is gone — lands on a not-live binding, which is the "no agent on this wireframe" state.
@@ -225,6 +242,10 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // that does not parse draws the errors where the render would go, rather than freezing on the last good one.
     private void _RenderInto(string source)
     {
+        // A drag aims at controls this render is about to throw away, so the source changing under it — an agent's
+        // edit, or the operator's own drop — ends the gesture rather than letting it point at a stale picture.
+        _EndDrag();
+        _controls = null;
         _sourceBox.Text = source;
         var parsed = WireframeParser.Parse(source);
         _screens = parsed.Screens.ToList();
@@ -356,7 +377,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // same shape as DiagramWorkspaceBody's viewport.
     private Border _BuildViewport()
     {
-        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _surface };
+        // Focusable since AC-904: a drag takes the focus so Escape reaches this window rather than whatever the
+        // operator last clicked in the toolbar.
+        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Focusable = true, Child = _surface };
         viewport.SizeChanged += (_, _) =>
         {
             if (_isFitMode)
@@ -368,8 +391,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
         viewport.PointerPressed += _OnViewportPointerPressed;
         viewport.PointerMoved += _OnViewportPointerMoved;
         viewport.PointerReleased += _OnViewportPointerReleased;
-        viewport.PointerCaptureLost += (_, _) => _EndPan();
-        viewport.DoubleTapped += (_, e) => _OnDoubleTapped(_NodeUnder(e.Source));
+        viewport.PointerCaptureLost += (_, _) =>
+        {
+            _EndPan();
+            _EndDrag();
+        };
+        viewport.DoubleTapped += (_, e) => _OnDoubleTapped(_NodeAt(e.GetPosition(_surface)));
         return viewport;
     }
 
@@ -392,12 +419,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private void _OnViewportWheel(object? sender, PointerWheelEventArgs e)
     {
         e.Handled = true;
-        _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y), _NodeUnder(e.Source));
+        _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y), _NodeAt(e.GetPosition(_surface)));
     }
 
-    // AC-837's input convention stands unchanged on this surface too: plain left-drag pans, and a press that never
-    // travels is a click on a component. AC-875 adds no gesture of its own, so a drag is never guessed between
-    // panning and moving a component — moving is what the arrows and "Verplaats naar…" are for.
+    // AC-837 still holds — a left-drag pans, a press that never travels selects — except in the one region AC-904
+    // carves out: the component already selected drags instead. A deliberate departure from AC-841/AC-875, which kept
+    // gestures apart; nothing is guessed here either, because the selection mark bounds the drag and is on screen.
     private void _OnViewportPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(_viewport).Properties.IsLeftButtonPressed)
@@ -405,46 +432,55 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return;
         }
 
-        _pressedOn = _NodeUnder(e.Source);
-        _isPanning = true;
+        var controls = _ControlMap();
+        _pressedOn = _NodeAt(controls, e.GetPosition(_surface));
         _panPointerStart = e.GetPosition(_viewport);
-        _panOffsetStart = _panOffset;
+        if (!_StartDrag(controls, e.GetPosition(_surface)))
+        {
+            _isPanning = true;
+            _panOffsetStart = _panOffset;
+            _viewport.Cursor = _PanningCursor;
+        }
+
         e.Pointer.Capture(_viewport);
-        _viewport.Cursor = _PanningCursor;
         e.Handled = true;
     }
 
     private void _OnViewportPointerMoved(object? sender, PointerEventArgs e)
     {
+        Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
+        if (_drag is { } drag)
+        {
+            _TrackDrag(drag, e.GetPosition(_surface), travelled.Length);
+            return;
+        }
+
         if (!_isPanning)
         {
             return;
         }
 
-        Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
         _panOffset = _panOffsetStart + travelled;
         _isFitMode = false;
         _ApplyTransform();
-
-        // Dragging a component somewhere is the one thing this surface will not do: the format has no coordinates, so
-        // the next render would put it straight back. Say where that does live rather than letting the gesture look
-        // broken — same answer, same wording shape as the diagram's.
-        if (_pressedOn is not null && !_placementHintShown && travelled.Length > ClickSlopPx * 4)
-        {
-            _placementHintShown = true;
-            _host.ShowToast(
-                "Een wireframe plaatst zichzelf — vrij slepen doe je op het whiteboard. Hier verplaats je een component binnen de structuur, met de pijlen of «Verplaats naar…».",
-                PluginToastSeverity.Information);
-        }
     }
 
     private void _OnViewportPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         var wasPanning = _isPanning;
-        Vector travelled = e.GetPosition(_viewport) - _panPointerStart;
+        Vector travel = e.GetPosition(_viewport) - _panPointerStart;
+        var travelled = travel.Length;
+        var dragged = _drag;
         _EndPan();
+        _EndDrag();
 
-        if (wasPanning && travelled.Length <= ClickSlopPx)
+        // A press on the selected component that never travels is still a click on it, so it stays selected and
+        // nothing moves; below the slop the gesture was never a drag in the first place.
+        if (dragged is not null && travelled > ClickSlopPx)
+        {
+            _Drop(dragged);
+        }
+        else if (wasPanning && travelled <= ClickSlopPx)
         {
             _Select(_pressedOn);
         }
@@ -463,23 +499,240 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _viewport.Cursor = _PanCursor;
     }
 
+    // ---- Moving a component by dragging it (AC-904) ----
+
+    // Only the selected component's own hit area drags: pressing one of the things inside it, or anything else, still
+    // pans. Selecting it already minted the ids this gesture names components by (AC-906), so nothing has to be minted
+    // mid-drag — which would rewrite the source under a gesture that has not decided anything yet.
+    private bool _StartDrag(Dictionary<WireframeNode, Control> controls, Point onSurface)
+    {
+        if (_registry is null || _pressedOn is not { Id: { } id } node || id != _selectedId)
+        {
+            return false;
+        }
+
+        if (!controls.TryGetValue(node, out var control) || control.TranslatePoint(default, _surface) is not { } origin)
+        {
+            return false;
+        }
+
+        var indicator = new Border { BorderBrush = _Brush("CockpitAccentBrush"), CornerRadius = new CornerRadius(2), IsVisible = false };
+        _drag = new WireframeDrag(id, controls, onSurface - origin, _Ghost(node, control.Bounds.Size), indicator);
+        _draft.Children.Add(_drag.Ghost);
+        _draft.Children.Add(indicator);
+        _viewport.Focus();
+        return true;
+    }
+
+    // The component itself, drawn again at the size it has on the surface — what is being moved, rather than a
+    // stand-in for it.
+    private static Control _Ghost(WireframeNode node, Size size) => new Panel
+    {
+        Width = size.Width,
+        Height = size.Height,
+        Opacity = 0.55,
+        // Hidden until the press has travelled far enough to be a drag, so a plain click never flashes a second copy
+        // of the component at the corner of the canvas.
+        IsVisible = false,
+        Children = { WireframeRenderer.Render(node) },
+    };
+
+    private void _TrackDrag(WireframeDrag drag, Point onSurface, double travelled)
+    {
+        Canvas.SetLeft(drag.Ghost, onSurface.X - drag.Grab.X);
+        Canvas.SetTop(drag.Ghost, onSurface.Y - drag.Grab.Y);
+        drag.Ghost.IsVisible = travelled > ClickSlopPx;
+
+        drag.Target = null;
+        drag.Indicator.IsVisible = false;
+        if (travelled > ClickSlopPx)
+        {
+            _ResolveDrop(drag, onSurface);
+        }
+
+        _viewport.Cursor = travelled <= ClickSlopPx ? _PanCursor : drag.Target is null ? _NoDropCursor : _DropCursor;
+    }
+
+    // What the pointer is over, said in the two things a move names: the container, and the place inside it. A target
+    // of null is every drop that will not happen — one the editor would refuse, or a free position nowhere near a
+    // container — and `Refused` is what tells those two apart when the pointer is let go.
+    private void _ResolveDrop(WireframeDrag drag, Point onSurface)
+    {
+        drag.Refused = false;
+        if (_NodeAt(drag.Controls, onSurface) is not { } under)
+        {
+            return;
+        }
+
+        var container = under.IsContainer ? under : WireframeHandEdit.ParentOf(_screens, under);
+        if (container?.Id is not { } parentId || !WireframeHandEdit.CanMoveInto(_screens, drag.Id, container)
+            || _RectOf(drag.Controls, container) is not { } area)
+        {
+            drag.Refused = true;
+            return;
+        }
+
+        // Over the container's own chrome rather than over anything inside it: in there, after what is already there.
+        var children = container.Children.Select(child => _RectOf(drag.Controls, child)).OfType<Rect>().ToList();
+        if (ReferenceEquals(container, under) || children.Count != container.Children.Count)
+        {
+            drag.Target = (parentId, null);
+            _ShowIndicator(drag, area, outline: true);
+            return;
+        }
+
+        var (index, line) = WireframeDropTarget.Resolve(children, area, onSurface);
+        drag.Target = (parentId, index);
+        _ShowIndicator(drag, line, outline: false);
+    }
+
+    // One control for both shapes the indicator takes: a filled line between two children, or an outline around the
+    // container a drop would land at the end of.
+    private static void _ShowIndicator(WireframeDrag drag, Rect area, bool outline)
+    {
+        drag.Indicator.Width = area.Width;
+        drag.Indicator.Height = area.Height;
+        drag.Indicator.BorderThickness = new Thickness(outline ? 2 : 0);
+        drag.Indicator.Background = outline ? null : drag.Indicator.BorderBrush;
+        drag.Indicator.IsVisible = true;
+        Canvas.SetLeft(drag.Indicator, area.X);
+        Canvas.SetTop(drag.Indicator, area.Y);
+    }
+
+    // Letting go: the whole gesture becomes one Move, so it is one line in the journal and one thing to take back.
+    private void _Drop(WireframeDrag drag)
+    {
+        if (drag.Target is not { } target)
+        {
+            // A drop the editor would refuse already said so as a cursor, so it ends in silence. The one left is the
+            // gesture this format genuinely has no words for.
+            if (!drag.Refused)
+            {
+                _ShowFreePositionHint();
+            }
+
+            return;
+        }
+
+        // Landing back where it already was changes nothing, and the editor would only refuse it — so the gesture
+        // simply ends, rather than warning about something the operator never asked for.
+        if (WireframeHandEdit.Placement(_screens, drag.Id) is { Parent.Id: { } from } at && from == target.ParentId
+            && (target.Position is { } position
+                ? position == at.Index || position == at.Index + 1
+                : at.Index == at.Parent.Children.Count - 1))
+        {
+            return;
+        }
+
+        _Apply(WireframeComponentEdit.Move(drag.Id, target.ParentId, target.Position));
+    }
+
+    // The format has no coordinates, so there is no free position to drop a component at and the next render would
+    // put it straight back. Said once per window, and saying what did happen — which is nothing.
+    private void _ShowFreePositionHint()
+    {
+        if (_placementHintShown)
+        {
+            return;
+        }
+
+        _placementHintShown = true;
+        _host.ShowToast(
+            "A wireframe places itself, so there is no free position to drop a component at and nothing was moved. Let go on a container, or between two components; free placement is what the whiteboard is for.",
+            PluginToastSeverity.Information);
+    }
+
+    private void _EndDrag()
+    {
+        if (_drag is null)
+        {
+            return;
+        }
+
+        _drag = null;
+        _draft.Children.Clear();
+        _viewport.Cursor = _PanCursor;
+    }
+
+    private void _OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || _drag is null)
+        {
+            return;
+        }
+
+        _EndDrag();
+        e.Handled = true;
+    }
+
+    // One drag in flight: what is being moved, the controls it is aimed at, and where the pointer last said it would
+    // land. Nothing here reaches the source until _Drop turns it into a single move.
+    private sealed class WireframeDrag(
+        string id,
+        Dictionary<WireframeNode, Control> controls,
+        Vector grab,
+        Control ghost,
+        Border indicator)
+    {
+        public string Id => id;
+
+        public Dictionary<WireframeNode, Control> Controls => controls;
+
+        // Where inside the component it was picked up, so the ghost does not jump to the pointer on the first move.
+        public Vector Grab => grab;
+
+        public Control Ghost => ghost;
+
+        public Border Indicator => indicator;
+
+        public (string ParentId, int? Position)? Target { get; set; }
+
+        // Whether the pointer is over something that cannot take this component, as opposed to over nothing at all.
+        public bool Refused { get; set; }
+    }
+
     // ---- Hand-editing on the surface itself (AC-875) ----
 
-    // The component a click landed on: the nearest control at or above the hit that carries a source node (AC-871's
-    // attached property). Chrome the renderer draws without a node of its own — a tab strip, a skeleton row — so
-    // resolves to the component it belongs to rather than to nothing.
-    private static WireframeNode? _NodeUnder(object? source)
+    // Every drawn control by the component it came from. Walked once per render rather than per pointer event, and
+    // dropped again by _RenderInto — a fresh render is a fresh tree of controls, and nothing here outlives it. The
+    // places themselves are read from the controls at the moment they are asked for, so layout still moves freely.
+    private Dictionary<WireframeNode, Control> _ControlMap()
     {
-        for (var control = source as Control; control is not null; control = control.Parent as Control)
+        if (_controls is { } cached)
+        {
+            return cached;
+        }
+
+        _controls = new Dictionary<WireframeNode, Control>();
+        foreach (var control in _render.GetVisualDescendants().OfType<Control>())
         {
             if (WireframeSource.GetNode(control) is { } node)
             {
-                return node;
+                _controls.TryAdd(node, control);
             }
         }
 
-        return null;
+        return _controls;
     }
+
+    // The component at a point: the smallest control carrying a source node (AC-871) whose place contains it. Read
+    // off layout rather than hit-tested (AC-904) — a label is bare text with no background, so hit-testing fell
+    // through it to the paper behind and selected the whole screen instead.
+    private WireframeNode? _NodeAt(Point onSurface) => _NodeAt(_ControlMap(), onSurface);
+
+    private WireframeNode? _NodeAt(Dictionary<WireframeNode, Control> controls, Point onSurface) => controls.Keys
+        .Select(node => (Node: node, Rect: _RectOf(controls, node)))
+        .Where(found => found.Rect is { } rect && rect.Contains(onSurface))
+        .OrderBy(found => found.Rect!.Value.Width * found.Rect!.Value.Height)
+        .Select(found => (WireframeNode?)found.Node)
+        .FirstOrDefault();
+
+    // A component's place on the surface, or null when it is not drawn — the overview leaves out what is too small to
+    // show, and there is nothing to aim at then.
+    private Rect? _RectOf(Dictionary<WireframeNode, Control> controls, WireframeNode node) =>
+        controls.TryGetValue(node, out var control) && control.TranslatePoint(default, _surface) is { } origin
+            ? new Rect(origin, control.Bounds.Size)
+            : null;
 
     // Selecting is holding: while the operator has a component under their hand an agent's edit naming it is refused
     // with a reason (AC-872's hold), and every other component stays open to it. Taking one under their hand is also
@@ -824,18 +1077,20 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _RefreshPropertiesPanel(target, placement?.Parent.Kind);
     }
 
+    // English, as every user-facing string in the cockpit is (Raymond 2026-07-05). The four here were Dutch and are
+    // converted along with the one AC-904 had to reword, so the line does not read half in each language.
     private string _HintFor(WireframeNode? target)
     {
         if (_ZoomedScreen is null)
         {
             return target is null
-                ? "Dubbelklik een scherm om erin te zoomen."
-                : $"{_Describe(target)} op regel {target.Line} — dubbelklik om in dit scherm te zoomen.";
+                ? "Double-click a screen to step into it."
+                : $"{_Describe(target)} on line {target.Line} — double-click to step into this screen.";
         }
 
         return target is null
-            ? "Klik een component om het te bewerken."
-            : $"{_Describe(target)} op regel {target.Line} — dubbelklik om de tekst te wijzigen.";
+            ? "Click a component to edit it."
+            : $"{_Describe(target)} on line {target.Line} — drag to move it, double-click to change its wording.";
     }
 
     private bool _IsScreen(WireframeNode node) => _screens.Contains(node);
@@ -1139,8 +1394,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
-        // AC-875: what the operator clicked on the surface is what these buttons work on. Moving lives here rather
-        // than in a drag: the format has no coordinates, so dragging stays panning (see _OnViewport…).
+        // AC-875: what the operator clicked on the surface is what these buttons work on. Moving also lives on the
+        // surface since AC-904 — the arrows and "Verplaats naar…" stay for naming a destination rather than aiming at
+        // one, which is the shorter way across a screen and the only way with the keyboard.
         var add = new Button { Content = "+ Component…", Classes = { "Compact" } };
         add.Click += (_, _) => _AddComponent(add);
         var text = new Button { Content = "Tekst…", Classes = { "Compact" } };

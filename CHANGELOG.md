@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a component in a wireframe can now be dragged to another place in the structure instead of only moved with
+  the arrows or "Verplaats naar…". Select a component first, then drag it from the selection mark: a line shows which
+  two components it will land between, an outline shows the container it will land in, and a container carries
+  everything inside it along. The pointer already says "kan niet" for a drop that will be refused, Escape gives up the
+  drag without changing anything, and letting go is one change you can take back in one go. Dragging anywhere else —
+  the background, a component you have not selected — still pans the surface as before.
+
 - added: a wireframe can now hold several screens in one file, so it sketches a whole site or app instead of a single
   page. The window shows them two ways: an overview with every screen side by side as a board with its name above it,
   and one screen filling the canvas when you step into it — double-click a board to go in, "← Overzicht" to come

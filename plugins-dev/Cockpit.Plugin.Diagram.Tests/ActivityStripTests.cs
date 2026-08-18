@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -294,9 +295,14 @@ public class ActivityStripTests
 
     internal sealed class FakeHost : ICockpitHost
     {
-        public FakeHost(FakeDiagramRegistry? diagram = null, FakeWhiteboardRegistry? whiteboard = null)
+        // AC-904 hands in a real IWireframeAccessRegistry rather than a fake: the wireframe surface's own tests want
+        // the line surgery that actually runs, not a stand-in that agrees with them.
+        public FakeHost(
+            FakeDiagramRegistry? diagram = null,
+            FakeWhiteboardRegistry? whiteboard = null,
+            IWireframeAccessRegistry? wireframe = null)
         {
-            Services = new FakeServices(diagram, whiteboard);
+            Services = new FakeServices(diagram, whiteboard, wireframe);
         }
 
         public List<string> Toasts { get; } = [];
@@ -327,11 +333,15 @@ public class ActivityStripTests
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
             Task.CompletedTask;
 
-        private sealed class FakeServices(FakeDiagramRegistry? diagram, FakeWhiteboardRegistry? whiteboard) : IServiceProvider
+        private sealed class FakeServices(
+            FakeDiagramRegistry? diagram,
+            FakeWhiteboardRegistry? whiteboard,
+            IWireframeAccessRegistry? wireframe) : IServiceProvider
         {
             public object? GetService(Type serviceType) =>
                 serviceType == typeof(IDiagramAccessRegistry) ? diagram :
                 serviceType == typeof(IWhiteboardAccessRegistry) ? whiteboard :
+                serviceType == typeof(IWireframeAccessRegistry) ? wireframe :
                 null;
         }
     }
