@@ -18,7 +18,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // rest of the app unchanged. The Claude-CLI-only live-control members (permission mode / model / thinking-budget
 // switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 // here, gated off in the UI by `Capabilities` reporting them unsupported.
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -145,6 +145,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // knows which pane to report a later conversation-id change against.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var pane) ? pane : null;
         _paneId = paneId;
+
+        // AC-927: what this session actually mounted, so the header names those servers rather than the checklist
+        // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
+        if (paneId is { Length: > 0 })
+        {
+            mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
+        }
+
         var contributed = sessionResources is null
             ? SessionResources.Empty
             : await sessionResources.ResolveAsync(paneId, cancellationToken).ConfigureAwait(false);

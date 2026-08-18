@@ -40,6 +40,7 @@ internal sealed class TtySessionProviderResolver(
                 // gets no ReportConversationId callback (same GetService reasoning as the catalog/coordinator above).
                 services.GetService<Core.Sessions.ISessionConversationSink>(),
                 services.GetService<IMcpOAuthProxy>(),
-                services.GetService<Core.Abstractions.Worktrees.IWorktreeManager>())
+                services.GetService<Core.Abstractions.Worktrees.IWorktreeManager>(),
+                services.GetService<Core.Sessions.SessionMcpMounts>())
             : null;
 }

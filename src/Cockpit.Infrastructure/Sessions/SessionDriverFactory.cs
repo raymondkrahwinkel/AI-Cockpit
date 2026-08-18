@@ -46,7 +46,7 @@ internal sealed class SessionDriverFactory(IServiceProvider services, IPluginPro
         // not GetRequiredService: the store is always registered in the running app, and its absence (a unit test
         // that wires only the registry) simply means no fan-out, which the adapter already handles. Same GetService
         // reasoning for the conversation sink (AC-408): a unit test that wires none simply gets no reporting.
-        return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetRequiredService<Mcp.McpAuthKey>(), services.GetService<IMcpServerCatalog>(), services.GetService<ILogger<PluginSessionDriverAdapter>>(), services.GetService<Mcp.SessionMcpKeyring>(), sessionResources: null, oauthCoordinator: services.GetService<IMcpOAuthCoordinator>(), conversationSink: services.GetService<Core.Sessions.ISessionConversationSink>(), oauthProxy: services.GetService<IMcpOAuthProxy>(), worktreeManager: services.GetService<Core.Abstractions.Worktrees.IWorktreeManager>());
+        return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetRequiredService<Mcp.McpAuthKey>(), services.GetService<IMcpServerCatalog>(), services.GetService<ILogger<PluginSessionDriverAdapter>>(), services.GetService<Mcp.SessionMcpKeyring>(), sessionResources: null, oauthCoordinator: services.GetService<IMcpOAuthCoordinator>(), conversationSink: services.GetService<Core.Sessions.ISessionConversationSink>(), oauthProxy: services.GetService<IMcpOAuthProxy>(), worktreeManager: services.GetService<Core.Abstractions.Worktrees.IWorktreeManager>(), mcpMounts: services.GetService<Core.Sessions.SessionMcpMounts>());
     }
 
     // A provider going missing is almost never "no such provider" — it is a provider plugin that did not load:

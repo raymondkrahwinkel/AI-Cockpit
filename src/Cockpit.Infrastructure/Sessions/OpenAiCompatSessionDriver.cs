@@ -27,6 +27,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     private readonly IChatClientFactory _chatClientFactory;
     private readonly IMcpToolProvider _mcpToolProvider;
     private readonly ILogger<OpenAiCompatSessionDriver> _logger;
+    private readonly SessionMcpMounts? _mcpMounts;
 
     private readonly Channel<SessionEvent> _events = Channel.CreateUnbounded<SessionEvent>();
     private readonly List<ChatMessage> _history = [];
@@ -53,11 +54,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     // pool thread, so a volatile flag rather than a local.
     private volatile bool _turnHadToolActivity;
 
-    public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, IMcpToolProvider mcpToolProvider, ILogger<OpenAiCompatSessionDriver> logger)
+    public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, IMcpToolProvider mcpToolProvider, ILogger<OpenAiCompatSessionDriver> logger, SessionMcpMounts? mcpMounts = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
+        _mcpMounts = mcpMounts;
     }
 
     // Tool support is set once the MCP servers connect (below); permission mode / model switch / thinking
@@ -142,6 +144,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
                 _toolSession.ConnectedServerNames.Count,
                 string.Join(", ", _toolSession.ConnectedServerNames),
                 selectionText);
+        }
+
+        // AC-927: the servers that really answered, so the header names those rather than the checklist this
+        // session was launched from — the one route where a missing server is otherwise invisible to the operator.
+        if (paneId is { Length: > 0 })
+        {
+            _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames);
         }
 
         // AC-500: a server the plugin/registry declared OAuth is a named outcome distinct from an ordinary

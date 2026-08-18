@@ -109,25 +109,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _status = "Not started.";
 
-    // The MCP servers this session actually mounts (#44/AC-130) — the merged session/profile selection, set once
-    // by whichever route launched the pane. `null` when neither named one: an unknown, not
-    // necessarily empty, selection (see AC-537 and `ConnectedStatusLine`).
-    //
-    // On the base, and the single source both the header's count and its hover read from, so the number and the
-    // list cannot come to disagree — the failure this would otherwise have is a count of ten beside a list of
-    // nine, with nothing to say which of the two is right (AC-563 criterion 5).
-    //
-    // Computed by the launching view model rather than read back from the driver, since nothing on the wire
-    // reports the resolved count after start; re-merging an already-merged value downstream is a no-op
-    // (`x ?? y` on a non-null `x`), so holding it here changes nothing about what a session mounts.
-    //
-    // Names, not resolved registry entries: every real caller's names already exclude the cockpit's own
-    // always-there plumbing, because the New-session checklist only ever offers the servers a operator may pick
-    // (AC-130 profile selections are saved from that same checklist). The one caller that can name an internal
-    // endpoint on purpose — an embedded/Autopilot run naming its own pane-scoped tools — inflates the count by
-    // one in that narrow case; resolving it needs a live, project-scoped catalog read the header does not have,
-    // and a cosmetic count does not justify adding one. Accepted, not silently ignored: pinned by
-    // `SessionHeaderStatusAndKindChipTests`.
+    // The MCP servers this session has: seeded with the merged session/profile selection at launch (#44/AC-130),
+    // then replaced by what its route reports it mounted (AC-927). `null` is unknown, not empty (AC-537). The one
+    // source both the header's count and its hover read, so the two cannot disagree (AC-563 criterion 5).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
