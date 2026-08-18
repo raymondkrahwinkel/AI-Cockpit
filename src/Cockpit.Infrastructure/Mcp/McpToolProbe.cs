@@ -83,7 +83,7 @@ internal sealed class McpToolProbe(
             // A server whose token has just gone stale between the GetStateAsync read above and this connect
             // renews silently if it can (the SDK's own refresh grant), same as any other non-interactive use.
             var clientOptions = new McpClientOptions { InitializationTimeout = Budget, DiscoverProbeTimeout = Budget };
-            await using var client = await McpClient.CreateAsync(transport, clientOptions, cancellationToken: budget.Token).ConfigureAwait(false);
+            await using var client = await McpClientConnector.ConnectAsync(transport, clientOptions, budget.Token).ConfigureAwait(false);
 
             var result = await client.CallToolAsync(toolName, arguments, cancellationToken: budget.Token).ConfigureAwait(false);
             return _ToResult(result);

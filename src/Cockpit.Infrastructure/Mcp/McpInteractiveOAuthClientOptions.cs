@@ -12,7 +12,9 @@ namespace Cockpit.Infrastructure.Mcp;
 // that can end up running an interactive sign-in, so the pairing cannot drift between them on a future change.
 internal static class McpInteractiveOAuthClientOptions
 {
-    public static readonly McpClientOptions Value = new()
+    // A fresh instance per connect, not one shared one: McpClientConnector's AC-928 retry pins the protocol version
+    // on the options it is handed, and a shared instance would carry that pin into every later sign-in.
+    public static McpClientOptions Create() => new()
     {
         InitializationTimeout = TimeSpan.FromMinutes(5),
         DiscoverProbeTimeout = TimeSpan.FromMinutes(5),
