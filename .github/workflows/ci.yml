@@ -49,9 +49,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # No packages.lock.json in this repo, so the cache key hashes every csproj instead -- it invalidates
+      # whenever a dependency version changes, same effect as a lock file for cache purposes.
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: '**/*.csproj'
 
       - name: Restore
         run: dotnet restore Cockpit.slnx
@@ -96,6 +100,8 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: 'plugins-dev/**/*.csproj'
 
       - name: Build every plugin against the current SDK
         run: |
