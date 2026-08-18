@@ -916,11 +916,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // even on a fresh machine with no remembered folders.
         RememberedPaths.Add(new RememberedPathOption(CloneFromUrlLabel, IsFavorite: false, IsCloneAction: true));
 
-        // AC-938: the chosen project's own declared repositories, ahead of the folder history — a session on a
-        // multi-repo project (a web repo and an android repo, neither nested in the other) picks which one to run
-        // in right here, no path to type and no new control. Only for a project that actually declares more than
-        // one: a single-repository project already puts that one repository in WorkingDirectory by default
-        // (SessionStartDefaults), so a lone entry here would repeat it for nothing.
+        // A multi-repo project's declared repositories, ahead of the folder history, so a session picks which
+        // one to run in without typing a path. Skipped for single-repo projects — SessionStartDefaults already
+        // defaults WorkingDirectory to the only repository, so a lone entry here would just repeat it.
         if (SelectedProject is { } project && project.SourceDirectories.Count > 1)
         {
             foreach (var repository in project.SourceDirectories)
@@ -1406,11 +1404,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 // "Clone from a Git URL…" entry (AC-90) rather than a folder — selecting it opens the clone flow instead of filling
 // the folder field. `IsSeparator` marks the non-selectable ruler between the favorites and the recents
 // (AC-131). A real folder row (neither action nor separator) carries a ✕ to forget it.
-//
-// `RepositoryLabel`:
-// "Waymark · android" — the chosen project's name and this repository's own label or folder name (AC-938), shown
-// only for a row built from `Project.SourceDirectories` rather than the folder history below. Null for every
-// ordinary favorite/recent row, which is every row this dialog has ever shown before this ticket.
+// `RepositoryLabel` is set only for a row built from a project's declared repositories (e.g. "Waymark ·
+// android") rather than the folder history, so the quick-pick can render the project · repo distinction.
 public sealed record RememberedPathOption(
     string Path, bool IsFavorite, bool IsCloneAction = false, bool IsSeparator = false, string? RepositoryLabel = null)
 {

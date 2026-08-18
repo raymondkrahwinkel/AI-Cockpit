@@ -214,11 +214,8 @@ public class CockpitViewModelProjectStartTests
         SessionOptionCatalog.DefaultEffort,
         SessionName: null);
 
-    // AC-938: the interactive quick-start route (StartProjectSessionCommand → _LaunchSessionFromResultAsync →
-    // _StartSessionAsync's own interactive: true default) is the one that skips the New-session dialog's own
-    // isolate-checkbox graying (NewSessionDialogViewModel), so it is the door where the silent isolation
-    // degradation this ticket fixes actually showed up (ProjectQuickStart itself does not resolve isolation at
-    // all — see SessionStartDefaults/ProjectQuickStart's own remarks).
+    // The quick-start route skips the New-session dialog's isolate-checkbox graying, so it is the door where the
+    // silent isolation degradation this ticket fixes actually showed up.
     [Fact]
     public async Task StartProjectSession_IsolateOnWithNoWorkingDirectory_AsksInsteadOfStartingUnisolatedSilently()
     {

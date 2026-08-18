@@ -30,12 +30,9 @@ public static class ProjectDirectoryMatch
 
         foreach (var project in projects)
         {
-            // AC-938: every declared repository gets a claim, not only item 0 — a Waymark-shaped project whose
-            // repositories are spread across the disk (`~/RiderProjects/waymark-web` next to
-            // `~/AndroidStudio/waymark-android`, neither nested in the other) needs a run in either one to match the
-            // same project. Two of *this* project's own folders claiming the same target is not the ambiguity the
-            // loop below guards against — it is still one project's answer — so only the best claim per project
-            // feeds the ambiguity check across projects.
+            // Every declared repository gets a claim, not only item 0 — a spread-out project (repositories not
+            // nested in each other) needs a run in either one to match. Two of this project's own folders claiming
+            // the target isn't cross-project ambiguity, so only the best claim per project feeds that check below.
             var bestOwn = -1;
             foreach (var repository in project.SourceDirectories)
             {

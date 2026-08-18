@@ -34,10 +34,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // source claims, or one whose fresh checksum read failed at open time — see CreateAsync's own remarks.
     private ProjectSharedWriteBackContext? _writeBack;
 
-    // AC-938: what SaveAsync asks whether an extra repository row actually is a git repository. Null for a caller
-    // that does not wire one (every existing test call site, and the design-time/previewer shape) — the same
-    // "no manager, no gate" the New-session dialog already tolerates, so this dialog does not gain a hard
-    // dependency it never had.
+    // What SaveAsync asks whether an extra repository row actually is a git repository. Null for a caller that
+    // does not wire one (existing test call sites, design-time/previewer) — the same "no manager, no gate" the
+    // New-session dialog already tolerates.
     private readonly IWorktreeManager? _worktreeManager;
 
     // Raised when the dialog is done: the saved project, or null when the operator cancelled.

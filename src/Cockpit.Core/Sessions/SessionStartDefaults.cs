@@ -351,14 +351,9 @@ public sealed record SessionStartDefaults(
     // it no better off than the bare reference"). Added only when the whole of it still fits the budget, and left
     // out whole rather than sliced when it does not — the same rule `_FitRowsToBudget` already applies
     // to a row that does not fit on its own.
-    // AC-938: what the Waymark incident exists to fix — a session that never finds out until an isolated worktree
-    // silently fails that its project even has a second repository. Null for a project with zero or one declared
-    // repository (SourceDirectory alone), which is every project before this ticket and stays exactly as costly
-    // to the shared budget as it always was: nothing.
-    //
-    // Deliberately silent on which repository *this* session runs in: that choice is made later, in the
-    // working-directory picker, than where this prompt is assembled — a session's own cwd already answers that
-    // question more reliably than a guess made here could.
+    // Tells a session up front that its project has more than one repository, instead of it finding out via a
+    // failed worktree isolation. Null for zero/one repository, costing the shared budget nothing. Silent on which
+    // repo *this* session runs in — that is decided later, and the session's own cwd already answers it.
     private static string? _RepositoriesNote(Project? project, int budget)
     {
         var repositories = project?.SourceDirectories ?? [];
@@ -374,10 +369,9 @@ public sealed record SessionStartDefaults(
         return sentence.Length <= Math.Max(0, budget) ? sentence : null;
     }
 
-    // A repository's own label when the operator gave one, its folder's own name otherwise (AC-938) — the same
-    // "a bare path names nothing at a glance" reasoning ProjectResource.Label already answers for a resource row.
-    // Capped through _CappedSentence the same way every other operator-typed value entering this budget already
-    // is (a Label is free text with no length limit upstream) — see that method's own remarks.
+    // A repository's own label when the operator gave one, its folder's own name otherwise — same reasoning as
+    // ProjectResource.Label. Capped through _CappedSentence like every other operator-typed value entering this
+    // budget, since a Label is free text with no upstream length limit.
     private static string _RepositoryDisplayName(ProjectRepository repository)
     {
         var name = string.IsNullOrWhiteSpace(repository.Label)

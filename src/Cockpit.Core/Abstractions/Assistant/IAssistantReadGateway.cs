@@ -2,38 +2,14 @@ namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
 /// The host-side read path the assistant sees the whole cockpit through (AC-544): every AI session, on every
-/// workspace, with the statusline it last set for itself.
+/// workspace, with the statusline it last set for itself. Separate from <c>list_agents</c>, which is
+/// workspace-scoped and cannot answer for an assistant that has no workspace of its own.
 /// </summary>
-/// <remarks>
-/// <b>Why this is not <c>list_agents</c>.</b> <c>cockpit-agents</c>' roster is workspace-scoped on purpose, and the
-/// scoping is not a filter it applies — it is the shape of the thing: the workspace is derived host-side from the
-/// transport-verified pane the request came from, so there is nothing an agent could declare to reach another
-/// workspace's roster. The assistant has no workspace at all (<c>SessionWorkspacePlacement</c> places it nowhere,
-/// deliberately), which means that tool cannot answer for it — and the short way to make it answer would be to
-/// loosen the derivation, which removes the protection for every agent in the cockpit, not just for this one.
-/// <para>
-/// So this is a second, separate read path that stands above the workspaces instead of inside one. Same source —
-/// the running session panels — same fields, no new store and no new index: the statuslines are already kept, and
-/// "who is on AC-223" is a question about data the cockpit already holds. What is new is only a reader that is not
-/// standing on a desk.
-/// </para>
-/// <para>
-/// <b>And it is not reachable from an ordinary session.</b> The tools over this interface are mounted only into the
-/// assistant's own launch, and refuse any caller whose verified pane is not
-/// <see cref="Core.Assistant.AssistantIdentity.PaneId"/>. Exclusion by construction, twice over: not handed out,
-/// and not answered even when it is. See <c>AssistantReadMcpTools</c>.
-/// </para>
-/// </remarks>
 public interface IAssistantReadGateway
 {
     /// <summary>
-    /// Every AI session the cockpit is running right now, across every workspace, in no particular order.
-    /// <para>
-    /// Whole rather than searched: the answer is a handful of rows, the caller is a model that reads them anyway,
-    /// and a query parameter here would be a second place where "does this session match AC-223" is decided — one
-    /// that would match on exact text while the assistant is the half that can read through a statusline saying
-    /// "ac223 tests" and see the same ticket.
-    /// </para>
+    /// Every AI session the cockpit is running right now, across every workspace, in no particular order. No
+    /// search parameter — the caller is a model that reads the handful of rows anyway.
     /// </summary>
     Task<IReadOnlyList<AssistantSessionRow>> ListSessionsAsync();
 
@@ -96,12 +72,9 @@ public interface IAssistantReadGateway
 // "pick up AC-555" into a lookup rather than a guess: match the ticket's prefix against a project's
 // `youtrack.project` value here before ever calling into YouTrack for the issue itself.
 // `GitUrl`: The repository `SourceDirectory` was cloned from, or null when the folder was picked rather than cloned.
-// `Repositories`:
-// Every repository this project declares (AC-938), in order — item 0's `Path` is `SourceDirectory` above,
-// verbatim. A project spanning more than one repository (a web repo and an android repo, say, neither nested in
-// the other) is not something an agent should have to discover by a failed worktree isolation: this is that
-// project's repositories, told up front. Never empty for a project with any source of its own — a null
-// `SourceDirectory` means an administrative project with none, in which case this is empty too.
+// `Repositories`: every repository this project declares, in order — item 0's `Path` is `SourceDirectory`
+// above, verbatim. Lets a multi-repo project (e.g. web + android) be discovered up front rather than by a
+// failed worktree isolation.
 public sealed record AssistantProjectRow(
     string Id,
     string Name,
@@ -112,10 +85,8 @@ public sealed record AssistantProjectRow(
     string? GitUrl,
     IReadOnlyList<AssistantProjectRepositoryRow> Repositories);
 
-// One repository a project declares (AC-938).
-//
-// `Path`: The repository's folder.
-// `Label`: What the operator called it ("web", "android"), or null when they never named it.
+// One repository a project declares: `Path` is the repository's folder, `Label` is what the operator called
+// it ("web", "android"), or null when they never named it.
 public sealed record AssistantProjectRepositoryRow(string Path, string? Label);
 
 // One source's shared projects, or why it failed (AC-797) — a source is expected to report a whole-connection
