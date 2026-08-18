@@ -16,10 +16,8 @@ internal static class McpClientConnector
     // The newest revision that still speaks the `initialize` handshake, which is what the retry pins to.
     private const string InitializeHandshakeVersion = "2025-11-25";
 
-    /// <summary>
-    /// Connects to <paramref name="transport"/>, retrying once on a server whose discover response cannot be read.
-    /// The retry pins <paramref name="options"/>'s protocol version, so pass an instance this call may keep.
-    /// </summary>
+    // Connects to `transport`, retrying once on a server whose discover response cannot be read. The retry pins
+    // the protocol version on `options`, so pass an instance this call may keep rather than a shared one.
     public static async Task<McpClient> ConnectAsync(
         IClientTransport transport,
         McpClientOptions? options,
