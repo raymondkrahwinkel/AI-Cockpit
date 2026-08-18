@@ -61,11 +61,16 @@ public class ShareProjectDialogViewModelTests
     [Fact]
     public void Rows_MachineScopeResource_TravelsAsAPlaceholderAndKeepsItsPathLocal()
     {
+        // ClassifyScope's own Path.IsPathFullyQualified check only recognises this platform's own absolute-path
+        // shape (documented in ProjectResourcePathPortability's class remarks) — a hardcoded POSIX path here would
+        // read as Repo-scoped rather than Machine-scoped on Windows, so this builds one this runtime actually calls
+        // fully qualified.
+        var machinePath = Path.Combine(Path.GetTempPath(), "dumps", "payroll-2026.sql");
         var project = Project(resources:
-            [new ProjectResource("/home/raymond/dumps/payroll-2026.sql", ProjectResourceRole.Reference) { Label = "Testdata dump" }]);
+            [new ProjectResource(machinePath, ProjectResourceRole.Reference) { Label = "Testdata dump" }]);
         var viewModel = ShareProjectDialogViewModel.Create(project, []);
 
-        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Testdata dump — path" && row.Value == "/home/raymond/dumps/payroll-2026.sql");
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Testdata dump — path" && row.Value == machinePath);
         Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Testdata dump — name only");
     }
 
@@ -74,16 +79,18 @@ public class ShareProjectDialogViewModelTests
     [Fact]
     public void Rows_UnlabelledMachineScopeResource_NeverRepeatsOneLabelInBothColumns()
     {
+        // Same platform-fully-qualified requirement as Rows_MachineScopeResource_TravelsAsAPlaceholderAndKeepsItsPathLocal.
+        var machinePath = Path.Combine(Path.GetTempPath(), "Memory", "SynCRM");
         var project = Project(resources:
         [
-            new ProjectResource("/home/raymond/Nextcloud/Memory/SynCRM/", ProjectResourceRole.Memory),
+            new ProjectResource(machinePath, ProjectResourceRole.Memory),
             new ProjectResource("depot:synvolution-flow", ProjectResourceRole.Memory),
         ]);
         var viewModel = ShareProjectDialogViewModel.Create(project, []);
 
         var shared = viewModel.GoesToDepot.Select(row => row.Label).Intersect(viewModel.StaysOnThisMachine.Select(row => row.Label));
         Assert.Empty(shared);
-        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Value == "/home/raymond/Nextcloud/Memory/SynCRM/");
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Value == machinePath);
         Assert.Contains(viewModel.GoesToDepot, row => row.Value == "depot:synvolution-flow");
     }
 
