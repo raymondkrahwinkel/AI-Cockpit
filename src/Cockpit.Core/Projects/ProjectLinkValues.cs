@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Projects;
 
-// One shared place to split/join/normalize a `Project.PluginFields` value that names more than one
-// identifier (AC-884) — "EWB, AT, EJ, AUTH" for a project tracked under several YouTrack prefixes. The
-// dictionary shape (`Dictionary<string,string>`) stays exactly as it was rather than widening to
-// `Dictionary<string,string[]>`: one item is exactly today's value, so no `cockpit.json` migration and no SDK
-// break (see `Project.LinkedAs`, which still hands back only the first item, unchanged for every existing plugin).
+// One shared place to split/join/normalize a `Project.PluginFields` value that names more than one identifier
+// (AC-884) — "EWB, AT, EJ, AUTH" for several YouTrack prefixes. Kept as `Dictionary<string,string>` rather than
+// widening to `string[]`, so one item stays exactly today's value: no `cockpit.json` migration, no SDK break.
 public static class ProjectLinkValues
 {
     // The one separator every stored value normalizes to. A comma alone (no trailing space) still splits
