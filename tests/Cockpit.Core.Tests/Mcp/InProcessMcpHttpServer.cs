@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -37,7 +39,7 @@ internal sealed class InProcessMcpHttpServer : IAsyncDisposable
     /// </summary>
     public IReadOnlyCollection<(DateTimeOffset Start, DateTimeOffset End)> RequestWindows => _requestWindows;
 
-    public static async Task<InProcessMcpHttpServer> StartAsync<TTool>(TimeSpan? delay = null) where TTool : class
+    public static async Task<InProcessMcpHttpServer> StartAsync<TTool>(TimeSpan? delay = null, bool nonConformingDiscover = false) where TTool : class
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Services.AddMcpServer().WithHttpTransport().WithTools<TTool>();
@@ -57,6 +59,30 @@ internal sealed class InProcessMcpHttpServer : IAsyncDisposable
                 await Task.Delay(d);
                 requestWindows.Enqueue((start, DateTimeOffset.UtcNow));
                 await next(context);
+            });
+        }
+
+        if (nonConformingDiscover)
+        {
+            // AC-928, measured against YouTrack MCP 2026.2: an unknown JSON-RPC method comes back as HTTP 200 with an
+            // empty result instead of -32601 Method not found. That is what makes the SDK's `server/discover` probe
+            // read as a success and then fail deserialization, rather than falling back to the initialize handshake.
+            app.Use(async (context, next) =>
+            {
+                context.Request.EnableBuffering();
+                using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
+                var body = await reader.ReadToEndAsync();
+                context.Request.Body.Position = 0;
+
+                if (!body.Contains("\"server/discover\"", StringComparison.Ordinal))
+                {
+                    await next(context);
+                    return;
+                }
+
+                var id = JsonDocument.Parse(body).RootElement.GetProperty("id").GetRawText();
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync($"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{}}}}");
             });
         }
 

@@ -219,8 +219,8 @@ internal sealed class McpToolProvider(
             // server cannot stall the whole session-connect Task.WhenAll for the widened window on every start.
             var needsInteractiveOAuth = server.Auth == McpServerAuth.OAuth
                 && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired;
-            var clientOptions = needsInteractiveOAuth ? McpInteractiveOAuthClientOptions.Value : null;
-            var client = await McpClient.CreateAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var clientOptions = needsInteractiveOAuth ? McpInteractiveOAuthClientOptions.Create() : null;
+            var client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // Classify each tool from its MCP annotations (AC-79) at connect, while we still have the typed

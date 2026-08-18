@@ -104,6 +104,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   New-session checklist. The servers the cockpit mounts on its own — its status line and the agent-to-agent line,
   the pull-request tools in a git checkout, a project's own memory server — were never in that checklist, so a
   session that had them all along read as missing them; a server that failed to connect no longer counts either.
+- fixed: MCP servers that answer the protocol's newer capability probe with an empty reply now connect anyway,
+  instead of being skipped with a "could not be connected" warning and losing all of their tools for the session.
+  This is what kept every YouTrack server out of sessions; the cockpit falls back to the older handshake for such
+  a server and leaves well-behaved servers on the newer one.
 - fixed: on a diagram type that cannot be edited object by object — a sequence, class or state diagram — the
   hand-edit buttons are now switched off and say why in their tooltip, naming the diagram's own type and pointing
   at the agent. They used to look available and only refuse once pressed.

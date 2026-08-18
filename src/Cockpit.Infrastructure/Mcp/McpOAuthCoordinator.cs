@@ -559,8 +559,8 @@ internal sealed class McpOAuthCoordinator(
                 loggerFactory: null,
                 ownsHttpClient: true);
 
-            var clientOptions = interactive ? McpInteractiveOAuthClientOptions.Value : null;
-            await using var client = await McpClient.CreateAsync(transport, clientOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var clientOptions = interactive ? McpInteractiveOAuthClientOptions.Create() : null;
+            await using var client = await McpClientConnector.ConnectAsync(transport, clientOptions, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
