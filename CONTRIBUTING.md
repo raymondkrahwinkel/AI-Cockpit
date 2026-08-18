@@ -32,7 +32,9 @@ it keeps a one-person project alive.
    you spend time on it.
 2. **Match the codebase.** Conventions to hold: C# / .NET 10, MVVM (CommunityToolkit), code and
    comments in English, one top-level type per file, no new third-party dependencies without prior
-   agreement in the issue, comments explain *why* rather than restating the code. Tests assert with
+   agreement in the issue, comments explain *why* rather than restating the code. Plugin-eigen
+   functionaliteit hoort in de plugin, niet in `Cockpit.Core`/`Cockpit.Infrastructure` — see
+   [`docs/plugins/PLUGIN-SDK.md`](docs/plugins/PLUGIN-SDK.md#the-three-layers). Tests assert with
    xunit's own `Assert`, not a third-party assertion library — FluentAssertions is banned (it turned
    commercially licensed at v8; a `BannedApiAnalyzers` rule makes reintroducing it a build error, not
    a review catch).
