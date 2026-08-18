@@ -266,10 +266,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         return [.. blocks];
     }
 
-    // AC-739 stap C: used to be fire-and-forget (_SendControlRequestAsync), so the receipt naming still_queued work
-    // never reached the cockpit. Awaited now via the same request/response correlation _RequestControlAsync uses for
-    // usage polls, and cancel_queued rides along only when the CLI advertised it can honour the field — an older CLI
-    // never sees a key it has never heard of.
+    // AC-739 step C: used to be fire-and-forget, now awaited via the same request/response correlation
+    // _RequestControlAsync uses for usage polls. cancel_queued rides along only when the CLI advertised it.
     public async Task InterruptAsync(CancellationToken cancellationToken = default)
     {
         var requestId = Guid.NewGuid().ToString();

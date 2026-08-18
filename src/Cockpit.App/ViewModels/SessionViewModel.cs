@@ -1838,10 +1838,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ClearPendingAttachments();
         PendingReplyTo = null;
 
-        // AC-739: measured 3x that the CLI delivers a message sent mid-turn to the model and the turn's own work
-        // resumes after — a driver that reports SupportsMidTurnInput gets it written straight through, same as an
-        // idle send. A driver that does not (T8) keeps the local send queue as a cancellable chip, dispatched when
-        // the turn completes.
+        // AC-739: measured 3x that the CLI delivers a mid-turn message to the model. SupportsMidTurnInput gates
+        // straight-through writing versus the local send-queue chip (T8), driver by driver.
         if (IsBusy && !Capabilities.SupportsMidTurnInput)
         {
             QueuedMessages.Add(new QueuedMessageViewModel(text, images, replyTo, m => QueuedMessages.Remove(m)));

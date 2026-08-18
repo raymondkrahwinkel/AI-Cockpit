@@ -109,7 +109,9 @@ public class SessionViewModelPromptTurnTests
         await vm.DisposeAsync();
     }
 
-    /// <summary>AC-739: a driver that supports mid-turn input writes straight through instead of queueing.</summary>
+    /// <summary>
+    /// AC-739: a driver that supports mid-turn input writes straight through instead of queueing.
+    /// </summary>
     [Fact]
     public async Task SendPrompt_OnADriverThatSupportsMidTurnInput_WritesTheComposerMessageStraightThrough()
     {
