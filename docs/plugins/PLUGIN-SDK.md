@@ -11,6 +11,16 @@ the active session — without touching the cockpit's own code. This guide is th
 > plugins). The cockpit protects you only by requiring a **manual install** and a **first-load consent**
 > that pins the assembly's SHA-256 — a changed file re-prompts. **Only install plugins you trust.**
 
+## The three layers
+
+The cockpit is built in three layers, and where new code belongs follows directly from which one it lives
+in: **`Cockpit.Core`** holds the shared contracts every part of the host compiles against — a plugin
+references it, but only **compile-only** (`Private=false`, `ExcludeAssets=runtime;native`, the same pattern
+`Cockpit.Plugin.Diagram.csproj` uses for its host-provided Avalonia/Skia references), never at runtime.
+**`Cockpit.Infrastructure`** is the kern-implementation behind those contracts — it is never referenced by a
+plugin at all. Everything a single plugin needs — its own UI, its behaviour, the MCP tools it registers — is
+the plugin's own functionality and lives in the plugin (AC-885/AC-886).
+
 ## Overview
 
 A Cockpit plugin is a small .NET assembly, dropped in its own folder under the config directory's
