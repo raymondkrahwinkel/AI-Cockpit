@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
@@ -147,6 +149,42 @@ public sealed class AssistantChatSessionPillTests
             // Exactly one ItemsControl in the flyout's content — the session list, bound to LiveSessions in AXAML
             // (the same collection and #Root-based desk lookup the pill's own tooltip, proven above, already reads).
             Assert.Single(Assert.IsType<StackPanel>(flyout.Content).Children.OfType<ItemsControl>());
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>AC-895 criteria 1/4: clicking a session badge (anywhere on its row, not just the trimmed name)
+    /// selects that session on the shared <see cref="CockpitViewModel"/> — the same
+    /// <see cref="CockpitViewModel.SelectSessionCommand"/> the sidebar uses, reached here through
+    /// <see cref="AssistantChatViewModel"/>'s thin passthrough. Raised directly on the segment (the
+    /// <c>MarkdownBlockReuseTests</c> idiom) rather than via a window-coordinate <c>MouseDown</c>: this window's
+    /// Fluent backdrop layer hit-tests in front of its own content in the headless harness, which a direct
+    /// <c>RaiseEvent</c> — routed through the segment's real visual ancestry, not a screen-point hit test — sidesteps
+    /// entirely. The window-activation half (criterion 2) is not exercised here — the headless harness has no
+    /// <c>IClassicDesktopStyleApplicationLifetime</c>, the same gap <see cref="DialogModalitySplitTests"/> notes for
+    /// <c>SessionDialogService</c>.</summary>
+    [Fact]
+    public void ClickingASessionSegment_SelectsThatSessionOnTheCockpit() => HeadlessAvalonia.Run(() =>
+    {
+        var cockpit = _Cockpit();
+        var session = _Session("s1", "AC-774", SessionStatus.Busy);
+        cockpit.Sessions.Add(session);
+        var window = _Window(cockpit);
+        try
+        {
+            var nameBlock = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "AC-774");
+            var innerRow = nameBlock.FindAncestorOfType<StackPanel>(includeSelf: false);
+            var segment = innerRow!.FindAncestorOfType<StackPanel>(includeSelf: false);
+
+            var pointer = new Pointer(0, PointerType.Mouse, isPrimary: true);
+            var properties = new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed);
+            segment!.RaiseEvent(new PointerPressedEventArgs(
+                segment, pointer, window, new Point(segment.Bounds.Width / 2, segment.Bounds.Height / 2), 0, properties, KeyModifiers.None));
+
+            Assert.Same(session, cockpit.SelectedSession);
         }
         finally
         {

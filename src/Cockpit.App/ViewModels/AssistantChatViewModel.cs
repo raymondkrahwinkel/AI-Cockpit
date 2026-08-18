@@ -278,6 +278,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         private set => SetProperty(ref _deskNameByPaneId, value);
     }
 
+    // AC-895: a session badge's click reuses the one existing "focus this session" command rather than a new
+    // path — this is a thin passthrough so the AXAML template (bound to AssistantChatViewModel, not
+    // CockpitViewModel) can reach it.
+    [RelayCommand]
+    private void SelectSession(SessionPanelViewModel session) => _cockpit?.SelectSessionCommand.Execute(session);
+
     private void _OnCockpitSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _RebuildLiveSessions();
 
     private void _RebuildLiveSessions()

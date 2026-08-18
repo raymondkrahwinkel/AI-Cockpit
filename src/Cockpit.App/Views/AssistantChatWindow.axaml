@@ -324,7 +324,11 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:SessionPanelViewModel">
-                                    <StackPanel Orientation="Horizontal">
+                                    <!-- AC-895: clickable-without-a-Button (same idiom as CockpitView's widget header,
+                                         OnWidgetHeaderPressed) — a Button here would need transparent chrome to keep
+                                         today's look, while this row already carries the tooltip and needs no flyout. -->
+                                    <StackPanel Orientation="Horizontal" Cursor="Hand" Background="Transparent"
+                                                PointerPressed="_OnSessionSegmentPressed">
                                         <ToolTip.Tip>
                                             <MultiBinding Converter="{x:Static conv:SessionTooltipConverter.Instance}">
                                                 <Binding Path="Title"/>

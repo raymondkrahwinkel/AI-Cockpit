@@ -36,6 +36,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Depot side since it was last checked here — a background check runs every 15 minutes, and a "Sync now" entry in
   the ⋯ menu forces an immediate recheck for that one project. Nothing is ever overwritten automatically; an
   unsaved local edit is always the operator's own call to resolve, the same as it already was on Save.
+- added: the session badges next to ctx/5h/wk in the assistant chat window's header are now clickable — clicking
+  one focuses that agent session and brings the main window to the front if it was minimized or behind others,
+  instead of you having to find it yourself. The "⋯" list and its flyout, and the tooltip on each badge, work as
+  before.
 - added: a profile on the OpenRouter provider can now fetch its model list instead of you typing a vendor/model id
   from memory — a Fetch button next to the Model field asks the base URL you filled in which models it serves, the
   same behaviour the Gemini/OpenAI provider already has. When that endpoint serves no model list, or rejects the
