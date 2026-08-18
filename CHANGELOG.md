@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a profile on the Gemini/OpenAI provider can now fetch its model list instead of you typing an id from
+  memory — a Fetch button next to the Model field asks the base URL you filled in which models it serves, so a
+  custom OpenAI-compatible gateway lists its own models just as api.openai.com does. When that endpoint serves no
+  model list, or rejects the key, the field stays free text and a line underneath says what happened.
 - added: the whiteboard can now be zoomed and panned, the same way diagrams and wireframes already could — a mouse
   wheel zooms, −/+/Fit buttons on the toolbar show the current level and fit everything on the board into view, and
   the middle mouse button drags the view around (left-drag still draws, selects and resizes, so panning needed a
