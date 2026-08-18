@@ -310,6 +310,27 @@ public partial class AssistantChatWindow : Window
         ScrollToBottomButton.IsVisible = false;
     }
 
+    // AC-935: a reply's citation and a replied-to row's marker both jump here. `_stickToBottom` has to come off
+    // first, or the ScrollChanged handler reads "not an operator gesture, still sticky" and follows straight
+    // back to the newest row — the jump-to-newest chevron is the way back, same as after a manual scroll.
+    internal void ScrollToMessage(TranscriptEntryViewModel target)
+    {
+        if (DataContext is not AssistantChatViewModel { Session: { } session })
+        {
+            return;
+        }
+
+        var index = session.VisibleTranscript.IndexOf(target);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _stickToBottom = false;
+        TranscriptItems.ScrollIntoView(index);
+        ScrollToBottomButton.IsVisible = true;
+    }
+
     // The host can flip Session from null to a real one after EnsureOpenedAsync's lazy start completes
     // (or, on reopen, it may already be set) — re-follow whichever transcript is live so a newly-started
     // session's replies scroll into view without the operator having to scroll manually.

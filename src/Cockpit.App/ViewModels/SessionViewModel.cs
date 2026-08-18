@@ -515,6 +515,34 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // True while the send queue holds a message, so the queued-chip strip can hide when empty.
     public bool HasQueuedMessages => QueuedMessages.Count > 0;
 
+    // The message a row's reply button set as this composer's target (AC-935), shown as a dismissible citation
+    // chip above the input and consumed at the same point PendingAttachments is — set by SetReplyTarget, cleared
+    // by ClearReplyTarget or by a send going through.
+    [ObservableProperty]
+    private TranscriptEntryViewModel? _pendingReplyTo;
+
+    public bool HasPendingReplyTo => PendingReplyTo is not null;
+
+    // The composer chip's own citation of the pending target — same helper the sent reply row uses, so the
+    // operator sees before sending exactly what the model will be told afterwards.
+    public string PendingReplyExcerpt => PendingReplyTo is null
+        ? string.Empty
+        : TranscriptEntryViewModel.BuildReplyExcerpt(PendingReplyTo.TextWithImageSuffix);
+
+    partial void OnPendingReplyToChanged(TranscriptEntryViewModel? value)
+    {
+        OnPropertyChanged(nameof(HasPendingReplyTo));
+        OnPropertyChanged(nameof(PendingReplyExcerpt));
+    }
+
+    // A row's reply button (AC-935) — sets the composer's target; consumed and cleared at dispatch.
+    [RelayCommand]
+    private void SetReplyTarget(TranscriptEntryViewModel target) => PendingReplyTo = target;
+
+    // The chip's own cancel (AC-935).
+    [RelayCommand]
+    private void ClearReplyTarget() => PendingReplyTo = null;
+
     // AC-740: the @-mention file-/folder-picker. Reads WorkingDirectory lazily on every '@' rather than once at
     // construction — this session's own working directory is unset until launch, same reasoning as the
     // Assistant-chat host that shares this view model.
@@ -1047,7 +1075,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // A sample queued message so the previewer/Screenshotter render the send-queue strip (T8).
         QueuedMessages.Add(new QueuedMessageViewModel(
-            "run the tests once the build finishes", [], m => QueuedMessages.Remove(m)));
+            "run the tests once the build finishes", [], replyTo: null, m => QueuedMessages.Remove(m)));
     }
 
     public SessionViewModel(
@@ -1742,7 +1770,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         if (IsBusy)
         {
-            QueuedMessages.Add(new QueuedMessageViewModel(caption, images, message => QueuedMessages.Remove(message)));
+            QueuedMessages.Add(new QueuedMessageViewModel(caption, images, replyTo: null, message => QueuedMessages.Remove(message)));
             return true;
         }
 
@@ -1775,10 +1803,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         var images = PendingAttachments
             .Select(a => Core.Sessions.ImageAttachment.FromBytes(a.PngBytes, a.MediaType))
             .ToList();
+        var replyTo = PendingReplyTo;
 
         InputText = string.Empty;
         // The wire images are already copied from PngBytes above, so the decoded thumbnails are done.
         _ClearPendingAttachments();
+        PendingReplyTo = null;
 
         // The CLI rejects mid-turn input, so while a turn is in flight the message goes onto the local
         // send queue as a cancellable chip and is dispatched when the turn completes (T8), instead of
@@ -1786,11 +1816,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // stays in send order.
         if (IsBusy)
         {
-            QueuedMessages.Add(new QueuedMessageViewModel(text, images, m => QueuedMessages.Remove(m)));
+            QueuedMessages.Add(new QueuedMessageViewModel(text, images, replyTo, m => QueuedMessages.Remove(m)));
             return;
         }
 
-        await _DispatchMessageAsync(text, images);
+        await _DispatchMessageAsync(text, images, replyTo);
     }
 
     // Pulls the most recently queued message back into the input for editing (Arrow Up on an empty
@@ -1815,8 +1845,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return true;
     }
 
-    // Sends a message to the session now, echoing it into the transcript and marking the turn busy.
-    private async Task _DispatchMessageAsync(string text, IReadOnlyList<Core.Sessions.ImageAttachment> images)
+    // Sends a message to the session now, echoing it into the transcript and marking the turn busy. `replyTo`
+    // (AC-935) rides only as far as the wire text and the row's own reference — `_lastDispatchedUserTurn` and the
+    // "exit" check below stay on the bare `text`, so a reply prefix never changes retry or auto-close behaviour.
+    private async Task _DispatchMessageAsync(
+        string text, IReadOnlyList<Core.Sessions.ImageAttachment> images, TranscriptEntryViewModel? replyTo = null)
     {
         if (_runtime is null)
         {
@@ -1833,10 +1866,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-778: the images ride along on the row itself (not just a "[+N image]" suffix baked into the text)
         // so the row's own chip can reopen them later in this same running session.
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, text)
+        var row = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, text)
         {
             Images = images.Count == 0 ? null : images,
-        });
+            ReplyTo = replyTo,
+        };
+        Transcript.Add(row);
+
+        // AC-935: the target's own "answered" marker points at the row that just replied to it, so a click on
+        // it jumps straight there — set after the row exists, since that is the reference it points to.
+        if (replyTo is not null)
+        {
+            replyTo.LatestReply = row;
+        }
+
         _lastDispatchedUserTurn = (text, images);
         _currentAssistantEntry = null;
         _CloseThinkingRow();
@@ -1852,7 +1895,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         try
         {
-            await _SendWithWaitingMessagesAsync(_runtime, text, images, _NoteDeliveredMail);
+            await _SendWithWaitingMessagesAsync(_runtime, BuildOutgoingText(text, replyTo), images, _NoteDeliveredMail);
         }
         catch (Exception ex)
         {
@@ -1863,6 +1906,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _RecomputeStatus();
         }
     }
+
+    // AC-935: the only difference between the wire text and the row is this prefix — same "model sees ≠ row
+    // shows" split `_NoteDeliveredMail`'s inbox notice already relies on. Unchanged with no reply target, so an
+    // ordinary message costs no extra tokens. Internal so the format can be asserted directly.
+    internal static string BuildOutgoingText(string text, TranscriptEntryViewModel? replyTo) =>
+        replyTo is null
+            ? text
+            : $"[reply to \"{TranscriptEntryViewModel.BuildReplyExcerpt(replyTo.TextWithImageSuffix)}\"]: {text}";
 
     // AC-693: a write into a dead process's stdin says "The pipe is being closed."; the runtime notices that death a
     // beat later than the write does, so both the exception and the flag are read. Internal so the rule can be asserted.
@@ -1994,8 +2045,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // through to the single-dispatch path below and still closes as before.
         if (CombineQueuedMessages && QueuedMessages.Count > 1)
         {
+            // AC-935: each sub-message gets its own prefix — one prefix over the whole merged blob would
+            // misattribute every message but the first, and several distinct targets cannot collapse into the
+            // merged row's one ReplyTo reference, so only the wire text below carries the relation.
             var combinedText = string.Join(
-                "\n\n", QueuedMessages.Select(m => m.Text).Where(text => !string.IsNullOrWhiteSpace(text)));
+                "\n\n",
+                QueuedMessages
+                    .Select(m => BuildOutgoingText(m.Text, m.ReplyTo))
+                    .Where(text => !string.IsNullOrWhiteSpace(text)));
             var combinedImages = QueuedMessages.SelectMany(m => m.Images).ToList();
             QueuedMessages.Clear();
             _ = _DispatchMessageAsync(combinedText, combinedImages);
@@ -2004,7 +2061,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         var next = QueuedMessages[0];
         QueuedMessages.RemoveAt(0);
-        _ = _DispatchMessageAsync(next.Text, next.Images);
+        _ = _DispatchMessageAsync(next.Text, next.Images, next.ReplyTo);
     }
 
     // The clarifying-question tool, which arrives over the permission callback like any other tool but wants an

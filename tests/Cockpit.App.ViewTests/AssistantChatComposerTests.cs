@@ -62,7 +62,7 @@ public class AssistantChatComposerTests
         // starts with an empty queue.
         session.QueuedMessages.Clear();
         var vm = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
-        session.QueuedMessages.Add(new QueuedMessageViewModel("kijk hier nog eens naar", [], m => session.QueuedMessages.Remove(m)));
+        session.QueuedMessages.Add(new QueuedMessageViewModel("kijk hier nog eens naar", [], replyTo: null, m => session.QueuedMessages.Remove(m)));
 
         Assert.True(vm.RecallLastQueuedMessage());
 
@@ -206,6 +206,45 @@ public class AssistantChatComposerTests
         await Task.Delay(Timeout.Infinite, cancellationToken);
         yield break;
     }
+
+    // AC-935 criterion 2: a row's reply button sets the composer's pending target, which the chip shows and its
+    // own cancel clears — same session state the send path reads, not a separate view-only flag.
+    [Fact]
+    public void SettingAReplyTarget_ShowsTheChip_AndCancellingItHidesItAgain() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel();
+        session.Transcript.Clear();
+        var target = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "please check the build output");
+        session.Transcript.Add(target);
+
+        var window = new AssistantChatWindow
+        {
+            Width = 420,
+            Height = 560,
+            DataContext = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>()),
+        };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        try
+        {
+            Assert.False(window.ReplyChip.IsVisible);
+
+            session.SetReplyTargetCommand.Execute(target);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(window.ReplyChip.IsVisible);
+
+            window.ReplyChipCancelButton.Command!.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(window.ReplyChip.IsVisible);
+            Assert.Null(session.PendingReplyTo);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
 
     private static IAssistantSessionHost _FakeHost(SessionViewModel? session)
     {

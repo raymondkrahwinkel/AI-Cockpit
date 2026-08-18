@@ -16,13 +16,22 @@ public partial class QueuedMessageViewModel : ViewModelBase
     // Images pasted alongside the queued text, sent with it when dispatched.
     public IReadOnlyList<ImageAttachment> Images { get; }
 
+    // The message this entry replies to (AC-935), carried through the queue so the relation survives a turn
+    // in flight instead of being lost the moment Send moves the composer's reply target off screen.
+    public TranscriptEntryViewModel? ReplyTo { get; }
+
     // Chip label: the text plus an image count when the message carries attachments.
     public string DisplayText { get; }
 
-    public QueuedMessageViewModel(string text, IReadOnlyList<ImageAttachment> images, Action<QueuedMessageViewModel> onRemove)
+    public QueuedMessageViewModel(
+        string text,
+        IReadOnlyList<ImageAttachment> images,
+        TranscriptEntryViewModel? replyTo,
+        Action<QueuedMessageViewModel> onRemove)
     {
         Text = text;
         Images = images;
+        ReplyTo = replyTo;
         _onRemove = onRemove;
         DisplayText = _BuildDisplay(text, images.Count);
     }

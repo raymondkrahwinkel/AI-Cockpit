@@ -554,6 +554,30 @@
                     <TextBlock Text="Read-aloud is off — replies land here only." FontSize="10.5"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding !SpeakReplies}"/>
+                    <!-- AC-935: the reply target a row's reply button set, shown above the composer until sent
+                         or cancelled — the same Session.PendingReplyTo the send path itself reads and clears,
+                         not a separate chip-only flag. -->
+                    <Border x:Name="ReplyChip" Background="{StaticResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CockpitControlRadius}"
+                            Padding="8,4" Margin="0,0,0,6"
+                            IsVisible="{Binding Session.HasPendingReplyTo, FallbackValue=False}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"
+                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            <TextBlock Text="Replying to" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            <TextBlock Text="{Binding Session.PendingReplyExcerpt}" FontSize="12" VerticalAlignment="Center"
+                                       MaxWidth="320" TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <Button x:Name="ReplyChipCancelButton" Command="{Binding Session.ClearReplyTargetCommand}" Classes="Subtle"
+                                    VerticalAlignment="Center" Padding="4,0"
+                                    ToolTip.Tip="Cancel this reply">
+                                <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Queued messages (AC-630): typed while a turn was in flight, dispatched when it completes.
                          Same chips as the session pane, on the same Session.QueuedMessages — without them the input
                          box emptied, nothing appeared, and the message landed minutes later unannounced.
@@ -750,7 +774,7 @@
                              this is what makes AC-715's question card (and everything else the old, narrower
                              copy of this template never grew) work in this window too. -->
                         <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                            <controls:TranscriptRowView Compact="True"
+                            <controls:TranscriptRowView Compact="True" ReplyEnabled="True"
                                 Session="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session}"/>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

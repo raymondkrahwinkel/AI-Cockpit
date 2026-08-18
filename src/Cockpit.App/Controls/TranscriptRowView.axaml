@@ -47,6 +47,19 @@
               <ContentControl.DataTemplates>
                 <DataTemplate DataType="vm:TranscriptEntryViewModel">
             <StackPanel Spacing="2" HorizontalAlignment="Right">
+                <!-- AC-935: the reply's own citation of what it answered — stays visible after sending, not
+                     just while typing. Only user rows ever carry ReplyTo (only the composer sets it), so this
+                     sits above the bubble here and nowhere else. -->
+                <Button Classes="Subtle Compact" Click="_OnJumpToReplyTargetClick"
+                        IsVisible="{Binding HasReplyTo}" HorizontalAlignment="Right"
+                        Foreground="{StaticResource CockpitTextFaintBrush}"
+                        ToolTip.Tip="Jump to the message this replies to">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="11" Height="11"/>
+                        <TextBlock Text="{Binding ReplyExcerpt}" FontSize="10.5" MaxWidth="440"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Button>
                 <Border Classes="transcriptRow userRow" Padding="8,5" MaxWidth="520"
                         CornerRadius="{StaticResource CockpitControlRadius}">
                     <StackPanel Spacing="2">
@@ -77,10 +90,26 @@
                 </Border>
                 <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                             HorizontalAlignment="Right">
+                    <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
+                    <Button Classes="Subtle Compact"
+                            IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
+                            Command="{Binding $parent[controls:TranscriptRowView].Session.SetReplyTargetCommand}"
+                            CommandParameter="{Binding}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Reply to this message">
+                        <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>
+                    </Button>
                     <Button x:Name="UserRowCopyButton" Classes="Subtle Compact" Click="_OnCopyMessageClick"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Copy this message">
                         <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
+                    </Button>
+                    <!-- AC-935: this message has at least one reply — jumps to the latest one. -->
+                    <Button Classes="Subtle Compact" Click="_OnJumpToLatestReplyClick"
+                            IsVisible="{Binding HasReplies}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Jump to the reply">
+                        <materialIcons:MaterialIcon Kind="CommentArrowRightOutline" Width="13" Height="13"/>
                     </Button>
                 </StackPanel>
             </StackPanel>
@@ -160,10 +189,26 @@
                     <!-- Copy hands over the reply's markdown source verbatim. -->
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                 HorizontalAlignment="Left">
+                        <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
+                        <Button Classes="Subtle Compact"
+                                IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
+                                Command="{Binding $parent[controls:TranscriptRowView].Session.SetReplyTargetCommand}"
+                                CommandParameter="{Binding}"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                ToolTip.Tip="Reply to this message">
+                            <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>
+                        </Button>
                         <Button Classes="Subtle Compact" Click="_OnCopyMessageClick"
                                 Foreground="{StaticResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Copy this reply">
                             <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
+                        </Button>
+                        <!-- AC-935: this message has at least one reply — jumps to the latest one. -->
+                        <Button Classes="Subtle Compact" Click="_OnJumpToLatestReplyClick"
+                                IsVisible="{Binding HasReplies}"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                ToolTip.Tip="Jump to the reply">
+                            <materialIcons:MaterialIcon Kind="CommentArrowRightOutline" Width="13" Height="13"/>
                         </Button>
                     </StackPanel>
                 </StackPanel>
