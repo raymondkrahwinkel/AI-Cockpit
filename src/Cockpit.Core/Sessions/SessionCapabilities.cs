@@ -51,6 +51,11 @@ public sealed record SessionCapabilities(
     // `PluginSessionCapabilities.SupportsContextCompaction`; `false` keeps the fresh start.
     public bool SupportsContextCompaction { get; init; }
 
+    // AC-739: whether this driver actually delivers a message sent mid-turn to the model, instead of dropping it or
+    // leaving it unread. The host-side mirror of `PluginSessionCapabilities.SupportsMidTurnInput`; `false` keeps the
+    // session panel's local send queue.
+    public bool SupportsMidTurnInput { get; init; }
+
     // The Claude-CLI driver: native tools, permission prompts, live model/permission control, plan mode, thinking, image input, and resuming an earlier conversation.
     public static SessionCapabilities ClaudeCli { get; } = new(
         SupportsTools: true,

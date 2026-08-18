@@ -29,6 +29,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // Option key for the per-session reasoning effort (a live control, #45 D4) — maps to the CLI's thinking-token budget, the one budget the control protocol can set mid-session (set_max_thinking_tokens).
     public const string EffortOptionKey = "effort";
 
+    // A capability name the CLI advertised on its `system/init` line's `capabilities` array (2.1.231+). Gates
+    // InterruptAsync's `cancel_queued` field so an older CLI never receives a key it has never heard of.
+    private const string InterruptCancelQueuedCapability = "interrupt_cancel_queued_v1";
+
     private readonly Func<IClaudeSdkSubprocess> _subprocessFactory;
     private readonly ClaudeProviderConfig _config;
     private readonly string _executablePath;
@@ -60,6 +64,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private string _effort = "medium";
     private IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
     private IReadOnlyDictionary<string, string>? _profileEnvironment;
+
+    // Capability names the CLI advertised on its own `system/init` line (AC-739) — empty until that line arrives,
+    // which is what a CLI too old to send the field looks like too, so a feature-detect against it fails closed.
+    private IReadOnlySet<string> _cliCapabilities = new HashSet<string>(StringComparer.Ordinal);
 
     // The per-session --mcp-config file this launch wrote (the shared registry fanned in) — written even as an
     // explicit empty file when an UNATTENDED launch resolved no registry servers (AC-378), so --strict-mcp-config
@@ -94,6 +102,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // The CLI summarises its own conversation and carries on under the same session id (AC-664) — see
         // CompactContextAsync for the channel and what was measured.
         SupportsContextCompaction = true,
+        // Measured 3x (AC-739): a message sent mid-turn reaches the model and the original work resumes after,
+        // rather than the CLI rejecting it.
+        SupportsMidTurnInput = true,
     };
 
     public string? SessionId => _sessionId;
@@ -255,9 +266,28 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         return [.. blocks];
     }
 
+    // AC-739 stap C: used to be fire-and-forget (_SendControlRequestAsync), so the receipt naming still_queued work
+    // never reached the cockpit. Awaited now via the same request/response correlation _RequestControlAsync uses for
+    // usage polls, and cancel_queued rides along only when the CLI advertised it can honour the field — an older CLI
+    // never sees a key it has never heard of.
     public async Task InterruptAsync(CancellationToken cancellationToken = default)
     {
-        await _SendControlRequestAsync(new { subtype = "interrupt" }, cancellationToken).ConfigureAwait(false);
+        var requestId = Guid.NewGuid().ToString();
+        var awaiter = new TaskCompletionSource<JsonElement?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingControlResponses[requestId] = awaiter;
+
+        try
+        {
+            object request = _cliCapabilities.Contains(InterruptCancelQueuedCapability)
+                ? new { subtype = "interrupt", cancel_queued = true }
+                : new { subtype = "interrupt" };
+            await _RequireSubprocess().WriteLineAsync(ClaudeControlProtocol.BuildRequest(requestId, request), cancellationToken).ConfigureAwait(false);
+            await awaiter.Task.WaitAsync(_UsageRequestTimeout, _lifetime.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _pendingControlResponses.TryRemove(requestId, out _);
+        }
 
         // AC-943: the CLI may already have retracted these via `control_cancel_request` (see `_HandleLine`), in
         // which case this snapshot is empty; denying whatever is left closes the gap for anything it did not.
@@ -462,6 +492,13 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
             foreach (var evt in ClaudeStreamJson.ParseLine(line))
             {
+                // AC-739: read once off the CLI's own init line, before the event is published, so a caller like
+                // InterruptAsync can feature-detect a control-protocol field the CLI just advertised.
+                if (evt is PluginSessionInitialized { Capabilities.Count: > 0 } initialized)
+                {
+                    _cliCapabilities = new HashSet<string>(initialized.Capabilities, StringComparer.Ordinal);
+                }
+
                 _events.Publish(evt);
             }
         }

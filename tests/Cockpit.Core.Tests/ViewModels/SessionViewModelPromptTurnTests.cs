@@ -109,7 +109,24 @@ public class SessionViewModelPromptTurnTests
         await vm.DisposeAsync();
     }
 
-    private static async Task<(SessionViewModel Vm, ISessionDriver Driver, List<string> Sent)> _Started()
+    /// <summary>AC-739: a driver that supports mid-turn input writes straight through instead of queueing.</summary>
+    [Fact]
+    public async Task SendPrompt_OnADriverThatSupportsMidTurnInput_WritesTheComposerMessageStraightThrough()
+    {
+        var (vm, _, sent) = await _Started(supportsMidTurnInput: true);
+
+        _ = await vm.SendPromptAsync("continue where you left off");
+        vm.InputText = "and also run the tests";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        // Both turns reached the runtime, and nothing was held back as a chip — the whole point of the capability.
+        Assert.Equal(new[] { "continue where you left off", "and also run the tests" }, sent);
+        Assert.Empty(vm.QueuedMessages);
+
+        await vm.DisposeAsync();
+    }
+
+    private static Task<(SessionViewModel Vm, ISessionDriver Driver, List<string> Sent)> _Started(bool supportsMidTurnInput = false)
     {
         var sent = new List<string>();
         var driver = Substitute.For<ISessionDriver>();
@@ -117,7 +134,20 @@ public class SessionViewModelPromptTurnTests
         driver
             .When(session => session.SendUserMessageAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<ImageAttachment>?>(), Arg.Any<CancellationToken>()))
             .Do(call => sent.Add(call.Arg<string>()));
+        if (supportsMidTurnInput)
+        {
+            driver.Capabilities.Returns(new SessionCapabilities(
+                SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false)
+            {
+                SupportsMidTurnInput = true,
+            });
+        }
 
+        return _StartedAsync(driver, sent);
+    }
+
+    private static async Task<(SessionViewModel Vm, ISessionDriver Driver, List<string> Sent)> _StartedAsync(ISessionDriver driver, List<string> sent)
+    {
         var vm = new SessionViewModel(new SessionManager(_FactoryFor(driver)));
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);

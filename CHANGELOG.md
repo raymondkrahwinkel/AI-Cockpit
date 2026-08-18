@@ -114,6 +114,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   add, label and remove them below the existing folder; a session starting on such a project picks which one to
   run in from the same folder quick-pick it already had. The assistant and its agents are told which repositories
   a project has, with their labels, so they never have to discover a second repository the hard way.
+- added: a message sent while the agent is still working on a Claude-backed session pane or in the Assistant Chat
+  now reaches it right away, instead of waiting behind a queued chip until the current turn finishes — handy for
+  redirecting or correcting the agent mid-task. Stopping a turn now also cancels whatever you had queued behind it,
+  on a CLI that supports it.
 - added: a Depot-linked project's list row and card now show a small cloud icon when something changed on the
   Depot side since it was last checked here — a background check runs every 15 minutes, and a "Sync now" entry in
   the ⋯ menu forces an immediate recheck for that one project. Nothing is ever overwritten automatically; an

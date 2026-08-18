@@ -138,6 +138,62 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     }
 
     [Fact]
+    public void Capabilities_VouchForMidTurnInput_SoTheHostWritesStraightThroughInsteadOfQueueing()
+    {
+        // The capability is the whole gate (AC-739): a message the operator sends mid-turn reaches the model
+        // instead of waiting behind the local send queue only for a driver that reports this.
+        var fake = new FakeClaudeSdkSubprocess();
+        var driver = _CreateDriver(fake);
+
+        Assert.True(driver.Capabilities.SupportsMidTurnInput);
+    }
+
+    [Fact]
+    public async Task Interrupt_WithoutTheCliCapability_SendsPlainInterrupt_AndAwaitsTheReceipt()
+    {
+        // Used to be fire-and-forget (_SendControlRequestAsync); this proves the receipt is now actually read
+        // rather than the awaiting InterruptAsync call hanging on a reply nobody registered for.
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        var interruptTask = driver.InterruptAsync(CancellationToken.None);
+        var written = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
+        var request = written.GetProperty("request");
+        Assert.Equal("interrupt", request.GetProperty("subtype").GetString());
+        Assert.False(request.TryGetProperty("cancel_queued", out _));
+
+        var requestId = written.GetProperty("request_id").GetString();
+        await fake.PushStdoutAsync($$$"""{"type":"control_response","response":{"subtype":"success","request_id":"{{{requestId}}}","response":{"still_queued":false} } }""");
+
+        await interruptTask;
+    }
+
+    [Fact]
+    public async Task Interrupt_WhenTheCliAdvertisesCancelQueued_SendsCancelQueuedTrue()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""
+        {"type":"system","subtype":"init","cwd":"/tmp","model":"claude","tools":[],"capabilities":["interrupt_receipt_v1","interrupt_cancel_queued_v1"]}
+        """);
+        await _ReadEventAsync(driver, e => e is PluginSessionInitialized);
+
+        var interruptTask = driver.InterruptAsync(CancellationToken.None);
+        var written = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
+        var request = written.GetProperty("request");
+        Assert.Equal("interrupt", request.GetProperty("subtype").GetString());
+        Assert.True(request.GetProperty("cancel_queued").GetBoolean());
+
+        var requestId = written.GetProperty("request_id").GetString();
+        await fake.PushStdoutAsync($$$"""{"type":"control_response","response":{"subtype":"success","request_id":"{{{requestId}}}","response":{"still_queued":false} } }""");
+
+        await interruptTask;
+    }
+
+    [Fact]
     public async Task SendUserMessage_WithImages_WritesTextAndImageContentBlocks()
     {
         // Regression: moving Claude to a plugin must not lose image input the in-tree route had. With an attachment the

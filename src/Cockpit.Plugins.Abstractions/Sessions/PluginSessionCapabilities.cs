@@ -102,6 +102,14 @@ public sealed record PluginSessionCapabilities(
     public PluginHostToolLoop HostToolLoop { get; init; }
 
     /// <summary>
+    /// Whether this driver actually delivers a message sent while a turn is in flight to the model, instead of
+    /// dropping it or leaving it unread (AC-739). Init-only for the same back-compat reason as
+    /// <see cref="SupportsLiveModelSwitch"/>; defaults to <see langword="false"/>, so an unaware driver keeps the
+    /// host's local send queue.
+    /// </summary>
+    public bool SupportsMidTurnInput { get; init; }
+
+    /// <summary>
     /// The session options this provider actually understands, in its own vocabulary (AC-649) — Claude's
     /// <c>permission-mode</c>/<c>model</c>/<c>effort</c>, Codex's <c>sandbox</c> — so a consumer can read what a key
     /// means and which values it takes instead of guessing at an opaque options map. Init-only for the same

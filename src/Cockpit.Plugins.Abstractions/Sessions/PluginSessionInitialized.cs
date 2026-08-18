@@ -21,4 +21,10 @@ public sealed record PluginSessionInitialized : PluginSessionEvent
     /// it, keeps constructing this the old way.
     /// </summary>
     public string? Model { get; init; }
+
+    /// <summary>
+    /// Capability names the CLI advertised on this same init line (AC-739), e.g. <c>interrupt_cancel_queued_v1</c>.
+    /// Empty for a CLI too old to send the field, and for an already-compiled plugin that never sets it.
+    /// </summary>
+    public IReadOnlyList<string> Capabilities { get; init; } = [];
 }
