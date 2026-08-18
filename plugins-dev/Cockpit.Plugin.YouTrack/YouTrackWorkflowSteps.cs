@@ -133,7 +133,7 @@ internal static class YouTrackWorkflowSteps
             var issues = await new YouTrackClient().GetOpenIssuesAsync(
                 configured.InstanceUrl,
                 configured.Token,
-                projectTag: null,
+                projectTags: null,
                 extraFilter: null,
                 assignedToMe: false,
                 top: 100,

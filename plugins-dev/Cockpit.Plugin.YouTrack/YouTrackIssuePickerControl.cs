@@ -107,10 +107,10 @@ internal sealed class YouTrackIssuePickerControl : UserControl
 
         try
         {
-            // AC-548: the same resolution the issues dialog uses (YouTrackProjectField.ResolvePreferredTagAsync) —
-            // the session's own linked project wins over the instance-wide default, instead of this picker only
-            // ever knowing the latter and showing every project once that default is left empty.
-            var preferredTag = await YouTrackProjectField.ResolvePreferredTagAsync(
+            // AC-548/AC-884: the same resolution the issues dialog uses — the session's own linked project(s) win
+            // over the instance-wide default, and every linked prefix is fetched in the one query below rather
+            // than only the first.
+            var preferredTags = await YouTrackProjectField.ResolvePreferredTagsAsync(
                 _host, _paneId, instance.DefaultProjectTag, CancellationToken.None);
 
             // What the operator said they want to see. The client's own query is "#Unresolved"; anything written here
@@ -118,7 +118,7 @@ internal sealed class YouTrackIssuePickerControl : UserControl
             var issues = await _client.GetOpenIssuesAsync(
                 instance.InstanceUrl,
                 instance.Token,
-                preferredTag is { Length: > 0 } tag ? tag : null,
+                preferredTags,
                 _settings.PickerQuery,
                 _mine.IsChecked == true,
                 MaxResults,

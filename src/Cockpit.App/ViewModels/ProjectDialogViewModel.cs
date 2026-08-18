@@ -171,7 +171,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         foreach (var registration in pluginFields ?? [])
         {
-            viewModel.PluginFields.Add(new ProjectPluginFieldViewModel(registration, project?.LinkedAs(registration.Key)));
+            viewModel.PluginFields.Add(new ProjectPluginFieldViewModel(
+                registration,
+                project is null ? null : ProjectLinkValues.Join(project.LinkedAsAll(registration.Key))));
         }
 
         // AC-499: "Folder" is offered unconditionally, not only once a plugin registered something — the doorless

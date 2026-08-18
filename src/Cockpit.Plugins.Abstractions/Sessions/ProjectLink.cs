@@ -19,6 +19,8 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <param name="Value">
 /// What the project is linked as under that key — what <see cref="ICockpitHost.GetProjectFieldValueAsync"/> would hand
 /// back for it (<c>AC</c>, <c>owner/repo</c>). Matched case-insensitively: a tracker's short name and a repository's
-/// owner/name are not case-sensitive identifiers.
+/// owner/name are not case-sensitive identifiers. A project whose stored value under <paramref name="FieldKey"/> names
+/// several identifiers (AC-884, e.g. a YouTrack field naming <c>EWB, AT, EJ</c>) matches on any one of them — that
+/// matching happens host-side, this record itself still carries only the single value the plugin is asking about.
 /// </param>
 public sealed record ProjectLink(string FieldKey, string Value);

@@ -35,9 +35,20 @@ public sealed record ProjectFieldRegistration(
     string Title,
     Func<CancellationToken, Task<IReadOnlyList<ProjectFieldOption>>> LoadOptionsAsync)
 {
-    /// <summary>The line under the label saying what this is for, in the editor's own voice. Null for a field whose title says it all.</summary>
+    /// <summary>
+    /// The line under the label saying what this is for, in the editor's own voice. Null for a field whose title
+    /// says it all.
+    /// </summary>
     public string? Hint { get; init; }
 
-    /// <summary>What the empty box suggests — a shape, not an instruction: <c>owner/repo</c>. Null for none.</summary>
+    /// <summary>
+    /// What the empty box suggests — a shape, not an instruction: <c>owner/repo</c>. Null for none.
+    /// </summary>
     public string? Placeholder { get; init; }
+
+    /// <summary>
+    /// Whether the editor lets the operator link more than one identifier under this key (AC-884), each its own
+    /// row with an add/remove control. False by default: a single row, unchanged from before this existed.
+    /// </summary>
+    public bool AllowsMultiple { get; init; }
 }

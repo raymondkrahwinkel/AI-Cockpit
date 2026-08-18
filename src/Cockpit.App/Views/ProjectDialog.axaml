@@ -298,15 +298,42 @@
                                     <TextBlock Classes="FieldLabel" Text="{Binding Title}"/>
                                     <TextBlock Classes="FieldHint" Text="{Binding Hint}"
                                                IsVisible="{Binding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                    <!-- Typing filters, and what is typed counts: a repository you cannot read is not
-                                         in the list, and refusing it would be refusing the only way to link it. -->
-                                    <AutoCompleteBox ItemsSource="{Binding Options}"
-                                                     Text="{Binding Text, Mode=TwoWay}"
-                                                     ValueMemberBinding="{Binding Display}"
-                                                     FilterMode="Contains"
-                                                     MinimumPrefixLength="0"
-                                                     PlaceholderText="{Binding Placeholder}"
-                                                     HorizontalAlignment="Stretch"/>
+                                    <ItemsControl ItemsSource="{Binding Rows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ProjectPluginFieldRowViewModel">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,0,0,6">
+                                                    <!-- Typing filters, and what is typed counts: a repository you
+                                                         cannot read is not in the list, and refusing it would be
+                                                         refusing the only way to link it. -->
+                                                    <AutoCompleteBox Grid.Column="0"
+                                                                     ItemsSource="{Binding Options}"
+                                                                     Text="{Binding Text, Mode=TwoWay}"
+                                                                     ValueMemberBinding="{Binding Display}"
+                                                                     FilterMode="Contains"
+                                                                     MinimumPrefixLength="0"
+                                                                     PlaceholderText="{Binding Placeholder}"
+                                                                     HorizontalAlignment="Stretch"/>
+                                                    <!-- Visible (reserving this column's width) for every row of a
+                                                         multi-value field, so rows stay aligned with each other —
+                                                         but only enabled/clickable past the first, which nothing
+                                                         removes down to (AC-884, Raymond's review). -->
+                                                    <Button Grid.Column="1" Classes="Subtle" VerticalAlignment="Center"
+                                                            ToolTip.Tip="Remove this row"
+                                                            IsVisible="{Binding $parent[ItemsControl].((vm:ProjectPluginFieldViewModel)DataContext).AllowsMultiple}"
+                                                            IsEnabled="{Binding CanRemove}"
+                                                            Command="{Binding $parent[ItemsControl].((vm:ProjectPluginFieldViewModel)DataContext).RemoveRowCommand}"
+                                                            CommandParameter="{Binding}">
+                                                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"
+                                                                                    IsVisible="{Binding CanRemove}"/>
+                                                    </Button>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Content="+ Add row" Classes="Subtle" HorizontalAlignment="Left"
+                                            Foreground="{StaticResource CockpitAccentBrush}"
+                                            IsVisible="{Binding AllowsMultiple}"
+                                            Command="{Binding AddRowCommand}"/>
                                     <TextBlock Classes="FieldHint" Margin="0,4,0,0" Text="Loading…"
                                                IsVisible="{Binding IsLoadingOptions}"/>
                                     <TextBlock Classes="FieldHint" Margin="0,4,0,0"

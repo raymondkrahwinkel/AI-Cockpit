@@ -390,7 +390,16 @@
          outside `CockpitViewModel.Sessions` by design but is still a session this surface must be able to name.
          Default-implemented (empty list), so an existing observer or test fake keeps compiling and simply reports
          no open sessions. Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.56.0</Version>
+    <!-- 1.57.0 (AC-884): added ICockpitHost.GetProjectFieldValuesAsync (default empty) — the plural of
+         GetProjectFieldValueAsync, for a project field whose stored value now names more than one identifier (a
+         YouTrack project field naming several prefixes: `EWB, AT, EJ`). GetProjectFieldValueAsync itself is
+         unchanged and keeps answering the first one, so every existing plugin reads exactly what it always did.
+         Default-implemented (empty list), so existing ICockpitHost implementations (test fakes, older plugin
+         builds) keep compiling untouched. Also added ProjectFieldRegistration.AllowsMultiple (default false), so
+         a field the editor should let the operator link several identifiers under (YouTrack's) can say so; a
+         field that leaves it out renders exactly as before. Additions only — a minor; major and
+         abstractionsVersion stay 1. -->
+    <Version>1.57.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

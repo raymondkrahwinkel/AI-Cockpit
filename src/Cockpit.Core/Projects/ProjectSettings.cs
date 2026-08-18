@@ -151,11 +151,9 @@ public sealed record ProjectSettings
         return _TidyLinks(project.PluginFields) is { } links ? tidied with { PluginFields = links } : tidied;
     }
 
-    // `links` trimmed and without the entries that name nothing, or null when there was nothing to
-    // change — null rather than the same content again for the reason `_WithTidyInfo` explains: a record
-    // compares a dictionary by reference, so handing back a fresh one that says the same thing would rebuild the whole
-    // project list on every load. A blank key or value is dropped: a plugin field the operator cleared is a link that
-    // is gone, and writing it as an empty string would leave a key nothing can be linked under.
+    // `links` trimmed and without entries that name nothing, or null when there was nothing to change — null
+    // rather than an equal-content copy, since a record compares a dictionary by reference. Each value is
+    // normalized item-by-item through `ProjectLinkValues` (AC-884): trimmed, deduplicated, rejoined.
     private static IReadOnlyDictionary<string, string>? _TidyLinks(IReadOnlyDictionary<string, string> links)
     {
         if (links.Count == 0)
@@ -166,9 +164,15 @@ public sealed record ProjectSettings
         var usable = new Dictionary<string, string>(links.Count, StringComparer.Ordinal);
         foreach (var (key, value) in links)
         {
-            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
+            if (string.IsNullOrWhiteSpace(key))
             {
-                usable[key.Trim()] = value.Trim();
+                continue;
+            }
+
+            var tidied = ProjectLinkValues.Join(ProjectLinkValues.Split(value));
+            if (tidied.Length > 0)
+            {
+                usable[key.Trim()] = tidied;
             }
         }
 

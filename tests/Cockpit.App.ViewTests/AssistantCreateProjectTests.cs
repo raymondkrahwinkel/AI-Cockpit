@@ -275,6 +275,22 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.Empty(projects.Projects);
     }
 
+    // AC-884: a value naming several prefixes is stored and read back verbatim — the tool takes the same
+    // Dictionary<string,string> it always did, the comma-separated list is a convention this layer never parses.
+    [Fact]
+    public async Task APluginFieldValueNamingSeveralPrefixes_IsStoredAndReadableAsEachOfThem()
+    {
+        var (gateway, projects, _) = _Build(
+            pluginFields: [new ProjectFieldRegistration("youtrack.project", "YouTrack project", _ => Task.FromResult<IReadOnlyList<ProjectFieldOption>>([]))]);
+
+        var result = await gateway.CreateProjectAsync(
+            "EVE Workbench", pluginFields: new Dictionary<string, string> { ["youtrack.project"] = "EWB, AT, EJ" });
+
+        Assert.True(result.Ok, result.Error);
+        var stored = Assert.Single(projects.Projects);
+        Assert.Equal(["EWB", "AT", "EJ"], stored.LinkedAsAll("youtrack.project"));
+    }
+
     // ── defaultProfileLabel: validated like every sibling path in this class (AC-799 review finding 3) ────────────
 
     [Fact]

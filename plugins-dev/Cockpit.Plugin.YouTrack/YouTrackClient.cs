@@ -18,10 +18,10 @@ internal sealed class YouTrackClient
 {
     private static readonly HttpClient Http = new();
 
-    public async Task<IReadOnlyList<YouTrackIssue>> GetOpenIssuesAsync(string instanceBaseUrl, string token, string? projectTag, string? extraFilter, bool assignedToMe, int top, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<YouTrackIssue>> GetOpenIssuesAsync(string instanceBaseUrl, string token, IReadOnlyList<string>? projectTags, string? extraFilter, bool assignedToMe, int top, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
-        var query = BuildQuery(projectTag, extraFilter, assignedToMe);
+        var query = BuildQuery(projectTags, extraFilter, assignedToMe);
         var url = $"{baseUrl}/issues?fields=idReadable,id,summary,description,project(shortName),customFields(name,value(name))&query={Uri.EscapeDataString(query)}&$top={top}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -43,7 +43,10 @@ internal sealed class YouTrackClient
             var description = element.TryGetProperty("description", out var descriptionProperty) && descriptionProperty.ValueKind == JsonValueKind.String
                 ? descriptionProperty.GetString()
                 : null;
-            var project = _ExtractProject(element, projectTag);
+            // A fallback tag only ever stands in for a single-project query — with more than one, the response's
+            // own project.shortName is the only honest answer, so an issue whose project field the API omitted
+            // simply shows none rather than guessing which of the N it belongs to.
+            var project = _ExtractProject(element, projectTags is [var onlyTag] ? onlyTag : null);
             var state = _ExtractState(element);
             issues.Add(new YouTrackIssue(id, idReadable, summary, description, project, state));
         }
@@ -424,18 +427,25 @@ internal sealed class YouTrackClient
     }
 
     // [project:{tag}] plus what to look for — `#Unresolved` unless the caller says otherwise, because showing
-    // issues that are done is offering work that is over — plus `for: me` when `assignedToMe`
-    // (YouTrack's own "assigned to the current user" clause, resolved against the token). A null/empty tag omits the
-    // project clause, matching every project on the instance.
+    // issues that are done is offering work that is over — plus `for: me` when `assignedToMe`. A null/empty
+    // list omits the project clause, matching every project on the instance.
     //
-    // `filter` replaces `#Unresolved` rather than being appended to it: an operator who writes
-    // "State: Done" means it, and a query that quietly kept "#Unresolved" in front of it would return nothing and
-    // look like a broken search.
-    internal static string BuildQuery(string? projectTag, string? filter, bool assignedToMe)
+    // More than one tag (AC-884) uses YouTrack's own OR-syntax, `project: A, B`, in one query rather than one
+    // call per prefix; the single-tag shape (`project:{tag}`, no space) stays byte-for-byte for exactly one tag.
+    //
+    // `filter` replaces `#Unresolved` rather than being appended to it: an operator who writes "State: Done"
+    // means it, and a query that quietly kept "#Unresolved" in front would return nothing and look broken.
+    internal static string BuildQuery(IReadOnlyList<string>? projectTags, string? filter, bool assignedToMe)
     {
         var what = string.IsNullOrWhiteSpace(filter) ? "#Unresolved" : filter.Trim();
+        var tags = projectTags?.Where(tag => !string.IsNullOrWhiteSpace(tag)).ToList() ?? [];
 
-        var query = string.IsNullOrWhiteSpace(projectTag) ? what : $"project:{projectTag} {what}";
+        var query = tags.Count switch
+        {
+            0 => what,
+            1 => $"project:{tags[0]} {what}",
+            _ => $"project: {string.Join(", ", tags)} {what}",
+        };
 
         return assignedToMe ? $"{query} for: me" : query;
     }
