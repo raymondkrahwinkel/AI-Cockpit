@@ -4,8 +4,8 @@ using Cockpit.Infrastructure.Wireframe;
 namespace Cockpit.Infrastructure.Tests.Wireframe;
 
 /// <summary>
-/// The per-component line surgery behind cockpit-wireframe (AC-872): one component named by its line number, the
-/// rest of the source left exactly as it was, and every change gated on the result still being readable.
+/// The per-component line surgery behind cockpit-wireframe (AC-872): one component named by its stable id, the rest
+/// of the source left exactly as it was, and every change gated on the result still being readable.
 /// </summary>
 public class WireframeComponentEditorTests
 {
@@ -14,7 +14,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Add(WireframeScreens.GroupLine, "input", "Telefoonnummer", null, null));
+            WireframeComponentEdit.Add(WireframeScreens.Group, "input", "Telefoonnummer", null, null));
 
         Assert.Null(result.Refusal);
         Assert.Equal("        input \"Telefoonnummer\"", WireframeScreens.LineOf(result.Text!, 11));
@@ -26,11 +26,11 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Add(WireframeScreens.GroupLine, "label", "Persoonlijk", null, position: 0));
+            WireframeComponentEdit.Add(WireframeScreens.Group, "label", "Persoonlijk", null, position: 0));
 
         Assert.Null(result.Refusal);
         Assert.Equal("        label \"Persoonlijk\"", WireframeScreens.LineOf(result.Text!, 9));
-        Assert.Equal("        input \"Profielnaam\" value:\"Raymond\"", WireframeScreens.LineOf(result.Text!, 10));
+        Assert.Equal("        input \"Profielnaam\" value:\"Raymond\" #name", WireframeScreens.LineOf(result.Text!, 10));
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Add(WireframeScreens.ButtonRowLine, "button", "Toepassen", "primary w:2", null));
+            WireframeComponentEdit.Add(WireframeScreens.ButtonRow, "button", "Toepassen", "primary w:2", null));
 
         Assert.Null(result.Refusal);
         Assert.Equal("        button \"Toepassen\" primary w:2", WireframeScreens.LineOf(result.Text!, 14));
@@ -49,7 +49,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Add(WireframeScreens.NameFieldLine, "label", "Hint", null, null));
+            WireframeComponentEdit.Add(WireframeScreens.NameField, "label", "Hint", null, null));
 
         Assert.Null(result.Text);
         Assert.Contains("carries no components", result.Refusal);
@@ -60,7 +60,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Add(WireframeScreens.GroupLine, "textbox", "Naam", null, null));
+            WireframeComponentEdit.Add(WireframeScreens.Group, "textbox", "Naam", null, null));
 
         Assert.Null(result.Text);
         Assert.Contains("not a component this format has", result.Refusal);
@@ -73,21 +73,21 @@ public class WireframeComponentEditorTests
         // an edit that made a line unreadable is thrown away rather than handed to the operator.
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Add(WireframeScreens.ButtonRowLine, "button", "Toepassen", "bold", null));
+            WireframeComponentEdit.Add(WireframeScreens.ButtonRow, "button", "Toepassen", "bold", null));
 
         Assert.Null(result.Text);
         Assert.Contains("cannot read", result.Refusal);
     }
 
     [Fact]
-    public void Add_OnALineThatHoldsNoComponent_IsRefused()
+    public void Add_UnderAnIdThatNamesNothing_IsRefused_RatherThanLandingSomewhereElse()
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Add(99, "button", "Toepassen", null, null));
+            WireframeComponentEdit.Add("no-such-id", "button", "Toepassen", null, null));
 
         Assert.Null(result.Text);
-        Assert.Contains("no component on line 99", result.Refusal);
+        Assert.Contains("no component with id \"no-such-id\"", result.Refusal);
     }
 
     [Fact]
@@ -95,10 +95,10 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.SetText(WireframeScreens.NameFieldLine, "Volledige naam"));
+            WireframeComponentEdit.SetText(WireframeScreens.NameField, "Volledige naam"));
 
         Assert.Null(result.Refusal);
-        Assert.Equal("        input \"Volledige naam\" value:\"Raymond\"", WireframeScreens.LineOf(result.Text!, 9));
+        Assert.Equal("        input \"Volledige naam\" value:\"Raymond\" #name", WireframeScreens.LineOf(result.Text!, 9));
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public class WireframeComponentEditorTests
 
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Bewaren"));
+            WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
 
         var after = WireframeScreens.LinesOf(result.Text!);
         Assert.Equal(before.Length, after.Length);
@@ -126,7 +126,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Opslaan\n        button \"Smokkel\""));
+            WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Opslaan\n        button \"Smokkel\""));
 
         Assert.Null(result.Refusal);
         Assert.Equal(13, WireframeScreens.LinesOf(result.Text!).Length);
@@ -138,7 +138,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Remove(WireframeScreens.LeftColumnLine));
+            WireframeComponentEdit.Remove(WireframeScreens.LeftColumn));
 
         Assert.Null(result.Refusal);
         Assert.Equal(9, WireframeScreens.LinesOf(result.Text!).Length);
@@ -149,7 +149,7 @@ public class WireframeComponentEditorTests
     [Fact]
     public void Remove_OfTheScreenLine_IsRefused_BecauseThatIsTheWireframeItself()
     {
-        var result = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.Remove(1));
+        var result = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.Remove(WireframeScreens.Screen));
 
         Assert.Null(result.Text);
         Assert.Contains("the wireframe itself", result.Refusal);
@@ -160,10 +160,10 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Move(WireframeScreens.SaveButtonLine, WireframeScreens.GroupLine, position: 0));
+            WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Group, position: 0));
 
         Assert.Null(result.Refusal);
-        Assert.Equal("        button \"Opslaan\" primary", WireframeScreens.LineOf(result.Text!, 9));
+        Assert.Equal("        button \"Opslaan\" primary #save", WireframeScreens.LineOf(result.Text!, 9));
         Assert.Equal(13, WireframeScreens.LinesOf(result.Text!).Length);
     }
 
@@ -172,11 +172,11 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Move(WireframeScreens.SaveButtonLine, WireframeScreens.ButtonRowLine, position: 0));
+            WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.ButtonRow, position: 0));
 
         Assert.Null(result.Refusal);
-        Assert.Equal("        button \"Opslaan\" primary", WireframeScreens.LineOf(result.Text!, 12));
-        Assert.Equal("        button \"Annuleren\"", WireframeScreens.LineOf(result.Text!, 13));
+        Assert.Equal("        button \"Opslaan\" primary #save", WireframeScreens.LineOf(result.Text!, 12));
+        Assert.Equal("        button \"Annuleren\" #cancel", WireframeScreens.LineOf(result.Text!, 13));
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Move(WireframeScreens.RowLine, WireframeScreens.GroupLine, null));
+            WireframeComponentEdit.Move(WireframeScreens.Row, WireframeScreens.Group, null));
 
         Assert.Null(result.Text);
         Assert.Contains("cannot be moved inside itself", result.Refusal);
@@ -195,7 +195,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Move(WireframeScreens.SaveButtonLine, WireframeScreens.EmailFieldLine, null));
+            WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.EmailField, null));
 
         Assert.Null(result.Text);
         Assert.Contains("carries no components", result.Refusal);
@@ -206,7 +206,7 @@ public class WireframeComponentEditorTests
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
-            WireframeComponentEdit.Move(WireframeScreens.SaveButtonLine, WireframeScreens.ButtonRowLine, position: 1));
+            WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.ButtonRow, position: 1));
 
         Assert.Null(result.Text);
         Assert.Contains("exactly as it is", result.Refusal);

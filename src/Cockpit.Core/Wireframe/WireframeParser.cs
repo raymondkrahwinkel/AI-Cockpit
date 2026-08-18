@@ -11,6 +11,7 @@ public static class WireframeParser
     {
         var errors = new List<WireframeParseError>();
         var open = new List<(int Indent, WireframeNode Node)>();
+        var taken = new HashSet<string>(StringComparer.Ordinal);
         WireframeNode? root = null;
 
         var lines = source.Split('\n');
@@ -35,6 +36,14 @@ public static class WireframeParser
             var node = _ReadNode(content, lineNumber, errors);
             if (node is null)
             {
+                continue;
+            }
+
+            // AC-906: two components answering to one id makes every call naming it a coin flip, which is the whole
+            // thing an id exists to rule out. The line is refused, like any other one the format cannot read.
+            if (node.Id is { } id && !taken.Add(id))
+            {
+                errors.Add(new WireframeParseError(lineNumber, $"De id '#{id}' is al in gebruik in dit wireframe."));
                 continue;
             }
 
@@ -125,13 +134,31 @@ public static class WireframeParser
                     return null;
                 }
 
-                if (node.Text is not null || node.Modifiers.Count > 0)
+                if (node.Text is not null || node.Id is not null || node.Modifiers.Count > 0)
                 {
                     errors.Add(new WireframeParseError(lineNumber, "De tekst hoort direct achter het component te staan."));
                     return null;
                 }
 
                 node.Text = text;
+                continue;
+            }
+
+            if (content[position] == '#')
+            {
+                if (!_TryReadId(content, ref position, out var id))
+                {
+                    errors.Add(new WireframeParseError(lineNumber, "Een id bestaat uit letters, cijfers, '-' en '_', zoals '#opslaan-knop'."));
+                    return null;
+                }
+
+                if (node.Id is not null)
+                {
+                    errors.Add(new WireframeParseError(lineNumber, "Een component draagt hoogstens één id."));
+                    return null;
+                }
+
+                node.Id = id;
                 continue;
             }
 
@@ -228,6 +255,20 @@ public static class WireframeParser
             default:
                 return new WireframeModifier(name, value, isQuoted);
         }
+    }
+
+    // `#save-btn` (AC-906): everything up to the next space, and only from the alphabet an id may use — so a stray
+    // `#` or a quote inside one is a refusal rather than a component nobody can name back.
+    private static bool _TryReadId(string content, ref int position, out string id)
+    {
+        var start = ++position;
+        while (position < content.Length && content[position] != ' ')
+        {
+            position++;
+        }
+
+        id = content[start..position];
+        return id.Length > 0 && id.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 
     private static string _ReadWord(string content, ref int position)

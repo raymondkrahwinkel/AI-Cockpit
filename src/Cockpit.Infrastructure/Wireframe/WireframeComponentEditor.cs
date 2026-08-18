@@ -19,9 +19,9 @@ internal readonly record struct WireframeEdit(string? Text, string Summary, stri
     public static WireframeEdit Refuse(string reason) => new(null, "", reason, []);
 }
 
-// AC-872: editing a wireframe one component at a time. A component is named by its line number — the format has
-// no ids — and the parsed tree supplies the structure, so this never guesses at indentation. Every operation ends
-// at one gate: the result is parsed again, and a change leaving more unreadable lines than it found is refused.
+// AC-872: editing a wireframe one component at a time. A component is named by its stable id (AC-906) and the
+// parsed tree supplies the structure, so this never guesses at indentation. Every operation ends at one gate: the
+// result is parsed again, and a change leaving more unreadable lines than it found is refused.
 internal static class WireframeComponentEditor
 {
     public static WireframeEdit Apply(string source, WireframeComponentEdit edit)
@@ -51,8 +51,8 @@ internal static class WireframeComponentEditor
             return WireframeEdit.Refuse("That would leave the wireframe exactly as it is, so nothing was changed.");
         }
 
-        // The one gate every operation passes through: a mis-aimed line number and a modifier the format does not
-        // have both end here rather than in the operator's source box.
+        // The one gate every operation passes through: a component keyword and a modifier the format does not have
+        // both end here rather than in the operator's source box.
         var after = WireframeParser.Parse(text);
         return after.Root is null || after.Errors.Count > parsed.Errors.Count
             ? WireframeEdit.Refuse("That change would leave a line this wireframe cannot read, so nothing was changed — check the component keyword and its modifiers against the wireframe format.")
@@ -189,7 +189,7 @@ internal static class WireframeComponentEditor
             return WireframeEdit.Refuse($"A {_Keyword(parent)} carries no components of its own — name a container such as a row, column, group or list.");
         }
 
-        if (node == parent || _Find(node, parent.Line) is not null)
+        if (node == parent || _Find(node, edit.Parent) is not null)
         {
             return WireframeEdit.Refuse("A component cannot be moved inside itself — name a container it is not already part of.");
         }
@@ -288,8 +288,8 @@ internal static class WireframeComponentEditor
         return string.IsNullOrWhiteSpace(edit.Modifiers) ? line : $"{line} {_Clean(edit.Modifiers).Trim()}";
     }
 
-    private static WireframeNode? _Find(WireframeNode node, int line) =>
-        node.Line == line ? node : node.Children.Select(child => _Find(child, line)).FirstOrDefault(found => found is not null);
+    private static WireframeNode? _Find(WireframeNode node, string id) =>
+        node.Id == id ? node : node.Children.Select(child => _Find(child, id)).FirstOrDefault(found => found is not null);
 
     private static int _LastLine(WireframeNode node) =>
         node.Children.Count == 0 ? node.Line : Math.Max(node.Line, node.Children.Max(_LastLine));
@@ -310,6 +310,9 @@ internal static class WireframeComponentEditor
     private static string _Clean(string value) =>
         new(value.Select(character => char.IsControl(character) ? ' ' : character).ToArray());
 
-    private static string _NoSuchComponent(int line) =>
-        $"There is no component on line {line} — read_wireframe shows the source with a line number per component.";
+    // AC-906: an id that has gone is a refusal, never a near miss silently applied to whatever moved into its place.
+    private static string _NoSuchComponent(string id) =>
+        string.IsNullOrEmpty(id)
+            ? "Name the component you mean by its id — read_wireframe lists one per component."
+            : $"This wireframe has no component with id \"{id}\" — it may have been removed. Read it again for the ids as they now stand.";
 }

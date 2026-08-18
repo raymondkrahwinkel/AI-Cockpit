@@ -226,4 +226,56 @@ public class WireframeParserTests
         Assert.Equal<int?>(3, result.Root?.Children.Single().Line);
         Assert.Equal<int?>(4, result.Root?.Children.Single().Children.Single().Line);
     }
+
+    // ---- Component ids (AC-906) ----
+
+    [Fact]
+    public void AnId_IsReadOffTheLine_AndDoesNotCountAsAModifier()
+    {
+        var result = WireframeParser.Parse("screen \"X\" #scherm\n  button \"Opslaan\" primary #save");
+
+        Assert.Empty(result.Errors);
+        Assert.Equal("scherm", result.Root?.Id);
+        var button = result.Root?.Children.Single();
+        Assert.Equal("save", button?.Id);
+        Assert.Equal(WireframeModifierName.Primary, button?.Modifiers.Single().Name);
+    }
+
+    [Fact]
+    public void AComponentWithoutAnId_CarriesNone_SoAnUnreferencedSourceStaysPlain()
+    {
+        Assert.Null(WireframeParser.Parse("screen \"X\"").Root?.Id);
+    }
+
+    [Fact]
+    public void TheSameIdTwice_IsRefusedOnTheSecondLine_BecauseOneIdMustNameOneComponent()
+    {
+        var result = WireframeParser.Parse("screen \"X\" #a\n  button \"Opslaan\" #a");
+
+        Assert.Equal(2, Assert.Single(result.Errors).Line);
+        Assert.Empty(result.Root!.Children);
+    }
+
+    [Theory]
+    [InlineData("screen \"X\" #met spatie")]
+    [InlineData("screen \"X\" #")]
+    [InlineData("screen \"X\" #een/twee")]
+    public void AnIdOutsideTheAlphabetItMayUse_IsRefused(string source)
+    {
+        Assert.NotEmpty(WireframeParser.Parse(source).Errors);
+    }
+
+    [Fact]
+    public void TwoIdsOnOneLine_AreRefused()
+    {
+        var result = WireframeParser.Parse("screen \"X\" #een #twee");
+
+        Assert.Equal("Een component draagt hoogstens \u00E9\u00E9n id.", Assert.Single(result.Errors).Message);
+    }
+
+    [Fact]
+    public void TextAfterAnId_IsRefused_BecauseTheTextComesDirectlyAfterTheComponent()
+    {
+        Assert.NotEmpty(WireframeParser.Parse("screen #x \"X\"").Errors);
+    }
 }

@@ -9,8 +9,8 @@ namespace Cockpit.Infrastructure.Tests.Wireframe;
 
 /// <summary>
 /// The cockpit-wireframe tools (AC-872): reading a surface is gated behind its own Approve/Deny, editing behind a
-/// separate one, coupling is one agent per surface, and every write hands back the components with the line numbers
-/// the next call needs — they have just moved.
+/// separate one, coupling is one agent per surface, and every read and write hands back the components with the ids
+/// the next call names them by (AC-906).
 /// </summary>
 public class WireframeMcpToolsTests
 {
@@ -52,7 +52,7 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadWireframe_HandsBackTheComponentsWithTheLineNumbersTheEditToolsTake()
+    public async Task ReadWireframe_HandsBackTheComponentsWithTheIdsTheEditToolsTake()
     {
         var (tools, _, _) = _Open(ConsentOutcome.Approved);
 
@@ -60,8 +60,9 @@ public class WireframeMcpToolsTests
 
         var components = json!["components"]!.AsArray();
         Assert.Equal(13, components.Count);
-        Assert.Equal(1, components[0]!["line"]!.GetValue<int>());
+        Assert.Equal(WireframeScreens.Screen, components[0]!["id"]!.GetValue<string>());
         Assert.Equal("screen", components[0]!["type"]!.GetValue<string>());
+        Assert.Equal(WireframeScreens.SaveButton, components[12]!["id"]!.GetValue<string>());
         Assert.Equal(WireframeScreens.SaveButtonLine, components[12]!["line"]!.GetValue<int>());
         Assert.Equal("Opslaan", components[12]!["text"]!.GetValue<string>());
     }
@@ -143,14 +144,14 @@ public class WireframeMcpToolsTests
     {
         var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
 
-        var json = JsonNode.Parse(await tools.AddComponent(Session, Name, WireframeScreens.GroupLine, "input", "Telefoonnummer"));
+        var json = JsonNode.Parse(await tools.AddComponent(Session, Name, WireframeScreens.Group, "input", "Telefoonnummer"));
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Equal("added input \"Telefoonnummer\"", json["changed"]!.GetValue<string>());
         Assert.Equal(14, json["components"]!.AsArray().Count);
         Assert.Contains("add input \"Telefoonnummer\"", Assert.Single(asked).Action, StringComparison.Ordinal);
 
-        var second = JsonNode.Parse(await tools.SetComponentText(Session, Name, WireframeScreens.SaveButtonLine, "Bewaren"));
+        var second = JsonNode.Parse(await tools.SetComponentText(Session, Name, WireframeScreens.SaveButton, "Bewaren"));
         Assert.True(second!["ok"]!.GetValue<bool>());
         Assert.Single(asked);
         Assert.Equal(2, registry.History(SurfaceId).Count);
@@ -160,9 +161,9 @@ public class WireframeMcpToolsTests
     public async Task AComponentTheOperatorIsHolding_IsRefusedWithAReason()
     {
         var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButtonLine);
+        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButton);
 
-        var json = JsonNode.Parse(await tools.SetComponentText(Session, Name, WireframeScreens.SaveButtonLine, "Bewaren"));
+        var json = JsonNode.Parse(await tools.SetComponentText(Session, Name, WireframeScreens.SaveButton, "Bewaren"));
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("Try the same call again", json["error"]!.GetValue<string>(), StringComparison.Ordinal);

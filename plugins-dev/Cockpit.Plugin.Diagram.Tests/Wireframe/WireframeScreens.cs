@@ -1,7 +1,8 @@
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
-// The three screens AC-871 measures the format against: a settings screen (nav + form + button row), a
-// list-detail screen, and an empty one. Between them they use every container, widget and modifier.
+// The screens AC-871 measures the format against: a settings screen (nav + form + button row), a list-detail
+// screen, an empty one, and one carrying the component ids of AC-906. Between them they use every container,
+// widget and modifier.
 internal static class WireframeScreens
 {
     public const string Settings = """
@@ -70,12 +71,23 @@ internal static class WireframeScreens
         screen "Nieuw scherm"
         """;
 
-    public static TheoryData<string> Names => new() { nameof(Settings), nameof(ListDetail), nameof(Empty) };
+    public const string Identified = """
+        screen "Aanmelden" #login
+          column w:1 #form
+            input "E-mailadres" #email
+            input "Wachtwoord" #password
+            row align:right #actions
+              button "Annuleren" #cancel
+              button "Aanmelden" primary #submit
+        """;
+
+    public static TheoryData<string> Names => new() { nameof(Settings), nameof(ListDetail), nameof(Empty), nameof(Identified) };
 
     public static string Source(string name) => name switch
     {
         nameof(Settings) => Settings,
         nameof(ListDetail) => ListDetail,
+        nameof(Identified) => Identified,
         _ => Empty,
     };
 }
