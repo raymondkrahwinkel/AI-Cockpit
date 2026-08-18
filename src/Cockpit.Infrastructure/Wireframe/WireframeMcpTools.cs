@@ -62,7 +62,7 @@ internal sealed class WireframeMcpTools
         }
 
         var parsed = WireframeParser.Parse(source);
-        if (parsed.Root is null || parsed.Errors.Count > 0)
+        if (!parsed.HasScreens || parsed.Errors.Count > 0)
         {
             return _Serialize(new { ok = false, error = "That source is not one the wireframe format can read, so nothing was opened.", problems = _Problems(parsed) });
         }
@@ -96,7 +96,7 @@ internal sealed class WireframeMcpTools
     }
 
     [McpServerTool(Name = "read_wireframe")]
-    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it.")]
+    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it. A wireframe holds one or more screens: `screens` lists them in the order they stand in the source, and every entry in `components` says which screen it belongs to, so a component you name is never one of the same name on another screen.")]
     public async Task<string> ReadWireframe(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to read, by its id or name from list_wireframes.")] string wireframe)
@@ -121,7 +121,8 @@ internal sealed class WireframeMcpTools
             id = surface.SurfaceId,
             name = surface.Name,
             source,
-            components = _Components(parsed.Root),
+            screens = _Screens(parsed.Screens),
+            components = _Components(parsed.Screens),
             problems = _Problems(parsed),
         });
     }
@@ -139,7 +140,7 @@ internal sealed class WireframeMcpTools
         }
 
         var parsed = WireframeParser.Parse(source);
-        if (parsed.Root is null || parsed.Errors.Count > 0)
+        if (!parsed.HasScreens || parsed.Errors.Count > 0)
         {
             return _Serialize(new { ok = false, error = "That source is not one the wireframe format can read, so nothing was changed.", problems = _Problems(parsed) });
         }
@@ -168,6 +169,16 @@ internal sealed class WireframeMcpTools
         _ApplyAsync(session, wireframe, WireframeComponentEdit.Add(parent, type, text, modifiers, position),
             $"add {type.Trim().ToLowerInvariant()}{_Quoted(text)}");
 
+    [McpServerTool(Name = "add_screen")]
+    [Description("Adds ONE more screen to this wireframe and applies it straight away — a wireframe holds as many screens as the thing you are sketching has, and this is how you add the next one. The new screen carries only its title; fill it with add_component, naming the screen's own id from read_wireframe's `screens`. The operator sees it appear beside the others in the overview. Needs the same one-off Approve as edit_wireframe. Use remove_component to take a screen away again — the last remaining screen is refused, because a wireframe without one is nothing to look at.")]
+    public Task<string> AddScreen(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
+        [Description("The screen's title — what names it in the overview, e.g. \"Aanmelden\".")] string title,
+        [Description("Where among the screens it goes, 0 for first. Omit to put it last.")] int? position = null) =>
+        _ApplyAsync(session, wireframe, WireframeComponentEdit.AddScreen(title, position),
+            $"add a screen \"{_SingleLine(title)}\"");
+
     [McpServerTool(Name = "set_component_text")]
     [Description("Changes ONE component's text — a button's caption, a field's label, a screen's title — and applies it straight away, leaving every other line alone. The component keeps all of its modifiers and its id. `component` is the ID from read_wireframe's `components`. Refused with a reason if there is no component with that id any more, or if the operator is editing it right now.")]
     public Task<string> SetComponentText(
@@ -179,7 +190,7 @@ internal sealed class WireframeMcpTools
             $"reword component #{_SingleLine(component)} to \"{_SingleLine(text)}\"");
 
     [McpServerTool(Name = "remove_component")]
-    [Description("Removes ONE component and everything nested inside it — nothing else. `component` is the ID from read_wireframe's `components`; the reply says how many nested components went with it. Refused with a reason if there is no component with that id any more, if it is the screen line itself (that is the wireframe — use edit_wireframe), or if the operator is editing it right now.")]
+    [Description("Removes ONE component and everything nested inside it — nothing else. `component` is the ID from read_wireframe's `components`; the reply says how many nested components went with it. A screen line removes that whole screen, unless it is the only screen this wireframe has left. Refused with a reason if there is no component with that id any more, if it is the last screen (that is the wireframe — use edit_wireframe), or if the operator is editing it right now.")]
     public Task<string> RemoveComponent(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
@@ -269,7 +280,8 @@ internal sealed class WireframeMcpTools
             name = surface.Name,
             changed = result.Summary,
             changeSummary = extra,
-            components = _Components(parsed.Root),
+            screens = _Screens(parsed.Screens),
+            components = _Components(parsed.Screens),
         });
     }
 
@@ -341,26 +353,33 @@ internal sealed class WireframeMcpTools
                 ConsentRisk.Dangerous);
 
     // The flat component list every read and every write hands back: the id is the handle the per-component tools
-    // take, `line` is there for pointing at a problem, and `depth` says what sits inside what.
-    private static IReadOnlyList<object> _Components(WireframeNode? root)
+    // take, `line` is there for pointing at a problem, `depth` says what sits inside what, and `screen` (AC-901)
+    // says which of the document's screens it belongs to — the same id the screen itself is listed under.
+    private static IReadOnlyList<object> _Components(IReadOnlyList<WireframeNode> screens)
     {
         var components = new List<object>();
-        _Collect(root, 0, components);
+        foreach (var screen in screens)
+        {
+            _Collect(screen, screen, 0, components);
+        }
+
         return components;
     }
 
-    private static void _Collect(WireframeNode? node, int depth, List<object> into)
-    {
-        if (node is null)
-        {
-            return;
-        }
+    // The screens of the document, in the order they stand in the source — what an overview shows, and what an
+    // agent picks from before it starts naming components.
+    private static IReadOnlyList<object> _Screens(IReadOnlyList<WireframeNode> screens) =>
+        screens.Select(screen => (object)new { id = screen.Id, line = screen.Line, title = screen.Text }).ToList();
 
+    private static void _Collect(WireframeNode node, WireframeNode screen, int depth, List<object> into)
+    {
         into.Add(new
         {
             id = node.Id,
             line = node.Line,
             depth,
+            screen = screen.Id,
+            screenTitle = screen.Text,
             type = node.Kind.ToString().ToLowerInvariant(),
             text = node.Text,
             isContainer = node.IsContainer,
@@ -368,7 +387,7 @@ internal sealed class WireframeMcpTools
 
         foreach (var child in node.Children)
         {
-            _Collect(child, depth + 1, into);
+            _Collect(child, screen, depth + 1, into);
         }
     }
 

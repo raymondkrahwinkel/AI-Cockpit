@@ -7,12 +7,17 @@ namespace Cockpit.Core.Wireframe;
 // so parse-then-write on a canonical source gives the same text back character for character.
 public static class WireframeWriter
 {
-    public static string Write(WireframeNode root)
+    public static string Write(WireframeNode screen)
     {
         var builder = new StringBuilder();
-        _Write(root, 0, builder);
+        _Write(screen, 0, builder);
         return builder.ToString().TrimEnd('\n');
     }
+
+    // AC-901: a whole document. One blank line between screens — the parser skips blank lines, so this is purely
+    // for the reader, and it is the canonical form the round trip is measured against.
+    public static string Write(IReadOnlyList<WireframeNode> screens) =>
+        string.Join("\n\n", screens.Select(Write));
 
     // One node as a single source line, indented by `indent` spaces and without its children.
     public static string Line(WireframeNode node, int indent)

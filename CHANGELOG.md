@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a wireframe can now hold several screens in one file, so it sketches a whole site or app instead of a single
+  page. The window shows them two ways: an overview with every screen side by side as a board with its name above it,
+  and one screen filling the canvas when you step into it — double-click a board to go in, "← Overzicht" to come
+  back, and zooming in or out far enough does the same. "+ Scherm" adds one and it can be removed like any other
+  component, as long as it is not the last one. Wireframes written before this open and behave exactly as they did.
 - added: a profile on the Gemini/OpenAI provider can now fetch its model list instead of you typing an id from
   memory — a Fetch button next to the Model field asks the base URL you filled in which models it serves, so a
   custom OpenAI-compatible gateway lists its own models just as api.openai.com does. When that endpoint serves no

@@ -12,7 +12,7 @@ public static class WireframeParser
         var errors = new List<WireframeParseError>();
         var open = new List<(int Indent, WireframeNode Node)>();
         var taken = new HashSet<string>(StringComparer.Ordinal);
-        WireframeNode? root = null;
+        var screens = new List<WireframeNode>();
 
         var lines = source.Split('\n');
         for (var index = 0; index < lines.Length; index++)
@@ -70,19 +70,21 @@ public static class WireframeParser
             var parent = open.Count > 0 ? open[^1].Node : null;
             if (parent is null)
             {
-                if (root is not null)
-                {
-                    errors.Add(new WireframeParseError(lineNumber, "Een wireframe bevat één scherm; deze regel staat ernaast."));
-                    continue;
-                }
-
+                // AC-901: every `screen` at the left margin is a screen of its own, so a document holds as many as
+                // it needs. Anything else out here belongs under one of them; before the first screen there is
+                // nothing to hang it on at all, which is the one case that stops the read.
                 if (indent > 0 || node.Kind != WireframeNodeKind.Screen)
                 {
                     errors.Add(new WireframeParseError(lineNumber, "Een wireframe begint met een 'screen'-regel zonder inspringing."));
-                    return new WireframeParseResult(null, errors);
+                    if (screens.Count == 0)
+                    {
+                        return new WireframeParseResult(screens, errors);
+                    }
+
+                    continue;
                 }
 
-                root = node;
+                screens.Add(node);
             }
             else if (parent.IsContainer)
             {
@@ -98,7 +100,7 @@ public static class WireframeParser
             open.Add((indent, node));
         }
 
-        return new WireframeParseResult(root, errors);
+        return new WireframeParseResult(screens, errors);
     }
 
     private static WireframeNode? _ReadNode(string content, int lineNumber, List<WireframeParseError> errors)

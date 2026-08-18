@@ -259,7 +259,7 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
             }
 
             var parsed = WireframeParser.Parse(text);
-            if (parsed.Root is null || parsed.Errors.Count > 0)
+            if (!parsed.HasScreens || parsed.Errors.Count > 0)
             {
                 return WireframeEditResult.Refused(
                     "That source is not one this wireframe can read back, so nothing was changed — it starts with a screen line and carries one component per line, nested with spaces.");
@@ -405,7 +405,7 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
                     stampedText = surface.Text;
                 }
 
-                id = WireframeParser.Parse(surface.Text).Root is { } root ? WireframeHandEdit.Find(root, line)?.Id : null;
+                id = WireframeHandEdit.Find(WireframeParser.Parse(surface.Text).Screens, line)?.Id;
             }
         }
 

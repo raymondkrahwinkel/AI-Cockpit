@@ -314,6 +314,38 @@ public class WireframeMcpToolsTests
         Assert.Contains("draws wireframe windows", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 
+    // ---- A document of several screens (AC-901) ----
+
+    [Fact]
+    public async Task ReadWireframe_SaysWhichScreenEveryComponentIsIn()
+    {
+        var (tools, registry, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened(SurfaceId, Name, WireframeScreens.TwoScreens);
+
+        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
+
+        Assert.Equal(
+            [WireframeScreens.LoginScreen, WireframeScreens.SignupScreen],
+            json!["screens"]!.AsArray().Select(screen => screen!["id"]!.GetValue<string>()));
+        var submit = json["components"]!.AsArray()
+            .Single(component => component!["id"]!.GetValue<string>() == WireframeScreens.SignupSubmit);
+        Assert.Equal(WireframeScreens.SignupScreen, submit!["screen"]!.GetValue<string>());
+        Assert.Equal("Registreren", submit["screenTitle"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task AddScreen_AddsOneBesideTheOnesAlreadyThere_AndSaysSoInThePrompt()
+    {
+        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.AddScreen(Session, Name, "Aanmelden"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(2, json["screens"]!.AsArray().Count);
+        Assert.Contains("add a screen \"Aanmelden\"", Assert.Single(asked).Action, StringComparison.Ordinal);
+        Assert.Contains("screen \"Aanmelden\"", registry.PeekText(SurfaceId), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ListWireframes_NamesTheSurfacesWithoutHandingOverAnythingInThem()
     {

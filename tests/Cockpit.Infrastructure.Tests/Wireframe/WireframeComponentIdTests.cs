@@ -28,7 +28,7 @@ public class WireframeComponentIdTests
     }
 
     private static WireframeNode _Tree(WireframeAccessRegistry registry) =>
-        WireframeParser.Parse(registry.PeekText(SurfaceId)!).Root!;
+        WireframeParser.Parse(registry.PeekText(SurfaceId)!).Screens.SingleOrDefault()!;
 
     private static WireframeNode? _Component(WireframeAccessRegistry registry, string id) =>
         WireframeHandEdit.Find(_Tree(registry), id);

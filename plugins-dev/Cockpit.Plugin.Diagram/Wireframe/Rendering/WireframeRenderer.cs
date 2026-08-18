@@ -12,6 +12,63 @@ namespace Cockpit.Plugin.Diagram.Wireframe.Rendering;
 // content sizing for everything else — so the source never carries a coordinate.
 internal static class WireframeRenderer
 {
+    // The design canvas one screen is drawn on — wide enough that a desktop layout needs zoom/pan to see at once
+    // (AC-837). A wireframe's Grid star-sizing has no natural size of its own, so it is handed one.
+    public static readonly Size ScreenSize = new(960, 640);
+
+    private const double BoardGap = 48;
+    private const double BoardCaption = 28;
+
+    // AC-901: the whole document at once — every screen as a board of its own, in a near-square grid so a document
+    // of eight screens is still something you can take in rather than one endless row.
+    public static Control Overview(IReadOnlyList<WireframeNode> screens)
+    {
+        var size = OverviewSize(screens.Count);
+        // The desk the boards lie on, tinted so a white screen reads as a sheet on it — and so the names above them
+        // are drawn onto something rather than onto nothing, which is where text comes out doubled.
+        var canvas = new Canvas { Width = size.Width, Height = size.Height, Background = Tint };
+        for (var index = 0; index < screens.Count; index++)
+        {
+            var bounds = BoardBounds(index, screens.Count);
+            var board = new Panel { Width = bounds.Width, Height = bounds.Height, Children = { Render(screens[index]) } };
+            Canvas.SetLeft(board, bounds.X);
+            Canvas.SetTop(board, bounds.Y);
+            canvas.Children.Add(board);
+
+            // The board goes in first: the selection mark looks up the control a node was drawn as, and it is the
+            // board that should carry it rather than the words above it.
+            var caption = _Text(screens[index].Text ?? "Scherm", TitleSize, Muted);
+            WireframeSource.SetNode(caption, screens[index]);
+            Canvas.SetLeft(caption, bounds.X);
+            Canvas.SetTop(caption, bounds.Y - BoardCaption);
+            canvas.Children.Add(caption);
+        }
+
+        return canvas;
+    }
+
+    public static int OverviewColumns(int screens) => Math.Max(1, (int)Math.Ceiling(Math.Sqrt(screens)));
+
+    public static Size OverviewSize(int screens)
+    {
+        var columns = OverviewColumns(screens);
+        var rows = Math.Max(1, (int)Math.Ceiling(screens / (double)columns));
+        return new Size(
+            BoardGap + columns * (ScreenSize.Width + BoardGap),
+            BoardGap + rows * (ScreenSize.Height + BoardCaption + BoardGap));
+    }
+
+    // Where one board sits on the overview canvas, its caption in the strip of room straight above it.
+    public static Rect BoardBounds(int index, int screens)
+    {
+        var columns = OverviewColumns(screens);
+        return new Rect(
+            new Point(
+                BoardGap + index % columns * (ScreenSize.Width + BoardGap),
+                BoardGap + BoardCaption + index / columns * (ScreenSize.Height + BoardCaption + BoardGap)),
+            ScreenSize);
+    }
+
     public static Control Render(WireframeNode node)
     {
         var control = _Build(node);

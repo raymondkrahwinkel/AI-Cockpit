@@ -18,8 +18,7 @@ public class WireframeParserTests
             """);
 
         Assert.Empty(result.Errors);
-        var root = result.Root;
-        Assert.NotNull(root);
+        var root = Assert.Single(result.Screens);
         Assert.Equal(WireframeNodeKind.Screen, root.Kind);
         Assert.Equal(2, root.Children.Count);
         Assert.Equal(WireframeNodeKind.Button, root.Children[0].Children.Single().Kind);
@@ -32,7 +31,7 @@ public class WireframeParserTests
         var result = WireframeParser.Parse("screen \"X\"\n    row\n        button \"Opslaan\"");
 
         Assert.Empty(result.Errors);
-        Assert.Equal(WireframeNodeKind.Button, result.Root?.Children.Single().Children.Single().Kind);
+        Assert.Equal(WireframeNodeKind.Button, result.Screens.Single().Children.Single().Children.Single().Kind);
     }
 
     [Fact]
@@ -64,7 +63,7 @@ public class WireframeParserTests
             """);
 
         Assert.Empty(result.Errors);
-        Assert.Equal("Zeg \"hallo\" tegen de agent", result.Root?.Children.Single().Text);
+        Assert.Equal("Zeg \"hallo\" tegen de agent", result.Screens.Single().Children.Single().Text);
     }
 
     [Fact]
@@ -86,8 +85,7 @@ public class WireframeParserTests
             """);
 
         Assert.Empty(result.Errors);
-        var node = result.Root?.Children.Single();
-        Assert.NotNull(node);
+        var node = result.Screens.Single().Children.Single();
         Assert.Equal(
             new[] { WireframeModifierName.Disabled, WireframeModifierName.Value, WireframeModifierName.W, WireframeModifierName.Align },
             node.Modifiers.Select(modifier => modifier.Name).ToArray());
@@ -108,7 +106,7 @@ public class WireframeParserTests
         var error = Assert.Single(result.Errors);
         Assert.Equal(2, error.Line);
         Assert.Contains("carousel", error.Message, StringComparison.Ordinal);
-        Assert.Equal(WireframeNodeKind.Label, result.Root?.Children.Single().Kind);
+        Assert.Equal(WireframeNodeKind.Label, result.Screens.Single().Children.Single().Kind);
     }
 
     [Fact]
@@ -188,19 +186,50 @@ public class WireframeParserTests
               label "Ook los"
             """);
 
-        Assert.Null(result.Root);
+        Assert.Empty(result.Screens);
         var error = Assert.Single(result.Errors);
         Assert.Equal(1, error.Line);
         Assert.Contains("screen", error.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void ASecondScreen_IsRefusedWithoutLosingTheFirst()
-    {
-        var result = WireframeParser.Parse("screen \"Eerste\"\nscreen \"Tweede\"");
+    // ---- A document of several screens (AC-901) ----
 
-        Assert.Equal("Eerste", result.Root?.Text);
+    [Fact]
+    public void EveryScreenAtTheLeftMargin_IsAScreenOfItsOwn()
+    {
+        var result = WireframeParser.Parse("""
+            screen "Eerste"
+              button "Verder"
+
+            screen "Tweede"
+              label "Klaar"
+
+            screen "Derde"
+            """);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(["Eerste", "Tweede", "Derde"], result.Screens.Select(screen => screen.Text));
+        Assert.Equal(WireframeNodeKind.Button, result.Screens[0].Children.Single().Kind);
+        Assert.Equal(WireframeNodeKind.Label, result.Screens[1].Children.Single().Kind);
+        Assert.Empty(result.Screens[2].Children);
+    }
+
+    [Fact]
+    public void ALineAtTheLeftMarginThatIsNotAScreen_IsRefusedWithoutLosingTheScreensBeforeIt()
+    {
+        var result = WireframeParser.Parse("screen \"Eerste\"\nlabel \"Los\"\nscreen \"Tweede\"");
+
         Assert.Equal(2, Assert.Single(result.Errors).Line);
+        Assert.Equal(["Eerste", "Tweede"], result.Screens.Select(screen => screen.Text));
+    }
+
+    [Fact]
+    public void AnIdUsedInTwoScreens_IsStillRefused_SoOneIdNamesOneComponent()
+    {
+        var result = WireframeParser.Parse("screen \"Eerste\"\n  button \"Opslaan\" #save\nscreen \"Tweede\"\n  button \"Opslaan\" #save");
+
+        Assert.Equal(4, Assert.Single(result.Errors).Line);
+        Assert.Empty(result.Screens[1].Children);
     }
 
     [Fact]
@@ -208,7 +237,7 @@ public class WireframeParserTests
     {
         var result = WireframeParser.Parse("\n   \n");
 
-        Assert.Null(result.Root);
+        Assert.Empty(result.Screens);
         Assert.Empty(result.Errors);
     }
 
@@ -222,9 +251,9 @@ public class WireframeParserTests
                 button "Opslaan"
             """);
 
-        Assert.Equal<int?>(1, result.Root?.Line);
-        Assert.Equal<int?>(3, result.Root?.Children.Single().Line);
-        Assert.Equal<int?>(4, result.Root?.Children.Single().Children.Single().Line);
+        Assert.Equal<int?>(1, result.Screens.Single().Line);
+        Assert.Equal<int?>(3, result.Screens.Single().Children.Single().Line);
+        Assert.Equal<int?>(4, result.Screens.Single().Children.Single().Children.Single().Line);
     }
 
     // ---- Component ids (AC-906) ----
@@ -235,8 +264,8 @@ public class WireframeParserTests
         var result = WireframeParser.Parse("screen \"X\" #scherm\n  button \"Opslaan\" primary #save");
 
         Assert.Empty(result.Errors);
-        Assert.Equal("scherm", result.Root?.Id);
-        var button = result.Root?.Children.Single();
+        Assert.Equal("scherm", result.Screens.Single().Id);
+        var button = result.Screens.Single().Children.Single();
         Assert.Equal("save", button?.Id);
         Assert.Equal(WireframeModifierName.Primary, button?.Modifiers.Single().Name);
     }
@@ -244,7 +273,7 @@ public class WireframeParserTests
     [Fact]
     public void AComponentWithoutAnId_CarriesNone_SoAnUnreferencedSourceStaysPlain()
     {
-        Assert.Null(WireframeParser.Parse("screen \"X\"").Root?.Id);
+        Assert.Null(WireframeParser.Parse("screen \"X\"").Screens.Single().Id);
     }
 
     [Fact]
@@ -253,7 +282,7 @@ public class WireframeParserTests
         var result = WireframeParser.Parse("screen \"X\" #a\n  button \"Opslaan\" #a");
 
         Assert.Equal(2, Assert.Single(result.Errors).Line);
-        Assert.Empty(result.Root!.Children);
+        Assert.Empty(result.Screens.Single().Children);
     }
 
     [Theory]

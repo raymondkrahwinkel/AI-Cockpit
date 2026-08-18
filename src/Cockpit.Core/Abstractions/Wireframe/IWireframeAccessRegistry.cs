@@ -40,6 +40,7 @@ public enum WireframeEditKind
 {
     Replace,
     Add,
+    AddScreen,
     SetText,
     Remove,
     Move,
@@ -66,6 +67,11 @@ public sealed record WireframeComponentEdit(
 {
     public static WireframeComponentEdit Add(string parent, string type, string? text, string? modifiers, int? position) =>
         new(WireframeEditKind.Add, Parent: parent, Position: position, Type: type, Text: text, Modifiers: modifiers);
+
+    // AC-901: a screen of its own at the left margin, `position` counted among the screens the document already has.
+    // Its title is the only thing it carries — everything else goes in with add_component afterwards.
+    public static WireframeComponentEdit AddScreen(string? title, int? position) =>
+        new(WireframeEditKind.AddScreen, Position: position, Text: title);
 
     public static WireframeComponentEdit SetText(string component, string text) =>
         new(WireframeEditKind.SetText, component, Text: text);

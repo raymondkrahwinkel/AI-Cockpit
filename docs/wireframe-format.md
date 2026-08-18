@@ -43,13 +43,38 @@ what the writer produces — but any consistent step works, so four spaces is fi
 has to line up exactly with a level that is still open; one that lines up with nothing is an error rather than a
 guess. Tabs are refused.
 
-A document is one `screen` at the left margin with everything else under it. Blank lines are ignored.
+## Screens
+
+*AC-901.* A document holds **one or more** screens: every `screen` line at the left margin starts a new one, and
+everything indented under it belongs to that screen. That is how a wireframe says what a site is — the layout of the
+pages *within* it — rather than one page per file. Blank lines are ignored, and the canonical form the writer
+produces puts one blank line between screens.
+
+```
+screen "Aanmelden"
+  input "E-mailadres"
+  button "Aanmelden" primary
+
+screen "Wachtwoord vergeten"
+  input "E-mailadres"
+  button "Verstuur" primary
+```
+
+Ids are unique across the whole document, not per screen, so a component you name is never one of the same name on
+another screen. A source written before this — a single screen with everything under it — is exactly what it always
+was and needs no change.
+
+The window shows a document in two ways. The **overview** lays every screen out as a board with its name above it;
+**zoomed in**, one screen fills the canvas. Double-click a board to step into it, the *Overzicht* button to come back
+out, and the zoom level does the same thing: past the level at which one board fills the window you are inside that
+screen, and back below the level at which the whole overview fits you are looking at the set again. A document with a
+single screen is always shown zoomed in.
 
 ## Containers
 
 | Keyword | What it lays out |
 | --- | --- |
-| `screen` | The whole thing. Its text is the screen title. Exactly one per document, at the left margin. |
+| `screen` | One screen of the document. Its text is the screen title. At the left margin; a document may hold several. |
 | `row` | Children side by side, left to right. |
 | `column` | Children stacked, top to bottom. |
 | `group` | A framed block; its text is the caption above the frame's contents. |
@@ -187,6 +212,6 @@ screen "Catalogue"
 ## Round trip
 
 Source → tree → controls → source gives the same text back, character for character, for any source written in
-the canonical form (which puts the id last on the line). Every rendered control carries the node it came from
+the canonical form (which puts the id last on the line and one blank line between screens). Every rendered control carries the node it came from
 (`WireframeSource.Node`), so a control on screen always knows which component it stands for — including a tab that
 is currently hidden, which is rendered rather than skipped precisely so no line loses its control.
