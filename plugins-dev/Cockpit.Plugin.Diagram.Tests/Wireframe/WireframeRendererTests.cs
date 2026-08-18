@@ -91,6 +91,59 @@ public class WireframeRendererTests
         Assert.Equal(Avalonia.Layout.HorizontalAlignment.Right, _ControlFor(control, root.Children[1]).HorizontalAlignment);
     }
 
+    // AC-903's wireframe look: text nobody has written yet is room on the page, not an empty control.
+    [Fact]
+    public void AComponentWithoutText_IsDrawnAsPlaceholderLines()
+    {
+        var root = WireframeParser.Parse("""
+            screen "X"
+              label
+              label "Echte tekst"
+            """).Root;
+        Assert.NotNull(root);
+
+        var control = _Arrange(root);
+        var lines = Assert.IsType<StackPanel>(_ControlFor(control, root.Children[0]));
+
+        Assert.Equal(2, lines.Children.Count);
+        Assert.All(lines.Children, line => Assert.Equal(8, Assert.IsType<Border>(line).Height));
+        Assert.IsType<TextBlock>(_ControlFor(control, root.Children[1]));
+    }
+
+    [Fact]
+    public void Progress_SplitsItsTrackAtTheValue()
+    {
+        var root = WireframeParser.Parse("screen \"X\"\n  progress value:60").Root;
+        Assert.NotNull(root);
+
+        var track = Assert.IsType<Grid>(_ControlFor(_Arrange(root), root.Children.Single()));
+
+        Assert.Equal(new GridLength(60, GridUnitType.Star), track.ColumnDefinitions[0].Width);
+        Assert.Equal(new GridLength(40, GridUnitType.Star), track.ColumnDefinitions[1].Width);
+    }
+
+    // A dialog written under the screen is drawn over it, not as a band between the components above and below it —
+    // which is the only way the screen under it stays readable.
+    [Fact]
+    public void AModalUnderTheScreen_CoversItInsteadOfTakingABandOfItsOwn()
+    {
+        var root = WireframeParser.Parse("""
+            screen "X"
+              label "Eronder"
+              modal "Weet je het zeker?"
+                button "Ja"
+            """).Root;
+        Assert.NotNull(root);
+
+        var control = _Arrange(root);
+        var rows = _ControlFor(control, root.Children[0]).Parent;
+        var modal = _ControlFor(control, root.Children[1]);
+
+        Assert.IsType<Grid>(rows);
+        Assert.NotSame(rows, modal.Parent);
+        Assert.Same(rows.Parent, modal.Parent);
+    }
+
     [Theory]
     [MemberData(nameof(Screens))]
     public void EachScreen_ActuallyPaints(string screen)

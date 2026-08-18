@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a wireframe can now sketch a whole web or app screen, not only a settings form — cards, a modal dialog, a
+  dropdown menu, a toggle, a slider, a multi-line field, a search box, an avatar, an icon, a badge, a progress bar, a
+  breadcrumb trail, pagination and a numbered stepper, plus header, footer, sidebar and main as regions that say what
+  part of the screen they are. The component picker on the wireframe window is now a palette grouped into Layout,
+  Navigation, Input, Content and Feedback, each entry drawn as the shape it stands for instead of listed as a word.
 - added: the Diagram plugin opens wireframe sketches in their own window now, alongside diagrams and whiteboards —
   "Nieuw wireframe" starts one bound to whatever session you already have running, the same coupling bar, activity
   strip and "agent connected" state the other two surfaces use, with zoom/pan for a wide screen layout and a
@@ -366,6 +371,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   it's been answered. Without a coupled session, planting a pin is switched off — the button says why.
 
 ### Changed
+
+- changed: a wireframe now reads as a building drawing rather than as a half-finished screen: everything is drawn in
+  greys with a single accent colour for whatever is marked as the primary action, and a component whose wording
+  nobody has written yet shows placeholder lines saying how much room the text takes instead of sitting there empty.
 
 - changed: the whiteboard now comes with the diagram plugin instead of being a plugin of its own — one install,
   one update, and both surfaces stay exactly what they were: a diagram is still Mermaid text an agent may be given

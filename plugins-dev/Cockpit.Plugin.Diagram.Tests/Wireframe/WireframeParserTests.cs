@@ -101,13 +101,13 @@ public class WireframeParserTests
     {
         var result = WireframeParser.Parse("""
             screen "X"
-              slider "Volume"
+              carousel "Uitgelicht"
               label "Blijft staan"
             """);
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(2, error.Line);
-        Assert.Contains("slider", error.Message, StringComparison.Ordinal);
+        Assert.Contains("carousel", error.Message, StringComparison.Ordinal);
         Assert.Equal(WireframeNodeKind.Label, result.Root?.Children.Single().Kind);
     }
 
