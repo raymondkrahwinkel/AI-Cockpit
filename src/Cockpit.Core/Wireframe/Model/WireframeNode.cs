@@ -24,9 +24,18 @@ public sealed class WireframeNode(WireframeNodeKind kind, int line, string? text
         or WireframeNodeKind.Row
         or WireframeNodeKind.Column
         or WireframeNodeKind.Group
+        or WireframeNodeKind.Header
+        or WireframeNodeKind.Footer
+        or WireframeNodeKind.Sidebar
+        or WireframeNodeKind.Main
+        or WireframeNodeKind.Card
+        or WireframeNodeKind.Modal
         or WireframeNodeKind.Tabs
         or WireframeNodeKind.Tab
         or WireframeNodeKind.Nav
+        or WireframeNodeKind.Menu
+        or WireframeNodeKind.Breadcrumb
+        or WireframeNodeKind.Stepper
         or WireframeNodeKind.List
         or WireframeNodeKind.Table;
 

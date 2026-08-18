@@ -1,0 +1,47 @@
+using System.ComponentModel;
+using System.Reflection;
+using System.Text.RegularExpressions;
+using Cockpit.Core.Wireframe.Model;
+using Cockpit.Infrastructure.Wireframe;
+
+namespace Cockpit.Infrastructure.Tests.Wireframe;
+
+// AC-903: the enum is the vocabulary, and the two places that repeat it for a reader — the format doc an operator
+// reads and the tool description an agent reads — have to say the same thing or one of them is lying.
+public class WireframeVocabularyTests
+{
+    public static TheoryData<WireframeNodeKind> Kinds =>
+        new(Enum.GetValues<WireframeNodeKind>().Where(kind => kind != WireframeNodeKind.Screen));
+
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public void EveryKeyword_IsInAddComponentsDescription(WireframeNodeKind kind)
+    {
+        var description = typeof(WireframeMcpTools)
+            .GetMethod(nameof(WireframeMcpTools.AddComponent))!
+            .GetCustomAttribute<DescriptionAttribute>()!
+            .Description;
+
+        var words = Regex.Split(description.ToLowerInvariant(), "[^a-z]+").ToHashSet(StringComparer.Ordinal);
+        Assert.Contains(kind.ToString().ToLowerInvariant(), words);
+    }
+
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public void EveryKeyword_IsInTheFormatDoc(WireframeNodeKind kind) =>
+        Assert.Contains($"`{kind.ToString().ToLowerInvariant()}`", _FormatDoc(), StringComparison.Ordinal);
+
+    // The doc is a repository file rather than a build artefact, so it is found by walking up from wherever the
+    // test binary landed.
+    private static string _FormatDoc()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "docs", "wireframe-format.md")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        return File.ReadAllText(Path.Combine(directory.FullName, "docs", "wireframe-format.md"));
+    }
+}

@@ -1,8 +1,8 @@
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
-// The screens AC-871 measures the format against: a settings screen (nav + form + button row), a list-detail
-// screen, an empty one, and one carrying the component ids of AC-906. Between them they use every container,
-// widget and modifier.
+// The screens the format is measured against: a settings screen (nav + form + button row), a list-detail
+// screen, AC-903's product catalogue, an empty one, and one carrying the component ids of AC-906. Between them they
+// use every container, widget and modifier.
 internal static class WireframeScreens
 {
     public const string Settings = """
@@ -67,6 +67,67 @@ internal static class WireframeScreens
                 button "Openen" primary
         """;
 
+    // AC-903's measure: the product overview from the ticket — header, breadcrumb, filter sidebar, a card grid,
+    // pagination, a footer and a modal over it — written entirely in the vocabulary.
+    public const string Catalogue = """
+        screen "Catalogue"
+          header "Northwind"
+            search "Search products" w:3
+            icon "Cart"
+            badge value:"3" primary
+            avatar "Raymond"
+          breadcrumb
+            item "Home"
+            item "Catalogue"
+            item "Bikes" selected
+          row h:1
+            sidebar "Filters" w:1
+              checkbox "In stock" checked
+              checkbox "On sale"
+              toggle "Free shipping" checked
+              slider "Price" value:60
+              button "Apply"
+            main w:4
+              row
+                label "128 results" w:1
+                select "Sort by" value:"Newest"
+                menu "Actions"
+                  item "Export"
+                  item "Compare"
+              row h:1
+                card "Trailhead 5" w:1
+                  image
+                  label "1.299"
+                  badge value:"New"
+                  progress "In stock" value:70
+                  button "Add to cart" primary
+                card "Ridgeline X" w:1
+                  image
+                  label "2.499"
+                  badge value:"Sale" primary
+                  progress "In stock" value:20
+                  button "Add to cart" primary
+                card w:1
+                  image
+                  label
+                  label
+                  button "Add to cart" primary
+              pagination value:2 align:center
+          footer "Northwind BV"
+            label "Terms"
+            label "Privacy"
+          modal "Add to cart"
+            stepper
+              item "Options" selected
+              item "Address"
+              item "Payment"
+            select "Size" value:"M"
+            textarea "Note for the courier"
+            row align:right
+              button "Cancel"
+              button "Continue" primary
+        """;
+
     public const string Empty = """
         screen "Nieuw scherm"
         """;
@@ -81,12 +142,13 @@ internal static class WireframeScreens
               button "Aanmelden" primary #submit
         """;
 
-    public static TheoryData<string> Names => new() { nameof(Settings), nameof(ListDetail), nameof(Empty), nameof(Identified) };
+    public static TheoryData<string> Names => new() { nameof(Settings), nameof(ListDetail), nameof(Catalogue), nameof(Empty), nameof(Identified) };
 
     public static string Source(string name) => name switch
     {
         nameof(Settings) => Settings,
         nameof(ListDetail) => ListDetail,
+        nameof(Catalogue) => Catalogue,
         nameof(Identified) => Identified,
         _ => Empty,
     };

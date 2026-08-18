@@ -53,9 +53,18 @@ A document is one `screen` at the left margin with everything else under it. Bla
 | `row` | Children side by side, left to right. |
 | `column` | Children stacked, top to bottom. |
 | `group` | A framed block; its text is the caption above the frame's contents. |
+| `header` | A band across the top. Its text is the product or page name on the left; its children sit side by side beside it. |
+| `footer` | The same band at the bottom, its text set smaller. |
+| `sidebar` | A side region, children stacked, tinted and ruled off from what it sits beside. Its text is a caption above them. |
+| `main` | The content region beside a `sidebar`. It draws nothing of its own — it says which part of the screen is the content. |
+| `card` | A tile. Its text is the title *inside* the frame, which is the whole visual difference with `group`. |
+| `modal` | A dialog. Written directly under `screen` it covers the screen, dimmed behind it, rather than taking a band of its own; anywhere else it is drawn where it stands. Its text is the dialog title. |
 | `tabs` | A tab strip. Its `tab` children each become a tab; the one marked `selected` is the open one, otherwise the first. |
 | `tab` | One tab's contents, stacked. |
 | `nav` | A menu rail. Its `item` children are the entries. |
+| `menu` | A dropdown, drawn open. Its text is the trigger above the panel; its `item` children are the entries. |
+| `breadcrumb` | A trail of `item` children with `›` between them. |
+| `stepper` | Numbered steps from its `item` children. The `selected` one is where you are; everything up to it is drawn as done. |
 | `list` | A list box. `item` children are its rows; without any, it draws placeholder rows so it still reads as a list. |
 | `table` | A table. `item` children are its column headings; without any, the header band is drawn blank. |
 
@@ -63,34 +72,49 @@ A document is one `screen` at the left margin with everything else under it. Bla
 
 | Keyword | Drawn as | Text means |
 | --- | --- | --- |
-| `label` | Plain text | the text |
+| `label` | Plain text | the text — and without any, two placeholder lines, which is how a screen is sketched before its copy exists |
 | `button` | A button | its caption |
 | `input` | A labelled field box | the field label; `value:` fills the box |
+| `textarea` | A tall field box | the field label; `value:` fills it, and without one it draws placeholder lines |
+| `search` | A field box with a magnifier | what the box says when it is empty; `value:` is what has been typed |
 | `select` | A field box with a chevron | the field label; `value:` fills the box |
 | `checkbox` | A square plus text | the text beside it |
 | `radio` | A circle plus text | the text beside it |
-| `item` | A row inside a `nav`, `list` or `table` | the row's text |
+| `toggle` | A switch plus text | the text beside it; `checked` throws it |
+| `slider` | A track with a knob | an optional label above; `value:` 0–100 is where the knob sits |
+| `item` | A row inside a `nav`, `menu`, `list`, `table`, `breadcrumb` or `stepper` | the row's text, or a placeholder line without any |
 | `image` | A crossed placeholder box | an optional caption in the middle |
+| `avatar` | A circle | an optional name beside it |
+| `icon` | A small filled square | an optional label beside it |
+| `badge` | A pill | `value:` if there is one, otherwise the text; `primary` draws it in the accent |
+| `progress` | A bar | an optional label above; `value:` 0–100 is how full it is |
+| `pagination` | Page boxes between arrows | — ; `value:` is the page you are on |
 | `divider` | A horizontal rule | — |
 | `space` | Empty room | — |
 
 A widget carries no children; an indented line under one is an error, because that is nearly always a mis-indent.
 
+The vocabulary stops here on purpose. It covers what an ordinary web or app screen is made of; anything rarer is
+better said with the components that are here than by growing the list until nobody can hold it in their head.
+
 ## Modifiers
 
 | Modifier | Applies to | Effect |
 | --- | --- | --- |
-| `primary` | `button` | Drawn filled instead of outlined. |
-| `selected` | `item`, `tab` | The highlighted entry, or the open tab. |
-| `checked` | `checkbox`, `radio` | Drawn filled. |
+| `primary` | `button`, `badge` | Drawn in the accent instead of outlined — the one thing the screen wants you to do. |
+| `selected` | `item`, `tab` | The highlighted entry, the open tab, or the step you are on. |
+| `checked` | `checkbox`, `radio`, `toggle` | Drawn filled, or thrown. |
 | `disabled` | anything | Drawn dimmed. |
-| `w:N` | a child of a `row` | Flex **weight**, never pixels: `w:1` beside `w:3` gives a quarter and three quarters of the row. A child without `w:` takes the width it needs. |
-| `h:N` | a child of a `column`, `group`, `screen`, `nav`, `tab` | The same, vertically. Use it on the one thing that should absorb the leftover height. |
+| `w:N` | a child of a `row`, `header` or `footer` | Flex **weight**, never pixels: `w:1` beside `w:3` gives a quarter and three quarters of the row. A child without `w:` takes the width it needs. |
+| `h:N` | a child of a `column`, `group`, `card`, `screen`, `nav`, `sidebar`, `main`, `tab` | The same, vertically. Use it on the one thing that should absorb the leftover height. |
 | `align:` | anything | `left`, `center` or `right`. |
-| `value:` | `input`, `select` | The value shown inside the box. |
+| `value:` | `input`, `textarea`, `search`, `select`, `badge` | The value shown inside the box or the pill. |
+| `value:N` | `slider`, `progress` | How full, 0–100. |
+| `value:N` | `pagination` | The page you are on. |
 
-There is no size in pixels, no colour and no font here, on purpose. A wireframe is drawn in greys with one font so
-it reads as a sketch; the moment it can carry a product colour it starts making promises it cannot keep.
+There is no size in pixels and no font here, on purpose, and there is exactly one colour: the accent that `primary`
+draws in. Everything else is grey, so the drawing reads as a sketch instead of making promises about a product that
+does not exist yet.
 
 ## When a line cannot be read
 
@@ -119,6 +143,45 @@ screen "Instellingen"
       row align:right
         button "Annuleren"
         button "Opslaan" primary #save-btn
+```
+
+And a screen that uses the rest of the vocabulary — a catalogue with a header, a filter sidebar, a card grid,
+pagination and a dialog over it:
+
+```
+screen "Catalogue"
+  header "Northwind"
+    search "Search products" w:3
+    icon "Cart"
+    badge value:"3" primary
+    avatar "Raymond"
+  breadcrumb
+    item "Home"
+    item "Bikes" selected
+  row h:1
+    sidebar "Filters" w:1
+      checkbox "In stock" checked
+      toggle "Free shipping" checked
+      slider "Price" value:60
+    main w:4
+      row h:1
+        card "Trailhead 5" w:1
+          image
+          label "1.299"
+          progress "In stock" value:70
+          button "Add to cart" primary
+        card w:1
+          image
+          label
+      pagination value:2 align:center
+  modal "Add to cart"
+    stepper
+      item "Options" selected
+      item "Payment"
+    textarea "Note for the courier"
+    row align:right
+      button "Cancel"
+      button "Continue" primary
 ```
 
 ## Round trip

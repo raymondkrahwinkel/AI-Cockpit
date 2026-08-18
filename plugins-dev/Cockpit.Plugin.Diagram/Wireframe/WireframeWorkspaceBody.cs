@@ -13,6 +13,7 @@ using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Kind = Cockpit.Core.Wireframe.Model.WireframeNodeKind;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
 
@@ -516,13 +517,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return;
         }
 
-        var kinds = Enum.GetValues<WireframeNodeKind>().Where(kind => kind != WireframeNodeKind.Screen).ToList();
-        var type = new ComboBox
-        {
-            ItemsSource = kinds.Select(WireframeHandEdit.Keyword).ToList(),
-            SelectedIndex = kinds.IndexOf(WireframeNodeKind.Label),
-            MinWidth = 140,
-        };
+        var chosen = WireframeNodeKind.Label;
+        var palette = BuildPalette(kind => chosen = kind);
         var text = new TextBox { Width = 220, PlaceholderText = "Tekst (mag leeg)" };
         var asChild = new Button { Content = "In deze container", Classes = { "Compact" }, IsEnabled = target.IsContainer };
         var asSibling = new Button { Content = "Hieronder", Classes = { "Compact" }, IsEnabled = target != root };
@@ -534,7 +530,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
                 Margin = new Thickness(12),
                 Children =
                 {
-                    type,
+                    new ScrollViewer { MaxHeight = 340, Content = palette },
                     text,
                     new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { asChild, asSibling } },
                 },
@@ -544,7 +540,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         void Add(bool child)
         {
             flyout.Hide();
-            var keyword = type.SelectedItem as string ?? WireframeHandEdit.Keyword(WireframeNodeKind.Label);
+            var keyword = WireframeHandEdit.Keyword(chosen);
             var wording = string.IsNullOrWhiteSpace(text.Text) ? null : text.Text!.Trim();
             var edit = child
                 ? WireframeHandEdit.AddChild(id, keyword, wording)
@@ -559,6 +555,97 @@ internal sealed class WireframeWorkspaceBody : UserControl
         asSibling.Click += (_, _) => Add(child: false);
         flyout.ShowAt(anchor);
         text.Focus();
+    }
+
+    // Every keyword the format has apart from `screen`, in the five groups an operator thinks in (AC-903). A flat
+    // list of 36 is a lookup; grouped, with the shape drawn beside the word, it is a choice.
+    internal static readonly (string Group, Kind[] Kinds)[] Palette =
+    [
+        ("Layout", [Kind.Row, Kind.Column, Kind.Group, Kind.Card, Kind.Header, Kind.Footer, Kind.Sidebar, Kind.Main, Kind.Divider, Kind.Space]),
+        ("Navigation", [Kind.Nav, Kind.Menu, Kind.Tabs, Kind.Tab, Kind.Breadcrumb, Kind.Pagination, Kind.Stepper, Kind.Item]),
+        ("Input", [Kind.Input, Kind.Textarea, Kind.Search, Kind.Select, Kind.Checkbox, Kind.Radio, Kind.Toggle, Kind.Slider, Kind.Button]),
+        ("Content", [Kind.Label, Kind.List, Kind.Table, Kind.Image, Kind.Avatar, Kind.Icon]),
+        ("Feedback", [Kind.Modal, Kind.Badge, Kind.Progress]),
+    ];
+
+    internal static Control BuildPalette(Action<Kind> onPick)
+    {
+        var entries = new List<ToggleButton>();
+        var stack = new StackPanel { Spacing = 4 };
+        foreach (var (group, kinds) in Palette)
+        {
+            stack.Children.Add(new TextBlock { Text = group, FontSize = 11, Opacity = 0.7, Margin = new Thickness(0, 4, 0, 0) });
+            var wrap = new WrapPanel { MaxWidth = 360 };
+            foreach (var kind in kinds)
+            {
+                var entry = _PaletteEntry(kind);
+                entry.IsChecked = kind == Kind.Label;
+                entry.Click += (_, _) =>
+                {
+                    onPick(kind);
+                    foreach (var other in entries)
+                    {
+                        other.IsChecked = ReferenceEquals(other, entry);
+                    }
+                };
+
+                entries.Add(entry);
+                wrap.Children.Add(entry);
+            }
+
+            stack.Children.Add(wrap);
+        }
+
+        return stack;
+    }
+
+    // The component itself, drawn small, rather than an icon standing in for it — the whiteboard's shape flyout does
+    // the same thing one folder over, and for the same reason: this grid is recognised, not read.
+    private static ToggleButton _PaletteEntry(Kind kind) => new()
+    {
+        Margin = new Thickness(2),
+        Padding = new Thickness(4),
+        Content = new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new Viewbox
+                {
+                    Width = 56,
+                    Height = 34,
+                    Child = new Panel { Width = 132, Height = 80, Children = { WireframeRenderer.Render(_Sample(kind)) } },
+                },
+                new TextBlock
+                {
+                    Text = WireframeHandEdit.Keyword(kind),
+                    FontSize = 10,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                },
+            },
+        },
+    };
+
+    // A component with enough in it to be recognisable at thumbnail size: containers get filler, the ones that hold
+    // rows get rows, and a widget is its own preview.
+    private static WireframeNode _Sample(Kind kind)
+    {
+        var node = new WireframeNode(kind, 0);
+        if (!node.IsContainer)
+        {
+            return node;
+        }
+
+        var rows = kind is Kind.Nav or Kind.Menu or Kind.List or Kind.Table or Kind.Breadcrumb or Kind.Stepper;
+        var child = rows ? Kind.Item : kind == Kind.Tabs ? Kind.Tab : Kind.Label;
+        for (var index = 0; index < (rows ? 3 : 2); index++)
+        {
+            var sample = _Sample(child);
+            sample.Modifiers.Add(new WireframeModifier(WireframeModifierName.W, "1", IsQuoted: false));
+            node.Children.Add(sample);
+        }
+
+        return node;
     }
 
     private void _DeleteSelected()
