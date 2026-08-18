@@ -8,6 +8,10 @@ public sealed class WireframeNode(WireframeNodeKind kind, int line, string? text
 
     public int Line { get; } = line;
 
+    // AC-906: the handle that outlives a line number — written in the source as `#save-btn`, minted the moment
+    // something needs to name this component, and null until then so an unreferenced source stays clean.
+    public string? Id { get; set; }
+
     public string? Text { get; set; } = text;
 
     public List<WireframeModifier> Modifiers { get; } = [];

@@ -60,7 +60,7 @@ internal sealed class WireframeActivityJournal(IWireframeAccessRegistry? registr
 
     public string? Revert(string surfaceId, string entryId) => registry?.Revert(surfaceId, entryId);
 
-    // A Replace (WriteCoupled) journals an empty component key — there is no single line to jump to for a
+    // A Replace (WriteCoupled) journals an empty component key — there is no single component to jump to for a
     // whole-source rewrite, so the strip's row renders as unclickable rather than jumping nowhere.
     private static string? _ObjectKey(string componentKey) => string.IsNullOrEmpty(componentKey) ? null : componentKey;
 }

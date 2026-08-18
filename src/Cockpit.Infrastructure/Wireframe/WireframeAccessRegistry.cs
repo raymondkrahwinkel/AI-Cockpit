@@ -205,17 +205,30 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
         CouplingChanged?.Invoke(new WireframeCouplingChange(surfaceId, coupling));
     }
 
+    // AC-906: a read is where an agent gets the handles it will name components by, so it is also where components
+    // that carry no id get one. The stamped source goes out to the panel as any other change would.
     public string? ReadCoupled(string sessionId, string surfaceId)
     {
+        string text;
+        bool stamped;
         lock (_lock)
         {
-            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanRead))
+            if (!(_ledger.TryGet(surfaceId, out var coupling) && coupling.SessionId == sessionId && coupling.CanRead)
+                || !_surfaces.TryGetValue(surfaceId, out var surface))
             {
                 return null;
             }
 
-            return _surfaces.TryGetValue(surfaceId, out var surface) ? surface.Text : null;
+            stamped = _Stamp(surface);
+            text = surface.Text;
         }
+
+        if (stamped)
+        {
+            TextChanged?.Invoke(surfaceId, text);
+        }
+
+        return text;
     }
 
     public void MarkRead(string sessionId, string surfaceId)
@@ -279,11 +292,10 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
                 return WireframeEditResult.Refused(Unavailable);
             }
 
-            var held = _Touches(edit).FirstOrDefault(line => surface.HeldByOperator.Contains(line));
-            if (held > 0)
+            if (_Touches(edit).FirstOrDefault(surface.HeldByOperator.Contains) is { } held)
             {
                 return WireframeEditResult.Refused(
-                    $"The operator is editing the component on line {held} right now, so nothing was changed. Try the same call again once they are done with it.");
+                    $"The operator is editing the component with id \"{held}\" right now, so nothing was changed. Try the same call again once they are done with it.");
             }
 
             var result = WireframeComponentEditor.Apply(surface.Text, edit);
@@ -378,33 +390,60 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
         return null;
     }
 
-    public void HoldComponent(string surfaceId, int line)
+    // The operator's side of minting (AC-906): the whole surface is stamped, because the gestures that follow a
+    // selection name a container as well as the component itself.
+    public string? EnsureComponentId(string surfaceId, int line)
+    {
+        string? stampedText = null;
+        string? id = null;
+        lock (_lock)
+        {
+            if (_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                if (_Stamp(surface))
+                {
+                    stampedText = surface.Text;
+                }
+
+                id = WireframeParser.Parse(surface.Text).Root is { } root ? WireframeHandEdit.Find(root, line)?.Id : null;
+            }
+        }
+
+        if (stampedText is not null)
+        {
+            TextChanged?.Invoke(surfaceId, stampedText);
+        }
+
+        return id;
+    }
+
+    public void HoldComponent(string surfaceId, string componentId)
     {
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                surface.HeldByOperator.Add(line);
+                surface.HeldByOperator.Add(componentId);
             }
         }
     }
 
-    public void ReleaseComponent(string surfaceId, int line)
+    public void ReleaseComponent(string surfaceId, string componentId)
     {
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var surface))
             {
-                surface.HeldByOperator.Remove(line);
+                surface.HeldByOperator.Remove(componentId);
             }
         }
     }
 
-    public bool IsHeldByOperator(string surfaceId, int line)
+    public bool IsHeldByOperator(string surfaceId, string componentId)
     {
         lock (_lock)
         {
-            return _surfaces.TryGetValue(surfaceId, out var surface) && surface.HeldByOperator.Contains(line);
+            return _surfaces.TryGetValue(surfaceId, out var surface) && surface.HeldByOperator.Contains(componentId);
         }
     }
 
@@ -431,9 +470,9 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
             ? surface
             : null;
 
-    // The lines an edit reaches, so a hold on any of them refuses it: the component itself, and the container it is
-    // going into — dropping something into a group the operator has under their hand is their change to make too.
-    private static IEnumerable<int> _Touches(WireframeComponentEdit edit) => edit.Kind switch
+    // The components an edit reaches, so a hold on any of them refuses it: the component itself, and the container it
+    // is going into — dropping something into a group the operator has under their hand is their change to make too.
+    private static IEnumerable<string> _Touches(WireframeComponentEdit edit) => edit.Kind switch
     {
         WireframeEditKind.Add => [edit.Parent],
         WireframeEditKind.Move => [edit.Component, edit.Parent],
@@ -441,7 +480,20 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
     };
 
     private static string _KeyOf(WireframeComponentEdit edit) =>
-        (edit.Kind == WireframeEditKind.Add ? edit.Parent : edit.Component).ToString();
+        edit.Kind == WireframeEditKind.Add ? edit.Parent : edit.Component;
+
+    // Gives every component of the surface an id, and says whether the source changed by it. Under _lock.
+    private static bool _Stamp(Surface surface)
+    {
+        var stamped = WireframeComponentIds.Ensure(surface.Text);
+        if (string.Equals(stamped, surface.Text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        surface.Text = stamped;
+        return true;
+    }
 
     private static List<string> _Lines(string source) => source.ReplaceLineEndings("\n").Split('\n').ToList();
 
@@ -458,12 +510,12 @@ internal sealed class WireframeAccessRegistry : IWireframeAccessRegistry, ISingl
 
         public string Text { get; set; } = text;
 
-        // The line numbers the operator has under their hand right now (AC-841's "jij bewerkt" marking).
-        public HashSet<int> HeldByOperator { get; } = [];
+        // The components the operator has under their hand right now, by id (AC-841's "jij bewerkt" marking).
+        public HashSet<string> HeldByOperator { get; } = new(StringComparer.Ordinal);
     }
 
     // AC-853's journal row. Patches carry the lines this edit put in and took out, which is what makes a targeted
-    // revert possible on a format whose components have no id of their own.
+    // revert possible however far the document has moved since.
     private sealed class HistoryEntry(
         string id,
         string origin,

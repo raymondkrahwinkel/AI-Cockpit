@@ -43,28 +43,28 @@ public enum WireframeEditKind
     Move,
 }
 
-// One per-component edit (AC-852's shape), addressed by line number: a wireframe line carries no id of its own, so
-// the line the operator reads in the source box is what an agent names, what the journal records, and what the
-// "jij bewerkt" hold is keyed on. Use the factories — each kind reads only the fields it needs.
+// One per-component edit (AC-852's shape), addressed by the component's stable id (AC-906): the id is what an agent
+// names, what the journal records, and what the "jij bewerkt" hold is keyed on, so an edit elsewhere in the document
+// cannot slide another component under the call. Use the factories — each kind reads only the fields it needs.
 public sealed record WireframeComponentEdit(
     WireframeEditKind Kind,
-    int Component = 0,
-    int Parent = 0,
+    string Component = "",
+    string Parent = "",
     int? Position = null,
     string? Type = null,
     string? Text = null,
     string? Modifiers = null)
 {
-    public static WireframeComponentEdit Add(int parent, string type, string? text, string? modifiers, int? position) =>
+    public static WireframeComponentEdit Add(string parent, string type, string? text, string? modifiers, int? position) =>
         new(WireframeEditKind.Add, Parent: parent, Position: position, Type: type, Text: text, Modifiers: modifiers);
 
-    public static WireframeComponentEdit SetText(int component, string text) =>
+    public static WireframeComponentEdit SetText(string component, string text) =>
         new(WireframeEditKind.SetText, component, Text: text);
 
-    public static WireframeComponentEdit Remove(int component) =>
+    public static WireframeComponentEdit Remove(string component) =>
         new(WireframeEditKind.Remove, component);
 
-    public static WireframeComponentEdit Move(int component, int parent, int? position) =>
+    public static WireframeComponentEdit Move(string component, string parent, int? position) =>
         new(WireframeEditKind.Move, component, parent, position);
 }
 
@@ -77,15 +77,14 @@ public sealed record WireframeEditResult(string Summary, string? Refusal)
     public static WireframeEditResult Refused(string reason) => new("", reason);
 }
 
-// AC-853: one journaled edit, operator or agent. `ComponentKey` is the line the edit was aimed at, as it stood
-// then — enough for the strip to jump to it, while the revert itself finds its lines back by content.
+// AC-853: one journaled edit, operator or agent. `ComponentKey` is the id the edit was aimed at — enough for the
+// strip to jump to it, while the revert itself finds its lines back by content.
 public sealed record WireframeHistoryEntry(string Id, string Origin, WireframeEditKind Kind, string ComponentKey, string Summary, DateTime When, bool Reverted);
 
 /// <summary>
 /// The source of truth for wireframe-surface access (AC-872) — the third registry beside
 /// <c>IDiagramAccessRegistry</c> (AC-810) and <c>IWhiteboardAccessRegistry</c> (AC-823); read the diagram one first.
-/// Deviations: a component is named by its line number rather than an id, and there is no diff gate — the journal
-/// plus a targeted <see cref="Revert"/> is the whole safety net.
+/// Deviation: there is no diff gate — the journal plus a targeted <see cref="Revert"/> is the whole safety net.
 /// </summary>
 public interface IWireframeAccessRegistry
 {
@@ -173,6 +172,10 @@ public interface IWireframeAccessRegistry
     /// The surface's current source, or null when this session does not hold
     /// <see cref="WireframeCapability.Read"/> on it.
     /// </summary>
+    /// <remarks>
+    /// Stamps a stable id on every component that carries none before handing the source over (AC-906): a read is
+    /// what an agent names components from, so this is the moment they get names. Raises <see cref="TextChanged"/>.
+    /// </remarks>
     string? ReadCoupled(string sessionId, string surfaceId);
 
     /// <summary>
@@ -253,18 +256,28 @@ public interface IWireframeAccessRegistry
     // ---- The operator's "jij bewerkt" hold (AC-841) ----
 
     /// <summary>
-    /// Marks a component as the operator's while they are editing it, by its line number. Idempotent.
+    /// The stable id of the component on <paramref name="line"/>, minting ids for the whole surface first when it
+    /// carries none yet (AC-906). Null when no component sits on that line, or the surface is not open.
     /// </summary>
-    void HoldComponent(string surfaceId, int line);
+    /// <remarks>
+    /// This is the operator's side of minting: taking a component under their hand is naming it. Raises
+    /// <see cref="TextChanged"/> when the source gained ids.
+    /// </remarks>
+    string? EnsureComponentId(string surfaceId, int line);
+
+    /// <summary>
+    /// Marks a component as the operator's while they are editing it, by its id. Idempotent.
+    /// </summary>
+    void HoldComponent(string surfaceId, string componentId);
 
     /// <summary>
     /// Releases the operator's hold on a component.
     /// </summary>
-    void ReleaseComponent(string surfaceId, int line);
+    void ReleaseComponent(string surfaceId, string componentId);
 
     /// <summary>
     /// Whether the operator is holding that component right now — an agent edit naming it is refused with a reason
     /// rather than applied or silently dropped.
     /// </summary>
-    bool IsHeldByOperator(string surfaceId, int line);
+    bool IsHeldByOperator(string surfaceId, string componentId);
 }

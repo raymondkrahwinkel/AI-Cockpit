@@ -13,7 +13,7 @@ agent hands over can be read wrongly, but it cannot be run.
 ## A line
 
 ```
-type "text" modifier modifier:value
+type "text" modifier modifier:value #id
 ```
 
 - **type** — one keyword, lowercase, from the tables below.
@@ -22,6 +22,19 @@ type "text" modifier modifier:value
 - **modifiers** — zero or more, in any order. A flag stands alone (`primary`); the rest take a value after a colon
   (`w:2`, `align:right`, `value:"Raymond"`). A value only needs quotes when it contains a space, and quoting is
   preserved when the text is written back.
+- **id** — optional, at most one, written last (`#save-btn`). See below.
+
+## Ids
+
+*AC-906.* An id is a component's name, and it is the only handle that survives editing: a line number moves the
+moment anyone inserts a line above it, so an agent that read line 12 and then writes to line 12 can hit a different
+component entirely. An id does not move. It is written as `#` followed by letters, digits, `-` and `_`, and the
+same id may not appear twice in one document — that line is refused, because an ambiguous name is worse than none.
+
+You do not have to write ids yourself. A wireframe nobody points at stays plain; ids appear the moment something
+needs to name a component — an agent reading the surface, or you clicking a component on it — and the ones minted
+that way are `#c1`, `#c2`, … You can rename them to something you recognise (`#save-btn`), and they are saved with
+the file, so a note or a flow can be hung on a component rather than on a line.
 
 ## Indentation
 
@@ -105,12 +118,12 @@ screen "Instellingen"
       space
       row align:right
         button "Annuleren"
-        button "Opslaan" primary
+        button "Opslaan" primary #save-btn
 ```
 
 ## Round trip
 
 Source → tree → controls → source gives the same text back, character for character, for any source written in
-the canonical form. Every rendered control carries the node it came from (`WireframeSource.Node`), so a control
-on screen always knows which line it stands for — including a tab that is currently hidden, which is rendered
-rather than skipped precisely so no line loses its control.
+the canonical form (which puts the id last on the line). Every rendered control carries the node it came from
+(`WireframeSource.Node`), so a control on screen always knows which component it stands for — including a tab that
+is currently hidden, which is rendered rather than skipped precisely so no line loses its control.

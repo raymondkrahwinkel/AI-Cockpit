@@ -13,8 +13,8 @@ using Cockpit.Plugins.Abstractions.Consent;
 namespace Cockpit.Infrastructure.Wireframe;
 
 // The `cockpit-wireframe` MCP tools (AC-872), gated per-capability like `cockpit-diagram` (AC-810) — read that
-// class first. Deviations: the payload is the source text, a component is named by its line number rather than an
-// id (so every read hands the components back), and there is no diff gate — the journal is the safety net.
+// class first. Deviations: the payload is the source text, a component is named by the stable id a read stamps on
+// it (AC-906), and there is no diff gate — the journal is the safety net.
 internal sealed class WireframeMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
@@ -96,7 +96,7 @@ internal sealed class WireframeMcpTools
     }
 
     [McpServerTool(Name = "read_wireframe")]
-    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the LINE NUMBER that add_component, set_component_text, remove_component and move_component take, so you never have to count lines yourself. Read again after any edit — the line numbers move.")]
+    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it.")]
     public async Task<string> ReadWireframe(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to read, by its id or name from list_wireframes.")] string wireframe)
@@ -156,11 +156,11 @@ internal sealed class WireframeMcpTools
     }
 
     [McpServerTool(Name = "add_component")]
-    [Description("Adds ONE component inside a container and applies it straight away — every other line of the wireframe is left exactly as it is, including anything the operator changed since you last read it. `parent` is the LINE NUMBER of the container it goes into (a screen, row, column, group, tabs, tab, nav, list or table), from read_wireframe's `components`. `type` is a keyword such as row, column, group, label, button, input, select, checkbox, radio, item, image, divider or space. Needs the same one-off Approve as edit_wireframe. Refused with a reason if the parent is not a container, the keyword or a modifier is not one the format has, or the operator is editing that container right now — try again once they let go.")]
+    [Description("Adds ONE component inside a container and applies it straight away — every other line of the wireframe is left exactly as it is, including anything the operator changed since you last read it. `parent` is the ID of the container it goes into (a screen, row, column, group, tabs, tab, nav, list or table), from read_wireframe's `components`. `type` is a keyword such as row, column, group, label, button, input, select, checkbox, radio, item, image, divider or space. Needs the same one-off Approve as edit_wireframe. Refused with a reason if there is no component with that id, the parent is not a container, the keyword or a modifier is not one the format has, or the operator is editing that container right now — try again once they let go.")]
     public Task<string> AddComponent(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
-        [Description("The line number of the container this goes into.")] int parent,
+        [Description("The id of the container this goes into.")] string parent,
         [Description("The component keyword, e.g. button, input, group, row.")] string type,
         [Description("The component's text — a button's caption, a field's label. Leave empty for one that carries none.")] string? text = null,
         [Description("Modifiers exactly as the source spells them, space-separated, e.g. `primary`, `w:2 align:right`, `value:\"Raymond\"`.")] string? modifiers = null,
@@ -169,34 +169,34 @@ internal sealed class WireframeMcpTools
             $"add {type.Trim().ToLowerInvariant()}{_Quoted(text)}");
 
     [McpServerTool(Name = "set_component_text")]
-    [Description("Changes ONE component's text — a button's caption, a field's label, a screen's title — and applies it straight away, leaving every other line alone. The component keeps all of its modifiers. `component` is the LINE NUMBER from read_wireframe's `components`. Refused with a reason if there is no component on that line, or if the operator is editing it right now.")]
+    [Description("Changes ONE component's text — a button's caption, a field's label, a screen's title — and applies it straight away, leaving every other line alone. The component keeps all of its modifiers and its id. `component` is the ID from read_wireframe's `components`. Refused with a reason if there is no component with that id any more, or if the operator is editing it right now.")]
     public Task<string> SetComponentText(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
-        [Description("The line number of the component to reword.")] int component,
+        [Description("The id of the component to reword.")] string component,
         [Description("The new text.")] string text) =>
         _ApplyAsync(session, wireframe, WireframeComponentEdit.SetText(component, text),
-            $"reword the component on line {component} to \"{_SingleLine(text)}\"");
+            $"reword component #{_SingleLine(component)} to \"{_SingleLine(text)}\"");
 
     [McpServerTool(Name = "remove_component")]
-    [Description("Removes ONE component and everything nested inside it — nothing else. `component` is the LINE NUMBER from read_wireframe's `components`; the reply says how many nested components went with it. Refused with a reason if there is no component on that line, if it is the screen line itself (that is the wireframe — use edit_wireframe), or if the operator is editing it right now.")]
+    [Description("Removes ONE component and everything nested inside it — nothing else. `component` is the ID from read_wireframe's `components`; the reply says how many nested components went with it. Refused with a reason if there is no component with that id any more, if it is the screen line itself (that is the wireframe — use edit_wireframe), or if the operator is editing it right now.")]
     public Task<string> RemoveComponent(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
-        [Description("The line number of the component to remove.")] int component) =>
+        [Description("The id of the component to remove.")] string component) =>
         _ApplyAsync(session, wireframe, WireframeComponentEdit.Remove(component),
-            $"remove the component on line {component} and anything inside it");
+            $"remove component #{_SingleLine(component)} and anything inside it");
 
     [McpServerTool(Name = "move_component")]
-    [Description("Moves ONE component, with everything nested inside it, into another container — the way to reorder a row's buttons or lift a field into a different group without rewriting the screen. Both `component` and `parent` are LINE NUMBERS from read_wireframe's `components`; the block is re-indented to fit where it lands. Refused with a reason if either line holds no component, if the target is not a container or is inside the component itself, or if the operator is editing either of them right now.")]
+    [Description("Moves ONE component, with everything nested inside it, into another container — the way to reorder a row's buttons or lift a field into a different group without rewriting the screen. Both `component` and `parent` are IDs from read_wireframe's `components`; the block is re-indented to fit where it lands. Refused with a reason if either id names no component any more, if the target is not a container or is inside the component itself, or if the operator is editing either of them right now.")]
     public Task<string> MoveComponent(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
-        [Description("The line number of the component to move.")] int component,
-        [Description("The line number of the container it moves into.")] int parent,
+        [Description("The id of the component to move.")] string component,
+        [Description("The id of the container it moves into.")] string parent,
         [Description("Where among that container's children it lands, 0 for first. Omit to put it last.")] int? position = null) =>
         _ApplyAsync(session, wireframe, WireframeComponentEdit.Move(component, parent, position),
-            $"move the component on line {component} into the container on line {parent}");
+            $"move component #{_SingleLine(component)} into container #{_SingleLine(parent)}");
 
     // The one path every per-component tool takes (AC-852's shape). Same Edit consent as edit_wireframe, then the
     // edit runs inside the registry's lock, where the hold check, the line surgery and the "does this still parse"
@@ -217,8 +217,8 @@ internal sealed class WireframeMcpTools
         return _Reply(surface, _registry.EditCoupled(caller, surface.SurfaceId, edit));
     }
 
-    // Every write answers the same way: what changed, plus the components as they now stand — their line numbers
-    // have just moved, and the next call would otherwise aim at the old ones.
+    // Every write answers the same way: what changed, plus the components as they now stand — the ids are the same
+    // ones, so this is a fresh picture of the screen rather than a new set of handles.
     private string _Reply(WireframeSurface surface, WireframeEditResult result, string? extra = null)
     {
         if (result.Refusal is { } refusal)
@@ -285,14 +285,14 @@ internal sealed class WireframeMcpTools
         return null;
     }
 
-    // Read's prompt says the wireframe text is being shared, and names its size — a snapshot read hands over
-    // everything already in it. Edit's prompt states the change itself, derived from the call's own arguments or
-    // from the real line diff, never from prose the calling agent composed (AC-489).
+    // Read's prompt says the wireframe text is being shared, and that reading stamps ids — the one thing a read
+    // does write (AC-906). Edit's prompt states the change itself, derived from the call's own arguments or from
+    // the real line diff, never from prose the calling agent composed (AC-489).
     private static ConsentRequest _PromptFor(WireframeSurface surface, WireframeCapability needed, bool widening, string? ask) =>
         needed == WireframeCapability.Read
             ? new ConsentRequest(
                 "An agent wants to read a wireframe",
-                $"Let this agent read the wireframe text of screen \"{_SingleLine(surface.Name)}\" exactly as it stands now — including everything already in it. It cannot change it: that is a separate question, asked separately.",
+                $"Let this agent read the wireframe text of screen \"{_SingleLine(surface.Name)}\" exactly as it stands now — including everything already in it. Reading marks each component with a short id such as #c1, so a later change names the component rather than a line that has since moved; nothing else about the screen changes, and changing it is a separate question, asked separately.",
                 new ConsentSource(surface.SurfaceId, null, ConsentSourceCatalog.WireframeMcp),
                 "wireframe.read",
                 ConsentRisk.Dangerous)
@@ -305,8 +305,8 @@ internal sealed class WireframeMcpTools
                 "wireframe.edit",
                 ConsentRisk.Dangerous);
 
-    // The flat component list every read and every write hands back: the line number is the handle the per-component
-    // tools take, and `depth` says what sits inside what without the caller re-reading the indentation.
+    // The flat component list every read and every write hands back: the id is the handle the per-component tools
+    // take, `line` is there for pointing at a problem, and `depth` says what sits inside what.
     private static IReadOnlyList<object> _Components(WireframeNode? root)
     {
         var components = new List<object>();
@@ -323,6 +323,7 @@ internal sealed class WireframeMcpTools
 
         into.Add(new
         {
+            id = node.Id,
             line = node.Line,
             depth,
             type = node.Kind.ToString().ToLowerInvariant(),

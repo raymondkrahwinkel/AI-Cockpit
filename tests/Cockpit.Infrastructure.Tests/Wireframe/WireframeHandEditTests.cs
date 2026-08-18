@@ -27,17 +27,16 @@ public class WireframeHandEditTests
     private static WireframeNode _Tree(WireframeAccessRegistry registry) =>
         WireframeParser.Parse(_TextOf(registry)).Root!;
 
-    // The nav's item wordings, read off the tree rather than counted by hand — nav's own line never moves in these
-    // cases, so it stays a valid handle after an edit below it.
+    // The nav's item wordings, read off the tree rather than counted by hand.
     private static List<string?> _NavItems(WireframeAccessRegistry registry) =>
-        WireframeHandEdit.Find(_Tree(registry), WireframeScreens.NavLine)!.Children.Select(child => child.Text).ToList();
+        WireframeHandEdit.Find(_Tree(registry), WireframeScreens.Nav)!.Children.Select(child => child.Text).ToList();
 
     // Everything sitting in the same container as the component with this wording, itself included — the way to check
-    // what a component left behind once its own line number has moved.
+    // what a component left behind once it has moved elsewhere.
     private static List<string?> _SiblingsOf(WireframeNode root, string text)
     {
         var node = _Walk(root).First(candidate => candidate.Text == text);
-        return WireframeHandEdit.Placement(root, node.Line)!.Value.Parent.Children.Select(child => child.Text).ToList();
+        return WireframeHandEdit.Placement(root, node.Id!)!.Value.Parent.Children.Select(child => child.Text).ToList();
     }
 
     private static IEnumerable<WireframeNode> _Walk(WireframeNode node) =>
@@ -48,7 +47,7 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
 
-        Assert.Null(registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Bewaren")));
+        Assert.Null(registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren")));
 
         var entry = Assert.Single(registry.History(SurfaceId));
         Assert.Equal("operator", entry.Origin);
@@ -60,7 +59,7 @@ public class WireframeHandEditTests
     public void AHandling_IsTakenBackOnItsOwn_LikeAnAgentsIs()
     {
         var registry = _Open();
-        registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.EmailFieldLine));
+        registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.EmailField));
         var entry = Assert.Single(registry.History(SurfaceId));
 
         Assert.Null(registry.Revert(SurfaceId, entry.Id));
@@ -73,7 +72,7 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
 
-        registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Bewaren"));
+        registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
 
         Assert.Contains("button \"Bewaren\" primary", _TextOf(registry), StringComparison.Ordinal);
     }
@@ -83,7 +82,7 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
 
-        registry.ApplyHandEdit(SurfaceId, WireframeHandEdit.AddChild(WireframeScreens.NavLine, "item", "Beveiliging"));
+        registry.ApplyHandEdit(SurfaceId, WireframeHandEdit.AddChild(WireframeScreens.Nav, "item", "Beveiliging"));
 
         Assert.Equal(["Algemeen", "Account", "Beveiliging"], _NavItems(registry));
     }
@@ -92,7 +91,7 @@ public class WireframeHandEditTests
     public void AddAsSibling_LandsStraightAfterTheSelectedComponent_NotAtTheEnd()
     {
         var registry = _Open();
-        var edit = WireframeHandEdit.AddSibling(_Tree(registry), WireframeScreens.NavLine + 1, "item", "Beveiliging");
+        var edit = WireframeHandEdit.AddSibling(_Tree(registry), WireframeScreens.GeneralItem, "item", "Beveiliging");
 
         Assert.Null(registry.ApplyHandEdit(SurfaceId, edit!));
 
@@ -104,7 +103,7 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
 
-        Assert.Null(WireframeHandEdit.AddSibling(_Tree(registry), line: 1, "row", null));
+        Assert.Null(WireframeHandEdit.AddSibling(_Tree(registry), WireframeScreens.Screen, "row", null));
     }
 
     // The one an off-by-one gets wrong: stepping down has to clear the neighbour it swaps with, not stop in front of it.
@@ -112,7 +111,7 @@ public class WireframeHandEditTests
     public void OneStepDown_SwapsWithTheNeighbourBelow()
     {
         var registry = _Open();
-        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.NavLine + 1, delta: 1);
+        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.GeneralItem, delta: 1);
 
         Assert.Null(registry.ApplyHandEdit(SurfaceId, edit!));
 
@@ -123,7 +122,7 @@ public class WireframeHandEditTests
     public void OneStepUp_SwapsWithTheNeighbourAbove()
     {
         var registry = _Open();
-        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.NavLine + 2, delta: -1);
+        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.AccountItem, delta: -1);
 
         Assert.Null(registry.ApplyHandEdit(SurfaceId, edit!));
 
@@ -131,25 +130,25 @@ public class WireframeHandEditTests
     }
 
     [Theory]
-    [InlineData(1, -1)]
-    [InlineData(2, 1)]
-    public void AStepPastTheEndOfItsOwnContainer_IsNotOffered(int offsetFromNav, int delta)
+    [InlineData(WireframeScreens.GeneralItem, -1)]
+    [InlineData(WireframeScreens.AccountItem, 1)]
+    public void AStepPastTheEndOfItsOwnContainer_IsNotOffered(string component, int delta)
     {
         var registry = _Open();
 
-        Assert.Null(WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.NavLine + offsetFromNav, delta));
+        Assert.Null(WireframeHandEdit.Reorder(_Tree(registry), component, delta));
     }
 
     [Fact]
     public void ReorderingAContainer_TakesEverythingInsideItAlong()
     {
         var registry = _Open();
-        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.LeftColumnLine, delta: 1);
+        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.LeftColumn, delta: 1);
 
         Assert.Null(registry.ApplyHandEdit(SurfaceId, edit!));
 
         // The wide column now comes first, and the nav is still inside the narrow one it belongs to.
-        var row = WireframeHandEdit.Find(_Tree(registry), WireframeScreens.RowLine)!;
+        var row = WireframeHandEdit.Find(_Tree(registry), WireframeScreens.Row)!;
         Assert.Equal("3", row.Children[0].ValueOf(WireframeModifierName.W));
         Assert.Equal("1", row.Children[1].ValueOf(WireframeModifierName.W));
         Assert.Equal(WireframeNodeKind.Nav, Assert.Single(row.Children[1].Children).Kind);
@@ -162,7 +161,7 @@ public class WireframeHandEditTests
 
         Assert.Null(registry.ApplyHandEdit(
             SurfaceId,
-            WireframeComponentEdit.Move(WireframeScreens.SaveButtonLine, WireframeScreens.NavLine, position: null)));
+            WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Nav, position: null)));
 
         Assert.Equal(["Algemeen", "Account", "Opslaan"], _NavItems(registry));
         Assert.Equal(["Annuleren"], _SiblingsOf(_Tree(registry), "Annuleren"));
@@ -173,11 +172,11 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
 
-        var lines = WireframeHandEdit.Destinations(_Tree(registry), WireframeScreens.LeftColumnLine).Select(node => node.Line).ToList();
+        var destinations = WireframeHandEdit.Destinations(_Tree(registry), WireframeScreens.LeftColumn).Select(node => node.Id).ToList();
 
-        Assert.DoesNotContain(WireframeScreens.LeftColumnLine, lines);
-        Assert.DoesNotContain(WireframeScreens.NavLine, lines);
-        Assert.Contains(WireframeScreens.GroupLine, lines);
+        Assert.DoesNotContain(WireframeScreens.LeftColumn, destinations);
+        Assert.DoesNotContain(WireframeScreens.Nav, destinations);
+        Assert.Contains(WireframeScreens.Group, destinations);
     }
 
     [Fact]
@@ -185,10 +184,10 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
 
-        var lines = WireframeHandEdit.Destinations(_Tree(registry), WireframeScreens.SaveButtonLine).Select(node => node.Line).ToList();
+        var destinations = WireframeHandEdit.Destinations(_Tree(registry), WireframeScreens.SaveButton).Select(node => node.Id).ToList();
 
-        Assert.DoesNotContain(WireframeScreens.ButtonRowLine, lines);
-        Assert.Contains(WireframeScreens.NavLine, lines);
+        Assert.DoesNotContain(WireframeScreens.ButtonRow, destinations);
+        Assert.Contains(WireframeScreens.Nav, destinations);
     }
 
     [Fact]
@@ -196,7 +195,7 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
 
-        var refusal = registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(1));
+        var refusal = registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.Screen));
 
         Assert.NotNull(refusal);
         Assert.Equal(WireframeScreens.Settings, _TextOf(registry));
@@ -209,7 +208,7 @@ public class WireframeHandEditTests
         var registry = _Open();
         registry.SurfaceClosed(SurfaceId);
 
-        Assert.Equal("Dit wireframe staat niet meer open.", registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(2)));
+        Assert.Equal("Dit wireframe staat niet meer open.", registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.Row)));
     }
 
     // The hold exists to keep the agent off what the operator has under their hand, not to lock the operator out of
@@ -218,9 +217,9 @@ public class WireframeHandEditTests
     public void TheOperatorsOwnHold_DoesNotBlockTheirOwnHandling()
     {
         var registry = _Open();
-        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButtonLine);
+        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButton);
 
-        Assert.Null(registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Bewaren")));
+        Assert.Null(registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren")));
     }
 
     [Fact]
@@ -228,10 +227,10 @@ public class WireframeHandEditTests
     {
         var registry = _Open();
         registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButtonLine);
+        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButton);
 
-        var refused = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Bewaren"));
-        var landed = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.NameFieldLine, "Naam"));
+        var refused = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
+        var landed = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.NameField, "Naam"));
 
         Assert.NotNull(refused.Refusal);
         Assert.Null(landed.Refusal);
@@ -250,7 +249,7 @@ public class WireframeHandEditTests
 
         registry.ApplyHandEdit(
             SurfaceId,
-            WireframeComponentEdit.Move(WireframeScreens.SaveButtonLine, WireframeScreens.NavLine, position: null));
+            WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Nav, position: null));
 
         Assert.NotNull(WireframeParser.Parse(Assert.Single(seen)).Root);
         Assert.Single(registry.History(SurfaceId));

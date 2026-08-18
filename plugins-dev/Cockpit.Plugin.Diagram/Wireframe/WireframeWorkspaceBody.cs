@@ -18,7 +18,7 @@ namespace Cockpit.Plugin.Diagram.Wireframe;
 
 // The whole body of a wireframe window (AC-873, hand-editing AC-875), same shape as DiagramWorkspaceBody — read that
 // one first. Deviation: measured against a fixed design canvas rather than a size read off a rendered picture, and a
-// component is selected by clicking the control it was drawn as, which carries its own source line (AC-871).
+// component is selected by clicking the control it was drawn as, which carries its own source node (AC-871).
 internal sealed class WireframeWorkspaceBody : UserControl
 {
     // AC-837 zoom/pan range and wheel feel, same constants as the diagram.
@@ -74,9 +74,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private Point _panPointerStart;
     private Vector _panOffsetStart;
     private WireframeNode? _root;
-    private WireframeNode? _selected;
+    private string? _selectedId;
     private WireframeNode? _pressedOn;
-    private string? _expectedText;
     private bool _placementHintShown;
     private WireframeCoupling? _current;
     private SurfaceSessionBinding _sessionBinding;
@@ -167,9 +166,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
                 return;
             }
 
-            if (_selected is { } stillHeld)
+            if (_selectedId is { } stillHeld)
             {
-                _registry.ReleaseComponent(_surfaceId, stillHeld.Line);
+                _registry.ReleaseComponent(_surfaceId, stillHeld);
             }
 
             _registry.CouplingChanged -= _OnCouplingChanged;
@@ -224,7 +223,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         _render.Children.Clear();
         _render.Children.Add(content);
-        _ReattachSelection();
+        _RefreshSelection();
 
         if (_isFitMode)
         {
@@ -238,45 +237,25 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _RefreshSaveBar();
     }
 
-    // Every source change — the operator's own handling, an agent's, a revert — arrives as a fresh tree, so the node
-    // the selection pointed at is gone. Found back by what it is rather than by where it was: a move gives it a new
-    // line number, and taking the line number at face value would hand the selection, and with it the hold an agent is
-    // refused against, to whichever component slid into that line. Nearest line breaks the tie, since two components
-    // reading exactly alike is a real possibility in a wireframe.
-    private void _ReattachSelection()
+    // Every source change arrives as a fresh tree, so the selection is kept as the component's id and looked up again
+    // (AC-906): it is either exactly the same component or it is gone, never the one that slid into its line.
+    private void _RefreshSelection()
     {
-        if (_selected is not { } previous)
+        if (_selectedId is { } id && _Selected is null)
         {
-            return;
+            _registry?.ReleaseComponent(_surfaceId, id);
+            _selectedId = null;
         }
 
-        var wording = _expectedText ?? previous.Text;
-        _expectedText = null;
-        var found = _root is { } root
-            ? _Components(root)
-                .Where(node => node.Kind == previous.Kind && node.Text == wording)
-                .OrderBy(node => Math.Abs(node.Line - previous.Line))
-                .FirstOrDefault()
-            : null;
-
-        if (found is null || found.Line != previous.Line)
-        {
-            _registry?.ReleaseComponent(_surfaceId, previous.Line);
-        }
-
-        _selected = found;
-        if (found is not null && found.Line != previous.Line)
-        {
-            _registry?.HoldComponent(_surfaceId, found.Line);
-        }
-
-        _presence.SetOperatorWriting(found is not null);
+        _presence.SetOperatorWriting(_selectedId is not null);
         _RefreshOverlay();
         _RefreshHandEditBar();
     }
 
-    private static IEnumerable<WireframeNode> _Components(WireframeNode node) =>
-        new[] { node }.Concat(node.Children.SelectMany(_Components));
+    // The selected component in the tree as it stands right now, or null when nothing is selected or what was
+    // selected has been removed.
+    private WireframeNode? _Selected =>
+        _root is { } root && _selectedId is { } id ? WireframeHandEdit.Find(root, id) : null;
 
     private static Control _BuildErrorPanel(IReadOnlyList<WireframeParseError> errors)
     {
@@ -421,22 +400,23 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return null;
     }
 
-    // Selecting is holding: while the operator has a component under their hand an agent's edit naming that line is
-    // refused with a reason (AC-872's hold), and every other component stays open to it.
+    // Selecting is holding: while the operator has a component under their hand an agent's edit naming it is refused
+    // with a reason (AC-872's hold), and every other component stays open to it. Taking one under their hand is also
+    // what mints its id (AC-906) — until something names a component, the source stays free of ids.
     private void _Select(WireframeNode? node)
     {
-        if (_selected is { } previous)
+        if (_selectedId is { } previous)
         {
-            _registry?.ReleaseComponent(_surfaceId, previous.Line);
+            _registry?.ReleaseComponent(_surfaceId, previous);
         }
 
-        _selected = node;
-        if (node is not null)
+        _selectedId = node is null ? null : _registry?.EnsureComponentId(_surfaceId, node.Line);
+        if (_selectedId is { } held)
         {
-            _registry?.HoldComponent(_surfaceId, node.Line);
+            _registry?.HoldComponent(_surfaceId, held);
         }
 
-        _presence.SetOperatorWriting(node is not null);
+        _presence.SetOperatorWriting(_selectedId is not null);
         _RefreshOverlay();
         _RefreshHandEditBar();
     }
@@ -455,7 +435,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             _overlay.Children.Remove(mark);
         }
 
-        if (_selected is not { } node || _ControlFor(node) is not { } control
+        if (_Selected is not { } node || _ControlFor(node) is not { } control
             || control.TranslatePoint(default, _surface) is not { } origin)
         {
             return;
@@ -492,6 +472,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
         }
 
         _Select(node);
+        if (_selectedId is not { } id)
+        {
+            return;
+        }
+
         var box = new TextBox
         {
             Text = node.Text ?? "",
@@ -511,11 +496,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             {
                 key.Handled = true;
                 _overlay.Children.Remove(box);
-
-                // The wording is what the selection is found back by, so the new one has to be known before the
-                // rebuilt source arrives — otherwise this component is looked for under the name it no longer has.
-                _expectedText = box.Text ?? "";
-                _Apply(WireframeComponentEdit.SetText(node.Line, _expectedText));
+                _Apply(WireframeComponentEdit.SetText(id, box.Text ?? ""));
             }
             else if (key.Key == Key.Escape)
             {
@@ -530,7 +511,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // the pointer was.
     private void _AddComponent(Control anchor)
     {
-        if (_selected is not { } target || _root is not { } root)
+        if (_Selected is not { } target || _selectedId is not { } id || _root is not { } root)
         {
             return;
         }
@@ -566,8 +547,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
             var keyword = type.SelectedItem as string ?? WireframeHandEdit.Keyword(WireframeNodeKind.Label);
             var wording = string.IsNullOrWhiteSpace(text.Text) ? null : text.Text!.Trim();
             var edit = child
-                ? WireframeHandEdit.AddChild(target.Line, keyword, wording)
-                : WireframeHandEdit.AddSibling(root, target.Line, keyword, wording);
+                ? WireframeHandEdit.AddChild(id, keyword, wording)
+                : WireframeHandEdit.AddSibling(root, id, keyword, wording);
             if (edit is not null)
             {
                 _Apply(edit);
@@ -580,11 +561,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         text.Focus();
     }
 
-    // Removing what is selected leaves nothing to hold, so the selection goes with it — before the rebuilt source
-    // arrives, which is what keeps _ReattachSelection from looking for a component that is gone on purpose.
     private void _DeleteSelected()
     {
-        if (_selected is { } target && _Apply(WireframeComponentEdit.Remove(target.Line)))
+        if (_selectedId is { } id && _Apply(WireframeComponentEdit.Remove(id)))
         {
             _Select(null);
         }
@@ -592,7 +571,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     private void _Reorder(int delta)
     {
-        if (_selected is { } target && _root is { } root && WireframeHandEdit.Reorder(root, target.Line, delta) is { } edit)
+        if (_selectedId is { } id && _root is { } root && WireframeHandEdit.Reorder(root, id, delta) is { } edit)
         {
             _Apply(edit);
         }
@@ -601,17 +580,17 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // Into another container: the ones it can go into, named and numbered, rather than a drop target to aim at.
     private void _MoveInto(Control anchor)
     {
-        if (_selected is not { } target || _root is not { } root)
+        if (_selectedId is not { } id || _root is not { } root)
         {
             return;
         }
 
         var flyout = new MenuFlyout();
-        foreach (var destination in WireframeHandEdit.Destinations(root, target.Line))
+        foreach (var destination in WireframeHandEdit.Destinations(root, id))
         {
             var item = new MenuItem { Header = $"{_Describe(destination)} — regel {destination.Line}" };
-            var line = destination.Line;
-            item.Click += (_, _) => _Apply(WireframeComponentEdit.Move(target.Line, line, position: null));
+            var into = destination.Id!;
+            item.Click += (_, _) => _Apply(WireframeComponentEdit.Move(id, into, position: null));
             flyout.Items.Add(item);
         }
 
@@ -640,7 +619,6 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return true;
         }
 
-        _expectedText = null;
         _host.ShowToast(refusal, PluginToastSeverity.Warning);
         return false;
     }
@@ -648,8 +626,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private void _RefreshHandEditBar()
     {
         var editable = _registry is not null;
-        var target = _selected;
-        var placement = target is not null && _root is { } root ? WireframeHandEdit.Placement(root, target.Line) : null;
+        var target = _Selected;
+        var placement = _selectedId is { } id && _root is { } root ? WireframeHandEdit.Placement(root, id) : null;
 
         _addButton.IsEnabled = editable && target is not null;
         _textButton.IsEnabled = editable && target is not null;
@@ -739,8 +717,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Children = { zoomOut, zoomLabel, zoomIn, fit },
         };
 
-        // AC-874/WF-4: waar dit wireframe woont, naast de knop die het daar zet — DiagramWorkspaceBody's Opslaan,
-        // one folder over. "Nog geen bestand" is een toestand die het venster net zo goed toont als een pad.
+        // AC-874/WF-4: where this wireframe lives, beside the button that puts it there — DiagramWorkspaceBody's
+        // Opslaan, one folder over. "No file yet" is a state the window shows just as well as a path.
         var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
         var saveStatus = new TextBlock
@@ -751,12 +729,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
-        // AC-875: wat de operator op het oppervlak aanklikte bepaalt waarop deze knoppen werken. Verplaatsen zit hier
-        // en niet in een sleepgebaar — het formaat kent geen coördinaten, dus slepen blijft pannen (zie _OnViewport…).
+        // AC-875: what the operator clicked on the surface is what these buttons work on. Moving lives here rather
+        // than in a drag: the format has no coordinates, so dragging stays panning (see _OnViewport…).
         var add = new Button { Content = "+ Component…", Classes = { "Compact" } };
         add.Click += (_, _) => _AddComponent(add);
         var text = new Button { Content = "Tekst…", Classes = { "Compact" } };
-        text.Click += (_, _) => _StartTextEdit(_selected);
+        text.Click += (_, _) => _StartTextEdit(_Selected);
         var delete = new Button { Content = "Verwijderen", Classes = { "Compact" } };
         delete.Click += (_, _) => _DeleteSelected();
         var up = new Button { Content = "↑", Classes = { "Compact" }, MinWidth = 28 };

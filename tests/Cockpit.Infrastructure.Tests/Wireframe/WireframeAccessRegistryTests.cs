@@ -118,7 +118,7 @@ public class WireframeAccessRegistryTests
     {
         var registry = _Open();
         registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Bewaren"));
+        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
 
         registry.SurfaceClosed(SurfaceId);
 
@@ -190,8 +190,8 @@ public class WireframeAccessRegistryTests
 
         registry.UpdateText(SurfaceId, "screen \"Iets anders\"");
 
-        Assert.Equal("screen \"Iets anders\"", registry.ReadCoupled(Session, SurfaceId));
         Assert.Equal("screen \"Iets anders\"", Assert.Single(announced));
+        Assert.Equal("screen \"Iets anders\" #c1", registry.ReadCoupled(Session, SurfaceId));
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class WireframeAccessRegistryTests
         var registry = _Open();
         registry.Grant(Session, SurfaceId, WireframeCapability.Read);
 
-        var result = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButtonLine, "Bewaren"));
+        var result = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
 
         Assert.NotNull(result.Refusal);
         Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));

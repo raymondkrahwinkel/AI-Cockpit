@@ -1,10 +1,27 @@
 namespace Cockpit.Infrastructure.Tests.Wireframe;
 
-// The screen every wireframe-access test edits, with its line numbers written out — a component is addressed by its
-// line, so a test that gets one wrong is testing the wrong component.
+// The screen every wireframe-access test edits. Every component carries an id, because that is what a component is
+// addressed by (AC-906) — a test naming the wrong one is testing the wrong component. `Plain` is the same screen as
+// it was written before anything named it, for the tests about minting.
 internal static class WireframeScreens
 {
     public const string Settings = """
+        screen "Instellingen" #screen
+          row h:1 #row
+            column w:1 #left
+              nav #nav
+                item "Algemeen" selected #general
+                item "Account" #account
+            column w:3 #right
+              group "Profiel" #group
+                input "Profielnaam" value:"Raymond" #name
+                input "E-mailadres" #email
+              row align:right #buttons
+                button "Annuleren" #cancel
+                button "Opslaan" primary #save
+        """;
+
+    public const string Plain = """
         screen "Instellingen"
           row h:1
             column w:1
@@ -20,13 +37,18 @@ internal static class WireframeScreens
                 button "Opslaan" primary
         """;
 
-    public const int RowLine = 2;
-    public const int NavLine = 4;
-    public const int LeftColumnLine = 3;
-    public const int GroupLine = 8;
-    public const int NameFieldLine = 9;
-    public const int EmailFieldLine = 10;
-    public const int ButtonRowLine = 11;
+    public const string Screen = "screen";
+    public const string Row = "row";
+    public const string LeftColumn = "left";
+    public const string Nav = "nav";
+    public const string GeneralItem = "general";
+    public const string AccountItem = "account";
+    public const string Group = "group";
+    public const string NameField = "name";
+    public const string EmailField = "email";
+    public const string ButtonRow = "buttons";
+    public const string SaveButton = "save";
+
     public const int SaveButtonLine = 13;
 
     public static string[] LinesOf(string source) => source.ReplaceLineEndings("\n").Split('\n');

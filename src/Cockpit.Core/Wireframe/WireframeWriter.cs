@@ -60,6 +60,12 @@ public static class WireframeWriter
                 builder.Append(modifier.Value);
             }
         }
+
+        // Last on the line, where it stays out of the way of the wording the operator actually reads (AC-906).
+        if (node.Id is { } id)
+        {
+            builder.Append(" #").Append(id);
+        }
     }
 
     // One piece of text as the source spells it: double-quoted, with its own quotes and backslashes escaped.
