@@ -584,10 +584,9 @@ public sealed class WhiteboardCanvasControl : Border
             ? [selected, .. WhiteboardBinding.ChildrenOf(Document, image.Id)]
             : [selected];
 
-    // New ids throughout (AC2) — a paste or duplicate is never the same object again. ParentImageId is rebuilt, not
-    // copied: inside the group it re-targets the cloned parent (AC4's binding restored within the copy); outside the
-    // group it falls back to whatever image, if any, now sits under the clone's position — the same rule a freshly
-    // drawn stroke or placed shape already gets — so a lone annotation's copy never points at a dangling id (AC4).
+    // New ids throughout (AC2). ParentImageId is rebuilt, not copied: inside the group it re-targets the cloned
+    // parent (AC4); outside it, it falls back to whatever image now sits under the clone's position — the same
+    // rule a freshly drawn stroke or shape already gets — so a lone annotation's copy never dangles (AC4).
     private List<WhiteboardObject> _Instantiate(IReadOnlyList<WhiteboardObject> templates, double dx, double dy)
     {
         var idMap = templates.ToDictionary(t => t.Id, _ => Guid.NewGuid());
