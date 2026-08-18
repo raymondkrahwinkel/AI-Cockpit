@@ -26,14 +26,15 @@ public static class WhiteboardBinding
     public static IReadOnlyList<WhiteboardObject> ChildrenOf(WhiteboardDocument document, Guid parentId) =>
         [.. document.Objects.Where(o => o.ParentImageId == parentId)];
 
-    // Carries every child of `parentId` along with the image's own move/resize: pure translation for a drag,
-    // translation+scale for a resize — both derived from the image's bounds before/after, never accumulated, so
-    // repeated calls during one drag never drift and a partially-out-of-bounds annotation is never clipped.
+    // Carries `parentId`'s children along with the image's own move/resize — translation for a drag, translation+scale
+    // for a resize, always derived from the bounds before/after so repeated calls never drift. `only` narrows it to the
+    // children one gesture actually carried, which is how AC-912's undo leaves work that landed since alone.
     public static void CarryChildren(
         WhiteboardDocument document,
         Guid parentId,
         double oldX, double oldY, double oldWidth, double oldHeight,
-        double newX, double newY, double newWidth, double newHeight)
+        double newX, double newY, double newWidth, double newHeight,
+        IReadOnlyCollection<Guid>? only = null)
     {
         var scaleX = oldWidth > 0 ? newWidth / oldWidth : 1;
         var scaleY = oldHeight > 0 ? newHeight / oldHeight : 1;
@@ -41,7 +42,7 @@ public static class WhiteboardBinding
         double MapX(double x) => newX + ((x - oldX) * scaleX);
         double MapY(double y) => newY + ((y - oldY) * scaleY);
 
-        foreach (var child in document.Objects.Where(o => o.ParentImageId == parentId))
+        foreach (var child in document.Objects.Where(o => o.ParentImageId == parentId && (only is null || only.Contains(o.Id))))
         {
             switch (child)
             {
