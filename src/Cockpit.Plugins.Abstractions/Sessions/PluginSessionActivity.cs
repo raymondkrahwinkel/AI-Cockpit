@@ -7,10 +7,14 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public enum PluginSessionActivity
 {
-    /// <summary>The line carries no turn-progress signal (metadata) — leave the status unchanged.</summary>
+    /// <summary>
+    /// The line carries no turn-progress signal (metadata) — leave the status unchanged.
+    /// </summary>
     None,
 
-    /// <summary>A turn is in flight: the main agent is producing output or looping into a tool call.</summary>
+    /// <summary>
+    /// A turn is in flight: the main agent is producing output or looping into a tool call.
+    /// </summary>
     Busy,
 
     /// <summary>
@@ -20,9 +24,14 @@ public enum PluginSessionActivity
     /// </summary>
     BackgroundBusy,
 
-    /// <summary>The turn finished (a terminal stop) and nothing is running — the session is done.</summary>
+    /// <summary>
+    /// The turn finished (a terminal stop) and nothing is running — the session is done.
+    /// </summary>
     TurnComplete,
 
-    /// <summary>The agent asked the operator a question it cannot proceed without an answer to — the session is blocked on a human, not on itself.</summary>
+    /// <summary>
+    /// The agent asked the operator a question it cannot proceed without an answer to — the session is blocked
+    /// on a human, not on itself.
+    /// </summary>
     AwaitingOperator,
 }
