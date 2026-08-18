@@ -61,10 +61,8 @@ public class ShareProjectDialogViewModelTests
     [Fact]
     public void Rows_MachineScopeResource_TravelsAsAPlaceholderAndKeepsItsPathLocal()
     {
-        // ClassifyScope's own Path.IsPathFullyQualified check only recognises this platform's own absolute-path
-        // shape (documented in ProjectResourcePathPortability's class remarks) — a hardcoded POSIX path here would
-        // read as Repo-scoped rather than Machine-scoped on Windows, so this builds one this runtime actually calls
-        // fully qualified.
+        // ClassifyScope's Path.IsPathFullyQualified check only recognises this platform's own absolute-path shape,
+        // so this builds one that is fully qualified on whichever runtime the test happens to run on.
         var machinePath = Path.Combine(Path.GetTempPath(), "dumps", "payroll-2026.sql");
         var project = Project(resources:
             [new ProjectResource(machinePath, ProjectResourceRole.Reference) { Label = "Testdata dump" }]);
