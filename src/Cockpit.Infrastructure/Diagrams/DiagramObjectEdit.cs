@@ -37,6 +37,8 @@ internal static class DiagramObjectEdit
         DiagramHandEditKind.RemoveNode => RemoveNode(source, edit.Id),
         DiagramHandEditKind.Connect => Connect(source, edit.Id, edit.To ?? "", edit.Label),
         DiagramHandEditKind.Disconnect => Disconnect(source, edit.Id, edit.To ?? ""),
+        DiagramHandEditKind.RelabelConnection => RelabelConnection(source, edit.Id, edit.To ?? "", edit.Label),
+        DiagramHandEditKind.SetNodeShape => edit.Shape is { } shape ? SetNodeShape(source, edit.Id, shape) : DiagramEdit.Refuse("A shape must be given."),
         DiagramHandEditKind.AddEntity => AddEntity(source, edit.Id),
         DiagramHandEditKind.RenameEntity => RenameEntity(source, edit.Id, edit.Label ?? edit.Id),
         DiagramHandEditKind.RemoveEntity => RemoveEntity(source, edit.Id),
@@ -62,6 +64,15 @@ internal static class DiagramObjectEdit
 
     public static DiagramEdit Disconnect(string source, string from, string to) =>
         Wrong(source, DiagramEditDialect.Flowchart) ?? FlowchartObjectEdit.Disconnect(source, from, to);
+
+    public static DiagramEdit RelabelConnection(string source, string from, string to, string? label) =>
+        Wrong(source, DiagramEditDialect.Flowchart) ?? FlowchartObjectEdit.RelabelConnection(source, from, to, label);
+
+    public static DiagramEdit SetNodeShape(string source, string id, DiagramNodeShape shape) =>
+        Wrong(source, DiagramEditDialect.Flowchart) ?? FlowchartObjectEdit.SetNodeShape(source, id, shape);
+
+    internal static DiagramEdit RestoreNodeShape(string source, string id, string oldLine) =>
+        Wrong(source, DiagramEditDialect.Flowchart) ?? FlowchartObjectEdit.RestoreNodeShape(source, id, oldLine);
 
     // ---- erDiagram (AC-899) ----
 
@@ -167,7 +178,7 @@ internal static class DiagramObjectEdit
         var actual = DialectOf(source);
         return actual == needed ? null : DiagramEdit.Refuse(actual switch
         {
-            DiagramEditDialect.Flowchart => "This is a flowchart — its objects are edited with add_node, rename_node, remove_node, connect_nodes and disconnect_nodes.",
+            DiagramEditDialect.Flowchart => "This is a flowchart — its objects are edited with add_node, rename_node, remove_node, connect_nodes, disconnect_nodes, relabel_connection and set_node_shape.",
             DiagramEditDialect.Er => "This is an erDiagram — its objects are edited with add_entity, rename_entity, remove_entity, set_attribute, remove_attribute, relate_entities and unrelate_entities.",
             _ => "Editing one object at a time works on flowchart, graph and erDiagram sources — use edit_diagram for this one.",
         });

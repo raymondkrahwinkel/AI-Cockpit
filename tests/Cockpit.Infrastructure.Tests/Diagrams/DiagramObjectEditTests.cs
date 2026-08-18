@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 
 namespace Cockpit.Infrastructure.Tests.Diagrams;
@@ -151,6 +152,97 @@ public class DiagramObjectEditTests
 
         Assert.Null(edit.Text);
         Assert.Contains("no B -> A connection", edit.Refusal);
+    }
+
+    [Fact]
+    public void RelabelConnection_SetsALabelOnAConnectionThatHadNone()
+    {
+        var edit = DiagramObjectEdit.RelabelConnection(Source, "A", "B", "go");
+
+        Assert.Equal("""
+            flowchart LR
+                A["Start"]
+                B{Choose}
+                A -->|"go"| B
+            """.ReplaceLineEndings("\n"), edit.Text);
+        Assert.Contains("labeled connection", edit.Summary);
+    }
+
+    [Fact]
+    public void RelabelConnection_ChangesAnExistingLabel_LeavingTheConnectorAlone()
+    {
+        var withLabel = DiagramObjectEdit.Connect(Source, "B", "A", "back home").Text!;
+
+        var edit = DiagramObjectEdit.RelabelConnection(withLabel, "B", "A", "return");
+
+        Assert.EndsWith("\n    B -->|\"return\"| A", edit.Text);
+    }
+
+    [Fact]
+    public void RelabelConnection_WithNoLabel_RemovesTheExistingOne()
+    {
+        var withLabel = DiagramObjectEdit.Connect(Source, "B", "A", "back home").Text!;
+
+        var edit = DiagramObjectEdit.RelabelConnection(withLabel, "B", "A", null);
+
+        Assert.EndsWith("\n    B --> A", edit.Text);
+        Assert.Contains("cleared the label", edit.Summary);
+    }
+
+    [Fact]
+    public void RelabelConnection_OfAConnectionThatIsNotThere_IsRefused()
+    {
+        var edit = DiagramObjectEdit.RelabelConnection(Source, "B", "A", "go");
+
+        Assert.Null(edit.Text);
+        Assert.Contains("no B -> A connection", edit.Refusal);
+    }
+
+    [Fact]
+    public void RelabelConnection_OnAChainLine_IsRefused()
+    {
+        const string chain = "flowchart LR\n    A --> B --> C";
+
+        Assert.Contains("chain", DiagramObjectEdit.RelabelConnection(chain, "A", "C", "skip").Refusal);
+    }
+
+    [Fact]
+    public void SetNodeShape_ChangesTheShape_KeepingTheLabelAndId()
+    {
+        var edit = DiagramObjectEdit.SetNodeShape(Source, "A", DiagramNodeShape.Rounded);
+
+        Assert.Contains("A(\"Start\")", edit.Text, StringComparison.Ordinal);
+        Assert.Contains("changed the shape of node A to rounded", edit.Summary);
+    }
+
+    [Fact]
+    public void SetNodeShape_OnAnImplicitNode_MaterializesItWithItsOwnIdAsTheLabel()
+    {
+        const string implicitSource = "flowchart LR\n    A --> B";
+
+        var edit = DiagramObjectEdit.SetNodeShape(implicitSource, "B", DiagramNodeShape.Diamond);
+
+        Assert.Equal("flowchart LR\n    A --> B{\"B\"}", edit.Text);
+    }
+
+    [Fact]
+    public void SetNodeShape_OfANodeThatIsNotThere_IsRefused()
+    {
+        var edit = DiagramObjectEdit.SetNodeShape(Source, "Z", DiagramNodeShape.Diamond);
+
+        Assert.Null(edit.Text);
+        Assert.Contains("no node \"Z\"", edit.Refusal);
+    }
+
+    [Fact]
+    public void RestoreNodeShape_PutsBackWhateverDelimitersTheOldLineHad_EvenAHandWrittenOneOutsideTheFiveNamedShapes()
+    {
+        const string hexagon = "flowchart LR\n    A{{\"Odd shape\"}}";
+        var reshaped = DiagramObjectEdit.SetNodeShape(hexagon, "A", DiagramNodeShape.Rectangle).Text!;
+
+        var restored = DiagramObjectEdit.RestoreNodeShape(reshaped, "A", "    A{{\"Odd shape\"}}");
+
+        Assert.Equal(hexagon, restored.Text);
     }
 
     [Fact]

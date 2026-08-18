@@ -386,6 +386,10 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 DiagramHandEditKind.AddNode => DiagramObjectEdit.RemoveNode(surface.Text, entry.ObjectKey),
                 DiagramHandEditKind.Connect => _DisconnectByKey(surface.Text, entry.ObjectKey),
                 DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines) ?? entry.ObjectKey),
+                DiagramHandEditKind.RelabelConnection => _RelabelByKey(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines)),
+                DiagramHandEditKind.SetNodeShape => entry.RemovedLines.Count == 0
+                    ? DiagramEdit.Refuse("Er is niets vastgelegd om terug te zetten.")
+                    : DiagramObjectEdit.RestoreNodeShape(surface.Text, entry.ObjectKey, entry.RemovedLines[0]),
                 DiagramHandEditKind.AddEntity or DiagramHandEditKind.RenameEntity or DiagramHandEditKind.SetAttribute
                     or DiagramHandEditKind.RemoveAttribute or DiagramHandEditKind.Relate
                     => DiagramObjectEdit.InvertEr(surface.Text, entry.Kind, entry.ObjectKey, entry.RemovedLines),
@@ -417,7 +421,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     // from, an attribute the entity it sits in — so the journal key carries both halves.
     private static string _KeyOf(DiagramHandEdit edit) => edit.Kind switch
     {
-        DiagramHandEditKind.Connect or DiagramHandEditKind.Disconnect
+        DiagramHandEditKind.Connect or DiagramHandEditKind.Disconnect or DiagramHandEditKind.RelabelConnection
             or DiagramHandEditKind.Relate or DiagramHandEditKind.Unrelate => $"{edit.Id}->{edit.To}",
         DiagramHandEditKind.SetAttribute or DiagramHandEditKind.RemoveAttribute => $"{edit.Id}.{edit.Attribute}",
         DiagramHandEditKind.RenameEntity => $"{edit.Id}>{edit.Label}",
@@ -454,6 +458,11 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
     private static DiagramEdit _DisconnectByKey(string source, string objectKey) =>
         objectKey.Split("->", 2) is [var from, var to]
             ? DiagramObjectEdit.Disconnect(source, from, to)
+            : DiagramEdit.Refuse("Deze verbinding is niet meer te herkennen.");
+
+    private static DiagramEdit _RelabelByKey(string source, string objectKey, string? label) =>
+        objectKey.Split("->", 2) is [var from, var to]
+            ? DiagramObjectEdit.RelabelConnection(source, from, to, label)
             : DiagramEdit.Refuse("Deze verbinding is niet meer te herkennen.");
 
     private static DiagramEdit _Restore(string source, IReadOnlyList<string> removedLines) =>

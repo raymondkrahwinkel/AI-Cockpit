@@ -129,6 +129,49 @@ public class DiagramUndoTests
     }
 
     [Fact]
+    public void Revert_RelabelConnection_RestoresThePreviousLabel()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]\n    A -->|\"gaat naar\"| B");
+        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, "A", To: "B", Label: "loopt naar"));
+        var entry = Assert.Single(registry.History("surface-1"));
+
+        Assert.Null(registry.Revert("surface-1", entry.Id));
+
+        Assert.Contains("A -->|\"gaat naar\"| B", registry.PeekText("surface-1"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Revert_RelabelConnection_ThatAddedALabel_RemovesItAgain()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]\n    A --> B");
+        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, "A", To: "B", Label: "gaat naar"));
+        var entry = Assert.Single(registry.History("surface-1"));
+
+        Assert.Null(registry.Revert("surface-1", entry.Id));
+
+        Assert.Contains("A --> B", registry.PeekText("surface-1"), StringComparison.Ordinal);
+        Assert.DoesNotContain("gaat naar", registry.PeekText("surface-1"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Revert_SetNodeShape_RestoresThePreviousShape_KeepingWhateverLabelIsThereNow()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]");
+        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.SetNodeShape, "A") { Shape = DiagramNodeShape.Diamond });
+        var shapeEntry = Assert.Single(registry.History("surface-1"));
+        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RenameNode, "A", Label: "Begin"));
+
+        Assert.Null(registry.Revert("surface-1", shapeEntry.Id));
+
+        var text = registry.PeekText("surface-1")!;
+        Assert.Contains("A[\"Begin\"]", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("A{", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void HistoryChanged_FiresOnBothJournalingAndReverting()
     {
         var registry = new DiagramAccessRegistry();

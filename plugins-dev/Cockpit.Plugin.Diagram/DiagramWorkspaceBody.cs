@@ -79,6 +79,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly Button _renameButton;
     private readonly Button _deleteButton;
     private readonly Button _attributesButton;
+    private readonly Button _shapeButton;
     private readonly Button _pinButton;
     private readonly TextBlock _handHint;
     private DiagramEditSupport _support = new(DiagramEditDialect.Flowchart, null);
@@ -131,7 +132,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _shapeButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
         var diagramJournal = new DiagramActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, diagramJournal, key => _ = _FlashObjectAsync(key));
         _pinStrip = new PinStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
@@ -549,7 +550,55 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
+        if (_objects.FirstOrDefault(o => o.Kind == DiagramObjectAt.Node && o.Id == from) is { } fromNode)
+        {
+            _StartConnectLabel(fromNode, node);
+            return;
+        }
+
         _Apply(new DiagramHandEdit(DiagramHandEditKind.Connect, from, node.Id));
+    }
+
+    // AC-909: the label the agent's connect_nodes could always carry, now offered on the operator's own two-click
+    // Verbinden gesture too — a box over the connection's own midpoint, same shape as _StartRename's box over a
+    // node. The connection is already decided by the two clicks that got here, so Escape does not cancel it; it
+    // only leaves the label empty, exactly what connecting without typing anything already did.
+    private void _StartConnectLabel(DiagramObjectAt from, DiagramObjectAt to)
+    {
+        var mid = new Point(
+            (from.Bounds.Center.X + to.Bounds.Center.X) / 2 * _svgScale,
+            (from.Bounds.Center.Y + to.Bounds.Center.Y) / 2 * _svgScale);
+        var box = new TextBox
+        {
+            PlaceholderText = "Label (optioneel)",
+            MinWidth = 90,
+            FontSize = 13,
+            Padding = new Thickness(4, 2),
+        };
+        Canvas.SetLeft(box, mid.X - box.MinWidth / 2);
+        Canvas.SetTop(box, mid.Y - 12);
+        _overlay.Children.Add(box);
+        box.Focus();
+
+        void Finish(string? label)
+        {
+            _overlay.Children.Remove(box);
+            _Apply(new DiagramHandEdit(DiagramHandEditKind.Connect, from.Id, to.Id, Label: label));
+        }
+
+        box.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                Finish(string.IsNullOrWhiteSpace(box.Text) ? null : box.Text!.Trim());
+            }
+            else if (key.Key == Key.Escape)
+            {
+                key.Handled = true;
+                Finish(null);
+            }
+        };
     }
 
     // Selecting is holding: while the operator has an object under their hand the agent's edit naming it is refused
@@ -621,14 +670,32 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _RefreshHandEditBar();
     }
 
-    // Renaming happens where the node is: a box over the node itself, Enter to keep it, Escape to leave it as it was.
+    // Renaming happens where the object is: a box over the node (or, for a connection, at its midpoint), Enter to
+    // keep it, Escape to leave it as it was. An ER relationship's label is set through _AskRelationship instead —
+    // it also carries cardinality, which a bare label box cannot ask for.
     private void _StartRename(DiagramObjectAt? hit)
     {
-        if (hit is not { Kind: DiagramObjectAt.Node } node || _registry is null)
+        if (hit is null || _registry is null)
         {
             return;
         }
 
+        if (hit.Kind == DiagramObjectAt.Edge)
+        {
+            if (_support.Dialect == DiagramEditDialect.Flowchart)
+            {
+                _StartRelabelConnection(hit);
+            }
+
+            return;
+        }
+
+        if (hit.Kind != DiagramObjectAt.Node)
+        {
+            return;
+        }
+
+        var node = hit;
         _Select(node);
         var box = new TextBox
         {
@@ -662,25 +729,85 @@ internal sealed class DiagramWorkspaceBody : UserControl
         };
     }
 
+    // AC-909: achteraf hernomen for an existing connection's label — same box, positioned at the connection's own
+    // midpoint and pre-filled with its current label. Escape here does cancel (unlike _StartConnectLabel): the
+    // connection already exists and has a label of its own to fall back on, so there is something to leave alone.
+    private void _StartRelabelConnection(DiagramObjectAt edge)
+    {
+        _Select(edge);
+        var mid = edge.Bounds.Center;
+        var box = new TextBox
+        {
+            Text = edge.Label,
+            MinWidth = 90,
+            FontSize = 13,
+            Padding = new Thickness(4, 2),
+        };
+        Canvas.SetLeft(box, (mid.X * _svgScale) - (box.MinWidth / 2));
+        Canvas.SetTop(box, (mid.Y * _svgScale) - 12);
+        _overlay.Children.Add(box);
+        box.SelectAll();
+        box.Focus();
+
+        box.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                _overlay.Children.Remove(box);
+                _Apply(new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, edge.Id, edge.To, Label: box.Text));
+            }
+            else if (key.Key == Key.Escape)
+            {
+                key.Handled = true;
+                _overlay.Children.Remove(box);
+                _RefreshOverlay();
+            }
+        };
+    }
+
     // A new node is named as it is made, and gets an id of its own: the label carries the wording, the id is what the
     // connections are written in terms of. An ER entity has no such split — its name is what is drawn (AC-899).
+    // AC-909: a shape picker sits beside the name field for a flowchart node — a grid of preview shapes (same
+    // pattern as WhiteboardControl._BuildShapeFlyout), never a combobox with Mermaid syntax. A non-rectangle pick
+    // lands as its own SetNodeShape edit right after AddNode, so each stays its own journal line (AC-853).
     private void _AddObject(Control anchor)
     {
         var isEntity = _support.Dialect == DiagramEditDialect.Er;
         var name = new TextBox { Width = 200, PlaceholderText = isEntity ? "Naam van de entiteit" : "Naam van de node" };
+        var shape = DiagramNodeShape.Rectangle;
+        var shapePreview = new NodeShapePreview { Kind = shape, Width = 28, Height = 20 };
+        var shapeButton = new Button { Content = shapePreview, Classes = { "Compact" }, IsVisible = !isEntity };
+        ToolTip.SetTip(shapeButton, "Kies een vorm.");
+        shapeButton.Flyout = _BuildNodeShapeFlyout(picked =>
+        {
+            shape = picked;
+            shapePreview.Kind = picked;
+            shapePreview.InvalidateVisual();
+        });
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { name, shapeButton } };
         var confirm = new Button { Content = "Toevoegen", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
-            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { name, confirm } },
+            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { row, confirm } },
         };
 
         void Add()
         {
             flyout.Hide();
             var typed = name.Text?.Trim();
-            _Apply(isEntity
-                ? new DiagramHandEdit(DiagramHandEditKind.AddEntity, string.IsNullOrEmpty(typed) ? _NextEntityId() : typed)
-                : new DiagramHandEdit(DiagramHandEditKind.AddNode, _NextNodeId(), Label: string.IsNullOrEmpty(typed) ? "Nieuwe node" : typed));
+            if (isEntity)
+            {
+                _Apply(new DiagramHandEdit(DiagramHandEditKind.AddEntity, string.IsNullOrEmpty(typed) ? _NextEntityId() : typed));
+                return;
+            }
+
+            var id = _NextNodeId();
+            _Apply(new DiagramHandEdit(DiagramHandEditKind.AddNode, id, Label: string.IsNullOrEmpty(typed) ? "Nieuwe node" : typed));
+            if (shape != DiagramNodeShape.Rectangle)
+            {
+                _Apply(new DiagramHandEdit(DiagramHandEditKind.SetNodeShape, id) { Shape = shape });
+            }
         }
 
         confirm.Click += (_, _) => Add();
@@ -836,6 +963,110 @@ internal sealed class DiagramWorkspaceBody : UserControl
         3 => DiagramErCardinality.ZeroOrMore,
         _ => DiagramErCardinality.One,
     };
+
+    private static readonly (DiagramNodeShape Kind, string Label)[] NodeShapeMenuEntries =
+    [
+        (DiagramNodeShape.Rectangle, "Rechthoek"),
+        (DiagramNodeShape.Rounded, "Afgerond"),
+        (DiagramNodeShape.Diamond, "Ruit"),
+        (DiagramNodeShape.Stadium, "Stadion"),
+        (DiagramNodeShape.Subroutine, "Subroutine"),
+    ];
+
+    // AC-909: "Vorm…" on a selected node — the same grid-of-previews flyout add-node uses, applied straight away
+    // as its own SetNodeShape journal line rather than staged in a form.
+    private void _PickNodeShape(Control anchor)
+    {
+        if (_registry is null || _selected is not { Kind: DiagramObjectAt.Node } node)
+        {
+            return;
+        }
+
+        _BuildNodeShapeFlyout(shape => _Apply(new DiagramHandEdit(DiagramHandEditKind.SetNodeShape, node.Id) { Shape = shape })).ShowAt(anchor);
+    }
+
+    // Mirrors WhiteboardControl._BuildShapeFlyout's own pattern: a WrapPanel of preview-plus-label buttons, no
+    // Mermaid syntax anywhere on the picker (AC-909's fourth acceptance criterion).
+    private static Flyout _BuildNodeShapeFlyout(Action<DiagramNodeShape> onPick)
+    {
+        var flyout = new Flyout();
+        var grid = new WrapPanel { MaxWidth = 160 };
+        foreach (var (kind, label) in NodeShapeMenuEntries)
+        {
+            grid.Children.Add(_NodeShapeEntryButton(flyout, kind, label, onPick));
+        }
+
+        flyout.Content = new StackPanel { Spacing = 4, Margin = new Thickness(4), Children = { grid } };
+        return flyout;
+    }
+
+    private static Button _NodeShapeEntryButton(Flyout flyout, DiagramNodeShape kind, string label, Action<DiagramNodeShape> onPick)
+    {
+        var button = new Button
+        {
+            Content = new StackPanel
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new NodeShapePreview { Kind = kind, Width = 44, Height = 30 },
+                    new TextBlock { Text = label, FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center },
+                },
+            },
+            Classes = { "Compact" },
+        };
+        button.Click += (_, _) =>
+        {
+            onPick(kind);
+            flyout.Hide();
+        };
+        return button;
+    }
+
+    // A miniature of the Mermaid shape itself, not a generic icon — mirrors WhiteboardControl.ShapePreview.
+    private sealed class NodeShapePreview : Control
+    {
+        public DiagramNodeShape Kind { get; set; }
+
+        public override void Render(DrawingContext context)
+        {
+            var pen = new Pen(_Brush("CockpitTextSecondaryBrush") ?? Brushes.Gray, 1.5);
+            var rect = new Rect(Bounds.Size).Deflate(3);
+            switch (Kind)
+            {
+                case DiagramNodeShape.Rounded:
+                    context.DrawRectangle(null, pen, rect, 6, 6);
+                    break;
+                case DiagramNodeShape.Diamond:
+                    context.DrawGeometry(null, pen, _Diamond(rect));
+                    break;
+                case DiagramNodeShape.Stadium:
+                    context.DrawRectangle(null, pen, rect, (float)(rect.Height / 2), (float)(rect.Height / 2));
+                    break;
+                case DiagramNodeShape.Subroutine:
+                    context.DrawRectangle(null, pen, rect);
+                    var inset = Math.Min(4, rect.Width / 4);
+                    context.DrawLine(pen, new Point(rect.Left + inset, rect.Top), new Point(rect.Left + inset, rect.Bottom));
+                    context.DrawLine(pen, new Point(rect.Right - inset, rect.Top), new Point(rect.Right - inset, rect.Bottom));
+                    break;
+                default:
+                    context.DrawRectangle(null, pen, rect);
+                    break;
+            }
+        }
+
+        private static StreamGeometry _Diamond(Rect rect)
+        {
+            var geometry = new StreamGeometry();
+            using var ctx = geometry.Open();
+            ctx.BeginFigure(new Point(rect.Center.X, rect.Top), isFilled: false);
+            ctx.LineTo(new Point(rect.Right, rect.Center.Y));
+            ctx.LineTo(new Point(rect.Center.X, rect.Bottom));
+            ctx.LineTo(new Point(rect.Left, rect.Center.Y));
+            ctx.EndFigure(true);
+            return geometry;
+        }
+    }
 
     // E1, E2, … past whatever E-numbers the source already carries, the entity counterpart of _NextNodeId — only
     // reached when the operator confirmed the flyout without typing a name.
@@ -1058,21 +1289,33 @@ internal sealed class DiagramWorkspaceBody : UserControl
         var editable = _registry is not null && _support.Dialect != DiagramEditDialect.Unsupported;
         var reason = _registry is null ? "Deze host kent nog geen diagram-bewerkingen." : _support.Reason;
 
+        // AC-909: a flowchart's edge can be relabeled the same way a node is renamed; an ER relationship cannot —
+        // its label sits together with cardinality, which only _AskRelationship's flyout asks for.
+        var relabelableEdge = _selected is { Kind: DiagramObjectAt.Edge } && !er;
+
         _addButton.Content = er ? "+ Entiteit" : "+ Node";
         _addButton.IsEnabled = editable;
         _connectButton.IsEnabled = editable;
-        _renameButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
+        _renameButton.IsEnabled = editable && (_selected is { Kind: DiagramObjectAt.Node } || relabelableEdge);
         _deleteButton.IsEnabled = editable && _selected is not null;
         _attributesButton.IsVisible = er;
         _attributesButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
+        _shapeButton.IsVisible = !er;
+        _shapeButton.IsEnabled = editable && _selected is { Kind: DiagramObjectAt.Node };
         _connectButton.Content = _isConnecting ? "Verbinden…" : "Verbinden";
 
         var box = er ? "entiteit" : "node";
         ToolTip.SetTip(_addButton, reason ?? $"Zet een {box} op dit diagram.");
         ToolTip.SetTip(_connectButton, reason ?? $"Klik daarna twee {box}s om ze te verbinden.");
-        ToolTip.SetTip(_renameButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? $"Hernoem de geselecteerde {box}." : $"Selecteer eerst een {box} om te hernoemen."));
+        ToolTip.SetTip(_renameButton, reason ?? (_selected switch
+        {
+            { Kind: DiagramObjectAt.Node } => $"Hernoem de geselecteerde {box}.",
+            { Kind: DiagramObjectAt.Edge } when relabelableEdge => "Wijzig het label van de geselecteerde verbinding.",
+            _ => $"Selecteer eerst een {box} om te hernoemen.",
+        }));
         ToolTip.SetTip(_deleteButton, reason ?? (_selected is null ? "Selecteer eerst wat je wilt verwijderen." : "Verwijder het geselecteerde object."));
         ToolTip.SetTip(_attributesButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Beheer de attributen van deze entiteit." : "Selecteer eerst een entiteit."));
+        ToolTip.SetTip(_shapeButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Wijzig de vorm van de geselecteerde node." : "Selecteer eerst een node om de vorm te wijzigen."));
 
         // AC-849: prikken needs both an object under the operator's hand and a live session to send the reference
         // to — the coupling bar's "Geen agent gekoppeld" already explains the second half, this button explains it
@@ -1089,7 +1332,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
             : _selected switch
             {
                 { Kind: DiagramObjectAt.Node } node => $"{char.ToUpperInvariant(box[0])}{box[1..]} {node.Id} geselecteerd — dubbelklik om te hernoemen.",
-                { To: { } head } edge => $"Verbinding {edge.Id} → {head} geselecteerd.",
+                { To: { } head } edge => relabelableEdge
+                    ? $"Verbinding {edge.Id} → {head} geselecteerd — dubbelklik om het label te wijzigen."
+                    : $"Verbinding {edge.Id} → {head} geselecteerd.",
                 _ => "",
             };
     }
@@ -1147,7 +1392,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add,
-        Button Connect, Button Rename, Button Delete, Button Attributes, Button Pin, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
+        Button Connect, Button Rename, Button Delete, Button Attributes, Button Shape, Button Pin, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
     {
         var export = new Button
         {
@@ -1214,6 +1459,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // shown for that dialect only rather than standing there meaningless on a flowchart.
         var attributes = new Button { Content = "Attributen…", Classes = { "Compact" }, IsVisible = false };
         attributes.Click += (_, _) => _EditAttributes(attributes);
+        // AC-909: the shape counterpart of Hernoemen — a flowchart node only, same reasoning as Attributen above.
+        var shape = new Button { Content = "Vorm…", Classes = { "Compact" }, IsVisible = false };
+        shape.Click += (_, _) => _PickNodeShape(shape);
         // AC-849: the operator's question about the selected object, sent to the coupled session as a "📍 pin N"
         // reference the moment it is planted — see _AddPin.
         var pin = new Button { Content = "Prikken", Classes = { "Compact" } };
@@ -1243,14 +1491,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertSample, addNode, connect, rename, delete, attributes, pin, save, saveStatus, hint },
+            Children = { insertSample, addNode, connect, rename, delete, attributes, shape, pin, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
         DockPanel.SetDock(export, Dock.Right);
         DockPanel.SetDock(handEditControls, Dock.Left);
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, pin, hint, follow);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, shape, pin, hint, follow);
     }
 
     // Eén opslagweg voor beide herkomsten (AC-839): een hand-bewerking en een aangenomen agent-voorstel komen

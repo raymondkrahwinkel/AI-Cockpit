@@ -41,7 +41,7 @@ public sealed record DiagramProposal(
 
 // The changes a hand-edit on the diagram surface can make (AC-841) — the same set the agent's per-object tools
 // make, so both sides reach the source through one path. Which of them a surface accepts depends on its diagram
-// type (AC-899): the first five are flowchart/graph, the rest erDiagram.
+// type (AC-899): the first seven are flowchart/graph, the rest erDiagram.
 public enum DiagramHandEditKind
 {
     AddNode,
@@ -49,6 +49,8 @@ public enum DiagramHandEditKind
     RemoveNode,
     Connect,
     Disconnect,
+    RelabelConnection, // AC-909: the label on an existing connection, without touching either end.
+    SetNodeShape, // AC-909: the delimiters a node is drawn with, without touching its label.
     AddEntity,
     RenameEntity,
     RemoveEntity,
@@ -68,6 +70,17 @@ public enum DiagramErCardinality
     ZeroOrMore,
 }
 
+// The five node shapes the flowchart grammar can express one at a time (AC-909) — named for the picker, not by
+// Mermaid's own bracket syntax (that mapping lives in FlowchartObjectEdit).
+public enum DiagramNodeShape
+{
+    Rectangle,
+    Rounded,
+    Diamond,
+    Stadium,
+    Subroutine,
+}
+
 // One hand-edit. `Id` is the node or entity, or the connection's tail when `To` is set; the ER kinds carry their
 // own fields rather than reading a meaning into `To`/`Label` that the flowchart kinds do not have (AC-899).
 public sealed record DiagramHandEdit(DiagramHandEditKind Kind, string Id, string? To = null, string? Label = null)
@@ -82,6 +95,9 @@ public sealed record DiagramHandEdit(DiagramHandEditKind Kind, string Id, string
     public DiagramErCardinality? FromCardinality { get; init; }
 
     public DiagramErCardinality? ToCardinality { get; init; }
+
+    // Only meaningful for SetNodeShape (AC-909).
+    public DiagramNodeShape? Shape { get; init; }
 }
 
 // The diagram types whose objects can be edited one at a time (AC-899). Anything else renders and can be replaced
