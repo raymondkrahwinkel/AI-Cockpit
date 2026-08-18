@@ -95,4 +95,28 @@ public class SessionComposerAlignmentTests
         Assert.Equal(inputHeight, screenshotHeight);
         Assert.Equal(inputTop, screenshotTop);
     });
+
+    /// <summary>AC-855: the Send button follows SessionView's own composerAction convention, so it should share
+    /// the input box's bottom edge exactly the way the screenshot button already does.</summary>
+    [Fact]
+    public void TheChatWindowsSendButton_IsAsTallAsTheInputBoxItSitsBeside() => HeadlessAvalonia.Run(() =>
+    {
+        var window = new AssistantChatWindow();
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+
+        var send = window.GetVisualDescendants().OfType<Button>().First(b => b.Name == "SendButton");
+        var input = window.GetVisualDescendants().OfType<TextBox>().First(b => b.Name == "InputBox");
+
+        var sendTop = send.TranslatePoint(new Point(0, 0), window)!.Value.Y;
+        var inputTop = input.TranslatePoint(new Point(0, 0), window)!.Value.Y;
+        var sendHeight = send.Bounds.Height;
+        var inputHeight = input.Bounds.Height;
+
+        window.Close();
+
+        Assert.Equal(inputHeight, sendHeight);
+        Assert.Equal(inputTop, sendTop);
+    });
 }
