@@ -246,6 +246,73 @@ public class AssistantChatComposerTests
         }
     });
 
+    // Bug found while verifying AC-935 (pre-existing, not caused by it): `CanSend` never raised
+    // PropertyChanged, so `SendButton.IsEnabled="{Binding CanSend}"` stayed at whatever it read on the
+    // window's first render — grey forever, typed text or not. Unnoticed because Enter bypasses the
+    // button and checks CanExecute directly (AssistantChatWindow._OnInputKeyDownCore).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TypingIntoTheBox_EnablesSend_RegardlessOfWhetherATurnIsInFlight(bool busy) => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel();
+        session.Transcript.Clear();
+        session.IsBusy = busy;
+
+        var window = new AssistantChatWindow
+        {
+            Width = 420,
+            Height = 560,
+            DataContext = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>()),
+        };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        try
+        {
+            Assert.False(window.SendButton.IsEnabled);
+
+            ((AssistantChatViewModel)window.DataContext!).InputText = "looks fine to me";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(window.SendButton.IsEnabled);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    // The other half of CanSend's dependencies — an attachment with no typed text must re-enable Send the
+    // same way typing does (same bug, same fix: PendingAttachments.CollectionChanged now re-raises CanSend).
+    [Fact]
+    public void AddingAPendingAttachment_EnablesSend() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel();
+        session.Transcript.Clear();
+
+        var window = new AssistantChatWindow
+        {
+            Width = 420,
+            Height = 560,
+            DataContext = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>()),
+        };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        try
+        {
+            Assert.False(window.SendButton.IsEnabled);
+
+            session.PendingAttachments.Add(new ImageAttachmentViewModel(Png, a => session.PendingAttachments.Remove(a)));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(window.SendButton.IsEnabled);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     private static IAssistantSessionHost _FakeHost(SessionViewModel? session)
     {
         var host = Substitute.For<IAssistantSessionHost>();
