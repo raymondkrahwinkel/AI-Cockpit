@@ -76,51 +76,81 @@ public interface IDiagramAccessRegistry
 {
     // ---- Producer side (the diagram panel/UI layer) ----
 
-    /// <summary>Records that a diagram surface is open, seeded with its current Mermaid source. Idempotent — re-registering updates the name but leaves the text and any coupling alone.</summary>
+    /// <summary>
+    /// Records that a diagram surface is open, seeded with its current Mermaid source. Idempotent — re-registering updates the name but leaves the text and any coupling alone.
+    /// </summary>
     void SurfaceOpened(string surfaceId, string name, string initialText);
 
-    /// <summary>Records that a surface closed: any coupling on it is broken automatically.</summary>
+    /// <summary>
+    /// Records that a surface closed: any coupling on it is broken automatically.
+    /// </summary>
     void SurfaceClosed(string surfaceId);
 
-    /// <summary>The operator editing the diagram directly (once a surface offers that): keeps the registry's copy — what an agent reads — in step with what is on screen. Raises <see cref="TextChanged"/>.</summary>
+    /// <summary>
+    /// The operator editing the diagram directly (once a surface offers that): keeps the registry's copy — what an agent reads — in step with what is on screen. Raises <see cref="TextChanged"/>.
+    /// </summary>
     void UpdateText(string surfaceId, string text);
 
-    /// <summary>Raised whenever a surface's text changes, from the operator (<see cref="UpdateText"/>) or from a coupled agent (<see cref="WriteCoupled"/>), so its panel can re-render.</summary>
+    /// <summary>
+    /// Raised whenever a surface's text changes, from the operator (<see cref="UpdateText"/>) or from a coupled agent (<see cref="WriteCoupled"/>), so its panel can re-render.
+    /// </summary>
     event Action<string, string>? TextChanged;
 
-    /// <summary>Raised on a coupling change (coupled, widened, or decoupled by close/session-end/operator Disconnect) so the surface can show or hide its "agent connected" bar.</summary>
+    /// <summary>
+    /// Raised on a coupling change (coupled, widened, or decoupled by close/session-end/operator Disconnect) so the surface can show or hide its "agent connected" bar.
+    /// </summary>
     event Action<DiagramCouplingChange>? CouplingChanged;
 
-    /// <summary>The operator's Disconnect on a surface: breaks the coupling at once, whatever capabilities it held.</summary>
+    /// <summary>
+    /// The operator's Disconnect on a surface: breaks the coupling at once, whatever capabilities it held.
+    /// </summary>
     void Disconnect(string surfaceId);
 
-    /// <summary>The surface's current text regardless of coupling — what the operator already sees on their own screen. Host-trusted: used to build a truthful consent prompt and to compute a fidelity report, never handed to an agent without that agent separately holding <see cref="DiagramCapability.Read"/>. Null for an unknown surface.</summary>
+    /// <summary>
+    /// The surface's current text regardless of coupling — what the operator already sees on their own screen. Host-trusted: used to build a truthful consent prompt and to compute a fidelity report, never handed to an agent without that agent separately holding <see cref="DiagramCapability.Read"/>. Null for an unknown surface.
+    /// </summary>
     string? PeekText(string surfaceId);
 
     // ---- Consumer side (the cockpit-diagram MCP tools) ----
 
-    /// <summary>The open surfaces as this agent session sees them, each with what this session already holds on it.</summary>
+    /// <summary>
+    /// The open surfaces as this agent session sees them, each with what this session already holds on it.
+    /// </summary>
     IReadOnlyList<DiagramSurfaceView> ListSurfaces(string sessionId);
 
-    /// <summary>Finds an open surface by its id or its operator-facing name, or null if there is no such surface.</summary>
+    /// <summary>
+    /// Finds an open surface by its id or its operator-facing name, or null if there is no such surface.
+    /// </summary>
     DiagramSurface? Resolve(string surfaceRef);
 
-    /// <summary>What this session holds on the surface, or null when there is no coupling at all — so a caller can tell "never coupled" from "coupled, nothing granted yet".</summary>
+    /// <summary>
+    /// What this session holds on the surface, or null when there is no coupling at all — so a caller can tell "never coupled" from "coupled, nothing granted yet".
+    /// </summary>
     DiagramCoupling? CouplingOf(string sessionId, string surfaceId);
 
-    /// <summary>Whether a <em>different</em> agent session holds any coupling on the surface, zero-capability included — exclusivity: a second agent is refused.</summary>
+    /// <summary>
+    /// Whether a <em>different</em> agent session holds any coupling on the surface, zero-capability included — exclusivity: a second agent is refused.
+    /// </summary>
     bool IsCoupledByAnother(string sessionId, string surfaceId);
 
-    /// <summary>Establishes a zero-capability coupling if this session holds none yet on the surface. Idempotent. Throws for an unknown surface, or one coupled to a different session.</summary>
+    /// <summary>
+    /// Establishes a zero-capability coupling if this session holds none yet on the surface. Idempotent. Throws for an unknown surface, or one coupled to a different session.
+    /// </summary>
     void Couple(string sessionId, string surfaceId);
 
-    /// <summary>Widens this session's coupling to also hold <paramref name="capability"/> (creating a zero-capability coupling first if needed). <see cref="DiagramCapability.Edit"/> grants <see cref="DiagramCapability.Read"/> alongside it. Throws for an unknown surface, or one coupled to a different session.</summary>
+    /// <summary>
+    /// Widens this session's coupling to also hold <paramref name="capability"/> (creating a zero-capability coupling first if needed). <see cref="DiagramCapability.Edit"/> grants <see cref="DiagramCapability.Read"/> alongside it. Throws for an unknown surface, or one coupled to a different session.
+    /// </summary>
     void Grant(string sessionId, string surfaceId, DiagramCapability capability);
 
-    /// <summary>The surface's current text, or null when this session does not hold <see cref="DiagramCapability.Read"/> on it.</summary>
+    /// <summary>
+    /// The surface's current text, or null when this session does not hold <see cref="DiagramCapability.Read"/> on it.
+    /// </summary>
     string? ReadCoupled(string sessionId, string surfaceId);
 
-    /// <summary>Writes new text into the surface and raises <see cref="TextChanged"/>. Returns false when this session does not hold <see cref="DiagramCapability.Edit"/> on it.</summary>
+    /// <summary>
+    /// Writes new text into the surface and raises <see cref="TextChanged"/>. Returns false when this session does not hold <see cref="DiagramCapability.Edit"/> on it.
+    /// </summary>
     bool WriteCoupled(string sessionId, string surfaceId, string text);
 
     /// <summary>
@@ -133,7 +163,9 @@ public interface IDiagramAccessRegistry
     /// </summary>
     bool EditCoupled(string sessionId, string surfaceId, DiagramHandEditKind kind, string objectKey, Func<string, (string? Text, string Summary)> edit);
 
-    /// <summary>Raised for each applied per-object edit with a one-line summary of what changed — what the activity strip (AC-848) shows per handling, rather than "the whole source was replaced".</summary>
+    /// <summary>
+    /// Raised for each applied per-object edit with a one-line summary of what changed — what the activity strip (AC-848) shows per handling, rather than "the whole source was replaced".
+    /// </summary>
     event Action<string, string>? ObjectEdited;
 
     /// <summary>
@@ -146,10 +178,14 @@ public interface IDiagramAccessRegistry
 
     // ---- Undo (AC-853): the vangnet that replaces the diff-poort for the tools that write straight through ----
 
-    /// <summary>This surface's journaled per-object edits, oldest first — both origins, so the activity strip (AC-848) can offer a targeted revert per line.</summary>
+    /// <summary>
+    /// This surface's journaled per-object edits, oldest first — both origins, so the activity strip (AC-848) can offer a targeted revert per line.
+    /// </summary>
     IReadOnlyList<DiagramHistoryEntry> History(string surfaceId);
 
-    /// <summary>Raised whenever a surface's history changes: a new edit journaled, or one marked reverted.</summary>
+    /// <summary>
+    /// Raised whenever a surface's history changes: a new edit journaled, or one marked reverted.
+    /// </summary>
     event Action<string>? HistoryChanged;
 
     /// <summary>
@@ -161,41 +197,63 @@ public interface IDiagramAccessRegistry
 
     // ---- The operator's "jij bewerkt" hold (AC-841/D-5) ----
 
-    /// <summary>Marks an object on the surface as the operator's while they are editing it: a node by its id, a connection as "from-&gt;to". Idempotent.</summary>
+    /// <summary>
+    /// Marks an object on the surface as the operator's while they are editing it: a node by its id, a connection as "from-&gt;to". Idempotent.
+    /// </summary>
     void HoldObject(string surfaceId, string objectId);
 
-    /// <summary>Releases the operator's hold on an object.</summary>
+    /// <summary>
+    /// Releases the operator's hold on an object.
+    /// </summary>
     void ReleaseObject(string surfaceId, string objectId);
 
-    /// <summary>Whether the operator is holding that object right now — an agent edit naming it is refused with a reason rather than applied or silently dropped.</summary>
+    /// <summary>
+    /// Whether the operator is holding that object right now — an agent edit naming it is refused with a reason rather than applied or silently dropped.
+    /// </summary>
     bool IsHeldByOperator(string surfaceId, string objectId);
 
-    /// <summary>Breaks every coupling this agent session held (its session ended or crashed).</summary>
+    /// <summary>
+    /// Breaks every coupling this agent session held (its session ended or crashed).
+    /// </summary>
     void SessionEnded(string sessionId);
 
     // ---- An agent asking for a window (AC-835) ----
 
-    /// <summary>Raised when an agent asked for a diagram to be opened, after the operator approved it — whoever draws diagram windows listens here.</summary>
+    /// <summary>
+    /// Raised when an agent asked for a diagram to be opened, after the operator approved it — whoever draws diagram windows listens here.
+    /// </summary>
     event Action<DiagramOpenRequest>? OpenRequested;
 
-    /// <summary>Announces <paramref name="request"/> and remembers its caller, so the surface is coupled to it the moment the window registers it. False when nothing is listening at all — there is no diagram surface in this cockpit to open one on.</summary>
+    /// <summary>
+    /// Announces <paramref name="request"/> and remembers its caller, so the surface is coupled to it the moment the window registers it. False when nothing is listening at all — there is no diagram surface in this cockpit to open one on.
+    /// </summary>
     bool RequestOpen(DiagramOpenRequest request);
 
     // ---- The diff-poort (AC-825): a proposal sits between "delivered" and "applied" ----
 
-    /// <summary>Raised when a surface's pending proposal changes — set on a fresh <see cref="Propose"/>, re-raised with recomputed blocks when the surface's text moved under it, null once resolved, discarded, or the surface/session that made it goes away.</summary>
+    /// <summary>
+    /// Raised when a surface's pending proposal changes — set on a fresh <see cref="Propose"/>, re-raised with recomputed blocks when the surface's text moved under it, null once resolved, discarded, or the surface/session that made it goes away.
+    /// </summary>
     event Action<string, DiagramProposal?>? ProposalChanged;
 
-    /// <summary>Records `proposedText` as a pending proposal on `surfaceId`, computed against the surface's current text — it does not touch the stored source. Returns false when `sessionId` does not hold <see cref="DiagramCapability.Edit"/> on the surface.</summary>
+    /// <summary>
+    /// Records `proposedText` as a pending proposal on `surfaceId`, computed against the surface's current text — it does not touch the stored source. Returns false when `sessionId` does not hold <see cref="DiagramCapability.Edit"/> on the surface.
+    /// </summary>
     bool Propose(string sessionId, string surfaceId, string proposedText, string changeSummary, IReadOnlyList<string> fidelityFindings);
 
-    /// <summary>The surface's pending proposal, or null when there is none.</summary>
+    /// <summary>
+    /// The surface's pending proposal, or null when there is none.
+    /// </summary>
     DiagramProposal? PendingProposal(string surfaceId);
 
-    /// <summary>Applies the pending proposal's blocks using the operator's per-block decision (see <see cref="DiagramDiff.Apply"/>), writes the merged result into the surface (raising <see cref="TextChanged"/>), and clears the proposal. The blocks it applies are always against the surface as it stands — a hand-edit or per-object edit under a waiting proposal rebases it (AC-845) rather than being overwritten by it. Returns false when there is no pending proposal on this surface.</summary>
+    /// <summary>
+    /// Applies the pending proposal's blocks using the operator's per-block decision (see <see cref="DiagramDiff.Apply"/>), writes the merged result into the surface (raising <see cref="TextChanged"/>), and clears the proposal. The blocks it applies are always against the surface as it stands — a hand-edit or per-object edit under a waiting proposal rebases it (AC-845) rather than being overwritten by it. Returns false when there is no pending proposal on this surface.
+    /// </summary>
     bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks);
 
-    /// <summary>Discards the surface's pending proposal without writing anything — the whole thing, or whatever of it was still undecided.</summary>
+    /// <summary>
+    /// Discards the surface's pending proposal without writing anything — the whole thing, or whatever of it was still undecided.
+    /// </summary>
     bool DiscardProposal(string surfaceId);
 
     // ---- Pins (AC-849): the operator's question about one object, landed as a reference in the coupled session ----
