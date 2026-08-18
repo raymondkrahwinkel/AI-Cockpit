@@ -109,17 +109,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _status = "Not started.";
 
-    // The MCP servers this session actually mounts (#44/AC-130) — the merged session/profile selection, set once
-    // by whichever route launched the pane. `null` when neither named one: an unknown, not
-    // necessarily empty, selection (see AC-537 and `ConnectedStatusLine`).
-    //
-    // On the base, and the single source both the header's count and its hover read from, so the number and the
-    // list cannot come to disagree — the failure this would otherwise have is a count of ten beside a list of
-    // nine, with nothing to say which of the two is right (AC-563 criterion 5).
-    //
-    // Seeded by the launching view model with that merged selection, then replaced by what the launch route
-    // reports it actually mounted (AC-927, `SessionMcpMounts`) — the selection alone never holds the
-    // always-mounted, auto-mounted or project-linked servers a session also gets, and read as those being absent.
+    // The MCP servers this session has: seeded with the merged session/profile selection at launch (#44/AC-130),
+    // then replaced by what its route reports it mounted (AC-927). `null` is unknown, not empty (AC-537). The one
+    // source both the header's count and its hover read, so the two cannot disagree (AC-563 criterion 5).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
