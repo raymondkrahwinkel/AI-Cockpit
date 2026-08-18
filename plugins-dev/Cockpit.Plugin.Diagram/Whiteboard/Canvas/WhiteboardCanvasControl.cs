@@ -206,7 +206,7 @@ public sealed class WhiteboardCanvasControl : Border
 
         var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Afbeelding invoegen",
+            Title = "Insert image",
             AllowMultiple = false,
             FileTypeFilter = [FilePickerFileTypes.ImageAll],
         });
@@ -317,7 +317,7 @@ public sealed class WhiteboardCanvasControl : Border
         if (Tool == WhiteboardTool.PlaceShape)
         {
             // Created right here, not on the first PointerMoved — a click with no movement at all must still place
-            // something, per "neerzetten, niet tekenen" (#W2), rather than silently doing nothing. Lives only on
+            // something, per "place, don't draw" (#W2), rather than silently doing nothing. Lives only on
             // the surface until release — Document.Add happens there, so read_whiteboard never sees a mid-drag sliver.
             _shapeStartPoint = point;
             var placed = new PlacedObject { ShapeKind = _pendingShapeKind, X = point.X, Y = point.Y, Width = 1, Height = 1 };
@@ -893,7 +893,7 @@ public sealed class WhiteboardCanvasControl : Border
     internal sealed class EmptyStateOverlay : Control
     {
         private const double DotSpacing = 24;
-        private const string Message = "Leeg bord. Teken, plak een screenshot, of zet een vorm neer.";
+        private const string Message = "Empty board. Draw, paste a screenshot, or place a shape.";
 
         private static readonly IBrush DotBrush = new SolidColorBrush(Color.Parse("#D6DEE8"));
         private static readonly IBrush TextBrush = new SolidColorBrush(Color.Parse("#94A3B8"));
@@ -969,21 +969,21 @@ public sealed class WhiteboardCanvasControl : Border
     {
         _DismissDeleteImagePrompt();
 
-        var both = new Button { Content = $"Afbeelding en {children.Count} aantekening(en) verwijderen", Classes = { "Compact" } };
+        var both = new Button { Content = $"Delete image and {children.Count} annotation(s)", Classes = { "Compact" } };
         both.Click += (_, _) =>
         {
             _DismissDeleteImagePrompt();
             _DeleteJournaled(imageId, alsoRemoved: children, unbound: []);
         };
 
-        var detach = new Button { Content = "Alleen de afbeelding — aantekeningen loskoppelen", Classes = { "Compact" } };
+        var detach = new Button { Content = "Just the image — detach annotations", Classes = { "Compact" } };
         detach.Click += (_, _) =>
         {
             _DismissDeleteImagePrompt();
             _DeleteJournaled(imageId, alsoRemoved: [], unbound: children);
         };
 
-        var cancel = new Button { Content = "Annuleren", Classes = { "Compact" } };
+        var cancel = new Button { Content = "Cancel", Classes = { "Compact" } };
         cancel.Click += (_, _) => _DismissDeleteImagePrompt();
 
         var prompt = new Border
@@ -997,7 +997,7 @@ public sealed class WhiteboardCanvasControl : Border
                 Spacing = 4,
                 Children =
                 {
-                    new TextBlock { Text = "Wat moet er gebeuren met de aantekeningen op deze afbeelding?", TextWrapping = TextWrapping.Wrap, MaxWidth = 220 },
+                    new TextBlock { Text = "What should happen to the annotations on this image?", TextWrapping = TextWrapping.Wrap, MaxWidth = 220 },
                     both,
                     detach,
                     cancel,
@@ -1141,7 +1141,7 @@ public sealed class WhiteboardCanvasControl : Border
             if (item is PlacedObject { ShapeKind: PlacedShapeKind.Image } &&
                 WhiteboardBinding.ChildrenOf(Document, item.Id).Any(child => !ownIds.Contains(child.Id)))
             {
-                return "Er ligt werk op dit object — verwijder dat eerst.";
+                return "There is work on this object — remove that first.";
             }
         }
 
@@ -1154,11 +1154,11 @@ public sealed class WhiteboardCanvasControl : Border
     {
         if (Document.Find(removal.FocusId) is null)
         {
-            return "Dit object staat niet meer op het bord.";
+            return "This object is no longer on the board.";
         }
 
         return WhiteboardBinding.ChildrenOf(Document, removal.FocusId).Count > 0
-            ? "Er ligt werk op dit object — verwijder dat eerst."
+            ? "There is work on this object — remove that first."
             : _Drop(removal);
     }
 
@@ -1175,7 +1175,7 @@ public sealed class WhiteboardCanvasControl : Border
     {
         if (Document.Find(id) is not PlacedObject placed || !_placedControls.TryGetValue(id, out var control))
         {
-            return "Dit object staat niet meer op het bord.";
+            return "This object is no longer on the board.";
         }
 
         if (carried.Count > 0)
@@ -1208,7 +1208,7 @@ public sealed class WhiteboardCanvasControl : Border
     {
         if (Document.Find(id) is not PlacedObject placed || !_placedControls.TryGetValue(id, out var control))
         {
-            return "Dit object staat niet meer op het bord.";
+            return "This object is no longer on the board.";
         }
 
         placed.Text = text;

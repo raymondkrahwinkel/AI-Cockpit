@@ -56,8 +56,8 @@ public class PresenceIndicatorsTests
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(presence.IsVisible);
-        Assert.Equal("Agent gekoppeld, geen rechten", ToolTip.GetTip(_AgentPip(presence)));
-        Assert.Contains(_Texts(presence), text => text is not null && text.Contains("gekoppeld, nog niets gevraagd", StringComparison.Ordinal));
+        Assert.Equal("Agent coupled, no permissions", ToolTip.GetTip(_AgentPip(presence)));
+        Assert.Contains(_Texts(presence), text => text is not null && text.Contains("coupled, nothing asked yet", StringComparison.Ordinal));
 
         window.Close();
     }
@@ -73,8 +73,8 @@ public class PresenceIndicatorsTests
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: true, CanEdit: false));
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal("Agent leest mee", ToolTip.GetTip(_AgentPip(presence)));
-        Assert.Contains(_Texts(presence), text => text is not null && text.Contains("leest mee", StringComparison.Ordinal));
+        Assert.Equal("Agent reading along", ToolTip.GetTip(_AgentPip(presence)));
+        Assert.Contains(_Texts(presence), text => text is not null && text.Contains("reading along", StringComparison.Ordinal));
 
         window.Close();
     }
@@ -95,7 +95,7 @@ public class PresenceIndicatorsTests
 
         // The pulse sets the "writing" flag synchronously before it ever awaits, so this is observable without
         // waiting out the 3s window (see DiagramCollabWindowTests for the fade itself, on the diagram's own cursor).
-        Assert.Equal("Agent bewerkt", ToolTip.GetTip(_AgentPip(presence)));
+        Assert.Equal("Agent editing", ToolTip.GetTip(_AgentPip(presence)));
         Assert.Contains(_Texts(presence), text => text is not null && text.Contains("Werksessie: added node N1 \"Foo\"", StringComparison.Ordinal));
 
         window.Close();
@@ -111,10 +111,10 @@ public class PresenceIndicatorsTests
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: true, CanEdit: true));
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal("Jij aanwezig", ToolTip.GetTip(_OperatorPip(presence)));
+        Assert.Equal("You are present", ToolTip.GetTip(_OperatorPip(presence)));
 
         presence.SetOperatorWriting(true);
-        Assert.Equal("Jij bewerkt", ToolTip.GetTip(_OperatorPip(presence)));
+        Assert.Equal("You are editing", ToolTip.GetTip(_OperatorPip(presence)));
 
         window.Close();
     }
@@ -136,13 +136,13 @@ public class PresenceIndicatorsTests
         registry.Raise("surface-1");
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Contains(_Texts(presence), text => text == "2 wijzigingen");
+        Assert.Contains(_Texts(presence), text => text == "2 changes");
 
         // Revert mutates the existing entry in place (FakeDiagramRegistry.Revert), it never appends — the count
         // must stay exactly where it was.
         registry.Revert("surface-1", "e1");
         Dispatcher.UIThread.RunJobs();
-        Assert.Contains(_Texts(presence), text => text == "2 wijzigingen");
+        Assert.Contains(_Texts(presence), text => text == "2 changes");
 
         window.Close();
     }

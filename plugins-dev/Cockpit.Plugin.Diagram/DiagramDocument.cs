@@ -4,11 +4,11 @@ namespace Cockpit.Plugin.Diagram;
 // session — so it has to be the diagram's own stable identity: AC-812's file path for a saved one, a fresh id for
 // a diagram that has no file yet. It doubles as the surface id the AC-810 registry knows this diagram by.
 // `FilePath` is where it already lives (AC-839); null means it has no file yet, which the window draws as
-// "Nog geen bestand" and the first save turns into one.
+// "No file yet" and the first save turns into one.
 internal sealed record DiagramDocument(string Id, string Title, string MermaidText, string? FilePath = null)
 {
-    // A valid, node-less flowchart (AC-840): renders as a blank canvas, and is what "voorbeeld invoegen" and
-    // "node toevoegen" both build on top of.
+    // A valid, node-less flowchart (AC-840): renders as a blank canvas, and is what "insert sample" and
+    // "add node" both build on top of.
     public const string Empty = "flowchart LR";
 
     public const string Sample = """

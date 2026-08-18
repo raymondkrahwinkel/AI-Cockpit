@@ -164,7 +164,7 @@ public class WhiteboardOperatorUndoTests
         canvas.UseSelectTool();
         canvas.SelectObject(image.Id);
         _PressDelete(window, canvas);
-        _ClickButton(canvas, "Alleen de afbeelding — aantekeningen loskoppelen");
+        _ClickButton(canvas, "Just the image — detach annotations");
         Assert.Null(stroke.ParentImageId);
 
         _Undo(window, canvas);
@@ -226,7 +226,7 @@ public class WhiteboardOperatorUndoTests
 
         _Undo(window, canvas);
 
-        Assert.Equal(new[] { "Er ligt werk op dit object — verwijder dat eerst." }, refusals.ToArray());
+        Assert.Equal(new[] { "There is work on this object — remove that first." }, refusals.ToArray());
         Assert.Contains(anchor, document.Objects);
 
         window.Close();

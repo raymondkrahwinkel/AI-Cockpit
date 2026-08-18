@@ -87,7 +87,7 @@ internal sealed class SurfaceSessionBinding
         var flyout = new MenuFlyout();
         if (open.Count == 0)
         {
-            flyout.Items.Add(new MenuItem { Header = "Geen open sessies", IsEnabled = false });
+            flyout.Items.Add(new MenuItem { Header = "No open sessions", IsEnabled = false });
         }
 
         foreach (var session in open)

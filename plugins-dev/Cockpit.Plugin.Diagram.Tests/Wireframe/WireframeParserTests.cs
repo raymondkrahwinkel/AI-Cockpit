@@ -41,7 +41,7 @@ public class WireframeParserTests
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(3, error.Line);
-        Assert.Contains("inspringing", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("indentation", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class WireframeParserTests
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(2, error.Line);
-        Assert.Contains("aanhalingsteken", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quote", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public class WireframeParserTests
     {
         var result = WireframeParser.Parse("screen \"X\" #een #twee");
 
-        Assert.Equal("Een component draagt hoogstens \u00E9\u00E9n id.", Assert.Single(result.Errors).Message);
+        Assert.Equal("A component carries at most one id.", Assert.Single(result.Errors).Message);
     }
 
     [Fact]

@@ -17,14 +17,14 @@ public sealed class WhiteboardControl : UserControl
 {
     private static readonly (PlacedShapeKind Kind, string Label)[] ShapeMenuEntries =
     [
-        (PlacedShapeKind.Rectangle, "Vierkant"),
-        (PlacedShapeKind.RoundedRectangle, "Afgerond"),
-        (PlacedShapeKind.Ellipse, "Cirkel"),
-        (PlacedShapeKind.Diamond, "Ruit"),
-        (PlacedShapeKind.Arrow, "Pijl"),
-        (PlacedShapeKind.Column, "Kolom"),
-        (PlacedShapeKind.Callout, "Ballon"),
-        (PlacedShapeKind.Text, "Tekst"),
+        (PlacedShapeKind.Rectangle, "Rectangle"),
+        (PlacedShapeKind.RoundedRectangle, "Rounded"),
+        (PlacedShapeKind.Ellipse, "Circle"),
+        (PlacedShapeKind.Diamond, "Diamond"),
+        (PlacedShapeKind.Arrow, "Arrow"),
+        (PlacedShapeKind.Column, "Column"),
+        (PlacedShapeKind.Callout, "Callout"),
+        (PlacedShapeKind.Text, "Text"),
     ];
 
     private readonly ToggleButton _selectButton;
@@ -36,18 +36,18 @@ public sealed class WhiteboardControl : UserControl
         Canvas = new WhiteboardCanvasControl(document);
         Canvas.ToolChanged += (_, _) => _SyncToolButtons();
 
-        _selectButton = _ToggleIconButton(MaterialIconKind.CursorDefaultOutline, "Selecteren", Canvas.UseSelectTool);
+        _selectButton = _ToggleIconButton(MaterialIconKind.CursorDefaultOutline, "Select", Canvas.UseSelectTool);
         _selectButton.IsChecked = true;
 
-        _pencilButton = _ToggleIconButton(MaterialIconKind.Pencil, "Potlood", Canvas.UsePencilTool);
+        _pencilButton = _ToggleIconButton(MaterialIconKind.Pencil, "Pencil", Canvas.UsePencilTool);
         _markerButton = _ToggleIconButton(MaterialIconKind.Highlighter, "Marker", Canvas.UseMarkerTool);
 
-        var shapeButton = _IconButton(MaterialIconKind.ShapeOutline, "Vormsjablonen", () => { });
+        var shapeButton = _IconButton(MaterialIconKind.ShapeOutline, "Shape templates", () => { });
         shapeButton.Flyout = _BuildShapeFlyout();
 
         var stickyButton = _IconButton(MaterialIconKind.StickyNoteOutline, "Sticky note", () => Canvas.UseShapeTool(PlacedShapeKind.StickyNote));
-        var imageButton = _IconButton(MaterialIconKind.ImagePlusOutline, "Afbeelding invoegen", () => _ = Canvas.InsertImageAsync());
-        var pasteButton = _IconButton(MaterialIconKind.ContentPaste, "Screenshot plakken", () => _ = Canvas.PasteScreenshotAsync());
+        var imageButton = _IconButton(MaterialIconKind.ImagePlusOutline, "Insert image", () => _ = Canvas.InsertImageAsync());
+        var pasteButton = _IconButton(MaterialIconKind.ContentPaste, "Paste screenshot", () => _ = Canvas.PasteScreenshotAsync());
 
         // AC-913: same zoom/Fit shape as the diagram and wireframe toolbars — the wheel and the middle-button drag
         // do the same job, this is just where the current level is always visible.
@@ -66,9 +66,9 @@ public sealed class WhiteboardControl : UserControl
         zoomIn.Click += (_, _) => Canvas.ZoomIn();
         var fitButton = new Button { Content = "Fit", Classes = { "Compact" } };
         fitButton.Click += (_, _) => Canvas.ApplyFit();
-        ToolTip.SetTip(zoomOut, "Uitzoomen");
-        ToolTip.SetTip(zoomIn, "Inzoomen");
-        ToolTip.SetTip(fitButton, "Alles in beeld — middelste knop sleept, wiel zoomt.");
+        ToolTip.SetTip(zoomOut, "Zoom out");
+        ToolTip.SetTip(zoomIn, "Zoom in");
+        ToolTip.SetTip(fitButton, "Fit everything in view — middle button drags, wheel zooms.");
 
         var toolbar = new StackPanel
         {
@@ -98,7 +98,7 @@ public sealed class WhiteboardControl : UserControl
             Margin = new Thickness(4),
             Children =
             {
-                new TextBlock { Text = "Neerzetten, niet tekenen", FontStyle = FontStyle.Italic, FontSize = 11, Opacity = 0.7 },
+                new TextBlock { Text = "Place, don't draw", FontStyle = FontStyle.Italic, FontSize = 11, Opacity = 0.7 },
                 grid,
             },
         };

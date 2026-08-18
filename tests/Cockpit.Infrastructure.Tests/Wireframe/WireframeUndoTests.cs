@@ -106,7 +106,7 @@ public class WireframeUndoTests
 
         Assert.Null(registry.Revert(SurfaceId, entry.Id));
 
-        Assert.Equal("Deze bewerking is al teruggedraaid.", registry.Revert(SurfaceId, entry.Id));
+        Assert.Equal("This edit has already been reverted.", registry.Revert(SurfaceId, entry.Id));
         Assert.True(Assert.Single(registry.History(SurfaceId)).Reverted);
     }
 
@@ -120,7 +120,7 @@ public class WireframeUndoTests
 
         var refusal = registry.Revert(SurfaceId, entry.Id);
 
-        Assert.Equal("Deze bewerking is niet meer terug te vinden in het wireframe.", refusal);
+        Assert.Equal("This edit can no longer be found in the wireframe.", refusal);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class WireframeUndoTests
     {
         var registry = _Coupled();
 
-        Assert.Equal("Deze bewerking is niet gevonden.", registry.Revert(SurfaceId, "no-such-entry"));
+        Assert.Equal("This edit was not found.", registry.Revert(SurfaceId, "no-such-entry"));
     }
 
     [Fact]

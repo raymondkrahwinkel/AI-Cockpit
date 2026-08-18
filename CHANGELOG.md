@@ -59,10 +59,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the original. Repeated pasting keeps fanning copies out instead of stacking them on the exact same spot. Pasting a
   screenshot from outside the app still works exactly as before — it only takes over Ctrl+V while the board's own
   clipboard is empty.
-- added: a diagram connection can now carry a label from the operator's own Verbinden gesture (a box appears on the
+- added: a diagram connection can now carry a label from the operator's own Connect gesture (a box appears on the
   connection after the second click), an existing connection's label can be changed or removed afterwards
-  (double-click it, or select it and choose Hernoemen), and a node's shape — rectangle, rounded, diamond, stadium or
-  subroutine — can be picked when adding it or changed afterwards from the toolbar's new Vorm… action, with a grid of
+  (double-click it, or select it and choose Rename), and a node's shape — rectangle, rounded, diamond, stadium or
+  subroutine — can be picked when adding it or changed afterwards from the toolbar's new Shape… action, with a grid of
   preview shapes rather than a syntax name to look up.
 - added: a wireframe can now sketch a whole web or app screen, not only a settings form — cards, a modal dialog, a
   dropdown menu, a toggle, a slider, a multi-line field, a search box, an avatar, an icon, a badge, a progress bar, a
@@ -107,6 +107,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the diagram, whiteboard and wireframe windows now speak English throughout — button labels, tooltips,
+  toasts, placeholders and error messages that had been left in Dutch are translated, and the error text that
+  reaches an agent through the wireframe editing tools no longer switches language mid-conversation.
 - fixed: a session's header now names the MCP servers it really mounted instead of the ones ticked in the
   New-session checklist. The servers the cockpit mounts on its own — its status line and the agent-to-agent line,
   the pull-request tools in a git checkout, a project's own memory server — were never in that checklist, so a
@@ -157,7 +160,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   With no agent coupled this whole strip is gone rather than sitting there empty.
 
 - added: on a diagram, a fresh edit from the agent now gets its own cursor mark on the object it touched — glowing
-  for a few seconds while it's fresh, then settling into a quieter outline once it's not. A new "Volgen" toggle pans
+  for a few seconds while it's fresh, then settling into a quieter outline once it's not. A new "Follow" toggle pans
   the view to follow wherever the agent edits next, without changing your zoom level; it switches itself off the
   moment you pan or zoom by hand, so it never fights your own navigation. On the whiteboard, a fresh agent action
   highlights the object it touched the same way selecting it yourself would.
@@ -202,7 +205,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   shows which agent is connected and which of the two it holds; a diagram it is merely connected to, with neither
   granted yet, shows that too rather than looking untouched.
 
-- added: a "Nieuw diagram" quick action next to Depot servers and Docker on the workspace tab strip — one screen
+- added: a "New diagram" quick action next to Depot servers and Docker on the workspace tab strip — one screen
   asks for a name (prefilled, Enter is enough) and, optionally, lets you couple the session you already have open.
   Coupling here is not access: the session still has to ask for read or edit separately, the same as connecting
   any other way.
@@ -415,7 +418,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: you can now plant a pin on a diagram or whiteboard object with a question — it lands right away as a
   "📍 pin N" reference in the coupled session's chat, so the agent can answer without a second chat window. A pin
-  stays attached to its object across a re-render, and a Pins panel lists every one with a "Sluiten" button once
+  stays attached to its object across a re-render, and a Pins panel lists every one with a "Close" button once
   it's been answered. Without a coupled session, planting a pin is switched off — the button says why.
 
 ### Changed

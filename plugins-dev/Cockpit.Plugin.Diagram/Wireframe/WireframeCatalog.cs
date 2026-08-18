@@ -69,7 +69,7 @@ internal static class WireframeCatalog
     {
         if (expected is not null && File.Exists(filePath) && File.ReadAllText(filePath) != expected)
         {
-            throw new IOException("het bestand is buiten dit venster gewijzigd");
+            throw new IOException("the file was changed outside this window");
         }
 
         File.WriteAllText(filePath, $"# {title}\n\n```wireframe\n{wireframeText.TrimEnd()}\n```\n");

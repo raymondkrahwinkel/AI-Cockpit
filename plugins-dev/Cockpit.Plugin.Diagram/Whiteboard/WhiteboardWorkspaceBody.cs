@@ -221,7 +221,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // "why can't I" is exactly what the operator needs to be able to read here.
     private (Border Bar, Button Convert, TextBlock Status) _BuildConvertBar()
     {
-        var convert = new Button { Content = "Naar diagram omzetten", Classes = { "Compact" } };
+        var convert = new Button { Content = "Convert to diagram", Classes = { "Compact" } };
         convert.Click += (_, _) => _ShowConvertMenu(convert);
         var status = new TextBlock
         {
@@ -245,19 +245,19 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private void _ShowConvertMenu(Control anchor)
     {
         var flyout = new MenuFlyout();
-        var fresh = new MenuItem { Header = "Omzetten naar een nieuw diagram" };
+        var fresh = new MenuItem { Header = "Convert to a new diagram" };
         fresh.Click += (_, _) => _ConvertToNew();
         flyout.Items.Add(fresh);
 
         // A diagram another agent is already holding would be a dead-end choice: edit_diagram refuses there.
         foreach (var surface in _diagrams?.ListSurfaces(_sessionBinding.PaneId).Where(s => !_diagrams.IsCoupledByAnother(_sessionBinding.PaneId, s.SurfaceId)) ?? [])
         {
-            var item = new MenuItem { Header = $"Omzetten naar \"{surface.Name}\"" };
+            var item = new MenuItem { Header = $"Convert to \"{surface.Name}\"" };
             item.Click += (_, _) => _Convert(surface.SurfaceId, surface.Name);
             flyout.Items.Add(item);
         }
 
-        var writeDown = new MenuItem { Header = "Alleen opschrijven" };
+        var writeDown = new MenuItem { Header = "Just write it down" };
         writeDown.Click += (_, _) => _Ask(WhiteboardToDiagram.WriteDownPrompt(_documentTitle), target: null);
         flyout.Items.Add(new Separator());
         flyout.Items.Add(writeDown);
@@ -321,7 +321,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // sent to the coupled session as a "📍 pin N" reference, see _AddPin.
     private (Border Bar, Button Save, TextBlock Status, Button Pin) _BuildSaveBar()
     {
-        var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
+        var save = new Button { Content = "Save", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
         var status = new TextBlock
         {
@@ -331,7 +331,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
-        var pin = new Button { Content = "Prikken", Classes = { "Compact" } };
+        var pin = new Button { Content = "Pin", Classes = { "Compact" } };
         pin.Click += (_, _) => _AddPin(pin);
 
         var bar = new Border
@@ -350,9 +350,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _pinButton.IsEnabled = _registry is not null && _sessionBinding.IsLive && selected;
         ToolTip.SetTip(
             _pinButton,
-            !_sessionBinding.IsLive ? "Koppel eerst een gesprek om te kunnen prikken."
-            : !selected ? "Selecteer eerst een object om te prikken."
-            : "Prik een vraag op dit object.");
+            !_sessionBinding.IsLive ? "Couple a conversation first to be able to pin."
+            : !selected ? "Select an object first to pin it."
+            : "Pin a question on this object.");
     }
 
     // AC-849: plants a pin on the selected object and sends its "📍 pin N" reference to the coupled session right
@@ -366,8 +366,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         }
 
         var label = _control.Canvas.Document.Find(id) is PlacedObject placed ? placed.Text ?? placed.ShapeKind.ToString() : null;
-        var question = new TextBox { Width = 260, PlaceholderText = "Waar twijfel je over?" };
-        var confirm = new Button { Content = "Prikken", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var question = new TextBox { Width = 260, PlaceholderText = "What are you unsure about?" };
+        var confirm = new Button { Content = "Pin", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
             Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { question, confirm } },
@@ -419,7 +419,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         if (homes.Count == 0)
         {
             _host.ShowToast(
-                "Dit project heeft geen geheugenpad — voeg er een toe in de projecteditor voordat je een whiteboard opslaat.",
+                "This project has no memory path — add one in the project editor before saving a whiteboard.",
                 PluginToastSeverity.Warning);
             return;
         }
@@ -450,7 +450,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"Opslaan is niet gelukt: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"Save failed: {exception.Message}", PluginToastSeverity.Error);
             return;
         }
 
@@ -462,8 +462,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private void _RefreshSaveBar()
     {
         var dirty = WhiteboardCatalog.Serialize(_control.Canvas.Document) != _savedText;
-        var where = _filePath ?? "Nog geen bestand";
-        _saveStatus.Text = dirty ? $"{where} · onbewaarde wijzigingen" : where;
+        var where = _filePath ?? "No file yet";
+        _saveStatus.Text = dirty ? $"{where} · unsaved changes" : where;
         ToolTip.SetTip(_saveStatus, _filePath);
         _saveButton.IsEnabled = dirty || _filePath is null;
     }
@@ -557,7 +557,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // a real state — after the session ended, or after Disconnect — not one the bar should hide from.
     private (Border Bar, TextBlock Label, TextBlock ReadChip, TextBlock EditChip, MaterialIcon Pip, Button Couple, Button Disconnect, Button Invite) _BuildCouplingBar()
     {
-        var invite = new Button { Content = "Laat sdk meekijken", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+        var invite = new Button { Content = "Let the agent look along", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
         invite.Click += (_, _) => _ = _InviteAsync();
 
         var parts = CouplingBarFactory.Build(_documentTitle, extraActions: [invite]);
@@ -582,15 +582,15 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         if (_current is not { } coupling)
         {
             _couplingLabel.Text = _sessionBinding.EndedSessionName is { } ended
-                ? $"Sessie {ended} is afgelopen — dit venster blijft open."
-                : "Geen agent gekoppeld.";
+                ? $"Session {ended} has ended — this window stays open."
+                : "No agent coupled.";
             _couplingLabel.Foreground = _Brush("CockpitTextSecondaryBrush");
             _pip.Foreground = _Brush("CockpitTextSecondaryBrush");
             return;
         }
 
         var name = _sessionBinding.DisplayName ?? coupling.SessionId;
-        var readAt = coupling.LastReadAt is { } at ? $" · gelezen {at.ToLocalTime():HH:mm}" : "";
+        var readAt = coupling.LastReadAt is { } at ? $" · read {at.ToLocalTime():HH:mm}" : "";
         _couplingLabel.Text = coupling.CanRead
             ? $"Agent connected — session {name}{readAt}"
             : $"Agent connected — session {name} (no capabilities granted yet)";

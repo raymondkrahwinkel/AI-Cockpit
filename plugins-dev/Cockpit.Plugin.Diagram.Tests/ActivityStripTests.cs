@@ -209,7 +209,7 @@ public class ActivityStripTests
         public string? Revert(string surfaceId, string entryId)
         {
             RevertCalls.Add(entryId);
-            return "Het terughalen van een verwijderd object kan nog niet worden teruggedraaid.";
+            return "Restoring a deleted object cannot be reverted yet.";
         }
 
         public void SurfaceOpened(string surfaceId, string name, byte[] initialSnapshotPng)
@@ -371,7 +371,7 @@ public class ActivityStripTests
         var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
         var window = _Show(strip);
 
-        Assert.Contains("Nog geen activiteit op dit oppervlak.", _Texts(strip));
+        Assert.Contains("No activity on this surface yet.", _Texts(strip));
 
         window.Close();
     }
@@ -387,7 +387,7 @@ public class ActivityStripTests
 
         var texts = _Texts(strip);
         Assert.Contains("added node N1 \"Foo\"", texts);
-        Assert.DoesNotContain("Nog geen activiteit op dit oppervlak.", texts);
+        Assert.DoesNotContain("No activity on this surface yet.", texts);
 
         window.Close();
     }
@@ -401,7 +401,7 @@ public class ActivityStripTests
         var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
         var window = _Show(strip);
 
-        Assert.Contains("Nog geen activiteit op dit oppervlak.", _Texts(strip));
+        Assert.Contains("No activity on this surface yet.", _Texts(strip));
 
         window.Close();
     }
@@ -446,7 +446,7 @@ public class ActivityStripTests
         var window = _Show(strip);
         strip.SetSession("pane-a", "Werksessie");
 
-        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
+        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revert"));
         Assert.True(revert.IsEnabled);
 
         _RaiseClick(revert);
@@ -454,9 +454,9 @@ public class ActivityStripTests
 
         Assert.Equal(["e1"], registry.RevertCalls);
         Assert.Empty(host.Toasts);
-        var reRevert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
+        var reRevert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revert"));
         Assert.False(reRevert.IsEnabled);
-        Assert.Contains(_Texts(strip), text => text is not null && text.Contains("teruggedraaid", StringComparison.Ordinal));
+        Assert.Contains(_Texts(strip), text => text is not null && text.Contains("reverted", StringComparison.Ordinal));
 
         window.Close();
     }
@@ -470,7 +470,7 @@ public class ActivityStripTests
         var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
         var window = _Show(strip);
 
-        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
+        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revert"));
         Assert.False(revert.IsEnabled);
 
         window.Close();
@@ -485,7 +485,7 @@ public class ActivityStripTests
         var strip = new ActivityStrip(host, "board-1", new WhiteboardActivityJournal(registry), null);
         var window = _Show(strip);
 
-        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Terugdraaien"));
+        var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revert"));
         Assert.False(revert.IsEnabled);
 
         window.Close();

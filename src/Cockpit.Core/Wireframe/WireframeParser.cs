@@ -29,7 +29,7 @@ public static class WireframeParser
 
             if (content[0] == '\t')
             {
-                errors.Add(new WireframeParseError(lineNumber, "Spring in met spaties, niet met tabs."));
+                errors.Add(new WireframeParseError(lineNumber, "Indent with spaces, not tabs."));
                 continue;
             }
 
@@ -43,7 +43,7 @@ public static class WireframeParser
             // thing an id exists to rule out. The line is refused, like any other one the format cannot read.
             if (node.Id is { } id && !taken.Add(id))
             {
-                errors.Add(new WireframeParseError(lineNumber, $"De id '#{id}' is al in gebruik in dit wireframe."));
+                errors.Add(new WireframeParseError(lineNumber, $"The id '#{id}' is already in use in this wireframe."));
                 continue;
             }
 
@@ -58,7 +58,7 @@ public static class WireframeParser
 
             if (dedented && (open.Count == 0 || indent != open[^1].Indent))
             {
-                errors.Add(new WireframeParseError(lineNumber, "De inspringing hoort bij geen enkele regel hierboven."));
+                errors.Add(new WireframeParseError(lineNumber, "The indentation does not match any line above."));
                 continue;
             }
 
@@ -75,7 +75,7 @@ public static class WireframeParser
                 // nothing to hang it on at all, which is the one case that stops the read.
                 if (indent > 0 || node.Kind != WireframeNodeKind.Screen)
                 {
-                    errors.Add(new WireframeParseError(lineNumber, "Een wireframe begint met een 'screen'-regel zonder inspringing."));
+                    errors.Add(new WireframeParseError(lineNumber, "A wireframe begins with a 'screen' line without indentation."));
                     if (screens.Count == 0)
                     {
                         return new WireframeParseResult(screens, errors);
@@ -93,7 +93,7 @@ public static class WireframeParser
             else
             {
                 var keyword = parent.Kind.ToString().ToLowerInvariant();
-                errors.Add(new WireframeParseError(lineNumber, $"'{keyword}' kan geen onderliggende regels dragen."));
+                errors.Add(new WireframeParseError(lineNumber, $"'{keyword}' cannot carry child lines."));
                 continue;
             }
 
@@ -111,7 +111,7 @@ public static class WireframeParser
             || (position < content.Length && content[position] != ' ')
             || !Enum.TryParse<WireframeNodeKind>(word, ignoreCase: true, out var kind))
         {
-            errors.Add(new WireframeParseError(lineNumber, $"Onbekend component '{_TokenAt(content, 0)}'."));
+            errors.Add(new WireframeParseError(lineNumber, $"Unknown component '{_TokenAt(content, 0)}'."));
             return null;
         }
 
@@ -132,13 +132,13 @@ public static class WireframeParser
             {
                 if (!_TryReadQuoted(content, ref position, out var text))
                 {
-                    errors.Add(new WireframeParseError(lineNumber, "Het aanhalingsteken is niet gesloten."));
+                    errors.Add(new WireframeParseError(lineNumber, "The quote mark is not closed."));
                     return null;
                 }
 
                 if (node.Text is not null || node.Id is not null || node.Modifiers.Count > 0)
                 {
-                    errors.Add(new WireframeParseError(lineNumber, "De tekst hoort direct achter het component te staan."));
+                    errors.Add(new WireframeParseError(lineNumber, "The text must come directly after the component."));
                     return null;
                 }
 
@@ -150,13 +150,13 @@ public static class WireframeParser
             {
                 if (!_TryReadId(content, ref position, out var id))
                 {
-                    errors.Add(new WireframeParseError(lineNumber, "Een id bestaat uit letters, cijfers, '-' en '_', zoals '#opslaan-knop'."));
+                    errors.Add(new WireframeParseError(lineNumber, "An id consists of letters, digits, '-' and '_', like '#save-btn'."));
                     return null;
                 }
 
                 if (node.Id is not null)
                 {
-                    errors.Add(new WireframeParseError(lineNumber, "Een component draagt hoogstens één id."));
+                    errors.Add(new WireframeParseError(lineNumber, "A component carries at most one id."));
                     return null;
                 }
 
@@ -184,7 +184,7 @@ public static class WireframeParser
             || (position < content.Length && content[position] is not (' ' or ':'))
             || !Enum.TryParse<WireframeModifierName>(name, ignoreCase: true, out var modifierName))
         {
-            errors.Add(new WireframeParseError(lineNumber, $"Onbekende modifier '{written}'."));
+            errors.Add(new WireframeParseError(lineNumber, $"Unknown modifier '{written}'."));
             return null;
         }
 
@@ -197,7 +197,7 @@ public static class WireframeParser
             {
                 if (!_TryReadQuoted(content, ref position, out var quoted))
                 {
-                    errors.Add(new WireframeParseError(lineNumber, "Het aanhalingsteken is niet gesloten."));
+                    errors.Add(new WireframeParseError(lineNumber, "The quote mark is not closed."));
                     return null;
                 }
 
@@ -234,13 +234,13 @@ public static class WireframeParser
 
         if (takesValue && string.IsNullOrEmpty(value))
         {
-            errors.Add(new WireframeParseError(lineNumber, $"'{written}' heeft een waarde nodig, zoals '{written}:2'."));
+            errors.Add(new WireframeParseError(lineNumber, $"'{written}' needs a value, like '{written}:2'."));
             return null;
         }
 
         if (!takesValue && value is not null)
         {
-            errors.Add(new WireframeParseError(lineNumber, $"'{written}' neemt geen waarde."));
+            errors.Add(new WireframeParseError(lineNumber, $"'{written}' does not take a value."));
             return null;
         }
 
@@ -248,11 +248,11 @@ public static class WireframeParser
         {
             case WireframeModifierName.W or WireframeModifierName.H
                 when !int.TryParse(value, out var weight) || weight <= 0:
-                errors.Add(new WireframeParseError(lineNumber, $"Het gewicht bij '{written}' moet een positief geheel getal zijn."));
+                errors.Add(new WireframeParseError(lineNumber, $"The weight for '{written}' must be a positive whole number."));
                 return null;
             case WireframeModifierName.Align
                 when !Enum.TryParse<WireframeAlignment>(value, ignoreCase: true, out _):
-                errors.Add(new WireframeParseError(lineNumber, $"Onbekende uitlijning '{value}' — kies left, center of right."));
+                errors.Add(new WireframeParseError(lineNumber, $"Unknown alignment '{value}' — choose left, center or right."));
                 return null;
             default:
                 return new WireframeModifier(name, value, isQuoted);

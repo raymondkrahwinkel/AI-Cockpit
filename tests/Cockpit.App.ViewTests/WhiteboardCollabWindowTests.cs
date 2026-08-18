@@ -57,8 +57,8 @@ public class WhiteboardCollabWindowTests
 
         Assert.Null(host.Registry.ListSurfaces("pane-a").Single().Coupling);
         Assert.Contains("Werksessie", _CouplingText(content));
-        Assert.Contains("afgelopen", _CouplingText(content), StringComparison.Ordinal);
-        Assert.Contains(content.GetVisualDescendants().OfType<Button>(), button => Equals(button.Content, "Koppelen…") && button.IsVisible);
+        Assert.Contains("has ended", _CouplingText(content), StringComparison.Ordinal);
+        Assert.Contains(content.GetVisualDescendants().OfType<Button>(), button => Equals(button.Content, "Couple…") && button.IsVisible);
     });
 
     [Fact]
@@ -96,7 +96,7 @@ public class WhiteboardCollabWindowTests
 
         var opened = Assert.Single(host.Windows);
         _Show(opened.Content);
-        Assert.Contains("Geen agent gekoppeld", _CouplingText(opened.Content), StringComparison.Ordinal);
+        Assert.Contains("No agent coupled", _CouplingText(opened.Content), StringComparison.Ordinal);
     });
 
     [Fact]
@@ -118,7 +118,7 @@ public class WhiteboardCollabWindowTests
     });
 
     private static void _ClickInvite(Control content) =>
-        content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Laat sdk meekijken"))
+        content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Let the agent look along"))
             .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
 
     private static Window _Show(Control content)
@@ -209,7 +209,7 @@ public class WhiteboardCollabWindowTests
 
         private Control? _listDialogContent;
 
-        // AC-896's two-stage path: "Whiteboards" opens the list dialog, "Nieuw whiteboard" in its header opens the
+        // AC-896's two-stage path: "Whiteboards" opens the list dialog, "New whiteboard" in its header opens the
         // quick-start (W-2/AC-843) — standing in for an operator clicking through both.
         public void InvokeWhiteboardAction()
         {
@@ -220,7 +220,7 @@ public class WhiteboardCollabWindowTests
             var listWindow = new Window { Content = _listDialogContent };
             listWindow.Show();
             Dispatcher.UIThread.RunJobs();
-            _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Nieuw whiteboard"))
+            _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "New whiteboard"))
                 .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             listWindow.Close();
         }
@@ -272,7 +272,7 @@ public class WhiteboardCollabWindowTests
                 // prefilled name, couple to the active session when there is one to couple to.
                 var couple = content.GetVisualDescendants().OfType<CheckBox>().Single();
                 couple.IsChecked = couple.IsEnabled;
-                content.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Openen"))
+                content.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Open"))
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
                 return Task.CompletedTask;
             }

@@ -63,7 +63,7 @@ public class DiagramPluginLoadTests
         var listDialog = Assert.Single(host.Dialogs, d => d.Key == "diagram.list");
         Assert.IsAssignableFrom<Control>(listDialog.Content);
 
-        // AC-816/AC-834/AC-896: "Nieuw diagram" now lives in that list's own header. Clicking it opens the
+        // AC-816/AC-834/AC-896: "New diagram" now lives in that list's own header. Clicking it opens the
         // quick-start dialog; RecordingHost.ShowDialogAsync clicks straight through with the prefilled name, the
         // same "Enter is enough" default an operator gets.
 
@@ -72,7 +72,7 @@ public class DiagramPluginLoadTests
         var diagramListWindow = new Window { Content = listDialog.Content };
         diagramListWindow.Show();
         Dispatcher.UIThread.RunJobs();
-        listDialog.Content.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Nieuw diagram"))
+        listDialog.Content.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "New diagram"))
             .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         diagramListWindow.Close();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
@@ -85,14 +85,14 @@ public class DiagramPluginLoadTests
 
         // AC-836/AC-842/AC-896: same two-stage path for the whiteboard surface — no IWhiteboardAccessRegistry in
         // this host's services, the "no host to fall through to" case the panel has to survive. The toolbar action
-        // opens the list, "Nieuw whiteboard" opens a window bound to the active session.
+        // opens the list, "New whiteboard" opens a window bound to the active session.
         host.ToolbarActions[1].OnInvoke().GetAwaiter().GetResult();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
         var whiteboardListDialog = Assert.Single(host.Dialogs, d => d.Key == "whiteboard.list");
         var whiteboardListWindow = new Window { Content = whiteboardListDialog.Content };
         whiteboardListWindow.Show();
         Dispatcher.UIThread.RunJobs();
-        whiteboardListDialog.Content.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Nieuw whiteboard"))
+        whiteboardListDialog.Content.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "New whiteboard"))
             .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         whiteboardListWindow.Close();
         var whiteboardDialog = Assert.Single(host.Dialogs, d => d.Key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
@@ -165,7 +165,7 @@ public class DiagramPluginLoadTests
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
             ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
 
-        // Builds the quick-start dialog's content and clicks its "Openen" button straight away, standing in for
+        // Builds the quick-start dialog's content and clicks its "Open" button straight away, standing in for
         // an operator who typed nothing and hit Enter — the prefilled name is already a working default. Every
         // other dialog (the diagram/whiteboard windows, the diagrams list) is only recorded, unclicked.
         public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
@@ -174,7 +174,7 @@ public class DiagramPluginLoadTests
             Dialogs.Add((singleInstanceKey, content));
             if (singleInstanceKey is "diagram.quickstart" or "whiteboard.quickstart")
             {
-                content.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Openen"))
+                content.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Open"))
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             }
 

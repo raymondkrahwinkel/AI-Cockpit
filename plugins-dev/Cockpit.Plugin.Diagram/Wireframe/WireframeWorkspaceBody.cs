@@ -34,7 +34,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // AC-901: the title a screen added by hand starts out with — renamed with «Tekst…» or a double click, the same
     // way every other component's wording is changed.
-    private const string NewScreenTitle = "Nieuw scherm";
+    private const string NewScreenTitle = "New screen";
 
     private static readonly Cursor _PanCursor = new(StandardCursorType.Hand);
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
@@ -348,7 +348,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var list = new StackPanel { Spacing = 4, Margin = new Thickness(16) };
         list.Children.Add(new TextBlock
         {
-            Text = "Kan dit wireframe niet weergeven:",
+            Text = "Cannot render this wireframe:",
             FontWeight = FontWeight.Bold,
             Foreground = WireframePalette.Ink,
             TextWrapping = TextWrapping.Wrap,
@@ -852,8 +852,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         var chosen = WireframeNodeKind.Label;
         var palette = BuildPalette(kind => chosen = kind);
-        var text = new TextBox { Width = 220, PlaceholderText = "Tekst (mag leeg)" };
-        var asChild = new Button { Content = "In deze container", Classes = { "Compact" }, IsEnabled = target.IsContainer };
+        var text = new TextBox { Width = 220, PlaceholderText = "Text (may be empty)" };
+        var asChild = new Button { Content = "In this container", Classes = { "Compact" }, IsEnabled = target.IsContainer };
         var asSibling = new Button { Content = "Hieronder", Classes = { "Compact" }, IsEnabled = !_IsScreen(target) };
         var flyout = new Flyout
         {
@@ -1021,7 +1021,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var flyout = new MenuFlyout();
         foreach (var destination in WireframeHandEdit.Destinations(_screens, id))
         {
-            var item = new MenuItem { Header = $"{_Describe(destination)} — regel {destination.Line}{_ScreenSuffix(destination)}" };
+            var item = new MenuItem { Header = $"{_Describe(destination)} — line {destination.Line}{_ScreenSuffix(destination)}" };
             var into = destination.Id!;
             item.Click += (_, _) => _Apply(WireframeComponentEdit.Move(id, into, position: null));
             flyout.Items.Add(item);
@@ -1029,7 +1029,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         if (flyout.Items.Count == 0)
         {
-            _host.ShowToast("Er is geen andere container om dit component in te zetten.", PluginToastSeverity.Information);
+            _host.ShowToast("There is no other container to place this component in.", PluginToastSeverity.Information);
             return;
         }
 
@@ -1099,7 +1099,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // screen it is noise on every line of the menu.
     private string _ScreenSuffix(WireframeNode node) =>
         _screens.Count > 1 && WireframeHandEdit.ScreenOf(_screens, node) is { } screen
-            ? $" · scherm «{screen.Text}»"
+            ? $" · screen «{screen.Text}»"
             : "";
 
     // ---- Properties panel (AC-905): the operator's way to set the same modifiers the agent could always set ----
@@ -1345,7 +1345,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // AC-811: the wireframe source is one click away — collapsed under the render, never only in memory. Always
     // read-only, AC-875 included: the source stays the truth and is rebuilt from each handling, so an edit goes
-    // through the registry's per-component path where the journal and the "jij bewerkt" hold both see it.
+    // through the registry's per-component path where the journal and the "you're editing" hold both see it.
     private static (ToggleButton Toggle, TextBox Box) _BuildSourceToggle()
     {
         var box = new TextBox
@@ -1357,7 +1357,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Margin = new Thickness(8, 0, 8, 8),
             IsVisible = false,
         };
-        var toggle = new ToggleButton { Content = "Toon bron", Classes = { "Compact" }, Margin = new Thickness(8, 4) };
+        var toggle = new ToggleButton { Content = "Show source", Classes = { "Compact" }, Margin = new Thickness(8, 4) };
         toggle.IsCheckedChanged += (_, _) => box.IsVisible = toggle.IsChecked == true;
         return (toggle, box);
     }
@@ -1384,7 +1384,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         // AC-874/WF-4: where this wireframe lives, beside the button that puts it there — DiagramWorkspaceBody's
         // Opslaan, one folder over. "No file yet" is a state the window shows just as well as a path.
-        var save = new Button { Content = "Opslaan", Classes = { "Compact" } };
+        var save = new Button { Content = "Save", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
         var saveStatus = new TextBlock
         {
@@ -1395,29 +1395,29 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
         // AC-875: what the operator clicked on the surface is what these buttons work on. Moving also lives on the
-        // surface since AC-904 — the arrows and "Verplaats naar…" stay for naming a destination rather than aiming at
+        // surface since AC-904 — the arrows and "Move to…" stay for naming a destination rather than aiming at
         // one, which is the shorter way across a screen and the only way with the keyboard.
         var add = new Button { Content = "+ Component…", Classes = { "Compact" } };
         add.Click += (_, _) => _AddComponent(add);
-        var text = new Button { Content = "Tekst…", Classes = { "Compact" } };
+        var text = new Button { Content = "Text…", Classes = { "Compact" } };
         text.Click += (_, _) => _StartTextEdit(_Selected);
-        var delete = new Button { Content = "Verwijderen", Classes = { "Compact" } };
+        var delete = new Button { Content = "Delete", Classes = { "Compact" } };
         delete.Click += (_, _) => _DeleteSelected();
         var up = new Button { Content = "↑", Classes = { "Compact" }, MinWidth = 28 };
-        ToolTip.SetTip(up, "Eén plek naar boven binnen dezelfde container.");
+        ToolTip.SetTip(up, "One place up within the same container.");
         up.Click += (_, _) => _Reorder(-1);
         var down = new Button { Content = "↓", Classes = { "Compact" }, MinWidth = 28 };
-        ToolTip.SetTip(down, "Eén plek naar beneden binnen dezelfde container.");
+        ToolTip.SetTip(down, "One place down within the same container.");
         down.Click += (_, _) => _Reorder(1);
-        var move = new Button { Content = "Verplaats naar…", Classes = { "Compact" } };
+        var move = new Button { Content = "Move to…", Classes = { "Compact" } };
         move.Click += (_, _) => _MoveInto(move);
         // AC-901: a wireframe holds as many screens as the thing it sketches has, so adding one is a button rather
         // than a second file, and the way back out of a screen stands beside it.
-        var addScreen = new Button { Content = "+ Scherm", Classes = { "Compact" } };
-        ToolTip.SetTip(addScreen, "Een scherm erbij, naast de schermen die er al zijn.");
+        var addScreen = new Button { Content = "+ Screen", Classes = { "Compact" } };
+        ToolTip.SetTip(addScreen, "One more screen, alongside the ones already there.");
         addScreen.Click += (_, _) => _AddScreen();
-        var overview = new Button { Content = "← Overzicht", Classes = { "Compact" }, IsVisible = false };
-        ToolTip.SetTip(overview, "Alle schermen naast elkaar.");
+        var overview = new Button { Content = "← Overview", Classes = { "Compact" }, IsVisible = false };
+        ToolTip.SetTip(overview, "All screens side by side.");
         overview.Click += (_, _) => _ShowOverview();
         var hint = new TextBlock
         {
@@ -1443,7 +1443,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // Eén opslagweg (AC-839's precedent, one folder over): the source box always mirrors the surface's current
     // text — an agent's edit_wireframe and the operator's own handling (AC-875) both arrive through TextChanged — so
-    // "onbewaarde wijzigingen" is the same comparison for both.
+    // "unsaved changes" is the same comparison for both.
     private async Task _SaveAsync()
     {
         if (_filePath is { } existing)
@@ -1460,7 +1460,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         if (homes.Count == 0)
         {
             _host.ShowToast(
-                "Dit project heeft geen geheugenpad — voeg er een toe in de projecteditor voordat je een wireframe opslaat.",
+                "This project has no memory path — add one in the project editor before saving a wireframe.",
                 PluginToastSeverity.Warning);
             return;
         }
@@ -1493,7 +1493,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"Opslaan is niet gelukt: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"Save failed: {exception.Message}", PluginToastSeverity.Error);
             return;
         }
 
@@ -1505,8 +1505,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private void _RefreshSaveBar()
     {
         var dirty = (_sourceBox.Text ?? "") != _savedText;
-        var where = _filePath ?? "Nog geen bestand";
-        _saveStatus.Text = dirty ? $"{where} · onbewaarde wijzigingen" : where;
+        var where = _filePath ?? "No file yet";
+        _saveStatus.Text = dirty ? $"{where} · unsaved changes" : where;
         ToolTip.SetTip(_saveStatus, _filePath);
         _saveButton.IsEnabled = dirty || _filePath is null;
     }
@@ -1536,8 +1536,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         if (_current is not { } coupling)
         {
             _couplingLabel.Text = _sessionBinding.EndedSessionName is { } ended
-                ? $"Sessie {ended} is afgelopen — dit venster blijft open."
-                : "Geen agent gekoppeld.";
+                ? $"Session {ended} has ended — this window stays open."
+                : "No agent coupled.";
             _couplingLabel.Foreground = _Brush("CockpitTextSecondaryBrush");
             return;
         }

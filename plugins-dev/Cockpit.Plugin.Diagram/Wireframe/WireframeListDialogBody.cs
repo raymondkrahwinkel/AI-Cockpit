@@ -22,8 +22,8 @@ internal sealed class WireframeListDialogBody : UserControl
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
         refresh.Click += (_, _) => _ = _LoadAsync();
 
-        // AC-896: "Nieuw wireframe" moved here from the "..." menu, next to Refresh.
-        var newWireframe = new Button { Content = "Nieuw wireframe", Classes = { "Compact" } };
+        // AC-896: "New wireframe" moved here from the "..." menu, next to Refresh.
+        var newWireframe = new Button { Content = "New wireframe", Classes = { "Compact" } };
         newWireframe.Click += (_, _) => _ = _QuickStartAsync();
 
         var header = new DockPanel
@@ -39,8 +39,8 @@ internal sealed class WireframeListDialogBody : UserControl
         var couplingNote = new TextBlock
         {
             Text = activePaneId is null
-                ? "Geen actieve sessie — open er een om een wireframe te koppelen."
-                : $"Koppelt aan {sessionLabel} — de sessie hiernaast.",
+                ? "No active session — open one to link a wireframe to it."
+                : $"Links to {sessionLabel} — the session alongside.",
             FontSize = 11,
             Margin = new Thickness(12, 6, 12, 0),
             Foreground = _Brush("CockpitTextSecondaryBrush"),
@@ -64,7 +64,7 @@ internal sealed class WireframeListDialogBody : UserControl
     // the single childless "screen" line (WireframeDocument.New), never a bare document with nothing to render.
     private async Task _QuickStartAsync()
     {
-        if (await WireframeQuickStartDialog.ShowAsync(_host, "Nieuw wireframe") is not { } quickStart)
+        if (await WireframeQuickStartDialog.ShowAsync(_host, "New wireframe") is not { } quickStart)
         {
             return;
         }
@@ -88,7 +88,7 @@ internal sealed class WireframeListDialogBody : UserControl
         {
             _list.Children.Add(_EmptyState(
                 "No wireframes yet.",
-                "Start one with \"Nieuw wireframe\" — it appears here once you save it."));
+                "Start one with \"New wireframe\" — it appears here once you save it."));
             return;
         }
 
@@ -115,7 +115,7 @@ internal sealed class WireframeListDialogBody : UserControl
         {
             if (_host.Sessions.ActivePaneId is not { } paneId)
             {
-                _host.ShowToast("Geen actieve sessie om dit wireframe aan te koppelen.", PluginToastSeverity.Information);
+                _host.ShowToast("No active session to link this wireframe to.", PluginToastSeverity.Information);
                 return;
             }
 
