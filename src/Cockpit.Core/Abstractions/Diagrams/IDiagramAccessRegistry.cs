@@ -39,8 +39,9 @@ public sealed record DiagramProposal(
     IReadOnlyList<string> FidelityFindings,
     IReadOnlyList<DiagramDiffBlock> Blocks);
 
-// The five changes a hand-edit on the diagram surface can make (AC-841) — the same set the agent's per-object
-// tools make, so both sides reach the source through one path.
+// The changes a hand-edit on the diagram surface can make (AC-841) — the same set the agent's per-object tools
+// make, so both sides reach the source through one path. Which of them a surface accepts depends on its diagram
+// type (AC-899): the first five are flowchart/graph, the rest erDiagram.
 public enum DiagramHandEditKind
 {
     AddNode,
@@ -48,10 +49,57 @@ public enum DiagramHandEditKind
     RemoveNode,
     Connect,
     Disconnect,
+    AddEntity,
+    RenameEntity,
+    RemoveEntity,
+    SetAttribute,
+    RemoveAttribute,
+    Relate,
+    Unrelate,
 }
 
-// One hand-edit: `Id` is the node, or the connection's tail when `To` is set.
-public sealed record DiagramHandEdit(DiagramHandEditKind Kind, string Id, string? To = null, string? Label = null);
+// How many of one entity a relationship end stands for (AC-899). Written as Mermaid's own crow's-foot pairs —
+// `||`/`|o`/`}|`/`}o` on the left, `||`/`o|`/`|{`/`o{` on the right.
+public enum DiagramErCardinality
+{
+    One,
+    ZeroOrOne,
+    OneOrMore,
+    ZeroOrMore,
+}
+
+// One hand-edit. `Id` is the node or entity, or the connection's tail when `To` is set; the ER kinds carry their
+// own fields rather than reading a meaning into `To`/`Label` that the flowchart kinds do not have (AC-899).
+public sealed record DiagramHandEdit(DiagramHandEditKind Kind, string Id, string? To = null, string? Label = null)
+{
+    public string? Attribute { get; init; }
+
+    public string? AttributeType { get; init; }
+
+    // "PK", "FK" or "UK" as Mermaid writes them, or null for an attribute that carries no key marker.
+    public string? AttributeKey { get; init; }
+
+    public DiagramErCardinality? FromCardinality { get; init; }
+
+    public DiagramErCardinality? ToCardinality { get; init; }
+}
+
+// The diagram types whose objects can be edited one at a time (AC-899). Anything else renders and can be replaced
+// wholesale, but has no per-object grammar.
+public enum DiagramEditDialect
+{
+    Flowchart,
+    Er,
+    Unsupported,
+}
+
+// What hand-editing a surface offers right now: which button set belongs on it, and — when it offers none — the
+// operator-facing reason those buttons are off rather than enabled-and-then-refusing.
+public sealed record DiagramEditSupport(DiagramEditDialect Dialect, string? Reason);
+
+// One attribute inside an erDiagram entity block, as the entity's own flyout lists it (AC-899). `Key` is "PK",
+// "FK" or "UK", or null when the attribute carries no key marker.
+public sealed record DiagramErAttribute(string Type, string Name, string? Key);
 
 // An agent asking for a diagram it wrote to be put on screen so the operator can go through it (AC-835). The
 // registry is the only seam between core and the plugin, so the request travels over it: core mints the ids and
@@ -175,6 +223,18 @@ public interface IDiagramAccessRegistry
     /// per-object grammar cannot make, or one that would not leave valid Mermaid behind.
     /// </summary>
     string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit);
+
+    /// <summary>
+    /// Which per-object grammar this surface's diagram type has, so its panel can offer that dialect's controls and
+    /// disable them with a reason where there is none (AC-899). <see cref="DiagramEditDialect.Unsupported"/> for an unknown surface.
+    /// </summary>
+    DiagramEditSupport EditSupport(string surfaceId);
+
+    /// <summary>
+    /// The attributes an erDiagram entity carries right now, in source order — what the entity's own flyout lists,
+    /// so the panel never has to read Mermaid itself. Empty for an unknown surface, entity, or diagram type.
+    /// </summary>
+    IReadOnlyList<DiagramErAttribute> EntityAttributes(string surfaceId, string entity);
 
     // ---- Undo (AC-853): the vangnet that replaces the diff-poort for the tools that write straight through ----
 

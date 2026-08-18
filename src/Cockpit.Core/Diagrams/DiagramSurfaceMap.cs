@@ -72,13 +72,16 @@ public static class DiagramSurfaceMap
         {
             var kind = element.Attribute("class")?.Value;
             var label = element.Attribute("data-label")?.Value ?? "";
-            if (kind == "node" && element.Attribute("data-id")?.Value is { Length: > 0 } id)
+
+            // AC-899: an erDiagram writes the same two roles under its own names — `entity` for a box and
+            // `er-relationship` (data-entity1/2) for a line — so one map covers both dialects.
+            if (kind is "node" or "entity" && element.Attribute("data-id")?.Value is { Length: > 0 } id)
             {
                 objects.Add(new DiagramObjectAt(DiagramObjectAt.Node, id, null, label, _Bounds(_Points(element)), []));
             }
-            else if (kind == "edge"
-                     && element.Attribute("data-from")?.Value is { Length: > 0 } from
-                     && element.Attribute("data-to")?.Value is { Length: > 0 } to)
+            else if (kind is "edge" or "er-relationship"
+                     && (element.Attribute("data-from") ?? element.Attribute("data-entity1"))?.Value is { Length: > 0 } from
+                     && (element.Attribute("data-to") ?? element.Attribute("data-entity2"))?.Value is { Length: > 0 } to)
             {
                 var line = _Points(element);
                 objects.Add(new DiagramObjectAt(DiagramObjectAt.Edge, from, to, label, _Bounds(line), line));

@@ -314,15 +314,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             }
 
             var before = surface.Text;
-            var result = edit.Kind switch
-            {
-                DiagramHandEditKind.AddNode => DiagramObjectEdit.AddNode(before, edit.Id, edit.Label ?? edit.Id),
-                DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(before, edit.Id, edit.Label ?? edit.Id),
-                DiagramHandEditKind.RemoveNode => DiagramObjectEdit.RemoveNode(before, edit.Id),
-                DiagramHandEditKind.Connect => DiagramObjectEdit.Connect(before, edit.Id, edit.To ?? "", edit.Label),
-                _ => DiagramObjectEdit.Disconnect(before, edit.Id, edit.To ?? ""),
-            };
-
+            var result = DiagramObjectEdit.Apply(before, edit);
             if (result.Refusal is { } reason)
             {
                 return reason;
@@ -335,8 +327,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
             surface.Text = text = result.Text!;
             summary = result.Summary;
-            var objectKey = edit.Kind is DiagramHandEditKind.Connect or DiagramHandEditKind.Disconnect ? $"{edit.Id}->{edit.To}" : edit.Id;
-            _Journal(surfaceId, "operator", edit.Kind, objectKey, summary, before, text);
+            _Journal(surfaceId, "operator", edit.Kind, _KeyOf(edit), summary, before, text);
             rebased = _Rebase(surfaceId, text);
         }
 
@@ -395,7 +386,10 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 DiagramHandEditKind.AddNode => DiagramObjectEdit.RemoveNode(surface.Text, entry.ObjectKey),
                 DiagramHandEditKind.Connect => _DisconnectByKey(surface.Text, entry.ObjectKey),
                 DiagramHandEditKind.RenameNode => DiagramObjectEdit.RenameNode(surface.Text, entry.ObjectKey, _QuotedLabel(entry.RemovedLines) ?? entry.ObjectKey),
-                _ => _Restore(surface.Text, entry.RemovedLines), // RemoveNode, Disconnect
+                DiagramHandEditKind.AddEntity or DiagramHandEditKind.RenameEntity or DiagramHandEditKind.SetAttribute
+                    or DiagramHandEditKind.RemoveAttribute or DiagramHandEditKind.Relate
+                    => DiagramObjectEdit.InvertEr(surface.Text, entry.Kind, entry.ObjectKey, entry.RemovedLines),
+                _ => _Restore(surface.Text, entry.RemovedLines), // RemoveNode, Disconnect, RemoveEntity, Unrelate
             };
 
             if (result.Refusal is { } reason)
@@ -417,6 +411,44 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         HistoryChanged?.Invoke(surfaceId);
         _Announce(surfaceId, rebased);
         return null;
+    }
+
+    // AC-899: what an ER handling changed cannot be told from the object alone — a rename carries the name it came
+    // from, an attribute the entity it sits in — so the journal key carries both halves.
+    private static string _KeyOf(DiagramHandEdit edit) => edit.Kind switch
+    {
+        DiagramHandEditKind.Connect or DiagramHandEditKind.Disconnect
+            or DiagramHandEditKind.Relate or DiagramHandEditKind.Unrelate => $"{edit.Id}->{edit.To}",
+        DiagramHandEditKind.SetAttribute or DiagramHandEditKind.RemoveAttribute => $"{edit.Id}.{edit.Attribute}",
+        DiagramHandEditKind.RenameEntity => $"{edit.Id}>{edit.Label}",
+        _ => edit.Id,
+    };
+
+    public DiagramEditSupport EditSupport(string surfaceId)
+    {
+        string text;
+        lock (_lock)
+        {
+            if (!_surfaces.TryGetValue(surfaceId, out var surface))
+            {
+                return new DiagramEditSupport(DiagramEditDialect.Unsupported, "Dit diagram staat niet meer open.");
+            }
+
+            text = surface.Text;
+        }
+
+        var dialect = DiagramObjectEdit.DialectOf(text);
+        return new DiagramEditSupport(dialect, dialect == DiagramEditDialect.Unsupported
+            ? $"Losse objecten bewerken kan op flowchart-, graph- en erDiagram-diagrammen; dit is een {DiagramObjectEdit.Keyword(text)}. Vraag de gekoppelde agent om dit diagram te wijzigen."
+            : null);
+    }
+
+    public IReadOnlyList<DiagramErAttribute> EntityAttributes(string surfaceId, string entity)
+    {
+        lock (_lock)
+        {
+            return _surfaces.TryGetValue(surfaceId, out var surface) ? DiagramObjectEdit.Attributes(surface.Text, entity) : [];
+        }
     }
 
     private static DiagramEdit _DisconnectByKey(string source, string objectKey) =>
@@ -446,7 +478,8 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     // Multiset subtraction, order preserved: every line `after` still has removes one matching occurrence from
     // `before`, so what is left is exactly what this edit took out — one node's definition and its connection
-    // lines for RemoveNode, the one line for Disconnect or RenameNode's old wording, nothing for AddNode/Connect.
+    // lines for RemoveNode, an entity's whole block and its relationships for RemoveEntity (AC-899), the one line
+    // for Disconnect or RenameNode's old wording, nothing for AddNode/Connect.
     private static List<string> _Removed(string before, string after)
     {
         var remaining = new List<string>(_Lines(before));
