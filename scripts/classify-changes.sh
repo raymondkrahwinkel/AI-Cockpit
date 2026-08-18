@@ -4,13 +4,9 @@
 # job in ci.yml for why skipping happens that way and not via the `on:` trigger). `other` is the safe
 # default: anything unrecognized forces every downstream job to run, same as a src/ change would.
 #
-# On top of that, resolves which of the three test suites in the `build` job (Cockpit.Core.Tests,
-# Cockpit.Infrastructure.Tests, Cockpit.App.ViewTests) a diff actually needs -- derived mechanically from
-# the real <ProjectReference> graph in the csproj files, never a hand-maintained table. A hand-kept mapping
-# drifts out of sync with the real build the moment someone adds a reference, and a wrong mapping here is a
-# silent, wrongly-skipped test -- exactly the failure AC-863 is written against. Anything the graph can't
-# resolve (an unrecognized path, a missing csproj) falls back to running every suite, same philosophy as
-# the `other` bucket above.
+# Also resolves which of the build job's three test suites a diff needs, derived mechanically from the
+# real <ProjectReference> graph in the csproj files rather than a hand-maintained table -- an unresolvable
+# path (unrecognized directory, missing csproj) falls back to running every suite, same safe default.
 
 #   scripts/classify-changes.sh <base-ref> [head-ref]
 set -euo pipefail
