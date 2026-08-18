@@ -94,10 +94,22 @@ public class WhiteboardAccessIntegrationTests
         var host = new RecordingHost(registry);
         plugin.Initialize(host);
 
-        // AC-850: the whiteboard is no longer a workspace type — the "Nieuw whiteboard" toolbar action opens it
-        // directly as a window bound to the active session, through W-2/AC-843's snelstart.
-        var whiteboardAction = Assert.Single(host.ToolbarActions, action => action.Title == "Nieuw whiteboard");
+        // AC-850/AC-896: the whiteboard is no longer a workspace type — the "Whiteboards" toolbar action opens the
+        // list dialog, whose header's "Nieuw whiteboard" button opens the board as a window bound to the active
+        // session, through W-2/AC-843's snelstart.
+        var whiteboardAction = Assert.Single(host.ToolbarActions, action => action.Title == "Whiteboards");
         await whiteboardAction.OnInvoke();
+        Assert.Contains("whiteboard.list", host.DialogKeys);
+        var listContent = host.LastDialogContent!;
+
+        // The list body is a UserControl — its Content only materialises into the visual tree once templated,
+        // which showing it in a window forces.
+        var listWindow = new Window { Content = listContent };
+        listWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        listContent.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Nieuw whiteboard"))
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        listWindow.Close();
         var dialogKey = Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
         Assert.IsAssignableFrom<Control>(host.LastDialogContent);
 

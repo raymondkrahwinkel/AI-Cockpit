@@ -425,9 +425,24 @@ public class DiagramCollabWindowTests
 
         public ICockpitSessionObserver Sessions { get; } = new FakeSessions();
 
-        // "Nieuw diagram" — the one entry point that already names a session, standing in for an operator who
-        // ticks "couple to this session" and hits Enter on the prefilled name.
-        public void InvokeQuickStart() => _toolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+        private Control? _listDialogContent;
+
+        // AC-896's two-stage path: "Diagrams" opens the list dialog, "Nieuw diagram" in its header opens the
+        // quick-start — the one entry point that already names a session, standing in for an operator who ticks
+        // "couple to this session" and hits Enter on the prefilled name.
+        public void InvokeQuickStart()
+        {
+            _toolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+
+            // UserControl.Content only materialises into the visual tree once templated — shown, here, the same
+            // way a document window's content already has to be for its own button lookups to find anything.
+            var listWindow = new Window { Content = _listDialogContent };
+            listWindow.Show();
+            Dispatcher.UIThread.RunJobs();
+            _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Nieuw diagram"))
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            listWindow.Close();
+        }
 
         // Both halves of what the cockpit does when a session closes: it releases that session's couplings
         // (CockpitViewModel's driver-side teardown) and every binding on it reports Ended.
@@ -474,6 +489,13 @@ public class DiagramCollabWindowTests
                 content.GetVisualDescendants().OfType<CheckBox>().Single().IsChecked = true;
                 content.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Openen"))
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                return Task.CompletedTask;
+            }
+
+            if (singleInstanceKey == "diagram.list")
+            {
+                // Not a document window — Windows means document windows only (InvokeQuickStart clicks through it).
+                _listDialogContent = content;
                 return Task.CompletedTask;
             }
 
