@@ -95,6 +95,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session's header now names the MCP servers it really mounted instead of the ones ticked in the
+  New-session checklist. The servers the cockpit mounts on its own — its status line and the agent-to-agent line,
+  the pull-request tools in a git checkout, a project's own memory server — were never in that checklist, so a
+  session that had them all along read as missing them; a server that failed to connect no longer counts either.
 - fixed: on a diagram type that cannot be edited object by object — a sequence, class or state diagram — the
   hand-edit buttons are now switched off and say why in their tooltip, naming the diagram's own type and pointing
   at the agent. They used to look available and only refuse once pressed.

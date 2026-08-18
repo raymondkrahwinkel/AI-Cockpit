@@ -29,7 +29,8 @@ internal sealed class PluginTtySessionProviderAdapter(
     ILogger<PluginTtySessionProviderAdapter>? logger = null,
     ISessionConversationSink? conversationSink = null,
     IMcpOAuthProxy? oauthProxy = null,
-    IWorktreeManager? worktreeManager = null) : ITtySessionProvider
+    IWorktreeManager? worktreeManager = null,
+    SessionMcpMounts? mcpMounts = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
@@ -41,6 +42,13 @@ internal sealed class PluginTtySessionProviderAdapter(
         // (rather than added to TtyLaunchContext itself) so ReportConversationId below knows which pane a later
         // report belongs to. Null when the launch carries no pane id (a profile-less quick session).
         var paneId = _PaneId(context.BaseEnvironment);
+
+        // AC-927: what this launch actually hands the TUI, so the header names those servers rather than the
+        // checklist it was started from — which never holds the always-mounted and auto-mounted ones.
+        if (paneId is { Length: > 0 })
+        {
+            mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
+        }
 
         // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP
         // auth key on it (COCKPIT_MCP_KEY, AC-40) so a cockpit-hosted server's config can reference the env var

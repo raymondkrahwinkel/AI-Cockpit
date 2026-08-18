@@ -2605,7 +2605,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         INodeDiscoveryClient? nodeDiscoveryClient = null,
         // AC-795: the controller's reach into a paired node's sessions. Absent in the design-time/unit-test graph
         // like the pairing halves above, and the node cards on the Security tab then do not appear at all.
-        INodeSessionsClient? nodeSessionsClient = null)
+        INodeSessionsClient? nodeSessionsClient = null,
+        // AC-927: where the launch routes say which MCP servers a session really got, so its header can name
+        // those. Absent in the design-time/unit-test graph, where the header keeps showing the selection alone.
+        SessionMcpMounts? sessionMcpMounts = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2845,7 +2848,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             consentBroker.PromptOpened += _OnConsentPromptOpened;
             consentBroker.PromptClosed += _OnConsentPromptClosed;
         }
+
+        if (sessionMcpMounts is not null)
+        {
+            sessionMcpMounts.Reported += _OnSessionMcpMounted;
+        }
     }
+
+    // AC-927: a launch route reporting the servers it mounted. On the UI thread, since it sets the header's own
+    // observable; a report for a pane the host no longer holds is dropped, the way a consent for a gone pane is.
+    private void _OnSessionMcpMounted(string paneId, IReadOnlyList<string> serverNames) =>
+        _OnUiThread(() =>
+        {
+            if (FindSession(paneId) is { } session)
+            {
+                session.McpServerSelection = new HashSet<string>(serverNames, StringComparer.OrdinalIgnoreCase);
+            }
+        });
 
     // Route a consent prompt to the pane it belongs to. On the UI thread: it sets an observable property and can
     // raise a toast. A prompt whose pane is gone is denied rather than left hanging — there is nowhere to show it.

@@ -117,17 +117,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // list cannot come to disagree — the failure this would otherwise have is a count of ten beside a list of
     // nine, with nothing to say which of the two is right (AC-563 criterion 5).
     //
-    // Computed by the launching view model rather than read back from the driver, since nothing on the wire
-    // reports the resolved count after start; re-merging an already-merged value downstream is a no-op
-    // (`x ?? y` on a non-null `x`), so holding it here changes nothing about what a session mounts.
-    //
-    // Names, not resolved registry entries: every real caller's names already exclude the cockpit's own
-    // always-there plumbing, because the New-session checklist only ever offers the servers a operator may pick
-    // (AC-130 profile selections are saved from that same checklist). The one caller that can name an internal
-    // endpoint on purpose — an embedded/Autopilot run naming its own pane-scoped tools — inflates the count by
-    // one in that narrow case; resolving it needs a live, project-scoped catalog read the header does not have,
-    // and a cosmetic count does not justify adding one. Accepted, not silently ignored: pinned by
-    // `SessionHeaderStatusAndKindChipTests`.
+    // Seeded by the launching view model with that merged selection, then replaced by what the launch route
+    // reports it actually mounted (AC-927, `SessionMcpMounts`) — the selection alone never holds the
+    // always-mounted, auto-mounted or project-linked servers a session also gets, and read as those being absent.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]

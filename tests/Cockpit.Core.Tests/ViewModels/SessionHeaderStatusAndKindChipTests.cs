@@ -117,12 +117,9 @@ public class SessionHeaderStatusAndKindChipTests
     [Fact]
     public async Task SessionInitialized_CountsNamesAsGiven_NotResolvedAgainstTheLiveRegistry()
     {
-        // Pins the deliberate simplification (see McpServerSelection's own doc comment): the header counts the
-        // names it was handed, it does not re-check them against a live McpServerConfig registry to exclude
-        // Internal/AlwaysMounted entries. Every real UI-driven caller's names already exclude those (the
-        // New-session checklist only ever offers McpServerRegistryFilter.OfferedToOperator servers, and AC-130
-        // profile selections are saved from that same checklist) — this name deliberately looks like one of the
-        // cockpit's own internal endpoints to document that the header does not special-case it.
+        // The seeded value counts the names it was handed and re-checks them against no registry; what the
+        // session really mounted arrives afterwards, from the launch route itself (AC-927, `SessionMcpMounts`).
+        // This name deliberately looks like one of the cockpit's own endpoints: the seed does not special-case it.
         var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "filesystem", "cockpit-session" });
 
         vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });

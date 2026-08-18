@@ -458,9 +458,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         _configuredProfile = profile;
         _configuredResume = resume;
         // AC-563: the header's MCP hover lives on the shared bar, so this route resolves its selection here too —
-        // the same merge the driver applies downstream, where re-merging an already-merged value is a no-op. Held
-        // as the one field and handed to the launch below, so what the header names is what the session mounts;
-        // without the merge a terminal pane would report an unknown selection while its profile had named one.
+        // the same merge the driver applies downstream, where re-merging an already-merged value is a no-op.
+        // Without it a terminal pane would report an unknown selection while its profile had named one. What the
+        // launch actually mounts replaces this the moment the route reports it (AC-927).
         McpServerSelection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
         _configuredContributed = contributed;
         _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
