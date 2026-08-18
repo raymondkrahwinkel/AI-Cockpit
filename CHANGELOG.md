@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the whiteboard now has its own clipboard — Ctrl+C copies the selected shape, sticky note, text, image or
+  stroke, Ctrl+X cuts it, Ctrl+V pastes it back offset from where it was, and Ctrl+D duplicates it in place beside
+  the original. Repeated pasting keeps fanning copies out instead of stacking them on the exact same spot. Pasting a
+  screenshot from outside the app still works exactly as before — it only takes over Ctrl+V while the board's own
+  clipboard is empty.
+
 - added: a wireframe can now sketch a whole web or app screen, not only a settings form — cards, a modal dialog, a
   dropdown menu, a toggle, a slider, a multi-line field, a search box, an avatar, an icon, a badge, a progress bar, a
   breadcrumb trail, pagination and a numbered stepper, plus header, footer, sidebar and main as regions that say what

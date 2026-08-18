@@ -19,8 +19,8 @@ public enum WhiteboardTool
 }
 
 // The whiteboard's surface (AC-821): a pencil draws yellow freehand strokes straight onto one shared layer, a
-// shape tool drags out a blue-strict PlacedObject, Ctrl+V pastes a screenshot as the same kind of object, and
-// Select drags bodies or resize-handle corners. No pan/zoom — nothing in the ticket asked for an infinite canvas.
+// shape tool drags out a blue-strict PlacedObject, and Select drags bodies or resize-handle corners. No pan/zoom
+// — nothing in the ticket asked for an infinite canvas. Ctrl+C/X/V/D (AC-917) run against an internal clipboard.
 public sealed class WhiteboardCanvasControl : Border
 {
     private const double MinPlacedSize = 20;
@@ -61,6 +61,11 @@ public sealed class WhiteboardCanvasControl : Border
 
     private Guid? _selectedId;
     private PlacedShapeKind _pendingShapeKind = PlacedShapeKind.Rectangle;
+
+    // AC-917: a clipboard local to this board, not the system one — that one is already spoken for by the
+    // image-from-system-clipboard paste below. Filled by Ctrl+C/Ctrl+X, read by Ctrl+V.
+    private List<WhiteboardObject>? _clipboard;
+    private double _pasteOffset;
 
     public WhiteboardCanvasControl(WhiteboardDocument document)
     {
@@ -433,9 +438,41 @@ public sealed class WhiteboardCanvasControl : Border
     {
         base.OnKeyDown(e);
 
+        if (e.Key == Key.C && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            _CopySelection();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.X && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            _CutSelection();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.D && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            _DuplicateSelection();
+            e.Handled = true;
+            return;
+        }
+
+        // AC-917: a filled internal clipboard wins over the system one — the operator just copied or cut something
+        // on this board, and that is what Ctrl+V most likely means. An empty internal clipboard falls through to
+        // the pre-existing image-from-system-clipboard paste, so that flow keeps working untouched.
         if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            _ = _PasteAsync();
+            if (_clipboard is { Count: > 0 })
+            {
+                _PasteFromInternalClipboard();
+            }
+            else
+            {
+                _ = _PasteAsync();
+            }
+
             e.Handled = true;
             return;
         }
@@ -465,6 +502,170 @@ public sealed class WhiteboardCanvasControl : Border
             e.Handled = true;
         }
     }
+
+    // AC-917 AC1/AC2: snapshots the selection now — a clone with its own id, so later edits to the original never
+    // leak into what a later Ctrl+V pastes. Copying an image takes its bound annotations along as one group, which
+    // is what lets the eventual paste restore their binding inside the copy (AC4) instead of losing it.
+    private void _CopySelection()
+    {
+        if (_GestureInProgress || _selectedId is not { } id || Document.Find(id) is not { } selected)
+        {
+            return;
+        }
+
+        _clipboard = [.. _BuildClipboardGroup(selected).Select(o => _Clone(o, o.Id))];
+        _pasteOffset = 0;
+    }
+
+    // Same snapshot as copy, plus removing the selection from the board as one journaled handling (AC5) — cutting
+    // an image takes its annotations with it rather than leaving them stuck to a picture that is no longer there.
+    private void _CutSelection()
+    {
+        if (_GestureInProgress || _selectedId is not { } id || Document.Find(id) is not { } selected)
+        {
+            return;
+        }
+
+        var group = _BuildClipboardGroup(selected);
+        _clipboard = [.. group.Select(o => _Clone(o, o.Id))];
+        _pasteOffset = 0;
+
+        var alsoRemoved = group.Where(o => o.Id != selected.Id).ToList();
+        _DeleteJournaled(selected.Id, alsoRemoved, unbound: [], summaryOverride: _Describe(selected, "cut"));
+    }
+
+    // AC-917 AC6: the offset grows from the original by +10/+10 each time rather than resetting, so repeated
+    // Ctrl+V fans copies out instead of stacking them on the exact same spot.
+    private void _PasteFromInternalClipboard()
+    {
+        if (_clipboard is not { Count: > 0 } templates)
+        {
+            return;
+        }
+
+        _pasteOffset += 10;
+        var clones = _Instantiate(templates, _pasteOffset, _pasteOffset);
+        foreach (var clone in clones)
+        {
+            Document.Add(clone);
+        }
+
+        _JournalAddGroup(clones, _Describe(templates[0], "pasted"));
+        _Select(clones[0].Id);
+        UseSelectTool();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Ctrl+D never touches _clipboard — duplicating a shape must not clobber whatever Ctrl+C put there for a later
+    // Ctrl+V. The +10/+10 shift is the usual one so the copy is visibly beside the original, not hidden under it.
+    private void _DuplicateSelection()
+    {
+        if (_GestureInProgress || _selectedId is not { } id || Document.Find(id) is not { } selected)
+        {
+            return;
+        }
+
+        var clones = _Instantiate(_BuildClipboardGroup(selected), 10, 10);
+        foreach (var clone in clones)
+        {
+            Document.Add(clone);
+        }
+
+        _JournalAddGroup(clones, _Describe(selected, "duplicated"));
+        _Select(clones[0].Id);
+        UseSelectTool();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    // W-6/AC-851: copying/cutting/duplicating an Image takes its bound children along as one group, so the binding
+    // survives the copy intact (AC4). Anything else is a group of one.
+    private List<WhiteboardObject> _BuildClipboardGroup(WhiteboardObject selected) =>
+        selected is PlacedObject { ShapeKind: PlacedShapeKind.Image } image
+            ? [selected, .. WhiteboardBinding.ChildrenOf(Document, image.Id)]
+            : [selected];
+
+    // New ids throughout (AC2) — a paste or duplicate is never the same object again. ParentImageId is rebuilt, not
+    // copied: inside the group it re-targets the cloned parent (AC4's binding restored within the copy); outside the
+    // group it falls back to whatever image, if any, now sits under the clone's position — the same rule a freshly
+    // drawn stroke or placed shape already gets — so a lone annotation's copy never points at a dangling id (AC4).
+    private List<WhiteboardObject> _Instantiate(IReadOnlyList<WhiteboardObject> templates, double dx, double dy)
+    {
+        var idMap = templates.ToDictionary(t => t.Id, _ => Guid.NewGuid());
+        var clones = templates.Select(t => _Clone(t, idMap[t.Id])).ToList();
+
+        foreach (var clone in clones)
+        {
+            _Translate(clone, dx, dy);
+        }
+
+        foreach (var (template, clone) in templates.Zip(clones))
+        {
+            if (template.ParentImageId is not { } parentId)
+            {
+                continue;
+            }
+
+            clone.ParentImageId = idMap.TryGetValue(parentId, out var newParentId)
+                ? newParentId
+                : WhiteboardBinding.FindParentImage(Document, _CenterOf(clone).X, _CenterOf(clone).Y)?.Id;
+        }
+
+        return clones;
+    }
+
+    private static WhiteboardObject _Clone(WhiteboardObject source, Guid id) => source switch
+    {
+        PlacedObject p => new PlacedObject
+        {
+            Id = id,
+            ShapeKind = p.ShapeKind,
+            X = p.X,
+            Y = p.Y,
+            Width = p.Width,
+            Height = p.Height,
+            Text = p.Text,
+            ImageData = p.ImageData,
+            IsPastedScreenshot = p.IsPastedScreenshot,
+            ParentImageId = p.ParentImageId,
+        },
+        FreehandStroke f => new FreehandStroke
+        {
+            Id = id,
+            Points = [.. f.Points],
+            Thickness = f.Thickness,
+            IsMarker = f.IsMarker,
+            ParentImageId = f.ParentImageId,
+        },
+        _ => throw new NotSupportedException($"Unknown whiteboard object kind: {source.GetType()}"),
+    };
+
+    private static void _Translate(WhiteboardObject obj, double dx, double dy)
+    {
+        switch (obj)
+        {
+            case PlacedObject p:
+                p.X += dx;
+                p.Y += dy;
+                break;
+            case FreehandStroke f:
+                for (var i = 0; i < f.Points.Count; i++)
+                {
+                    f.Points[i] = new WhiteboardPoint(f.Points[i].X + dx, f.Points[i].Y + dy);
+                }
+
+                break;
+        }
+    }
+
+    private static (double X, double Y) _CenterOf(WhiteboardObject obj) => obj switch
+    {
+        PlacedObject p => (p.X + (p.Width / 2), p.Y + (p.Height / 2)),
+        FreehandStroke f => _BoundsCenter(f.Points),
+        _ => (0, 0),
+    };
+
+    private static string _Describe(WhiteboardObject obj, string verb) =>
+        obj is PlacedObject placed ? $"{verb} a {placed.ShapeKind}" : $"{verb} a stroke";
 
     private async Task _PasteAsync()
     {
@@ -740,7 +941,8 @@ public sealed class WhiteboardCanvasControl : Border
 
     // The instances themselves are journaled, not a copy of the board: restoring one puts back the very object that
     // left, so it keeps the id AC-851's ParentImageId bindings point at.
-    private void _DeleteJournaled(Guid id, IReadOnlyList<WhiteboardObject> alsoRemoved, IReadOnlyList<WhiteboardObject> unbound)
+    private void _DeleteJournaled(
+        Guid id, IReadOnlyList<WhiteboardObject> alsoRemoved, IReadOnlyList<WhiteboardObject> unbound, string? summaryOverride = null)
     {
         if (Document.Find(id) is not { } focus)
         {
@@ -753,7 +955,7 @@ public sealed class WhiteboardCanvasControl : Border
             id);
 
         Edits.Record(
-            focus is PlacedObject placed ? $"deleted a {placed.ShapeKind}" : "erased a stroke",
+            summaryOverride ?? (focus is PlacedObject placed ? $"deleted a {placed.ShapeKind}" : "erased a stroke"),
             id,
             () => _Restore(removal),
             () => _Drop(removal));
@@ -807,6 +1009,32 @@ public sealed class WhiteboardCanvasControl : Border
     {
         var removal = new Removal([(added, Document.Objects.IndexOf(added))], [], added.Id);
         Edits.Record(summary, added.Id, () => _UndoAdd(removal), () => _Restore(removal));
+    }
+
+    // AC-917: same contract as _JournalAdd — the caller has already added `objects` to the Document, this only
+    // records the undo/redo pair. One journal line for the whole group (AC5), so cutting/pasting/duplicating an
+    // image together with its annotations reverts as a single entry, not one per object.
+    private void _JournalAddGroup(IReadOnlyList<WhiteboardObject> objects, string summary)
+    {
+        var removal = new Removal([.. objects.Select(o => (Item: o, Index: Document.Objects.IndexOf(o)))], [], objects[0].Id);
+        Edits.Record(summary, removal.FocusId, () => _UndoAddGroup(removal), () => _Restore(removal));
+    }
+
+    // Same refusal as _UndoAdd, group-wide: anything anchored to a pasted/duplicated image since it landed — the
+    // agent's included — blocks the undo instead of dragging that work away silently.
+    private string? _UndoAddGroup(Removal removal)
+    {
+        var ownIds = removal.Removed.Select(entry => entry.Item.Id).ToHashSet();
+        foreach (var (item, _) in removal.Removed)
+        {
+            if (item is PlacedObject { ShapeKind: PlacedShapeKind.Image } &&
+                WhiteboardBinding.ChildrenOf(Document, item.Id).Any(child => !ownIds.Contains(child.Id)))
+            {
+                return "Er ligt werk op dit object — verwijder dat eerst.";
+            }
+        }
+
+        return _Drop(removal);
     }
 
     // Refuses while something is anchored to the object: taking it away would drag along or unbind work that landed
