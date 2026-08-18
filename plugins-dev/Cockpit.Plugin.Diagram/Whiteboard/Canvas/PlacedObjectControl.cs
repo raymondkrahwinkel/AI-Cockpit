@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Rendering;
@@ -13,6 +14,7 @@ namespace Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 internal sealed class PlacedObjectControl : Control, ICustomHitTest
 {
     private Bitmap? _image;
+    private bool _isSelected;
 
     public PlacedObjectControl(PlacedObject model)
     {
@@ -20,9 +22,31 @@ internal sealed class PlacedObjectControl : Control, ICustomHitTest
         Width = model.Width;
         Height = model.Height;
         _ReloadImage();
+
+        if (WhiteboardObjectPainter.BadgeFor(model) is { } badge)
+        {
+            ToolTip.SetTip(this, badge.Tooltip);
+        }
     }
 
     public PlacedObject Model { get; }
+
+    // AC-918: the badge is hidden by default, shown on hover (native IsPointerOver) or selection — set by the
+    // canvas whenever the selected object changes.
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
+            InvalidateVisual();
+        }
+    }
 
     // Avalonia's default hit test for a plain Control checks actual rendered pixels — a hollow shape (no fill,
     // just an outline) would then miss clicks anywhere in its own middle. The whole bounds count as the object.
@@ -44,7 +68,20 @@ internal sealed class PlacedObjectControl : Control, ICustomHitTest
             new Rect(Bounds.Size),
             Model.Text,
             _image,
-            WhiteboardObjectPainter.BadgeFor(Model));
+            WhiteboardObjectPainter.BadgeFor(Model),
+            IsPointerOver || IsSelected);
+    }
+
+    protected override void OnPointerEntered(PointerEventArgs e)
+    {
+        base.OnPointerEntered(e);
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        InvalidateVisual();
     }
 
     private void _ReloadImage()

@@ -77,8 +77,10 @@ public class WhiteboardSnapshotRendererTests
     }
 
     [Fact]
-    public void PastedScreenshot_RendersTheBadge_ButAnInsertedImageDoesNot()
+    public void PastedScreenshot_IsBadged_ButTheSnapshotNeverShowsIt()
     {
+        // AC-918: BadgeFor still tells a pasted screenshot apart, but the PNG snapshot (no hover/selection in a
+        // static image) renders it identically to a plain inserted image.
         var pastedDocument = new WhiteboardDocument();
         pastedDocument.Add(new PlacedObject
         {
@@ -106,14 +108,14 @@ public class WhiteboardSnapshotRendererTests
         var badgePixel = _PixelAt(_Render(pastedDocument), 10, 55);
         var plainPixel = _PixelAt(_Render(insertedDocument), 10, 55);
 
-        Assert.NotEqual(plainPixel, badgePixel);
+        Assert.Equal(plainPixel, badgePixel);
     }
 
     [Fact]
-    public void AnAgentPlacedObject_IsBadged_AndSoTellsItselfApartFromTheOperatorsOwnWork()
+    public void AnAgentPlacedObject_IsBadged_ButTheSnapshotNeverShowsIt()
     {
-        // AC-854: what the agent put down must stay recognisable as the agent's wherever the board is drawn — the
-        // PNG snapshot included, which is also what a saved-and-reopened board renders from.
+        // AC-854 tells the agent's work apart via BadgeFor; AC-918 keeps that out of the PNG snapshot — the
+        // agent already knows what it placed, and hover/selection don't exist in a static image.
         var agentDocument = new WhiteboardDocument();
         agentDocument.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 0, Y = 0, Width = 100, Height = 60, PlacedByAgent = true });
 
@@ -123,8 +125,8 @@ public class WhiteboardSnapshotRendererTests
         var badgePixel = _PixelAt(_Render(agentDocument), 10, 55);
         var plainPixel = _PixelAt(_Render(operatorDocument), 10, 55);
 
-        Assert.NotEqual(plainPixel, badgePixel);
-        Assert.Equal("neergezet · agent", WhiteboardObjectPainter.BadgeFor(agentDocument.Objects.OfType<PlacedObject>().Single()));
+        Assert.Equal(plainPixel, badgePixel);
+        Assert.Equal("Placed by agent", WhiteboardObjectPainter.BadgeFor(agentDocument.Objects.OfType<PlacedObject>().Single())?.Tooltip);
         Assert.Null(WhiteboardObjectPainter.BadgeFor(operatorDocument.Objects.OfType<PlacedObject>().Single()));
     }
 

@@ -34,6 +34,8 @@ internal sealed class WhiteboardSnapshotVisual : Control
                     var image = placed is { ShapeKind: PlacedShapeKind.Image, ImageData: { Length: > 0 } data }
                         ? new Bitmap(new MemoryStream(data))
                         : null;
+                    // AC-918: the snapshot never shows badges — hover/selection don't exist in a static PNG, and
+                    // the agent already knows what it placed itself; the snapshot is for seeing the board.
                     using (image)
                     {
                         WhiteboardObjectPainter.PaintPlaced(
@@ -41,8 +43,7 @@ internal sealed class WhiteboardSnapshotVisual : Control
                             placed.ShapeKind,
                             new Rect(placed.X, placed.Y, placed.Width, placed.Height),
                             placed.Text,
-                            image,
-                            WhiteboardObjectPainter.BadgeFor(placed));
+                            image);
                     }
 
                     break;
