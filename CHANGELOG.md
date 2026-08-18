@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a profile on the OpenRouter provider can now fetch its model list instead of you typing a vendor/model id
+  from memory — a Fetch button next to the Model field asks the base URL you filled in which models it serves, the
+  same behaviour the Gemini/OpenAI provider already has. When that endpoint serves no model list, or rejects the
+  key, the field stays free text and a line underneath says what happened.
 - added: a component in a wireframe can now be dragged to another place in the structure instead of only moved with
   the arrows or "Verplaats naar…". Select a component first, then drag it from the selection mark: a line shows which
   two components it will land between, an outline shows the container it will land in, and a container carries
