@@ -439,11 +439,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                 ? value.GetString()
                 : null;
 
-    // Classifies one main-transcript JSONL line into a coarse turn-activity (ported from the host's former
-    // `TtyTranscriptStatus` so the Claude-format knowledge lives with the provider): a user message or a
-    // tool-result means the model owes a response (Busy); an assistant message is Busy while it streams or loops
-    // into a tool call and `PluginSessionActivity.TurnComplete` on a terminal stop_reason; anything
-    // else carries no signal.
+    // Classifies one main-transcript JSONL line into a coarse turn-activity: a user message or tool-result means
+    // the model owes a response (Busy); an assistant message is AwaitingOperator on an `AskUserQuestion` tool
+    // call, Busy while it otherwise streams or loops, TurnComplete on a terminal stop_reason; anything else None.
     internal static PluginSessionActivity ClassifyLine(string? jsonLine)
     {
         if (string.IsNullOrWhiteSpace(jsonLine))
@@ -474,6 +472,11 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                         && reason.ValueKind == System.Text.Json.JsonValueKind.String
                         ? reason.GetString()
                         : null;
+                    if (_AsksTheOperatorAQuestion(message))
+                    {
+                        return PluginSessionActivity.AwaitingOperator;
+                    }
+
                     return stopReason is "end_turn" or "stop_sequence" or "max_tokens"
                         ? PluginSessionActivity.TurnComplete
                         : PluginSessionActivity.Busy;
@@ -487,6 +490,15 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
             return PluginSessionActivity.None;
         }
     }
+
+    // AC-920: `AskUserQuestion` is the CLI's own interactive prompt — it has no non-interactive path, so a
+    // `tool_use` block naming it always means a human, not the model, has to answer next.
+    private static bool _AsksTheOperatorAQuestion(JsonElement message) =>
+        message.ValueKind == JsonValueKind.Object
+        && message.TryGetProperty("content", out var content)
+        && content.ValueKind == JsonValueKind.Array
+        && content.EnumerateArray().Any(block =>
+            _Text(block, "type") == "tool_use" && _Text(block, "name") == "AskUserQuestion");
 
     // <summary>The config directory this profile's transcripts live under, from the plugin's own config JSON — a pinned dir, else CLAUDE_CONFIG_DIR, else ~/.claude.</summary>
     private static string _ResolveStateDirectory(string configJson) =>
