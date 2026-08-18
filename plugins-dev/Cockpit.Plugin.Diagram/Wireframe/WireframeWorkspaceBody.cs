@@ -40,7 +40,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
     // AC-904: while a component is being dragged the pointer already says whether it may land where it is — a drop
-    // the editor would refuse reads as "kan niet" here, rather than as a toast after the fact.
+    // the editor would refuse reads as "cannot" here, rather than as a toast after the fact.
     private static readonly Cursor _DropCursor = new(StandardCursorType.DragMove);
     private static readonly Cursor _NoDropCursor = new(StandardCursorType.No);
 
@@ -116,10 +116,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _render = new Panel();
         _overlay = new Canvas();
 
-        // AC-904: the drag in flight gets a layer of its own above both — the ghost and the drop indicator are drawn
-        // here and dropped on release (AC-898's draft layer, one folder over), so nothing halfway between two places
-        // ever reaches the source, the journal or a reading agent. Never hit-tested, so it cannot shadow the render
-        // the drop target is resolved against.
+        // AC-904: the gesture in flight gets a layer of its own — ghost and drop indicator, thrown away on release
+        // (AC-898's draft layer), so nothing halfway between two places reaches the source, the journal or a reading
+        // agent. Never hit-tested, so it cannot shadow the render the drop target is resolved against.
         _draft = new Canvas { IsHitTestVisible = false };
         _surface = new Panel
         {
@@ -423,14 +422,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _ZoomAround(e.GetPosition(_viewport), _zoom * Math.Pow(WheelZoomStepBase, e.Delta.Y), _NodeAt(e.GetPosition(_surface)));
     }
 
-    // AC-837's input convention still carries this surface: a plain left-drag pans, and a press that never travels is
-    // a click on a component. AC-904 carves exactly one region out of it — the component the operator already
-    // selected drags, to another place in the structure.
-    //
-    // A deliberate departure from AC-841/AC-875, which kept gestures apart by never letting one drag mean two things.
-    // It still does not mean two things: the drag that moves is the one that starts inside the selection mark, which
-    // is on screen because an earlier click put it there. The background and every unselected component keep panning,
-    // so neither gesture has to be guessed from how far the pointer travelled or from what happened to be under it.
+    // AC-837 still holds — a left-drag pans, a press that never travels selects — except in the one region AC-904
+    // carves out: the component already selected drags instead. A deliberate departure from AC-841/AC-875, which kept
+    // gestures apart; nothing is guessed here either, because the selection mark bounds the drag and is on screen.
     private void _OnViewportPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(_viewport).Properties.IsLeftButtonPressed)
@@ -699,14 +693,6 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // ---- Hand-editing on the surface itself (AC-875) ----
 
-    // The component at a point on the surface: the smallest control carrying a source node (AC-871's attached
-    // property) whose place on the surface contains it, which is the innermost component drawn there. Chrome the
-    // renderer draws without a node of its own — a tab strip, a skeleton row — so answers as the component it
-    // belongs to rather than as nothing.
-    //
-    // Read off where the controls ended up rather than hit-tested (AC-904): a component drawn as bare text carries no
-    // background, so hit-testing passed straight through it to the paper behind and a click on a label selected the
-    // whole screen. Every component has a place, whether or not it paints one.
     // Every drawn control by the component it came from. Walked once per render rather than per pointer event, and
     // dropped again by _RenderInto — a fresh render is a fresh tree of controls, and nothing here outlives it. The
     // places themselves are read from the controls at the moment they are asked for, so layout still moves freely.
@@ -729,6 +715,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return _controls;
     }
 
+    // The component at a point: the smallest control carrying a source node (AC-871) whose place contains it. Read
+    // off layout rather than hit-tested (AC-904) — a label is bare text with no background, so hit-testing fell
+    // through it to the paper behind and selected the whole screen instead.
     private WireframeNode? _NodeAt(Point onSurface) => _NodeAt(_ControlMap(), onSurface);
 
     private WireframeNode? _NodeAt(Dictionary<WireframeNode, Control> controls, Point onSurface) => controls.Keys
