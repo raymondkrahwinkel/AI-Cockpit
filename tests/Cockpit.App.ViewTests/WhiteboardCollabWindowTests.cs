@@ -207,9 +207,23 @@ public class WhiteboardCollabWindowTests
         public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction) =>
             Toasts.Add(message);
 
-        // The toolbar's "Nieuw whiteboard" action (renamed in W-2/AC-843, which put a quick-start in front of it) —
-        // standing in for an operator clicking it.
-        public void InvokeWhiteboardAction() => _toolbarActions.Single(action => action.Title == "Nieuw whiteboard").OnInvoke().GetAwaiter().GetResult();
+        private Control? _listDialogContent;
+
+        // AC-896's two-stage path: "Whiteboards" opens the list dialog, "Nieuw whiteboard" in its header opens the
+        // quick-start (W-2/AC-843) — standing in for an operator clicking through both.
+        public void InvokeWhiteboardAction()
+        {
+            _toolbarActions.Single(action => action.Title == "Whiteboards").OnInvoke().GetAwaiter().GetResult();
+
+            // UserControl.Content only materialises into the visual tree once templated — shown, here, the same
+            // way a document window's content already has to be for its own button lookups to find anything.
+            var listWindow = new Window { Content = _listDialogContent };
+            listWindow.Show();
+            Dispatcher.UIThread.RunJobs();
+            _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Nieuw whiteboard"))
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            listWindow.Close();
+        }
 
         public void EndSession(string paneId)
         {
@@ -260,6 +274,13 @@ public class WhiteboardCollabWindowTests
                 couple.IsChecked = couple.IsEnabled;
                 content.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Openen"))
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                return Task.CompletedTask;
+            }
+
+            if (singleInstanceKey == "whiteboard.list")
+            {
+                // Not a document window — Windows means document windows only (InvokeWhiteboardAction clicks through it).
+                _listDialogContent = content;
                 return Task.CompletedTask;
             }
 

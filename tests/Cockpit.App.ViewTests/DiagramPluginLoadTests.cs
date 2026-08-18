@@ -1,5 +1,6 @@
 using System.Runtime.Loader;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -43,11 +44,10 @@ public class DiagramPluginLoadTests
         plugin.Initialize(host);
 
         // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — nothing registers a workspace
-        // type any more, only toolbar actions: a new one and a list, per surface (W-2/AC-843, AC-873).
+        // type any more, only toolbar actions: one list opener per surface (AC-896 moved "Nieuw ..." into that
+        // list's own header, next to Refresh).
         Assert.Empty(host.WorkspaceTypes);
-        Assert.Equal(
-            ["Nieuw diagram", "Diagrams", "Nieuw whiteboard", "Whiteboards", "Nieuw wireframe", "Wireframes"],
-            host.ToolbarActions.Select(a => a.Title));
+        Assert.Equal(["Diagrams", "Whiteboards", "Wireframes"], host.ToolbarActions.Select(a => a.Title));
 
         // The measurement: nothing named "Avalonia*" ever loaded into the plugin's own AssemblyLoadContext —
         // everything the panel needed from the Avalonia family (including Svg.Controls.Skia.Avalonia's own
@@ -56,10 +56,25 @@ public class DiagramPluginLoadTests
         Assert.NotNull(pluginAlc);
         Assert.DoesNotContain(pluginAlc!.Assemblies, a => a.GetName().Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true);
 
-        // AC-816/AC-834: the quick-start button opens a dialog first; RecordingHost.ShowDialogAsync builds it and
-        // clicks straight through with the prefilled name, the same "Enter is enough" default an operator gets.
-        // What it opens after that is a window of its own, not a workspace tab.
+        // AC-826/AC-850: "Diagrams" opens a dialog, not a workspace; its body builds against a host with no
+        // linked project (default GetProjectMemoryRowsAsync).
         host.ToolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+        Assert.Empty(host.OpenedWorkspaceTypeIds);
+        var listDialog = Assert.Single(host.Dialogs, d => d.Key == "diagram.list");
+        Assert.IsAssignableFrom<Control>(listDialog.Content);
+
+        // AC-816/AC-834/AC-896: "Nieuw diagram" now lives in that list's own header, next to Refresh. Clicking it
+        // opens the quick-start dialog; RecordingHost.ShowDialogAsync builds it and clicks straight through with
+        // the prefilled name, the same "Enter is enough" default an operator gets. What it opens after that is a
+        // window of its own, not a workspace tab.
+        // The list body is a UserControl — its Content only materialises into the visual tree once templated,
+        // which showing it in a window forces.
+        var diagramListWindow = new Window { Content = listDialog.Content };
+        diagramListWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        listDialog.Content.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Nieuw diagram"))
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        diagramListWindow.Close();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
         var diagramDialog = Assert.Single(host.Dialogs, d => d.Key.StartsWith("diagram.document.", StringComparison.Ordinal));
 
@@ -68,18 +83,19 @@ public class DiagramPluginLoadTests
         // assertion — the plugin's panel simply would not fit the host's visual tree.
         Assert.IsAssignableFrom<Control>(diagramDialog.Content);
 
-        // AC-826/AC-850: "Diagrams" now opens a dialog, not a workspace; its body builds against a host with no
-        // linked project (default GetProjectMemoryRowsAsync).
+        // AC-836/AC-842/AC-896: same two-stage path for the whiteboard surface, which builds from the same ALC —
+        // with no IWhiteboardAccessRegistry in this host's services, the "no host to fall through to" case the
+        // panel has to survive. The toolbar action opens the list, "Nieuw whiteboard" opens a window bound to the
+        // active session, not a workspace tab.
         host.ToolbarActions[1].OnInvoke().GetAwaiter().GetResult();
         Assert.Empty(host.OpenedWorkspaceTypeIds);
-        var listDialog = Assert.Single(host.Dialogs, d => d.Key == "diagram.list");
-        Assert.IsAssignableFrom<Control>(listDialog.Content);
-
-        // AC-836/AC-842: the whiteboard surface builds from the same ALC — with no IWhiteboardAccessRegistry in
-        // this host's services, which is the "no host to fall through to" case the panel has to survive. The
-        // toolbar action opens a window bound to the active session, not a workspace tab.
-        host.ToolbarActions[2].OnInvoke().GetAwaiter().GetResult();
-        Assert.Empty(host.OpenedWorkspaceTypeIds);
+        var whiteboardListDialog = Assert.Single(host.Dialogs, d => d.Key == "whiteboard.list");
+        var whiteboardListWindow = new Window { Content = whiteboardListDialog.Content };
+        whiteboardListWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        whiteboardListDialog.Content.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Nieuw whiteboard"))
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        whiteboardListWindow.Close();
         var whiteboardDialog = Assert.Single(host.Dialogs, d => d.Key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
         Assert.IsAssignableFrom<Control>(whiteboardDialog.Content);
 
