@@ -21,4 +21,16 @@ public sealed class AssistantSystemPromptTests
         Assert.Contains("pipe-table", AssistantSystemPrompt.Default, StringComparison.Ordinal);
         Assert.Contains("never get read aloud", AssistantSystemPrompt.Default, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// AC-932: a project can pin its issue-tracker repo via `github.repository`/`GH_REPO`. The system prompt
+    /// must tell the assistant to defer to that pin rather than pick a repo by its own content-based reading.
+    /// </summary>
+    [Fact]
+    public void Default_DefersToPinnedIssueTrackerRepoOverOwnJudgment()
+    {
+        Assert.Contains("GH_REPO", AssistantSystemPrompt.Default, StringComparison.Ordinal);
+        Assert.Contains("do not pass your own `--repo`", AssistantSystemPrompt.Default, StringComparison.Ordinal);
+        Assert.Contains("No pin set: choosing by content, as before, is still right", AssistantSystemPrompt.Default, StringComparison.Ordinal);
+    }
 }

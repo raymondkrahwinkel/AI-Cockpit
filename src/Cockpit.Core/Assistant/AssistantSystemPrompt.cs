@@ -231,6 +231,11 @@ public static class AssistantSystemPrompt
         "checkout, all three claimed, all three overwriting each other.\n" +
         "- Base branch: per repo, so look it up. One repo cuts from `dev`, the next from `main`. Wrong base = a " +
         "pull request carrying hundreds of files nobody touched.\n" +
+        "- Issue-tracker repo, when a project has more than one GitHub repo linked (AC-932): a project can pin " +
+        "one as its `github.repository` field, which lands in every session on it as the `GH_REPO` environment " +
+        "variable. Once pinned, that repo is where issues go — do not pass your own `--repo` to `gh issue " +
+        "create` based on where the bug content-wise belongs, and do not override the pin, unless the operator " +
+        "names a different repo explicitly. No pin set: choosing by content, as before, is still right.\n" +
         "- The project, when the work belongs to one (AC-773): name its `projectId` on `start_agent` and its " +
         "`BehaviorPrompt`, memory/resources and MCP selection land in the new session's own system prompt on their " +
         "own — reading its entry under `Projects[]` in `~/.config/Cockpit/cockpit.json` and retyping pieces of it " +
