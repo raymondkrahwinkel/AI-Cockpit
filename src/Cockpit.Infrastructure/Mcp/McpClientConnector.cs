@@ -3,14 +3,9 @@ using ModelContextProtocol.Client;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// Connects to one MCP server, carrying the compatibility retry AC-928 needs. ModelContextProtocol 2.0.0 defaults to
-// the 2026-07-28 revision (SEP-2575), which opens with a `server/discover` probe and falls back to the `initialize`
-// handshake when that probe fails. YouTrack's MCP server (measured against 2026.2) answers every unknown JSON-RPC
-// method with HTTP 200 and an empty `result` instead of -32601 Method not found, so the probe looks like a success
-// and then dies deserializing DiscoverResult — a failure the SDK's own fallback does not cover, identically in SDK
-// 2.0.0 and 2.1.0. Retrying once with the version pinned to the last initialize-capable revision connects that
-// server, and leaves every conforming server on the newest revision, which a blanket pin would not: from 2026-07-28
-// on there is no `initialize` handshake at all, so a discover-only server would become unreachable instead.
+// AC-928: YouTrack's MCP server answers an unknown method with an empty HTTP 200 instead of -32601, so the SDK's
+// own fallback from the 2026-07-28 `server/discover` probe to `initialize` never triggers. Retry once pinned to the
+// last initialize-capable revision, rather than pinning every server and losing the newer one.
 internal static class McpClientConnector
 {
     // The newest revision that still speaks the `initialize` handshake, which is what the retry pins to.
