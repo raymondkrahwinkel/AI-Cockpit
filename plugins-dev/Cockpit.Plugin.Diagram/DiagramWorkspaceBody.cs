@@ -982,7 +982,13 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
-        _BuildNodeShapeFlyout(shape => _Apply(new DiagramHandEdit(DiagramHandEditKind.SetNodeShape, node.Id) { Shape = shape })).ShowAt(anchor);
+        var flyout = _BuildNodeShapeFlyout(shape => _Apply(new DiagramHandEdit(DiagramHandEditKind.SetNodeShape, node.Id) { Shape = shape }));
+        if (anchor is Button button)
+        {
+            button.Flyout = flyout;
+        }
+
+        flyout.ShowAt(anchor);
     }
 
     // Mirrors WhiteboardControl._BuildShapeFlyout's own pattern: a WrapPanel of preview-plus-label buttons, no

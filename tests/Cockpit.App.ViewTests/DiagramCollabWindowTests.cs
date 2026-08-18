@@ -168,8 +168,65 @@ public class DiagramCollabWindowTests
         _Button(content, "Verbinden").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ClickCentre(content, window);
         _ClickCentre(content, window);
+        Dispatcher.UIThread.RunJobs();
+
+        // AC-909: the second click no longer applies the connection straight away — a label box appears on it
+        // first, same shape as the rename box. Enter with nothing typed connects with no label, exactly as the
+        // direct-apply this test used to check for.
+        var label = content.GetVisualDescendants().OfType<TextBox>().Single(candidate => !candidate.IsReadOnly);
+        label.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+        Dispatcher.UIThread.RunJobs();
 
         Assert.Contains("A --> A", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public void ConnectingWithATypedLabel_WritesItOntoTheConnection() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-909's first acceptance criterion: the operator's own Verbinden gesture can carry a label, the way
+        // connect_nodes already could.
+        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+
+        _Button(content, "Verbinden").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ClickCentre(content, window);
+        _ClickCentre(content, window);
+        Dispatcher.UIThread.RunJobs();
+
+        var label = content.GetVisualDescendants().OfType<TextBox>().Single(candidate => !candidate.IsReadOnly);
+        label.Text = "loopt terug";
+        label.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains("A -->|\"loopt terug\"| A", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
+
+        window.Close();
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public void PickingAShapeThroughVormAction_ChangesTheNodesShape_KeepingItsLabel() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-909's second acceptance criterion: an existing node's shape can be changed afterwards without losing
+        // its label, through a grid of preview shapes rather than a Mermaid-syntax picker (AC4).
+        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+
+        _ClickCentre(content, window);
+        var vorm = _Button(content, "Vorm…");
+        Assert.True(vorm.IsEnabled);
+        vorm.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        var flyout = Assert.IsType<Flyout>(vorm.Flyout);
+        var grid = Assert.IsType<WrapPanel>(Assert.IsType<StackPanel>(flyout.Content).Children.Single());
+        var diamond = grid.Children.OfType<Button>()
+            .Single(button => ((StackPanel)button.Content!).Children.OfType<TextBlock>().Any(text => text.Text == "Ruit"));
+        diamond.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains("A{\"Alleen\"}", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
 
         window.Close();
         plugin.Dispose();
