@@ -4,16 +4,15 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Docking;
 
-/// <summary>
-/// A panel the right-hand dock rail (AC-951) can show — the dock equivalent of a
-/// <see cref="Cockpit.Plugins.Abstractions.Widgets.WidgetRegistration"/>, but host-internal rather than
-/// plugin-facing: there is exactly one candidate content today (the Assistant, AC-950 [c]), so this stays a
-/// seam inside <c>Cockpit.App</c> instead of a surface on <c>ICockpitHost</c> that could never be withdrawn.
-/// </summary>
-/// <param name="Id">A stable id, persisted as `LayoutSettings.OpenDockPanelId` so the open panel survives a restart.</param>
-/// <param name="Title">Shown as the vertical tab label on the collapsed rail.</param>
-/// <param name="IconKind">Shown above the title on the rail tab.</param>
-/// <param name="CreateView">Builds the panel's content, on the UI thread, once per time it is opened.</param>
+// A panel the right-hand dock rail (AC-951) can show — the dock equivalent of a
+// `Cockpit.Plugins.Abstractions.Widgets.WidgetRegistration`, but host-internal rather than
+// plugin-facing: there is exactly one candidate content today (the Assistant, AC-950 [c]), so this stays a
+// seam inside `Cockpit.App` instead of a surface on `ICockpitHost` that could never be withdrawn.
+//
+// `Id`: A stable id, persisted as `LayoutSettings.OpenDockPanelId` so the open panel survives a restart.
+// `Title`: Shown as the vertical tab label on the collapsed rail.
+// `IconKind`: Shown above the title on the rail tab.
+// `CreateView`: Builds the panel's content, on the UI thread, once per time it is opened.
 public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView);
 
 /// <summary>Holds the panels the dock rail offers. Empty is never the normal case — see <see cref="DockPanelRegistry"/>'s seeded placeholder.</summary>
