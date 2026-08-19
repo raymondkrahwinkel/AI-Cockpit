@@ -508,7 +508,8 @@ public partial class AssistantChatWindow : Window
 
     // AC-895: a session badge click focuses that session and brings the main window forward — same shape as the
     // main window's own OnWidgetHeaderPressed (CockpitView.axaml.cs), reused because a Button here would need
-    // transparent chrome to keep today's look.
+    // transparent chrome to keep today's look. Also handles the AC-949 Sessions-flyout rows, which share the
+    // same DataContext type.
     private void _OnSessionSegmentPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Control { DataContext: SessionPanelViewModel session } || DataContext is not AssistantChatViewModel vm)
@@ -523,6 +524,10 @@ public partial class AssistantChatWindow : Window
         {
             WindowActivation.BringToFront(main);
         }
+
+        // AC-949: close the pop-out so it doesn't linger over a window that just moved to the background.
+        // No-op for a badge click (its flyout isn't open).
+        SessionListButton.Flyout?.Hide();
     }
 
     private void _OnCloseClick(object? sender, RoutedEventArgs e) => Close();

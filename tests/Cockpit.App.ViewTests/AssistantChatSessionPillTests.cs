@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
@@ -185,6 +186,44 @@ public sealed class AssistantChatSessionPillTests
                 segment, pointer, window, new Point(segment.Bounds.Width / 2, segment.Bounds.Height / 2), 0, properties, KeyModifiers.None));
 
             Assert.Same(session, cockpit.SelectedSession);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>AC-949: clicking a row in the Sessions flyout (opened via <c>SessionListButton</c>) does the same
+    /// thing as clicking a session badge — selects the session and closes the flyout — reusing
+    /// <c>_OnSessionSegmentPressed</c> because the flyout row shares the badge's <see cref="SessionPanelViewModel"/>
+    /// DataContext. Dispatched directly on the found row control rather than a window-coordinate hit test: the
+    /// flyout rows live in a popup layer, same reason <c>ClickingASessionSegment_SelectsThatSessionOnTheCockpit</c>
+    /// raises the event directly rather than through screen coordinates.</summary>
+    [Fact]
+    public void ClickingAFlyoutRow_SelectsThatSessionAndClosesTheFlyout() => HeadlessAvalonia.Run(() =>
+    {
+        var cockpit = _Cockpit();
+        var session = _Session("s1", "AC-774", SessionStatus.Busy);
+        cockpit.Sessions.Add(session);
+        var window = _Window(cockpit);
+        try
+        {
+            var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SessionListButton");
+            var flyout = (Flyout)button.Flyout!;
+            flyout.ShowAt(button);
+            Dispatcher.UIThread.RunJobs();
+
+            var row = ((Control)flyout.Content!).GetLogicalDescendants().OfType<TextBlock>()
+                .Single(t => t.Text == "AC-774").FindAncestorOfType<StackPanel>(includeSelf: false)!;
+
+            var pointer = new Pointer(0, PointerType.Mouse, isPrimary: true);
+            var properties = new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed);
+            row.RaiseEvent(new PointerPressedEventArgs(
+                row, pointer, window, new Point(row.Bounds.Width / 2, row.Bounds.Height / 2), 0, properties, KeyModifiers.None));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Same(session, cockpit.SelectedSession);
+            Assert.False(flyout.IsOpen);
         }
         finally
         {

@@ -284,7 +284,11 @@
                                         <ItemsControl ItemsSource="{Binding LiveSessions}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:SessionPanelViewModel">
-                                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,4">
+                                                    <!-- AC-949: same click as a session badge (_OnSessionSegmentPressed) —
+                                                         identical DataContext type, so no new command or VM change needed. -->
+                                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,4"
+                                                                Cursor="Hand" Background="Transparent"
+                                                                PointerPressed="_OnSessionSegmentPressed">
                                                         <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                                                                  Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                         <StackPanel Spacing="1">

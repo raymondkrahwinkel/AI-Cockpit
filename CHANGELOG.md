@@ -168,6 +168,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: the `cockpit-whiteboard` and `cockpit-wireframe` MCP tools now come from the Diagram, Whiteboard &
   Wireframe plugin instead of being built into the app — same tools, same behavior, same consent prompts, but a
   session or agent selection only offers them when that plugin is installed and enabled.
+- changed: the rows in the assistant chat window's "Sessions" list (the "⋯" flyout next to the session badges) are
+  now clickable just like the badges themselves — clicking a row focuses that agent session and brings the main
+  window to the front, then closes the flyout so it doesn't linger over a window that just moved to the background.
 
 ### Fixed
 
