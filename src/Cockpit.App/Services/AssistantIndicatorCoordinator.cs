@@ -51,6 +51,12 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // touching the window off the UI thread.
     private AssistantChatViewModel? _chatViewModel;
 
+    // Test seam: whether a floating window is standing right now. Null the moment one closes (see `_ShowChatWindow`),
+    // so "two hosts at once" is exactly this being non-null while the rail also shows the chat — the state AC-953
+    // exists to make impossible, and the one the headless harness cannot ask the platform about (it runs without an
+    // application lifetime, so there is no window list to enumerate).
+    internal AssistantChatWindow? OpenChatWindow => _chatWindow;
+
     public AssistantIndicatorCoordinator(
         AssistantSessionHost assistant,
         OpenMicCoordinator openMic,
@@ -221,14 +227,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         {
             // AC-953: which host the chat opens in is the stand the operator last left it in, and it survives a
             // restart because it is read back off `LayoutSettings`.
-            if (_cockpit.AssistantDocked)
-            {
-                await _OpenDockedAsync().ConfigureAwait(true);
-            }
-            else
-            {
-                _ShowChatWindow();
-            }
+            await _ShowInAsync(_cockpit.AssistantDocked).ConfigureAwait(true);
 
             // The window first, the session after — AC-959. Starting it is not a fast local call: it resolves the
             // MCP catalog, stands up loopback endpoints, renews OAuth sign-ins *over the network*, spawns the CLI
@@ -265,17 +264,22 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         return chat;
     }
 
-    // The rail is the only caller of this factory, so being built by it *is* being docked — which is also what
-    // sets the flag after a restart, where the rail reopens the panel before anything has been clicked.
+    // The rail is the only caller of this factory, so being built by it *is* being docked. Two routes reach it
+    // without going through `_ShowInAsync` — clicking the rail tab, and the restore that reopens the last open
+    // panel at startup — so the same handover has to happen here, or those two leave the window standing beside
+    // the docked view with the operator typing into whichever one they clicked last.
+    //
+    // This is also exactly the right moment for it: the factory runs after the rail has decided to show the chat
+    // and before the view it returns is attached, so the window's view detaches — handing over its scroll
+    // position — before this one reads it.
     private Control _CreateDockedChatView()
     {
         var chat = _EnsureChatViewModel();
         chat.IsDocked = true;
+        _chatWindow?.Close();
 
-        // Clicking the rail tab is a way to dock that never goes through the header button, and it is the only one
-        // visible before the chat has ever been opened. Record the stand so it survives a restart like any other
-        // dock does — `OpenDockPanelId` is already this panel (that is why we are being built), so this only
-        // writes the flag.
+        // Recorded so a dock done this way survives a restart like any other. `OpenDockPanelId` is already this
+        // panel — that is why we are being built — so this only writes the flag.
         if (!_cockpit.AssistantDocked)
         {
             _ = _cockpit.SetAssistantDockedAsync(true, DockPanelId);
@@ -321,45 +325,57 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         WindowActivation.BringToFront(_chatWindow);
     }
 
-    // Docked, "open the chat" is opening the rail panel and putting the cockpit in front of whatever the operator
-    // was looking at — the same two things the floating window's Show + BringToFront do.
-    private async Task _OpenDockedAsync()
+    // Puts the chat in one host and takes it out of the other — the single place that decides where it stands, so
+    // there is no route that can leave two of them on screen at once. Every caller says which host it wants
+    // rather than what to change, which makes it idempotent: asking for the host it is already in does nothing.
+    //
+    // The order inside each branch is the whole of AC-953: the old host is torn down first and the new one built
+    // after, so the leaving view has written its scroll position onto the view model before the arriving view
+    // reads it. Build-then-tear-down would have the new view read a stale position and the old view overwrite it
+    // afterwards with nothing looking.
+    private async Task _ShowInAsync(bool docked)
     {
-        if (_cockpit.OpenDockPanelId != DockPanelId)
+        if (_chatViewModel is { } chat)
         {
-            await _cockpit.SetAssistantDockedAsync(true, DockPanelId).ConfigureAwait(true);
+            chat.IsDocked = docked;
         }
-
-        if (Avalonia.Application.Current?.ApplicationLifetime
-            is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-        {
-            WindowActivation.BringToFront(main);
-        }
-    }
-
-    // AC-953's swap, from the header's Dock/Undock button. Order is the whole of it: the old host is torn down
-    // first and the new one built after, so the leaving view has written its scroll position onto the view model
-    // before the arriving view reads it — build-then-tear-down would have the new view read a stale one and the
-    // old view then overwrite it with nothing looking.
-    private async Task _ToggleDockAsync()
-    {
-        if (_chatViewModel is not { } chat)
-        {
-            return;
-        }
-
-        var docked = !chat.IsDocked;
-        chat.IsDocked = docked;
 
         if (docked)
         {
             _chatWindow?.Close();
-            await _cockpit.SetAssistantDockedAsync(true, DockPanelId).ConfigureAwait(true);
+
+            if (!_cockpit.AssistantDocked || _cockpit.OpenDockPanelId != DockPanelId)
+            {
+                await _cockpit.SetAssistantDockedAsync(true, DockPanelId).ConfigureAwait(true);
+            }
+
+            // Docked, "show the chat" also means putting the cockpit in front of whatever the operator was
+            // looking at — the floating window's own Show + BringToFront, on the window it lives in now.
+            if (Avalonia.Application.Current?.ApplicationLifetime
+                is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            {
+                WindowActivation.BringToFront(main);
+            }
+
+            return;
         }
-        else
+
+        // Closing the panel is what detaches the docked view, and that is what hands its scroll position to the
+        // one the window is about to build.
+        if (_cockpit.AssistantDocked || _cockpit.OpenDockPanelId == DockPanelId)
         {
             await _cockpit.SetAssistantDockedAsync(false, null).ConfigureAwait(true);
-            _ShowChatWindow();
+        }
+
+        _ShowChatWindow();
+    }
+
+    // The header's Dock/Undock button: the other host, whichever this is.
+    private async Task _ToggleDockAsync()
+    {
+        if (_chatViewModel is { } chat)
+        {
+            await _ShowInAsync(!chat.IsDocked).ConfigureAwait(true);
         }
     }
 
